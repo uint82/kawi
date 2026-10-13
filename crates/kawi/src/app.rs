@@ -1,15 +1,17 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{read, Event, KeyCode, KeyEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 use crate::cursor::Cursor;
-use kawi_tui::{render, terminal, viewport::Viewport};
+use crate::keys::{is_quit, is_save};
+use kawi_tui::{render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
     buffer: Buffer,
     cursor: Cursor,
     viewport: Viewport,
+    quit_armed: bool,
 }
 
 impl App {
@@ -18,6 +20,7 @@ impl App {
             buffer,
             cursor: Cursor::new(),
             viewport: Viewport::new(fallback_height(), fallback_width()),
+            quit_armed: false,
         }
     }
 
@@ -39,13 +42,29 @@ impl App {
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
+        let status = self.status_snapshot();
         render::draw(
             out,
             self.buffer.as_slice(),
             self.cursor.col(),
             self.cursor.row(),
             &self.viewport,
+            &status,
         )
+    }
+
+    fn status_snapshot(&self) -> StatusInfo<'_> {
+        StatusInfo {
+            filename: self.display_filename(),
+            dirty: self.buffer.is_dirty(),
+            row: self.cursor.row(),
+            col: self.cursor.col(),
+            quit_armed: self.quit_armed,
+        }
+    }
+
+    fn display_filename(&self) -> &str {
+        self.buffer.path.as_deref().unwrap_or("[No Name]")
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -63,7 +82,8 @@ impl App {
     }
 
     fn set_viewport_size(&mut self, cols: u16, rows: u16) {
-        self.viewport.set_size(usize::from(cols), usize::from(rows));
+        let (width, height) = content_size(cols, rows);
+        self.viewport.set_size(width, height);
     }
 
     fn sync_viewport_size(&mut self) {
@@ -78,8 +98,9 @@ impl App {
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         if is_quit(key) {
-            return Ok(true);
+            return Ok(self.try_quit());
         }
+        self.disarm_quit();
         if self.try_save(key)? {
             return Ok(false);
         }
@@ -92,6 +113,29 @@ impl App {
         self.normalize_cursor();
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn try_quit(&mut self) -> bool {
+        if !self.buffer.is_dirty() {
+            return true;
+        }
+        self.confirm_dirty_quit()
+    }
+
+    fn confirm_dirty_quit(&mut self) -> bool {
+        if self.quit_armed {
+            return true;
+        }
+        self.arm_quit();
+        false
+    }
+
+    fn arm_quit(&mut self) {
+        self.quit_armed = true;
+    }
+
+    fn disarm_quit(&mut self) {
+        self.quit_armed = false;
     }
 
     fn try_save(&mut self, key: KeyEvent) -> Result<bool> {
@@ -172,18 +216,14 @@ fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
 }
 
-fn is_quit(key: KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Esc)
-        || (key.modifiers.contains(KeyModifiers::CONTROL)
-            && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('c')))
-}
-
-fn is_save(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('s'))
-}
-
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+fn content_size(cols: u16, rows: u16) -> (usize, usize) {
+    let width = usize::from(cols).max(1);
+    let height = usize::from(rows).saturating_sub(1).max(1);
+    (width, height)
 }
 
 fn fallback_width() -> usize {

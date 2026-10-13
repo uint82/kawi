@@ -6,6 +6,7 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
+use crate::statusbar::{draw_status, StatusInfo};
 use crate::viewport::Viewport;
 
 pub fn draw(
@@ -14,9 +15,11 @@ pub fn draw(
     col: usize,
     row: usize,
     viewport: &Viewport,
+    status: &StatusInfo,
 ) -> Result<()> {
     clear_all(out)?;
     draw_visible_lines(out, lines, viewport)?;
+    draw_status_row(out, status, viewport)?;
     place_cursor_relative(out, col, row, viewport)?;
     flush(out)?;
     Ok(())
@@ -48,6 +51,10 @@ fn draw_one_line(out: &mut Stdout, screen_row: usize, text: &str, width: usize) 
 
 fn truncate_to_width(text: &str, width: usize) -> String {
     text.chars().take(width).collect()
+}
+
+fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -> Result<()> {
+    draw_status(out, status, viewport.width(), viewport.height())
 }
 
 fn place_cursor_relative(

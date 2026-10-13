@@ -4,6 +4,7 @@ use std::fs;
 pub struct Buffer {
     lines: Vec<String>,
     pub path: Option<String>,
+    dirty: bool,
 }
 
 impl Buffer {
@@ -32,10 +33,15 @@ impl Buffer {
         &self.lines
     }
 
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
         self.ensure_line_exists(row);
         let byte_idx = char_to_byte_index(&self.lines[row], col);
         self.lines[row].insert(byte_idx, ch);
+        self.mark_dirty();
     }
 
     pub fn insert_newline(&mut self, row: usize, col: usize) {
@@ -43,6 +49,7 @@ impl Buffer {
         let byte_idx = char_to_byte_index(&self.lines[row], col);
         let right = self.lines[row].split_off(byte_idx);
         self.lines.insert(row + 1, right);
+        self.mark_dirty();
     }
 
     pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
@@ -51,24 +58,31 @@ impl Buffer {
         }
         if col > 0 {
             self.remove_char_before(row, col);
+            self.mark_dirty();
             return (row, col.saturating_sub(1));
         }
-        self.join_with_previous(row)
+        self.delete_at_line_start(row)
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&mut self) -> Result<()> {
         let path = match &self.path {
-            Some(p) => p,
+            Some(p) => p.clone(),
             None => return Ok(()),
         };
-        write_to_file(path, &self.lines)
+        write_to_file(&path, &self.lines)?;
+        self.mark_clean();
+        Ok(())
     }
 
     fn from_lines(mut lines: Vec<String>, path: Option<String>) -> Self {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        Self { lines, path }
+        Self {
+            lines,
+            path,
+            dirty: false,
+        }
     }
 
     fn ensure_line_exists(&mut self, row: usize) {
@@ -94,6 +108,23 @@ impl Buffer {
         let new_col = self.lines[prev_row].chars().count();
         self.lines[prev_row].push_str(&current);
         (prev_row, new_col)
+    }
+
+    fn delete_at_line_start(&mut self, row: usize) -> (usize, usize) {
+        if row == 0 {
+            return (0, 0);
+        }
+        let pos = self.join_with_previous(row);
+        self.mark_dirty();
+        pos
+    }
+
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    fn mark_clean(&mut self) {
+        self.dirty = false;
     }
 }
 
@@ -165,5 +196,31 @@ mod tests {
         assert_eq!(b.len(), 1);
         assert_eq!(b.line(0), Some("ab"));
         assert_eq!(pos, (0, 1));
+    }
+
+    #[test]
+    fn fresh_buffer_is_clean() {
+        let b = Buffer::from_string("a");
+        assert!(!b.is_dirty());
+    }
+
+    #[test]
+    fn edit_marks_dirty() {
+        let mut b = Buffer::from_string("a");
+        b.insert_char(0, 1, 'b');
+        assert!(b.is_dirty());
+    }
+
+    #[test]
+    fn save_clears_dirty() {
+        let path = std::env::temp_dir().join("kawi_dirty_test.txt");
+        let path_str = path.to_string_lossy().to_string();
+        let mut b = Buffer::from_string("hi");
+        b.path = Some(path_str);
+        b.insert_char(0, 2, '!');
+        assert!(b.is_dirty());
+        b.save().expect("save temp file");
+        assert!(!b.is_dirty());
+        let _ = std::fs::remove_file(&path);
     }
 }
