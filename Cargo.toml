@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+default-members = ["crates/kawi"]
+
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+authors = ["Hilmi Abroor"]
+license = "GPL-3.0-or-later"
+categories = ["editor"]
+repository = "https://github.com/uint82/kawi"
+rust-version = "1.98.0"
+
+
+[workspace.dependencies]
+
+
+
+
+
+# external
+anyhow = "1"
+crossterm = "0.29"

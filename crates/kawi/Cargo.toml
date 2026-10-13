@@ -1,0 +1,15 @@
+[package]
+name = "kawi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kawi-buffer = { path = "../kawi-buffer" }
+kawi-tui = { path = "../kawi-tui" }
+anyhow.workspace = true
+crossterm.workspace = true
