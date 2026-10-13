@@ -3,24 +3,30 @@ use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
-use kawi_tui::render;
+use crate::cursor::Cursor;
+use kawi_tui::{render, terminal, viewport::Viewport};
 
 pub struct App {
     buffer: Buffer,
-    row: usize,
-    col: usize,
+    cursor: Cursor,
+    viewport: Viewport,
 }
 
 impl App {
     pub fn new(buffer: Buffer) -> Self {
         Self {
             buffer,
-            row: 0,
-            col: 0,
+            cursor: Cursor::new(),
+            viewport: Viewport::new(fallback_height(), fallback_width()),
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
+        self.sync_viewport_size();
+        self.run_loop()
+    }
+
+    fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
             self.draw_frame(&mut out)?;
@@ -33,14 +39,41 @@ impl App {
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
-        render::draw(out, self.buffer.as_slice(), self.col, self.row)
+        render::draw(
+            out,
+            self.buffer.as_slice(),
+            self.cursor.col(),
+            self.cursor.row(),
+            &self.viewport,
+        )
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
         match event {
             Event::Key(key) => self.handle_key(key),
+            Event::Resize(cols, rows) => self.handle_resize(cols, rows),
             _ => Ok(false),
         }
+    }
+
+    fn handle_resize(&mut self, cols: u16, rows: u16) -> Result<bool> {
+        self.set_viewport_size(cols, rows);
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn set_viewport_size(&mut self, cols: u16, rows: u16) {
+        self.viewport.set_size(usize::from(cols), usize::from(rows));
+    }
+
+    fn sync_viewport_size(&mut self) {
+        if let Ok((cols, rows)) = terminal::size() {
+            self.set_viewport_size(cols, rows);
+        }
+    }
+
+    fn reveal_cursor(&mut self) {
+        self.viewport.ensure_visible(self.cursor.row());
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -52,10 +85,12 @@ impl App {
         }
         if self.try_apply_edit(key.code) {
             self.normalize_cursor();
+            self.reveal_cursor();
             return Ok(false);
         }
         self.apply_movement(key.code);
         self.normalize_cursor();
+        self.reveal_cursor();
         Ok(false)
     }
 
@@ -82,60 +117,39 @@ impl App {
 
     fn insert_char_and_advance(&mut self, c: char) -> bool {
         self.insert_char_at_cursor(c);
-        self.advance_col();
+        self.cursor.advance_col();
         true
     }
 
     fn insert_char_at_cursor(&mut self, c: char) {
-        self.buffer.insert_char(self.row, self.col, c);
-    }
-
-    fn advance_col(&mut self) {
-        self.col = self.col.saturating_add(1);
+        self.buffer
+            .insert_char(self.cursor.row(), self.cursor.col(), c);
     }
 
     fn insert_newline_and_reposition(&mut self) -> bool {
-        self.buffer.insert_newline(self.row, self.col);
-        self.move_to_new_line_start();
+        self.buffer
+            .insert_newline(self.cursor.row(), self.cursor.col());
+        self.cursor
+            .move_to_line_start(self.cursor.row().saturating_add(1));
         true
     }
 
-    fn move_to_new_line_start(&mut self) {
-        self.row = self.row.saturating_add(1);
-        self.col = 0;
-    }
-
     fn delete_backward_and_reposition(&mut self) -> bool {
-        let (row, col) = self.buffer.delete_backward(self.row, self.col);
-        self.row = row;
-        self.col = col;
+        let (row, col) = self
+            .buffer
+            .delete_backward(self.cursor.row(), self.cursor.col());
+        self.cursor.set_position(row, col);
         true
     }
 
     fn apply_movement(&mut self, code: KeyCode) {
         match code {
-            KeyCode::Up => self.move_up(),
-            KeyCode::Down => self.move_down(),
-            KeyCode::Left => self.move_left(),
-            KeyCode::Right => self.move_right(),
+            KeyCode::Up => self.cursor.move_up(),
+            KeyCode::Down => self.cursor.move_down(),
+            KeyCode::Left => self.cursor.move_left(),
+            KeyCode::Right => self.cursor.move_right(),
             _ => {}
         }
-    }
-
-    fn move_up(&mut self) {
-        self.row = self.row.saturating_sub(1);
-    }
-
-    fn move_down(&mut self) {
-        self.row = self.row.saturating_add(1);
-    }
-
-    fn move_left(&mut self) {
-        self.col = self.col.saturating_sub(1);
-    }
-
-    fn move_right(&mut self) {
-        self.col = self.col.saturating_add(1);
     }
 
     fn normalize_cursor(&mut self) {
@@ -145,12 +159,12 @@ impl App {
 
     fn clamp_row(&mut self) {
         let max_row = self.buffer.len().saturating_sub(1);
-        self.row = self.row.min(max_row);
+        self.cursor.set_row(self.cursor.row().min(max_row));
     }
 
     fn clamp_col(&mut self) {
-        let width = self.buffer.line(self.row).map_or(0, char_count);
-        self.col = self.col.min(width);
+        let width = self.buffer.line(self.cursor.row()).map_or(0, char_count);
+        self.cursor.set_col(self.cursor.col().min(width));
     }
 }
 
@@ -170,4 +184,12 @@ fn is_save(key: KeyEvent) -> bool {
 
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+fn fallback_width() -> usize {
+    80
+}
+
+fn fallback_height() -> usize {
+    24
 }

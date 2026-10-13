@@ -13,6 +13,10 @@ pub fn init() -> Result<TerminalGuard> {
     Ok(TerminalGuard)
 }
 
+pub fn size() -> Result<(u16, u16)> {
+    crossterm::terminal::size().context("query terminal size")
+}
+
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
