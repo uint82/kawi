@@ -1,8 +1,12 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::actions::Action;
 use crate::keymap::{has_ctrl_or_alt, is_ctrl_quit, is_save_key, Keymap};
 use crate::mode::Mode;
+
+fn is_redo_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
+}
 
 pub struct VimKeymap {
     pending_d: bool,
@@ -46,6 +50,9 @@ impl VimKeymap {
     }
 
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
+        if is_redo_key(key) {
+            return Action::Redo;
+        }
         match key.code {
             KeyCode::Esc => Action::Quit,
             KeyCode::Enter => Action::MoveDown,
@@ -66,6 +73,7 @@ impl VimKeymap {
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::Append),
+            KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.arm_d(key),
             KeyCode::Char(':') => self.arm_command(key),
@@ -78,6 +86,10 @@ impl VimKeymap {
             return Action::Noop;
         }
         action
+    }
+
+    fn clear_pending(&mut self) {
+        self.pending_d = false;
     }
 
     fn arm_d(&mut self, key: KeyEvent) -> Action {
@@ -125,10 +137,6 @@ impl VimKeymap {
             return Action::Noop;
         }
         Action::PushCommandChar(c)
-    }
-
-    fn clear_pending(&mut self) {
-        self.pending_d = false;
     }
 }
 
@@ -317,6 +325,42 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('o')), Mode::Normal),
             Action::OpenLineBelow
+        );
+    }
+
+    #[test]
+    fn normal_u_undoes() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('u')), Mode::Normal),
+            Action::Undo
+        );
+    }
+
+    #[test]
+    fn normal_ctrl_r_redoes() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('r')), Mode::Normal),
+            Action::Redo
+        );
+    }
+
+    #[test]
+    fn insert_u_types() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('u')), Mode::Insert),
+            Action::InsertChar('u')
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_r_is_noop() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('r')), Mode::Insert),
+            Action::Noop
         );
     }
 

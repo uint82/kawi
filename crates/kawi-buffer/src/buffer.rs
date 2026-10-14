@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use std::fs;
 
+use crate::history::History;
+
 pub struct Buffer {
     lines: Vec<String>,
     pub path: Option<String>,
-    dirty: bool,
+    history: History,
 }
 
 impl Buffer {
@@ -34,14 +36,37 @@ impl Buffer {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.history.is_dirty()
+    }
+
+    pub fn begin_change(&mut self) {
+        self.history.begin_change();
+    }
+
+    pub fn end_change(&mut self) {
+        self.history.end_change();
+    }
+
+    pub fn checkpoint(&mut self) {
+        self.history.checkpoint(&self.lines);
+    }
+
+    pub fn maybe_checkpoint(&mut self) {
+        self.history.maybe_checkpoint(&self.lines);
+    }
+
+    pub fn undo(&mut self) -> bool {
+        self.history.undo(&mut self.lines)
+    }
+
+    pub fn redo(&mut self) -> bool {
+        self.history.redo(&mut self.lines)
     }
 
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
         self.ensure_line_exists(row);
         let byte_idx = char_to_byte_index(&self.lines[row], col);
         self.lines[row].insert(byte_idx, ch);
-        self.mark_dirty();
     }
 
     pub fn insert_newline(&mut self, row: usize, col: usize) {
@@ -49,7 +74,6 @@ impl Buffer {
         let byte_idx = char_to_byte_index(&self.lines[row], col);
         let right = self.lines[row].split_off(byte_idx);
         self.lines.insert(row + 1, right);
-        self.mark_dirty();
     }
 
     pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
@@ -58,7 +82,6 @@ impl Buffer {
         }
         if col > 0 {
             self.remove_char_before(row, col);
-            self.mark_dirty();
             return (row, col.saturating_sub(1));
         }
         self.delete_at_line_start(row)
@@ -70,7 +93,6 @@ impl Buffer {
         }
         if col < self.lines[row].chars().count() {
             self.remove_char_at(row, col);
-            self.mark_dirty();
             return;
         }
         self.delete_at_line_end(row);
@@ -83,7 +105,6 @@ impl Buffer {
         }
         if row < self.lines.len() {
             self.lines.remove(row);
-            self.mark_dirty();
         }
     }
 
@@ -93,7 +114,7 @@ impl Buffer {
             None => return Ok(()),
         };
         write_to_file(&path, &self.lines)?;
-        self.mark_clean();
+        self.history.mark_clean();
         Ok(())
     }
 
@@ -104,7 +125,7 @@ impl Buffer {
         Self {
             lines,
             path,
-            dirty: false,
+            history: History::new(),
         }
     }
 
@@ -136,7 +157,6 @@ impl Buffer {
         }
         let next = self.lines.remove(row.saturating_add(1));
         self.lines[row].push_str(&next);
-        self.mark_dirty();
     }
 
     fn clear_single_line(&mut self) {
@@ -146,7 +166,6 @@ impl Buffer {
         }
         if !self.lines[0].is_empty() {
             self.lines[0].clear();
-            self.mark_dirty();
         }
     }
 
@@ -165,17 +184,7 @@ impl Buffer {
         if row == 0 {
             return (0, 0);
         }
-        let pos = self.join_with_previous(row);
-        self.mark_dirty();
-        pos
-    }
-
-    fn mark_dirty(&mut self) {
-        self.dirty = true;
-    }
-
-    fn mark_clean(&mut self) {
-        self.dirty = false;
+        self.join_with_previous(row)
     }
 }
 
@@ -258,6 +267,7 @@ mod tests {
     #[test]
     fn edit_marks_dirty() {
         let mut b = Buffer::from_string("a");
+        b.checkpoint();
         b.insert_char(0, 1, 'b');
         assert!(b.is_dirty());
     }
@@ -268,6 +278,7 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         let mut b = Buffer::from_string("hi");
         b.path = Some(path_str);
+        b.checkpoint();
         b.insert_char(0, 2, '!');
         assert!(b.is_dirty());
         b.save().expect("save temp file");
@@ -276,8 +287,35 @@ mod tests {
     }
 
     #[test]
+    fn undo_restores_lines() {
+        let mut b = Buffer::from_string("ab");
+        b.checkpoint();
+        b.insert_char(0, 2, 'c');
+        assert!(b.undo());
+        assert_eq!(b.line(0), Some("ab"));
+    }
+
+    #[test]
+    fn redo_restores_forward() {
+        let mut b = Buffer::from_string("ab");
+        b.checkpoint();
+        b.insert_char(0, 2, 'c');
+        b.undo();
+        assert!(b.redo());
+        assert_eq!(b.line(0), Some("abc"));
+    }
+
+    #[test]
+    fn undo_without_history_returns_false() {
+        let mut b = Buffer::from_string("ab");
+        assert!(!b.undo());
+        assert!(!b.redo());
+    }
+
+    #[test]
     fn delete_forward_removes_char() {
         let mut b = Buffer::from_string("ab");
+        b.checkpoint();
         b.delete_forward(0, 0);
         assert_eq!(b.line(0), Some("b"));
         assert!(b.is_dirty());
@@ -294,6 +332,7 @@ mod tests {
     #[test]
     fn delete_line_removes_row() {
         let mut b = Buffer::from_string("a\nb\nc");
+        b.checkpoint();
         b.delete_line(1);
         assert_eq!(b.len(), 2);
         assert_eq!(b.line(1), Some("c"));
