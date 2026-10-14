@@ -35,7 +35,10 @@ impl HelixKeymap {
         Action::InsertChar(c)
     }
 
-    fn map_select(&mut self, key: KeyEvent) -> Action {
+    fn map_select(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if matches!(key.code, KeyCode::Char('v')) {
+            return self.enter_select(key, mode);
+        }
         match key.code {
             KeyCode::Esc => Action::CollapseSelection,
             KeyCode::Up => Action::MoveUp,
@@ -70,6 +73,13 @@ impl HelixKeymap {
         }
         action
     }
+
+    fn enter_select(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if mode != Mode::Normal || has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        Action::EnterVisual
+    }
 }
 
 impl Keymap for HelixKeymap {
@@ -83,13 +93,13 @@ impl Keymap for HelixKeymap {
         match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Command => map_command_mode(key),
-            Mode::Normal | Mode::Visual => self.map_select(key),
+            Mode::Normal | Mode::Visual => self.map_select(key, mode),
         }
     }
 
     fn mode_label(&self, mode: Mode) -> &'static str {
         match mode {
-            Mode::Visual => "NORMAL",
+            Mode::Visual => "SELECT",
             _ => mode.label(),
         }
     }
@@ -194,10 +204,23 @@ mod tests {
     }
 
     #[test]
-    fn visual_labels_normal() {
+    fn visual_labels_select() {
         let map = HelixKeymap::new();
-        assert_eq!(map.mode_label(Mode::Visual), "NORMAL");
+        assert_eq!(map.mode_label(Mode::Visual), "SELECT");
         assert_eq!(map.mode_label(Mode::Insert), "INSERT");
+    }
+
+    #[test]
+    fn v_enters_select_from_normal_only() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::EnterVisual
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Visual),
+            Action::Noop
+        );
     }
 
     #[test]

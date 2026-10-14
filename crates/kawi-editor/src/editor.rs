@@ -229,9 +229,7 @@ impl Editor {
     }
 
     fn delete_selection(&mut self) {
-        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_range() else {
-            return;
-        };
+        let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
         self.record_boundary_at(start_row, start_col);
         self.yank_range(start_row, start_col, end_row, end_col);
         self.buffer
@@ -241,11 +239,19 @@ impl Editor {
     }
 
     fn yank_selection(&mut self) {
-        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_range() else {
-            return;
-        };
+        let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
         self.yank_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
+    }
+
+    fn operator_range(&self) -> ((usize, usize), (usize, usize)) {
+        match self.selection_range() {
+            Some(range) => range,
+            None => (
+                (self.cursor.row(), self.cursor.col()),
+                (self.cursor.row(), self.cursor.col()),
+            ),
+        }
     }
 
     fn collapse_to(&mut self, row: usize, col: usize) {

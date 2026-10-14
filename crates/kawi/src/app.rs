@@ -17,15 +17,12 @@ pub struct App {
 
 impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
-        let editor = Editor::new(buffer);
-        let mut app = Self {
-            editor,
+        Self {
+            editor: Editor::new(buffer),
             viewport: Viewport::new(fallback_height(), fallback_width()),
             keymap: ActiveKeymap::for_flavor(flavor),
             quit_armed: false,
-        };
-        app.reset_selection_for_flavor(flavor);
-        app
+        }
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -253,24 +250,11 @@ impl App {
 
     fn apply_flavor(&mut self, flavor: Flavor) -> Result<bool> {
         self.keymap = ActiveKeymap::for_flavor(flavor);
-        self.reset_selection_for_flavor(flavor);
+        if flavor == Flavor::Vim {
+            self.exit_visual_if_active();
+        }
         self.reveal_cursor();
         Ok(false)
-    }
-
-    fn reset_selection_for_flavor(&mut self, flavor: Flavor) {
-        match flavor {
-            Flavor::Vim => self.exit_visual_if_active(),
-            Flavor::Helix => self.collapse_to_helix_start(),
-        }
-    }
-
-    fn collapse_to_helix_start(&mut self) {
-        if self.editor.mode().is_visual() {
-            self.editor.apply(Action::CollapseSelection);
-        } else {
-            self.ensure_visual();
-        }
     }
 
     fn handle_write_quit(&mut self) -> Result<bool> {
@@ -418,10 +402,10 @@ mod tests {
     }
 
     #[test]
-    fn helix_selects_from_the_start() {
-        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
-        assert_eq!(app.editor_mode(), Mode::Visual);
-        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 0))));
+    fn helix_starts_clean() {
+        let app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
     }
 
     #[test]
@@ -429,8 +413,8 @@ mod tests {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.run_command(Command::SetKeymap("helix".to_string()))
             .expect("switch");
-        assert_eq!(app.editor_mode(), Mode::Visual);
-        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 0))));
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
     }
 
     #[test]
@@ -443,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn set_keymap_helix_collapses_range() {
+    fn set_keymap_helix_preserves_range() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");
         app.handle_key(key(KeyCode::Char('l'))).expect("extend");
@@ -451,7 +435,7 @@ mod tests {
         app.run_command(Command::SetKeymap("helix".to_string()))
             .expect("switch");
         assert_eq!(app.editor_mode(), Mode::Visual);
-        assert_eq!(app.editor_selection(), Some(((0, 2), (0, 2))));
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
     }
 
     #[test]
@@ -463,11 +447,31 @@ mod tests {
     }
 
     #[test]
-    fn helix_motion_extends_and_deletes() {
+    fn helix_motion_moves_without_extending() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
+    fn helix_v_selects_then_motion_extends() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('v'))).expect("select");
         app.handle_key(key(KeyCode::Char('l'))).expect("extend");
         app.handle_key(key(KeyCode::Char('l'))).expect("extend");
-        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
         assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn helix_delete_acts_on_cursor_char() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 1));
     }
 }
