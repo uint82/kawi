@@ -211,14 +211,28 @@ fn paint_reversed(out: &mut Stdout, text: &str) -> Result<()> {
 }
 
 fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors) -> Result<()> {
+    set_tint(out, colors)?;
+    write_segment(out, text)?;
+    reset_tint(out)?;
+    Ok(())
+}
+
+fn set_tint(out: &mut Stdout, colors: &MatchColors) -> Result<()> {
     execute!(
         out,
         SetForegroundColor(colors.foreground),
         SetBackgroundColor(colors.background)
     )
     .context("tint span")?;
-    write_segment(out, text)?;
+    if colors.dimmed {
+        execute!(out, SetAttribute(Attribute::Dim)).context("dim span")?;
+    }
+    Ok(())
+}
+
+fn reset_tint(out: &mut Stdout) -> Result<()> {
     execute!(out, ResetColor).context("reset tint")?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset tint attribute")?;
     Ok(())
 }
 

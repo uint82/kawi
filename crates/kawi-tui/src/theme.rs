@@ -3,6 +3,7 @@ use crossterm::style::Color;
 pub struct MatchColors {
     pub foreground: Color,
     pub background: Color,
+    pub dimmed: bool,
 }
 
 pub struct Theme {
@@ -16,10 +17,12 @@ impl Default for Theme {
             search_match: MatchColors {
                 foreground: Color::Black,
                 background: Color::Yellow,
+                dimmed: true,
             },
             search_current: MatchColors {
                 foreground: Color::Black,
-                background: Color::DarkYellow,
+                background: Color::Yellow,
+                dimmed: false,
             },
         }
     }
@@ -35,15 +38,13 @@ mod tests {
         assert_eq!(theme.search_match.foreground, Color::Black);
         assert_eq!(theme.search_match.background, Color::Yellow);
         assert_eq!(theme.search_current.foreground, Color::Black);
-        assert_eq!(theme.search_current.background, Color::DarkYellow);
+        assert_eq!(theme.search_current.background, Color::Yellow);
     }
 
     #[test]
-    fn current_match_is_darker() {
+    fn only_background_matches_are_dimmed() {
         let theme = Theme::default();
-        assert_ne!(
-            theme.search_match.background,
-            theme.search_current.background
-        );
+        assert!(theme.search_match.dimmed);
+        assert!(!theme.search_current.dimmed);
     }
 }
