@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::keymap::{has_ctrl_or_alt, is_ctrl_quit, is_save_key, Keymap};
+use crate::keymap::{has_ctrl_or_alt, normalize_interrupt, Keymap};
 use kawi_editor::Action;
 use kawi_editor::Mode;
 
@@ -66,7 +66,7 @@ impl VimKeymap {
             return Action::Redo;
         }
         match key.code {
-            KeyCode::Esc => Action::Quit,
+            KeyCode::Esc => Action::Noop,
             KeyCode::Enter => Action::MoveDown,
             KeyCode::Backspace => Action::MoveLeft,
             KeyCode::Delete => Action::DeleteForward,
@@ -210,14 +210,7 @@ impl VimKeymap {
 
 impl Keymap for VimKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if is_ctrl_quit(key) {
-            self.clear_pending();
-            return Action::Quit;
-        }
-        if is_save_key(key) {
-            self.clear_pending();
-            return Action::Save;
-        }
+        let key = normalize_interrupt(key);
         match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
@@ -278,6 +271,25 @@ mod tests {
     }
 
     #[test]
+    fn normal_esc_is_noop() {
+        let mut map = VimKeymap::new();
+        assert_eq!(map.map(plain(KeyCode::Esc), Mode::Normal), Action::Noop);
+    }
+
+    #[test]
+    fn ctrl_s_is_noop() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('s')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('s')), Mode::Insert),
+            Action::Noop
+        );
+    }
+
+    #[test]
     fn insert_char_types() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -296,15 +308,36 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_q_quits_in_both_modes() {
+    fn ctrl_q_is_noop() {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(ctrl(KeyCode::Char('q')), Mode::Normal),
-            Action::Quit
+            Action::Noop
         );
         assert_eq!(
             map.map(ctrl(KeyCode::Char('q')), Mode::Insert),
-            Action::Quit
+            Action::Noop
+        );
+    }
+
+    #[test]
+    fn ctrl_c_matches_esc_everywhere() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('c')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('c')), Mode::Insert),
+            Action::ExitInsert
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('c')), Mode::Visual),
+            Action::ExitVisual
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('c')), Mode::Command),
+            Action::CancelCommand
         );
     }
 
