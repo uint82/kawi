@@ -222,7 +222,7 @@ impl Editor {
         let Some(((start_row, start_col), (end_row, end_col))) = self.selection_range() else {
             return;
         };
-        self.record_boundary();
+        self.record_boundary_at(start_row, start_col);
         self.yank_range(start_row, start_col, end_row, end_col);
         self.buffer
             .delete_range(start_row, start_col, end_row, end_col);
@@ -279,6 +279,10 @@ impl Editor {
 
     fn record_boundary(&mut self) {
         self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
+    }
+
+    fn record_boundary_at(&mut self, row: usize, col: usize) {
+        self.buffer.checkpoint(row, col);
     }
 
     fn record_maybe(&mut self) {
@@ -792,6 +796,30 @@ mod tests {
     }
 
     #[test]
+    fn delete_selection_undoes_together() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "abcdef");
+    }
+
+    #[test]
+    fn undo_multiline_delete_returns_to_start() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.lines().len(), 1);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
     fn visual_yank_keeps_text() {
         let mut e = editor_with("abcdef");
         e.apply(Action::MoveRight);
@@ -824,18 +852,6 @@ mod tests {
         e.apply(Action::PasteAfter);
         e.apply(Action::Undo);
         assert_eq!(e.lines()[0], "ab");
-    }
-
-    #[test]
-    fn delete_selection_undoes_together() {
-        let mut e = editor_with("abcdef");
-        e.apply(Action::MoveRight);
-        e.apply(Action::EnterVisual);
-        e.apply(Action::MoveRight);
-        e.apply(Action::MoveRight);
-        e.apply(Action::DeleteSelection);
-        e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "abcdef");
     }
 
     #[test]
