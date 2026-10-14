@@ -91,6 +91,28 @@ impl Query {
         count_starts(line.as_bytes(), self.needle(), self.fold_bytes(), 0, bound)
     }
 
+    pub fn spans_in_line(&self, line: &str) -> Vec<(usize, usize)> {
+        if self.needs_folded_lines() {
+            return folded_spans_in_line(&self.text, line);
+        }
+        let mut spans = Vec::new();
+        let mut from = 0;
+        while let Some(hit) = find_first_in(
+            line.as_bytes(),
+            self.needle(),
+            self.fold_bytes(),
+            from,
+            line.len(),
+        ) {
+            spans.push((
+                col_of_byte(line, hit),
+                col_of_byte(line, hit.saturating_add(self.needle().len())),
+            ));
+            from = hit.saturating_add(1);
+        }
+        spans
+    }
+
     fn needle(&self) -> &[u8] {
         self.text.as_bytes()
     }
@@ -115,6 +137,54 @@ pub fn first_in_range(
         !query.sensitive,
     )
     .map(|hit| from_byte.min(slice.len_bytes()).saturating_add(hit))
+}
+
+pub fn spans_in_range(
+    slice: &RopeSlice,
+    query: &Query,
+    from_byte: usize,
+    end_byte: usize,
+) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let needle = query.text.as_bytes();
+    let base = from_byte.min(slice.len_bytes());
+    let mut spans = Vec::new();
+    let _ = scan_views(
+        window_chunks(slice, from_byte, end_byte),
+        needle.len(),
+        |view_base, view, carry_len| {
+            let fresh = spans.len();
+            collect_view_spans(view, needle, !query.sensitive, carry_len, &mut spans);
+            shift_spans(&mut spans[fresh..], base.saturating_add(view_base));
+            None
+        },
+    );
+    spans
+}
+
+fn collect_view_spans(
+    view: &[u8],
+    needle: &[u8],
+    fold: bool,
+    carry_len: usize,
+    spans: &mut Vec<(usize, usize)>,
+) {
+    let mut from = 0;
+    while let Some(hit) = find_first_in(view, needle, fold, from, view.len()) {
+        if !starts_in_scanned_prefix(hit, carry_len, needle.len()) {
+            spans.push((hit, hit.saturating_add(needle.len())));
+        }
+        from = hit.saturating_add(1);
+    }
+}
+
+fn shift_spans(spans: &mut [(usize, usize)], base: usize) {
+    for span in spans.iter_mut() {
+        span.0 = span.0.saturating_add(base);
+        span.1 = span.1.saturating_add(base);
+    }
 }
 
 pub fn count_in_range(
@@ -414,6 +484,19 @@ fn folded_count_before(pattern: &str, line: &str, bound_col: usize) -> usize {
         .count()
 }
 
+fn folded_spans_in_line(pattern: &str, line: &str) -> Vec<(usize, usize)> {
+    let haystack = fold_case(line);
+    haystack
+        .match_indices(pattern)
+        .map(|(byte, matched)| {
+            (
+                col_of_byte(&haystack, byte),
+                col_of_byte(&haystack, byte.saturating_add(matched.len())),
+            )
+        })
+        .collect()
+}
+
 fn byte_of_col(line: &str, col: usize) -> usize {
     line.char_indices()
         .nth(col)
@@ -553,6 +636,38 @@ mod tests {
     fn range_counts_across_chunk_edges() {
         let chunks = [(0, "aaa"), (3, "aaa")];
         assert_eq!(drive_count(chunks.into_iter(), b"aa", false), 5);
+    }
+
+    #[test]
+    fn range_collects_spans() {
+        let buffer = buffer_of("ar ar\nar");
+        let slice = buffer.rope_slice();
+        let query = Query::new("ar");
+        assert_eq!(
+            spans_in_range(&slice, &query, 0, slice.len_bytes()),
+            vec![(0, 2), (3, 5), (6, 8)]
+        );
+        assert!(spans_in_range(&slice, &query, 0, 0).is_empty());
+    }
+
+    #[test]
+    fn spans_cover_chunk_edges_once() {
+        let chunks = [(0, "aaa"), (3, "aaa")];
+        let mut spans = Vec::new();
+        let _ = scan_views(chunks.into_iter(), 2, |view_base, view, carry_len| {
+            let fresh = spans.len();
+            collect_view_spans(view, b"aa", false, carry_len, &mut spans);
+            shift_spans(&mut spans[fresh..], view_base);
+            None
+        });
+        assert_eq!(spans, vec![(0, 2), (1, 3), (2, 4), (3, 5), (4, 6)]);
+    }
+
+    #[test]
+    fn line_collects_spans() {
+        let query = Query::new("ar");
+        assert_eq!(query.spans_in_line("ar ar"), vec![(0, 2), (3, 5)]);
+        assert!(query.spans_in_line("foo").is_empty());
     }
 
     #[test]

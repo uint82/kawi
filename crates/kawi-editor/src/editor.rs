@@ -27,6 +27,7 @@ struct SearchStatus {
     index: usize,
     total: usize,
     revision: u64,
+    current: (usize, usize),
 }
 
 impl Editor {
@@ -746,7 +747,40 @@ impl Editor {
             index,
             total,
             revision,
+            current: (self.cursor.row(), self.cursor.col()),
         });
+    }
+
+    pub fn search_spans(&self, top: usize, height: usize) -> Vec<search::MatchSpan> {
+        let (pattern, anchor) = match self.highlight_target() {
+            Some(target) => target,
+            None => return Vec::new(),
+        };
+        search::collect_matches(&self.buffer, pattern, top, top.saturating_add(height))
+            .into_iter()
+            .map(|span| self.mark_current(span, anchor))
+            .collect()
+    }
+
+    fn highlight_target(&self) -> Option<(&str, (usize, usize))> {
+        if self.mode == Mode::Search && !self.search.text().is_empty() {
+            return Some((self.search.text(), (self.cursor.row(), self.cursor.col())));
+        }
+        match &self.search_status {
+            Some(status) if status.revision == self.buffer.revision() => {
+                Some((self.search.text(), status.current))
+            }
+            _ => None,
+        }
+    }
+
+    fn mark_current(
+        &self,
+        mut span: search::MatchSpan,
+        anchor: (usize, usize),
+    ) -> search::MatchSpan {
+        span.current = (span.row, span.start) == anchor;
+        span
     }
 
     pub fn search_next(&mut self) -> SearchOutcome {
@@ -1245,6 +1279,56 @@ mod tests {
         assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
         assert_eq!(e.search_next(), SearchOutcome::Missing);
         assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+    }
+
+    #[test]
+    fn search_spans_mark_current_match() {
+        let mut e = editor_with("ar ar\nar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        let spans = e.search_spans(0, 2);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(
+            spans.iter().map(|span| span.current).collect::<Vec<_>>(),
+            vec![true, false, false]
+        );
+        e.apply(Action::NextMatch);
+        let spans = e.search_spans(0, 2);
+        assert_eq!(
+            spans.iter().map(|span| span.current).collect::<Vec<_>>(),
+            vec![false, true, false]
+        );
+    }
+
+    #[test]
+    fn search_spans_follow_live_typing() {
+        let mut e = editor_with("ar ar\nar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        let spans = e.search_spans(0, 2);
+        assert_eq!(spans.len(), 3);
+        assert!(spans[0].current);
+    }
+
+    #[test]
+    fn search_spans_empty_without_pattern() {
+        let e = editor_with("ar ar");
+        assert!(e.search_spans(0, 2).is_empty());
+    }
+
+    #[test]
+    fn search_spans_clear_on_cancel() {
+        let mut e = editor_with("ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_spans(0, 1).len(), 2);
+        e.apply(Action::EnterSearch);
+        e.apply(Action::CancelSearch);
+        assert!(e.search_spans(0, 1).is_empty());
     }
 
     #[test]
