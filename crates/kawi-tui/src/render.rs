@@ -2,25 +2,37 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
-    style::{Attribute, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor},
+    style::{Attribute, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{Clear, ClearType},
 };
 use std::io::{Stdout, Write};
 
 use crate::frame::{Frame, SearchSpan};
 use crate::statusbar::{draw_status, StatusInfo};
-use crate::theme::{MatchColors, Theme};
+use crate::theme::{BaseColors, MatchColors, Theme};
 use crate::viewport::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let theme = Theme::default();
+    apply_base_colors(out, &theme)?;
     clear_all(out)?;
     draw_visible_lines(out, frame.lines, frame.viewport)?;
-    draw_highlight(out, frame)?;
+    draw_highlight(out, frame, &theme)?;
     draw_status_row(out, frame.status, frame.viewport)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
+    Ok(())
+}
+
+fn apply_base_colors(out: &mut Stdout, theme: &Theme) -> Result<()> {
+    execute!(
+        out,
+        SetForegroundColor(theme.base.foreground),
+        SetBackgroundColor(theme.base.background)
+    )
+    .context("apply base colors")?;
     Ok(())
 }
 
@@ -173,15 +185,14 @@ fn search_tint(current: bool) -> Tint {
     Tint::SearchMatch
 }
 
-fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let theme = Theme::default();
+fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> {
     for span in search_highlight_spans(
         frame.search_spans,
         frame.lines,
         frame.viewport.top(),
         frame.viewport,
     ) {
-        paint_span(out, &span, &theme)?;
+        paint_span(out, &span, theme)?;
     }
     for span in highlight_spans(
         frame.lines,
@@ -189,7 +200,7 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
         frame.selection,
         frame.viewport,
     ) {
-        paint_span(out, &span, &theme)?;
+        paint_span(out, &span, theme)?;
     }
     Ok(())
 }
@@ -198,8 +209,8 @@ fn paint_span(out: &mut Stdout, span: &HighlightSpan, theme: &Theme) -> Result<(
     move_to_segment(out, span.from, span.screen_row)?;
     match span.tint {
         Tint::Selection => paint_reversed(out, &span.text),
-        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match),
-        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current),
+        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, &theme.base),
+        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, &theme.base),
     }
 }
 
@@ -210,29 +221,25 @@ fn paint_reversed(out: &mut Stdout, text: &str) -> Result<()> {
     Ok(())
 }
 
-fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors) -> Result<()> {
-    set_tint(out, colors)?;
-    write_segment(out, text)?;
-    reset_tint(out)?;
-    Ok(())
-}
-
-fn set_tint(out: &mut Stdout, colors: &MatchColors) -> Result<()> {
+fn paint_tinted(
+    out: &mut Stdout,
+    text: &str,
+    colors: &MatchColors,
+    base: &BaseColors,
+) -> Result<()> {
     execute!(
         out,
         SetForegroundColor(colors.foreground),
         SetBackgroundColor(colors.background)
     )
     .context("tint span")?;
-    if colors.dimmed {
-        execute!(out, SetAttribute(Attribute::Dim)).context("dim span")?;
-    }
-    Ok(())
-}
-
-fn reset_tint(out: &mut Stdout) -> Result<()> {
-    execute!(out, ResetColor).context("reset tint")?;
-    execute!(out, SetAttribute(Attribute::Reset)).context("reset tint attribute")?;
+    write_segment(out, text)?;
+    execute!(
+        out,
+        SetForegroundColor(base.foreground),
+        SetBackgroundColor(base.background)
+    )
+    .context("restore base colors")?;
     Ok(())
 }
 
