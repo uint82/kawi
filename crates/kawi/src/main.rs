@@ -1,5 +1,6 @@
 mod app;
 mod keymap;
+mod mouse;
 mod vim;
 use anyhow::Result;
 use app::App;
