@@ -15,11 +15,11 @@ impl Default for Theme {
         Self {
             search_match: MatchColors {
                 foreground: Color::Black,
-                background: Color::DarkYellow,
+                background: Color::Yellow,
             },
             search_current: MatchColors {
                 foreground: Color::Black,
-                background: Color::Yellow,
+                background: Color::DarkYellow,
             },
         }
     }
@@ -33,8 +33,17 @@ mod tests {
     fn defaults_follow_neovim_palette() {
         let theme = Theme::default();
         assert_eq!(theme.search_match.foreground, Color::Black);
-        assert_eq!(theme.search_match.background, Color::DarkYellow);
+        assert_eq!(theme.search_match.background, Color::Yellow);
         assert_eq!(theme.search_current.foreground, Color::Black);
-        assert_eq!(theme.search_current.background, Color::Yellow);
+        assert_eq!(theme.search_current.background, Color::DarkYellow);
+    }
+
+    #[test]
+    fn current_match_is_darker() {
+        let theme = Theme::default();
+        assert_ne!(
+            theme.search_match.background,
+            theme.search_current.background
+        );
     }
 }
