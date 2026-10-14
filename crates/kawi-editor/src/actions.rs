@@ -33,6 +33,8 @@ pub enum Action {
     EnterInsert,
     ExitInsert,
     Append,
+    AppendLineEnd,
+    InsertLineStart,
     InsertBeforeSelection,
     InsertAfterSelection,
     CollapseSelection,
