@@ -18,7 +18,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     draw_status_row(out, frame.status, frame.viewport)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
-    place_cursor_relative(out, frame.col, frame.row, frame.viewport)?;
+    place_cursor(out, frame)?;
     flush(out)?;
     Ok(())
 }
@@ -276,6 +276,18 @@ fn cursor_style(insert_mode: bool) -> SetCursorStyle {
     }
 }
 
+fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    if let Some(col) = prompt_cursor_col(
+        frame.command,
+        frame.search,
+        frame.viewport.width(),
+        frame.showcmd,
+    ) {
+        return place_prompt_cursor(out, col, frame.viewport);
+    }
+    place_cursor_relative(out, frame.col, frame.row, frame.viewport)
+}
+
 fn place_cursor_relative(
     out: &mut Stdout,
     col: usize,
@@ -285,6 +297,52 @@ fn place_cursor_relative(
     let (x, y) = screen_coords(col, row, viewport);
     execute!(out, MoveTo(x, y)).context("place cursor")?;
     Ok(())
+}
+
+fn place_prompt_cursor(out: &mut Stdout, col: usize, viewport: &Viewport) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(col),
+            saturate_u16(viewport.height().saturating_add(1))
+        )
+    )
+    .context("place prompt cursor")?;
+    Ok(())
+}
+
+pub fn prompt_cursor_col(
+    command: Option<&str>,
+    search: Option<&str>,
+    width: usize,
+    showcmd: Option<&str>,
+) -> Option<usize> {
+    let text = prompt_text(command, search)?;
+    Some(prompt_col(text, width, showcmd))
+}
+
+fn prompt_text<'a>(command: Option<&'a str>, search: Option<&'a str>) -> Option<&'a str> {
+    match (command, search) {
+        (Some(text), _) => Some(text),
+        (None, Some(text)) => Some(text),
+        (None, None) => None,
+    }
+}
+
+fn prompt_col(text: &str, width: usize, showcmd: Option<&str>) -> usize {
+    prompt_home()
+        .saturating_add(char_len(text))
+        .min(prompt_edge(width, showcmd))
+}
+
+fn prompt_home() -> usize {
+    1
+}
+
+fn prompt_edge(width: usize, showcmd: Option<&str>) -> usize {
+    width
+        .saturating_sub(char_len(showcmd.unwrap_or("")))
+        .saturating_sub(1)
 }
 
 fn screen_coords(col: usize, row: usize, viewport: &Viewport) -> (u16, u16) {
@@ -384,5 +442,38 @@ mod tests {
     fn layout_prefers_search_over_message() {
         let layout = layout_message_row(None, Some("ar"), Some("saved"), None, 20);
         assert_eq!(layout.line, "/ar");
+    }
+
+    #[test]
+    fn prompt_cursor_absent_without_modes() {
+        assert_eq!(prompt_cursor_col(None, None, 20, None), None);
+    }
+
+    #[test]
+    fn prompt_cursor_sits_after_prefix_when_empty() {
+        assert_eq!(prompt_cursor_col(Some(""), None, 20, None), Some(1));
+        assert_eq!(prompt_cursor_col(None, Some(""), 20, None), Some(1));
+    }
+
+    #[test]
+    fn prompt_cursor_follows_typed_text() {
+        assert_eq!(prompt_cursor_col(None, Some("ar"), 20, None), Some(3));
+        assert_eq!(prompt_cursor_col(Some("wq"), None, 20, None), Some(3));
+    }
+
+    #[test]
+    fn prompt_cursor_counts_chars_not_bytes() {
+        assert_eq!(prompt_cursor_col(None, Some("éx"), 20, None), Some(3));
+    }
+
+    #[test]
+    fn prompt_cursor_prefers_command() {
+        assert_eq!(prompt_cursor_col(Some("w"), Some("ar"), 20, None), Some(2));
+    }
+
+    #[test]
+    fn prompt_cursor_clamps_to_visible_row() {
+        assert_eq!(prompt_cursor_col(None, Some("abcdef"), 5, None), Some(4));
+        assert_eq!(prompt_cursor_col(Some(""), None, 5, Some("dd")), Some(1));
     }
 }
