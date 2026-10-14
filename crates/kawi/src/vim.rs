@@ -8,18 +8,35 @@ fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
 }
 
+const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
+    ("dd", Action::DeleteLine),
+    ("dw", Action::DeleteWord),
+    ("cc", Action::ChangeLine),
+    ("cw", Action::ChangeWord),
+    ("yy", Action::YankLine),
+];
+
+fn sequence_action(sequence: &str) -> Option<Action> {
+    let found = OPERATOR_SEQUENCES
+        .iter()
+        .find(|(keys, _)| *keys == sequence);
+    found.map(|(_, action)| *action)
+}
+
+fn is_sequence_prefix(sequence: &str) -> bool {
+    OPERATOR_SEQUENCES
+        .iter()
+        .any(|(keys, _)| *keys != sequence && keys.starts_with(sequence))
+}
+
 pub struct VimKeymap {
-    pending_d: bool,
-    pending_c: bool,
-    pending_y: bool,
+    pending: String,
 }
 
 impl VimKeymap {
     pub fn new() -> Self {
         Self {
-            pending_d: false,
-            pending_c: false,
-            pending_y: false,
+            pending: String::new(),
         }
     }
 
@@ -49,14 +66,8 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
-        if self.pending_c {
-            return self.resolve_c(key);
-        }
-        if self.pending_d {
-            return self.resolve_d(key);
-        }
-        if self.pending_y {
-            return self.resolve_y(key);
+        if !self.pending.is_empty() {
+            return self.resolve_pending(key);
         }
         self.map_normal_fresh(key)
     }
@@ -94,9 +105,9 @@ impl VimKeymap {
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
             KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
-            KeyCode::Char('d') => self.arm_d(key),
-            KeyCode::Char('c') => self.arm_c(key),
-            KeyCode::Char('y') => self.arm_y(key),
+            KeyCode::Char('d') => self.arm_operator(key, 'd'),
+            KeyCode::Char('c') => self.arm_operator(key, 'c'),
+            KeyCode::Char('y') => self.arm_operator(key, 'y'),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             _ => Action::Noop,
@@ -111,45 +122,21 @@ impl VimKeymap {
     }
 
     fn clear_pending(&mut self) {
-        self.pending_d = false;
-        self.pending_c = false;
-        self.pending_y = false;
+        self.pending.clear();
     }
 
     fn pending_key(&self) -> Option<&str> {
-        if self.pending_d {
-            return Some("d");
+        if self.pending.is_empty() {
+            return None;
         }
-        if self.pending_c {
-            return Some("c");
-        }
-        if self.pending_y {
-            return Some("y");
-        }
-        None
+        Some(&self.pending)
     }
 
-    fn arm_d(&mut self, key: KeyEvent) -> Action {
+    fn arm_operator(&mut self, key: KeyEvent, operator: char) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
         }
-        self.pending_d = true;
-        Action::Noop
-    }
-
-    fn arm_c(&mut self, key: KeyEvent) -> Action {
-        if has_ctrl_or_alt(key) {
-            return Action::Noop;
-        }
-        self.pending_c = true;
-        Action::Noop
-    }
-
-    fn arm_y(&mut self, key: KeyEvent) -> Action {
-        if has_ctrl_or_alt(key) {
-            return Action::Noop;
-        }
-        self.pending_y = true;
+        self.pending.push(operator);
         Action::Noop
     }
 
@@ -160,37 +147,30 @@ impl VimKeymap {
         Action::EnterCommand
     }
 
-    fn resolve_d(&mut self, key: KeyEvent) -> Action {
-        self.clear_pending();
+    fn resolve_pending(&mut self, key: KeyEvent) -> Action {
         match key.code {
-            KeyCode::Char('d') => self.resolve_dd(key),
-            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::DeleteWord),
-            _ => Action::Noop,
+            KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.extend_sequence(c),
+            _ => self.cancel_sequence(),
         }
     }
 
-    fn resolve_dd(&mut self, key: KeyEvent) -> Action {
-        if has_ctrl_or_alt(key) {
-            return Action::Noop;
-        }
-        Action::DeleteLine
-    }
-
-    fn resolve_c(&mut self, key: KeyEvent) -> Action {
-        self.clear_pending();
-        match key.code {
-            KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeLine),
-            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::ChangeWord),
-            _ => Action::Noop,
+    fn extend_sequence(&mut self, pushed: char) -> Action {
+        self.pending.push(pushed);
+        match sequence_action(&self.pending) {
+            Some(action) => self.complete_sequence(action),
+            None if is_sequence_prefix(&self.pending) => Action::Noop,
+            None => self.cancel_sequence(),
         }
     }
 
-    fn resolve_y(&mut self, key: KeyEvent) -> Action {
+    fn complete_sequence(&mut self, action: Action) -> Action {
         self.clear_pending();
-        match key.code {
-            KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankLine),
-            _ => Action::Noop,
-        }
+        action
+    }
+
+    fn cancel_sequence(&mut self) -> Action {
+        self.clear_pending();
+        Action::Noop
     }
 
     fn map_command(&mut self, key: KeyEvent) -> Action {
@@ -670,6 +650,31 @@ mod tests {
         assert_eq!(map.pending_text(), Some("c"));
         map.map(plain(KeyCode::Char('j')), Mode::Normal);
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn unknown_second_key_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn sequence_table_resolves() {
+        assert_eq!(sequence_action("dd"), Some(Action::DeleteLine));
+        assert_eq!(sequence_action("dw"), Some(Action::DeleteWord));
+        assert_eq!(sequence_action("dx"), None);
+    }
+
+    #[test]
+    fn sequence_prefix_detects_extendable() {
+        assert!(is_sequence_prefix("d"));
+        assert!(!is_sequence_prefix("dd"));
+        assert!(!is_sequence_prefix("dx"));
     }
 
     #[test]
