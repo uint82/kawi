@@ -71,13 +71,16 @@ impl App {
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
         let status = self.status_snapshot();
-        let frame = self.build_frame(&status);
+        let window = self
+            .editor
+            .visible_lines(self.viewport.top(), self.viewport.height());
+        let frame = self.build_frame(&status, &window);
         render::draw(out, &frame)
     }
 
-    fn build_frame<'a>(&'a self, status: &'a StatusInfo<'a>) -> Frame<'a> {
+    fn build_frame<'a>(&'a self, status: &'a StatusInfo<'a>, window: &'a [String]) -> Frame<'a> {
         Frame {
-            lines: self.editor.lines(),
+            lines: window,
             col: self.editor.col(),
             row: self.editor.row(),
             viewport: &self.viewport,
@@ -152,7 +155,7 @@ impl App {
 
     fn scroll_by(&mut self, delta: isize) -> Result<bool> {
         self.disarm_quit();
-        self.viewport.scroll_lines(delta, self.editor.lines().len());
+        self.viewport.scroll_lines(delta, self.editor.line_count());
         self.follow_cursor_into_view();
         Ok(false)
     }
@@ -234,7 +237,7 @@ impl App {
     fn report_saved(&mut self) -> bool {
         let report = save_report(
             self.editor.filename(),
-            self.editor.lines().len(),
+            self.editor.line_count(),
             self.editor.byte_count(),
         );
         self.show_message(report);

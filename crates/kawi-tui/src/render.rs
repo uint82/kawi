@@ -29,16 +29,10 @@ fn clear_all(out: &mut Stdout) -> Result<()> {
 }
 
 fn draw_visible_lines(out: &mut Stdout, lines: &[String], viewport: &Viewport) -> Result<()> {
-    for (screen_row, line) in visible_slice(lines, viewport).iter().enumerate() {
+    for (screen_row, line) in lines.iter().enumerate().take(viewport.height()) {
         draw_one_line(out, screen_row, line, viewport.width())?;
     }
     Ok(())
-}
-
-fn visible_slice<'a>(lines: &'a [String], viewport: &Viewport) -> &'a [String] {
-    let end = viewport.visible_end().min(lines.len());
-    let start = viewport.top().min(end);
-    &lines[start..end]
 }
 
 fn draw_one_line(out: &mut Stdout, screen_row: usize, text: &str, width: usize) -> Result<()> {
@@ -58,7 +52,8 @@ pub struct HighlightSpan {
 }
 
 pub fn highlight_spans(
-    lines: &[String],
+    window: &[String],
+    top: usize,
     selection: Option<((usize, usize), (usize, usize))>,
     viewport: &Viewport,
 ) -> Vec<HighlightSpan> {
@@ -69,12 +64,13 @@ pub fn highlight_spans(
         return Vec::new();
     }
     let mut spans = Vec::new();
-    for row in start_row..=end_row {
+    for screen_row in 0..window.len().min(viewport.height()) {
         collect_span(
             &mut spans,
-            lines,
+            window,
+            top,
             viewport,
-            row,
+            screen_row,
             ((start_row, start_col), (end_row, end_col)),
         );
     }
@@ -83,34 +79,36 @@ pub fn highlight_spans(
 
 fn collect_span(
     spans: &mut Vec<HighlightSpan>,
-    lines: &[String],
+    window: &[String],
+    top: usize,
     viewport: &Viewport,
-    row: usize,
+    screen_row: usize,
     range: ((usize, usize), (usize, usize)),
 ) {
-    if let Some(span) = selected_segment(lines, viewport, row, range) {
+    if let Some(span) = selected_segment(window, top, viewport, screen_row, range) {
         spans.push(span);
     }
 }
 
 fn selected_segment(
-    lines: &[String],
+    window: &[String],
+    top: usize,
     viewport: &Viewport,
-    row: usize,
+    screen_row: usize,
     range: ((usize, usize), (usize, usize)),
 ) -> Option<HighlightSpan> {
     let ((start_row, start_col), (end_row, end_col)) = range;
-    if !is_row_visible(viewport, row) {
+    let buffer_row = top.saturating_add(screen_row);
+    if buffer_row < start_row || buffer_row > end_row {
         return None;
     }
-    let text = lines.get(row)?;
+    let text = window.get(screen_row)?;
     let width = viewport.width();
-    let from = segment_start(row, start_row, start_col).min(width);
-    let to = segment_end(row, text, end_row, end_col).min(width);
+    let from = segment_start(buffer_row, start_row, start_col).min(width);
+    let to = segment_end(buffer_row, text, end_row, end_col).min(width);
     if from >= to {
         return None;
     }
-    let screen_row = row.saturating_sub(viewport.top());
     Some(HighlightSpan {
         screen_row,
         from,
@@ -119,7 +117,12 @@ fn selected_segment(
 }
 
 fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    for span in highlight_spans(frame.lines, frame.selection, frame.viewport) {
+    for span in highlight_spans(
+        frame.lines,
+        frame.viewport.top(),
+        frame.selection,
+        frame.viewport,
+    ) {
         paint_span(out, &span)?;
     }
     Ok(())
@@ -131,10 +134,6 @@ fn paint_span(out: &mut Stdout, span: &HighlightSpan) -> Result<()> {
     write_segment(out, &span.text)?;
     disable_reverse(out)?;
     Ok(())
-}
-
-fn is_row_visible(viewport: &Viewport, row: usize) -> bool {
-    row >= viewport.top() && row < viewport.visible_end()
 }
 
 fn segment_start(row: usize, start_row: usize, start_col: usize) -> usize {
@@ -322,20 +321,20 @@ mod tests {
     #[test]
     fn no_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        assert!(highlight_spans(&lines, None, &viewport()).is_empty());
+        assert!(highlight_spans(&lines, 0, None, &viewport()).is_empty());
     }
 
     #[test]
     fn point_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, Some(((0, 2), (0, 2))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 2), (0, 2))), &viewport());
         assert!(spans.is_empty());
     }
 
     #[test]
     fn range_selection_spans_chars() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, Some(((0, 1), (0, 3))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 1), (0, 3))), &viewport());
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].screen_row, 0);
         assert_eq!(spans[0].from, 1);
@@ -345,7 +344,7 @@ mod tests {
     #[test]
     fn multiline_selection_spans_rows() {
         let lines = lines_of("ab\ncd\nef");
-        let spans = highlight_spans(&lines, Some(((0, 1), (2, 1))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 1), (2, 1))), &viewport());
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].text, "b");
         assert_eq!(spans[1].text, "cd");

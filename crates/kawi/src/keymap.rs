@@ -48,38 +48,6 @@ pub fn flavor_from_name(name: &str) -> Option<Flavor> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn names_resolve_flavors() {
-        assert_eq!(flavor_from_name("vim"), Some(Flavor::Vim));
-        assert_eq!(flavor_from_name("helix"), Some(Flavor::Helix));
-    }
-
-    #[test]
-    fn unknown_name_resolves_none() {
-        assert_eq!(flavor_from_name("personal"), None);
-        assert_eq!(flavor_from_name(""), None);
-    }
-
-    #[test]
-    fn interrupt_becomes_plain_esc() {
-        let interrupt = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(
-            normalize_interrupt(interrupt),
-            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
-        );
-    }
-
-    #[test]
-    fn other_keys_pass_through() {
-        let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
-        assert_eq!(normalize_interrupt(key), key);
-    }
-}
-
 impl Keymap for ActiveKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         match self {
@@ -153,4 +121,36 @@ fn map_search_char(key: KeyEvent, c: char) -> Action {
         return Action::Noop;
     }
     Action::PushSearchChar(c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_resolve_flavors() {
+        assert_eq!(flavor_from_name("vim"), Some(Flavor::Vim));
+        assert_eq!(flavor_from_name("helix"), Some(Flavor::Helix));
+    }
+
+    #[test]
+    fn unknown_name_resolves_none() {
+        assert_eq!(flavor_from_name("personal"), None);
+        assert_eq!(flavor_from_name(""), None);
+    }
+
+    #[test]
+    fn interrupt_becomes_plain_esc() {
+        let interrupt = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(
+            normalize_interrupt(interrupt),
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+        );
+    }
+
+    #[test]
+    fn other_keys_pass_through() {
+        let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
+        assert_eq!(normalize_interrupt(key), key);
+    }
 }
