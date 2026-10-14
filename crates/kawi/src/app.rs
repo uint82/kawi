@@ -3,7 +3,7 @@ use crossterm::event::{read, Event, KeyEvent, MouseEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
-use crate::keymap::{ActiveKeymap, Flavor, Keymap};
+use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
 use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
@@ -240,7 +240,29 @@ impl App {
             Command::Write => self.handle_save(),
             Command::Quit => Ok(self.try_quit()),
             Command::WriteQuit => self.handle_write_quit(),
+            Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::Unknown => Ok(false),
+        }
+    }
+
+    fn switch_keymap(&mut self, name: &str) -> Result<bool> {
+        match flavor_from_name(name) {
+            Some(flavor) => self.apply_flavor(flavor),
+            None => Ok(false),
+        }
+    }
+
+    fn apply_flavor(&mut self, flavor: Flavor) -> Result<bool> {
+        self.keymap = ActiveKeymap::for_flavor(flavor);
+        self.reset_selection_for_flavor(flavor);
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn reset_selection_for_flavor(&mut self, flavor: Flavor) {
+        match flavor {
+            Flavor::Vim => self.exit_visual_if_active(),
+            Flavor::Helix => self.ensure_visual(),
         }
     }
 
@@ -393,6 +415,32 @@ mod tests {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 0), (0, 0))));
+    }
+
+    #[test]
+    fn set_keymap_switches_to_helix() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.run_command(Command::SetKeymap("helix".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 0))));
+    }
+
+    #[test]
+    fn set_keymap_back_to_vim_clears() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.run_command(Command::SetKeymap("vim".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn set_keymap_unknown_keeps_flavor() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.run_command(Command::SetKeymap("personal".to_string()))
+            .expect("unknown");
+        assert_eq!(app.editor_mode(), Mode::Normal);
     }
 
     #[test]

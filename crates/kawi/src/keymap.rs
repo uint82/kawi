@@ -36,6 +36,31 @@ impl ActiveKeymap {
     }
 }
 
+pub fn flavor_from_name(name: &str) -> Option<Flavor> {
+    match name.trim() {
+        "vim" => Some(Flavor::Vim),
+        "helix" => Some(Flavor::Helix),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_resolve_flavors() {
+        assert_eq!(flavor_from_name("vim"), Some(Flavor::Vim));
+        assert_eq!(flavor_from_name("helix"), Some(Flavor::Helix));
+    }
+
+    #[test]
+    fn unknown_name_resolves_none() {
+        assert_eq!(flavor_from_name("personal"), None);
+        assert_eq!(flavor_from_name(""), None);
+    }
+}
+
 impl Keymap for ActiveKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         match self {

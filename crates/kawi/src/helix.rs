@@ -53,10 +53,12 @@ impl HelixKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::InsertBeforeSelection),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::InsertAfterSelection),
+            KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Redo),
+            KeyCode::Char(';') => self.map_plain_or_noop(key, Action::CollapseSelection),
             KeyCode::Char(':') => self.map_plain_or_noop(key, Action::EnterCommand),
             _ => Action::Noop,
         }
@@ -157,6 +159,24 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Esc), Mode::Visual),
             Action::CollapseSelection
+        );
+    }
+
+    #[test]
+    fn semicolon_collapses() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(';')), Mode::Visual),
+            Action::CollapseSelection
+        );
+    }
+
+    #[test]
+    fn o_opens_below() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('o')), Mode::Visual),
+            Action::OpenLineBelow
         );
     }
 

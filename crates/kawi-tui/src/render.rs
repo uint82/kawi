@@ -50,57 +50,86 @@ fn truncate_to_width(text: &str, width: usize) -> String {
     text.chars().take(width).collect()
 }
 
-fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let Some(((start_row, start_col), (end_row, end_col))) = frame.selection else {
-        return Ok(());
-    };
-    for row in start_row..=end_row {
-        paint_selected_segment(out, frame, row, start_row, start_col, end_row, end_col)?;
-    }
-    Ok(())
+pub struct HighlightSpan {
+    pub screen_row: usize,
+    pub from: usize,
+    pub text: String,
 }
 
-fn paint_selected_segment(
-    out: &mut Stdout,
-    frame: &Frame,
-    row: usize,
-    start_row: usize,
-    start_col: usize,
-    end_row: usize,
-    end_col: usize,
-) -> Result<()> {
-    let Some((screen_row, text, from)) =
-        selected_segment(frame, row, start_row, start_col, end_row, end_col)
-    else {
-        return Ok(());
+pub fn highlight_spans(
+    lines: &[String],
+    selection: Option<((usize, usize), (usize, usize))>,
+    viewport: &Viewport,
+) -> Vec<HighlightSpan> {
+    let Some(((start_row, start_col), (end_row, end_col))) = selection else {
+        return Vec::new();
     };
-    move_to_segment(out, from, screen_row)?;
-    enable_reverse(out)?;
-    write_segment(out, &text)?;
-    disable_reverse(out)?;
-    Ok(())
+    if (start_row, start_col) == (end_row, end_col) {
+        return Vec::new();
+    }
+    let mut spans = Vec::new();
+    for row in start_row..=end_row {
+        collect_span(
+            &mut spans,
+            lines,
+            viewport,
+            row,
+            ((start_row, start_col), (end_row, end_col)),
+        );
+    }
+    spans
+}
+
+fn collect_span(
+    spans: &mut Vec<HighlightSpan>,
+    lines: &[String],
+    viewport: &Viewport,
+    row: usize,
+    range: ((usize, usize), (usize, usize)),
+) {
+    if let Some(span) = selected_segment(lines, viewport, row, range) {
+        spans.push(span);
+    }
 }
 
 fn selected_segment(
-    frame: &Frame,
+    lines: &[String],
+    viewport: &Viewport,
     row: usize,
-    start_row: usize,
-    start_col: usize,
-    end_row: usize,
-    end_col: usize,
-) -> Option<(usize, String, usize)> {
-    if !is_row_visible(frame.viewport, row) {
+    range: ((usize, usize), (usize, usize)),
+) -> Option<HighlightSpan> {
+    let ((start_row, start_col), (end_row, end_col)) = range;
+    if !is_row_visible(viewport, row) {
         return None;
     }
-    let text = frame.lines.get(row)?;
-    let width = frame.viewport.width();
+    let text = lines.get(row)?;
+    let width = viewport.width();
     let from = segment_start(row, start_row, start_col).min(width);
     let to = segment_end(row, text, end_row, end_col).min(width);
     if from >= to {
         return None;
     }
-    let screen_row = row.saturating_sub(frame.viewport.top());
-    Some((screen_row, slice_cols(text, from, to), from))
+    let screen_row = row.saturating_sub(viewport.top());
+    Some(HighlightSpan {
+        screen_row,
+        from,
+        text: slice_cols(text, from, to),
+    })
+}
+
+fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    for span in highlight_spans(frame.lines, frame.selection, frame.viewport) {
+        paint_span(out, &span)?;
+    }
+    Ok(())
+}
+
+fn paint_span(out: &mut Stdout, span: &HighlightSpan) -> Result<()> {
+    move_to_segment(out, span.from, span.screen_row)?;
+    enable_reverse(out)?;
+    write_segment(out, &span.text)?;
+    disable_reverse(out)?;
+    Ok(())
 }
 
 fn is_row_visible(viewport: &Viewport, row: usize) -> bool {
@@ -162,9 +191,9 @@ fn apply_cursor_style(out: &mut Stdout, insert_mode: bool) -> Result<()> {
 
 fn cursor_style(insert_mode: bool) -> SetCursorStyle {
     if insert_mode {
-        crossterm::cursor::SetCursorStyle::SteadyBar
+        SetCursorStyle::SteadyBar
     } else {
-        crossterm::cursor::SetCursorStyle::SteadyBlock
+        SetCursorStyle::SteadyBlock
     }
 }
 
@@ -196,4 +225,50 @@ fn char_len(text: &str) -> usize {
 
 fn saturate_u16(v: usize) -> u16 {
     u16::try_from(v).unwrap_or(u16::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn viewport() -> Viewport {
+        Viewport::new(10, 80)
+    }
+
+    fn lines_of(text: &str) -> Vec<String> {
+        text.lines().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn no_selection_has_no_spans() {
+        let lines = lines_of("abcdef");
+        assert!(highlight_spans(&lines, None, &viewport()).is_empty());
+    }
+
+    #[test]
+    fn point_selection_has_no_spans() {
+        let lines = lines_of("abcdef");
+        let spans = highlight_spans(&lines, Some(((0, 2), (0, 2))), &viewport());
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn range_selection_spans_chars() {
+        let lines = lines_of("abcdef");
+        let spans = highlight_spans(&lines, Some(((0, 1), (0, 3))), &viewport());
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].screen_row, 0);
+        assert_eq!(spans[0].from, 1);
+        assert_eq!(spans[0].text, "bcd");
+    }
+
+    #[test]
+    fn multiline_selection_spans_rows() {
+        let lines = lines_of("ab\ncd\nef");
+        let spans = highlight_spans(&lines, Some(((0, 1), (2, 1))), &viewport());
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].text, "b");
+        assert_eq!(spans[1].text, "cd");
+        assert_eq!(spans[2].text, "ef");
+    }
 }
