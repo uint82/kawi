@@ -83,6 +83,7 @@ impl App {
             viewport: &self.viewport,
             status,
             message: self.message.as_deref(),
+            command: self.editor.command_prompt(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
         }
@@ -100,7 +101,6 @@ impl App {
             col: self.editor.col(),
             quit_armed: self.quit_armed,
             mode: self.keymap.mode_label(self.editor.mode()),
-            command: self.editor.command_prompt(),
         }
     }
 

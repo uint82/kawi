@@ -186,19 +186,38 @@ fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -
 }
 
 fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let Some(message) = frame.message else {
-        return Ok(());
-    };
-    draw_message_text(out, message, frame.viewport)
+    if let Some(command) = frame.command {
+        return draw_command_text(out, command, frame.viewport);
+    }
+    if let Some(message) = frame.message {
+        return draw_message_text(out, message, frame.viewport);
+    }
+    Ok(())
+}
+
+fn draw_command_text(out: &mut Stdout, command: &str, viewport: &Viewport) -> Result<()> {
+    move_to_message_row(out, viewport)?;
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&format!(":{command}"), viewport.width())
+    )
+    .context("write command")?;
+    Ok(())
 }
 
 fn draw_message_text(out: &mut Stdout, message: &str, viewport: &Viewport) -> Result<()> {
+    move_to_message_row(out, viewport)?;
+    write!(out, "{}", truncate_to_width(message, viewport.width())).context("write message")?;
+    Ok(())
+}
+
+fn move_to_message_row(out: &mut Stdout, viewport: &Viewport) -> Result<()> {
     execute!(
         out,
         MoveTo(0, saturate_u16(viewport.height().saturating_add(1)))
     )
     .context("move to message row")?;
-    write!(out, "{}", truncate_to_width(message, viewport.width())).context("write message")?;
     Ok(())
 }
 
