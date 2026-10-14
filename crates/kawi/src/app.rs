@@ -11,6 +11,7 @@ use kawi_tui::{
     render,
     statusbar::StatusInfo,
     terminal,
+    theme::Theme,
     viewport::Viewport,
 };
 
@@ -18,6 +19,7 @@ pub struct App {
     editor: Editor,
     viewport: Viewport,
     keymap: ActiveKeymap,
+    theme: Theme,
     quit_armed: bool,
     message: Option<String>,
 }
@@ -28,6 +30,7 @@ impl App {
             editor: Editor::new(buffer),
             viewport: Viewport::new(fallback_height(), fallback_width()),
             keymap: ActiveKeymap::for_flavor(flavor),
+            theme: Theme::default(),
             quit_armed: false,
             message: None,
         }
@@ -66,6 +69,11 @@ impl App {
     #[cfg(test)]
     pub fn search_status_line(&self) -> Option<String> {
         self.editor.search_status_text()
+    }
+
+    #[cfg(test)]
+    pub fn theme_name(&self) -> &str {
+        self.theme.name
     }
 
     fn run_loop(&mut self) -> Result<()> {
@@ -116,6 +124,7 @@ impl App {
             showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
+            theme: &self.theme,
         }
     }
 
@@ -366,6 +375,7 @@ impl App {
             Command::Quit => Ok(self.try_quit()),
             Command::WriteQuit => self.handle_write_quit(),
             Command::SetKeymap(name) => self.switch_keymap(&name),
+            Command::SetTheme(name) => self.switch_theme(&name),
             Command::Unknown => Ok(false),
         }
     }
@@ -379,6 +389,23 @@ impl App {
 
     fn report_unknown_keymap(&mut self, name: &str) -> Result<bool> {
         self.show_message(format!("Unknown keymap: {name}"));
+        Ok(false)
+    }
+
+    fn switch_theme(&mut self, name: &str) -> Result<bool> {
+        match Theme::named(name) {
+            Some(theme) => self.apply_theme(theme),
+            None => self.report_unknown_theme(name),
+        }
+    }
+
+    fn report_unknown_theme(&mut self, name: &str) -> Result<bool> {
+        self.show_message(format!("Unknown theme: {name}"));
+        Ok(false)
+    }
+
+    fn apply_theme(&mut self, theme: Theme) -> Result<bool> {
+        self.theme = theme;
         Ok(false)
     }
 
@@ -804,6 +831,25 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         assert_eq!(app.last_message(), Some("E486: Pattern not found: z"));
         assert_eq!(app.search_status_line(), None);
+    }
+
+    #[test]
+    fn set_theme_switches_palette() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        assert_eq!(app.theme_name(), "default");
+        app.run_command(Command::SetTheme("gruvbox-dark".to_string()))
+            .expect("switch");
+        assert_eq!(app.theme_name(), "gruvbox-dark");
+        assert_eq!(app.last_message(), None);
+    }
+
+    #[test]
+    fn set_theme_unknown_reports_and_keeps() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.run_command(Command::SetTheme("nope".to_string()))
+            .expect("unknown");
+        assert_eq!(app.theme_name(), "default");
+        assert_eq!(app.last_message(), Some("Unknown theme: nope"));
     }
 
     #[test]

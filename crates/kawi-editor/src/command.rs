@@ -4,6 +4,7 @@ pub enum Command {
     Quit,
     WriteQuit,
     SetKeymap(String),
+    SetTheme(String),
     Unknown,
 }
 
@@ -20,6 +21,7 @@ fn parse_set_command(text: &str) -> Command {
     let words: Vec<&str> = text.split_whitespace().collect();
     match words.as_slice() {
         ["set", "keymap", name] => name_command(name),
+        ["set", "theme", name] => theme_command(name),
         ["set", combined] => equals_command(combined),
         _ => Command::Unknown,
     }
@@ -32,11 +34,21 @@ fn name_command(name: &str) -> Command {
     Command::SetKeymap(name.to_string())
 }
 
-fn equals_command(combined: &str) -> Command {
-    match combined.strip_prefix("keymap=") {
-        Some(name) => name_command(name),
-        None => Command::Unknown,
+fn theme_command(name: &str) -> Command {
+    if name.is_empty() {
+        return Command::Unknown;
     }
+    Command::SetTheme(name.to_string())
+}
+
+fn equals_command(combined: &str) -> Command {
+    if let Some(name) = combined.strip_prefix("keymap=") {
+        return name_command(name);
+    }
+    if let Some(name) = combined.strip_prefix("theme=") {
+        return theme_command(name);
+    }
+    Command::Unknown
 }
 
 pub struct CommandLine {
@@ -121,6 +133,28 @@ mod tests {
             parse("set keymap=vim"),
             Command::SetKeymap("vim".to_string())
         );
+    }
+
+    #[test]
+    fn parses_set_theme() {
+        assert_eq!(
+            parse("set theme gruvbox-dark"),
+            Command::SetTheme("gruvbox-dark".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_set_theme_equals() {
+        assert_eq!(
+            parse("set theme=default"),
+            Command::SetTheme("default".to_string())
+        );
+    }
+
+    #[test]
+    fn set_theme_without_name_is_unknown() {
+        assert_eq!(parse("set theme"), Command::Unknown);
+        assert_eq!(parse("set theme="), Command::Unknown);
     }
 
     #[test]

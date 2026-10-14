@@ -13,11 +13,10 @@ use crate::theme::{BaseColors, MatchColors, Theme};
 use crate::viewport::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let theme = Theme::default();
-    apply_base_colors(out, &theme)?;
+    apply_base_colors(out, frame.theme)?;
     clear_all(out)?;
     draw_visible_lines(out, frame.lines, frame.viewport)?;
-    draw_highlight(out, frame, &theme)?;
+    draw_highlight(out, frame, frame.theme)?;
     draw_status_row(out, frame.status, frame.viewport)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
