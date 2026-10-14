@@ -32,12 +32,24 @@ impl Default for Theme {
                 },
             },
             search_match: MatchColors {
-                foreground: Color::Black,
-                background: Color::Yellow,
+                foreground: Color::Rgb {
+                    r: 224,
+                    g: 226,
+                    b: 234,
+                },
+                background: Color::Rgb {
+                    r: 107,
+                    g: 83,
+                    b: 0,
+                },
             },
             search_current: MatchColors {
                 foreground: Color::Black,
-                background: Color::DarkYellow,
+                background: Color::Rgb {
+                    r: 252,
+                    g: 224,
+                    b: 148,
+                },
             },
         }
     }
@@ -71,10 +83,31 @@ mod tests {
     #[test]
     fn defaults_follow_neovim_palette() {
         let theme = Theme::default();
-        assert_eq!(theme.search_match.foreground, Color::Black);
-        assert_eq!(theme.search_match.background, Color::Yellow);
+        assert_eq!(
+            theme.search_match.foreground,
+            Color::Rgb {
+                r: 224,
+                g: 226,
+                b: 234
+            }
+        );
+        assert_eq!(
+            theme.search_match.background,
+            Color::Rgb {
+                r: 107,
+                g: 83,
+                b: 0
+            }
+        );
         assert_eq!(theme.search_current.foreground, Color::Black);
-        assert_eq!(theme.search_current.background, Color::DarkYellow);
+        assert_eq!(
+            theme.search_current.background,
+            Color::Rgb {
+                r: 252,
+                g: 224,
+                b: 148
+            }
+        );
     }
 
     #[test]
