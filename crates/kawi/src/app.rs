@@ -467,6 +467,16 @@ mod tests {
     }
 
     #[test]
+    fn helix_esc_returns_to_normal() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('v'))).expect("select");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
     fn helix_delete_acts_on_cursor_char() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
         app.handle_key(key(KeyCode::Char('l'))).expect("move");

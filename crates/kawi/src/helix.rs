@@ -40,7 +40,7 @@ impl HelixKeymap {
             return self.enter_select(key, mode);
         }
         match key.code {
-            KeyCode::Esc => Action::CollapseSelection,
+            KeyCode::Esc => Action::ExitVisual,
             KeyCode::Up => Action::MoveUp,
             KeyCode::Down => Action::MoveDown,
             KeyCode::Left => Action::MoveLeft,
@@ -164,11 +164,15 @@ mod tests {
     }
 
     #[test]
-    fn esc_collapses() {
+    fn esc_exits_select_mode() {
         let mut map = HelixKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Esc), Mode::Visual),
-            Action::CollapseSelection
+            Action::ExitVisual
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Normal),
+            Action::ExitVisual
         );
     }
 
