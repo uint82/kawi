@@ -5,6 +5,7 @@ use crate::actions::Action;
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
+use crate::register::Register;
 use crate::selection::Selection;
 use crate::words;
 
@@ -14,6 +15,7 @@ pub struct Editor {
     mode: Mode,
     command: CommandLine,
     selection: Option<Selection>,
+    register: Register,
 }
 
 impl Editor {
@@ -24,6 +26,7 @@ impl Editor {
             mode: Mode::Normal,
             command: CommandLine::new(),
             selection: None,
+            register: Register::new(),
         }
     }
 
@@ -93,6 +96,9 @@ impl Editor {
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),
             Action::OpenLineBelow => self.open_line_below(),
+            Action::DeleteSelection => self.delete_selection(),
+            Action::YankSelection => self.yank_selection(),
+            Action::PasteAfter => self.paste_after(),
             Action::Undo => self.undo(),
             Action::Redo => self.redo(),
             Action::EnterInsert => self.enter_insert(),
@@ -210,6 +216,46 @@ impl Editor {
     fn delete_line(&mut self) {
         self.buffer.delete_line(self.cursor.row());
         self.cursor.set_col(0);
+    }
+
+    fn delete_selection(&mut self) {
+        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_range() else {
+            return;
+        };
+        self.record_boundary();
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.buffer
+            .delete_range(start_row, start_col, end_row, end_col);
+        self.exit_visual();
+        self.cursor.set_position(start_row, start_col);
+    }
+
+    fn yank_selection(&mut self) {
+        let Some(((start_row, start_col), (end_row, end_col))) = self.selection_range() else {
+            return;
+        };
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.exit_visual();
+        self.cursor.set_position(start_row, start_col);
+    }
+
+    fn yank_range(&mut self, start_row: usize, start_col: usize, end_row: usize, end_col: usize) {
+        let text = self
+            .buffer
+            .range_text(start_row, start_col, end_row, end_col);
+        self.register.set_text(text);
+    }
+
+    fn paste_after(&mut self) {
+        if self.register.is_empty() {
+            return;
+        }
+        self.record_boundary();
+        let text = self.register.text().to_string();
+        let (row, col) = self
+            .buffer
+            .paste_after(self.cursor.row(), self.cursor.col(), &text);
+        self.cursor.set_position(row, col);
     }
 
     fn open_line_below(&mut self) {
@@ -730,6 +776,66 @@ mod tests {
         e.apply(Action::EnterVisual);
         e.apply(Action::MoveDown);
         assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+    }
+
+    #[test]
+    fn visual_delete_cuts_range() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.lines()[0], "aef");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn visual_yank_keeps_text() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.mode(), Mode::Normal);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn paste_after_deleted_text() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.lines()[0], "aebcdf");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn paste_empty_register_keeps_history() {
+        let mut e = editor_with("ab");
+        e.apply(Action::PasteAfter);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "ab");
+    }
+
+    #[test]
+    fn delete_selection_undoes_together() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "abcdef");
     }
 
     #[test]
