@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 kawi-buffer = { path = "../kawi-buffer" }
+kawi-editor = { path = "../kawi-editor" }
 kawi-tui = { path = "../kawi-tui" }
 anyhow.workspace = true
 crossterm.workspace = true

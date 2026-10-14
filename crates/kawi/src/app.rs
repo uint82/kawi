@@ -3,11 +3,9 @@ use crossterm::event::{read, Event, KeyEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
-use crate::actions::Action;
-use crate::command::{parse, Command};
-use crate::editor::Editor;
 use crate::keymap::Keymap;
 use crate::vim::VimKeymap;
+use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
