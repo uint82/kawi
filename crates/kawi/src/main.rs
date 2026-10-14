@@ -1,6 +1,9 @@
+mod actions;
 mod app;
 mod cursor;
-mod keys;
+mod editor;
+mod keymap;
+mod mode;
 use anyhow::Result;
 use app::App;
 use kawi_buffer::Buffer;

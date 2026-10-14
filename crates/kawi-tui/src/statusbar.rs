@@ -8,6 +8,7 @@ pub struct StatusInfo<'a> {
     pub row: usize,
     pub col: usize,
     pub quit_armed: bool,
+    pub mode: &'a str,
 }
 
 pub fn draw_status(out: &mut Stdout, info: &StatusInfo, width: usize, y: usize) -> Result<()> {
@@ -24,6 +25,10 @@ fn left_text(info: &StatusInfo) -> String {
     if info.quit_armed {
         return "Press Ctrl-Q again to quit".to_string();
     }
+    format!("-- {} -- {}", info.mode, file_part(info))
+}
+
+fn file_part(info: &StatusInfo) -> String {
     if info.dirty {
         format!("{} [+]", info.filename)
     } else {
@@ -78,6 +83,7 @@ mod tests {
             row: 0,
             col: 0,
             quit_armed: false,
+            mode: "NORMAL",
         };
         assert!(build_line(&info, 40).contains("[+]"));
     }
@@ -90,6 +96,7 @@ mod tests {
             row: 0,
             col: 0,
             quit_armed: true,
+            mode: "NORMAL",
         };
         assert!(build_line(&info, 40).contains("Ctrl-Q"));
     }
@@ -102,7 +109,21 @@ mod tests {
             row: 0,
             col: 0,
             quit_armed: false,
+            mode: "INSERT",
         };
         assert_eq!(build_line(&info, 20).chars().count(), 20);
+    }
+
+    #[test]
+    fn shows_mode() {
+        let info = StatusInfo {
+            filename: "a.txt",
+            dirty: false,
+            row: 0,
+            col: 0,
+            quit_armed: false,
+            mode: "NORMAL",
+        };
+        assert!(build_line(&info, 40).contains("NORMAL"));
     }
 }
