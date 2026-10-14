@@ -2,6 +2,7 @@ use anyhow::Result;
 use kawi_buffer::Buffer;
 
 use crate::actions::Action;
+use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
 
@@ -9,6 +10,7 @@ pub struct Editor {
     buffer: Buffer,
     cursor: Cursor,
     mode: Mode,
+    command: CommandLine,
 }
 
 impl Editor {
@@ -17,6 +19,7 @@ impl Editor {
             buffer,
             cursor: Cursor::new(),
             mode: Mode::Normal,
+            command: CommandLine::new(),
         }
     }
 
@@ -44,6 +47,18 @@ impl Editor {
         self.buffer.path.as_deref().unwrap_or("[No Name]")
     }
 
+    pub fn command_prompt(&self) -> Option<&str> {
+        if self.mode == Mode::Command {
+            Some(self.command.text())
+        } else {
+            None
+        }
+    }
+
+    pub fn command_text(&self) -> &str {
+        self.command.text()
+    }
+
     pub fn save(&mut self) -> Result<()> {
         self.buffer.save()
     }
@@ -60,8 +75,15 @@ impl Editor {
             Action::InsertNewline => self.insert_newline(),
             Action::DeleteBackward => self.delete_backward(),
             Action::DeleteForward => self.delete_forward(),
+            Action::DeleteLine => self.delete_line(),
+            Action::OpenLineBelow => self.open_line_below(),
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
+            Action::EnterCommand => self.enter_command(),
+            Action::PushCommandChar(c) => self.push_command_char(c),
+            Action::DeleteCommandChar => self.delete_command_char(),
+            Action::CancelCommand => self.cancel_command(),
+            Action::ExecuteCommand => self.noop(),
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
         }
@@ -89,8 +111,8 @@ impl Editor {
     }
 
     fn move_to_line_end(&mut self) {
-        let width = self.line_width(self.cursor.row());
-        self.cursor.set_col(width);
+        let end = self.max_col_for_row(self.cursor.row());
+        self.cursor.set_col(end);
     }
 
     fn insert_char(&mut self, c: char) {
@@ -117,12 +139,47 @@ impl Editor {
             .delete_forward(self.cursor.row(), self.cursor.col());
     }
 
+    fn delete_line(&mut self) {
+        self.buffer.delete_line(self.cursor.row());
+        self.cursor.set_col(0);
+    }
+
+    fn open_line_below(&mut self) {
+        let row = self.cursor.row();
+        let width = self.line_width(row);
+        self.buffer.insert_newline(row, width);
+        self.cursor.move_to_line_start(row.saturating_add(1));
+        self.enter_insert();
+    }
+
     fn enter_insert(&mut self) {
         self.mode = Mode::Insert;
     }
 
     fn exit_insert(&mut self) {
         self.mode = Mode::Normal;
+    }
+
+    fn enter_command(&mut self) {
+        self.mode = Mode::Command;
+        self.command.clear();
+    }
+
+    fn push_command_char(&mut self, c: char) {
+        if self.mode == Mode::Command {
+            self.command.push(c);
+        }
+    }
+
+    fn delete_command_char(&mut self) {
+        if self.mode == Mode::Command {
+            self.command.pop();
+        }
+    }
+
+    fn cancel_command(&mut self) {
+        self.mode = Mode::Normal;
+        self.command.clear();
     }
 
     fn save_silent(&mut self) {
@@ -142,8 +199,17 @@ impl Editor {
     }
 
     fn clamp_col(&mut self) {
-        let width = self.line_width(self.cursor.row());
-        self.cursor.set_col(self.cursor.col().min(width));
+        let max_col = self.max_col_for_row(self.cursor.row());
+        self.cursor.set_col(self.cursor.col().min(max_col));
+    }
+
+    fn max_col_for_row(&self, row: usize) -> usize {
+        let width = self.line_width(row);
+        if self.mode.is_insert() {
+            width
+        } else {
+            width.saturating_sub(1)
+        }
     }
 
     fn line_width(&self, row: usize) -> usize {
@@ -202,8 +268,47 @@ mod tests {
     fn line_start_end() {
         let mut e = editor_with("abc");
         e.apply(Action::MoveToLineEnd);
-        assert_eq!(e.col(), 3);
+        assert_eq!(e.col(), 2);
         e.apply(Action::MoveToLineStart);
+        assert_eq!(e.col(), 0);
+    }
+
+    #[test]
+    fn normal_stays_on_last_char() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        assert_eq!(e.col(), 5);
+    }
+
+    #[test]
+    fn insert_reaches_line_end() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        assert_eq!(e.col(), 6);
+    }
+
+    #[test]
+    fn exit_insert_pulls_back() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::MoveToLineEnd);
+        assert_eq!(e.col(), 6);
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.col(), 5);
+    }
+
+    #[test]
+    fn empty_line_stays_zero() {
+        let mut e = editor_with("");
+        e.apply(Action::MoveRight);
+        assert_eq!(e.col(), 0);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::MoveRight);
         assert_eq!(e.col(), 0);
     }
 
@@ -212,5 +317,52 @@ mod tests {
         let mut e = editor_with("ab");
         e.apply(Action::DeleteForward);
         assert_eq!(e.lines()[0], "b");
+    }
+
+    #[test]
+    fn delete_line_removes_row() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.lines()[1], "c");
+    }
+
+    #[test]
+    fn open_line_below_enters_insert() {
+        let mut e = editor_with("ab");
+        e.apply(Action::OpenLineBelow);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn command_buffer_collects_text() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterCommand);
+        assert_eq!(e.mode(), Mode::Command);
+        e.apply(Action::PushCommandChar('w'));
+        e.apply(Action::PushCommandChar('q'));
+        assert_eq!(e.command_prompt(), Some("wq"));
+    }
+
+    #[test]
+    fn command_backspace_shrinks() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterCommand);
+        e.apply(Action::PushCommandChar('w'));
+        e.apply(Action::DeleteCommandChar);
+        assert_eq!(e.command_prompt(), Some(""));
+    }
+
+    #[test]
+    fn command_cancel_returns_to_normal() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterCommand);
+        e.apply(Action::PushCommandChar('w'));
+        e.apply(Action::CancelCommand);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.command_prompt(), None);
     }
 }

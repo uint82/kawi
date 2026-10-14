@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use crossterm::{
-    cursor::MoveTo,
+    cursor::{MoveTo, SetCursorStyle},
     execute,
     terminal::{Clear, ClearType},
 };
@@ -16,10 +16,12 @@ pub fn draw(
     row: usize,
     viewport: &Viewport,
     status: &StatusInfo,
+    insert_mode: bool,
 ) -> Result<()> {
     clear_all(out)?;
     draw_visible_lines(out, lines, viewport)?;
     draw_status_row(out, status, viewport)?;
+    apply_cursor_style(out, insert_mode)?;
     place_cursor_relative(out, col, row, viewport)?;
     flush(out)?;
     Ok(())
@@ -55,6 +57,19 @@ fn truncate_to_width(text: &str, width: usize) -> String {
 
 fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -> Result<()> {
     draw_status(out, status, viewport.width(), viewport.height())
+}
+
+fn apply_cursor_style(out: &mut Stdout, insert_mode: bool) -> Result<()> {
+    execute!(out, cursor_style(insert_mode)).context("set cursor style")?;
+    Ok(())
+}
+
+fn cursor_style(insert_mode: bool) -> SetCursorStyle {
+    if insert_mode {
+        SetCursorStyle::SteadyBar
+    } else {
+        SetCursorStyle::SteadyBlock
+    }
 }
 
 fn place_cursor_relative(

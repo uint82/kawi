@@ -2,13 +2,19 @@
 pub enum Mode {
     Normal,
     Insert,
+    Command,
 }
 
 impl Mode {
+    pub fn is_insert(self) -> bool {
+        matches!(self, Self::Insert)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
             Self::Insert => "INSERT",
+            Self::Command => "COMMAND",
         }
     }
 }
@@ -16,6 +22,11 @@ impl Mode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insert_detects_insert() {
+        assert!(Mode::Insert.is_insert());
+    }
 
     #[test]
     fn normal_labels_normal() {

@@ -76,6 +76,17 @@ impl Buffer {
         self.delete_at_line_end(row);
     }
 
+    pub fn delete_line(&mut self, row: usize) {
+        if self.lines.len() <= 1 {
+            self.clear_single_line();
+            return;
+        }
+        if row < self.lines.len() {
+            self.lines.remove(row);
+            self.mark_dirty();
+        }
+    }
+
     pub fn save(&mut self) -> Result<()> {
         let path = match &self.path {
             Some(p) => p.clone(),
@@ -126,6 +137,17 @@ impl Buffer {
         let next = self.lines.remove(row.saturating_add(1));
         self.lines[row].push_str(&next);
         self.mark_dirty();
+    }
+
+    fn clear_single_line(&mut self) {
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+            return;
+        }
+        if !self.lines[0].is_empty() {
+            self.lines[0].clear();
+            self.mark_dirty();
+        }
     }
 
     fn join_with_previous(&mut self, row: usize) -> (usize, usize) {
@@ -267,5 +289,22 @@ mod tests {
         b.delete_forward(0, 1);
         assert_eq!(b.len(), 1);
         assert_eq!(b.line(0), Some("ab"));
+    }
+
+    #[test]
+    fn delete_line_removes_row() {
+        let mut b = Buffer::from_string("a\nb\nc");
+        b.delete_line(1);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1), Some("c"));
+        assert!(b.is_dirty());
+    }
+
+    #[test]
+    fn delete_last_line_keeps_one_empty() {
+        let mut b = Buffer::from_string("a");
+        b.delete_line(0);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.line(0), Some(""));
     }
 }
