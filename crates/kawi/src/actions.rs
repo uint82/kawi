@@ -12,6 +12,8 @@ pub enum Action {
     DeleteForward,
     DeleteLine,
     OpenLineBelow,
+    Undo,
+    Redo,
     Save,
     Quit,
     EnterInsert,

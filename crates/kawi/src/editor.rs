@@ -64,6 +64,9 @@ impl Editor {
     }
 
     pub fn apply(&mut self, action: Action) {
+        if self.needs_checkpoint(action) {
+            self.record_boundary();
+        }
         match action {
             Action::MoveUp => self.move_up(),
             Action::MoveDown => self.move_down(),
@@ -77,6 +80,8 @@ impl Editor {
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),
             Action::OpenLineBelow => self.open_line_below(),
+            Action::Undo => self.undo(),
+            Action::Redo => self.redo(),
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
@@ -93,10 +98,12 @@ impl Editor {
 
     fn move_up(&mut self) {
         self.cursor.move_up();
+        self.apply_desired_column();
     }
 
     fn move_down(&mut self) {
         self.cursor.move_down();
+        self.apply_desired_column();
     }
 
     fn move_left(&mut self) {
@@ -114,9 +121,27 @@ impl Editor {
     fn move_to_line_end(&mut self) {
         let end = self.max_col_for_row(self.cursor.row());
         self.cursor.set_col(end);
+        self.remember_line_end();
+    }
+
+    fn remember_line_end(&mut self) {
+        if self.mode.is_insert() {
+            self.cursor.set_desired(self.cursor.col());
+        } else {
+            self.cursor.set_desired(usize::MAX);
+        }
+    }
+
+    fn apply_desired_column(&mut self) {
+        let col = self
+            .cursor
+            .desired()
+            .min(self.max_col_for_row(self.cursor.row()));
+        self.cursor.set_col(col);
     }
 
     fn insert_char(&mut self, c: char) {
+        self.record_maybe();
         self.buffer
             .insert_char(self.cursor.row(), self.cursor.col(), c);
         self.cursor.advance_col();
@@ -124,11 +149,17 @@ impl Editor {
 
     fn insert_newline(&mut self) {
         let row = self.cursor.row();
-        self.buffer.insert_newline(row, self.cursor.col());
+        self.insert_newline_at(row, self.cursor.col());
+    }
+
+    fn insert_newline_at(&mut self, row: usize, col: usize) {
+        self.record_maybe();
+        self.buffer.insert_newline(row, col);
         self.cursor.move_to_line_start(row.saturating_add(1));
     }
 
     fn delete_backward(&mut self) {
+        self.record_maybe();
         let (row, col) = self
             .buffer
             .delete_backward(self.cursor.row(), self.cursor.col());
@@ -136,6 +167,7 @@ impl Editor {
     }
 
     fn delete_forward(&mut self) {
+        self.record_maybe();
         self.buffer
             .delete_forward(self.cursor.row(), self.cursor.col());
     }
@@ -148,17 +180,47 @@ impl Editor {
     fn open_line_below(&mut self) {
         let row = self.cursor.row();
         let width = self.line_width(row);
-        self.buffer.insert_newline(row, width);
-        self.cursor.move_to_line_start(row.saturating_add(1));
-        self.enter_insert();
+        self.buffer.begin_change();
+        self.insert_newline_at(row, width);
+        self.switch_to_insert();
+    }
+
+    fn undo(&mut self) {
+        if let Some((row, col)) = self.buffer.undo(self.cursor.row(), self.cursor.col()) {
+            self.cursor.set_position(row, col);
+        }
+    }
+
+    fn redo(&mut self) {
+        self.buffer
+            .redo_keep_cursor(self.cursor.row(), self.cursor.col());
+    }
+
+    fn record_boundary(&mut self) {
+        self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
+    }
+
+    fn record_maybe(&mut self) {
+        self.buffer
+            .maybe_checkpoint(self.cursor.row(), self.cursor.col());
+    }
+
+    fn needs_checkpoint(&self, action: Action) -> bool {
+        self.mode == Mode::Normal && matches!(action, Action::DeleteForward | Action::DeleteLine)
     }
 
     fn enter_insert(&mut self) {
+        self.buffer.begin_change();
+        self.switch_to_insert();
+    }
+
+    fn switch_to_insert(&mut self) {
         self.mode = Mode::Insert;
     }
 
     fn exit_insert(&mut self) {
         if self.mode == Mode::Insert {
+            self.buffer.end_change();
             self.retreat_after_insert();
         }
         self.mode = Mode::Normal;
@@ -316,6 +378,50 @@ mod tests {
     }
 
     #[test]
+    fn vertical_keeps_goal_column() {
+        let mut e = editor_with("0123456789\nabcd\nabcdefghi\n0123456789AB");
+        for _ in 0..9 {
+            e.apply(Action::MoveRight);
+        }
+        assert_eq!((e.row(), e.col()), (0, 9));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 3));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 8));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (3, 9));
+    }
+
+    #[test]
+    fn vertical_up_restores_goal_column() {
+        let mut e = editor_with("0123456789\nabcd\nabcdefghi\n0123456789AB");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        for _ in 0..9 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (2, 8));
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (1, 3));
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (0, 9));
+    }
+
+    #[test]
+    fn line_end_sticks_to_ends() {
+        let mut e = editor_with("0123456789\nabcd\nabcdefghi\n0123456789AB");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 3));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 8));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (3, 11));
+    }
+
+    #[test]
     fn normal_stays_on_last_char() {
         let mut e = editor_with("abcdef");
         for _ in 0..10 {
@@ -406,6 +512,115 @@ mod tests {
         e.apply(Action::CancelCommand);
         assert_eq!(e.mode(), Mode::Normal);
         assert_eq!(e.command_prompt(), None);
+    }
+
+    #[test]
+    fn insert_session_undoes_together() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::InsertChar('Z'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "ab");
+    }
+
+    #[test]
+    fn empty_insert_leaves_no_history() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::ExitInsert);
+        let before = e.lines()[0].to_string();
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], before);
+    }
+
+    #[test]
+    fn open_line_session_undoes_together() {
+        let mut e = editor_with("ab");
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('H'));
+        e.apply(Action::InsertChar('i'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines().len(), 1);
+        assert_eq!(e.lines()[0], "ab");
+    }
+
+    #[test]
+    fn redo_restores_undone_session() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        e.apply(Action::Redo);
+        assert_eq!(e.lines()[0], "Xab");
+    }
+
+    #[test]
+    fn new_edit_clears_redo() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        e.apply(Action::DeleteForward);
+        e.apply(Action::Redo);
+        assert_eq!(e.lines()[0], "b");
+    }
+
+    #[test]
+    fn undo_open_line_returns_cursor() {
+        let mut e = editor_with("aa\nbb");
+        e.apply(Action::MoveDown);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('H'));
+        e.apply(Action::InsertChar('i'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn undo_session_returns_to_start() {
+        let mut e = editor_with("aa");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "aa");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn undo_delete_returns_cursor() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteForward);
+        assert_eq!(e.lines()[0], "abdef");
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn redo_keeps_cursor() {
+        let mut e = editor_with("aa\nbb");
+        e.apply(Action::MoveDown);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('H'));
+        e.apply(Action::InsertChar('i'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        e.apply(Action::Redo);
+        assert_eq!(e.lines()[2], "Hi");
+        assert_eq!((e.row(), e.col()), (1, 0));
     }
 
     #[test]
