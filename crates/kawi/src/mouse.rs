@@ -1,6 +1,8 @@
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use kawi_tui::viewport::Viewport;
 
+pub const WHEEL_LINES: isize = 3;
+
 pub fn press_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize, usize)> {
     if !is_left_press(event.kind) {
         return None;
@@ -13,6 +15,14 @@ pub fn drag_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize, 
         return None;
     }
     to_buffer_position(event.column, event.row, viewport)
+}
+
+pub fn wheel_delta(event: &MouseEvent) -> Option<isize> {
+    match event.kind {
+        MouseEventKind::ScrollUp => Some(-WHEEL_LINES),
+        MouseEventKind::ScrollDown => Some(WHEEL_LINES),
+        _ => None,
+    }
 }
 
 fn is_left_press(kind: MouseEventKind) -> bool {
@@ -116,5 +126,32 @@ mod tests {
     #[test]
     fn press_is_not_drag() {
         assert_eq!(drag_position(&press(3, 2), &viewport()), None);
+    }
+
+    #[test]
+    fn wheel_up_is_negative() {
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(wheel_delta(&event), Some(-WHEEL_LINES));
+    }
+
+    #[test]
+    fn wheel_down_is_positive() {
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(wheel_delta(&event), Some(WHEEL_LINES));
+    }
+
+    #[test]
+    fn press_is_not_wheel() {
+        assert_eq!(wheel_delta(&press(3, 2)), None);
     }
 }

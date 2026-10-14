@@ -23,6 +23,11 @@ impl Viewport {
         self.scroll_up_if_needed(cursor_row);
     }
 
+    pub fn scroll_lines(&mut self, delta: isize, line_count: usize) {
+        let shifted = self.top.saturating_add_signed(delta);
+        self.top = shifted.min(max_top(line_count, self.height));
+    }
+
     pub fn top(&self) -> usize {
         self.top
     }
@@ -58,6 +63,10 @@ impl Viewport {
 
 fn normalize_size(v: usize) -> usize {
     v.max(1)
+}
+
+fn max_top(line_count: usize, height: usize) -> usize {
+    line_count.saturating_sub(height)
 }
 
 #[cfg(test)]
@@ -97,5 +106,34 @@ mod tests {
         let mut v = Viewport::new(10, 80);
         v.ensure_visible(12);
         assert_eq!(v.screen_row(12), 12 - v.top());
+    }
+
+    #[test]
+    fn wheel_down_shifts_top() {
+        let mut v = Viewport::new(10, 80);
+        v.scroll_lines(3, 100);
+        assert_eq!(v.top(), 3);
+    }
+
+    #[test]
+    fn wheel_up_saturates_at_zero() {
+        let mut v = Viewport::new(10, 80);
+        v.scroll_lines(5, 100);
+        v.scroll_lines(-9, 100);
+        assert_eq!(v.top(), 0);
+    }
+
+    #[test]
+    fn wheel_down_stops_at_bottom() {
+        let mut v = Viewport::new(10, 80);
+        v.scroll_lines(500, 100);
+        assert_eq!(v.top(), 90);
+    }
+
+    #[test]
+    fn short_file_never_scrolls() {
+        let mut v = Viewport::new(10, 80);
+        v.scroll_lines(3, 4);
+        assert_eq!(v.top(), 0);
     }
 }
