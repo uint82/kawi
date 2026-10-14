@@ -5,7 +5,7 @@ use crate::actions::Action;
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
-use crate::register::Register;
+use crate::register::{Register, RegisterKind};
 use crate::selection::Selection;
 use crate::words;
 
@@ -98,6 +98,10 @@ impl Editor {
             Action::OpenLineBelow => self.open_line_below(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
+            Action::YankLine => self.yank_line(),
+            Action::DeleteToEnd => self.delete_to_end(),
+            Action::ChangeLine => self.change_line(),
+            Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
             Action::Undo => self.undo(),
             Action::Redo => self.redo(),
@@ -224,8 +228,83 @@ impl Editor {
     }
 
     fn delete_line(&mut self) {
+        self.yank_current_line();
         self.buffer.delete_line(self.cursor.row());
         self.cursor.set_col(0);
+    }
+
+    fn yank_current_line(&mut self) {
+        let text = self.buffer.line_text(self.cursor.row());
+        self.register.set_lines(vec![text]);
+    }
+
+    fn yank_line(&mut self) {
+        self.yank_current_line();
+    }
+
+    fn delete_to_end(&mut self) {
+        if self.line_is_empty_at_cursor() {
+            return;
+        }
+        self.record_boundary();
+        self.yank_to_end();
+        self.buffer.delete_range(
+            self.cursor.row(),
+            self.cursor.col(),
+            self.cursor.row(),
+            self.line_width(self.cursor.row()).saturating_sub(1),
+        );
+    }
+
+    fn line_is_empty_at_cursor(&self) -> bool {
+        let width = self.line_width(self.cursor.row());
+        width == 0 || self.cursor.col() >= width
+    }
+
+    fn yank_to_end(&mut self) {
+        let row = self.cursor.row();
+        let text = self.buffer.range_text(
+            row,
+            self.cursor.col(),
+            row,
+            self.line_width(row).saturating_sub(1),
+        );
+        self.register.set_text(text);
+    }
+
+    fn change_line(&mut self) {
+        self.yank_current_line();
+        if self.line_is_empty_at_cursor() {
+            self.enter_insert();
+            return;
+        }
+        self.record_boundary();
+        self.buffer.clear_line(self.cursor.row());
+        self.cursor.set_col(0);
+        self.switch_to_insert();
+    }
+
+    fn change_to_end(&mut self) {
+        if self.line_is_empty_at_cursor() {
+            self.enter_insert();
+            return;
+        }
+        self.record_boundary();
+        self.yank_to_end();
+        self.buffer.delete_range(
+            self.cursor.row(),
+            self.cursor.col(),
+            self.cursor.row(),
+            self.line_width(self.cursor.row()).saturating_sub(1),
+        );
+        self.clamp_col_normal();
+        self.switch_to_insert();
+    }
+
+    fn clamp_col_normal(&mut self) {
+        let width = self.line_width(self.cursor.row());
+        self.cursor
+            .set_col(self.cursor.col().min(width.saturating_sub(1)));
     }
 
     fn delete_selection(&mut self) {
@@ -270,11 +349,30 @@ impl Editor {
             return;
         }
         self.record_boundary();
+        match self.register.kind() {
+            RegisterKind::CharWise => self.paste_inline(),
+            RegisterKind::LineWise => self.paste_lines(),
+        }
+    }
+
+    fn paste_inline(&mut self) {
         let text = self.register.text().to_string();
         let (row, col) = self
             .buffer
             .paste_after(self.cursor.row(), self.cursor.col(), &text);
         self.cursor.set_position(row, col);
+    }
+
+    fn paste_lines(&mut self) {
+        let lines: Vec<String> = self.register.text().lines().map(str::to_string).collect();
+        let row = self.buffer.paste_lines_below(self.cursor.row(), &lines);
+        self.cursor.set_position(row, self.first_non_blank_of(row));
+    }
+
+    fn first_non_blank_of(&self, row: usize) -> usize {
+        self.buffer
+            .line(row)
+            .map_or(0, kawi_buffer::first_non_blank)
     }
 
     fn open_line_below(&mut self) {
@@ -876,6 +974,70 @@ mod tests {
         e.apply(Action::Undo);
         assert_eq!(e.lines().len(), 2);
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn yank_line_pastes_below() {
+        let mut e = editor_with("aa\nbb\ncc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankLine);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.lines().len(), 4);
+        assert_eq!(e.lines()[2], "bb");
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn delete_line_yanks_for_paste() {
+        let mut e = editor_with("aa\nbb");
+        e.apply(Action::DeleteLine);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.lines()[0], "bb");
+        assert_eq!(e.lines()[1], "aa");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn delete_to_end_keeps_head() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.lines()[0], "ab");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn delete_to_end_empty_is_noop() {
+        let mut e = editor_with("");
+        e.apply(Action::DeleteToEnd);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "");
+    }
+
+    #[test]
+    fn change_line_clears_and_groups_typing() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ChangeLine);
+        assert_eq!(e.lines()[0], "");
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('x'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "abcdef");
+    }
+
+    #[test]
+    fn change_to_end_positions_cursor() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ChangeToEnd);
+        assert_eq!(e.lines()[0], "ab");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.mode(), Mode::Insert);
     }
 
     #[test]

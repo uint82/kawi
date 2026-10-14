@@ -112,6 +112,25 @@ impl Buffer {
         }
     }
 
+    pub fn line_text(&self, row: usize) -> String {
+        self.lines.get(row).cloned().unwrap_or_default()
+    }
+
+    pub fn clear_line(&mut self, row: usize) {
+        if let Some(line) = self.lines.get_mut(row) {
+            line.clear();
+        }
+    }
+
+    pub fn paste_lines_below(&mut self, row: usize, lines: &[String]) -> usize {
+        let insert_at = row.saturating_add(1).min(self.lines.len());
+        for (offset, line) in lines.iter().enumerate() {
+            self.lines
+                .insert(insert_at.saturating_add(offset), line.clone());
+        }
+        insert_at
+    }
+
     pub fn range_text(
         &self,
         start_row: usize,
@@ -275,6 +294,13 @@ fn char_to_byte_index(text: &str, col: usize) -> usize {
 
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+pub fn first_non_blank(line: &str) -> usize {
+    line.chars()
+        .enumerate()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map_or(0, |(idx, _)| idx)
 }
 
 fn insert_byte_index(line: &str, col: usize) -> usize {
@@ -575,5 +601,28 @@ mod tests {
         let mut b = Buffer::from_string("ab");
         assert_eq!(b.paste_after(0, 0, ""), (0, 0));
         assert_eq!(b.line(0), Some("ab"));
+    }
+
+    #[test]
+    fn paste_lines_below_inserts() {
+        let mut b = Buffer::from_string("aa\nbb\ncc");
+        assert_eq!(b.paste_lines_below(1, &["bb".to_string()]), 2);
+        assert_eq!(b.len(), 4);
+        assert_eq!(b.line(2), Some("bb"));
+    }
+
+    #[test]
+    fn clear_line_empties() {
+        let mut b = Buffer::from_string("abcdef");
+        b.clear_line(0);
+        assert_eq!(b.line(0), Some(""));
+        assert_eq!(b.len(), 1);
+    }
+
+    #[test]
+    fn first_non_blank_skips_space() {
+        assert_eq!(first_non_blank("  ind"), 2);
+        assert_eq!(first_non_blank("ab"), 0);
+        assert_eq!(first_non_blank(""), 0);
     }
 }
