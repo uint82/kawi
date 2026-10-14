@@ -13,14 +13,16 @@ pub fn find_first_from(
     if pattern.is_empty() {
         return None;
     }
-    let mut pos = Some((row, col));
-    while let Some((r, c)) = pos {
-        if matches_at(lines, r, c, pattern) {
-            return Some((r, c));
-        }
-        pos = next_char_pos(lines, r, c);
-    }
-    None
+    let query = Query::new(pattern);
+    lines
+        .iter()
+        .enumerate()
+        .skip(row)
+        .filter_map(|(r, line)| {
+            let bound = bound_forward_col(r, row, col);
+            query.first_at_or_after(line, bound).map(|c| (r, c))
+        })
+        .next()
 }
 
 pub fn find_next(
@@ -29,7 +31,14 @@ pub fn find_next(
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), bool)> {
-    find_from(lines, pattern, row, col, true)
+    if pattern.is_empty() {
+        return None;
+    }
+    let query = Query::new(pattern);
+    if let Some(found) = scan_forward(lines, &query, row, col.saturating_add(1), lines.len()) {
+        return Some((found, false));
+    }
+    scan_forward_wrapped(lines, &query, row, col).map(|found| (found, true))
 }
 
 pub fn find_prev(
@@ -38,183 +47,184 @@ pub fn find_prev(
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), bool)> {
-    find_from(lines, pattern, row, col, false)
-}
-
-fn find_from(
-    lines: &[String],
-    pattern: &str,
-    row: usize,
-    col: usize,
-    forward: bool,
-) -> Option<((usize, usize), bool)> {
     if pattern.is_empty() {
         return None;
     }
-    let start = step_over(lines, row, col, forward);
-    if let Some(origin) = start {
-        if let Some(found) = scan(lines, pattern, origin, forward) {
-            return Some((found, false));
-        }
+    let query = Query::new(pattern);
+    if let Some(found) = scan_backward(lines, &query, row, col) {
+        return Some((found, false));
     }
-    let begin = restart_pos(lines, forward)?;
-    scan_until(lines, pattern, begin, start, forward).map(|found| (found, true))
+    scan_backward_wrapped(lines, &query, row).map(|found| (found, true))
 }
 
-fn scan_until(
+fn scan_forward(
     lines: &[String],
-    pattern: &str,
-    begin: (usize, usize),
-    stop: Option<(usize, usize)>,
-    forward: bool,
+    query: &Query,
+    row: usize,
+    col: usize,
+    end_row: usize,
 ) -> Option<(usize, usize)> {
-    let mut pos = Some(begin);
-    while let Some((r, c)) = pos {
-        if Some((r, c)) == stop {
-            break;
-        }
-        if matches_at(lines, r, c, pattern) {
-            return Some((r, c));
-        }
-        pos = step(lines, r, c, forward);
-    }
-    None
-}
-
-fn step_over(lines: &[String], row: usize, col: usize, forward: bool) -> Option<(usize, usize)> {
-    if forward {
-        step_forward(lines, row, col)
-    } else {
-        step_backward(lines, row, col)
-    }
-}
-
-fn scan(
-    lines: &[String],
-    pattern: &str,
-    start: (usize, usize),
-    forward: bool,
-) -> Option<(usize, usize)> {
-    let mut pos = Some(start);
-    while let Some((r, c)) = pos {
-        if matches_at(lines, r, c, pattern) {
-            return Some((r, c));
-        }
-        pos = step(lines, r, c, forward);
-    }
-    None
-}
-
-fn restart_pos(lines: &[String], forward: bool) -> Option<(usize, usize)> {
-    if forward {
-        first_char_pos(lines)
-    } else {
-        last_char_pos(lines)
-    }
-}
-
-fn step(lines: &[String], row: usize, col: usize, forward: bool) -> Option<(usize, usize)> {
-    if forward {
-        step_forward(lines, row, col)
-    } else {
-        step_backward(lines, row, col)
-    }
-}
-
-fn step_forward(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    if col.saturating_add(1) < line_len(lines, row) {
-        return Some((row, col.saturating_add(1)));
-    }
-    if row.saturating_add(1) < lines.len() {
-        return Some((row.saturating_add(1), 0));
-    }
-    None
-}
-
-fn step_backward(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    if col > 0 {
-        return char_at(lines, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
-    }
-    if row == 0 {
-        return None;
-    }
-    backward_char_pos(lines, row.saturating_sub(1))
-}
-
-fn backward_char_pos(lines: &[String], mut row: usize) -> Option<(usize, usize)> {
-    loop {
-        let len = line_len(lines, row);
-        if len > 0 {
-            return Some((row, len.saturating_sub(1)));
-        }
-        if row == 0 {
-            return None;
-        }
-        row = row.saturating_sub(1);
-    }
-}
-
-fn first_char_pos(lines: &[String]) -> Option<(usize, usize)> {
-    (0..lines.len()).find_map(|row| char_at(lines, row, 0).map(|_| (row, 0)))
-}
-
-fn last_char_pos(lines: &[String]) -> Option<(usize, usize)> {
-    (0..lines.len()).rev().find_map(|row| {
-        let len = line_len(lines, row);
-        if len > 0 {
-            return Some((row, len.saturating_sub(1)));
-        }
-        None
-    })
-}
-
-fn next_char_pos(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    step_forward(lines, row, col)
-}
-
-fn matches_at(lines: &[String], row: usize, col: usize, pattern: &str) -> bool {
-    let line = match lines.get(row) {
-        Some(line) => line,
-        None => return false,
-    };
-    let chars: Vec<char> = line.chars().collect();
-    let wanted: Vec<char> = pattern.chars().collect();
-    if col.saturating_add(wanted.len()) > chars.len() {
-        return false;
-    }
-    let sensitive = pattern_has_upper(pattern);
-    chars
+    lines
         .iter()
-        .skip(col)
-        .zip(wanted.iter())
-        .all(|(found, want)| chars_match(*found, *want, sensitive))
+        .enumerate()
+        .skip(row)
+        .take(end_row.saturating_sub(row))
+        .filter_map(|(r, line)| {
+            let bound = bound_forward_col(r, row, col);
+            query.first_at_or_after(line, bound).map(|c| (r, c))
+        })
+        .next()
+}
+
+fn bound_forward_col(line_row: usize, origin_row: usize, origin_col: usize) -> usize {
+    if line_row == origin_row {
+        return origin_col;
+    }
+    0
+}
+
+fn scan_forward_wrapped(
+    lines: &[String],
+    query: &Query,
+    row: usize,
+    col: usize,
+) -> Option<(usize, usize)> {
+    if let Some(found) = scan_forward(lines, query, 0, 0, row) {
+        return Some(found);
+    }
+    lines
+        .get(row)
+        .and_then(|line| query.first_before(line, col).map(|c| (row, c)))
+}
+
+fn scan_backward(
+    lines: &[String],
+    query: &Query,
+    row: usize,
+    col: usize,
+) -> Option<(usize, usize)> {
+    lines
+        .iter()
+        .enumerate()
+        .take(row.saturating_add(1))
+        .rev()
+        .filter_map(|(r, line)| {
+            if r == row {
+                query.last_before(line, col).map(|c| (r, c))
+            } else {
+                query.last_in_line(line).map(|c| (r, c))
+            }
+        })
+        .next()
+}
+
+fn scan_backward_wrapped(lines: &[String], query: &Query, row: usize) -> Option<(usize, usize)> {
+    if let Some(found) = lines
+        .iter()
+        .enumerate()
+        .skip(row.saturating_add(1))
+        .rev()
+        .filter_map(|(r, line)| query.last_in_line(line).map(|c| (r, c)))
+        .next()
+    {
+        return Some(found);
+    }
+    lines
+        .get(row)
+        .and_then(|line| query.last_in_line(line).map(|c| (row, c)))
+}
+
+fn byte_of_col(line: &str, col: usize) -> usize {
+    line.char_indices()
+        .nth(col)
+        .map_or(line.len(), |(byte, _)| byte)
+}
+
+fn col_of_byte(line: &str, byte: usize) -> usize {
+    line[..byte.min(line.len())].chars().count()
 }
 
 fn pattern_has_upper(pattern: &str) -> bool {
     pattern.chars().any(|ch| ch.is_uppercase())
 }
 
-fn chars_match(found: char, wanted: char, sensitive: bool) -> bool {
-    if sensitive {
-        return found == wanted;
+fn fold_case(line: &str) -> std::borrow::Cow<'_, str> {
+    if line.is_ascii() {
+        return fold_ascii(line);
     }
-    lower_char(found) == lower_char(wanted)
+    std::borrow::Cow::Owned(line.to_lowercase())
 }
 
-fn lower_char(ch: char) -> char {
-    ch.to_lowercase().next().unwrap_or(ch)
+fn fold_ascii(line: &str) -> std::borrow::Cow<'_, str> {
+    if line.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        return std::borrow::Cow::Owned(line.to_ascii_lowercase());
+    }
+    std::borrow::Cow::Borrowed(line)
 }
 
-fn char_at(lines: &[String], row: usize, col: usize) -> Option<char> {
-    lines.get(row)?.chars().nth(col)
+struct Query {
+    text: String,
+    sensitive: bool,
 }
 
-fn line_len(lines: &[String], row: usize) -> usize {
-    lines.get(row).map_or(0, |line| char_count(line))
-}
+impl Query {
+    fn new(pattern: &str) -> Self {
+        if pattern_has_upper(pattern) {
+            Self {
+                text: pattern.to_string(),
+                sensitive: true,
+            }
+        } else {
+            Self {
+                text: pattern.to_lowercase(),
+                sensitive: false,
+            }
+        }
+    }
 
-fn char_count(text: &str) -> usize {
-    text.chars().count()
+    fn haystack<'a>(&self, line: &'a str) -> std::borrow::Cow<'a, str> {
+        if self.sensitive {
+            return std::borrow::Cow::Borrowed(line);
+        }
+        fold_case(line)
+    }
+
+    fn first_at_or_after(&self, line: &str, bound_col: usize) -> Option<usize> {
+        let hay = self.haystack(line);
+        let bound_byte = byte_of_col(&hay, bound_col);
+        hay.match_indices(&self.text)
+            .map(|(byte, _)| byte)
+            .find(|byte| *byte >= bound_byte)
+            .map(|byte| col_of_byte(&hay, byte))
+    }
+
+    fn first_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+        let bound_byte = byte_of_col(line, bound_col);
+        let hay = self.haystack(line);
+        hay.match_indices(&self.text)
+            .map(|(byte, _)| byte)
+            .take_while(|byte| *byte < bound_byte)
+            .next()
+            .map(|byte| col_of_byte(&hay, byte))
+    }
+
+    fn last_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+        let hay = self.haystack(line);
+        let bound_byte = byte_of_col(&hay, bound_col);
+        hay.match_indices(&self.text)
+            .map(|(byte, _)| byte)
+            .take_while(|byte| *byte < bound_byte)
+            .last()
+            .map(|byte| col_of_byte(&hay, byte))
+    }
+
+    fn last_in_line(&self, line: &str) -> Option<usize> {
+        let hay = self.haystack(line);
+        hay.match_indices(&self.text)
+            .map(|(byte, _)| byte)
+            .last()
+            .map(|byte| col_of_byte(&hay, byte))
+    }
 }
 
 #[cfg(test)]
@@ -277,6 +287,12 @@ mod tests {
         let lines = lines_of("AR ar");
         assert_eq!(find_first_from(&lines, "ar", 0, 0), Some((0, 0)));
         assert_eq!(find_next(&lines, "ar", 0, 0), Some(((0, 3), false)));
+    }
+
+    #[test]
+    fn folds_non_ascii_case() {
+        let lines = lines_of("CAFÉ x");
+        assert_eq!(find_first_from(&lines, "café", 0, 0), Some((0, 0)));
     }
 
     #[test]
