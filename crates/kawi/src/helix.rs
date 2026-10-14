@@ -56,6 +56,8 @@ impl HelixKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::InsertBeforeSelection),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::InsertAfterSelection),
+            KeyCode::Char('I') => self.map_plain_or_noop(key, Action::InsertLineStart),
+            KeyCode::Char('A') => self.map_plain_or_noop(key, Action::AppendLineEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
@@ -187,6 +189,19 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('o')), Mode::Visual),
             Action::OpenLineBelow
+        );
+    }
+
+    #[test]
+    fn line_ends_insert() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('I')), Mode::Visual),
+            Action::InsertLineStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('A')), Mode::Visual),
+            Action::AppendLineEnd
         );
     }
 

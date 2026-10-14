@@ -122,6 +122,13 @@ impl Buffer {
         }
     }
 
+    pub fn insert_start_col(&self, row: usize) -> usize {
+        match self.lines.get(row) {
+            Some(line) => start_col_of(line),
+            None => 0,
+        }
+    }
+
     pub fn paste_lines_below(&mut self, row: usize, lines: &[String]) -> usize {
         let insert_at = row.saturating_add(1).min(self.lines.len());
         for (offset, line) in lines.iter().enumerate() {
@@ -338,6 +345,13 @@ pub fn first_non_blank(line: &str) -> usize {
         .enumerate()
         .find(|(_, ch)| !ch.is_whitespace())
         .map_or(0, |(idx, _)| idx)
+}
+
+fn start_col_of(line: &str) -> usize {
+    line.chars()
+        .enumerate()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map_or(char_count(line), |(idx, _)| idx)
 }
 
 fn insert_byte_index(line: &str, col: usize) -> usize {
@@ -773,5 +787,13 @@ mod tests {
         assert_eq!(first_non_blank("  ind"), 2);
         assert_eq!(first_non_blank("ab"), 0);
         assert_eq!(first_non_blank(""), 0);
+    }
+
+    #[test]
+    fn insert_start_col_prefers_content() {
+        let b = Buffer::from_string("  abc\n   \nxyz");
+        assert_eq!(b.insert_start_col(0), 2);
+        assert_eq!(b.insert_start_col(1), 3);
+        assert_eq!(b.insert_start_col(2), 0);
     }
 }

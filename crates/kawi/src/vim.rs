@@ -98,6 +98,8 @@ impl VimKeymap {
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::Append),
+            KeyCode::Char('A') => self.map_plain_or_noop(key, Action::AppendLineEnd),
+            KeyCode::Char('I') => self.map_plain_or_noop(key, Action::InsertLineStart),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
@@ -524,6 +526,24 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('a')), Mode::Insert),
             Action::InsertChar('a')
+        );
+    }
+
+    #[test]
+    fn capital_a_appends_at_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('A')), Mode::Normal),
+            Action::AppendLineEnd
+        );
+    }
+
+    #[test]
+    fn capital_i_inserts_at_start() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('I')), Mode::Normal),
+            Action::InsertLineStart
         );
     }
 

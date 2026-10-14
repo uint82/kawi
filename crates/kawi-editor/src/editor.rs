@@ -116,6 +116,8 @@ impl Editor {
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
+            Action::AppendLineEnd => self.append_line_end(),
+            Action::InsertLineStart => self.insert_line_start(),
             Action::InsertBeforeSelection => self.insert_before_selection(),
             Action::InsertAfterSelection => self.insert_after_selection(),
             Action::CollapseSelection => self.collapse_selection(),
@@ -523,6 +525,19 @@ impl Editor {
 
     fn append(&mut self) {
         self.cursor.move_right();
+        self.enter_insert();
+    }
+
+    fn append_line_end(&mut self) {
+        let end = self.line_width(self.cursor.row());
+        self.cursor.set_position(self.cursor.row(), end);
+        self.enter_insert();
+    }
+
+    fn insert_line_start(&mut self) {
+        let row = self.cursor.row();
+        let start = self.buffer.insert_start_col(row);
+        self.cursor.set_position(row, start);
         self.enter_insert();
     }
 
@@ -1370,5 +1385,42 @@ mod tests {
         e.apply(Action::Append);
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn append_line_end_reaches_end() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::AppendLineEnd);
+        assert_eq!((e.row(), e.col()), (0, 6));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn insert_line_start_finds_content() {
+        let mut e = editor_with("  abc");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::InsertLineStart);
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn insert_line_start_blank_goes_to_end() {
+        let mut e = editor_with("   ");
+        e.apply(Action::InsertLineStart);
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn append_line_end_groups_typing() {
+        let mut e = editor_with("ab");
+        e.apply(Action::AppendLineEnd);
+        e.apply(Action::InsertChar('c'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "ab");
     }
 }
