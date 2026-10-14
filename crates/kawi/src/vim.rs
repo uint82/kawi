@@ -10,11 +10,17 @@ fn is_redo_key(key: KeyEvent) -> bool {
 
 pub struct VimKeymap {
     pending_d: bool,
+    pending_c: bool,
+    pending_y: bool,
 }
 
 impl VimKeymap {
     pub fn new() -> Self {
-        Self { pending_d: false }
+        Self {
+            pending_d: false,
+            pending_c: false,
+            pending_y: false,
+        }
     }
 
     fn map_insert(&mut self, key: KeyEvent) -> Action {
@@ -43,8 +49,14 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
+        if self.pending_c {
+            return self.resolve_c(key);
+        }
         if self.pending_d {
             return self.resolve_d(key);
+        }
+        if self.pending_y {
+            return self.resolve_y(key);
         }
         self.map_normal_fresh(key)
     }
@@ -79,7 +91,12 @@ impl VimKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
+            KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
+            KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
+            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
             KeyCode::Char('d') => self.arm_d(key),
+            KeyCode::Char('c') => self.arm_c(key),
+            KeyCode::Char('y') => self.arm_y(key),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             _ => Action::Noop,
@@ -95,6 +112,8 @@ impl VimKeymap {
 
     fn clear_pending(&mut self) {
         self.pending_d = false;
+        self.pending_c = false;
+        self.pending_y = false;
     }
 
     fn arm_d(&mut self, key: KeyEvent) -> Action {
@@ -102,6 +121,22 @@ impl VimKeymap {
             return Action::Noop;
         }
         self.pending_d = true;
+        Action::Noop
+    }
+
+    fn arm_c(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending_c = true;
+        Action::Noop
+    }
+
+    fn arm_y(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending_y = true;
         Action::Noop
     }
 
@@ -125,6 +160,22 @@ impl VimKeymap {
             return Action::Noop;
         }
         Action::DeleteLine
+    }
+
+    fn resolve_c(&mut self, key: KeyEvent) -> Action {
+        self.clear_pending();
+        match key.code {
+            KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeLine),
+            _ => Action::Noop,
+        }
+    }
+
+    fn resolve_y(&mut self, key: KeyEvent) -> Action {
+        self.clear_pending();
+        match key.code {
+            KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankLine),
+            _ => Action::Noop,
+        }
     }
 
     fn map_command(&mut self, key: KeyEvent) -> Action {
@@ -508,6 +559,59 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Normal),
             Action::EnterVisual
+        );
+    }
+
+    #[test]
+    fn double_c_changes_line() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::ChangeLine
+        );
+    }
+
+    #[test]
+    fn double_y_yanks_line() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('y')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('y')), Mode::Normal),
+            Action::YankLine
+        );
+    }
+
+    #[test]
+    fn capital_y_yanks_line() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Y')), Mode::Normal),
+            Action::YankLine
+        );
+    }
+
+    #[test]
+    fn capital_d_deletes_to_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('D')), Mode::Normal),
+            Action::DeleteToEnd
+        );
+    }
+
+    #[test]
+    fn capital_c_changes_to_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('C')), Mode::Normal),
+            Action::ChangeToEnd
         );
     }
 }

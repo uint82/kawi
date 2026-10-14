@@ -59,6 +59,7 @@ impl HelixKeymap {
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
+            KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Redo),
             KeyCode::Char(';') => self.map_plain_or_noop(key, Action::CollapseSelection),
@@ -191,6 +192,19 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('o')), Mode::Visual),
             Action::OpenLineBelow
+        );
+    }
+
+    #[test]
+    fn p_pastes_after() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('p')), Mode::Visual),
+            Action::PasteAfter
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('p')), Mode::Normal),
+            Action::PasteAfter
         );
     }
 

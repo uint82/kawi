@@ -1,20 +1,38 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegisterKind {
+    CharWise,
+    LineWise,
+}
+
 pub struct Register {
     text: String,
+    kind: RegisterKind,
 }
 
 impl Register {
     pub fn new() -> Self {
         Self {
             text: String::new(),
+            kind: RegisterKind::CharWise,
         }
     }
 
     pub fn set_text(&mut self, text: String) {
         self.text = text;
+        self.kind = RegisterKind::CharWise;
+    }
+
+    pub fn set_lines(&mut self, lines: Vec<String>) {
+        self.text = lines.join("\n");
+        self.kind = RegisterKind::LineWise;
     }
 
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    pub fn kind(&self) -> RegisterKind {
+        self.kind
     }
 
     pub fn is_empty(&self) -> bool {
@@ -33,16 +51,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn starts_empty() {
+    fn starts_empty_charwise() {
         let register = Register::new();
         assert!(register.is_empty());
+        assert_eq!(register.kind(), RegisterKind::CharWise);
     }
 
     #[test]
-    fn stores_round_trip() {
+    fn text_sets_charwise() {
         let mut register = Register::new();
+        register.set_lines(vec!["a".to_string()]);
         register.set_text("bcd".to_string());
         assert_eq!(register.text(), "bcd");
-        assert!(!register.is_empty());
+        assert_eq!(register.kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn lines_sets_linewise() {
+        let mut register = Register::new();
+        register.set_lines(vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(register.text(), "a\nb");
+        assert_eq!(register.kind(), RegisterKind::LineWise);
     }
 }
