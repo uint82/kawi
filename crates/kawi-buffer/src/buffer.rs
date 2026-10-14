@@ -63,6 +63,10 @@ impl Buffer {
         self.history.redo(&mut self.lines, row, col)
     }
 
+    pub fn redo_keep_cursor(&mut self, row: usize, col: usize) {
+        let _ = self.history.redo(&mut self.lines, row, col);
+    }
+
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
         self.ensure_line_exists(row);
         let byte_idx = char_to_byte_index(&self.lines[row], col);

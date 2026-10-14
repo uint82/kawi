@@ -192,9 +192,8 @@ impl Editor {
     }
 
     fn redo(&mut self) {
-        if let Some((row, col)) = self.buffer.redo(self.cursor.row(), self.cursor.col()) {
-            self.cursor.set_position(row, col);
-        }
+        self.buffer
+            .redo_keep_cursor(self.cursor.row(), self.cursor.col());
     }
 
     fn record_boundary(&mut self) {
@@ -607,6 +606,21 @@ mod tests {
         e.apply(Action::Undo);
         assert_eq!(e.lines()[0], "abcdef");
         assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn redo_keeps_cursor() {
+        let mut e = editor_with("aa\nbb");
+        e.apply(Action::MoveDown);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('H'));
+        e.apply(Action::InsertChar('i'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        e.apply(Action::Redo);
+        assert_eq!(e.lines()[2], "Hi");
+        assert_eq!((e.row(), e.col()), (1, 0));
     }
 
     #[test]
