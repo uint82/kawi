@@ -79,6 +79,7 @@ impl Editor {
             Action::OpenLineBelow => self.open_line_below(),
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
+            Action::Append => self.append(),
             Action::EnterCommand => self.enter_command(),
             Action::PushCommandChar(c) => self.push_command_char(c),
             Action::DeleteCommandChar => self.delete_command_char(),
@@ -158,6 +159,11 @@ impl Editor {
 
     fn exit_insert(&mut self) {
         self.mode = Mode::Normal;
+    }
+
+    fn append(&mut self) {
+        self.cursor.move_right();
+        self.enter_insert();
     }
 
     fn enter_command(&mut self) {
@@ -364,5 +370,31 @@ mod tests {
         e.apply(Action::CancelCommand);
         assert_eq!(e.mode(), Mode::Normal);
         assert_eq!(e.command_prompt(), None);
+    }
+
+    #[test]
+    fn append_steps_right_and_inserts() {
+        let mut e = editor_with("ab");
+        e.apply(Action::Append);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn append_at_end_reaches_past_last() {
+        let mut e = editor_with("ab");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Append);
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn append_on_empty_stays_zero() {
+        let mut e = editor_with("");
+        e.apply(Action::Append);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
     }
 }

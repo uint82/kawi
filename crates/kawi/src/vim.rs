@@ -65,6 +65,7 @@ impl VimKeymap {
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
+            KeyCode::Char('a') => self.map_plain_or_noop(key, Action::Append),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.arm_d(key),
             KeyCode::Char(':') => self.arm_command(key),
@@ -316,6 +317,24 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('o')), Mode::Normal),
             Action::OpenLineBelow
+        );
+    }
+
+    #[test]
+    fn normal_a_appends() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::Append
+        );
+    }
+
+    #[test]
+    fn insert_a_types() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Insert),
+            Action::InsertChar('a')
         );
     }
 }
