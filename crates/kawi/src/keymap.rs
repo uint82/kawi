@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::actions::Action;
-use crate::mode::Mode;
+use kawi_editor::Action;
+use kawi_editor::Mode;
 
 pub trait Keymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action;

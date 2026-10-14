@@ -1,8 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::actions::Action;
 use crate::keymap::{has_ctrl_or_alt, is_ctrl_quit, is_save_key, Keymap};
-use crate::mode::Mode;
+use kawi_editor::Action;
+use kawi_editor::Mode;
 
 fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))

@@ -1,10 +1,5 @@
-mod actions;
 mod app;
-mod command;
-mod cursor;
-mod editor;
 mod keymap;
-mod mode;
 mod vim;
 use anyhow::Result;
 use app::App;
