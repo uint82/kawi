@@ -104,6 +104,9 @@ impl Editor {
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
+            Action::InsertBeforeSelection => self.insert_before_selection(),
+            Action::InsertAfterSelection => self.insert_after_selection(),
+            Action::CollapseSelection => self.collapse_selection(),
             Action::EnterVisual => self.enter_visual(),
             Action::ExitVisual => self.exit_visual(),
             Action::JumpTo(row, col) => self.jump_to(row, col),
@@ -116,6 +119,13 @@ impl Editor {
             Action::Quit | Action::Noop => self.noop(),
         }
         self.normalize_cursor();
+        self.track_head(action);
+    }
+
+    fn track_head(&mut self, action: Action) {
+        if !is_tracking(action) {
+            return;
+        }
         self.sync_head();
     }
 
@@ -226,7 +236,7 @@ impl Editor {
         self.yank_range(start_row, start_col, end_row, end_col);
         self.buffer
             .delete_range(start_row, start_col, end_row, end_col);
-        self.exit_visual();
+        self.collapse_to(start_row, start_col);
         self.cursor.set_position(start_row, start_col);
     }
 
@@ -235,8 +245,11 @@ impl Editor {
             return;
         };
         self.yank_range(start_row, start_col, end_row, end_col);
-        self.exit_visual();
         self.cursor.set_position(start_row, start_col);
+    }
+
+    fn collapse_to(&mut self, row: usize, col: usize) {
+        self.selection = Some(Selection::new(row, col));
     }
 
     fn yank_range(&mut self, start_row: usize, start_col: usize, end_row: usize, end_col: usize) {
@@ -322,6 +335,29 @@ impl Editor {
         self.enter_insert();
     }
 
+    fn insert_before_selection(&mut self) {
+        if let Some(((row, col), _)) = self.selection_range() {
+            self.cursor.set_position(row, col);
+        }
+        self.exit_visual();
+        self.enter_insert();
+    }
+
+    fn insert_after_selection(&mut self) {
+        if let Some((_, (row, col))) = self.selection_range() {
+            self.cursor.set_position(row, col);
+            self.cursor.move_right();
+        }
+        self.exit_visual();
+        self.enter_insert();
+    }
+
+    fn collapse_selection(&mut self) {
+        if self.selection.is_some() {
+            self.collapse_to(self.cursor.row(), self.cursor.col());
+        }
+    }
+
     fn enter_visual(&mut self) {
         self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
         self.mode = Mode::Visual;
@@ -401,6 +437,22 @@ impl Editor {
 
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+fn is_tracking(action: Action) -> bool {
+    matches!(
+        action,
+        Action::MoveUp
+            | Action::MoveDown
+            | Action::MoveLeft
+            | Action::MoveRight
+            | Action::MoveToLineStart
+            | Action::MoveToLineEnd
+            | Action::MoveToNextWordStart
+            | Action::MoveToPrevWordStart
+            | Action::MoveToNextWordEnd
+            | Action::JumpTo(_, _)
+    )
 }
 
 #[cfg(test)]
@@ -792,7 +844,8 @@ mod tests {
         e.apply(Action::DeleteSelection);
         assert_eq!(e.lines()[0], "aef");
         assert_eq!((e.row(), e.col()), (0, 1));
-        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
     }
 
     #[test]
@@ -820,6 +873,44 @@ mod tests {
     }
 
     #[test]
+    fn insert_before_selection_starts_at_start() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertBeforeSelection);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.selection_range(), None);
+    }
+
+    #[test]
+    fn insert_after_selection_starts_past_end() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertAfterSelection);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.selection_range(), None);
+    }
+
+    #[test]
+    fn collapse_selection_keeps_point() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::CollapseSelection);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 3), (0, 3))));
+    }
+
+    #[test]
     fn visual_yank_keeps_text() {
         let mut e = editor_with("abcdef");
         e.apply(Action::MoveRight);
@@ -829,7 +920,8 @@ mod tests {
         e.apply(Action::YankSelection);
         assert_eq!(e.lines()[0], "abcdef");
         assert_eq!((e.row(), e.col()), (0, 1));
-        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
         assert!(!e.is_dirty());
     }
 
