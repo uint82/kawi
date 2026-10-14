@@ -84,6 +84,7 @@ impl App {
             status,
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
+            showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
         }

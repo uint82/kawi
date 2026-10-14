@@ -116,6 +116,19 @@ impl VimKeymap {
         self.pending_y = false;
     }
 
+    fn pending_key(&self) -> Option<&str> {
+        if self.pending_d {
+            return Some("d");
+        }
+        if self.pending_c {
+            return Some("c");
+        }
+        if self.pending_y {
+            return Some("y");
+        }
+        None
+    }
+
     fn arm_d(&mut self, key: KeyEvent) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
@@ -221,6 +234,10 @@ impl Keymap for VimKeymap {
 
     fn operator_exits_visual(&self) -> bool {
         true
+    }
+
+    fn pending_text(&self) -> Option<&str> {
+        self.pending_key()
     }
 }
 
@@ -634,6 +651,25 @@ mod tests {
             map.map(plain(KeyCode::Char('w')), Mode::Normal),
             Action::DeleteWord
         );
+    }
+
+    #[test]
+    fn pending_key_shows_armed_operator() {
+        let mut map = VimKeymap::new();
+        assert_eq!(map.pending_text(), None);
+        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        assert_eq!(map.pending_text(), Some("d"));
+        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn pending_key_clears_on_other_key() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('c')), Mode::Normal);
+        assert_eq!(map.pending_text(), Some("c"));
+        map.map(plain(KeyCode::Char('j')), Mode::Normal);
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]

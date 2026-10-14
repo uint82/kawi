@@ -14,6 +14,10 @@ pub trait Keymap {
     }
 
     fn operator_exits_visual(&self) -> bool;
+
+    fn pending_text(&self) -> Option<&str> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +99,13 @@ impl Keymap for ActiveKeymap {
         match self {
             Self::Vim(inner) => inner.operator_exits_visual(),
             Self::Helix(inner) => inner.operator_exits_visual(),
+        }
+    }
+
+    fn pending_text(&self) -> Option<&str> {
+        match self {
+            Self::Vim(inner) => inner.pending_text(),
+            Self::Helix(inner) => inner.pending_text(),
         }
     }
 }
