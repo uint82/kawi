@@ -77,6 +77,7 @@ impl VimKeymap {
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.arm_d(key),
             KeyCode::Char(':') => self.arm_command(key),
+            KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             _ => Action::Noop,
         }
     }
@@ -138,6 +139,24 @@ impl VimKeymap {
         }
         Action::PushCommandChar(c)
     }
+
+    fn map_visual(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Esc => Action::ExitVisual,
+            KeyCode::Up => Action::MoveUp,
+            KeyCode::Down => Action::MoveDown,
+            KeyCode::Left => Action::MoveLeft,
+            KeyCode::Right => Action::MoveRight,
+            KeyCode::Home => Action::MoveToLineStart,
+            KeyCode::End => Action::MoveToLineEnd,
+            KeyCode::Char('h') => self.map_plain_or_noop(key, Action::MoveLeft),
+            KeyCode::Char('j') => self.map_plain_or_noop(key, Action::MoveDown),
+            KeyCode::Char('k') => self.map_plain_or_noop(key, Action::MoveUp),
+            KeyCode::Char('l') => self.map_plain_or_noop(key, Action::MoveRight),
+            KeyCode::Char('v') => self.map_plain_or_noop(key, Action::ExitVisual),
+            _ => Action::Noop,
+        }
+    }
 }
 
 impl Keymap for VimKeymap {
@@ -154,6 +173,7 @@ impl Keymap for VimKeymap {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
+            Mode::Visual => self.map_visual(key),
         }
     }
 }
@@ -325,6 +345,46 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('o')), Mode::Normal),
             Action::OpenLineBelow
+        );
+    }
+
+    #[test]
+    fn normal_v_enters_visual() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::EnterVisual
+        );
+    }
+
+    #[test]
+    fn visual_esc_exits() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Visual),
+            Action::ExitVisual
+        );
+    }
+
+    #[test]
+    fn visual_motion_moves() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('l')), Mode::Visual),
+            Action::MoveRight
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('j')), Mode::Visual),
+            Action::MoveDown
+        );
+    }
+
+    #[test]
+    fn visual_v_exits() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Visual),
+            Action::ExitVisual
         );
     }
 

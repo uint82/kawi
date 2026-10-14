@@ -19,6 +19,8 @@ pub enum Action {
     EnterInsert,
     ExitInsert,
     Append,
+    EnterVisual,
+    ExitVisual,
     EnterCommand,
     PushCommandChar(char),
     DeleteCommandChar,
