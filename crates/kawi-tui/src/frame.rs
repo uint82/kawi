@@ -7,6 +7,7 @@ pub struct Frame<'a> {
     pub row: usize,
     pub viewport: &'a Viewport,
     pub status: &'a StatusInfo<'a>,
+    pub message: Option<&'a str>,
     pub insert_mode: bool,
     pub selection: Option<((usize, usize), (usize, usize))>,
 }

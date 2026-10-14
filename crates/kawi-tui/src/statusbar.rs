@@ -24,7 +24,7 @@ fn build_line(info: &StatusInfo, width: usize) -> String {
 
 fn left_text(info: &StatusInfo) -> String {
     if info.quit_armed {
-        return "Press Ctrl-Q again to quit".to_string();
+        return "Press :q again to quit".to_string();
     }
     if let Some(cmd) = info.command {
         return format!(":{cmd}");
@@ -104,7 +104,7 @@ mod tests {
             mode: "NORMAL",
             command: None,
         };
-        assert!(build_line(&info, 40).contains("Ctrl-Q"));
+        assert!(build_line(&info, 40).contains(":q again"));
     }
 
     #[test]

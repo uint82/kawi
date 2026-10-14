@@ -16,6 +16,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     draw_visible_lines(out, frame.lines, frame.viewport)?;
     draw_highlight(out, frame)?;
     draw_status_row(out, frame.status, frame.viewport)?;
+    draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor_relative(out, frame.col, frame.row, frame.viewport)?;
     flush(out)?;
@@ -182,6 +183,23 @@ fn disable_reverse(out: &mut Stdout) -> Result<()> {
 
 fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -> Result<()> {
     draw_status(out, status, viewport.width(), viewport.height())
+}
+
+fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let Some(message) = frame.message else {
+        return Ok(());
+    };
+    draw_message_text(out, message, frame.viewport)
+}
+
+fn draw_message_text(out: &mut Stdout, message: &str, viewport: &Viewport) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(0, saturate_u16(viewport.height().saturating_add(1)))
+    )
+    .context("move to message row")?;
+    write!(out, "{}", truncate_to_width(message, viewport.width())).context("write message")?;
+    Ok(())
 }
 
 fn apply_cursor_style(out: &mut Stdout, insert_mode: bool) -> Result<()> {

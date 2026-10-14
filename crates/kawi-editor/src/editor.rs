@@ -76,6 +76,10 @@ impl Editor {
         self.buffer.save()
     }
 
+    pub fn byte_count(&self) -> usize {
+        self.buffer.byte_count()
+    }
+
     pub fn apply(&mut self, action: Action) {
         if self.needs_checkpoint(action) {
             self.record_boundary();
@@ -412,15 +416,29 @@ impl Editor {
         self.switch_to_insert();
     }
 
-    fn undo(&mut self) {
-        if let Some((row, col)) = self.buffer.undo(self.cursor.row(), self.cursor.col()) {
-            self.cursor.set_position(row, col);
+    pub fn try_undo(&mut self) -> bool {
+        match self.buffer.undo(self.cursor.row(), self.cursor.col()) {
+            Some((row, col)) => self.place_restored(row, col),
+            None => false,
         }
     }
 
-    fn redo(&mut self) {
+    pub fn try_redo(&mut self) -> bool {
         self.buffer
-            .redo_keep_cursor(self.cursor.row(), self.cursor.col());
+            .redo_keep_cursor(self.cursor.row(), self.cursor.col())
+    }
+
+    fn place_restored(&mut self, row: usize, col: usize) -> bool {
+        self.cursor.set_position(row, col);
+        true
+    }
+
+    fn undo(&mut self) {
+        let _ = self.try_undo();
+    }
+
+    fn redo(&mut self) {
+        let _ = self.try_redo();
     }
 
     fn record_boundary(&mut self) {

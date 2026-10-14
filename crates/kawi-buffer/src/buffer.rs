@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::fs;
 
 use crate::history::History;
@@ -63,8 +63,8 @@ impl Buffer {
         self.history.redo(&mut self.lines, row, col)
     }
 
-    pub fn redo_keep_cursor(&mut self, row: usize, col: usize) {
-        let _ = self.history.redo(&mut self.lines, row, col);
+    pub fn redo_keep_cursor(&mut self, row: usize, col: usize) -> bool {
+        self.history.redo(&mut self.lines, row, col).is_some()
     }
 
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
@@ -201,11 +201,15 @@ impl Buffer {
     pub fn save(&mut self) -> Result<()> {
         let path = match &self.path {
             Some(p) => p.clone(),
-            None => return Ok(()),
+            None => return Err(anyhow!("E32: No file name")),
         };
         write_to_file(&path, &self.lines)?;
         self.history.mark_clean();
         Ok(())
+    }
+
+    pub fn byte_count(&self) -> usize {
+        self.lines.join("\n").len()
     }
 
     fn from_lines(mut lines: Vec<String>, path: Option<String>) -> Self {
@@ -476,6 +480,19 @@ mod tests {
         b.checkpoint(0, 0);
         b.insert_char(0, 1, 'b');
         assert!(b.is_dirty());
+    }
+
+    #[test]
+    fn save_without_path_errors() {
+        let mut b = Buffer::from_string("hi");
+        assert!(b.save().is_err());
+        assert!(!b.is_dirty());
+    }
+
+    #[test]
+    fn byte_count_matches_file_bytes() {
+        let b = Buffer::from_string("aa\nbb");
+        assert_eq!(b.byte_count(), 5);
     }
 
     #[test]
