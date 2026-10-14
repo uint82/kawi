@@ -4,6 +4,7 @@ pub mod cursor;
 pub mod editor;
 pub mod mode;
 pub mod selection;
+pub mod words;
 
 pub use actions::Action;
 pub use command::{parse, Command, CommandLine};
