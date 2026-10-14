@@ -115,7 +115,7 @@ impl Editor {
     }
 
     fn move_to_line_start(&mut self) {
-        self.cursor.set_col(0);
+        self.cursor.move_to_line_start(self.cursor.row());
     }
 
     fn move_to_line_end(&mut self) {
@@ -419,6 +419,19 @@ mod tests {
         assert_eq!((e.row(), e.col()), (2, 8));
         e.apply(Action::MoveDown);
         assert_eq!((e.row(), e.col()), (3, 11));
+    }
+
+    #[test]
+    fn line_start_clears_sticky_end() {
+        let mut e = editor_with("0123456789\nabcd\nabcdefghi\n0123456789AB");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::MoveToLineStart);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (3, 0));
     }
 
     #[test]
