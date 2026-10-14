@@ -66,7 +66,7 @@ impl VimKeymap {
             return Action::Redo;
         }
         match key.code {
-            KeyCode::Esc => Action::Quit,
+            KeyCode::Esc => Action::Noop,
             KeyCode::Enter => Action::MoveDown,
             KeyCode::Backspace => Action::MoveLeft,
             KeyCode::Delete => Action::DeleteForward,
@@ -274,6 +274,25 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Esc), Mode::Insert),
             Action::ExitInsert
+        );
+    }
+
+    #[test]
+    fn normal_esc_is_noop() {
+        let mut map = VimKeymap::new();
+        assert_eq!(map.map(plain(KeyCode::Esc), Mode::Normal), Action::Noop);
+    }
+
+    #[test]
+    fn ctrl_s_saves_in_normal_and_insert() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('s')), Mode::Normal),
+            Action::Save
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('s')), Mode::Insert),
+            Action::Save
         );
     }
 
