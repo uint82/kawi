@@ -47,20 +47,20 @@ impl Buffer {
         self.history.end_change();
     }
 
-    pub fn checkpoint(&mut self) {
-        self.history.checkpoint(&self.lines);
+    pub fn checkpoint(&mut self, row: usize, col: usize) {
+        self.history.checkpoint(&self.lines, row, col);
     }
 
-    pub fn maybe_checkpoint(&mut self) {
-        self.history.maybe_checkpoint(&self.lines);
+    pub fn maybe_checkpoint(&mut self, row: usize, col: usize) {
+        self.history.maybe_checkpoint(&self.lines, row, col);
     }
 
-    pub fn undo(&mut self) -> bool {
-        self.history.undo(&mut self.lines)
+    pub fn undo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
+        self.history.undo(&mut self.lines, row, col)
     }
 
-    pub fn redo(&mut self) -> bool {
-        self.history.redo(&mut self.lines)
+    pub fn redo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
+        self.history.redo(&mut self.lines, row, col)
     }
 
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn edit_marks_dirty() {
         let mut b = Buffer::from_string("a");
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.insert_char(0, 1, 'b');
         assert!(b.is_dirty());
     }
@@ -278,7 +278,7 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         let mut b = Buffer::from_string("hi");
         b.path = Some(path_str);
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.insert_char(0, 2, '!');
         assert!(b.is_dirty());
         b.save().expect("save temp file");
@@ -289,33 +289,33 @@ mod tests {
     #[test]
     fn undo_restores_lines() {
         let mut b = Buffer::from_string("ab");
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.insert_char(0, 2, 'c');
-        assert!(b.undo());
+        assert!(b.undo(0, 0).is_some());
         assert_eq!(b.line(0), Some("ab"));
     }
 
     #[test]
     fn redo_restores_forward() {
         let mut b = Buffer::from_string("ab");
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.insert_char(0, 2, 'c');
-        b.undo();
-        assert!(b.redo());
+        b.undo(0, 0);
+        assert!(b.redo(0, 0).is_some());
         assert_eq!(b.line(0), Some("abc"));
     }
 
     #[test]
     fn undo_without_history_returns_false() {
         let mut b = Buffer::from_string("ab");
-        assert!(!b.undo());
-        assert!(!b.redo());
+        assert_eq!(b.undo(0, 0), None);
+        assert_eq!(b.redo(0, 0), None);
     }
 
     #[test]
     fn delete_forward_removes_char() {
         let mut b = Buffer::from_string("ab");
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.delete_forward(0, 0);
         assert_eq!(b.line(0), Some("b"));
         assert!(b.is_dirty());
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn delete_line_removes_row() {
         let mut b = Buffer::from_string("a\nb\nc");
-        b.checkpoint();
+        b.checkpoint(0, 0);
         b.delete_line(1);
         assert_eq!(b.len(), 2);
         assert_eq!(b.line(1), Some("c"));
