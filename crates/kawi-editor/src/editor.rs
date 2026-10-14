@@ -102,6 +102,8 @@ impl Editor {
             Action::OpenLineBelow => self.open_line_below(),
             Action::DeleteWord => self.delete_word(),
             Action::ChangeWord => self.change_word(),
+            Action::DeleteWordBackward => self.delete_word_backward(),
+            Action::DeleteWordEnd => self.delete_word_end(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
             Action::YankLine => self.yank_line(),
@@ -250,6 +252,44 @@ impl Editor {
         self.buffer
             .delete_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
+    }
+
+    fn delete_word_backward(&mut self) {
+        let target =
+            words::prev_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        self.delete_span_to(target);
+    }
+
+    fn delete_word_end(&mut self) {
+        let Some(((start_row, start_col), (end_row, end_col))) =
+            words::cw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+        else {
+            return;
+        };
+        self.record_boundary_at(start_row, start_col);
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.buffer
+            .delete_range(start_row, start_col, end_row, end_col);
+        self.cursor.set_position(start_row, start_col);
+    }
+
+    fn delete_span_to(&mut self, target: (usize, usize)) {
+        let start = (self.cursor.row(), self.cursor.col());
+        if target == start {
+            return;
+        }
+        let ((from_row, from_col), (to_row, to_col)) = ordered_span(start, target);
+        self.record_boundary_at(from_row, from_col);
+        self.yank_span(from_row, from_col, to_row, to_col);
+        self.buffer.delete_span(from_row, from_col, to_row, to_col);
+        self.cursor.set_position(from_row, from_col);
+    }
+
+    fn yank_span(&mut self, start_row: usize, start_col: usize, end_row: usize, end_col: usize) {
+        let text = self
+            .buffer
+            .span_text(start_row, start_col, end_row, end_col);
+        self.register.set_text(text);
     }
 
     fn change_word(&mut self) {
@@ -588,6 +628,14 @@ impl Editor {
 
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if first <= second {
+        (first, second)
+    } else {
+        (second, first)
+    }
 }
 
 fn is_tracking(action: Action) -> bool {
@@ -1231,6 +1279,48 @@ mod tests {
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
         assert_eq!(e.lines()[0], "foo bar");
+    }
+
+    #[test]
+    fn delete_word_backward_deletes_back() {
+        let mut e = editor_with("foo bar");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteWordBackward);
+        assert_eq!(e.lines()[0], "bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_backward_joins_lines() {
+        let mut e = editor_with("ab\ncd\nef");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteWordBackward);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.lines()[1], "ef");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn delete_word_end_deletes_to_end() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteWordEnd);
+        assert_eq!(e.lines()[0], " bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_end_joins_lines() {
+        let mut e = editor_with("foo\nbar");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteWordEnd);
+        assert_eq!(e.lines().len(), 1);
+        assert_eq!(e.lines()[0], "fo");
+        assert_eq!((e.row(), e.col()), (0, 1));
     }
 
     #[test]

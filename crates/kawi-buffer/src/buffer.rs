@@ -144,6 +144,19 @@ impl Buffer {
         multiline_slice(&self.lines, start_row, start_col, end_row, end_col)
     }
 
+    pub fn span_text(
+        &self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) -> String {
+        if start_row == end_row {
+            return span_line_slice(&self.lines, start_row, start_col, end_col);
+        }
+        span_multiline_slice(&self.lines, start_row, start_col, end_row, end_col)
+    }
+
     pub fn delete_range(
         &mut self,
         start_row: usize,
@@ -160,6 +173,26 @@ impl Buffer {
             return;
         }
         delete_across_lines(&mut self.lines, start_row, start_col, end_row, end_col);
+    }
+
+    pub fn delete_span(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) {
+        if start_row >= self.lines.len() {
+            return;
+        }
+        let end_row = end_row.min(self.lines.len().saturating_sub(1));
+        if start_row == end_row {
+            delete_span_in_line(&mut self.lines, start_row, start_col, end_col);
+            return;
+        }
+        if let Some(joined) = join_span(&self.lines, start_row, start_col, end_row, end_col) {
+            self.lines.splice(start_row..=end_row, [joined]);
+        }
     }
 
     pub fn paste_after(&mut self, row: usize, col: usize, text: &str) -> (usize, usize) {
@@ -323,6 +356,51 @@ fn single_line_slice(lines: &[String], row: usize, start_col: usize, end_col: us
     }
 }
 
+fn span_line_slice(lines: &[String], row: usize, start_col: usize, end_col: usize) -> String {
+    match lines.get(row) {
+        Some(line) => slice_cols(line, start_col, end_col),
+        None => String::new(),
+    }
+}
+
+fn span_multiline_slice(
+    lines: &[String],
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for row in start_row..=end_row {
+        parts.push(span_slice_row(
+            lines, row, start_row, start_col, end_row, end_col,
+        ));
+    }
+    parts.join("\n")
+}
+
+fn span_slice_row(
+    lines: &[String],
+    row: usize,
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> String {
+    let line = lines.get(row).map_or("", String::as_str);
+    let from = slice_from(row, start_row, start_col);
+    let to = span_slice_to(row, line, end_row, end_col);
+    slice_cols(line, from, to)
+}
+
+fn span_slice_to(row: usize, line: &str, end_row: usize, end_col: usize) -> usize {
+    if row == end_row {
+        end_col
+    } else {
+        char_count(line)
+    }
+}
+
 fn multiline_slice(
     lines: &[String],
     start_row: usize,
@@ -386,6 +464,19 @@ fn delete_in_line(lines: &mut [String], row: usize, start_col: usize, end_col: u
     }
 }
 
+fn delete_span_in_line(lines: &mut [String], row: usize, start_col: usize, end_col: usize) {
+    if start_col >= end_col {
+        return;
+    }
+    if let Some(line) = lines.get_mut(row) {
+        let start = char_to_byte_index(line, start_col);
+        let end = char_to_byte_index(line, end_col);
+        if start < end {
+            line.drain(start..end);
+        }
+    }
+}
+
 fn delete_across_lines(
     lines: &mut Vec<String>,
     start_row: usize,
@@ -409,6 +500,20 @@ fn join_range(
     let last = lines.get(end_row)?;
     let head = slice_cols(first, 0, start_col);
     let tail = slice_cols(last, end_col.saturating_add(1), char_count(last));
+    Some(format!("{head}{tail}"))
+}
+
+fn join_span(
+    lines: &[String],
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> Option<String> {
+    let first = lines.get(start_row)?;
+    let last = lines.get(end_row)?;
+    let head = slice_cols(first, 0, start_col);
+    let tail = slice_cols(last, end_col, char_count(last));
     Some(format!("{head}{tail}"))
 }
 
@@ -618,6 +723,33 @@ mod tests {
         let mut b = Buffer::from_string("ab");
         assert_eq!(b.paste_after(0, 0, ""), (0, 0));
         assert_eq!(b.line(0), Some("ab"));
+    }
+
+    #[test]
+    fn span_text_excludes_end() {
+        let b = Buffer::from_string("foo bar");
+        assert_eq!(b.span_text(0, 0, 0, 4), "foo ");
+    }
+
+    #[test]
+    fn span_text_joins_newlines() {
+        let b = Buffer::from_string("ab\ncd");
+        assert_eq!(b.span_text(0, 1, 1, 0), "b\n");
+    }
+
+    #[test]
+    fn delete_span_keeps_end_char() {
+        let mut b = Buffer::from_string("foo bar");
+        b.delete_span(0, 0, 0, 4);
+        assert_eq!(b.line(0), Some("bar"));
+    }
+
+    #[test]
+    fn delete_span_joins_lines() {
+        let mut b = Buffer::from_string("foo\nbar");
+        b.delete_span(0, 0, 1, 0);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.line(0), Some("bar"));
     }
 
     #[test]
