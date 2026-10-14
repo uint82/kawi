@@ -1,25 +1,26 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyCode, KeyEvent};
+use crossterm::event::{read, Event, KeyEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
-use crate::cursor::Cursor;
-use crate::keys::{is_quit, is_save};
+use crate::actions::Action;
+use crate::editor::Editor;
+use crate::keymap::{Keymap, VimKeymap};
 use kawi_tui::{render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
-    buffer: Buffer,
-    cursor: Cursor,
+    editor: Editor,
     viewport: Viewport,
+    keymap: VimKeymap,
     quit_armed: bool,
 }
 
 impl App {
     pub fn new(buffer: Buffer) -> Self {
         Self {
-            buffer,
-            cursor: Cursor::new(),
+            editor: Editor::new(buffer),
             viewport: Viewport::new(fallback_height(), fallback_width()),
+            keymap: VimKeymap,
             quit_armed: false,
         }
     }
@@ -45,9 +46,9 @@ impl App {
         let status = self.status_snapshot();
         render::draw(
             out,
-            self.buffer.as_slice(),
-            self.cursor.col(),
-            self.cursor.row(),
+            self.editor.lines(),
+            self.editor.col(),
+            self.editor.row(),
             &self.viewport,
             &status,
         )
@@ -55,16 +56,13 @@ impl App {
 
     fn status_snapshot(&self) -> StatusInfo<'_> {
         StatusInfo {
-            filename: self.display_filename(),
-            dirty: self.buffer.is_dirty(),
-            row: self.cursor.row(),
-            col: self.cursor.col(),
+            filename: self.editor.filename(),
+            dirty: self.editor.is_dirty(),
+            row: self.editor.row(),
+            col: self.editor.col(),
             quit_armed: self.quit_armed,
+            mode: self.editor.mode().label(),
         }
-    }
-
-    fn display_filename(&self) -> &str {
-        self.buffer.path.as_deref().unwrap_or("[No Name]")
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -93,30 +91,43 @@ impl App {
     }
 
     fn reveal_cursor(&mut self) {
-        self.viewport.ensure_visible(self.cursor.row());
+        self.viewport.ensure_visible(self.editor.row());
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
-        if is_quit(key) {
-            return Ok(self.try_quit());
+        let action = self.keymap.map(key, self.editor.mode());
+        self.dispatch_action(action)
+    }
+
+    fn dispatch_action(&mut self, action: Action) -> Result<bool> {
+        match action {
+            Action::Quit => Ok(self.try_quit()),
+            Action::Save => self.handle_save(),
+            Action::Noop => self.handle_noop(),
+            _ => self.handle_engine_action(action),
         }
+    }
+
+    fn handle_save(&mut self) -> Result<bool> {
         self.disarm_quit();
-        if self.try_save(key)? {
-            return Ok(false);
-        }
-        if self.try_apply_edit(key.code) {
-            self.normalize_cursor();
-            self.reveal_cursor();
-            return Ok(false);
-        }
-        self.apply_movement(key.code);
-        self.normalize_cursor();
+        self.editor.save()?;
+        Ok(false)
+    }
+
+    fn handle_noop(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        Ok(false)
+    }
+
+    fn handle_engine_action(&mut self, action: Action) -> Result<bool> {
+        self.disarm_quit();
+        self.editor.apply(action);
         self.reveal_cursor();
         Ok(false)
     }
 
     fn try_quit(&mut self) -> bool {
-        if !self.buffer.is_dirty() {
+        if !self.editor.is_dirty() {
             return true;
         }
         self.confirm_dirty_quit()
@@ -137,87 +148,10 @@ impl App {
     fn disarm_quit(&mut self) {
         self.quit_armed = false;
     }
-
-    fn try_save(&mut self, key: KeyEvent) -> Result<bool> {
-        if !is_save(key) {
-            return Ok(false);
-        }
-        self.save_buffer()?;
-        Ok(true)
-    }
-
-    fn save_buffer(&mut self) -> Result<()> {
-        self.buffer.save()
-    }
-
-    fn try_apply_edit(&mut self, code: KeyCode) -> bool {
-        match code {
-            KeyCode::Char(c) => self.insert_char_and_advance(c),
-            KeyCode::Enter => self.insert_newline_and_reposition(),
-            KeyCode::Backspace => self.delete_backward_and_reposition(),
-            _ => false,
-        }
-    }
-
-    fn insert_char_and_advance(&mut self, c: char) -> bool {
-        self.insert_char_at_cursor(c);
-        self.cursor.advance_col();
-        true
-    }
-
-    fn insert_char_at_cursor(&mut self, c: char) {
-        self.buffer
-            .insert_char(self.cursor.row(), self.cursor.col(), c);
-    }
-
-    fn insert_newline_and_reposition(&mut self) -> bool {
-        self.buffer
-            .insert_newline(self.cursor.row(), self.cursor.col());
-        self.cursor
-            .move_to_line_start(self.cursor.row().saturating_add(1));
-        true
-    }
-
-    fn delete_backward_and_reposition(&mut self) -> bool {
-        let (row, col) = self
-            .buffer
-            .delete_backward(self.cursor.row(), self.cursor.col());
-        self.cursor.set_position(row, col);
-        true
-    }
-
-    fn apply_movement(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Up => self.cursor.move_up(),
-            KeyCode::Down => self.cursor.move_down(),
-            KeyCode::Left => self.cursor.move_left(),
-            KeyCode::Right => self.cursor.move_right(),
-            _ => {}
-        }
-    }
-
-    fn normalize_cursor(&mut self) {
-        self.clamp_row();
-        self.clamp_col();
-    }
-
-    fn clamp_row(&mut self) {
-        let max_row = self.buffer.len().saturating_sub(1);
-        self.cursor.set_row(self.cursor.row().min(max_row));
-    }
-
-    fn clamp_col(&mut self) {
-        let width = self.buffer.line(self.cursor.row()).map_or(0, char_count);
-        self.cursor.set_col(self.cursor.col().min(width));
-    }
 }
 
 fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
-}
-
-fn char_count(text: &str) -> usize {
-    text.chars().count()
 }
 
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {

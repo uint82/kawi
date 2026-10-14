@@ -64,6 +64,18 @@ impl Buffer {
         self.delete_at_line_start(row)
     }
 
+    pub fn delete_forward(&mut self, row: usize, col: usize) {
+        if row >= self.lines.len() {
+            return;
+        }
+        if col < self.lines[row].chars().count() {
+            self.remove_char_at(row, col);
+            self.mark_dirty();
+            return;
+        }
+        self.delete_at_line_end(row);
+    }
+
     pub fn save(&mut self) -> Result<()> {
         let path = match &self.path {
             Some(p) => p.clone(),
@@ -97,6 +109,23 @@ impl Buffer {
         if prev_byte_idx < byte_idx {
             self.lines[row].drain(prev_byte_idx..byte_idx);
         }
+    }
+
+    fn remove_char_at(&mut self, row: usize, col: usize) {
+        let start = char_to_byte_index(&self.lines[row], col);
+        let end = char_to_byte_index(&self.lines[row], col.saturating_add(1));
+        if start < end {
+            self.lines[row].drain(start..end);
+        }
+    }
+
+    fn delete_at_line_end(&mut self, row: usize) {
+        if row.saturating_add(1) >= self.lines.len() {
+            return;
+        }
+        let next = self.lines.remove(row.saturating_add(1));
+        self.lines[row].push_str(&next);
+        self.mark_dirty();
     }
 
     fn join_with_previous(&mut self, row: usize) -> (usize, usize) {
@@ -222,5 +251,21 @@ mod tests {
         b.save().expect("save temp file");
         assert!(!b.is_dirty());
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn delete_forward_removes_char() {
+        let mut b = Buffer::from_string("ab");
+        b.delete_forward(0, 0);
+        assert_eq!(b.line(0), Some("b"));
+        assert!(b.is_dirty());
+    }
+
+    #[test]
+    fn delete_forward_joins_lines() {
+        let mut b = Buffer::from_string("a\nb");
+        b.delete_forward(0, 1);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.line(0), Some("ab"));
     }
 }
