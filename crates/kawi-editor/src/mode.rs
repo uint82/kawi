@@ -11,6 +11,10 @@ impl Mode {
         matches!(self, Self::Insert)
     }
 
+    pub fn is_visual(self) -> bool {
+        matches!(self, Self::Visual)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
@@ -28,6 +32,12 @@ mod tests {
     #[test]
     fn insert_detects_insert() {
         assert!(Mode::Insert.is_insert());
+    }
+
+    #[test]
+    fn visual_detects_visual() {
+        assert!(Mode::Visual.is_visual());
+        assert!(!Mode::Normal.is_visual());
     }
 
     #[test]
