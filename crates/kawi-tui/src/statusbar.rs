@@ -9,7 +9,6 @@ pub struct StatusInfo<'a> {
     pub col: usize,
     pub quit_armed: bool,
     pub mode: &'a str,
-    pub command: Option<&'a str>,
 }
 
 pub fn draw_status(out: &mut Stdout, info: &StatusInfo, width: usize, y: usize) -> Result<()> {
@@ -24,10 +23,7 @@ fn build_line(info: &StatusInfo, width: usize) -> String {
 
 fn left_text(info: &StatusInfo) -> String {
     if info.quit_armed {
-        return "Press Ctrl-Q again to quit".to_string();
-    }
-    if let Some(cmd) = info.command {
-        return format!(":{cmd}");
+        return "Press :q again to quit".to_string();
     }
     format!("-- {} -- {}", info.mode, file_part(info))
 }
@@ -88,7 +84,6 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "NORMAL",
-            command: None,
         };
         assert!(build_line(&info, 40).contains("[+]"));
     }
@@ -102,9 +97,8 @@ mod tests {
             col: 0,
             quit_armed: true,
             mode: "NORMAL",
-            command: None,
         };
-        assert!(build_line(&info, 40).contains("Ctrl-Q"));
+        assert!(build_line(&info, 40).contains(":q again"));
     }
 
     #[test]
@@ -116,7 +110,6 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "INSERT",
-            command: None,
         };
         assert_eq!(build_line(&info, 20).chars().count(), 20);
     }
@@ -130,13 +123,12 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "NORMAL",
-            command: None,
         };
         assert!(build_line(&info, 40).contains("NORMAL"));
     }
 
     #[test]
-    fn shows_command_text() {
+    fn keeps_status_in_command_mode() {
         let info = StatusInfo {
             filename: "a.txt",
             dirty: false,
@@ -144,8 +136,9 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "COMMAND",
-            command: Some("w"),
         };
-        assert!(build_line(&info, 40).starts_with(":w"));
+        let line = build_line(&info, 40);
+        assert!(line.contains("COMMAND"));
+        assert!(line.contains("a.txt"));
     }
 }

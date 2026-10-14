@@ -13,6 +13,7 @@ pub struct App {
     viewport: Viewport,
     keymap: ActiveKeymap,
     quit_armed: bool,
+    message: Option<String>,
 }
 
 impl App {
@@ -22,6 +23,7 @@ impl App {
             viewport: Viewport::new(fallback_height(), fallback_width()),
             keymap: ActiveKeymap::for_flavor(flavor),
             quit_armed: false,
+            message: None,
         }
     }
 
@@ -50,6 +52,11 @@ impl App {
         self.viewport.top()
     }
 
+    #[cfg(test)]
+    pub fn last_message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
@@ -75,9 +82,16 @@ impl App {
             row: self.editor.row(),
             viewport: &self.viewport,
             status,
+            message: self.message.as_deref(),
+            command: self.editor.command_prompt(),
+            showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
         }
+    }
+
+    fn show_message(&mut self, text: String) {
+        self.message = Some(text);
     }
 
     fn status_snapshot(&self) -> StatusInfo<'_> {
@@ -88,7 +102,6 @@ impl App {
             col: self.editor.col(),
             quit_armed: self.quit_armed,
             mode: self.keymap.mode_label(self.editor.mode()),
-            command: self.editor.command_prompt(),
         }
     }
 
@@ -190,6 +203,8 @@ impl App {
             Action::Quit => Ok(self.try_quit()),
             Action::Save => self.handle_save(),
             Action::ExecuteCommand => self.handle_execute(),
+            Action::Undo => self.handle_undo(),
+            Action::Redo => self.handle_redo(),
             Action::Noop => self.handle_noop(),
             _ => self.handle_engine_action(action),
         }
@@ -197,7 +212,47 @@ impl App {
 
     fn handle_save(&mut self) -> Result<bool> {
         self.disarm_quit();
-        self.editor.save()?;
+        self.save_and_report();
+        Ok(false)
+    }
+
+    fn save_and_report(&mut self) -> bool {
+        match self.editor.save() {
+            Ok(()) => self.report_saved(),
+            Err(error) => self.report_error(error.to_string()),
+        }
+    }
+
+    fn report_error(&mut self, text: String) -> bool {
+        self.show_message(text);
+        false
+    }
+
+    fn report_saved(&mut self) -> bool {
+        let report = save_report(
+            self.editor.filename(),
+            self.editor.lines().len(),
+            self.editor.byte_count(),
+        );
+        self.show_message(report);
+        true
+    }
+
+    fn handle_undo(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        if !self.editor.try_undo() {
+            self.show_message("Already at oldest change".to_string());
+        }
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_redo(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        if !self.editor.try_redo() {
+            self.show_message("Already at newest change".to_string());
+        }
+        self.reveal_cursor();
         Ok(false)
     }
 
@@ -244,8 +299,13 @@ impl App {
     fn switch_keymap(&mut self, name: &str) -> Result<bool> {
         match flavor_from_name(name) {
             Some(flavor) => self.apply_flavor(flavor),
-            None => Ok(false),
+            None => self.report_unknown_keymap(name),
         }
+    }
+
+    fn report_unknown_keymap(&mut self, name: &str) -> Result<bool> {
+        self.show_message(format!("Unknown keymap: {name}"));
+        Ok(false)
     }
 
     fn apply_flavor(&mut self, flavor: Flavor) -> Result<bool> {
@@ -258,8 +318,10 @@ impl App {
     }
 
     fn handle_write_quit(&mut self) -> Result<bool> {
-        self.editor.save()?;
-        Ok(self.try_quit())
+        if self.save_and_report() {
+            return Ok(self.try_quit());
+        }
+        Ok(false)
     }
 
     fn try_quit(&mut self) -> bool {
@@ -290,13 +352,17 @@ fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
 }
 
+fn save_report(filename: &str, line_count: usize, byte_count: usize) -> String {
+    format!("\"{filename}\" {line_count}L, {byte_count}B written")
+}
+
 fn is_operator(action: Action) -> bool {
     matches!(action, Action::DeleteSelection | Action::YankSelection)
 }
 
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {
     let width = usize::from(cols).max(1);
-    let height = usize::from(rows).saturating_sub(1).max(1);
+    let height = usize::from(rows).saturating_sub(2).max(1);
     (width, height)
 }
 
@@ -491,5 +557,54 @@ mod tests {
         app.handle_key(key(KeyCode::Char('c'))).expect("pending");
         app.handle_key(key(KeyCode::Char('w'))).expect("change");
         assert_eq!(app.editor_mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn save_reports_lines_and_bytes() {
+        let path = std::env::temp_dir().join("kawi_msg_test.txt");
+        let mut buffer = Buffer::from_string("aa\nbb");
+        buffer.path = Some(path.to_string_lossy().to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.handle_save().expect("save");
+        let expected = format!("\"{}\" 2L, 5B written", path.to_string_lossy());
+        assert_eq!(app.last_message(), Some(expected.as_str()));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_without_path_reports_error() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.handle_save().expect("stays");
+        assert_eq!(app.last_message(), Some("E32: No file name"));
+    }
+
+    #[test]
+    fn undo_without_history_reports() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.handle_undo().expect("undo");
+        assert_eq!(app.last_message(), Some("Already at oldest change"));
+    }
+
+    #[test]
+    fn redo_without_future_reports() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.handle_redo().expect("redo");
+        assert_eq!(app.last_message(), Some("Already at newest change"));
+    }
+
+    #[test]
+    fn unknown_keymap_reports() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.run_command(Command::SetKeymap("personal".to_string()))
+            .expect("unknown");
+        assert_eq!(app.last_message(), Some("Unknown keymap: personal"));
+    }
+
+    #[test]
+    fn save_report_formats_like_editor() {
+        assert_eq!(
+            save_report("notes.txt", 3, 12),
+            "\"notes.txt\" 3L, 12B written"
+        );
     }
 }

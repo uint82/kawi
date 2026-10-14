@@ -16,6 +16,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     draw_visible_lines(out, frame.lines, frame.viewport)?;
     draw_highlight(out, frame)?;
     draw_status_row(out, frame.status, frame.viewport)?;
+    draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor_relative(out, frame.col, frame.row, frame.viewport)?;
     flush(out)?;
@@ -184,6 +185,82 @@ fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -
     draw_status(out, status, viewport.width(), viewport.height())
 }
 
+fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let layout = layout_message_row(
+        frame.command,
+        frame.message,
+        frame.showcmd,
+        frame.viewport.width(),
+    );
+    move_to_message_row(out, frame.viewport)?;
+    write!(out, "{}", layout.line).context("write message row")?;
+    if let Some(column) = layout.showcmd_col {
+        move_to_showcmd(out, column, frame.viewport)?;
+        write!(out, "{}", layout.showcmd).context("write showcmd")?;
+    }
+    Ok(())
+}
+
+struct MessageLayout {
+    line: String,
+    showcmd: String,
+    showcmd_col: Option<usize>,
+}
+
+fn layout_message_row(
+    command: Option<&str>,
+    message: Option<&str>,
+    showcmd: Option<&str>,
+    width: usize,
+) -> MessageLayout {
+    let show = showcmd.unwrap_or("");
+    let left = message_left(command, message);
+    MessageLayout {
+        line: truncate_to_width(&left, left_width(width, show)),
+        showcmd: truncate_to_width(show, width),
+        showcmd_col: showcmd_column(show, width),
+    }
+}
+
+fn message_left(command: Option<&str>, message: Option<&str>) -> String {
+    match command {
+        Some(text) => format!(":{text}"),
+        None => message.unwrap_or("").to_string(),
+    }
+}
+
+fn left_width(width: usize, showcmd: &str) -> usize {
+    width.saturating_sub(char_len(showcmd))
+}
+
+fn showcmd_column(showcmd: &str, width: usize) -> Option<usize> {
+    if showcmd.is_empty() {
+        return None;
+    }
+    Some(width.saturating_sub(char_len(showcmd)))
+}
+
+fn move_to_showcmd(out: &mut Stdout, col: usize, viewport: &Viewport) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(col),
+            saturate_u16(viewport.height().saturating_add(1))
+        )
+    )
+    .context("move to showcmd")?;
+    Ok(())
+}
+
+fn move_to_message_row(out: &mut Stdout, viewport: &Viewport) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(0, saturate_u16(viewport.height().saturating_add(1)))
+    )
+    .context("move to message row")?;
+    Ok(())
+}
+
 fn apply_cursor_style(out: &mut Stdout, insert_mode: bool) -> Result<()> {
     execute!(out, cursor_style(insert_mode)).context("set cursor style")?;
     Ok(())
@@ -232,7 +309,7 @@ mod tests {
     use super::*;
 
     fn viewport() -> Viewport {
-        Viewport::new(10, 80)
+        Viewport::new(10, 20)
     }
 
     fn lines_of(text: &str) -> Vec<String> {
@@ -270,5 +347,34 @@ mod tests {
         assert_eq!(spans[0].text, "b");
         assert_eq!(spans[1].text, "cd");
         assert_eq!(spans[2].text, "ef");
+    }
+
+    #[test]
+    fn layout_prefers_command_over_message() {
+        let layout = layout_message_row(Some("w"), Some("saved"), None, 20);
+        assert_eq!(layout.line, ":w");
+        assert_eq!(layout.showcmd_col, None);
+    }
+
+    #[test]
+    fn layout_right_aligns_showcmd() {
+        let layout = layout_message_row(None, Some("saved"), Some("d"), 20);
+        assert_eq!(layout.line, "saved");
+        assert_eq!(layout.showcmd, "d");
+        assert_eq!(layout.showcmd_col, Some(19));
+    }
+
+    #[test]
+    fn layout_truncates_left_for_showcmd() {
+        let layout = layout_message_row(None, Some("12345678901234567890"), Some("dd"), 20);
+        assert_eq!(layout.line.chars().count(), 18);
+        assert_eq!(layout.showcmd_col, Some(18));
+    }
+
+    #[test]
+    fn layout_empty_row_has_no_column() {
+        let layout = layout_message_row(None, None, None, 20);
+        assert_eq!(layout.line, "");
+        assert_eq!(layout.showcmd_col, None);
     }
 }
