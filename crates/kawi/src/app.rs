@@ -5,7 +5,8 @@ use std::io::{stdout, Stdout};
 
 use crate::actions::Action;
 use crate::editor::Editor;
-use crate::keymap::{Keymap, VimKeymap};
+use crate::keymap::Keymap;
+use crate::vim::VimKeymap;
 use kawi_tui::{render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
@@ -20,7 +21,7 @@ impl App {
         Self {
             editor: Editor::new(buffer),
             viewport: Viewport::new(fallback_height(), fallback_width()),
-            keymap: VimKeymap,
+            keymap: VimKeymap::new(),
             quit_armed: false,
         }
     }
@@ -62,6 +63,7 @@ impl App {
             col: self.editor.col(),
             quit_armed: self.quit_armed,
             mode: self.editor.mode().label(),
+            command_pending: self.keymap.pending_command(),
         }
     }
 

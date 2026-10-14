@@ -9,6 +9,7 @@ pub struct StatusInfo<'a> {
     pub col: usize,
     pub quit_armed: bool,
     pub mode: &'a str,
+    pub command_pending: bool,
 }
 
 pub fn draw_status(out: &mut Stdout, info: &StatusInfo, width: usize, y: usize) -> Result<()> {
@@ -24,6 +25,9 @@ fn build_line(info: &StatusInfo, width: usize) -> String {
 fn left_text(info: &StatusInfo) -> String {
     if info.quit_armed {
         return "Press Ctrl-Q again to quit".to_string();
+    }
+    if info.command_pending {
+        return ":".to_string();
     }
     format!("-- {} -- {}", info.mode, file_part(info))
 }
@@ -84,6 +88,7 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "NORMAL",
+            command_pending: false,
         };
         assert!(build_line(&info, 40).contains("[+]"));
     }
@@ -97,6 +102,7 @@ mod tests {
             col: 0,
             quit_armed: true,
             mode: "NORMAL",
+            command_pending: false,
         };
         assert!(build_line(&info, 40).contains("Ctrl-Q"));
     }
@@ -110,6 +116,7 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "INSERT",
+            command_pending: false,
         };
         assert_eq!(build_line(&info, 20).chars().count(), 20);
     }
@@ -123,7 +130,22 @@ mod tests {
             col: 0,
             quit_armed: false,
             mode: "NORMAL",
+            command_pending: false,
         };
         assert!(build_line(&info, 40).contains("NORMAL"));
+    }
+
+    #[test]
+    fn shows_colon_when_pending() {
+        let info = StatusInfo {
+            filename: "a.txt",
+            dirty: false,
+            row: 0,
+            col: 0,
+            quit_armed: false,
+            mode: "NORMAL",
+            command_pending: true,
+        };
+        assert!(build_line(&info, 40).starts_with(':'));
     }
 }

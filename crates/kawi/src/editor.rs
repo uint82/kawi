@@ -60,6 +60,8 @@ impl Editor {
             Action::InsertNewline => self.insert_newline(),
             Action::DeleteBackward => self.delete_backward(),
             Action::DeleteForward => self.delete_forward(),
+            Action::DeleteLine => self.delete_line(),
+            Action::OpenLineBelow => self.open_line_below(),
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
             Action::Save => self.save_silent(),
@@ -115,6 +117,19 @@ impl Editor {
     fn delete_forward(&mut self) {
         self.buffer
             .delete_forward(self.cursor.row(), self.cursor.col());
+    }
+
+    fn delete_line(&mut self) {
+        self.buffer.delete_line(self.cursor.row());
+        self.cursor.set_col(0);
+    }
+
+    fn open_line_below(&mut self) {
+        let row = self.cursor.row();
+        let width = self.line_width(row);
+        self.buffer.insert_newline(row, width);
+        self.cursor.move_to_line_start(row.saturating_add(1));
+        self.enter_insert();
     }
 
     fn enter_insert(&mut self) {
@@ -212,5 +227,23 @@ mod tests {
         let mut e = editor_with("ab");
         e.apply(Action::DeleteForward);
         assert_eq!(e.lines()[0], "b");
+    }
+
+    #[test]
+    fn delete_line_removes_row() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.lines()[1], "c");
+    }
+
+    #[test]
+    fn open_line_below_enters_insert() {
+        let mut e = editor_with("ab");
+        e.apply(Action::OpenLineBelow);
+        assert_eq!(e.lines().len(), 2);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        assert_eq!(e.mode(), Mode::Insert);
     }
 }
