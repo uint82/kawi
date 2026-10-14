@@ -291,7 +291,10 @@ fn read_next_event() -> Result<Event> {
 }
 
 fn is_operator(action: Action) -> bool {
-    matches!(action, Action::DeleteSelection | Action::YankSelection)
+    matches!(
+        action,
+        Action::DeleteSelection | Action::YankSelection | Action::DeleteWord | Action::ChangeWord
+    )
 }
 
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {

@@ -96,6 +96,8 @@ impl Editor {
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),
             Action::OpenLineBelow => self.open_line_below(),
+            Action::DeleteWord => self.delete_word(),
+            Action::ChangeWord => self.change_word(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
             Action::YankLine => self.yank_line(),
@@ -231,6 +233,33 @@ impl Editor {
         self.yank_current_line();
         self.buffer.delete_line(self.cursor.row());
         self.cursor.set_col(0);
+    }
+
+    fn delete_word(&mut self) {
+        let Some(((start_row, start_col), (end_row, end_col))) =
+            words::dw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+        else {
+            return;
+        };
+        self.record_boundary_at(start_row, start_col);
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.buffer
+            .delete_range(start_row, start_col, end_row, end_col);
+        self.cursor.set_position(start_row, start_col);
+    }
+
+    fn change_word(&mut self) {
+        let Some(((start_row, start_col), (end_row, end_col))) =
+            words::cw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+        else {
+            return;
+        };
+        self.record_boundary_at(start_row, start_col);
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.buffer
+            .delete_range(start_row, start_col, end_row, end_col);
+        self.cursor.set_position(start_row, start_col);
+        self.switch_to_insert();
     }
 
     fn yank_current_line(&mut self) {
@@ -1136,6 +1165,54 @@ mod tests {
         let mut e = editor_with("foo bar");
         e.apply(Action::MoveToNextWordEnd);
         assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_word_deletes_forward() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteWord);
+        assert_eq!(e.lines()[0], "bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_last_word_trims() {
+        let mut e = editor_with("foo bar");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteWord);
+        assert_eq!(e.lines()[0], "foo ");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_word_undoes_together() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteWord);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "foo bar");
+    }
+
+    #[test]
+    fn change_word_keeps_trailing_space() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::ChangeWord);
+        assert_eq!(e.lines()[0], " bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn change_word_groups_typing() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::ChangeWord);
+        e.apply(Action::InsertChar('b'));
+        e.apply(Action::InsertChar('a'));
+        e.apply(Action::InsertChar('z'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.lines()[0], "foo bar");
     }
 
     #[test]

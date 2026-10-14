@@ -44,6 +44,39 @@ pub fn next_word_end(lines: &[String], row: usize, col: usize) -> (usize, usize)
     (row, col)
 }
 
+pub fn dw_range(
+    lines: &[String],
+    row: usize,
+    col: usize,
+) -> Option<((usize, usize), (usize, usize))> {
+    let target = next_word_start(lines, row, col);
+    let end_exclusive = dw_end(lines, row, col, target);
+    let (end_row, end_col) = end_exclusive;
+    let end = prev_char_pos(lines, end_row, end_col)?;
+    if (row, col) == end_exclusive {
+        return None;
+    }
+    Some(((row, col), end))
+}
+
+fn dw_end(lines: &[String], row: usize, col: usize, target: (usize, usize)) -> (usize, usize) {
+    if target != (row, col) {
+        return target;
+    }
+    (row, line_len(lines, row))
+}
+
+pub fn cw_range(
+    lines: &[String],
+    row: usize,
+    col: usize,
+) -> Option<((usize, usize), (usize, usize))> {
+    if line_len(lines, row) == 0 {
+        return None;
+    }
+    Some(((row, col), next_word_end(lines, row, col)))
+}
+
 fn word_start_at(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
     let ch = char_at(lines, row, col)?;
     if class_of(ch) == WordClass::Space {
@@ -113,6 +146,30 @@ fn prev_slot(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)>
         return Some((prev, len.saturating_sub(1)));
     }
     None
+}
+
+fn prev_char_pos(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
+    if col > 0 {
+        return char_at(lines, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
+    }
+    if row == 0 {
+        return None;
+    }
+    let prev = row.saturating_sub(1);
+    backward_char_pos(lines, prev)
+}
+
+fn backward_char_pos(lines: &[String], mut row: usize) -> Option<(usize, usize)> {
+    loop {
+        let len = line_len(lines, row);
+        if len > 0 {
+            return Some((row, len.saturating_sub(1)));
+        }
+        if row == 0 {
+            return None;
+        }
+        row = row.saturating_sub(1);
+    }
 }
 
 fn char_at(lines: &[String], row: usize, col: usize) -> Option<char> {
@@ -232,5 +289,60 @@ mod tests {
     fn e_stays_at_last_end() {
         let lines = lines_of("foo");
         assert_eq!(next_word_end(&lines, 0, 2), (0, 2));
+    }
+
+    #[test]
+    fn dw_deletes_to_next_start() {
+        let lines = lines_of("foo bar");
+        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 3))));
+    }
+
+    #[test]
+    fn dw_last_word_deletes_to_end() {
+        let lines = lines_of("foo bar");
+        assert_eq!(dw_range(&lines, 0, 4), Some(((0, 4), (0, 6))));
+    }
+
+    #[test]
+    fn dw_space_deletes_spaces() {
+        let lines = lines_of("foo   bar");
+        assert_eq!(dw_range(&lines, 0, 3), Some(((0, 3), (0, 5))));
+    }
+
+    #[test]
+    fn dw_last_char_deletes_single() {
+        let lines = lines_of("foo");
+        assert_eq!(dw_range(&lines, 0, 2), Some(((0, 2), (0, 2))));
+    }
+
+    #[test]
+    fn dw_empty_line_is_none() {
+        let lines = lines_of("");
+        assert_eq!(dw_range(&lines, 0, 0), None);
+    }
+
+    #[test]
+    fn dw_across_lines_stops_before_target() {
+        let lines = lines_of("foo\nbar");
+        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn dw_empty_line_keeps_newline() {
+        let lines = lines_of("foo\n\nbar");
+        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn cw_deletes_to_word_end() {
+        let lines = lines_of("foo bar");
+        assert_eq!(cw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+        assert_eq!(cw_range(&lines, 0, 1), Some(((0, 1), (0, 2))));
+    }
+
+    #[test]
+    fn cw_empty_line_is_none() {
+        let lines = lines_of("");
+        assert_eq!(cw_range(&lines, 0, 0), None);
     }
 }
