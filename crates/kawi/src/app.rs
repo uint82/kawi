@@ -4,7 +4,7 @@ use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 use crate::keymap::Keymap;
-use crate::mouse::{drag_position, press_position};
+use crate::mouse::{drag_position, press_position, wheel_delta};
 use crate::vim::VimKeymap;
 use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
@@ -39,6 +39,16 @@ impl App {
     #[cfg(test)]
     pub fn editor_selection(&self) -> Option<((usize, usize), (usize, usize))> {
         self.editor.selection_range()
+    }
+
+    #[cfg(test)]
+    pub fn cursor_position(&self) -> (usize, usize) {
+        (self.editor.row(), self.editor.col())
+    }
+
+    #[cfg(test)]
+    pub fn viewport_top(&self) -> usize {
+        self.viewport.top()
     }
 
     fn run_loop(&mut self) -> Result<()> {
@@ -99,6 +109,9 @@ impl App {
         if let Some((row, col)) = drag_position(&mouse, &self.viewport) {
             return self.drag_to(row, col);
         }
+        if let Some(delta) = wheel_delta(&mouse) {
+            return self.scroll_by(delta);
+        }
         self.handle_noop()
     }
 
@@ -122,6 +135,23 @@ impl App {
         self.editor.apply(Action::JumpTo(row, col));
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn scroll_by(&mut self, delta: isize) -> Result<bool> {
+        self.disarm_quit();
+        self.viewport.scroll_lines(delta, self.editor.lines().len());
+        self.follow_cursor_into_view();
+        Ok(false)
+    }
+
+    fn follow_cursor_into_view(&mut self) {
+        let row = self.editor.row().clamp(
+            self.viewport.top(),
+            self.viewport.visible_end().saturating_sub(1),
+        );
+        if row != self.editor.row() {
+            self.editor.apply(Action::JumpTo(row, self.editor.col()));
+        }
     }
 
     fn ensure_visual(&mut self) {
@@ -271,6 +301,15 @@ mod tests {
         }
     }
 
+    fn wheel_down() -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
     #[test]
     fn drag_selects_from_press_point() {
         let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
@@ -288,5 +327,22 @@ mod tests {
         app.handle_mouse(press(0, 0)).expect("second press");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn wheel_down_scrolls_and_drags_cursor() {
+        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)));
+        app.handle_mouse(wheel_down()).expect("wheel");
+        assert_eq!(app.viewport_top(), 3);
+        assert_eq!(app.cursor_position(), (3, 0));
+    }
+
+    #[test]
+    fn wheel_keeps_visible_cursor() {
+        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)));
+        app.handle_mouse(press(0, 10)).expect("press");
+        app.handle_mouse(wheel_down()).expect("wheel");
+        assert_eq!(app.viewport_top(), 3);
+        assert_eq!(app.cursor_position(), (10, 0));
     }
 }
