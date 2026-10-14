@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use crossterm::{
+    cursor::SetCursorStyle,
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen},
 };
@@ -10,6 +11,7 @@ pub struct TerminalGuard;
 pub fn init() -> Result<TerminalGuard> {
     enable_raw()?;
     enter_screen()?;
+    apply_initial_style()?;
     Ok(TerminalGuard)
 }
 
@@ -19,6 +21,7 @@ pub fn size() -> Result<(u16, u16)> {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
         let _ = execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }
@@ -31,5 +34,10 @@ fn enable_raw() -> Result<()> {
 
 fn enter_screen() -> Result<()> {
     execute!(stdout(), EnterAlternateScreen).context("enter alt screen")?;
+    Ok(())
+}
+
+fn apply_initial_style() -> Result<()> {
+    execute!(stdout(), SetCursorStyle::SteadyBlock).context("set initial cursor")?;
     Ok(())
 }

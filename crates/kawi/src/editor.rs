@@ -91,8 +91,8 @@ impl Editor {
     }
 
     fn move_to_line_end(&mut self) {
-        let width = self.line_width(self.cursor.row());
-        self.cursor.set_col(width);
+        let end = self.max_col_for_row(self.cursor.row());
+        self.cursor.set_col(end);
     }
 
     fn insert_char(&mut self, c: char) {
@@ -157,8 +157,17 @@ impl Editor {
     }
 
     fn clamp_col(&mut self) {
-        let width = self.line_width(self.cursor.row());
-        self.cursor.set_col(self.cursor.col().min(width));
+        let max_col = self.max_col_for_row(self.cursor.row());
+        self.cursor.set_col(self.cursor.col().min(max_col));
+    }
+
+    fn max_col_for_row(&self, row: usize) -> usize {
+        let width = self.line_width(row);
+        if self.mode.is_insert() {
+            width
+        } else {
+            width.saturating_sub(1)
+        }
     }
 
     fn line_width(&self, row: usize) -> usize {
@@ -217,8 +226,47 @@ mod tests {
     fn line_start_end() {
         let mut e = editor_with("abc");
         e.apply(Action::MoveToLineEnd);
-        assert_eq!(e.col(), 3);
+        assert_eq!(e.col(), 2);
         e.apply(Action::MoveToLineStart);
+        assert_eq!(e.col(), 0);
+    }
+
+    #[test]
+    fn normal_stays_on_last_char() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        assert_eq!(e.col(), 5);
+    }
+
+    #[test]
+    fn insert_reaches_line_end() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        assert_eq!(e.col(), 6);
+    }
+
+    #[test]
+    fn exit_insert_pulls_back() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::MoveToLineEnd);
+        assert_eq!(e.col(), 6);
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.col(), 5);
+    }
+
+    #[test]
+    fn empty_line_stays_zero() {
+        let mut e = editor_with("");
+        e.apply(Action::MoveRight);
+        assert_eq!(e.col(), 0);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::MoveRight);
         assert_eq!(e.col(), 0);
     }
 

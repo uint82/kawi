@@ -52,6 +52,7 @@ impl App {
             self.editor.row(),
             &self.viewport,
             &status,
+            self.editor.mode().is_insert(),
         )
     }
 
