@@ -188,6 +188,7 @@ fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -
 fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
     let layout = layout_message_row(
         frame.command,
+        frame.search,
         frame.message,
         frame.showcmd,
         frame.viewport.width(),
@@ -209,12 +210,13 @@ struct MessageLayout {
 
 fn layout_message_row(
     command: Option<&str>,
+    search: Option<&str>,
     message: Option<&str>,
     showcmd: Option<&str>,
     width: usize,
 ) -> MessageLayout {
     let show = showcmd.unwrap_or("");
-    let left = message_left(command, message);
+    let left = message_left(command, search, message);
     MessageLayout {
         line: truncate_to_width(&left, left_width(width, show)),
         showcmd: truncate_to_width(show, width),
@@ -222,10 +224,11 @@ fn layout_message_row(
     }
 }
 
-fn message_left(command: Option<&str>, message: Option<&str>) -> String {
-    match command {
-        Some(text) => format!(":{text}"),
-        None => message.unwrap_or("").to_string(),
+fn message_left(command: Option<&str>, search: Option<&str>, message: Option<&str>) -> String {
+    match (command, search) {
+        (Some(text), _) => format!(":{text}"),
+        (None, Some(text)) => format!("/{text}"),
+        (None, None) => message.unwrap_or("").to_string(),
     }
 }
 
@@ -351,14 +354,14 @@ mod tests {
 
     #[test]
     fn layout_prefers_command_over_message() {
-        let layout = layout_message_row(Some("w"), Some("saved"), None, 20);
+        let layout = layout_message_row(Some("w"), None, Some("saved"), None, 20);
         assert_eq!(layout.line, ":w");
         assert_eq!(layout.showcmd_col, None);
     }
 
     #[test]
     fn layout_right_aligns_showcmd() {
-        let layout = layout_message_row(None, Some("saved"), Some("d"), 20);
+        let layout = layout_message_row(None, None, Some("saved"), Some("d"), 20);
         assert_eq!(layout.line, "saved");
         assert_eq!(layout.showcmd, "d");
         assert_eq!(layout.showcmd_col, Some(19));
@@ -366,15 +369,21 @@ mod tests {
 
     #[test]
     fn layout_truncates_left_for_showcmd() {
-        let layout = layout_message_row(None, Some("12345678901234567890"), Some("dd"), 20);
+        let layout = layout_message_row(None, None, Some("12345678901234567890"), Some("dd"), 20);
         assert_eq!(layout.line.chars().count(), 18);
         assert_eq!(layout.showcmd_col, Some(18));
     }
 
     #[test]
     fn layout_empty_row_has_no_column() {
-        let layout = layout_message_row(None, None, None, 20);
+        let layout = layout_message_row(None, None, None, None, 20);
         assert_eq!(layout.line, "");
         assert_eq!(layout.showcmd_col, None);
+    }
+
+    #[test]
+    fn layout_prefers_search_over_message() {
+        let layout = layout_message_row(None, Some("ar"), Some("saved"), None, 20);
+        assert_eq!(layout.line, "/ar");
     }
 }

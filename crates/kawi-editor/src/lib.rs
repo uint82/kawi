@@ -4,6 +4,7 @@ pub mod cursor;
 pub mod editor;
 pub mod mode;
 pub mod register;
+pub mod search;
 pub mod selection;
 pub mod words;
 
@@ -13,4 +14,5 @@ pub use cursor::Cursor;
 pub use editor::Editor;
 pub use mode::Mode;
 pub use register::Register;
+pub use search::SearchOutcome;
 pub use selection::Selection;

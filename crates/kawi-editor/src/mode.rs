@@ -4,6 +4,7 @@ pub enum Mode {
     Insert,
     Command,
     Visual,
+    Search,
 }
 
 impl Mode {
@@ -21,6 +22,7 @@ impl Mode {
             Self::Insert => "INSERT",
             Self::Command => "COMMAND",
             Self::Visual => "VISUAL",
+            Self::Search => "SEARCH",
         }
     }
 }
@@ -53,5 +55,10 @@ mod tests {
     #[test]
     fn visual_labels_visual() {
         assert_eq!(Mode::Visual.label(), "VISUAL");
+    }
+
+    #[test]
+    fn search_labels_search() {
+        assert_eq!(Mode::Search.label(), "SEARCH");
     }
 }

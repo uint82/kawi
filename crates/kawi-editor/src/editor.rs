@@ -6,6 +6,7 @@ use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
 use crate::register::{Register, RegisterKind};
+use crate::search::{self, SearchOutcome};
 use crate::selection::Selection;
 use crate::words;
 
@@ -14,6 +15,8 @@ pub struct Editor {
     cursor: Cursor,
     mode: Mode,
     command: CommandLine,
+    search: CommandLine,
+    search_origin: Option<(usize, usize)>,
     selection: Option<Selection>,
     register: Register,
 }
@@ -25,6 +28,8 @@ impl Editor {
             cursor: Cursor::new(),
             mode: Mode::Normal,
             command: CommandLine::new(),
+            search: CommandLine::new(),
+            search_origin: None,
             selection: None,
             register: Register::new(),
         }
@@ -64,6 +69,18 @@ impl Editor {
 
     pub fn command_text(&self) -> &str {
         self.command.text()
+    }
+
+    pub fn search_prompt(&self) -> Option<&str> {
+        if self.mode == Mode::Search {
+            Some(self.search.text())
+        } else {
+            None
+        }
+    }
+
+    pub fn search_pattern(&self) -> &str {
+        self.search.text()
     }
 
     pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
@@ -129,6 +146,13 @@ impl Editor {
             Action::DeleteCommandChar => self.delete_command_char(),
             Action::CancelCommand => self.cancel_command(),
             Action::ExecuteCommand => self.noop(),
+            Action::EnterSearch => self.enter_search(),
+            Action::PushSearchChar(c) => self.push_search_char(c),
+            Action::DeleteSearchChar => self.delete_search_char(),
+            Action::ConfirmSearch => self.confirm_search(),
+            Action::CancelSearch => self.cancel_search(),
+            Action::NextMatch => self.next_match(),
+            Action::PrevMatch => self.prev_match(),
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
         }
@@ -606,6 +630,98 @@ impl Editor {
         self.command.clear();
     }
 
+    fn enter_search(&mut self) {
+        self.search_origin = Some((self.cursor.row(), self.cursor.col()));
+        self.search.clear();
+        self.mode = Mode::Search;
+    }
+
+    fn push_search_char(&mut self, c: char) {
+        if self.mode != Mode::Search {
+            return;
+        }
+        self.search.push(c);
+        self.jump_to_first_result();
+    }
+
+    fn delete_search_char(&mut self) {
+        if self.mode != Mode::Search {
+            return;
+        }
+        self.search.pop();
+        if self.search.text().is_empty() {
+            self.cancel_search();
+            return;
+        }
+        self.jump_to_first_result();
+    }
+
+    fn jump_to_first_result(&mut self) {
+        let origin = self
+            .search_origin
+            .unwrap_or((self.cursor.row(), self.cursor.col()));
+        if let Some((row, col)) = search::find_first_from(
+            self.buffer.as_slice(),
+            self.search.text(),
+            origin.0,
+            origin.1,
+        ) {
+            self.cursor.set_position(row, col);
+        }
+    }
+
+    fn confirm_search(&mut self) {
+        if self.mode == Mode::Search {
+            self.mode = Mode::Normal;
+        }
+    }
+
+    fn cancel_search(&mut self) {
+        if let Some((row, col)) = self.search_origin {
+            self.cursor.set_position(row, col);
+        }
+        self.search_origin = None;
+        self.mode = Mode::Normal;
+    }
+
+    pub fn search_next(&mut self) -> SearchOutcome {
+        self.step_search(true)
+    }
+
+    pub fn search_prev(&mut self) -> SearchOutcome {
+        self.step_search(false)
+    }
+
+    fn next_match(&mut self) {
+        let _ = self.search_next();
+    }
+
+    fn prev_match(&mut self) {
+        let _ = self.search_prev();
+    }
+
+    fn step_search(&mut self, forward: bool) -> SearchOutcome {
+        if self.search.text().is_empty() {
+            return SearchOutcome::Missing;
+        }
+        let found = search_step(
+            self.buffer.as_slice(),
+            self.search.text(),
+            self.cursor.row(),
+            self.cursor.col(),
+            forward,
+        );
+        match found {
+            Some(((row, col), wrapped)) => self.place_search_result(row, col, wrapped),
+            None => SearchOutcome::Missing,
+        }
+    }
+
+    fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
+        self.cursor.set_position(row, col);
+        SearchOutcome::Found { wrapped }
+    }
+
     fn save_silent(&mut self) {
         let _ = self.buffer.save();
     }
@@ -643,6 +759,20 @@ impl Editor {
 
 fn char_count(text: &str) -> usize {
     text.chars().count()
+}
+
+fn search_step(
+    lines: &[String],
+    pattern: &str,
+    row: usize,
+    col: usize,
+    forward: bool,
+) -> Option<((usize, usize), bool)> {
+    if forward {
+        search::find_next(lines, pattern, row, col)
+    } else {
+        search::find_prev(lines, pattern, row, col)
+    }
 }
 
 fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize), (usize, usize)) {
@@ -896,6 +1026,83 @@ mod tests {
         e.apply(Action::CancelCommand);
         assert_eq!(e.mode(), Mode::Normal);
         assert_eq!(e.command_prompt(), None);
+    }
+
+    #[test]
+    fn search_typing_jumps_live() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        assert_eq!(e.mode(), Mode::Search);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn search_confirm_stays_put() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn search_cancel_restores_origin() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::CancelSearch);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn search_backspace_empty_cancels() {
+        let mut e = editor_with("foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::DeleteSearchChar);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.search_prompt(), None);
+    }
+
+    #[test]
+    fn search_next_reports_wrap() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: true });
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn search_prev_wraps_around() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: true });
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn search_without_pattern_is_missing() {
+        let mut e = editor_with("foo");
+        assert_eq!(e.search_next(), SearchOutcome::Missing);
+        assert_eq!(e.search_prev(), SearchOutcome::Missing);
     }
 
     #[test]

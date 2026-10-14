@@ -46,5 +46,17 @@ pub enum Action {
     DeleteCommandChar,
     ExecuteCommand,
     CancelCommand,
+    EnterSearch,
+    PushSearchChar(char),
+    DeleteSearchChar,
+    ConfirmSearch,
+    CancelSearch,
+    NextMatch,
+    PrevMatch,
     Noop,
 }
+
+// TODO(helix): shared SelectLine action for helix x line select.
+// TODO(helix): shared ChangeSelection action for helix c and vim visual c.
+// TODO(helix): shared PasteBefore action for helix P.
+// TODO(personal): third keymap flavor alongside vim and helix.
