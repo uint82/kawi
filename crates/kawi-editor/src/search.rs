@@ -4,8 +4,10 @@ pub enum SearchOutcome {
     Missing,
 }
 
+use kawi_buffer::Buffer;
+
 pub fn find_first_from(
-    lines: &[String],
+    buffer: &Buffer,
     pattern: &str,
     row: usize,
     col: usize,
@@ -14,19 +16,22 @@ pub fn find_first_from(
         return None;
     }
     let query = Query::new(pattern);
-    lines
-        .iter()
+    buffer
+        .line_slices()
         .enumerate()
         .skip(row)
-        .filter_map(|(r, line)| {
+        .find_map(|(r, slice)| {
             let bound = bound_forward_col(r, row, col);
-            query.first_at_or_after(line, bound).map(|c| (r, c))
+            let text = slice_text(&slice);
+            if !query.may_match(&text) {
+                return None;
+            }
+            query.first_at_or_after(&text, bound).map(|c| (r, c))
         })
-        .next()
 }
 
 pub fn find_next(
-    lines: &[String],
+    buffer: &Buffer,
     pattern: &str,
     row: usize,
     col: usize,
@@ -35,14 +40,20 @@ pub fn find_next(
         return None;
     }
     let query = Query::new(pattern);
-    if let Some(found) = scan_forward(lines, &query, row, col.saturating_add(1), lines.len()) {
+    if let Some(found) = scan_forward(
+        buffer,
+        &query,
+        row,
+        col.saturating_add(1),
+        buffer.line_count(),
+    ) {
         return Some((found, false));
     }
-    scan_forward_wrapped(lines, &query, row, col).map(|found| (found, true))
+    scan_forward_wrapped(buffer, &query, row, col).map(|found| (found, true))
 }
 
 pub fn find_prev(
-    lines: &[String],
+    buffer: &Buffer,
     pattern: &str,
     row: usize,
     col: usize,
@@ -51,29 +62,32 @@ pub fn find_prev(
         return None;
     }
     let query = Query::new(pattern);
-    if let Some(found) = scan_backward(lines, &query, row, col) {
+    if let Some(found) = scan_backward(buffer, &query, row, col) {
         return Some((found, false));
     }
-    scan_backward_wrapped(lines, &query, row).map(|found| (found, true))
+    scan_backward_wrapped(buffer, &query, row).map(|found| (found, true))
 }
 
 fn scan_forward(
-    lines: &[String],
+    buffer: &Buffer,
     query: &Query,
     row: usize,
     col: usize,
     end_row: usize,
 ) -> Option<(usize, usize)> {
-    lines
-        .iter()
+    buffer
+        .line_slices()
         .enumerate()
         .skip(row)
         .take(end_row.saturating_sub(row))
-        .filter_map(|(r, line)| {
+        .find_map(|(r, slice)| {
             let bound = bound_forward_col(r, row, col);
-            query.first_at_or_after(line, bound).map(|c| (r, c))
+            let text = slice_text(&slice);
+            if !query.may_match(&text) {
+                return None;
+            }
+            query.first_at_or_after(&text, bound).map(|c| (r, c))
         })
-        .next()
 }
 
 fn bound_forward_col(line_row: usize, origin_row: usize, origin_col: usize) -> usize {
@@ -84,54 +98,72 @@ fn bound_forward_col(line_row: usize, origin_row: usize, origin_col: usize) -> u
 }
 
 fn scan_forward_wrapped(
-    lines: &[String],
+    buffer: &Buffer,
     query: &Query,
     row: usize,
     col: usize,
 ) -> Option<(usize, usize)> {
-    if let Some(found) = scan_forward(lines, query, 0, 0, row) {
+    if let Some(found) = scan_forward(buffer, query, 0, 0, row) {
         return Some(found);
     }
-    lines
-        .get(row)
-        .and_then(|line| query.first_before(line, col).map(|c| (row, c)))
+    buffer
+        .line_cow(row)
+        .and_then(|line| query.first_before(&line, col).map(|c| (row, c)))
 }
 
-fn scan_backward(
-    lines: &[String],
+fn slice_text<'a>(slice: &'a ropey::RopeSlice<'a>) -> std::borrow::Cow<'a, str> {
+    match slice.as_str() {
+        Some(text) => std::borrow::Cow::Borrowed(text),
+        None => std::borrow::Cow::Owned(slice.to_string()),
+    }
+}
+
+fn scan_backward(buffer: &Buffer, query: &Query, row: usize, col: usize) -> Option<(usize, usize)> {
+    let mut found = None;
+    for (r, slice) in buffer.line_slices().enumerate().take(row.saturating_add(1)) {
+        let text = slice_text(&slice);
+        if !query.may_match(&text) {
+            continue;
+        }
+        let hit = scan_backward_row(&text, query, r, row, col);
+        if hit.is_some() {
+            found = hit;
+        }
+    }
+    found
+}
+
+fn scan_backward_row(
+    text: &str,
     query: &Query,
-    row: usize,
-    col: usize,
+    line_row: usize,
+    origin_row: usize,
+    origin_col: usize,
 ) -> Option<(usize, usize)> {
-    lines
-        .iter()
-        .enumerate()
-        .take(row.saturating_add(1))
-        .rev()
-        .filter_map(|(r, line)| {
-            if r == row {
-                query.last_before(line, col).map(|c| (r, c))
-            } else {
-                query.last_in_line(line).map(|c| (r, c))
-            }
-        })
-        .next()
+    if line_row == origin_row {
+        query.last_before(text, origin_col).map(|c| (line_row, c))
+    } else {
+        query.last_in_line(text).map(|c| (line_row, c))
+    }
 }
 
-fn scan_backward_wrapped(lines: &[String], query: &Query, row: usize) -> Option<(usize, usize)> {
-    if let Some(found) = lines
-        .iter()
-        .enumerate()
-        .skip(row.saturating_add(1))
-        .rev()
-        .filter_map(|(r, line)| query.last_in_line(line).map(|c| (r, c)))
-        .next()
-    {
-        return Some(found);
+fn scan_backward_wrapped(buffer: &Buffer, query: &Query, row: usize) -> Option<(usize, usize)> {
+    let mut found = None;
+    for (r, slice) in buffer.line_slices().enumerate().skip(row.saturating_add(1)) {
+        let text = slice_text(&slice);
+        if !query.may_match(&text) {
+            continue;
+        }
+        if let Some(c) = query.last_in_line(&text) {
+            found = Some((r, c));
+        }
     }
-    lines
-        .get(row)
-        .and_then(|line| query.last_in_line(line).map(|c| (row, c)))
+    if found.is_some() {
+        return found;
+    }
+    buffer
+        .line_cow(row)
+        .and_then(|line| query.last_in_line(&line).map(|c| (row, c)))
 }
 
 fn byte_of_col(line: &str, col: usize) -> usize {
@@ -189,6 +221,24 @@ impl Query {
         fold_case(line)
     }
 
+    fn may_match(&self, line: &str) -> bool {
+        let first = match self.text.chars().next() {
+            Some(ch) => ch,
+            None => return false,
+        };
+        if self.sensitive {
+            return line.contains(first);
+        }
+        if first.is_ascii_alphabetic() {
+            return line.contains(first.to_ascii_lowercase())
+                || line.contains(first.to_ascii_uppercase());
+        }
+        if first.is_ascii() {
+            return line.contains(first);
+        }
+        true
+    }
+
     fn first_at_or_after(&self, line: &str, bound_col: usize) -> Option<usize> {
         let hay = self.haystack(line);
         let bound_byte = byte_of_col(&hay, bound_col);
@@ -231,8 +281,8 @@ impl Query {
 mod tests {
     use super::*;
 
-    fn lines_of(text: &str) -> Vec<String> {
-        text.lines().map(str::to_string).collect()
+    fn lines_of(text: &str) -> Buffer {
+        Buffer::from_string(text)
     }
 
     #[test]

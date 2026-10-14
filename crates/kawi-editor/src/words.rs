@@ -1,3 +1,5 @@
+use kawi_buffer::Buffer;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum WordClass {
     Word,
@@ -5,141 +7,141 @@ enum WordClass {
     Space,
 }
 
-pub fn next_word_start(lines: &[String], row: usize, col: usize) -> (usize, usize) {
-    let mut pos = next_slot(lines, row, col);
+pub fn next_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
+    let mut pos = next_slot(buffer, row, col);
     while let Some((r, c)) = pos {
-        if line_len(lines, r) == 0 {
+        if line_len(buffer, r) == 0 {
             return (r, c);
         }
-        if let Some(found) = word_start_at(lines, r, c) {
+        if let Some(found) = word_start_at(buffer, r, c) {
             return found;
         }
-        pos = next_slot(lines, r, c);
+        pos = next_slot(buffer, r, c);
     }
     (row, col)
 }
 
-pub fn prev_word_start(lines: &[String], row: usize, col: usize) -> (usize, usize) {
-    let mut pos = prev_slot(lines, row, col);
+pub fn prev_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
+    let mut pos = prev_slot(buffer, row, col);
     while let Some((r, c)) = pos {
-        if line_len(lines, r) == 0 {
+        if line_len(buffer, r) == 0 {
             return (r, c);
         }
-        if let Some(found) = word_start_at(lines, r, c) {
+        if let Some(found) = word_start_at(buffer, r, c) {
             return found;
         }
-        pos = prev_slot(lines, r, c);
+        pos = prev_slot(buffer, r, c);
     }
     (row, col)
 }
 
-pub fn next_word_end(lines: &[String], row: usize, col: usize) -> (usize, usize) {
-    let mut pos = next_slot(lines, row, col);
+pub fn next_word_end(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
+    let mut pos = next_slot(buffer, row, col);
     while let Some((r, c)) = pos {
-        if let Some(found) = word_end_at(lines, r, c) {
+        if let Some(found) = word_end_at(buffer, r, c) {
             return found;
         }
-        pos = next_slot(lines, r, c);
+        pos = next_slot(buffer, r, c);
     }
     (row, col)
 }
 
 pub fn dw_range(
-    lines: &[String],
+    buffer: &Buffer,
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), (usize, usize))> {
-    let target = next_word_start(lines, row, col);
-    let end_exclusive = dw_end(lines, row, col, target);
+    let target = next_word_start(buffer, row, col);
+    let end_exclusive = dw_end(buffer, row, col, target);
     let (end_row, end_col) = end_exclusive;
-    let end = prev_char_pos(lines, end_row, end_col)?;
+    let end = prev_char_pos(buffer, end_row, end_col)?;
     if (row, col) == end_exclusive {
         return None;
     }
     Some(((row, col), end))
 }
 
-fn dw_end(lines: &[String], row: usize, col: usize, target: (usize, usize)) -> (usize, usize) {
+fn dw_end(buffer: &Buffer, row: usize, col: usize, target: (usize, usize)) -> (usize, usize) {
     if target != (row, col) {
         return target;
     }
-    (row, line_len(lines, row))
+    (row, line_len(buffer, row))
 }
 
 pub fn cw_range(
-    lines: &[String],
+    buffer: &Buffer,
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), (usize, usize))> {
-    if line_len(lines, row) == 0 {
+    if line_len(buffer, row) == 0 {
         return None;
     }
-    Some(((row, col), next_word_end(lines, row, col)))
+    Some(((row, col), next_word_end(buffer, row, col)))
 }
 
-fn word_start_at(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    let ch = char_at(lines, row, col)?;
+fn word_start_at(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
+    let ch = char_at(buffer, row, col)?;
     if class_of(ch) == WordClass::Space {
         return None;
     }
-    if is_word_start(lines, row, col) {
+    if is_word_start(buffer, row, col) {
         return Some((row, col));
     }
     None
 }
 
-fn is_word_start(lines: &[String], row: usize, col: usize) -> bool {
+fn is_word_start(buffer: &Buffer, row: usize, col: usize) -> bool {
     if col == 0 {
         return true;
     }
-    match char_at(lines, row, col.saturating_sub(1)) {
+    match char_at(buffer, row, col.saturating_sub(1)) {
         None => true,
         Some(prev) => {
-            let current = char_at(lines, row, col).map(class_of);
+            let current = char_at(buffer, row, col).map(class_of);
             let previous = class_of(prev);
             previous == WordClass::Space || current != Some(previous)
         }
     }
 }
 
-fn word_end_at(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    let ch = char_at(lines, row, col)?;
+fn word_end_at(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
+    let ch = char_at(buffer, row, col)?;
     if class_of(ch) == WordClass::Space {
         return None;
     }
-    Some(run_end(lines, row, col, class_of(ch)))
+    Some(run_end(buffer, row, col, class_of(ch)))
 }
 
-fn run_end(lines: &[String], row: usize, col: usize, class: WordClass) -> (usize, usize) {
+fn run_end(buffer: &Buffer, row: usize, col: usize, class: WordClass) -> (usize, usize) {
     let mut end = (row, col);
-    let mut pos = next_slot(lines, row, col);
+    let mut pos = next_slot(buffer, row, col);
     while let Some((r, c)) = pos {
-        match char_at(lines, r, c) {
+        match char_at(buffer, r, c) {
             Some(ch) if class_of(ch) == class => end = (r, c),
             _ => break,
         }
-        pos = next_slot(lines, r, c);
+        pos = next_slot(buffer, r, c);
     }
     end
 }
 
-fn next_slot(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
-    if col.saturating_add(1) < line_len(lines, row) {
+fn next_slot(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
+    if col.saturating_add(1) < line_len(buffer, row) {
         return Some((row, col.saturating_add(1)));
     }
-    if row.saturating_add(1) < lines.len() {
+    if row.saturating_add(1) < buffer.line_count() {
         return Some((row.saturating_add(1), 0));
     }
     None
 }
 
-fn prev_slot(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
+fn prev_slot(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
     if col > 0 {
         return Some((row, col.saturating_sub(1)));
     }
     if row > 0 {
         let prev = row.saturating_sub(1);
-        let len = line_len(lines, prev);
+        let len = line_len(buffer, prev);
         if len == 0 {
             return Some((prev, 0));
         }
@@ -148,20 +150,20 @@ fn prev_slot(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)>
     None
 }
 
-fn prev_char_pos(lines: &[String], row: usize, col: usize) -> Option<(usize, usize)> {
+fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
     if col > 0 {
-        return char_at(lines, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
+        return char_at(buffer, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
     }
     if row == 0 {
         return None;
     }
     let prev = row.saturating_sub(1);
-    backward_char_pos(lines, prev)
+    backward_char_pos(buffer, prev)
 }
 
-fn backward_char_pos(lines: &[String], mut row: usize) -> Option<(usize, usize)> {
+fn backward_char_pos(buffer: &Buffer, mut row: usize) -> Option<(usize, usize)> {
     loop {
-        let len = line_len(lines, row);
+        let len = line_len(buffer, row);
         if len > 0 {
             return Some((row, len.saturating_sub(1)));
         }
@@ -172,16 +174,12 @@ fn backward_char_pos(lines: &[String], mut row: usize) -> Option<(usize, usize)>
     }
 }
 
-fn char_at(lines: &[String], row: usize, col: usize) -> Option<char> {
-    lines.get(row)?.chars().nth(col)
+fn char_at(buffer: &Buffer, row: usize, col: usize) -> Option<char> {
+    buffer.line_cow(row)?.chars().nth(col)
 }
 
-fn line_len(lines: &[String], row: usize) -> usize {
-    lines.get(row).map_or(0, |line| char_count(line))
-}
-
-fn char_count(text: &str) -> usize {
-    text.chars().count()
+fn line_len(buffer: &Buffer, row: usize) -> usize {
+    buffer.line_len(row)
 }
 
 fn class_of(ch: char) -> WordClass {
@@ -197,9 +195,10 @@ fn class_of(ch: char) -> WordClass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kawi_buffer::Buffer;
 
-    fn lines_of(text: &str) -> Vec<String> {
-        text.lines().map(str::to_string).collect()
+    fn lines_of(text: &str) -> Buffer {
+        Buffer::from_string(text)
     }
 
     #[test]
