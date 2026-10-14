@@ -59,6 +59,21 @@ mod tests {
         assert_eq!(flavor_from_name("personal"), None);
         assert_eq!(flavor_from_name(""), None);
     }
+
+    #[test]
+    fn interrupt_becomes_plain_esc() {
+        let interrupt = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(
+            normalize_interrupt(interrupt),
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+        );
+    }
+
+    #[test]
+    fn other_keys_pass_through() {
+        let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
+        assert_eq!(normalize_interrupt(key), key);
+    }
 }
 
 impl Keymap for ActiveKeymap {
@@ -84,13 +99,11 @@ impl Keymap for ActiveKeymap {
     }
 }
 
-pub fn is_ctrl_quit(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('c'))
-}
-
-pub fn is_save_key(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('s'))
+pub fn normalize_interrupt(key: KeyEvent) -> KeyEvent {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c')) {
+        return KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    }
+    key
 }
 
 pub fn has_ctrl_or_alt(key: KeyEvent) -> bool {

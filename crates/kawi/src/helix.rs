@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use kawi_editor::{Action, Mode};
 
-use crate::keymap::{has_ctrl_or_alt, is_ctrl_quit, is_save_key, map_command_mode, Keymap};
+use crate::keymap::{has_ctrl_or_alt, map_command_mode, normalize_interrupt, Keymap};
 
 pub struct HelixKeymap;
 
@@ -85,12 +85,7 @@ impl HelixKeymap {
 
 impl Keymap for HelixKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if is_ctrl_quit(key) {
-            return Action::Quit;
-        }
-        if is_save_key(key) {
-            return Action::Save;
-        }
+        let key = normalize_interrupt(key);
         match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Command => map_command_mode(key),
