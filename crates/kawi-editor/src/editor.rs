@@ -96,6 +96,7 @@ impl Editor {
             Action::Append => self.append(),
             Action::EnterVisual => self.enter_visual(),
             Action::ExitVisual => self.exit_visual(),
+            Action::JumpTo(row, col) => self.jump_to(row, col),
             Action::EnterCommand => self.enter_command(),
             Action::PushCommandChar(c) => self.push_command_char(c),
             Action::DeleteCommandChar => self.delete_command_char(),
@@ -257,6 +258,10 @@ impl Editor {
     fn exit_visual(&mut self) {
         self.selection = None;
         self.mode = Mode::Normal;
+    }
+
+    fn jump_to(&mut self, row: usize, col: usize) {
+        self.cursor.set_position(row, col);
     }
 
     fn sync_head(&mut self) {
@@ -703,6 +708,29 @@ mod tests {
         e.apply(Action::EnterVisual);
         e.apply(Action::MoveDown);
         assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+    }
+
+    #[test]
+    fn jump_clamps_to_last_char_in_normal() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::JumpTo(0, 20));
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn jump_reaches_end_in_insert() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::JumpTo(0, 20));
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn jump_remembers_goal_column() {
+        let mut e = editor_with("0123456789\nabcd");
+        e.apply(Action::JumpTo(1, 2));
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 
     #[test]

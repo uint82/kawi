@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyEvent};
+use crossterm::event::{read, Event, KeyEvent, MouseEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 use crate::keymap::Keymap;
+use crate::mouse::press_position;
 use crate::vim::VimKeymap;
 use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
@@ -76,8 +77,23 @@ impl App {
         match event {
             Event::Key(key) => self.handle_key(key),
             Event::Resize(cols, rows) => self.handle_resize(cols, rows),
+            Event::Mouse(mouse) => self.handle_mouse(mouse),
             _ => Ok(false),
         }
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        match press_position(&mouse, &self.viewport) {
+            Some((row, col)) => self.jump_to(row, col),
+            None => self.handle_noop(),
+        }
+    }
+
+    fn jump_to(&mut self, row: usize, col: usize) -> Result<bool> {
+        self.disarm_quit();
+        self.editor.apply(Action::JumpTo(row, col));
+        self.reveal_cursor();
+        Ok(false)
     }
 
     fn handle_resize(&mut self, cols: u16, rows: u16) -> Result<bool> {

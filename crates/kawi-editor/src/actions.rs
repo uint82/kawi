@@ -21,6 +21,7 @@ pub enum Action {
     Append,
     EnterVisual,
     ExitVisual,
+    JumpTo(usize, usize),
     EnterCommand,
     PushCommandChar(char),
     DeleteCommandChar,
