@@ -6,6 +6,7 @@ use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
 use crate::selection::Selection;
+use crate::words;
 
 pub struct Editor {
     buffer: Buffer,
@@ -83,6 +84,9 @@ impl Editor {
             Action::MoveRight => self.move_right(),
             Action::MoveToLineStart => self.move_to_line_start(),
             Action::MoveToLineEnd => self.move_to_line_end(),
+            Action::MoveToNextWordStart => self.move_to_next_word_start(),
+            Action::MoveToPrevWordStart => self.move_to_prev_word_start(),
+            Action::MoveToNextWordEnd => self.move_to_next_word_end(),
             Action::InsertChar(c) => self.insert_char(c),
             Action::InsertNewline => self.insert_newline(),
             Action::DeleteBackward => self.delete_backward(),
@@ -129,6 +133,24 @@ impl Editor {
 
     fn move_to_line_start(&mut self) {
         self.cursor.move_to_line_start(self.cursor.row());
+    }
+
+    fn move_to_next_word_start(&mut self) {
+        let (row, col) =
+            words::next_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        self.cursor.set_position(row, col);
+    }
+
+    fn move_to_prev_word_start(&mut self) {
+        let (row, col) =
+            words::prev_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        self.cursor.set_position(row, col);
+    }
+
+    fn move_to_next_word_end(&mut self) {
+        let (row, col) =
+            words::next_word_end(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        self.cursor.set_position(row, col);
     }
 
     fn move_to_line_end(&mut self) {
@@ -708,6 +730,30 @@ mod tests {
         e.apply(Action::EnterVisual);
         e.apply(Action::MoveDown);
         assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+    }
+
+    #[test]
+    fn word_forward_moves_to_start() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::MoveToNextWordStart);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn word_backward_moves_to_start() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::MoveToPrevWordStart);
+        assert_eq!((e.row(), e.col()), (0, 4));
+        e.apply(Action::MoveToPrevWordStart);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn word_end_moves_to_end() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::MoveToNextWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 
     #[test]

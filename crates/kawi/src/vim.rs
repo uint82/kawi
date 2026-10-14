@@ -74,6 +74,9 @@ impl VimKeymap {
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::Append),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
+            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
+            KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
+            KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.arm_d(key),
             KeyCode::Char(':') => self.arm_command(key),
@@ -153,6 +156,9 @@ impl VimKeymap {
             KeyCode::Char('j') => self.map_plain_or_noop(key, Action::MoveDown),
             KeyCode::Char('k') => self.map_plain_or_noop(key, Action::MoveUp),
             KeyCode::Char('l') => self.map_plain_or_noop(key, Action::MoveRight),
+            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
+            KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
+            KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::ExitVisual),
             _ => Action::Noop,
         }
@@ -439,6 +445,36 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('a')), Mode::Insert),
             Action::InsertChar('a')
+        );
+    }
+
+    #[test]
+    fn normal_word_motions_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::MoveToNextWordStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('b')), Mode::Normal),
+            Action::MoveToPrevWordStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::MoveToNextWordEnd
+        );
+    }
+
+    #[test]
+    fn visual_word_motions_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Visual),
+            Action::MoveToNextWordStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Visual),
+            Action::MoveToNextWordEnd
         );
     }
 }
