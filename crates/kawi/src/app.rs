@@ -17,16 +17,15 @@ pub struct App {
 
 impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
-        let mut editor = Editor::new(buffer);
-        if flavor == Flavor::Helix {
-            editor.apply(Action::EnterVisual);
-        }
-        Self {
+        let editor = Editor::new(buffer);
+        let mut app = Self {
             editor,
             viewport: Viewport::new(fallback_height(), fallback_width()),
             keymap: ActiveKeymap::for_flavor(flavor),
             quit_armed: false,
-        }
+        };
+        app.reset_selection_for_flavor(flavor);
+        app
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -262,7 +261,15 @@ impl App {
     fn reset_selection_for_flavor(&mut self, flavor: Flavor) {
         match flavor {
             Flavor::Vim => self.exit_visual_if_active(),
-            Flavor::Helix => self.ensure_visual(),
+            Flavor::Helix => self.collapse_to_helix_start(),
+        }
+    }
+
+    fn collapse_to_helix_start(&mut self) {
+        if self.editor.mode().is_visual() {
+            self.editor.apply(Action::CollapseSelection);
+        } else {
+            self.ensure_visual();
         }
     }
 
@@ -433,6 +440,18 @@ mod tests {
             .expect("switch");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn set_keymap_helix_collapses_range() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.run_command(Command::SetKeymap("helix".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 2), (0, 2))));
     }
 
     #[test]
