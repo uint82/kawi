@@ -106,6 +106,9 @@ impl VimKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
+            KeyCode::Char('n') => self.map_plain_or_noop(key, Action::NextMatch),
+            KeyCode::Char('N') => self.map_plain_or_noop(key, Action::PrevMatch),
+            KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
             KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
@@ -213,6 +216,7 @@ impl Keymap for VimKeymap {
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
             Mode::Visual => self.map_visual(key),
+            Mode::Search => crate::keymap::map_search_mode(key),
         }
     }
 
@@ -682,9 +686,8 @@ mod tests {
     }
 
     #[test]
-    fn pending_key_shows_armed_operator() {
+    fn pending_key_tracks_sequence() {
         let mut map = VimKeymap::new();
-        assert_eq!(map.pending_text(), None);
         map.map(plain(KeyCode::Char('d')), Mode::Normal);
         assert_eq!(map.pending_text(), Some("d"));
         map.map(plain(KeyCode::Char('d')), Mode::Normal);
@@ -764,6 +767,44 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('C')), Mode::Normal),
             Action::ChangeToEnd
+        );
+    }
+
+    #[test]
+    fn search_keys_map_in_normal() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('/')), Mode::Normal),
+            Action::EnterSearch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('n')), Mode::Normal),
+            Action::NextMatch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('N')), Mode::Normal),
+            Action::PrevMatch
+        );
+    }
+
+    #[test]
+    fn search_prompt_maps_edits() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Search),
+            Action::PushSearchChar('a')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Enter), Mode::Search),
+            Action::ConfirmSearch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Search),
+            Action::CancelSearch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Backspace), Mode::Search),
+            Action::DeleteSearchChar
         );
     }
 }

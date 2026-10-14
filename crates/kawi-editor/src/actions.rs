@@ -46,6 +46,13 @@ pub enum Action {
     DeleteCommandChar,
     ExecuteCommand,
     CancelCommand,
+    EnterSearch,
+    PushSearchChar(char),
+    DeleteSearchChar,
+    ConfirmSearch,
+    CancelSearch,
+    NextMatch,
+    PrevMatch,
     Noop,
 }
 

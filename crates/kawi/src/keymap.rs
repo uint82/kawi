@@ -137,3 +137,20 @@ fn map_command_char(key: KeyEvent, c: char) -> Action {
     }
     Action::PushCommandChar(c)
 }
+
+pub fn map_search_mode(key: KeyEvent) -> Action {
+    match key.code {
+        KeyCode::Esc => Action::CancelSearch,
+        KeyCode::Enter => Action::ConfirmSearch,
+        KeyCode::Backspace => Action::DeleteSearchChar,
+        KeyCode::Char(c) => map_search_char(key, c),
+        _ => Action::Noop,
+    }
+}
+
+fn map_search_char(key: KeyEvent, c: char) -> Action {
+    if has_ctrl_or_alt(key) {
+        return Action::Noop;
+    }
+    Action::PushSearchChar(c)
+}

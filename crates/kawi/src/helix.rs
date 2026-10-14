@@ -2,7 +2,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use kawi_editor::{Action, Mode};
 
-use crate::keymap::{has_ctrl_or_alt, map_command_mode, normalize_interrupt, Keymap};
+use crate::keymap::{
+    has_ctrl_or_alt, map_command_mode, map_search_mode, normalize_interrupt, Keymap,
+};
 
 pub struct HelixKeymap;
 
@@ -64,6 +66,9 @@ impl HelixKeymap {
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Redo),
+            KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
+            KeyCode::Char('n') => self.map_plain_or_noop(key, Action::NextMatch),
+            KeyCode::Char('N') => self.map_plain_or_noop(key, Action::PrevMatch),
             KeyCode::Char(';') => self.map_plain_or_noop(key, Action::CollapseSelection),
             KeyCode::Char(':') => self.map_plain_or_noop(key, Action::EnterCommand),
             _ => Action::Noop,
@@ -91,6 +96,7 @@ impl Keymap for HelixKeymap {
         match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Command => map_command_mode(key),
+            Mode::Search => map_search_mode(key),
             Mode::Normal | Mode::Visual => self.map_select(key, mode),
         }
     }
@@ -255,5 +261,22 @@ mod tests {
     fn operators_keep_selection() {
         let map = HelixKeymap::new();
         assert!(!map.operator_exits_visual());
+    }
+
+    #[test]
+    fn search_keys_map_in_select() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('/')), Mode::Visual),
+            Action::EnterSearch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('n')), Mode::Visual),
+            Action::NextMatch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('N')), Mode::Visual),
+            Action::PrevMatch
+        );
     }
 }

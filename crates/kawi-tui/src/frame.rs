@@ -9,6 +9,7 @@ pub struct Frame<'a> {
     pub status: &'a StatusInfo<'a>,
     pub message: Option<&'a str>,
     pub command: Option<&'a str>,
+    pub search: Option<&'a str>,
     pub showcmd: Option<&'a str>,
     pub insert_mode: bool,
     pub selection: Option<((usize, usize), (usize, usize))>,

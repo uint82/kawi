@@ -5,7 +5,7 @@ use std::io::{stdout, Stdout};
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
-use kawi_editor::{parse, Action, Command, Editor};
+use kawi_editor::{parse, Action, Command, Editor, SearchOutcome};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
@@ -84,6 +84,7 @@ impl App {
             status,
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
+            search: self.editor.search_prompt(),
             showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
@@ -205,6 +206,8 @@ impl App {
             Action::ExecuteCommand => self.handle_execute(),
             Action::Undo => self.handle_undo(),
             Action::Redo => self.handle_redo(),
+            Action::NextMatch => self.handle_next_match(),
+            Action::PrevMatch => self.handle_prev_match(),
             Action::Noop => self.handle_noop(),
             _ => self.handle_engine_action(action),
         }
@@ -254,6 +257,29 @@ impl App {
         }
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn handle_next_match(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        self.report_search_step(true);
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_prev_match(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        self.report_search_step(false);
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn report_search_step(&mut self, forward: bool) {
+        let outcome = search_step(&mut self.editor, forward);
+        match outcome {
+            SearchOutcome::Found { wrapped: false } => {}
+            SearchOutcome::Found { wrapped: true } => self.show_message(wrap_message(forward)),
+            SearchOutcome::Missing => self.show_message(missing_message(&self.editor)),
+        }
     }
 
     fn handle_noop(&mut self) -> Result<bool> {
@@ -350,6 +376,28 @@ impl App {
 
 fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
+}
+
+fn search_step(editor: &mut Editor, forward: bool) -> SearchOutcome {
+    if forward {
+        editor.search_next()
+    } else {
+        editor.search_prev()
+    }
+}
+
+fn wrap_message(forward: bool) -> String {
+    if forward {
+        return "search hit BOTTOM, continuing at TOP".to_string();
+    }
+    "search hit TOP, continuing at BOTTOM".to_string()
+}
+
+fn missing_message(editor: &Editor) -> String {
+    if editor.search_pattern().is_empty() {
+        return "E35: No previous regular expression".to_string();
+    }
+    format!("E486: Pattern not found: {}", editor.search_pattern())
 }
 
 fn save_report(filename: &str, line_count: usize, byte_count: usize) -> String {
@@ -606,5 +654,71 @@ mod tests {
             save_report("notes.txt", 3, 12),
             "\"notes.txt\" 3L, 12B written"
         );
+    }
+
+    #[test]
+    fn search_prompt_types_and_confirms() {
+        let mut app = App::new(Buffer::from_string("foo bar foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        assert_eq!(app.editor_mode(), Mode::Search);
+        app.handle_key(key(KeyCode::Char('a'))).expect("type");
+        app.handle_key(key(KeyCode::Char('r'))).expect("type");
+        assert_eq!(app.cursor_position(), (0, 5));
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 5));
+    }
+
+    #[test]
+    fn search_cancel_restores_origin() {
+        let mut app = App::new(Buffer::from_string("foo bar foo"), Flavor::Vim);
+        for _ in 0..4 {
+            app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        }
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('a'))).expect("type");
+        app.handle_key(key(KeyCode::Char('r'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("cancel");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 4));
+    }
+
+    #[test]
+    fn search_next_reports_wrap() {
+        let mut app = App::new(Buffer::from_string("ar ar ar"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('a'))).expect("type");
+        app.handle_key(key(KeyCode::Char('r'))).expect("type");
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(app.cursor_position(), (0, 3));
+        assert_eq!(app.last_message(), None);
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
+        assert_eq!(app.cursor_position(), (0, 0));
+        assert_eq!(
+            app.last_message(),
+            Some("search hit BOTTOM, continuing at TOP")
+        );
+    }
+
+    #[test]
+    fn search_without_pattern_reports() {
+        let mut app = App::new(Buffer::from_string("foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(
+            app.last_message(),
+            Some("E35: No previous regular expression")
+        );
+    }
+
+    #[test]
+    fn search_no_match_reports() {
+        let mut app = App::new(Buffer::from_string("foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('z'))).expect("type");
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(app.last_message(), Some("E486: Pattern not found: z"));
     }
 }
