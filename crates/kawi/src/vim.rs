@@ -6,19 +6,11 @@ use crate::mode::Mode;
 
 pub struct VimKeymap {
     pending_d: bool,
-    pending_colon: bool,
 }
 
 impl VimKeymap {
     pub fn new() -> Self {
-        Self {
-            pending_d: false,
-            pending_colon: false,
-        }
-    }
-
-    pub fn pending_command(&self) -> bool {
-        self.pending_colon
+        Self { pending_d: false }
     }
 
     fn map_insert(&mut self, key: KeyEvent) -> Action {
@@ -47,9 +39,6 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
-        if self.pending_colon {
-            return self.resolve_colon(key);
-        }
         if self.pending_d {
             return self.resolve_d(key);
         }
@@ -78,7 +67,7 @@ impl VimKeymap {
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('d') => self.arm_d(key),
-            KeyCode::Char(':') => self.arm_colon(key),
+            KeyCode::Char(':') => self.arm_command(key),
             _ => Action::Noop,
         }
     }
@@ -98,12 +87,11 @@ impl VimKeymap {
         Action::Noop
     }
 
-    fn arm_colon(&mut self, key: KeyEvent) -> Action {
+    fn arm_command(&mut self, key: KeyEvent) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
         }
-        self.pending_colon = true;
-        Action::Noop
+        Action::EnterCommand
     }
 
     fn resolve_d(&mut self, key: KeyEvent) -> Action {
@@ -121,25 +109,25 @@ impl VimKeymap {
         Action::DeleteLine
     }
 
-    fn resolve_colon(&mut self, key: KeyEvent) -> Action {
-        self.clear_pending();
+    fn map_command(&mut self, key: KeyEvent) -> Action {
         match key.code {
-            KeyCode::Char('w') => self.resolve_cmd(key, Action::Save),
-            KeyCode::Char('q') => self.resolve_cmd(key, Action::Quit),
+            KeyCode::Esc => Action::CancelCommand,
+            KeyCode::Enter => Action::ExecuteCommand,
+            KeyCode::Backspace => Action::DeleteCommandChar,
+            KeyCode::Char(c) => self.map_command_char(key, c),
             _ => Action::Noop,
         }
     }
 
-    fn resolve_cmd(&mut self, key: KeyEvent, action: Action) -> Action {
+    fn map_command_char(&mut self, key: KeyEvent, c: char) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
         }
-        action
+        Action::PushCommandChar(c)
     }
 
     fn clear_pending(&mut self) {
         self.pending_d = false;
-        self.pending_colon = false;
     }
 }
 
@@ -156,6 +144,7 @@ impl Keymap for VimKeymap {
         match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
+            Mode::Command => self.map_command(key),
         }
     }
 }
@@ -286,29 +275,38 @@ mod tests {
     }
 
     #[test]
-    fn colon_w_saves() {
+    fn colon_enters_command() {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char(':')), Mode::Normal),
-            Action::Noop
-        );
-        assert!(map.pending_command());
-        assert_eq!(
-            map.map(plain(KeyCode::Char('w')), Mode::Normal),
-            Action::Save
+            Action::EnterCommand
         );
     }
 
     #[test]
-    fn colon_q_quits() {
+    fn command_chars_push() {
         let mut map = VimKeymap::new();
         assert_eq!(
-            map.map(plain(KeyCode::Char(':')), Mode::Normal),
-            Action::Noop
+            map.map(plain(KeyCode::Char('w')), Mode::Command),
+            Action::PushCommandChar('w')
         );
+    }
+
+    #[test]
+    fn command_enter_executes() {
+        let mut map = VimKeymap::new();
         assert_eq!(
-            map.map(plain(KeyCode::Char('q')), Mode::Normal),
-            Action::Quit
+            map.map(plain(KeyCode::Enter), Mode::Command),
+            Action::ExecuteCommand
+        );
+    }
+
+    #[test]
+    fn command_esc_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Command),
+            Action::CancelCommand
         );
     }
 

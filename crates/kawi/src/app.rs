@@ -4,6 +4,7 @@ use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 use crate::actions::Action;
+use crate::command::{parse, Command};
 use crate::editor::Editor;
 use crate::keymap::Keymap;
 use crate::vim::VimKeymap;
@@ -64,7 +65,7 @@ impl App {
             col: self.editor.col(),
             quit_armed: self.quit_armed,
             mode: self.editor.mode().label(),
-            command_pending: self.keymap.pending_command(),
+            command: self.editor.command_prompt(),
         }
     }
 
@@ -106,6 +107,7 @@ impl App {
         match action {
             Action::Quit => Ok(self.try_quit()),
             Action::Save => self.handle_save(),
+            Action::ExecuteCommand => self.handle_execute(),
             Action::Noop => self.handle_noop(),
             _ => self.handle_engine_action(action),
         }
@@ -127,6 +129,27 @@ impl App {
         self.editor.apply(action);
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn handle_execute(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        let command = parse(self.editor.command_text());
+        self.editor.apply(Action::CancelCommand);
+        self.run_command(command)
+    }
+
+    fn run_command(&mut self, command: Command) -> Result<bool> {
+        match command {
+            Command::Write => self.handle_save(),
+            Command::Quit => Ok(self.try_quit()),
+            Command::WriteQuit => self.handle_write_quit(),
+            Command::Unknown => Ok(false),
+        }
+    }
+
+    fn handle_write_quit(&mut self) -> Result<bool> {
+        self.editor.save()?;
+        Ok(self.try_quit())
     }
 
     fn try_quit(&mut self) -> bool {

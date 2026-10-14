@@ -1,5 +1,6 @@
 mod actions;
 mod app;
+mod command;
 mod cursor;
 mod editor;
 mod keymap;

@@ -2,6 +2,7 @@
 pub enum Mode {
     Normal,
     Insert,
+    Command,
 }
 
 impl Mode {
@@ -13,6 +14,7 @@ impl Mode {
         match self {
             Self::Normal => "NORMAL",
             Self::Insert => "INSERT",
+            Self::Command => "COMMAND",
         }
     }
 }
