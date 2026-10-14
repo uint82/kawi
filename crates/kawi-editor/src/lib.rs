@@ -15,5 +15,5 @@ pub use cursor::Cursor;
 pub use editor::Editor;
 pub use mode::Mode;
 pub use register::Register;
-pub use search::SearchOutcome;
+pub use search::{MatchSpan, SearchOutcome};
 pub use selection::Selection;

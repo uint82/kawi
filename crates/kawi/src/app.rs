@@ -5,8 +5,14 @@ use std::io::{stdout, Stdout};
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
-use kawi_editor::{parse, Action, Command, Editor, SearchOutcome};
-use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
+use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
+use kawi_tui::{
+    frame::{Frame, SearchSpan},
+    render,
+    statusbar::StatusInfo,
+    terminal,
+    viewport::Viewport,
+};
 
 pub struct App {
     editor: Editor,
@@ -80,7 +86,12 @@ impl App {
             .editor
             .visible_lines(self.viewport.top(), self.viewport.height());
         let search_status = self.editor.search_status_text();
-        let frame = self.build_frame(&status, &window, search_status.as_deref());
+        let search_spans = frame_search_spans(
+            &self
+                .editor
+                .search_spans(self.viewport.top(), self.viewport.height()),
+        );
+        let frame = self.build_frame(&status, &window, search_status.as_deref(), &search_spans);
         render::draw(out, &frame)
     }
 
@@ -89,6 +100,7 @@ impl App {
         status: &'a StatusInfo<'a>,
         window: &'a [String],
         search_status: Option<&'a str>,
+        search_spans: &'a [SearchSpan],
     ) -> Frame<'a> {
         Frame {
             lines: window,
@@ -100,6 +112,7 @@ impl App {
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_status,
+            search_spans,
             showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
@@ -411,6 +424,19 @@ impl App {
 
 fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
+}
+
+fn frame_search_spans(spans: &[MatchSpan]) -> Vec<SearchSpan> {
+    spans.iter().map(frame_search_span).collect()
+}
+
+fn frame_search_span(span: &MatchSpan) -> SearchSpan {
+    SearchSpan {
+        row: span.row,
+        start: span.start,
+        end: span.end,
+        current: span.current,
+    }
 }
 
 fn search_step(editor: &mut Editor, forward: bool) -> SearchOutcome {

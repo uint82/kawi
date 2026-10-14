@@ -3,6 +3,7 @@ use crossterm::{
     cursor::SetCursorStyle,
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
+    style::ResetColor,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen},
 };
 use std::io::stdout;
@@ -25,6 +26,7 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = execute!(stdout(), DisableMouseCapture);
         let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
+        let _ = execute!(stdout(), ResetColor);
         let _ = execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }

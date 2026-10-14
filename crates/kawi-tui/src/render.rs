@@ -2,24 +2,37 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
-    style::{Attribute, SetAttribute},
+    style::{Attribute, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{Clear, ClearType},
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::Frame;
+use crate::frame::{Frame, SearchSpan};
 use crate::statusbar::{draw_status, StatusInfo};
+use crate::theme::{BaseColors, MatchColors, Theme};
 use crate::viewport::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let theme = Theme::default();
+    apply_base_colors(out, &theme)?;
     clear_all(out)?;
     draw_visible_lines(out, frame.lines, frame.viewport)?;
-    draw_highlight(out, frame)?;
+    draw_highlight(out, frame, &theme)?;
     draw_status_row(out, frame.status, frame.viewport)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
+    Ok(())
+}
+
+fn apply_base_colors(out: &mut Stdout, theme: &Theme) -> Result<()> {
+    execute!(
+        out,
+        SetForegroundColor(theme.base.foreground),
+        SetBackgroundColor(theme.base.background)
+    )
+    .context("apply base colors")?;
     Ok(())
 }
 
@@ -49,6 +62,14 @@ pub struct HighlightSpan {
     pub screen_row: usize,
     pub from: usize,
     pub text: String,
+    pub tint: Tint,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tint {
+    Selection,
+    SearchMatch,
+    SearchCurrent,
 }
 
 pub fn highlight_spans(
@@ -113,26 +134,112 @@ fn selected_segment(
         screen_row,
         from,
         text: slice_cols(text, from, to),
+        tint: Tint::Selection,
     })
 }
 
-fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
+pub fn search_highlight_spans(
+    spans: &[SearchSpan],
+    window: &[String],
+    top: usize,
+    viewport: &Viewport,
+) -> Vec<HighlightSpan> {
+    spans
+        .iter()
+        .filter_map(|span| search_segment(span, window, top, viewport))
+        .collect()
+}
+
+fn search_segment(
+    span: &SearchSpan,
+    window: &[String],
+    top: usize,
+    viewport: &Viewport,
+) -> Option<HighlightSpan> {
+    if span.row < top {
+        return None;
+    }
+    let screen_row = span.row.saturating_sub(top);
+    let text = window.get(screen_row)?;
+    if screen_row >= viewport.height() {
+        return None;
+    }
+    let width = viewport.width();
+    let from = span.start.min(width);
+    let to = span.end.min(width);
+    if from >= to {
+        return None;
+    }
+    Some(HighlightSpan {
+        screen_row,
+        from,
+        text: slice_cols(text, from, to),
+        tint: search_tint(span.current),
+    })
+}
+
+fn search_tint(current: bool) -> Tint {
+    if current {
+        return Tint::SearchCurrent;
+    }
+    Tint::SearchMatch
+}
+
+fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> {
+    for span in search_highlight_spans(
+        frame.search_spans,
+        frame.lines,
+        frame.viewport.top(),
+        frame.viewport,
+    ) {
+        paint_span(out, &span, theme)?;
+    }
     for span in highlight_spans(
         frame.lines,
         frame.viewport.top(),
         frame.selection,
         frame.viewport,
     ) {
-        paint_span(out, &span)?;
+        paint_span(out, &span, theme)?;
     }
     Ok(())
 }
 
-fn paint_span(out: &mut Stdout, span: &HighlightSpan) -> Result<()> {
+fn paint_span(out: &mut Stdout, span: &HighlightSpan, theme: &Theme) -> Result<()> {
     move_to_segment(out, span.from, span.screen_row)?;
+    match span.tint {
+        Tint::Selection => paint_reversed(out, &span.text),
+        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, &theme.base),
+        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, &theme.base),
+    }
+}
+
+fn paint_reversed(out: &mut Stdout, text: &str) -> Result<()> {
     enable_reverse(out)?;
-    write_segment(out, &span.text)?;
+    write_segment(out, text)?;
     disable_reverse(out)?;
+    Ok(())
+}
+
+fn paint_tinted(
+    out: &mut Stdout,
+    text: &str,
+    colors: &MatchColors,
+    base: &BaseColors,
+) -> Result<()> {
+    execute!(
+        out,
+        SetForegroundColor(colors.foreground),
+        SetBackgroundColor(colors.background)
+    )
+    .context("tint span")?;
+    write_segment(out, text)?;
+    execute!(
+        out,
+        SetForegroundColor(base.foreground),
+        SetBackgroundColor(base.background)
+    )
+    .context("restore base colors")?;
     Ok(())
 }
 
@@ -470,6 +577,59 @@ mod tests {
     fn layout_prefers_message_over_search_status() {
         let layout = layout_message_row(None, None, Some("saved"), Some("/ar [1/3]"), None, 20);
         assert_eq!(layout.line, "saved");
+    }
+
+    #[test]
+    fn search_spans_tint_current() {
+        let lines = lines_of("ar ar");
+        let spans = vec![
+            SearchSpan {
+                row: 0,
+                start: 0,
+                end: 2,
+                current: true,
+            },
+            SearchSpan {
+                row: 0,
+                start: 3,
+                end: 5,
+                current: false,
+            },
+        ];
+        let painted = search_highlight_spans(&spans, &lines, 0, &viewport());
+        assert_eq!(painted.len(), 2);
+        assert_eq!(painted[0].tint, Tint::SearchCurrent);
+        assert_eq!(painted[0].text, "ar");
+        assert_eq!(painted[1].tint, Tint::SearchMatch);
+        assert_eq!(painted[1].from, 3);
+    }
+
+    #[test]
+    fn search_spans_skip_outside_window() {
+        let lines = lines_of("ar\nar");
+        let spans = vec![
+            SearchSpan {
+                row: 0,
+                start: 0,
+                end: 2,
+                current: false,
+            },
+            SearchSpan {
+                row: 5,
+                start: 0,
+                end: 2,
+                current: false,
+            },
+            SearchSpan {
+                row: 1,
+                start: 2,
+                end: 2,
+                current: false,
+            },
+        ];
+        let painted = search_highlight_spans(&spans, &lines, 0, &viewport());
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].screen_row, 0);
     }
 
     #[test]

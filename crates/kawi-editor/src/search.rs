@@ -9,6 +9,70 @@ pub enum SearchOutcome {
     Missing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MatchSpan {
+    pub row: usize,
+    pub start: usize,
+    pub end: usize,
+    pub current: bool,
+}
+
+pub fn collect_matches(
+    buffer: &Buffer,
+    pattern: &str,
+    start_row: usize,
+    end_row: usize,
+) -> Vec<MatchSpan> {
+    let query = Query::new(pattern);
+    if query.is_empty() {
+        return Vec::new();
+    }
+    if query.needs_folded_lines() {
+        return lines_collect_matches(buffer, &query, start_row, end_row);
+    }
+    if start_row >= end_row {
+        return Vec::new();
+    }
+    let slice = buffer.rope_slice();
+    let from = position_byte(&slice, buffer, start_row, 0);
+    let end = end_row_byte(&slice, buffer, end_row);
+    matcher::spans_in_range(&slice, &query, from, end)
+        .into_iter()
+        .map(|(start_byte, end_byte)| span_of_bytes(&slice, buffer, start_byte, end_byte))
+        .collect()
+}
+
+fn end_row_byte(slice: &RopeSlice, buffer: &Buffer, end_row: usize) -> usize {
+    if end_row >= buffer.line_count() {
+        return slice.len_bytes();
+    }
+    position_byte(slice, buffer, end_row, 0)
+}
+
+fn span_of_bytes(
+    slice: &RopeSlice,
+    buffer: &Buffer,
+    start_byte: usize,
+    end_byte: usize,
+) -> MatchSpan {
+    let (row, start) = position_of_byte(slice, buffer, start_byte);
+    let (end_row, end) = position_of_byte(slice, buffer, end_byte);
+    let end = span_end_col(buffer, row, end_row, end);
+    MatchSpan {
+        row,
+        start,
+        end,
+        current: false,
+    }
+}
+
+fn span_end_col(buffer: &Buffer, row: usize, end_row: usize, end: usize) -> usize {
+    if end_row == row {
+        return end.min(buffer.line_len(row));
+    }
+    buffer.line_len(row)
+}
+
 pub fn find_first_from(
     buffer: &Buffer,
     pattern: &str,
@@ -302,6 +366,33 @@ fn lines_count_matches(buffer: &Buffer, query: &Query) -> usize {
         .sum()
 }
 
+fn lines_collect_matches(
+    buffer: &Buffer,
+    query: &Query,
+    start_row: usize,
+    end_row: usize,
+) -> Vec<MatchSpan> {
+    buffer
+        .line_slices()
+        .enumerate()
+        .skip(start_row)
+        .take(end_row.saturating_sub(start_row))
+        .flat_map(|(row, slice)| {
+            let text = slice_text(&slice);
+            let width = text.chars().count();
+            query
+                .spans_in_line(&text)
+                .into_iter()
+                .map(move |(start, end)| MatchSpan {
+                    row,
+                    start,
+                    end: end.min(width),
+                    current: false,
+                })
+        })
+        .collect()
+}
+
 fn lines_matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
     let mut total: usize = 0;
     for (r, slice) in buffer.line_slices().enumerate().take(row.saturating_add(1)) {
@@ -427,5 +518,49 @@ mod tests {
         let lines = lines_of("CAFÉ café");
         assert_eq!(count_matches(&lines, "café"), 2);
         assert_eq!(match_rank(&lines, "café", 0, 5, 2), 2);
+    }
+
+    #[test]
+    fn collects_viewport_spans() {
+        let lines = lines_of("ar ar\nar");
+        assert_eq!(
+            collect_matches(&lines, "ar", 0, 2),
+            vec![
+                MatchSpan {
+                    row: 0,
+                    start: 0,
+                    end: 2,
+                    current: false,
+                },
+                MatchSpan {
+                    row: 0,
+                    start: 3,
+                    end: 5,
+                    current: false,
+                },
+                MatchSpan {
+                    row: 1,
+                    start: 0,
+                    end: 2,
+                    current: false,
+                },
+            ]
+        );
+        assert!(collect_matches(&lines, "ar", 1, 1).is_empty());
+        assert!(collect_matches(&lines, "", 0, 2).is_empty());
+    }
+
+    #[test]
+    fn collects_unicode_spans() {
+        let lines = lines_of("CAFÉ x");
+        assert_eq!(
+            collect_matches(&lines, "café", 0, 1),
+            vec![MatchSpan {
+                row: 0,
+                start: 0,
+                end: 4,
+                current: false,
+            }]
+        );
     }
 }
