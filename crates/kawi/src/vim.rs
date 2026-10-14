@@ -11,6 +11,8 @@ fn is_redo_key(key: KeyEvent) -> bool {
 const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("dd", Action::DeleteLine),
     ("dw", Action::DeleteWord),
+    ("db", Action::DeleteWordBackward),
+    ("de", Action::DeleteWordEnd),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
     ("yy", Action::YankLine),
@@ -634,6 +636,32 @@ mod tests {
     }
 
     #[test]
+    fn d_b_deletes_back() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('b')), Mode::Normal),
+            Action::DeleteWordBackward
+        );
+    }
+
+    #[test]
+    fn d_e_deletes_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::DeleteWordEnd
+        );
+    }
+
+    #[test]
     fn pending_key_shows_armed_operator() {
         let mut map = VimKeymap::new();
         assert_eq!(map.pending_text(), None);
@@ -667,6 +695,8 @@ mod tests {
     fn sequence_table_resolves() {
         assert_eq!(sequence_action("dd"), Some(Action::DeleteLine));
         assert_eq!(sequence_action("dw"), Some(Action::DeleteWord));
+        assert_eq!(sequence_action("db"), Some(Action::DeleteWordBackward));
+        assert_eq!(sequence_action("de"), Some(Action::DeleteWordEnd));
         assert_eq!(sequence_action("dx"), None);
     }
 
