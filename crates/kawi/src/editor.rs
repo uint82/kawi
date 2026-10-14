@@ -79,6 +79,7 @@ impl Editor {
             Action::OpenLineBelow => self.open_line_below(),
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
+            Action::Append => self.append(),
             Action::EnterCommand => self.enter_command(),
             Action::PushCommandChar(c) => self.push_command_char(c),
             Action::DeleteCommandChar => self.delete_command_char(),
@@ -157,7 +158,21 @@ impl Editor {
     }
 
     fn exit_insert(&mut self) {
+        if self.mode == Mode::Insert {
+            self.retreat_after_insert();
+        }
         self.mode = Mode::Normal;
+    }
+
+    fn retreat_after_insert(&mut self) {
+        if self.cursor.col() > 0 {
+            self.cursor.move_left();
+        }
+    }
+
+    fn append(&mut self) {
+        self.cursor.move_right();
+        self.enter_insert();
     }
 
     fn enter_command(&mut self) {
@@ -242,6 +257,33 @@ mod tests {
         assert_eq!(e.mode(), Mode::Insert);
         e.apply(Action::ExitInsert);
         assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn exit_insert_steps_back() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ExitInsert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn append_then_esc_returns_to_origin() {
+        let mut e = editor_with("Sbcdef");
+        e.apply(Action::Append);
+        assert_eq!((e.row(), e.col()), (0, 1));
+        e.apply(Action::ExitInsert);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn exit_insert_at_start_stays() {
+        let mut e = editor_with("abc");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::ExitInsert);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
@@ -364,5 +406,31 @@ mod tests {
         e.apply(Action::CancelCommand);
         assert_eq!(e.mode(), Mode::Normal);
         assert_eq!(e.command_prompt(), None);
+    }
+
+    #[test]
+    fn append_steps_right_and_inserts() {
+        let mut e = editor_with("ab");
+        e.apply(Action::Append);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn append_at_end_reaches_past_last() {
+        let mut e = editor_with("ab");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Append);
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn append_on_empty_stays_zero() {
+        let mut e = editor_with("");
+        e.apply(Action::Append);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
     }
 }
