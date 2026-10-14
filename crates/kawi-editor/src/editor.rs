@@ -17,8 +17,16 @@ pub struct Editor {
     command: CommandLine,
     search: CommandLine,
     search_origin: Option<(usize, usize)>,
+    search_status: Option<SearchStatus>,
     selection: Option<Selection>,
     register: Register,
+}
+
+struct SearchStatus {
+    pattern: String,
+    index: usize,
+    total: usize,
+    revision: u64,
 }
 
 impl Editor {
@@ -30,6 +38,7 @@ impl Editor {
             command: CommandLine::new(),
             search: CommandLine::new(),
             search_origin: None,
+            search_status: None,
             selection: None,
             register: Register::new(),
         }
@@ -91,6 +100,14 @@ impl Editor {
 
     pub fn search_pattern(&self) -> &str {
         self.search.text()
+    }
+
+    pub fn search_status_text(&self) -> Option<String> {
+        let status = self.search_status.as_ref()?;
+        if status.revision != self.buffer.revision() {
+            return None;
+        }
+        Some(status_line(self.search.text(), status.index, status.total))
     }
 
     pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
@@ -159,7 +176,9 @@ impl Editor {
             Action::EnterSearch => self.enter_search(),
             Action::PushSearchChar(c) => self.push_search_char(c),
             Action::DeleteSearchChar => self.delete_search_char(),
-            Action::ConfirmSearch => self.confirm_search(),
+            Action::ConfirmSearch => {
+                let _ = self.confirm_search();
+            }
             Action::CancelSearch => self.cancel_search(),
             Action::NextMatch => self.next_match(),
             Action::PrevMatch => self.prev_match(),
@@ -639,6 +658,7 @@ impl Editor {
     fn enter_search(&mut self) {
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
+        self.search_status = None;
         self.mode = Mode::Search;
     }
 
@@ -673,10 +693,19 @@ impl Editor {
         }
     }
 
-    fn confirm_search(&mut self) {
+    pub fn confirm_search(&mut self) -> Option<SearchOutcome> {
         if self.mode == Mode::Search {
             self.mode = Mode::Normal;
         }
+        if self.search.text().is_empty() {
+            self.search_status = None;
+            return None;
+        }
+        self.refresh_search_status();
+        if self.search_status.is_some() {
+            return Some(SearchOutcome::Found { wrapped: false });
+        }
+        Some(SearchOutcome::Missing)
     }
 
     fn cancel_search(&mut self) {
@@ -684,7 +713,40 @@ impl Editor {
             self.cursor.set_position(row, col);
         }
         self.search_origin = None;
+        self.search_status = None;
         self.mode = Mode::Normal;
+    }
+
+    fn refresh_search_status(&mut self) {
+        let pattern = self.search.text().to_string();
+        if pattern.is_empty() {
+            self.search_status = None;
+            return;
+        }
+        let revision = self.buffer.revision();
+        let total = match &self.search_status {
+            Some(status) if status.pattern == pattern && status.revision == revision => {
+                status.total
+            }
+            _ => search::count_matches(&self.buffer, &pattern),
+        };
+        if total == 0 {
+            self.search_status = None;
+            return;
+        }
+        let index = search::match_rank(
+            &self.buffer,
+            &pattern,
+            self.cursor.row(),
+            self.cursor.col(),
+            total,
+        );
+        self.search_status = Some(SearchStatus {
+            pattern,
+            index,
+            total,
+            revision,
+        });
     }
 
     pub fn search_next(&mut self) -> SearchOutcome {
@@ -722,6 +784,7 @@ impl Editor {
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
         self.cursor.set_position(row, col);
+        self.refresh_search_status();
         SearchOutcome::Found { wrapped }
     }
 
@@ -780,6 +843,10 @@ fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize
     } else {
         (second, first)
     }
+}
+
+fn status_line(pattern: &str, index: usize, total: usize) -> String {
+    format!("/{pattern} [{index}/{total}]")
 }
 
 fn is_tracking(action: Action) -> bool {
@@ -1102,6 +1169,94 @@ mod tests {
         let mut e = editor_with("foo");
         assert_eq!(e.search_next(), SearchOutcome::Missing);
         assert_eq!(e.search_prev(), SearchOutcome::Missing);
+    }
+
+    #[test]
+    fn search_confirm_shows_status() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        assert_eq!(
+            e.confirm_search(),
+            Some(SearchOutcome::Found { wrapped: false })
+        );
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/1]"));
+    }
+
+    #[test]
+    fn search_confirm_empty_is_silent() {
+        let mut e = editor_with("foo");
+        e.apply(Action::EnterSearch);
+        assert_eq!(e.confirm_search(), None);
+        assert_eq!(e.search_status_text(), None);
+    }
+
+    #[test]
+    fn search_confirm_without_match_is_missing() {
+        let mut e = editor_with("foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('z'));
+        assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
+        assert_eq!(e.search_status_text(), None);
+    }
+
+    #[test]
+    fn search_next_refreshes_status() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+        assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
+    }
+
+    #[test]
+    fn search_status_hides_after_edit() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('x'));
+        assert_eq!(e.search_status_text(), None);
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+    }
+
+    #[test]
+    fn search_status_recaches_new_pattern() {
+        let mut e = editor_with("ar foo ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/2]"));
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('f'));
+        e.apply(Action::PushSearchChar('o'));
+        e.apply(Action::PushSearchChar('o'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+        assert_eq!(e.search_next(), SearchOutcome::Missing);
+        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+    }
+
+    #[test]
+    fn search_cancel_clears_status() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        e.apply(Action::EnterSearch);
+        e.apply(Action::CancelSearch);
+        assert_eq!(e.search_status_text(), None);
     }
 
     #[test]

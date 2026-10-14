@@ -8,6 +8,7 @@ pub struct Buffer {
     rope: Rope,
     pub path: Option<String>,
     history: History,
+    revision: u64,
 }
 
 impl Buffer {
@@ -16,6 +17,7 @@ impl Buffer {
             rope: Rope::from_str(s),
             path: None,
             history: History::new(),
+            revision: 0,
         }
     }
 
@@ -25,7 +27,16 @@ impl Buffer {
             rope: Rope::from_str(&text),
             path: Some(path.to_string()),
             history: History::new(),
+            revision: 0,
         })
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    fn touch(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub fn len(&self) -> usize {
@@ -138,27 +149,41 @@ impl Buffer {
     }
 
     pub fn undo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        self.history.undo(&mut self.rope, row, col)
+        let restored = self.history.undo(&mut self.rope, row, col);
+        if restored.is_some() {
+            self.touch();
+        }
+        restored
     }
 
     pub fn redo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        self.history.redo(&mut self.rope, row, col)
+        let restored = self.history.redo(&mut self.rope, row, col);
+        if restored.is_some() {
+            self.touch();
+        }
+        restored
     }
 
     pub fn redo_keep_cursor(&mut self, row: usize, col: usize) -> bool {
-        self.history.redo(&mut self.rope, row, col).is_some()
+        let restored = self.history.redo(&mut self.rope, row, col).is_some();
+        if restored {
+            self.touch();
+        }
+        restored
     }
 
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
         self.ensure_line_exists(row);
         let idx = self.position_to_char(row, col);
         self.rope.insert(idx, &ch.to_string());
+        self.touch();
     }
 
     pub fn insert_newline(&mut self, row: usize, col: usize) {
         self.ensure_line_exists(row);
         let idx = self.position_to_char(row, col);
         self.rope.insert(idx, "\n");
+        self.touch();
     }
 
     pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
@@ -168,6 +193,7 @@ impl Buffer {
         if col > 0 {
             let idx = self.position_to_char(row, col);
             self.rope.remove(idx.saturating_sub(1)..idx);
+            self.touch();
             return (row, col.saturating_sub(1));
         }
         self.delete_at_line_start(row)
@@ -181,6 +207,7 @@ impl Buffer {
             let idx = self.position_to_char(row, col);
             self.rope
                 .remove(idx..idx.saturating_add(1).min(self.rope.len_chars()));
+            self.touch();
             return;
         }
         self.delete_at_line_end(row);
@@ -189,6 +216,7 @@ impl Buffer {
     pub fn delete_line(&mut self, row: usize) {
         if self.len() <= 1 {
             self.rope.remove(0..self.rope.len_chars());
+            self.touch();
             return;
         }
         if row >= self.len() {
@@ -196,6 +224,7 @@ impl Buffer {
         }
         let (start, end) = self.line_span(row);
         self.rope.remove(start..end);
+        self.touch();
     }
 
     pub fn line_text(&self, row: usize) -> String {
@@ -208,7 +237,10 @@ impl Buffer {
         }
         let start = self.line_start_char(row);
         let end = start.saturating_add(self.line_len(row));
-        self.rope.remove(start..end);
+        if start < end {
+            self.rope.remove(start..end);
+            self.touch();
+        }
     }
 
     pub fn insert_start_col(&self, row: usize) -> usize {
@@ -227,6 +259,7 @@ impl Buffer {
             composed.push_str(line);
         }
         self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.touch();
         row.saturating_add(1)
     }
 
@@ -275,6 +308,7 @@ impl Buffer {
             .min(self.rope.len_chars());
         if start < end {
             self.rope.remove(start..end);
+            self.touch();
         }
     }
 
@@ -293,10 +327,14 @@ impl Buffer {
         let end = self.position_to_char(end_row, end_col);
         if start < end {
             self.rope.remove(start..end);
+            self.touch();
         }
     }
 
     pub fn paste_after(&mut self, row: usize, col: usize, text: &str) -> (usize, usize) {
+        if !text.is_empty() {
+            self.touch();
+        }
         let fragments: Vec<&str> = text.split('\n').collect();
         match fragments.as_slice() {
             [first] => self.paste_single(row, col, first),
@@ -423,6 +461,7 @@ impl Buffer {
         let prev_width = self.line_len(prev);
         let idx = self.line_start_char(row);
         self.rope.remove(idx.saturating_sub(1)..idx);
+        self.touch();
         (prev, prev_width)
     }
 
@@ -433,6 +472,7 @@ impl Buffer {
         let end = self.line_end_char(row);
         self.rope
             .remove(end..end.saturating_add(1).min(self.rope.len_chars()));
+        self.touch();
     }
 
     fn line_span(&self, row: usize) -> (usize, usize) {
@@ -795,5 +835,42 @@ mod tests {
         let b = Buffer::from_string("ab\ncd\n");
         assert_eq!(b.position_of_char(b.total_chars()), (2, 0));
         assert_eq!(b.position_of_char(0), (0, 0));
+    }
+
+    #[test]
+    fn revision_starts_at_zero() {
+        let b = Buffer::from_string("ab");
+        assert_eq!(b.revision(), 0);
+    }
+
+    #[test]
+    fn revision_bumps_on_edit() {
+        let mut b = Buffer::from_string("ab");
+        b.insert_char(0, 2, 'c');
+        assert_eq!(b.revision(), 1);
+        b.delete_backward(0, 3);
+        assert_eq!(b.revision(), 2);
+    }
+
+    #[test]
+    fn revision_holds_without_edit() {
+        let mut b = Buffer::from_string("ab");
+        let _ = b.line(0);
+        let _ = b.position_of_char(1);
+        assert_eq!(b.revision(), 0);
+        b.checkpoint(0, 0);
+        assert_eq!(b.revision(), 0);
+    }
+
+    #[test]
+    fn revision_bumps_on_undo_restoring() {
+        let mut b = Buffer::from_string("ab");
+        b.checkpoint(0, 0);
+        b.insert_char(0, 2, 'c');
+        let before = b.revision();
+        assert!(b.undo(0, 0).is_some());
+        assert_eq!(b.revision(), before.saturating_add(1));
+        assert!(b.redo(0, 0).is_some());
+        assert_eq!(b.revision(), before.saturating_add(2));
     }
 }

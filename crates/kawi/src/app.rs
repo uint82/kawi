@@ -57,6 +57,11 @@ impl App {
         self.message.as_deref()
     }
 
+    #[cfg(test)]
+    pub fn search_status_line(&self) -> Option<String> {
+        self.editor.search_status_text()
+    }
+
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
@@ -74,11 +79,17 @@ impl App {
         let window = self
             .editor
             .visible_lines(self.viewport.top(), self.viewport.height());
-        let frame = self.build_frame(&status, &window);
+        let search_status = self.editor.search_status_text();
+        let frame = self.build_frame(&status, &window, search_status.as_deref());
         render::draw(out, &frame)
     }
 
-    fn build_frame<'a>(&'a self, status: &'a StatusInfo<'a>, window: &'a [String]) -> Frame<'a> {
+    fn build_frame<'a>(
+        &'a self,
+        status: &'a StatusInfo<'a>,
+        window: &'a [String],
+        search_status: Option<&'a str>,
+    ) -> Frame<'a> {
         Frame {
             lines: window,
             col: self.editor.col(),
@@ -88,6 +99,7 @@ impl App {
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
+            search_status,
             showcmd: self.keymap.pending_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
@@ -96,6 +108,10 @@ impl App {
 
     fn show_message(&mut self, text: String) {
         self.message = Some(text);
+    }
+
+    fn clear_message(&mut self) {
+        self.message = None;
     }
 
     fn status_snapshot(&self) -> StatusInfo<'_> {
@@ -211,6 +227,7 @@ impl App {
             Action::Redo => self.handle_redo(),
             Action::NextMatch => self.handle_next_match(),
             Action::PrevMatch => self.handle_prev_match(),
+            Action::ConfirmSearch => self.handle_confirm_search(),
             Action::Noop => self.handle_noop(),
             _ => self.handle_engine_action(action),
         }
@@ -276,12 +293,27 @@ impl App {
         Ok(false)
     }
 
+    fn handle_confirm_search(&mut self) -> Result<bool> {
+        self.disarm_quit();
+        let outcome = self.editor.confirm_search();
+        self.report_outcome(outcome, true);
+        self.reveal_cursor();
+        Ok(false)
+    }
+
     fn report_search_step(&mut self, forward: bool) {
         let outcome = search_step(&mut self.editor, forward);
+        self.report_outcome(Some(outcome), forward);
+    }
+
+    fn report_outcome(&mut self, outcome: Option<SearchOutcome>, forward: bool) {
         match outcome {
-            SearchOutcome::Found { wrapped: false } => {}
-            SearchOutcome::Found { wrapped: true } => self.show_message(wrap_message(forward)),
-            SearchOutcome::Missing => self.show_message(missing_message(&self.editor)),
+            None => {}
+            Some(SearchOutcome::Found { wrapped: false }) => self.clear_message(),
+            Some(SearchOutcome::Found { wrapped: true }) => {
+                self.show_message(wrap_message(forward))
+            }
+            Some(SearchOutcome::Missing) => self.show_message(missing_message(&self.editor)),
         }
     }
 
@@ -723,5 +755,48 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         app.handle_key(key(KeyCode::Char('n'))).expect("next");
         assert_eq!(app.last_message(), Some("E486: Pattern not found: z"));
+    }
+
+    #[test]
+    fn search_confirm_keeps_status_without_message() {
+        let mut app = App::new(Buffer::from_string("foo bar foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('a'))).expect("type");
+        app.handle_key(key(KeyCode::Char('r'))).expect("type");
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 5));
+        assert_eq!(app.last_message(), None);
+        assert_eq!(app.search_status_line().as_deref(), Some("/ar [1/1]"));
+    }
+
+    #[test]
+    fn search_confirm_without_match_reports() {
+        let mut app = App::new(Buffer::from_string("foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('z'))).expect("type");
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        assert_eq!(app.last_message(), Some("E486: Pattern not found: z"));
+        assert_eq!(app.search_status_line(), None);
+    }
+
+    #[test]
+    fn search_next_restores_status_after_wrap() {
+        let mut app = App::new(Buffer::from_string("ar ar ar"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        app.handle_key(key(KeyCode::Char('a'))).expect("type");
+        app.handle_key(key(KeyCode::Char('r'))).expect("type");
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
+        assert_eq!(
+            app.last_message(),
+            Some("search hit BOTTOM, continuing at TOP")
+        );
+        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(app.last_message(), None);
+        assert_eq!(app.cursor_position(), (0, 3));
+        assert_eq!(app.search_status_line().as_deref(), Some("/ar [2/3]"));
     }
 }

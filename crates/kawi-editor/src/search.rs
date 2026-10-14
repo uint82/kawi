@@ -101,6 +101,35 @@ fn wrapped_last(
         .map(|byte| position_of_byte(slice, buffer, byte))
 }
 
+pub fn count_matches(buffer: &Buffer, pattern: &str) -> usize {
+    let query = Query::new(pattern);
+    if query.is_empty() {
+        return 0;
+    }
+    if query.needs_folded_lines() {
+        return lines_count_matches(buffer, &query);
+    }
+    let slice = buffer.rope_slice();
+    matcher::count_in_range(&slice, &query, 0, slice.len_bytes())
+}
+
+pub fn match_rank(buffer: &Buffer, pattern: &str, row: usize, col: usize, total: usize) -> usize {
+    let query = Query::new(pattern);
+    if query.is_empty() || total == 0 {
+        return 0;
+    }
+    let before = matches_before(buffer, &query, row, col);
+    before.saturating_add(1).min(total)
+}
+
+fn matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
+    if query.needs_folded_lines() {
+        return lines_matches_before(buffer, query, row, col);
+    }
+    let slice = buffer.rope_slice();
+    matcher::count_in_range(&slice, query, 0, position_byte(&slice, buffer, row, col))
+}
+
 fn position_byte(slice: &RopeSlice, buffer: &Buffer, row: usize, col: usize) -> usize {
     let total = buffer.total_chars();
     slice.char_to_byte(buffer.char_index_of(row, col).min(total))
@@ -266,6 +295,35 @@ fn lines_scan_backward_wrapped(
         .and_then(|line| query.last_in_line(&line).map(|c| (row, c)))
 }
 
+fn lines_count_matches(buffer: &Buffer, query: &Query) -> usize {
+    buffer
+        .line_slices()
+        .map(|slice| query.count_in_line(&slice_text(&slice)))
+        .sum()
+}
+
+fn lines_matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
+    let mut total: usize = 0;
+    for (r, slice) in buffer.line_slices().enumerate().take(row.saturating_add(1)) {
+        let text = slice_text(&slice);
+        total = total.saturating_add(lines_row_before(&text, query, r, row, col));
+    }
+    total
+}
+
+fn lines_row_before(
+    text: &str,
+    query: &Query,
+    line_row: usize,
+    origin_row: usize,
+    origin_col: usize,
+) -> usize {
+    if line_row == origin_row {
+        return query.count_before(text, origin_col);
+    }
+    query.count_in_line(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,5 +397,35 @@ mod tests {
         let lines = lines_of("foo\nbar");
         assert_eq!(find_first_from(&lines, "ba", 0, 0), Some((1, 0)));
         assert_eq!(find_prev(&lines, "fo", 1, 2), Some(((0, 0), false)));
+    }
+
+    #[test]
+    fn counts_all_matches() {
+        let lines = lines_of("ar ar\nar");
+        assert_eq!(count_matches(&lines, "ar"), 3);
+        assert_eq!(count_matches(&lines, ""), 0);
+        assert_eq!(count_matches(&lines, "zzz"), 0);
+    }
+
+    #[test]
+    fn ranks_match_at_cursor() {
+        let lines = lines_of("ar ar\nar");
+        assert_eq!(match_rank(&lines, "ar", 0, 0, 3), 1);
+        assert_eq!(match_rank(&lines, "ar", 0, 3, 3), 2);
+        assert_eq!(match_rank(&lines, "ar", 1, 0, 3), 3);
+    }
+
+    #[test]
+    fn rank_clamps_to_total() {
+        let lines = lines_of("ar ar");
+        assert_eq!(match_rank(&lines, "ar", 0, 5, 2), 2);
+        assert_eq!(match_rank(&lines, "", 0, 0, 0), 0);
+    }
+
+    #[test]
+    fn counts_unicode_pattern() {
+        let lines = lines_of("CAFÉ café");
+        assert_eq!(count_matches(&lines, "café"), 2);
+        assert_eq!(match_rank(&lines, "café", 0, 5, 2), 2);
     }
 }
