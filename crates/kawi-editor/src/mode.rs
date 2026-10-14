@@ -3,6 +3,7 @@ pub enum Mode {
     Normal,
     Insert,
     Command,
+    Visual,
 }
 
 impl Mode {
@@ -15,6 +16,7 @@ impl Mode {
             Self::Normal => "NORMAL",
             Self::Insert => "INSERT",
             Self::Command => "COMMAND",
+            Self::Visual => "VISUAL",
         }
     }
 }
@@ -36,5 +38,10 @@ mod tests {
     #[test]
     fn insert_labels_insert() {
         assert_eq!(Mode::Insert.label(), "INSERT");
+    }
+
+    #[test]
+    fn visual_labels_visual() {
+        assert_eq!(Mode::Visual.label(), "VISUAL");
     }
 }

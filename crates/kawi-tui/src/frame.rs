@@ -1,0 +1,12 @@
+use crate::statusbar::StatusInfo;
+use crate::viewport::Viewport;
+
+pub struct Frame<'a> {
+    pub lines: &'a [String],
+    pub col: usize,
+    pub row: usize,
+    pub viewport: &'a Viewport,
+    pub status: &'a StatusInfo<'a>,
+    pub insert_mode: bool,
+    pub selection: Option<((usize, usize), (usize, usize))>,
+}

@@ -5,12 +5,14 @@ use crate::actions::Action;
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
+use crate::selection::Selection;
 
 pub struct Editor {
     buffer: Buffer,
     cursor: Cursor,
     mode: Mode,
     command: CommandLine,
+    selection: Option<Selection>,
 }
 
 impl Editor {
@@ -20,6 +22,7 @@ impl Editor {
             cursor: Cursor::new(),
             mode: Mode::Normal,
             command: CommandLine::new(),
+            selection: None,
         }
     }
 
@@ -59,6 +62,12 @@ impl Editor {
         self.command.text()
     }
 
+    pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
+        self.selection
+            .as_ref()
+            .map(|selection| (selection.start(), selection.end()))
+    }
+
     pub fn save(&mut self) -> Result<()> {
         self.buffer.save()
     }
@@ -85,6 +94,8 @@ impl Editor {
             Action::EnterInsert => self.enter_insert(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
+            Action::EnterVisual => self.enter_visual(),
+            Action::ExitVisual => self.exit_visual(),
             Action::EnterCommand => self.enter_command(),
             Action::PushCommandChar(c) => self.push_command_char(c),
             Action::DeleteCommandChar => self.delete_command_char(),
@@ -94,6 +105,7 @@ impl Editor {
             Action::Quit | Action::Noop => self.noop(),
         }
         self.normalize_cursor();
+        self.sync_head();
     }
 
     fn move_up(&mut self) {
@@ -235,6 +247,22 @@ impl Editor {
     fn append(&mut self) {
         self.cursor.move_right();
         self.enter_insert();
+    }
+
+    fn enter_visual(&mut self) {
+        self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
+        self.mode = Mode::Visual;
+    }
+
+    fn exit_visual(&mut self) {
+        self.selection = None;
+        self.mode = Mode::Normal;
+    }
+
+    fn sync_head(&mut self) {
+        if let Some(selection) = self.selection.as_mut() {
+            selection.set_head(self.cursor.row(), self.cursor.col());
+        }
     }
 
     fn enter_command(&mut self) {
@@ -634,6 +662,47 @@ mod tests {
         e.apply(Action::Redo);
         assert_eq!(e.lines()[2], "Hi");
         assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_anchors_at_entry() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
+    }
+
+    #[test]
+    fn visual_motion_extends_head() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_exit_keeps_head_clears() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.selection_range(), None);
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_motion_down_extends_rows() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
     }
 
     #[test]

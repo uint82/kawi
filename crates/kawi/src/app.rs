@@ -6,7 +6,7 @@ use std::io::{stdout, Stdout};
 use crate::keymap::Keymap;
 use crate::vim::VimKeymap;
 use kawi_editor::{parse, Action, Command, Editor};
-use kawi_tui::{render, statusbar::StatusInfo, terminal, viewport::Viewport};
+use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
     editor: Editor,
@@ -44,15 +44,20 @@ impl App {
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
         let status = self.status_snapshot();
-        render::draw(
-            out,
-            self.editor.lines(),
-            self.editor.col(),
-            self.editor.row(),
-            &self.viewport,
-            &status,
-            self.editor.mode().is_insert(),
-        )
+        let frame = self.build_frame(&status);
+        render::draw(out, &frame)
+    }
+
+    fn build_frame<'a>(&'a self, status: &'a StatusInfo<'a>) -> Frame<'a> {
+        Frame {
+            lines: self.editor.lines(),
+            col: self.editor.col(),
+            row: self.editor.row(),
+            viewport: &self.viewport,
+            status,
+            insert_mode: self.editor.mode().is_insert(),
+            selection: self.editor.selection_range(),
+        }
     }
 
     fn status_snapshot(&self) -> StatusInfo<'_> {
