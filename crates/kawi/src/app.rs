@@ -104,9 +104,16 @@ impl App {
 
     fn jump_to(&mut self, row: usize, col: usize) -> Result<bool> {
         self.disarm_quit();
+        self.exit_visual_if_active();
         self.editor.apply(Action::JumpTo(row, col));
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn exit_visual_if_active(&mut self) {
+        if self.editor.mode().is_visual() {
+            self.editor.apply(Action::ExitVisual);
+        }
     }
 
     fn drag_to(&mut self, row: usize, col: usize) -> Result<bool> {
@@ -271,5 +278,15 @@ mod tests {
         app.handle_mouse(drag(4, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+    }
+
+    #[test]
+    fn press_after_drag_leaves_visual() {
+        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
+        app.handle_mouse(press(1, 0)).expect("press");
+        app.handle_mouse(drag(4, 1)).expect("drag");
+        app.handle_mouse(press(0, 0)).expect("second press");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
     }
 }
