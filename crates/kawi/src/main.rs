@@ -1,5 +1,6 @@
 mod app;
 mod cursor;
+mod keys;
 use anyhow::Result;
 use app::App;
 use kawi_buffer::Buffer;
