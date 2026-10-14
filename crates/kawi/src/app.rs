@@ -4,7 +4,7 @@ use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 use crate::keymap::Keymap;
-use crate::mouse::press_position;
+use crate::mouse::{drag_position, press_position};
 use crate::vim::VimKeymap;
 use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
@@ -29,6 +29,16 @@ impl App {
     pub fn run(&mut self) -> Result<()> {
         self.sync_viewport_size();
         self.run_loop()
+    }
+
+    #[cfg(test)]
+    pub fn editor_mode(&self) -> kawi_editor::Mode {
+        self.editor.mode()
+    }
+
+    #[cfg(test)]
+    pub fn editor_selection(&self) -> Option<((usize, usize), (usize, usize))> {
+        self.editor.selection_range()
     }
 
     fn run_loop(&mut self) -> Result<()> {
@@ -83,17 +93,41 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        match press_position(&mouse, &self.viewport) {
-            Some((row, col)) => self.jump_to(row, col),
-            None => self.handle_noop(),
+        if let Some((row, col)) = press_position(&mouse, &self.viewport) {
+            return self.jump_to(row, col);
         }
+        if let Some((row, col)) = drag_position(&mouse, &self.viewport) {
+            return self.drag_to(row, col);
+        }
+        self.handle_noop()
     }
 
     fn jump_to(&mut self, row: usize, col: usize) -> Result<bool> {
         self.disarm_quit();
+        self.exit_visual_if_active();
         self.editor.apply(Action::JumpTo(row, col));
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn exit_visual_if_active(&mut self) {
+        if self.editor.mode().is_visual() {
+            self.editor.apply(Action::ExitVisual);
+        }
+    }
+
+    fn drag_to(&mut self, row: usize, col: usize) -> Result<bool> {
+        self.disarm_quit();
+        self.ensure_visual();
+        self.editor.apply(Action::JumpTo(row, col));
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn ensure_visual(&mut self) {
+        if !self.editor.mode().is_visual() {
+            self.editor.apply(Action::EnterVisual);
+        }
     }
 
     fn handle_resize(&mut self, cols: u16, rows: u16) -> Result<bool> {
@@ -211,4 +245,48 @@ fn fallback_width() -> usize {
 
 fn fallback_height() -> usize {
     24
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEventKind};
+    use kawi_editor::Mode;
+
+    fn press(column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn drag(column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn drag_selects_from_press_point() {
+        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
+        app.handle_mouse(press(1, 0)).expect("press");
+        app.handle_mouse(drag(4, 1)).expect("drag");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+    }
+
+    #[test]
+    fn press_after_drag_leaves_visual() {
+        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
+        app.handle_mouse(press(1, 0)).expect("press");
+        app.handle_mouse(drag(4, 1)).expect("drag");
+        app.handle_mouse(press(0, 0)).expect("second press");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
 }

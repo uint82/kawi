@@ -8,8 +8,19 @@ pub fn press_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize,
     to_buffer_position(event.column, event.row, viewport)
 }
 
+pub fn drag_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize, usize)> {
+    if !is_left_drag(event.kind) {
+        return None;
+    }
+    to_buffer_position(event.column, event.row, viewport)
+}
+
 fn is_left_press(kind: MouseEventKind) -> bool {
     matches!(kind, MouseEventKind::Down(MouseButton::Left))
+}
+
+fn is_left_drag(kind: MouseEventKind) -> bool {
+    matches!(kind, MouseEventKind::Drag(MouseButton::Left))
 }
 
 fn to_buffer_position(column: u16, screen_row: u16, viewport: &Viewport) -> Option<(usize, usize)> {
@@ -36,6 +47,15 @@ mod tests {
 
     fn viewport() -> Viewport {
         Viewport::new(10, 80)
+    }
+
+    fn drag(column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Left),
+            column,
+            row,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        }
     }
 
     #[test]
@@ -70,5 +90,31 @@ mod tests {
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
         assert_eq!(press_position(&event, &viewport()), None);
+    }
+
+    #[test]
+    fn drag_maps_like_press() {
+        assert_eq!(drag_position(&drag(3, 2), &viewport()), Some((2, 3)));
+    }
+
+    #[test]
+    fn drag_on_status_row_ignored() {
+        assert_eq!(drag_position(&drag(3, 10), &viewport()), None);
+    }
+
+    #[test]
+    fn drag_with_other_button_ignored() {
+        let event = MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Right),
+            column: 3,
+            row: 2,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(drag_position(&event, &viewport()), None);
+    }
+
+    #[test]
+    fn press_is_not_drag() {
+        assert_eq!(drag_position(&press(3, 2), &viewport()), None);
     }
 }
