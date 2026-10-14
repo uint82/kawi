@@ -1,8 +1,10 @@
 const MAX_HISTORY: usize = 200;
 
+use ropey::Rope;
+
 struct Snapshot {
     id: u64,
-    lines: Vec<String>,
+    text: Rope,
     row: usize,
     col: usize,
 }
@@ -36,38 +38,28 @@ impl History {
         self.group_open = false;
     }
 
-    pub fn checkpoint(&mut self, lines: &[String], row: usize, col: usize) {
-        self.push_snapshot(lines, row, col);
+    pub fn checkpoint(&mut self, text: &Rope, row: usize, col: usize) {
+        self.push_snapshot(text, row, col);
         self.group_open = false;
     }
 
-    pub fn maybe_checkpoint(&mut self, lines: &[String], row: usize, col: usize) {
+    pub fn maybe_checkpoint(&mut self, text: &Rope, row: usize, col: usize) {
         if self.group_open {
-            self.push_snapshot(lines, row, col);
+            self.push_snapshot(text, row, col);
             self.group_open = false;
         }
     }
 
-    pub fn undo(
-        &mut self,
-        lines: &mut Vec<String>,
-        row: usize,
-        col: usize,
-    ) -> Option<(usize, usize)> {
+    pub fn undo(&mut self, text: &mut Rope, row: usize, col: usize) -> Option<(usize, usize)> {
         self.undo
             .pop()
-            .map(|snapshot| self.restore_snapshot(lines, row, col, snapshot, true))
+            .map(|snapshot| self.restore_snapshot(text, row, col, snapshot, true))
     }
 
-    pub fn redo(
-        &mut self,
-        lines: &mut Vec<String>,
-        row: usize,
-        col: usize,
-    ) -> Option<(usize, usize)> {
+    pub fn redo(&mut self, text: &mut Rope, row: usize, col: usize) -> Option<(usize, usize)> {
         self.redo
             .pop()
-            .map(|snapshot| self.restore_snapshot(lines, row, col, snapshot, false))
+            .map(|snapshot| self.restore_snapshot(text, row, col, snapshot, false))
     }
 
     pub fn mark_clean(&mut self) {
@@ -80,22 +72,22 @@ impl History {
 
     fn restore_snapshot(
         &mut self,
-        lines: &mut Vec<String>,
+        text: &mut Rope,
         row: usize,
         col: usize,
         snapshot: Snapshot,
         is_undo: bool,
     ) -> (usize, usize) {
-        self.push_other_side(lines, row, col, is_undo);
+        self.push_other_side(text, row, col, is_undo);
         self.current_id = snapshot.id;
-        *lines = snapshot.lines;
+        *text = snapshot.text;
         (snapshot.row, snapshot.col)
     }
 
-    fn push_other_side(&mut self, lines: &[String], row: usize, col: usize, is_undo: bool) {
+    fn push_other_side(&mut self, text: &Rope, row: usize, col: usize, is_undo: bool) {
         let snapshot = Snapshot {
             id: self.current_id,
-            lines: lines.to_vec(),
+            text: text.clone(),
             row,
             col,
         };
@@ -106,10 +98,10 @@ impl History {
         }
     }
 
-    fn push_snapshot(&mut self, lines: &[String], row: usize, col: usize) {
+    fn push_snapshot(&mut self, text: &Rope, row: usize, col: usize) {
         let snapshot = Snapshot {
             id: self.current_id,
-            lines: lines.to_vec(),
+            text: text.clone(),
             row,
             col,
         };
@@ -137,9 +129,14 @@ impl Default for History {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ropey::Rope;
 
-    fn lines_of(text: &str) -> Vec<String> {
-        text.lines().map(str::to_string).collect()
+    fn rope_of(text: &str) -> Rope {
+        Rope::from_str(text)
+    }
+
+    fn text_of(rope: &Rope) -> String {
+        rope.to_string()
     }
 
     #[test]
@@ -151,35 +148,35 @@ mod tests {
     #[test]
     fn checkpoint_marks_dirty() {
         let mut history = History::new();
-        history.checkpoint(&lines_of("ab"), 0, 0);
+        history.checkpoint(&rope_of("ab"), 0, 0);
         assert!(history.is_dirty());
     }
 
     #[test]
     fn undo_restores_snapshot_and_cursor() {
         let mut history = History::new();
-        let before = lines_of("ab");
+        let before = rope_of("ab");
         history.checkpoint(&before, 0, 1);
-        let mut now = lines_of("abcd");
+        let mut now = rope_of("abcd");
         assert_eq!(history.undo(&mut now, 0, 3), Some((0, 1)));
-        assert_eq!(now, before);
+        assert_eq!(text_of(&now), text_of(&before));
     }
 
     #[test]
     fn redo_restores_forward_and_cursor() {
         let mut history = History::new();
-        history.checkpoint(&lines_of("ab"), 0, 0);
-        let mut now = lines_of("abcd");
+        history.checkpoint(&rope_of("ab"), 0, 0);
+        let mut now = rope_of("abcd");
         history.undo(&mut now, 0, 3);
         assert_eq!(history.redo(&mut now, 0, 0), Some((0, 3)));
-        assert_eq!(now, lines_of("abcd"));
+        assert_eq!(text_of(&now), "abcd");
     }
 
     #[test]
     fn new_change_clears_redo() {
         let mut history = History::new();
-        history.checkpoint(&lines_of("ab"), 0, 0);
-        let mut now = lines_of("abcd");
+        history.checkpoint(&rope_of("ab"), 0, 0);
+        let mut now = rope_of("abcd");
         history.undo(&mut now, 0, 0);
         history.checkpoint(&now, 0, 0);
         assert_eq!(history.redo(&mut now, 0, 0), None);
@@ -188,26 +185,26 @@ mod tests {
     #[test]
     fn undo_to_saved_clears_dirty() {
         let mut history = History::new();
-        history.checkpoint(&lines_of("ab"), 0, 0);
-        let mut now = lines_of("abc");
+        history.checkpoint(&rope_of("ab"), 0, 0);
+        let mut now = rope_of("abc");
         history.mark_clean();
         history.checkpoint(&now, 0, 1);
-        now = lines_of("abcd");
+        now = rope_of("abcd");
         assert!(history.undo(&mut now, 0, 2).is_some());
-        assert_eq!(now, lines_of("abc"));
+        assert_eq!(text_of(&now), "abc");
         assert!(!history.is_dirty());
     }
 
     #[test]
     fn group_records_once() {
         let mut history = History::new();
-        let before = lines_of("ab");
+        let before = rope_of("ab");
         history.begin_change();
         history.maybe_checkpoint(&before, 0, 0);
-        history.maybe_checkpoint(&lines_of("abc"), 0, 1);
-        let mut now = lines_of("abcd");
+        history.maybe_checkpoint(&rope_of("abc"), 0, 1);
+        let mut now = rope_of("abcd");
         assert!(history.undo(&mut now, 0, 2).is_some());
-        assert_eq!(now, before);
+        assert_eq!(text_of(&now), text_of(&before));
         assert_eq!(history.undo(&mut now, 0, 0), None);
     }
 
@@ -216,7 +213,7 @@ mod tests {
         let mut history = History::new();
         history.begin_change();
         history.end_change();
-        let mut now = lines_of("ab");
+        let mut now = rope_of("ab");
         assert_eq!(history.undo(&mut now, 0, 0), None);
     }
 }

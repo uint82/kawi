@@ -17,8 +17,16 @@ pub struct Editor {
     command: CommandLine,
     search: CommandLine,
     search_origin: Option<(usize, usize)>,
+    search_status: Option<SearchStatus>,
     selection: Option<Selection>,
     register: Register,
+}
+
+struct SearchStatus {
+    pattern: String,
+    index: usize,
+    total: usize,
+    revision: u64,
 }
 
 impl Editor {
@@ -30,6 +38,7 @@ impl Editor {
             command: CommandLine::new(),
             search: CommandLine::new(),
             search_origin: None,
+            search_status: None,
             selection: None,
             register: Register::new(),
         }
@@ -51,8 +60,18 @@ impl Editor {
         self.buffer.is_dirty()
     }
 
-    pub fn lines(&self) -> &[String] {
-        self.buffer.as_slice()
+    pub fn line_count(&self) -> usize {
+        self.buffer.line_count()
+    }
+
+    pub fn visible_lines(&self, top: usize, height: usize) -> Vec<String> {
+        self.buffer.window_lines(top, height)
+    }
+
+    #[cfg(test)]
+    pub fn text_lines(&self) -> Vec<String> {
+        self.buffer
+            .window_lines(0, self.buffer.line_count().saturating_add(1))
     }
 
     pub fn filename(&self) -> &str {
@@ -81,6 +100,14 @@ impl Editor {
 
     pub fn search_pattern(&self) -> &str {
         self.search.text()
+    }
+
+    pub fn search_status_text(&self) -> Option<String> {
+        let status = self.search_status.as_ref()?;
+        if status.revision != self.buffer.revision() {
+            return None;
+        }
+        Some(status_line(self.search.text(), status.index, status.total))
     }
 
     pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
@@ -149,7 +176,9 @@ impl Editor {
             Action::EnterSearch => self.enter_search(),
             Action::PushSearchChar(c) => self.push_search_char(c),
             Action::DeleteSearchChar => self.delete_search_char(),
-            Action::ConfirmSearch => self.confirm_search(),
+            Action::ConfirmSearch => {
+                let _ = self.confirm_search();
+            }
             Action::CancelSearch => self.cancel_search(),
             Action::NextMatch => self.next_match(),
             Action::PrevMatch => self.prev_match(),
@@ -190,20 +219,17 @@ impl Editor {
     }
 
     fn move_to_next_word_start(&mut self) {
-        let (row, col) =
-            words::next_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        let (row, col) = words::next_word_start(&self.buffer, self.cursor.row(), self.cursor.col());
         self.cursor.set_position(row, col);
     }
 
     fn move_to_prev_word_start(&mut self) {
-        let (row, col) =
-            words::prev_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        let (row, col) = words::prev_word_start(&self.buffer, self.cursor.row(), self.cursor.col());
         self.cursor.set_position(row, col);
     }
 
     fn move_to_next_word_end(&mut self) {
-        let (row, col) =
-            words::next_word_end(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        let (row, col) = words::next_word_end(&self.buffer, self.cursor.row(), self.cursor.col());
         self.cursor.set_position(row, col);
     }
 
@@ -269,7 +295,7 @@ impl Editor {
 
     fn delete_word(&mut self) {
         let Some(((start_row, start_col), (end_row, end_col))) =
-            words::dw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+            words::dw_range(&self.buffer, self.cursor.row(), self.cursor.col())
         else {
             return;
         };
@@ -281,14 +307,13 @@ impl Editor {
     }
 
     fn delete_word_backward(&mut self) {
-        let target =
-            words::prev_word_start(self.buffer.as_slice(), self.cursor.row(), self.cursor.col());
+        let target = words::prev_word_start(&self.buffer, self.cursor.row(), self.cursor.col());
         self.delete_span_to(target);
     }
 
     fn delete_word_end(&mut self) {
         let Some(((start_row, start_col), (end_row, end_col))) =
-            words::cw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+            words::cw_range(&self.buffer, self.cursor.row(), self.cursor.col())
         else {
             return;
         };
@@ -320,7 +345,7 @@ impl Editor {
 
     fn change_word(&mut self) {
         let Some(((start_row, start_col), (end_row, end_col))) =
-            words::cw_range(self.buffer.as_slice(), self.cursor.row(), self.cursor.col())
+            words::cw_range(&self.buffer, self.cursor.row(), self.cursor.col())
         else {
             return;
         };
@@ -471,7 +496,7 @@ impl Editor {
     fn first_non_blank_of(&self, row: usize) -> usize {
         self.buffer
             .line(row)
-            .map_or(0, kawi_buffer::first_non_blank)
+            .map_or(0, |line| kawi_buffer::first_non_blank(&line))
     }
 
     fn open_line_below(&mut self) {
@@ -633,6 +658,7 @@ impl Editor {
     fn enter_search(&mut self) {
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
+        self.search_status = None;
         self.mode = Mode::Search;
     }
 
@@ -660,20 +686,26 @@ impl Editor {
         let origin = self
             .search_origin
             .unwrap_or((self.cursor.row(), self.cursor.col()));
-        if let Some((row, col)) = search::find_first_from(
-            self.buffer.as_slice(),
-            self.search.text(),
-            origin.0,
-            origin.1,
-        ) {
+        if let Some((row, col)) =
+            search::find_first_from(&self.buffer, self.search.text(), origin.0, origin.1)
+        {
             self.cursor.set_position(row, col);
         }
     }
 
-    fn confirm_search(&mut self) {
+    pub fn confirm_search(&mut self) -> Option<SearchOutcome> {
         if self.mode == Mode::Search {
             self.mode = Mode::Normal;
         }
+        if self.search.text().is_empty() {
+            self.search_status = None;
+            return None;
+        }
+        self.refresh_search_status();
+        if self.search_status.is_some() {
+            return Some(SearchOutcome::Found { wrapped: false });
+        }
+        Some(SearchOutcome::Missing)
     }
 
     fn cancel_search(&mut self) {
@@ -681,7 +713,40 @@ impl Editor {
             self.cursor.set_position(row, col);
         }
         self.search_origin = None;
+        self.search_status = None;
         self.mode = Mode::Normal;
+    }
+
+    fn refresh_search_status(&mut self) {
+        let pattern = self.search.text().to_string();
+        if pattern.is_empty() {
+            self.search_status = None;
+            return;
+        }
+        let revision = self.buffer.revision();
+        let total = match &self.search_status {
+            Some(status) if status.pattern == pattern && status.revision == revision => {
+                status.total
+            }
+            _ => search::count_matches(&self.buffer, &pattern),
+        };
+        if total == 0 {
+            self.search_status = None;
+            return;
+        }
+        let index = search::match_rank(
+            &self.buffer,
+            &pattern,
+            self.cursor.row(),
+            self.cursor.col(),
+            total,
+        );
+        self.search_status = Some(SearchStatus {
+            pattern,
+            index,
+            total,
+            revision,
+        });
     }
 
     pub fn search_next(&mut self) -> SearchOutcome {
@@ -705,7 +770,7 @@ impl Editor {
             return SearchOutcome::Missing;
         }
         let found = search_step(
-            self.buffer.as_slice(),
+            &self.buffer,
             self.search.text(),
             self.cursor.row(),
             self.cursor.col(),
@@ -719,6 +784,7 @@ impl Editor {
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
         self.cursor.set_position(row, col);
+        self.refresh_search_status();
         SearchOutcome::Found { wrapped }
     }
 
@@ -734,7 +800,7 @@ impl Editor {
     }
 
     fn clamp_row(&mut self) {
-        let max_row = self.buffer.len().saturating_sub(1);
+        let max_row = self.buffer.max_cursor_row();
         self.cursor.set_row(self.cursor.row().min(max_row));
     }
 
@@ -753,25 +819,21 @@ impl Editor {
     }
 
     fn line_width(&self, row: usize) -> usize {
-        self.buffer.line(row).map_or(0, char_count)
+        self.buffer.line_len(row)
     }
 }
 
-fn char_count(text: &str) -> usize {
-    text.chars().count()
-}
-
 fn search_step(
-    lines: &[String],
+    buffer: &Buffer,
     pattern: &str,
     row: usize,
     col: usize,
     forward: bool,
 ) -> Option<((usize, usize), bool)> {
     if forward {
-        search::find_next(lines, pattern, row, col)
+        search::find_next(buffer, pattern, row, col)
     } else {
-        search::find_prev(lines, pattern, row, col)
+        search::find_prev(buffer, pattern, row, col)
     }
 }
 
@@ -781,6 +843,10 @@ fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize
     } else {
         (second, first)
     }
+}
+
+fn status_line(pattern: &str, index: usize, total: usize) -> String {
+    format!("/{pattern} [{index}/{total}]")
 }
 
 fn is_tracking(action: Action) -> bool {
@@ -854,7 +920,7 @@ mod tests {
         let mut e = editor_with("ac");
         e.apply(Action::MoveRight);
         e.apply(Action::InsertChar('b'));
-        assert_eq!(e.lines()[0], "abc");
+        assert_eq!(e.text_lines()[0], "abc");
         assert_eq!(e.col(), 2);
     }
 
@@ -978,7 +1044,7 @@ mod tests {
     fn delete_forward_removes() {
         let mut e = editor_with("ab");
         e.apply(Action::DeleteForward);
-        assert_eq!(e.lines()[0], "b");
+        assert_eq!(e.text_lines()[0], "b");
     }
 
     #[test]
@@ -986,15 +1052,15 @@ mod tests {
         let mut e = editor_with("a\nb\nc");
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteLine);
-        assert_eq!(e.lines().len(), 2);
-        assert_eq!(e.lines()[1], "c");
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[1], "c");
     }
 
     #[test]
     fn open_line_below_enters_insert() {
         let mut e = editor_with("ab");
         e.apply(Action::OpenLineBelow);
-        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.text_lines().len(), 2);
         assert_eq!((e.row(), e.col()), (1, 0));
         assert_eq!(e.mode(), Mode::Insert);
     }
@@ -1106,6 +1172,94 @@ mod tests {
     }
 
     #[test]
+    fn search_confirm_shows_status() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        assert_eq!(
+            e.confirm_search(),
+            Some(SearchOutcome::Found { wrapped: false })
+        );
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/1]"));
+    }
+
+    #[test]
+    fn search_confirm_empty_is_silent() {
+        let mut e = editor_with("foo");
+        e.apply(Action::EnterSearch);
+        assert_eq!(e.confirm_search(), None);
+        assert_eq!(e.search_status_text(), None);
+    }
+
+    #[test]
+    fn search_confirm_without_match_is_missing() {
+        let mut e = editor_with("foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('z'));
+        assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
+        assert_eq!(e.search_status_text(), None);
+    }
+
+    #[test]
+    fn search_next_refreshes_status() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+        assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
+    }
+
+    #[test]
+    fn search_status_hides_after_edit() {
+        let mut e = editor_with("ar ar ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('x'));
+        assert_eq!(e.search_status_text(), None);
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+    }
+
+    #[test]
+    fn search_status_recaches_new_pattern() {
+        let mut e = editor_with("ar foo ar");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/2]"));
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('f'));
+        e.apply(Action::PushSearchChar('o'));
+        e.apply(Action::PushSearchChar('o'));
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+        assert_eq!(e.search_next(), SearchOutcome::Missing);
+        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+    }
+
+    #[test]
+    fn search_cancel_clears_status() {
+        let mut e = editor_with("foo bar foo");
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('a'));
+        e.apply(Action::PushSearchChar('r'));
+        e.apply(Action::ConfirmSearch);
+        e.apply(Action::EnterSearch);
+        e.apply(Action::CancelSearch);
+        assert_eq!(e.search_status_text(), None);
+    }
+
+    #[test]
     fn insert_session_undoes_together() {
         let mut e = editor_with("ab");
         e.apply(Action::EnterInsert);
@@ -1114,7 +1268,7 @@ mod tests {
         e.apply(Action::InsertChar('Z'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines()[0], "ab");
     }
 
     #[test]
@@ -1122,9 +1276,9 @@ mod tests {
         let mut e = editor_with("ab");
         e.apply(Action::EnterInsert);
         e.apply(Action::ExitInsert);
-        let before = e.lines()[0].to_string();
+        let before = e.text_lines()[0].to_string();
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], before);
+        assert_eq!(e.text_lines()[0], before);
     }
 
     #[test]
@@ -1135,8 +1289,8 @@ mod tests {
         e.apply(Action::InsertChar('i'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines().len(), 1);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "ab");
     }
 
     #[test]
@@ -1147,7 +1301,7 @@ mod tests {
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
         e.apply(Action::Redo);
-        assert_eq!(e.lines()[0], "Xab");
+        assert_eq!(e.text_lines()[0], "Xab");
     }
 
     #[test]
@@ -1159,7 +1313,7 @@ mod tests {
         e.apply(Action::Undo);
         e.apply(Action::DeleteForward);
         e.apply(Action::Redo);
-        assert_eq!(e.lines()[0], "b");
+        assert_eq!(e.text_lines()[0], "b");
     }
 
     #[test]
@@ -1171,7 +1325,7 @@ mod tests {
         e.apply(Action::InsertChar('i'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.text_lines().len(), 2);
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -1183,7 +1337,7 @@ mod tests {
         e.apply(Action::InsertChar('Y'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "aa");
+        assert_eq!(e.text_lines()[0], "aa");
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1193,9 +1347,9 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteForward);
-        assert_eq!(e.lines()[0], "abdef");
+        assert_eq!(e.text_lines()[0], "abdef");
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!(e.text_lines()[0], "abcdef");
         assert_eq!((e.row(), e.col()), (0, 2));
     }
 
@@ -1210,7 +1364,7 @@ mod tests {
         e.apply(Action::Undo);
         assert_eq!((e.row(), e.col()), (1, 0));
         e.apply(Action::Redo);
-        assert_eq!(e.lines()[2], "Hi");
+        assert_eq!(e.text_lines()[2], "Hi");
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -1263,7 +1417,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteSelection);
-        assert_eq!(e.lines()[0], "aef");
+        assert_eq!(e.text_lines()[0], "aef");
         assert_eq!((e.row(), e.col()), (0, 1));
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
@@ -1278,7 +1432,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteSelection);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!(e.text_lines()[0], "abcdef");
     }
 
     #[test]
@@ -1287,9 +1441,9 @@ mod tests {
         e.apply(Action::EnterVisual);
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteSelection);
-        assert_eq!(e.lines().len(), 1);
+        assert_eq!(e.text_lines().len(), 1);
         e.apply(Action::Undo);
-        assert_eq!(e.lines().len(), 2);
+        assert_eq!(e.text_lines().len(), 2);
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1299,8 +1453,8 @@ mod tests {
         e.apply(Action::MoveDown);
         e.apply(Action::YankLine);
         e.apply(Action::PasteAfter);
-        assert_eq!(e.lines().len(), 4);
-        assert_eq!(e.lines()[2], "bb");
+        assert_eq!(e.text_lines().len(), 4);
+        assert_eq!(e.text_lines()[2], "bb");
         assert_eq!((e.row(), e.col()), (2, 0));
     }
 
@@ -1309,8 +1463,8 @@ mod tests {
         let mut e = editor_with("aa\nbb");
         e.apply(Action::DeleteLine);
         e.apply(Action::PasteAfter);
-        assert_eq!(e.lines()[0], "bb");
-        assert_eq!(e.lines()[1], "aa");
+        assert_eq!(e.text_lines()[0], "bb");
+        assert_eq!(e.text_lines()[1], "aa");
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -1320,7 +1474,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteToEnd);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines()[0], "ab");
         assert_eq!((e.row(), e.col()), (0, 1));
     }
 
@@ -1329,7 +1483,7 @@ mod tests {
         let mut e = editor_with("");
         e.apply(Action::DeleteToEnd);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "");
+        assert_eq!(e.text_lines()[0], "");
     }
 
     #[test]
@@ -1338,12 +1492,12 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::ChangeLine);
-        assert_eq!(e.lines()[0], "");
+        assert_eq!(e.text_lines()[0], "");
         assert_eq!(e.mode(), Mode::Insert);
         e.apply(Action::InsertChar('x'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!(e.text_lines()[0], "abcdef");
     }
 
     #[test]
@@ -1352,7 +1506,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::ChangeToEnd);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines()[0], "ab");
         assert_eq!((e.row(), e.col()), (0, 1));
         assert_eq!(e.mode(), Mode::Insert);
     }
@@ -1403,7 +1557,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::YankSelection);
-        assert_eq!(e.lines()[0], "abcdef");
+        assert_eq!(e.text_lines()[0], "abcdef");
         assert_eq!((e.row(), e.col()), (0, 1));
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
@@ -1419,7 +1573,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteSelection);
         e.apply(Action::PasteAfter);
-        assert_eq!(e.lines()[0], "aebcdf");
+        assert_eq!(e.text_lines()[0], "aebcdf");
         assert_eq!((e.row(), e.col()), (0, 4));
     }
 
@@ -1428,7 +1582,7 @@ mod tests {
         let mut e = editor_with("ab");
         e.apply(Action::PasteAfter);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines()[0], "ab");
     }
 
     #[test]
@@ -1459,7 +1613,7 @@ mod tests {
     fn delete_word_deletes_forward() {
         let mut e = editor_with("foo bar");
         e.apply(Action::DeleteWord);
-        assert_eq!(e.lines()[0], "bar");
+        assert_eq!(e.text_lines()[0], "bar");
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1470,7 +1624,7 @@ mod tests {
             e.apply(Action::MoveRight);
         }
         e.apply(Action::DeleteWord);
-        assert_eq!(e.lines()[0], "foo ");
+        assert_eq!(e.text_lines()[0], "foo ");
         assert_eq!((e.row(), e.col()), (0, 3));
     }
 
@@ -1479,14 +1633,14 @@ mod tests {
         let mut e = editor_with("foo bar");
         e.apply(Action::DeleteWord);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "foo bar");
+        assert_eq!(e.text_lines()[0], "foo bar");
     }
 
     #[test]
     fn change_word_keeps_trailing_space() {
         let mut e = editor_with("foo bar");
         e.apply(Action::ChangeWord);
-        assert_eq!(e.lines()[0], " bar");
+        assert_eq!(e.text_lines()[0], " bar");
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(e.mode(), Mode::Insert);
     }
@@ -1500,7 +1654,7 @@ mod tests {
         e.apply(Action::InsertChar('z'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "foo bar");
+        assert_eq!(e.text_lines()[0], "foo bar");
     }
 
     #[test]
@@ -1510,7 +1664,7 @@ mod tests {
             e.apply(Action::MoveRight);
         }
         e.apply(Action::DeleteWordBackward);
-        assert_eq!(e.lines()[0], "bar");
+        assert_eq!(e.text_lines()[0], "bar");
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1520,9 +1674,9 @@ mod tests {
         e.apply(Action::MoveDown);
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteWordBackward);
-        assert_eq!(e.lines().len(), 2);
-        assert_eq!(e.lines()[0], "ab");
-        assert_eq!(e.lines()[1], "ef");
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "ab");
+        assert_eq!(e.text_lines()[1], "ef");
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -1530,7 +1684,7 @@ mod tests {
     fn delete_word_end_deletes_to_end() {
         let mut e = editor_with("foo bar");
         e.apply(Action::DeleteWordEnd);
-        assert_eq!(e.lines()[0], " bar");
+        assert_eq!(e.text_lines()[0], " bar");
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1540,8 +1694,8 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteWordEnd);
-        assert_eq!(e.lines().len(), 1);
-        assert_eq!(e.lines()[0], "fo");
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "fo");
         assert_eq!((e.row(), e.col()), (0, 1));
     }
 
@@ -1628,6 +1782,6 @@ mod tests {
         e.apply(Action::InsertChar('c'));
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
-        assert_eq!(e.lines()[0], "ab");
+        assert_eq!(e.text_lines()[0], "ab");
     }
 }

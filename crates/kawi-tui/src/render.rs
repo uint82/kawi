@@ -18,7 +18,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     draw_status_row(out, frame.status, frame.viewport)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
-    place_cursor_relative(out, frame.col, frame.row, frame.viewport)?;
+    place_cursor(out, frame)?;
     flush(out)?;
     Ok(())
 }
@@ -29,16 +29,10 @@ fn clear_all(out: &mut Stdout) -> Result<()> {
 }
 
 fn draw_visible_lines(out: &mut Stdout, lines: &[String], viewport: &Viewport) -> Result<()> {
-    for (screen_row, line) in visible_slice(lines, viewport).iter().enumerate() {
+    for (screen_row, line) in lines.iter().enumerate().take(viewport.height()) {
         draw_one_line(out, screen_row, line, viewport.width())?;
     }
     Ok(())
-}
-
-fn visible_slice<'a>(lines: &'a [String], viewport: &Viewport) -> &'a [String] {
-    let end = viewport.visible_end().min(lines.len());
-    let start = viewport.top().min(end);
-    &lines[start..end]
 }
 
 fn draw_one_line(out: &mut Stdout, screen_row: usize, text: &str, width: usize) -> Result<()> {
@@ -58,7 +52,8 @@ pub struct HighlightSpan {
 }
 
 pub fn highlight_spans(
-    lines: &[String],
+    window: &[String],
+    top: usize,
     selection: Option<((usize, usize), (usize, usize))>,
     viewport: &Viewport,
 ) -> Vec<HighlightSpan> {
@@ -69,12 +64,13 @@ pub fn highlight_spans(
         return Vec::new();
     }
     let mut spans = Vec::new();
-    for row in start_row..=end_row {
+    for screen_row in 0..window.len().min(viewport.height()) {
         collect_span(
             &mut spans,
-            lines,
+            window,
+            top,
             viewport,
-            row,
+            screen_row,
             ((start_row, start_col), (end_row, end_col)),
         );
     }
@@ -83,34 +79,36 @@ pub fn highlight_spans(
 
 fn collect_span(
     spans: &mut Vec<HighlightSpan>,
-    lines: &[String],
+    window: &[String],
+    top: usize,
     viewport: &Viewport,
-    row: usize,
+    screen_row: usize,
     range: ((usize, usize), (usize, usize)),
 ) {
-    if let Some(span) = selected_segment(lines, viewport, row, range) {
+    if let Some(span) = selected_segment(window, top, viewport, screen_row, range) {
         spans.push(span);
     }
 }
 
 fn selected_segment(
-    lines: &[String],
+    window: &[String],
+    top: usize,
     viewport: &Viewport,
-    row: usize,
+    screen_row: usize,
     range: ((usize, usize), (usize, usize)),
 ) -> Option<HighlightSpan> {
     let ((start_row, start_col), (end_row, end_col)) = range;
-    if !is_row_visible(viewport, row) {
+    let buffer_row = top.saturating_add(screen_row);
+    if buffer_row < start_row || buffer_row > end_row {
         return None;
     }
-    let text = lines.get(row)?;
+    let text = window.get(screen_row)?;
     let width = viewport.width();
-    let from = segment_start(row, start_row, start_col).min(width);
-    let to = segment_end(row, text, end_row, end_col).min(width);
+    let from = segment_start(buffer_row, start_row, start_col).min(width);
+    let to = segment_end(buffer_row, text, end_row, end_col).min(width);
     if from >= to {
         return None;
     }
-    let screen_row = row.saturating_sub(viewport.top());
     Some(HighlightSpan {
         screen_row,
         from,
@@ -119,7 +117,12 @@ fn selected_segment(
 }
 
 fn draw_highlight(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    for span in highlight_spans(frame.lines, frame.selection, frame.viewport) {
+    for span in highlight_spans(
+        frame.lines,
+        frame.viewport.top(),
+        frame.selection,
+        frame.viewport,
+    ) {
         paint_span(out, &span)?;
     }
     Ok(())
@@ -131,10 +134,6 @@ fn paint_span(out: &mut Stdout, span: &HighlightSpan) -> Result<()> {
     write_segment(out, &span.text)?;
     disable_reverse(out)?;
     Ok(())
-}
-
-fn is_row_visible(viewport: &Viewport, row: usize) -> bool {
-    row >= viewport.top() && row < viewport.visible_end()
 }
 
 fn segment_start(row: usize, start_row: usize, start_col: usize) -> usize {
@@ -190,6 +189,7 @@ fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
         frame.command,
         frame.search,
         frame.message,
+        frame.search_status,
         frame.showcmd,
         frame.viewport.width(),
     );
@@ -212,11 +212,12 @@ fn layout_message_row(
     command: Option<&str>,
     search: Option<&str>,
     message: Option<&str>,
+    search_status: Option<&str>,
     showcmd: Option<&str>,
     width: usize,
 ) -> MessageLayout {
     let show = showcmd.unwrap_or("");
-    let left = message_left(command, search, message);
+    let left = message_left(command, search, message, search_status);
     MessageLayout {
         line: truncate_to_width(&left, left_width(width, show)),
         showcmd: truncate_to_width(show, width),
@@ -224,12 +225,19 @@ fn layout_message_row(
     }
 }
 
-fn message_left(command: Option<&str>, search: Option<&str>, message: Option<&str>) -> String {
-    match (command, search) {
-        (Some(text), _) => format!(":{text}"),
-        (None, Some(text)) => format!("/{text}"),
-        (None, None) => message.unwrap_or("").to_string(),
+fn message_left(
+    command: Option<&str>,
+    search: Option<&str>,
+    message: Option<&str>,
+    search_status: Option<&str>,
+) -> String {
+    if let Some(text) = command {
+        return format!(":{text}");
     }
+    if let Some(text) = search {
+        return format!("/{text}");
+    }
+    message.or(search_status).unwrap_or("").to_string()
 }
 
 fn left_width(width: usize, showcmd: &str) -> usize {
@@ -277,6 +285,18 @@ fn cursor_style(insert_mode: bool) -> SetCursorStyle {
     }
 }
 
+fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    if let Some(col) = prompt_cursor_col(
+        frame.command,
+        frame.search,
+        frame.viewport.width(),
+        frame.showcmd,
+    ) {
+        return place_prompt_cursor(out, col, frame.viewport);
+    }
+    place_cursor_relative(out, frame.col, frame.row, frame.viewport)
+}
+
 fn place_cursor_relative(
     out: &mut Stdout,
     col: usize,
@@ -286,6 +306,52 @@ fn place_cursor_relative(
     let (x, y) = screen_coords(col, row, viewport);
     execute!(out, MoveTo(x, y)).context("place cursor")?;
     Ok(())
+}
+
+fn place_prompt_cursor(out: &mut Stdout, col: usize, viewport: &Viewport) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(col),
+            saturate_u16(viewport.height().saturating_add(1))
+        )
+    )
+    .context("place prompt cursor")?;
+    Ok(())
+}
+
+pub fn prompt_cursor_col(
+    command: Option<&str>,
+    search: Option<&str>,
+    width: usize,
+    showcmd: Option<&str>,
+) -> Option<usize> {
+    let text = prompt_text(command, search)?;
+    Some(prompt_col(text, width, showcmd))
+}
+
+fn prompt_text<'a>(command: Option<&'a str>, search: Option<&'a str>) -> Option<&'a str> {
+    match (command, search) {
+        (Some(text), _) => Some(text),
+        (None, Some(text)) => Some(text),
+        (None, None) => None,
+    }
+}
+
+fn prompt_col(text: &str, width: usize, showcmd: Option<&str>) -> usize {
+    prompt_home()
+        .saturating_add(char_len(text))
+        .min(prompt_edge(width, showcmd))
+}
+
+fn prompt_home() -> usize {
+    1
+}
+
+fn prompt_edge(width: usize, showcmd: Option<&str>) -> usize {
+    width
+        .saturating_sub(char_len(showcmd.unwrap_or("")))
+        .saturating_sub(1)
 }
 
 fn screen_coords(col: usize, row: usize, viewport: &Viewport) -> (u16, u16) {
@@ -322,20 +388,20 @@ mod tests {
     #[test]
     fn no_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        assert!(highlight_spans(&lines, None, &viewport()).is_empty());
+        assert!(highlight_spans(&lines, 0, None, &viewport()).is_empty());
     }
 
     #[test]
     fn point_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, Some(((0, 2), (0, 2))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 2), (0, 2))), &viewport());
         assert!(spans.is_empty());
     }
 
     #[test]
     fn range_selection_spans_chars() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, Some(((0, 1), (0, 3))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 1), (0, 3))), &viewport());
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].screen_row, 0);
         assert_eq!(spans[0].from, 1);
@@ -345,7 +411,7 @@ mod tests {
     #[test]
     fn multiline_selection_spans_rows() {
         let lines = lines_of("ab\ncd\nef");
-        let spans = highlight_spans(&lines, Some(((0, 1), (2, 1))), &viewport());
+        let spans = highlight_spans(&lines, 0, Some(((0, 1), (2, 1))), &viewport());
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].text, "b");
         assert_eq!(spans[1].text, "cd");
@@ -354,14 +420,14 @@ mod tests {
 
     #[test]
     fn layout_prefers_command_over_message() {
-        let layout = layout_message_row(Some("w"), None, Some("saved"), None, 20);
+        let layout = layout_message_row(Some("w"), None, Some("saved"), None, None, 20);
         assert_eq!(layout.line, ":w");
         assert_eq!(layout.showcmd_col, None);
     }
 
     #[test]
     fn layout_right_aligns_showcmd() {
-        let layout = layout_message_row(None, None, Some("saved"), Some("d"), 20);
+        let layout = layout_message_row(None, None, Some("saved"), None, Some("d"), 20);
         assert_eq!(layout.line, "saved");
         assert_eq!(layout.showcmd, "d");
         assert_eq!(layout.showcmd_col, Some(19));
@@ -369,21 +435,73 @@ mod tests {
 
     #[test]
     fn layout_truncates_left_for_showcmd() {
-        let layout = layout_message_row(None, None, Some("12345678901234567890"), Some("dd"), 20);
+        let layout = layout_message_row(
+            None,
+            None,
+            Some("12345678901234567890"),
+            None,
+            Some("dd"),
+            20,
+        );
         assert_eq!(layout.line.chars().count(), 18);
         assert_eq!(layout.showcmd_col, Some(18));
     }
 
     #[test]
     fn layout_empty_row_has_no_column() {
-        let layout = layout_message_row(None, None, None, None, 20);
+        let layout = layout_message_row(None, None, None, None, None, 20);
         assert_eq!(layout.line, "");
         assert_eq!(layout.showcmd_col, None);
     }
 
     #[test]
     fn layout_prefers_search_over_message() {
-        let layout = layout_message_row(None, Some("ar"), Some("saved"), None, 20);
+        let layout = layout_message_row(None, Some("ar"), Some("saved"), None, None, 20);
         assert_eq!(layout.line, "/ar");
+    }
+
+    #[test]
+    fn layout_shows_search_status_when_idle() {
+        let layout = layout_message_row(None, None, None, Some("/ar [1/3]"), None, 20);
+        assert_eq!(layout.line, "/ar [1/3]");
+    }
+
+    #[test]
+    fn layout_prefers_message_over_search_status() {
+        let layout = layout_message_row(None, None, Some("saved"), Some("/ar [1/3]"), None, 20);
+        assert_eq!(layout.line, "saved");
+    }
+
+    #[test]
+    fn prompt_cursor_absent_without_modes() {
+        assert_eq!(prompt_cursor_col(None, None, 20, None), None);
+    }
+
+    #[test]
+    fn prompt_cursor_sits_after_prefix_when_empty() {
+        assert_eq!(prompt_cursor_col(Some(""), None, 20, None), Some(1));
+        assert_eq!(prompt_cursor_col(None, Some(""), 20, None), Some(1));
+    }
+
+    #[test]
+    fn prompt_cursor_follows_typed_text() {
+        assert_eq!(prompt_cursor_col(None, Some("ar"), 20, None), Some(3));
+        assert_eq!(prompt_cursor_col(Some("wq"), None, 20, None), Some(3));
+    }
+
+    #[test]
+    fn prompt_cursor_counts_chars_not_bytes() {
+        assert_eq!(prompt_cursor_col(None, Some("éx"), 20, None), Some(3));
+    }
+
+    #[test]
+    fn prompt_cursor_prefers_command() {
+        assert_eq!(prompt_cursor_col(Some("w"), Some("ar"), 20, None), Some(2));
+    }
+
+    #[test]
+    fn prompt_cursor_clamps_to_visible_row() {
+        assert_eq!(prompt_cursor_col(None, Some("abcdef"), 5, None), Some(4));
+        assert_eq!(prompt_cursor_col(Some(""), None, 5, Some("dd")), Some(1));
     }
 }
