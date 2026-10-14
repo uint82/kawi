@@ -78,6 +78,7 @@ impl VimKeymap {
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
+            KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
             KeyCode::Char('d') => self.arm_d(key),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
@@ -159,6 +160,8 @@ impl VimKeymap {
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
+            KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
+            KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::ExitVisual),
             _ => Action::Noop,
         }
@@ -475,6 +478,45 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('e')), Mode::Visual),
             Action::MoveToNextWordEnd
+        );
+    }
+
+    #[test]
+    fn visual_operators_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Visual),
+            Action::DeleteSelection
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('y')), Mode::Visual),
+            Action::YankSelection
+        );
+    }
+
+    #[test]
+    fn normal_p_pastes() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('p')), Mode::Normal),
+            Action::PasteAfter
+        );
+    }
+
+    #[test]
+    fn pending_d_then_v_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::EnterVisual
         );
     }
 }

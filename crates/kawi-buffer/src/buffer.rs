@@ -112,6 +112,73 @@ impl Buffer {
         }
     }
 
+    pub fn range_text(
+        &self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) -> String {
+        if start_row == end_row {
+            return single_line_slice(&self.lines, start_row, start_col, end_col);
+        }
+        multiline_slice(&self.lines, start_row, start_col, end_row, end_col)
+    }
+
+    pub fn delete_range(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) {
+        if start_row >= self.lines.len() {
+            return;
+        }
+        let end_row = end_row.min(self.lines.len().saturating_sub(1));
+        if start_row == end_row {
+            delete_in_line(&mut self.lines, start_row, start_col, end_col);
+            return;
+        }
+        delete_across_lines(&mut self.lines, start_row, start_col, end_row, end_col);
+    }
+
+    pub fn paste_after(&mut self, row: usize, col: usize, text: &str) -> (usize, usize) {
+        let fragments: Vec<&str> = text.split('\n').collect();
+        match fragments.as_slice() {
+            [first] => self.paste_single(row, col, first),
+            [first, rest @ ..] => self.paste_multiple(row, col, first, rest),
+            [] => (row, col),
+        }
+    }
+
+    fn paste_single(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
+        self.ensure_line_exists(row);
+        let byte_idx = insert_byte_index(&self.lines[row], col);
+        self.lines[row].insert_str(byte_idx, fragment);
+        (row, col.saturating_add(char_count(fragment)))
+    }
+
+    fn paste_multiple(
+        &mut self,
+        row: usize,
+        col: usize,
+        first: &str,
+        rest: &[&str],
+    ) -> (usize, usize) {
+        self.ensure_line_exists(row);
+        let (left, right) = split_line_at(&self.lines[row], col);
+        let last = rest.last().copied().unwrap_or("");
+        self.lines[row] = format!("{left}{first}");
+        let mut insert_at = row.saturating_add(1);
+        for middle in rest.iter().take(rest.len().saturating_sub(1)) {
+            self.lines.insert(insert_at, (*middle).to_string());
+            insert_at = insert_at.saturating_add(1);
+        }
+        self.lines.insert(insert_at, format!("{last}{right}"));
+        (insert_at, col.saturating_add(char_count(last)))
+    }
+
     pub fn save(&mut self) -> Result<()> {
         let path = match &self.path {
             Some(p) => p.clone(),
@@ -204,6 +271,115 @@ fn char_to_byte_index(text: &str, col: usize) -> usize {
     text.char_indices()
         .nth(col)
         .map_or(text.len(), |(idx, _)| idx)
+}
+
+fn char_count(text: &str) -> usize {
+    text.chars().count()
+}
+
+fn insert_byte_index(line: &str, col: usize) -> usize {
+    char_to_byte_index(line, col.saturating_add(1))
+}
+
+fn split_line_at(line: &str, col: usize) -> (String, String) {
+    let byte_idx = insert_byte_index(line, col);
+    (line[..byte_idx].to_string(), line[byte_idx..].to_string())
+}
+
+fn single_line_slice(lines: &[String], row: usize, start_col: usize, end_col: usize) -> String {
+    match lines.get(row) {
+        Some(line) => slice_cols(line, start_col, end_col.saturating_add(1)),
+        None => String::new(),
+    }
+}
+
+fn multiline_slice(
+    lines: &[String],
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for row in start_row..=end_row {
+        parts.push(slice_row(
+            lines, row, start_row, start_col, end_row, end_col,
+        ));
+    }
+    parts.join("\n")
+}
+
+fn slice_row(
+    lines: &[String],
+    row: usize,
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> String {
+    let line = lines.get(row).map_or("", String::as_str);
+    let from = slice_from(row, start_row, start_col);
+    let to = slice_to(row, line, end_row, end_col);
+    slice_cols(line, from, to)
+}
+
+fn slice_from(row: usize, start_row: usize, start_col: usize) -> usize {
+    if row == start_row {
+        start_col
+    } else {
+        0
+    }
+}
+
+fn slice_to(row: usize, line: &str, end_row: usize, end_col: usize) -> usize {
+    if row == end_row {
+        end_col.saturating_add(1)
+    } else {
+        char_count(line)
+    }
+}
+
+fn slice_cols(text: &str, from: usize, to: usize) -> String {
+    text.chars()
+        .skip(from)
+        .take(to.saturating_sub(from))
+        .collect()
+}
+
+fn delete_in_line(lines: &mut [String], row: usize, start_col: usize, end_col: usize) {
+    if let Some(line) = lines.get_mut(row) {
+        let start = char_to_byte_index(line, start_col);
+        let end = char_to_byte_index(line, end_col.saturating_add(1));
+        if start < end {
+            line.drain(start..end);
+        }
+    }
+}
+
+fn delete_across_lines(
+    lines: &mut Vec<String>,
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) {
+    if let Some(joined) = join_range(lines, start_row, start_col, end_row, end_col) {
+        lines.splice(start_row..=end_row, [joined]);
+    }
+}
+
+fn join_range(
+    lines: &[String],
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> Option<String> {
+    let first = lines.get(start_row)?;
+    let last = lines.get(end_row)?;
+    let head = slice_cols(first, 0, start_col);
+    let tail = slice_cols(last, end_col.saturating_add(1), char_count(last));
+    Some(format!("{head}{tail}"))
 }
 
 fn write_to_file(path: &str, lines: &[String]) -> Result<()> {
@@ -349,5 +525,55 @@ mod tests {
         b.delete_line(0);
         assert_eq!(b.len(), 1);
         assert_eq!(b.line(0), Some(""));
+    }
+
+    #[test]
+    fn range_text_reads_single_line() {
+        let b = Buffer::from_string("abcdef");
+        assert_eq!(b.range_text(0, 1, 0, 3), "bcd");
+    }
+
+    #[test]
+    fn range_text_joins_multiple_lines() {
+        let b = Buffer::from_string("ab\ncd\nef");
+        assert_eq!(b.range_text(0, 1, 2, 1), "b\ncd\nef");
+    }
+
+    #[test]
+    fn delete_range_removes_single_line() {
+        let mut b = Buffer::from_string("abcdef");
+        b.delete_range(0, 1, 0, 3);
+        assert_eq!(b.line(0), Some("aef"));
+    }
+
+    #[test]
+    fn delete_range_joins_remainders() {
+        let mut b = Buffer::from_string("ab\ncd\nef");
+        b.delete_range(0, 1, 2, 1);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.line(0), Some("a"));
+    }
+
+    #[test]
+    fn paste_after_inserts_single_line() {
+        let mut b = Buffer::from_string("aef");
+        assert_eq!(b.paste_after(0, 1, "bcd"), (0, 4));
+        assert_eq!(b.line(0), Some("aebcdf"));
+    }
+
+    #[test]
+    fn paste_after_splits_multiple_lines() {
+        let mut b = Buffer::from_string("12");
+        assert_eq!(b.paste_after(0, 0, "ab\nc"), (1, 1));
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(0), Some("1ab"));
+        assert_eq!(b.line(1), Some("c2"));
+    }
+
+    #[test]
+    fn paste_empty_changes_nothing() {
+        let mut b = Buffer::from_string("ab");
+        assert_eq!(b.paste_after(0, 0, ""), (0, 0));
+        assert_eq!(b.line(0), Some("ab"));
     }
 }
