@@ -151,6 +151,7 @@ impl VimKeymap {
         self.clear_pending();
         match key.code {
             KeyCode::Char('d') => self.resolve_dd(key),
+            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::DeleteWord),
             _ => Action::Noop,
         }
     }
@@ -166,6 +167,7 @@ impl VimKeymap {
         self.clear_pending();
         match key.code {
             KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeLine),
+            KeyCode::Char('w') => self.map_plain_or_noop(key, Action::ChangeWord),
             _ => Action::Noop,
         }
     }
@@ -572,6 +574,32 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
             Action::ChangeLine
+        );
+    }
+
+    #[test]
+    fn c_w_changes_word() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ChangeWord
+        );
+    }
+
+    #[test]
+    fn d_w_deletes_word() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::DeleteWord
         );
     }
 

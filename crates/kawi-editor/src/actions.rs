@@ -15,6 +15,8 @@ pub enum Action {
     DeleteForward,
     DeleteLine,
     OpenLineBelow,
+    DeleteWord,
+    ChangeWord,
     DeleteSelection,
     YankSelection,
     YankLine,

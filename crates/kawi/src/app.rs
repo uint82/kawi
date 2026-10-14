@@ -484,4 +484,12 @@ mod tests {
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 1));
     }
+
+    #[test]
+    fn change_word_enters_insert() {
+        let mut app = App::new(Buffer::from_string("foo bar"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('c'))).expect("pending");
+        app.handle_key(key(KeyCode::Char('w'))).expect("change");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+    }
 }
