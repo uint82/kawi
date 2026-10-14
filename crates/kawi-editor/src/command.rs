@@ -1,8 +1,9 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Write,
     Quit,
     WriteQuit,
+    SetKeymap(String),
     Unknown,
 }
 
@@ -11,7 +12,30 @@ pub fn parse(text: &str) -> Command {
         "w" => Command::Write,
         "q" => Command::Quit,
         "wq" => Command::WriteQuit,
+        _ => parse_set_command(text.trim()),
+    }
+}
+
+fn parse_set_command(text: &str) -> Command {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    match words.as_slice() {
+        ["set", "keymap", name] => name_command(name),
+        ["set", combined] => equals_command(combined),
         _ => Command::Unknown,
+    }
+}
+
+fn name_command(name: &str) -> Command {
+    if name.is_empty() {
+        return Command::Unknown;
+    }
+    Command::SetKeymap(name.to_string())
+}
+
+fn equals_command(combined: &str) -> Command {
+    match combined.strip_prefix("keymap=") {
+        Some(name) => name_command(name),
+        None => Command::Unknown,
     }
 }
 
@@ -81,6 +105,28 @@ mod tests {
     #[test]
     fn empty_is_unknown() {
         assert_eq!(parse(""), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_set_keymap() {
+        assert_eq!(
+            parse("set keymap helix"),
+            Command::SetKeymap("helix".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_set_keymap_equals() {
+        assert_eq!(
+            parse("set keymap=vim"),
+            Command::SetKeymap("vim".to_string())
+        );
+    }
+
+    #[test]
+    fn set_without_name_is_unknown() {
+        assert_eq!(parse("set keymap"), Command::Unknown);
+        assert_eq!(parse("set"), Command::Unknown);
     }
 
     #[test]

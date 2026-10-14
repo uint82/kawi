@@ -3,25 +3,24 @@ use crossterm::event::{read, Event, KeyEvent, MouseEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
-use crate::keymap::Keymap;
+use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
-use crate::vim::VimKeymap;
 use kawi_editor::{parse, Action, Command, Editor};
 use kawi_tui::{frame::Frame, render, statusbar::StatusInfo, terminal, viewport::Viewport};
 
 pub struct App {
     editor: Editor,
     viewport: Viewport,
-    keymap: VimKeymap,
+    keymap: ActiveKeymap,
     quit_armed: bool,
 }
 
 impl App {
-    pub fn new(buffer: Buffer) -> Self {
+    pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
         Self {
             editor: Editor::new(buffer),
             viewport: Viewport::new(fallback_height(), fallback_width()),
-            keymap: VimKeymap::new(),
+            keymap: ActiveKeymap::for_flavor(flavor),
             quit_armed: false,
         }
     }
@@ -88,7 +87,7 @@ impl App {
             row: self.editor.row(),
             col: self.editor.col(),
             quit_armed: self.quit_armed,
-            mode: self.editor.mode().label(),
+            mode: self.keymap.mode_label(self.editor.mode()),
             command: self.editor.command_prompt(),
         }
     }
@@ -210,8 +209,19 @@ impl App {
     fn handle_engine_action(&mut self, action: Action) -> Result<bool> {
         self.disarm_quit();
         self.editor.apply(action);
+        self.exit_operator_for_flavor(action);
         self.reveal_cursor();
         Ok(false)
+    }
+
+    fn exit_operator_for_flavor(&mut self, action: Action) {
+        if !self.keymap.operator_exits_visual() {
+            return;
+        }
+        if !is_operator(action) {
+            return;
+        }
+        self.editor.apply(Action::ExitVisual);
     }
 
     fn handle_execute(&mut self) -> Result<bool> {
@@ -226,8 +236,25 @@ impl App {
             Command::Write => self.handle_save(),
             Command::Quit => Ok(self.try_quit()),
             Command::WriteQuit => self.handle_write_quit(),
+            Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::Unknown => Ok(false),
         }
+    }
+
+    fn switch_keymap(&mut self, name: &str) -> Result<bool> {
+        match flavor_from_name(name) {
+            Some(flavor) => self.apply_flavor(flavor),
+            None => Ok(false),
+        }
+    }
+
+    fn apply_flavor(&mut self, flavor: Flavor) -> Result<bool> {
+        self.keymap = ActiveKeymap::for_flavor(flavor);
+        if flavor == Flavor::Vim {
+            self.exit_visual_if_active();
+        }
+        self.reveal_cursor();
+        Ok(false)
     }
 
     fn handle_write_quit(&mut self) -> Result<bool> {
@@ -263,6 +290,10 @@ fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
 }
 
+fn is_operator(action: Action) -> bool {
+    matches!(action, Action::DeleteSelection | Action::YankSelection)
+}
+
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {
     let width = usize::from(cols).max(1);
     let height = usize::from(rows).saturating_sub(1).max(1);
@@ -280,8 +311,12 @@ fn fallback_height() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEventKind};
+    use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
     use kawi_editor::Mode;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
 
     fn press(column: u16, row: u16) -> MouseEvent {
         MouseEvent {
@@ -312,7 +347,7 @@ mod tests {
 
     #[test]
     fn drag_selects_from_press_point() {
-        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
+        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"), Flavor::Vim);
         app.handle_mouse(press(1, 0)).expect("press");
         app.handle_mouse(drag(4, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
@@ -321,7 +356,7 @@ mod tests {
 
     #[test]
     fn press_after_drag_leaves_visual() {
-        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"));
+        let mut app = App::new(Buffer::from_string("abcdef\nghijkl"), Flavor::Vim);
         app.handle_mouse(press(1, 0)).expect("press");
         app.handle_mouse(drag(4, 1)).expect("drag");
         app.handle_mouse(press(0, 0)).expect("second press");
@@ -331,7 +366,7 @@ mod tests {
 
     #[test]
     fn wheel_down_scrolls_and_drags_cursor() {
-        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)));
+        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)), Flavor::Vim);
         app.handle_mouse(wheel_down()).expect("wheel");
         assert_eq!(app.viewport_top(), 3);
         assert_eq!(app.cursor_position(), (3, 0));
@@ -339,10 +374,114 @@ mod tests {
 
     #[test]
     fn wheel_keeps_visible_cursor() {
-        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)));
+        let mut app = App::new(Buffer::from_string(&"line\n".repeat(30)), Flavor::Vim);
         app.handle_mouse(press(0, 10)).expect("press");
         app.handle_mouse(wheel_down()).expect("wheel");
         assert_eq!(app.viewport_top(), 3);
         assert_eq!(app.cursor_position(), (10, 0));
+    }
+
+    #[test]
+    fn vim_delete_leaves_visual() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_yank_leaves_visual() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('y'))).expect("yank");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn helix_starts_clean() {
+        let app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn set_keymap_switches_to_helix() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.run_command(Command::SetKeymap("helix".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn set_keymap_back_to_vim_clears() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.run_command(Command::SetKeymap("vim".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn set_keymap_helix_preserves_range() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.run_command(Command::SetKeymap("helix".to_string()))
+            .expect("switch");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn set_keymap_unknown_keeps_flavor() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.run_command(Command::SetKeymap("personal".to_string()))
+            .expect("unknown");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn helix_motion_moves_without_extending() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
+    fn helix_v_selects_then_motion_extends() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('v'))).expect("select");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn helix_esc_returns_to_normal() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('v'))).expect("select");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn helix_delete_acts_on_cursor_char() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 1));
     }
 }

@@ -128,20 +128,7 @@ impl VimKeymap {
     }
 
     fn map_command(&mut self, key: KeyEvent) -> Action {
-        match key.code {
-            KeyCode::Esc => Action::CancelCommand,
-            KeyCode::Enter => Action::ExecuteCommand,
-            KeyCode::Backspace => Action::DeleteCommandChar,
-            KeyCode::Char(c) => self.map_command_char(key, c),
-            _ => Action::Noop,
-        }
-    }
-
-    fn map_command_char(&mut self, key: KeyEvent, c: char) -> Action {
-        if has_ctrl_or_alt(key) {
-            return Action::Noop;
-        }
-        Action::PushCommandChar(c)
+        crate::keymap::map_command_mode(key)
     }
 
     fn map_visual(&mut self, key: KeyEvent) -> Action {
@@ -184,6 +171,10 @@ impl Keymap for VimKeymap {
             Mode::Command => self.map_command(key),
             Mode::Visual => self.map_visual(key),
         }
+    }
+
+    fn operator_exits_visual(&self) -> bool {
+        true
     }
 }
 
