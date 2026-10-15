@@ -80,7 +80,7 @@ impl VimKeymap {
         }
         match key.code {
             KeyCode::Esc => Action::Noop,
-            KeyCode::Enter => Action::MoveDown,
+            KeyCode::Enter => Action::MoveToNextLineStart,
             KeyCode::Backspace => Action::MoveLeft,
             KeyCode::Delete => Action::DeleteForward,
             KeyCode::Home => Action::MoveToLineStart,
@@ -96,6 +96,8 @@ impl VimKeymap {
             KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteForward),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
+            KeyCode::Char('+') => self.map_plain_or_noop(key, Action::MoveToNextLineStart),
+            KeyCode::Char('-') => self.map_plain_or_noop(key, Action::MoveToPrevLineStart),
             KeyCode::Char('i') => self.map_plain_or_noop(key, Action::EnterInsert),
             KeyCode::Char('a') => self.map_plain_or_noop(key, Action::Append),
             KeyCode::Char('A') => self.map_plain_or_noop(key, Action::AppendLineEnd),
@@ -279,6 +281,28 @@ mod tests {
     fn normal_esc_is_noop() {
         let mut map = VimKeymap::new();
         assert_eq!(map.map(plain(KeyCode::Esc), Mode::Normal), Action::Noop);
+    }
+
+    #[test]
+    fn normal_enter_moves_to_next_line_start() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Enter), Mode::Normal),
+            Action::MoveToNextLineStart
+        );
+    }
+
+    #[test]
+    fn normal_plus_minus_move_line_start() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('+')), Mode::Normal),
+            Action::MoveToNextLineStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('-')), Mode::Normal),
+            Action::MoveToPrevLineStart
+        );
     }
 
     #[test]
