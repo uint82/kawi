@@ -120,7 +120,7 @@ impl VimKeymap {
             KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
-            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
+            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankToEnd),
             KeyCode::Char('d') => self.arm_operator(key, 'd'),
             KeyCode::Char('c') => self.arm_operator(key, 'c'),
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
@@ -807,11 +807,11 @@ mod tests {
     }
 
     #[test]
-    fn capital_y_yanks_line() {
+    fn capital_y_yanks_to_end() {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('Y')), Mode::Normal),
-            Action::YankLine
+            Action::YankToEnd
         );
     }
 

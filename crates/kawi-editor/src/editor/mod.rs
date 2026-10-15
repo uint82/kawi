@@ -72,6 +72,7 @@ impl Editor {
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
             Action::YankLine => self.yank_current_line(),
+            Action::YankToEnd => self.yank_to_end(),
             Action::DeleteToEnd => self.delete_to_end(),
             Action::ChangeLine => self.change_line(),
             Action::ChangeToEnd => self.change_to_end(),

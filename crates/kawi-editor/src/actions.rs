@@ -32,6 +32,7 @@ pub enum Action {
     YankSelection,
     YankLine,
     DeleteToEnd,
+    YankToEnd,
     ChangeLine,
     ChangeToEnd,
     PasteAfter,
