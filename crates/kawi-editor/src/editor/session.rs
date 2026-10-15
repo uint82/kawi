@@ -1,6 +1,9 @@
 use super::Editor;
+use crate::actions::Object;
 use crate::mode::Mode;
+use crate::objects;
 use crate::selection::Selection;
+use crate::words;
 
 #[derive(Clone, Copy)]
 pub(super) enum InsertEdit {
@@ -64,8 +67,25 @@ impl Editor {
     }
 
     pub(super) fn enter_visual(&mut self) {
-        self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
+        if self.selection.is_none() {
+            self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
+        }
         self.mode = Mode::Visual;
+    }
+
+    pub(super) fn enter_visual_line(&mut self) {
+        if self.selection.is_none() {
+            self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
+        }
+        self.mode = Mode::VisualLine;
+    }
+
+    pub(super) fn swap_selection_ends(&mut self) {
+        if let Some(selection) = self.selection.as_mut() {
+            selection.swap_ends();
+            let head = selection.head();
+            self.cursor.set_position(head.0, head.1);
+        }
     }
 
     pub(super) fn exit_insert(&mut self) {
@@ -183,6 +203,178 @@ impl Editor {
 
     pub(super) fn save_silent(&mut self) {
         let _ = self.buffer.save();
+    }
+
+    pub(super) fn select_around_word(&mut self) {
+        self.select_word_object(false);
+    }
+
+    pub(super) fn select_inner_word(&mut self) {
+        self.select_word_object(true);
+    }
+
+    pub(super) fn select_object(&mut self, inner: bool, object: Object) {
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span = match object {
+            Object::Paren => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '(', ')', inner, count)
+            }
+            Object::Brace => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '{', '}', inner, count)
+            }
+            Object::Bracket => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '[', ']', inner, count)
+            }
+            Object::Angle => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '<', '>', inner, count)
+            }
+            Object::SingleQuote => {
+                objects::quotes::quote_range(&self.buffer, row, col, '\'', inner, count)
+            }
+            Object::DoubleQuote => {
+                objects::quotes::quote_range(&self.buffer, row, col, '"', inner, count)
+            }
+            Object::Backtick => {
+                objects::quotes::quote_range(&self.buffer, row, col, '`', inner, count)
+            }
+            Object::Paragraph => {
+                return self.select_paragraph(inner, count);
+            }
+        };
+        let Some(span) = span else {
+            return;
+        };
+        match span {
+            words::WordSpan::Charwise { start, end } => {
+                self.selection = Some(Selection::from_ends(start, end));
+                self.cursor.set_position(end.0, end.1);
+            }
+            words::WordSpan::Linewise { first, last } => {
+                let end = (last, self.line_width(last).saturating_sub(1));
+                self.selection = Some(Selection::from_ends((first, 0), end));
+                self.cursor.set_position(end.0, end.1);
+            }
+            words::WordSpan::Empty { .. } => {
+                return;
+            }
+        }
+        self.downgrade_to_charwise();
+    }
+
+    fn select_paragraph(&mut self, inner: bool, count: usize) {
+        let anchor = self.selection_anchor();
+        let head = self.selection_head();
+        if head.0 != anchor.0 {
+            self.extend_paragraph_head(head.0 < anchor.0, !inner, count);
+            return;
+        }
+        let row = self.cursor.row();
+        let Some(span) = objects::paragraph::paragraph_range(&self.buffer, row, !inner, count)
+        else {
+            return;
+        };
+        let words::WordSpan::Linewise { first, last } = span else {
+            return;
+        };
+        if self.mode == Mode::VisualLine && first == row {
+            self.extend_paragraph_head(row < anchor.0, !inner, count);
+            return;
+        }
+        self.select_lines(first, last);
+    }
+
+    fn extend_paragraph_head(&mut self, backward: bool, include: bool, count: usize) {
+        let mut line = self.selection_head().0;
+        for _ in 0..count {
+            line = objects::paragraph::paragraph_step(&self.buffer, line, !backward, include);
+        }
+        if let Some(selection) = self.selection.as_mut() {
+            selection.set_head(line, 0);
+        }
+        self.cursor.set_position(line, 0);
+    }
+
+    fn downgrade_to_charwise(&mut self) {
+        if self.mode == Mode::VisualLine {
+            self.mode = Mode::Visual;
+        }
+    }
+
+    fn select_word_object(&mut self, inner: bool) {
+        let count = self.take_count().max(1);
+        let cursor = (self.cursor.row(), self.cursor.col());
+        let (anchor, head) = match &self.selection {
+            Some(selection) => (selection.anchor(), selection.head()),
+            None => {
+                self.selection = Some(Selection::new(cursor.0, cursor.1));
+                (cursor, cursor)
+            }
+        };
+        if anchor != head {
+            let head = words::extend_word_head(&self.buffer, anchor, head, inner, count);
+            self.place_selection_head(head);
+            self.downgrade_to_charwise();
+            return;
+        }
+        let span = if inner {
+            objects::iw_range(&self.buffer, cursor.0, cursor.1)
+        } else {
+            objects::aw_range(&self.buffer, cursor.0, cursor.1)
+        };
+        let Some(span) = span else {
+            return;
+        };
+        self.select_span(span.start, span.end);
+        self.downgrade_to_charwise();
+        let head = self.selection_head();
+        let next = words::extend_word_head(
+            &self.buffer,
+            self.selection_anchor(),
+            head,
+            inner,
+            count.saturating_sub(1),
+        );
+        self.place_selection_head(next);
+    }
+
+    fn select_span(&mut self, start: (usize, usize), end: (usize, usize)) {
+        let end = if start == end {
+            start
+        } else {
+            words::prev_char_pos(&self.buffer, end.0, end.1).unwrap_or(start)
+        };
+        self.selection = Some(Selection::from_ends(start, end));
+        self.cursor.set_position(end.0, end.1);
+    }
+
+    fn select_lines(&mut self, first: usize, last: usize) {
+        self.selection = Some(Selection::from_ends((first, 0), (last, 0)));
+        self.cursor.set_position(last, 0);
+        self.mode = Mode::VisualLine;
+    }
+
+    fn selection_anchor(&self) -> (usize, usize) {
+        self.selection
+            .as_ref()
+            .map_or((self.cursor.row(), self.cursor.col()), |selection| {
+                selection.anchor()
+            })
+    }
+
+    fn selection_head(&self) -> (usize, usize) {
+        self.selection
+            .as_ref()
+            .map_or((self.cursor.row(), self.cursor.col()), |selection| {
+                selection.head()
+            })
+    }
+
+    fn place_selection_head(&mut self, head: (usize, usize)) {
+        if let Some(selection) = self.selection.as_mut() {
+            selection.set_head(head.0, head.1);
+        }
+        self.cursor.set_position(head.0, head.1);
     }
 
     pub(super) fn switch_to_insert(&mut self) {
@@ -835,5 +1027,322 @@ mod tests {
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
         assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn visual_change_replaces_selection() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ChangeSelection);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!(e.register_text(), "bcd");
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aXef");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn visual_line_change_single_keeps_indent() {
+        let mut e = editor_with("  abc\n  def");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::ChangeSelection);
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "  X");
+        assert_eq!(e.text_lines()[1], "  def");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn visual_line_change_multi() {
+        let mut e = editor_with("abc\ndef\nghi");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ChangeSelection);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines(), vec!["X".to_string(), "ghi".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn visual_delete_past_eol_joins_next_line() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec!["cd".to_string()]);
+        assert_eq!(e.register_text(), "ab\n");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_yank_past_eol_takes_newline() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::YankSelection);
+        assert_eq!(e.text_lines(), vec!["ab".to_string(), "cd".to_string()]);
+        assert_eq!(e.register_text(), "ab\n");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_delete_last_line_past_eol_keeps_line() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec!["ab".to_string(), String::new()]);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_paste_over_newline_joins() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::YankToEnd);
+        e.apply(Action::MoveToLineStart);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["abcd".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_text(), "ab\n");
+    }
+
+    #[test]
+    fn visual_line_delete_preserves_column() {
+        let mut e = editor_with("abcdef\ngh");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec!["gh".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_line_yank_moves_to_first() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        assert_eq!(e.register_text(), "abcdef");
+        assert_eq!(e.register_kind(), crate::register::RegisterKind::LineWise);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_line_paste_replaces_lines() {
+        let mut e = editor_with("abc\ndef\nghi");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankLine);
+        e.apply(Action::MoveUp);
+        e.apply(Action::MoveUp);
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["ghi".to_string(), "ghi".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_ip_fresh_selects_linewise() {
+        let mut e = editor_with("a\n\nb");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::VisualLine);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 1))));
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_ap_fresh_takes_blank() {
+        let mut e = editor_with("a\n\nb");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::SelectObject {
+            inner: false,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::VisualLine);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_ip_count_past_end_is_noop() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 0))));
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_ip_extends_existing_selection() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 0), (2, 0))));
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn visual_ip_trap_extends_forward() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::VisualLine);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_ip_extends_backward() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveUp);
+        e.apply(Action::MoveUp);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paragraph,
+        });
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 0), (3, 0))));
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_iw_in_linewise_goes_charwise() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 2))));
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn visual_aw_extend_in_linewise_goes_charwise() {
+        let mut e = editor_with("foo bar\nbaz qux");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::SelectAroundWord);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 3))));
+        assert_eq!((e.row(), e.col()), (1, 3));
+    }
+
+    #[test]
+    fn visual_iw_count_two() {
+        let mut e = editor_with("foo bar baz");
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_iw_count_three_deletes_two_words() {
+        let mut e = editor_with("foo bar baz");
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[3]);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 6))));
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines()[0], " baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_iw_count_two_midword() {
+        let mut e = editor_with("foo bar baz");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.selection_range(), Some(((0, 4), (0, 7))));
+        assert_eq!((e.row(), e.col()), (0, 7));
+    }
+
+    #[test]
+    fn visual_aw_count_two() {
+        let mut e = editor_with("foo bar baz");
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectAroundWord);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 7))));
+        assert_eq!((e.row(), e.col()), (0, 7));
+    }
+
+    #[test]
+    fn visual_paren_in_linewise_goes_charwise() {
+        let mut e = editor_with("foo (bar)\nbaz");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::Paren,
+        });
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 5), (0, 7))));
+        assert_eq!((e.row(), e.col()), (0, 7));
+    }
+
+    #[test]
+    fn visual_quote_in_linewise_goes_charwise() {
+        let mut e = editor_with("a 'bc' d");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::SelectObject {
+            inner: true,
+            object: crate::actions::Object::SingleQuote,
+        });
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 3), (0, 4))));
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn visual_linewise_iw_then_delete() {
+        let mut e = editor_with("foo bar\nbaz qux");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::SelectInnerWord);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec![" qux".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 }

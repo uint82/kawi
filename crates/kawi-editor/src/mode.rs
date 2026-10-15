@@ -4,6 +4,7 @@ pub enum Mode {
     Insert,
     Command,
     Visual,
+    VisualLine,
     Search,
 }
 
@@ -13,7 +14,7 @@ impl Mode {
     }
 
     pub fn is_visual(self) -> bool {
-        matches!(self, Self::Visual)
+        matches!(self, Self::Visual | Self::VisualLine)
     }
 
     pub fn label(self) -> &'static str {
@@ -22,6 +23,7 @@ impl Mode {
             Self::Insert => "INSERT",
             Self::Command => "COMMAND",
             Self::Visual => "VISUAL",
+            Self::VisualLine => "VISUAL LINE",
             Self::Search => "SEARCH",
         }
     }

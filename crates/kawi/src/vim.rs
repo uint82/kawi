@@ -46,6 +46,10 @@ fn is_operator_start(pushed: char) -> bool {
     matches!(pushed, 'd' | 'c' | 'y')
 }
 
+fn is_visual_motion_key(pushed: char) -> bool {
+    matches!(pushed, 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$')
+}
+
 fn object_action(sequence: &str) -> Option<Action> {
     let mut chars = sequence.chars();
     let operator = chars.next()?;
@@ -192,6 +196,7 @@ impl VimKeymap {
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
+            KeyCode::Char('V') => self.map_plain_or_noop(key, Action::EnterVisualLine),
             _ => Action::Noop,
         }
     }
@@ -442,7 +447,14 @@ impl VimKeymap {
         crate::keymap::map_command_mode(key)
     }
 
-    fn map_visual(&mut self, key: KeyEvent) -> Action {
+    fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if !self.pending.is_empty() {
+            return self.resolve_visual_pending(key, mode);
+        }
+        self.map_visual_fresh(key, mode)
+    }
+
+    fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
         match key.code {
             KeyCode::Esc => Action::ExitVisual,
             KeyCode::Up => Action::MoveUp,
@@ -458,11 +470,212 @@ impl VimKeymap {
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
+            KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
+            KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
-            KeyCode::Char('v') => self.map_plain_or_noop(key, Action::ExitVisual),
+            KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
+            KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeSelection),
+            KeyCode::Char('s') => self.map_plain_or_noop(key, Action::ChangeSelection),
+            KeyCode::Char('o') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
+            KeyCode::Char('O') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
+            KeyCode::Char('v') => self.map_plain_or_noop(key, self.visual_v_action(mode)),
+            KeyCode::Char('V') => self.map_plain_or_noop(key, self.visual_big_v_action(mode)),
+            KeyCode::Char('i') => self.arm_visual_object(key),
+            KeyCode::Char('a') => self.arm_visual_object(key),
+            KeyCode::Char('f') => self.arm_visual_find(key, 'f'),
+            KeyCode::Char('F') => self.arm_visual_find(key, 'F'),
+            KeyCode::Char('t') => self.arm_visual_find(key, 't'),
+            KeyCode::Char('T') => self.arm_visual_find(key, 'T'),
+            KeyCode::Char(';') => self.repeat_motion(key, false),
+            KeyCode::Char(',') => self.repeat_motion(key, true),
+            KeyCode::Char(c) if c.is_ascii_digit() => self.push_visual_digit(key, c),
             _ => Action::Noop,
         }
+    }
+
+    fn visual_v_action(&self, mode: Mode) -> Action {
+        match mode {
+            Mode::VisualLine => Action::EnterVisual,
+            _ => Action::ExitVisual,
+        }
+    }
+
+    fn visual_big_v_action(&self, mode: Mode) -> Action {
+        match mode {
+            Mode::Visual => Action::EnterVisualLine,
+            _ => Action::ExitVisual,
+        }
+    }
+
+    fn arm_visual_object(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push(if key.code == KeyCode::Char('i') {
+            'i'
+        } else {
+            'a'
+        });
+        Action::Noop
+    }
+
+    fn arm_visual_find(&mut self, key: KeyEvent, find: char) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push(find);
+        Action::BeginSequence
+    }
+
+    fn push_visual_digit(&mut self, key: KeyEvent, digit: char) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.push_digit(digit)
+    }
+
+    fn resolve_visual_pending(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        match key.code {
+            KeyCode::Esc => {
+                self.clear_pending();
+                Action::ExitVisual
+            }
+            KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.visual_pending_key(c, mode),
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End => self.finish_visual_pending(key, mode),
+            _ => self.cancel_sequence(),
+        }
+    }
+
+    fn finish_visual_pending(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if self.only_digits_pending() {
+            self.clear_pending();
+            return self.map_visual_fresh(key, mode);
+        }
+        self.cancel_sequence()
+    }
+
+    fn visual_pending_key(&mut self, pushed: char, mode: Mode) -> Action {
+        if pushed.is_ascii_digit() {
+            return self.push_digit(pushed);
+        }
+        if let Some(action) = self.complete_visual_find(pushed) {
+            return action;
+        }
+        if let Some(action) = self.complete_visual_object(pushed) {
+            return action;
+        }
+        if matches!(pushed, ';' | ',') && self.only_digits_pending() {
+            self.clear_pending();
+            return self.repeat_motion(
+                KeyEvent::new(KeyCode::Char(pushed), KeyModifiers::NONE),
+                pushed == ',',
+            );
+        }
+        if matches!(pushed, 'd' | 'y') && self.only_digits_pending() {
+            self.clear_pending();
+            return if pushed == 'd' {
+                Action::DeleteSelection
+            } else {
+                Action::YankSelection
+            };
+        }
+        if matches!(pushed, 'c' | 's') && self.only_digits_pending() {
+            self.clear_pending();
+            return Action::ChangeSelection;
+        }
+        if matches!(pushed, 'v' | 'V' | 'o' | 'O' | 'p' | 'c' | 's') {
+            self.clear_pending();
+            return self.map_visual_fresh(
+                KeyEvent::new(KeyCode::Char(pushed), KeyModifiers::NONE),
+                mode,
+            );
+        }
+        if self.only_digits_pending() && is_visual_motion_key(pushed) {
+            self.clear_pending();
+            return self.map_visual_fresh(
+                KeyEvent::new(KeyCode::Char(pushed), KeyModifiers::NONE),
+                mode,
+            );
+        }
+        self.cancel_sequence()
+    }
+
+    fn complete_visual_find(&mut self, target: char) -> Option<Action> {
+        let (operator, find) = self.pending_find()?;
+        if operator.is_some() {
+            return None;
+        }
+        let forward = matches!(find, 'f' | 't');
+        let till = matches!(find, 't' | 'T');
+        self.last_find = Some(FindMemory {
+            target,
+            forward,
+            till,
+        });
+        self.clear_pending();
+        Some(Action::FindChar {
+            target,
+            forward,
+            till,
+        })
+    }
+
+    fn complete_visual_object(&mut self, pushed: char) -> Option<Action> {
+        let stripped = self.stripped_pending();
+        if stripped.len() != 1 || !matches!(stripped.as_str(), "i" | "a") {
+            return None;
+        }
+        let inner = stripped == "i";
+        let action = match pushed {
+            'w' => {
+                if inner {
+                    Action::SelectInnerWord
+                } else {
+                    Action::SelectAroundWord
+                }
+            }
+            '(' | ')' => Action::SelectObject {
+                inner,
+                object: Object::Paren,
+            },
+            '{' | '}' => Action::SelectObject {
+                inner,
+                object: Object::Brace,
+            },
+            '[' | ']' => Action::SelectObject {
+                inner,
+                object: Object::Bracket,
+            },
+            '<' | '>' => Action::SelectObject {
+                inner,
+                object: Object::Angle,
+            },
+            '\'' => Action::SelectObject {
+                inner,
+                object: Object::SingleQuote,
+            },
+            '"' => Action::SelectObject {
+                inner,
+                object: Object::DoubleQuote,
+            },
+            '`' => Action::SelectObject {
+                inner,
+                object: Object::Backtick,
+            },
+            'p' => Action::SelectObject {
+                inner,
+                object: Object::Paragraph,
+            },
+            _ => return None,
+        };
+        self.clear_pending();
+        Some(action)
     }
 }
 
@@ -473,7 +686,7 @@ impl Keymap for VimKeymap {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
-            Mode::Visual => self.map_visual(key),
+            Mode::Visual | Mode::VisualLine => self.map_visual_mode(key, mode),
             Mode::Search => crate::keymap::map_search_mode(key),
         }
     }
@@ -871,6 +1084,61 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('y')), Mode::Visual),
             Action::YankSelection
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Visual),
+            Action::ChangeSelection
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('s')), Mode::Visual),
+            Action::ChangeSelection
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::VisualLine),
+            Action::ChangeSelection
+        );
+    }
+
+    #[test]
+    fn visual_count_c_changes() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Visual),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Visual),
+            Action::ChangeSelection
+        );
+    }
+
+    #[test]
+    fn normal_big_v_enters_linewise() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('V')), Mode::Normal),
+            Action::EnterVisualLine
+        );
+    }
+
+    #[test]
+    fn visual_line_toggle_maps() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('V')), Mode::Visual),
+            Action::EnterVisualLine
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('V')), Mode::VisualLine),
+            Action::ExitVisual
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::VisualLine),
+            Action::EnterVisual
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('o')), Mode::VisualLine),
+            Action::SwapSelectionEnds
         );
     }
 
