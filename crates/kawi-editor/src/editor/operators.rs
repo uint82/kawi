@@ -1,5 +1,6 @@
 use super::session::InsertEdit;
 use super::Editor;
+use crate::actions::Object;
 use crate::objects;
 use crate::register::RegisterKind;
 use crate::selection::Selection;
@@ -14,6 +15,12 @@ impl Editor {
     pub(super) fn change_inner_word(&mut self) {
         let span = objects::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.change_object_span(span);
+    }
+
+    pub(super) fn change_object(&mut self, inner: bool, object: Object) {
+        if let Some(span) = self.object_edit(inner, object) {
+            self.apply_span(span, true);
+        }
     }
 
     pub(super) fn change_line(&mut self) {
@@ -95,8 +102,13 @@ impl Editor {
             (words::WordSpan::Linewise { first, last }, true) => {
                 self.change_lines(first, last);
             }
-            (words::WordSpan::Empty, false) => {}
-            (words::WordSpan::Empty, true) => self.switch_to_insert(),
+            (words::WordSpan::Empty { at }, false) => {
+                self.cursor.set_position(at.0, at.1);
+            }
+            (words::WordSpan::Empty { at }, true) => {
+                self.cursor.set_position(at.0, at.1);
+                self.switch_to_insert();
+            }
         }
     }
 
@@ -179,6 +191,43 @@ impl Editor {
     pub(super) fn delete_inner_word(&mut self) {
         let span = objects::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.delete_object_span(span);
+    }
+
+    pub(super) fn delete_object(&mut self, inner: bool, object: Object) {
+        if let Some(span) = self.object_edit(inner, object) {
+            self.apply_span(span, false);
+        }
+    }
+
+    fn object_edit(&mut self, inner: bool, object: Object) -> Option<words::WordSpan> {
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        match object {
+            Object::Paren => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '(', ')', inner, count)
+            }
+            Object::Brace => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '{', '}', inner, count)
+            }
+            Object::Bracket => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '[', ']', inner, count)
+            }
+            Object::Angle => {
+                objects::brackets::bracket_range(&self.buffer, row, col, '<', '>', inner, count)
+            }
+            Object::SingleQuote => {
+                objects::quotes::quote_range(&self.buffer, row, col, '\'', inner, count)
+            }
+            Object::DoubleQuote => {
+                objects::quotes::quote_range(&self.buffer, row, col, '"', inner, count)
+            }
+            Object::Backtick => {
+                objects::quotes::quote_range(&self.buffer, row, col, '`', inner, count)
+            }
+            Object::Paragraph => {
+                objects::paragraph::paragraph_range(&self.buffer, row, !inner, count)
+            }
+        }
     }
 
     pub(super) fn delete_line(&mut self) {
@@ -433,6 +482,29 @@ impl Editor {
         self.yank_object_span(span);
     }
 
+    pub(super) fn yank_object(&mut self, inner: bool, object: Object) {
+        let Some(span) = self.object_edit(inner, object) else {
+            return;
+        };
+        match span {
+            words::WordSpan::Charwise { start, end } => {
+                self.yank_range(start.0, start.1, end.0, end.1);
+                self.cursor.set_position(start.0, start.1);
+            }
+            words::WordSpan::Linewise { first, last } => {
+                self.yank_line_range(first, last);
+                self.cursor.set_position(first, 0);
+            }
+            words::WordSpan::Empty { at } => {
+                self.cursor.set_position(at.0, at.1);
+            }
+        }
+    }
+
+    fn yank_line_range(&mut self, first: usize, last: usize) {
+        self.register.set_lines(self.take_lines(first, last));
+    }
+
     pub(super) fn yank_lines(&mut self) {
         let count = self.take_count();
         let row = self.cursor.row();
@@ -490,7 +562,7 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::Action;
+    use crate::actions::{Action, Object};
     use crate::mode::Mode;
     use kawi_buffer::Buffer;
 
@@ -799,6 +871,320 @@ mod tests {
         assert_eq!(e.text_lines().len(), 1);
         assert_eq!(e.text_lines()[0], "");
         assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn delete_inner_paren_deletes_content() {
+        let mut e = editor_with("foo (bar) baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo () baz");
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn delete_around_paren_deletes_brackets() {
+        let mut e = editor_with("foo (bar) baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: false,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo  baz");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn delete_inner_empty_paren_moves_to_inner() {
+        let mut e = editor_with("foo () bar");
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo () bar");
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn delete_inner_nested_takes_innermost() {
+        let mut e = editor_with("foo (a (b) c) bar");
+        for _ in 0..8 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo (a () c) bar");
+        assert_eq!((e.row(), e.col()), (0, 8));
+    }
+
+    #[test]
+    fn delete_inner_unmatched_is_noop() {
+        let mut e = editor_with("foo (bar baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo (bar baz");
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn delete_inner_multiline_removes_middle_line() {
+        let mut e = editor_with("foo (\nbar\n) baz");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "foo (");
+        assert_eq!(e.text_lines()[1], ") baz");
+        assert_eq!((e.row(), e.col()), (1, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn delete_around_multiline_is_charwise() {
+        let mut e = editor_with("foo (\nbar\n) baz");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteObject {
+            inner: false,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "foo  baz");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn change_inner_paren_enters_insert() {
+        let mut e = editor_with("foo (bar) baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::ChangeObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo () baz");
+        assert_eq!((e.row(), e.col()), (0, 5));
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "foo (X) baz");
+    }
+
+    #[test]
+    fn yank_inner_paren_moves_to_start() {
+        let mut e = editor_with("foo (bar) baz");
+        for _ in 0..6 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::YankObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo (bar) baz");
+        assert_eq!((e.row(), e.col()), (0, 5));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn yank_around_paren_moves_to_bracket() {
+        let mut e = editor_with("foo (bar) baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::YankObject {
+            inner: false,
+            object: Object::Paren,
+        });
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_inner_brace_and_bracket() {
+        let mut e = editor_with("foo {bar} baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Brace,
+        });
+        assert_eq!(e.text_lines()[0], "foo {} baz");
+        let mut e = editor_with("foo [bar] baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Bracket,
+        });
+        assert_eq!(e.text_lines()[0], "foo [] baz");
+    }
+
+    #[test]
+    fn delete_inner_single_quote() {
+        let mut e = editor_with("a 'bc' d");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::SingleQuote,
+        });
+        assert_eq!(e.text_lines()[0], "a '' d");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_around_single_quote_takes_trailing_space() {
+        let mut e = editor_with("a 'bc' d");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: false,
+            object: Object::SingleQuote,
+        });
+        assert_eq!(e.text_lines()[0], "a d");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_inner_escaped_quote() {
+        let mut e = editor_with("a 'b\\'c' d");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::SingleQuote,
+        });
+        assert_eq!(e.text_lines()[0], "a '' d");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_inner_adjacent_quotes_is_noop() {
+        let mut e = editor_with("a '' b");
+        for _ in 0..2 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::SingleQuote,
+        });
+        assert_eq!(e.text_lines()[0], "a '' b");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_inner_double_quote_and_backtick() {
+        let mut e = editor_with("a \"bc\" d");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::DoubleQuote,
+        });
+        assert_eq!(e.text_lines()[0], "a \"\" d");
+        let mut e = editor_with("a `bc` d");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Backtick,
+        });
+        assert_eq!(e.text_lines()[0], "a `` d");
+    }
+
+    #[test]
+    fn delete_inner_paragraph_deletes_line() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paragraph,
+        });
+        assert_eq!(e.text_lines().len(), 4);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!(e.text_lines()[1], "b");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn delete_around_paragraph_takes_blank() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::DeleteObject {
+            inner: false,
+            object: Object::Paragraph,
+        });
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[0], "b");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_middle_paragraph() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paragraph,
+        });
+        assert_eq!(e.text_lines().len(), 4);
+        assert_eq!(e.text_lines()[2], "");
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn change_paragraph_enters_insert() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ChangeObject {
+            inner: true,
+            object: Object::Paragraph,
+        });
+        assert_eq!(e.text_lines()[2], "");
+        assert_eq!((e.row(), e.col()), (2, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[2], "X");
+    }
+
+    #[test]
+    fn yank_paragraph_keeps_text() {
+        let mut e = editor_with("a\n\nb\n\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankObject {
+            inner: true,
+            object: Object::Paragraph,
+        });
+        assert_eq!(e.text_lines()[2], "b");
+        assert_eq!((e.row(), e.col()), (2, 0));
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
