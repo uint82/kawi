@@ -2,36 +2,26 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
-    style::{Attribute, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{Clear, ClearType},
 };
 use std::io::{Stdout, Write};
 
 use crate::frame::{Frame, SearchSpan};
+use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
-use crate::theme::{BaseColors, MatchColors, Theme};
+use crate::theme::{MatchColors, Theme};
 use crate::viewport::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    apply_base_colors(out, frame.theme)?;
+    paint::apply_base(out, frame.theme)?;
     clear_all(out)?;
     draw_visible_lines(out, frame.lines, frame.viewport)?;
     draw_highlight(out, frame, frame.theme)?;
-    draw_status_row(out, frame.status, frame.viewport)?;
+    draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
     draw_message_row(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
-    Ok(())
-}
-
-fn apply_base_colors(out: &mut Stdout, theme: &Theme) -> Result<()> {
-    execute!(
-        out,
-        SetForegroundColor(theme.base.foreground),
-        SetBackgroundColor(theme.base.background)
-    )
-    .context("apply base colors")?;
     Ok(())
 }
 
@@ -207,38 +197,16 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> 
 fn paint_span(out: &mut Stdout, span: &HighlightSpan, theme: &Theme) -> Result<()> {
     move_to_segment(out, span.from, span.screen_row)?;
     match span.tint {
-        Tint::Selection => paint_reversed(out, &span.text),
-        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, &theme.base),
-        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, &theme.base),
+        Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
+        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
+        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
     }
 }
 
-fn paint_reversed(out: &mut Stdout, text: &str) -> Result<()> {
-    enable_reverse(out)?;
+fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors, theme: &Theme) -> Result<()> {
+    paint::apply_match(out, colors)?;
     write_segment(out, text)?;
-    disable_reverse(out)?;
-    Ok(())
-}
-
-fn paint_tinted(
-    out: &mut Stdout,
-    text: &str,
-    colors: &MatchColors,
-    base: &BaseColors,
-) -> Result<()> {
-    execute!(
-        out,
-        SetForegroundColor(colors.foreground),
-        SetBackgroundColor(colors.background)
-    )
-    .context("tint span")?;
-    write_segment(out, text)?;
-    execute!(
-        out,
-        SetForegroundColor(base.foreground),
-        SetBackgroundColor(base.background)
-    )
-    .context("restore base colors")?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 
@@ -271,23 +239,18 @@ fn move_to_segment(out: &mut Stdout, col: usize, screen_row: usize) -> Result<()
     Ok(())
 }
 
-fn enable_reverse(out: &mut Stdout) -> Result<()> {
-    execute!(out, SetAttribute(Attribute::Reverse)).context("enable reverse")?;
-    Ok(())
-}
-
 fn write_segment(out: &mut Stdout, text: &str) -> Result<()> {
     write!(out, "{text}").context("write segment")?;
     Ok(())
 }
 
-fn disable_reverse(out: &mut Stdout) -> Result<()> {
-    execute!(out, SetAttribute(Attribute::Reset)).context("disable reverse")?;
-    Ok(())
-}
-
-fn draw_status_row(out: &mut Stdout, status: &StatusInfo, viewport: &Viewport) -> Result<()> {
-    draw_status(out, status, viewport.width(), viewport.height())
+fn draw_status_row(
+    out: &mut Stdout,
+    status: &StatusInfo,
+    viewport: &Viewport,
+    theme: &Theme,
+) -> Result<()> {
+    draw_status(out, status, viewport.width(), viewport.height(), theme)
 }
 
 fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {

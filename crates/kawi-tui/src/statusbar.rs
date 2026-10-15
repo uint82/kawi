@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use crossterm::{cursor::MoveTo, execute};
 use std::io::{Stdout, Write};
 
+use crate::paint;
+use crate::theme::Theme;
+
 pub struct StatusInfo<'a> {
     pub filename: &'a str,
     pub dirty: bool,
@@ -11,9 +14,17 @@ pub struct StatusInfo<'a> {
     pub mode: &'a str,
 }
 
-pub fn draw_status(out: &mut Stdout, info: &StatusInfo, width: usize, y: usize) -> Result<()> {
+pub fn draw_status(
+    out: &mut Stdout,
+    info: &StatusInfo,
+    width: usize,
+    y: usize,
+    theme: &Theme,
+) -> Result<()> {
     let line = build_line(info, width);
+    paint::apply_match(out, &theme.status)?;
     write_status_line(out, &line, y)?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 

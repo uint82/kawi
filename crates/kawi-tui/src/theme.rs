@@ -15,6 +15,8 @@ pub struct Theme {
     pub base: BaseColors,
     pub search_match: MatchColors,
     pub search_current: MatchColors,
+    pub selection: MatchColors,
+    pub status: MatchColors,
 }
 
 impl Theme {
@@ -66,6 +68,22 @@ impl Theme {
                     b: 148,
                 },
             },
+            selection: MatchColors {
+                foreground: Color::Black,
+                background: Color::White,
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 20,
+                    g: 22,
+                    b: 27,
+                },
+                background: Color::Rgb {
+                    r: 224,
+                    g: 226,
+                    b: 234,
+                },
+            },
         }
     }
 
@@ -108,6 +126,30 @@ impl Theme {
                     b: 25,
                 },
             },
+            selection: MatchColors {
+                foreground: Color::Rgb {
+                    r: 235,
+                    g: 219,
+                    b: 178,
+                },
+                background: Color::Rgb {
+                    r: 102,
+                    g: 92,
+                    b: 84,
+                },
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 235,
+                    g: 219,
+                    b: 178,
+                },
+                background: Color::Rgb {
+                    r: 80,
+                    g: 73,
+                    b: 69,
+                },
+            },
         }
     }
 
@@ -148,6 +190,30 @@ impl Theme {
                     r: 175,
                     g: 58,
                     b: 3,
+                },
+            },
+            selection: MatchColors {
+                foreground: Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                },
+                background: Color::Rgb {
+                    r: 189,
+                    g: 174,
+                    b: 147,
+                },
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                },
+                background: Color::Rgb {
+                    r: 213,
+                    g: 196,
+                    b: 161,
                 },
             },
         }
@@ -230,6 +296,41 @@ mod tests {
         assert_ne!(
             theme.search_match.background,
             theme.search_current.background
+        );
+    }
+
+    #[test]
+    fn selection_uses_light_background() {
+        let theme = Theme::default();
+        assert_eq!(theme.selection.foreground, Color::Black);
+        assert_eq!(theme.selection.background, Color::White);
+    }
+
+    #[test]
+    fn status_reverses_base() {
+        let theme = Theme::default();
+        assert_eq!(theme.status.foreground, theme.base.background);
+        assert_eq!(theme.status.background, theme.base.foreground);
+    }
+
+    #[test]
+    fn gruvbox_dark_selection_and_status() {
+        let theme = Theme::named("gruvbox-dark").expect("theme");
+        assert_eq!(
+            theme.selection.background,
+            Color::Rgb {
+                r: 102,
+                g: 92,
+                b: 84
+            }
+        );
+        assert_eq!(
+            theme.status.background,
+            Color::Rgb {
+                r: 80,
+                g: 73,
+                b: 69
+            }
         );
     }
 
