@@ -75,6 +75,11 @@ impl Editor {
             .window_lines(0, self.buffer.line_count().saturating_add(1))
     }
 
+    #[cfg(test)]
+    pub fn register_kind(&self) -> RegisterKind {
+        self.register.kind()
+    }
+
     pub fn filename(&self) -> &str {
         self.buffer.path.as_deref().unwrap_or("[No Name]")
     }
@@ -151,6 +156,12 @@ impl Editor {
             Action::ChangeWord => self.change_word(),
             Action::DeleteWordBackward => self.delete_word_backward(),
             Action::DeleteWordEnd => self.delete_word_end(),
+            Action::DeleteInnerWord => self.delete_inner_word(),
+            Action::DeleteAroundWord => self.delete_around_word(),
+            Action::ChangeInnerWord => self.change_inner_word(),
+            Action::ChangeAroundWord => self.change_around_word(),
+            Action::YankInnerWord => self.yank_inner_word(),
+            Action::YankAroundWord => self.yank_around_word(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
             Action::YankLine => self.yank_line(),
@@ -347,6 +358,100 @@ impl Editor {
         self.buffer
             .delete_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
+    }
+
+    fn delete_inner_word(&mut self) {
+        let span = words::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.delete_object_span(span);
+    }
+
+    fn delete_around_word(&mut self) {
+        let span = words::aw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.delete_object_span(span);
+    }
+
+    fn change_inner_word(&mut self) {
+        let span = words::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.change_object_span(span);
+    }
+
+    fn change_around_word(&mut self) {
+        let span = words::aw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.change_object_span(span);
+    }
+
+    fn yank_inner_word(&mut self) {
+        let span = words::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.yank_object_span(span);
+    }
+
+    fn yank_around_word(&mut self) {
+        let span = words::aw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.yank_object_span(span);
+    }
+
+    fn delete_object_span(&mut self, span: Option<words::AroundSpan>) -> bool {
+        let Some(span) = span else {
+            return false;
+        };
+        self.record_boundary_at(span.start.0, span.start.1);
+        if span.spans_lines(&self.buffer) {
+            self.delete_span_lines(&span);
+        } else {
+            self.yank_span(span.start.0, span.start.1, span.end.0, span.end.1);
+            self.buffer
+                .delete_span(span.start.0, span.start.1, span.end.0, span.end.1);
+        }
+        self.place_anchor(span.anchor);
+        true
+    }
+
+    fn place_anchor(&mut self, anchor: (usize, usize)) {
+        let row = anchor.0.min(self.buffer.line_count().saturating_sub(1));
+        self.cursor.set_position(row, anchor.1);
+    }
+
+    fn delete_span_lines(&mut self, span: &words::AroundSpan) {
+        let last = span.end.0.min(self.buffer.line_count().saturating_sub(1));
+        if span.start.0 > last {
+            return;
+        }
+        let lines: Vec<String> = (span.start.0..=last)
+            .map(|row| self.buffer.line_text(row))
+            .collect();
+        self.register.set_lines(lines);
+        let mut row = last;
+        loop {
+            self.buffer.delete_line(row);
+            if row <= span.start.0 {
+                break;
+            }
+            row = row.saturating_sub(1);
+        }
+    }
+
+    fn change_object_span(&mut self, span: Option<words::AroundSpan>) {
+        if self.remove_object_span(span) {
+            self.switch_to_insert();
+        }
+    }
+
+    fn remove_object_span(&mut self, span: Option<words::AroundSpan>) -> bool {
+        let Some(span) = span else {
+            return false;
+        };
+        self.record_boundary_at(span.start.0, span.start.1);
+        self.yank_span(span.start.0, span.start.1, span.end.0, span.end.1);
+        self.buffer
+            .delete_span(span.start.0, span.start.1, span.end.0, span.end.1);
+        self.place_anchor(span.anchor);
+        true
+    }
+
+    fn yank_object_span(&mut self, span: Option<words::AroundSpan>) {
+        if let Some(span) = span {
+            self.yank_span(span.start.0, span.start.1, span.end.0, span.end.1);
+        }
     }
 
     fn delete_span_to(&mut self, target: (usize, usize)) {
@@ -1866,6 +1971,202 @@ mod tests {
         assert_eq!(e.text_lines().len(), 1);
         assert_eq!(e.text_lines()[0], "fo");
         assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn delete_inner_word_deletes_run() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteInnerWord);
+        assert_eq!(e.text_lines()[0], " bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_deletes_space() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines()[0], "bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_at_end_takes_leading() {
+        let mut e = editor_with("foo bar");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines()[0], "foo");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_around_word_joins_line() {
+        let mut e = editor_with("foo   \nbar");
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!(e.text_lines()[1], "bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_on_empty_takes_next_word() {
+        let mut e = editor_with("\nfoo");
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_empty_restores_origin() {
+        let mut e = editor_with("foo\n\nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines(), vec!["foo".to_string(), "".to_string()]);
+        assert_eq!(e.byte_count(), 4);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_after_edit_jumps_back() {
+        let mut e = editor_with("foo\n   \nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines(), vec!["foo".to_string(), "".to_string()]);
+        assert_eq!(e.byte_count(), 4);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_stops_at_empty() {
+        let mut e = editor_with("foo   \n\nbar");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "foo");
+        assert_eq!(e.text_lines()[1], "bar");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_around_word_keeps_trailing_word() {
+        let mut e = editor_with("xx\nbar\nbaz");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn delete_around_word_keeps_leading_spaces() {
+        let mut e = editor_with("   foo\nbar");
+        for _ in 0..3 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "   ");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_around_word_midrun_keeps_anchor() {
+        let mut e = editor_with("xxxx\n   \nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines(), vec!["xxxx".to_string(), "".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn delete_around_word_cross_line_takes_newline() {
+        let mut e = editor_with("   \nbar\nbaz");
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_around_word_same_line_skips_newline() {
+        let mut e = editor_with("ab\n   foo\nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn delete_around_word_yanks_linewise_across_lines() {
+        let mut e = editor_with("foo\n   \nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteAroundWord);
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn change_inner_word_enters_insert() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::ChangeInnerWord);
+        assert_eq!(e.text_lines()[0], " bar");
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_around_word_enters_insert() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::ChangeAroundWord);
+        assert_eq!(e.text_lines()[0], "bar");
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_around_word_on_empty_enters_insert() {
+        let mut e = editor_with("\nfoo");
+        e.apply(Action::ChangeAroundWord);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn change_inner_word_on_empty_is_noop() {
+        let mut e = editor_with("\nfoo");
+        e.apply(Action::ChangeInnerWord);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn yank_inner_word_keeps_text() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::YankInnerWord);
+        assert_eq!(e.text_lines()[0], "foo bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::YankAroundWord);
+        assert_eq!(e.text_lines()[0], "foo bar");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn yank_around_word_on_empty_is_noop() {
+        let mut e = editor_with("\nfoo");
+        e.apply(Action::YankAroundWord);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
