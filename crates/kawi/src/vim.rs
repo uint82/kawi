@@ -13,9 +13,15 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("dw", Action::DeleteWord),
     ("db", Action::DeleteWordBackward),
     ("de", Action::DeleteWordEnd),
+    ("diw", Action::DeleteInnerWord),
+    ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
+    ("ciw", Action::ChangeInnerWord),
+    ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
+    ("yiw", Action::YankInnerWord),
+    ("yaw", Action::YankAroundWord),
 ];
 
 fn sequence_action(sequence: &str) -> Option<Action> {
@@ -732,10 +738,29 @@ mod tests {
         let mut map = VimKeymap::new();
         map.map(plain(KeyCode::Char('d')), Mode::Normal);
         assert_eq!(
-            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            map.map(plain(KeyCode::Char('q')), Mode::Normal),
             Action::Noop
         );
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn diw_daw_resolve() {
+        for (keys, action) in [
+            ("diw", Action::DeleteInnerWord),
+            ("daw", Action::DeleteAroundWord),
+            ("ciw", Action::ChangeInnerWord),
+            ("caw", Action::ChangeAroundWord),
+            ("yiw", Action::YankInnerWord),
+            ("yaw", Action::YankAroundWord),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut resolved = Action::Noop;
+            for key in keys.chars() {
+                resolved = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            }
+            assert_eq!(resolved, action);
+        }
     }
 
     #[test]
