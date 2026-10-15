@@ -26,21 +26,48 @@ impl Editor {
     }
 
     pub(super) fn move_down(&mut self) {
-        self.cursor.move_down();
-        self.apply_desired_column();
+        let count = self.take_count();
+        for _ in 0..count {
+            let before = self.cursor.row();
+            self.cursor.move_down();
+            self.apply_desired_column();
+            if self.cursor.row() == before {
+                break;
+            }
+        }
     }
 
     pub(super) fn move_left(&mut self) {
-        self.cursor.move_left();
+        let count = self.take_count();
+        for _ in 0..count {
+            let before = (self.cursor.row(), self.cursor.col());
+            self.cursor.move_left();
+            if (self.cursor.row(), self.cursor.col()) == before {
+                break;
+            }
+        }
     }
 
     pub(super) fn move_right(&mut self) {
-        self.cursor.move_right();
+        let count = self.take_count();
+        for _ in 0..count {
+            let before = (self.cursor.row(), self.cursor.col());
+            self.cursor.move_right();
+            if (self.cursor.row(), self.cursor.col()) == before {
+                break;
+            }
+        }
     }
 
     pub(super) fn move_to_line_end(&mut self) {
-        let end = self.max_col_for_row(self.cursor.row());
-        self.cursor.set_col(end);
+        let count = self.take_count();
+        let row = self
+            .cursor
+            .row()
+            .saturating_add(count.saturating_sub(1))
+            .min(self.buffer.max_cursor_row());
+        let end = self.max_col_for_row(row);
+        self.cursor.set_position(row, end);
         self.remember_line_end();
     }
 
@@ -49,8 +76,16 @@ impl Editor {
     }
 
     pub(super) fn move_to_next_line_start(&mut self) {
-        let row = self.cursor.row().saturating_add(1);
-        if row > self.buffer.max_cursor_row() {
+        let count = self.take_count();
+        let mut row = self.cursor.row();
+        for _ in 0..count {
+            let next = row.saturating_add(1);
+            if next > self.buffer.max_cursor_row() {
+                break;
+            }
+            row = next;
+        }
+        if row == self.cursor.row() {
             return;
         }
         self.jump_to_line_start(row);
@@ -65,7 +100,8 @@ impl Editor {
     }
 
     pub(super) fn move_to_prev_line_start(&mut self) {
-        let row = self.cursor.row().saturating_sub(1);
+        let count = self.take_count();
+        let row = self.cursor.row().saturating_sub(count);
         self.jump_to_line_start(row);
     }
 
@@ -74,8 +110,15 @@ impl Editor {
     }
 
     pub(super) fn move_up(&mut self) {
-        self.cursor.move_up();
-        self.apply_desired_column();
+        let count = self.take_count();
+        for _ in 0..count {
+            let before = self.cursor.row();
+            self.cursor.move_up();
+            self.apply_desired_column();
+            if self.cursor.row() == before {
+                break;
+            }
+        }
     }
 
     fn remember_line_end(&mut self) {
@@ -86,8 +129,9 @@ impl Editor {
         }
     }
 
-    fn step_word(&mut self, step: fn(&Buffer, usize, usize) -> (usize, usize)) {
-        let (row, col) = step(&self.buffer, self.cursor.row(), self.cursor.col());
+    fn step_word(&mut self, step: fn(&Buffer, usize, usize, usize) -> (usize, usize)) {
+        let count = self.take_count();
+        let (row, col) = step(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.cursor.set_position(row, col);
     }
 }
@@ -106,6 +150,12 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn push_digits(e: &mut Editor, digits: &[u8]) {
+        for digit in digits {
+            e.apply(Action::PushCount(*digit));
+        }
     }
 
     #[test]
@@ -167,6 +217,58 @@ mod tests {
         e.apply(Action::MoveLeft);
         e.apply(Action::MoveUp);
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn counted_hjkl_moves_repeat() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 0));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn counted_horizontal_clamps_at_edge() {
+        let mut e = editor_with("abcdef");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveRight);
+        assert_eq!((e.row(), e.col()), (0, 2));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveLeft);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn counted_word_motions_repeat() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToNextWordStart);
+        assert_eq!((e.row(), e.col()), (0, 8));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToPrevWordStart);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToNextWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn counted_dollar_moves_down_to_end() {
+        let mut e = editor_with("ab\ncdef");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToLineEnd);
+        assert_eq!((e.row(), e.col()), (1, 3));
+    }
+
+    #[test]
+    fn counted_enter_moves_down_to_start() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (2, 0));
     }
 
     #[test]

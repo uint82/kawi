@@ -13,14 +13,17 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("dw", Action::DeleteWord),
     ("db", Action::DeleteWordBackward),
     ("de", Action::DeleteWordEnd),
+    ("d0", Action::DeleteToStart),
     ("diw", Action::DeleteInnerWord),
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
     ("ce", Action::ChangeWordEnd),
+    ("c0", Action::ChangeToStart),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
+    ("y0", Action::YankToStart),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
 ];
@@ -36,6 +39,18 @@ fn is_sequence_prefix(sequence: &str) -> bool {
     OPERATOR_SEQUENCES
         .iter()
         .any(|(keys, _)| *keys != sequence && keys.starts_with(sequence))
+}
+
+fn is_operator_start(pushed: char) -> bool {
+    matches!(pushed, 'd' | 'c' | 'y')
+}
+
+fn trailing_operator(pending: &str) -> Option<char> {
+    let operator = pending.trim_start_matches(|ch: char| ch.is_ascii_digit());
+    if operator.len() == 1 && matches!(operator, "d" | "c" | "y") {
+        return operator.chars().next();
+    }
+    None
 }
 
 pub struct VimKeymap {
@@ -84,6 +99,11 @@ impl VimKeymap {
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
         if is_redo_key(key) {
             return Action::Redo;
+        }
+        if let KeyCode::Char(c) = key.code {
+            if matches!(c, '1'..='9') && !has_ctrl_or_alt(key) {
+                return self.push_digit(c);
+            }
         }
         match key.code {
             KeyCode::Esc => Action::Noop,
@@ -153,7 +173,7 @@ impl VimKeymap {
             return Action::Noop;
         }
         self.pending.push(operator);
-        Action::Noop
+        Action::BeginOperator
     }
 
     fn arm_command(&mut self, key: KeyEvent) -> Action {
@@ -165,16 +185,64 @@ impl VimKeymap {
 
     fn resolve_pending(&mut self, key: KeyEvent) -> Action {
         match key.code {
-            KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.extend_sequence(c),
+            KeyCode::Char('0') if !has_ctrl_or_alt(key) => self.zero_key(),
+            KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.sequence_key(c),
             _ => self.cancel_sequence(),
         }
     }
 
+    fn sequence_key(&mut self, pushed: char) -> Action {
+        if matches!(pushed, '1'..='9') {
+            return self.push_digit(pushed);
+        }
+        self.extend_sequence(pushed)
+    }
+
+    fn zero_key(&mut self) -> Action {
+        if self.pending.is_empty() {
+            return Action::MoveToLineStart;
+        }
+        if trailing_operator(&self.pending).is_some() {
+            self.pending.push('0');
+            return self.resolve_sequence();
+        }
+        self.push_digit('0')
+    }
+
+    fn push_digit(&mut self, digit: char) -> Action {
+        self.pending.push(digit);
+        Action::PushCount(digit.to_digit(10).unwrap_or(0) as u8)
+    }
+
     fn extend_sequence(&mut self, pushed: char) -> Action {
+        if self.only_digits_pending() {
+            if is_operator_start(pushed) {
+                self.pending.push(pushed);
+                return Action::BeginOperator;
+            }
+            self.clear_pending();
+            return self.map_normal_fresh(KeyEvent::new(KeyCode::Char(pushed), KeyModifiers::NONE));
+        }
         self.pending.push(pushed);
-        match sequence_action(&self.pending) {
+        self.resolve_sequence()
+    }
+
+    fn only_digits_pending(&self) -> bool {
+        !self.pending.is_empty() && self.pending.chars().all(|ch| ch.is_ascii_digit())
+    }
+
+    fn resolve_sequence(&mut self) -> Action {
+        if let Some(action) = sequence_action(&self.pending) {
+            return self.complete_sequence(action);
+        }
+        let stripped: String = self
+            .pending
+            .chars()
+            .filter(|ch| !ch.is_ascii_digit())
+            .collect();
+        match sequence_action(&stripped) {
             Some(action) => self.complete_sequence(action),
-            None if is_sequence_prefix(&self.pending) => Action::Noop,
+            None if is_sequence_prefix(&stripped) => Action::Noop,
             None => self.cancel_sequence(),
         }
     }
@@ -186,7 +254,7 @@ impl VimKeymap {
 
     fn cancel_sequence(&mut self) -> Action {
         self.clear_pending();
-        Action::Noop
+        Action::CancelPending
     }
 
     fn map_command(&mut self, key: KeyEvent) -> Action {
@@ -400,7 +468,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
@@ -413,11 +481,11 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('j')), Mode::Normal),
-            Action::Noop
+            Action::CancelPending
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('j')), Mode::Normal),
@@ -639,11 +707,11 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Normal),
-            Action::Noop
+            Action::CancelPending
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Normal),
@@ -656,7 +724,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
@@ -669,7 +737,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('w')), Mode::Normal),
@@ -682,7 +750,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('w')), Mode::Normal),
@@ -695,7 +763,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('b')), Mode::Normal),
@@ -708,7 +776,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('e')), Mode::Normal),
@@ -721,7 +789,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('e')), Mode::Normal),
@@ -750,10 +818,13 @@ mod tests {
     #[test]
     fn unknown_second_key_cancels() {
         let mut map = VimKeymap::new();
-        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
         assert_eq!(
             map.map(plain(KeyCode::Char('q')), Mode::Normal),
-            Action::Noop
+            Action::CancelPending
         );
         assert_eq!(map.pending_text(), None);
     }
@@ -778,11 +849,38 @@ mod tests {
     }
 
     #[test]
+    fn count_flows_into_editor() {
+        let mut map = VimKeymap::new();
+        let mut editor =
+            kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("foo bar qux baz"));
+        for key in ['2', 'd', '2', 'w'] {
+            let action = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            editor.apply(action);
+        }
+        assert_eq!(editor.visible_lines(0, 2), vec![String::new()]);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn doubled_count_flows_into_editor() {
+        let mut map = VimKeymap::new();
+        let mut editor = kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("a\nb\nc"));
+        for key in ['2', 'd', 'd'] {
+            let action = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            editor.apply(action);
+        }
+        assert_eq!(editor.visible_lines(0, 3), vec!["c".to_string()]);
+    }
+
+    #[test]
     fn sequence_table_resolves() {
         assert_eq!(sequence_action("dd"), Some(Action::DeleteLine));
         assert_eq!(sequence_action("dw"), Some(Action::DeleteWord));
         assert_eq!(sequence_action("db"), Some(Action::DeleteWordBackward));
         assert_eq!(sequence_action("de"), Some(Action::DeleteWordEnd));
+        assert_eq!(sequence_action("d0"), Some(Action::DeleteToStart));
+        assert_eq!(sequence_action("c0"), Some(Action::ChangeToStart));
+        assert_eq!(sequence_action("y0"), Some(Action::YankToStart));
         assert_eq!(sequence_action("dx"), None);
     }
 
@@ -798,12 +896,141 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('y')), Mode::Normal),
-            Action::Noop
+            Action::BeginOperator
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('y')), Mode::Normal),
             Action::YankLine
         );
+    }
+
+    #[test]
+    fn digits_push_count() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(map.pending_text(), Some("2"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::PushCount(0)
+        );
+        assert_eq!(map.pending_text(), Some("20"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::MoveToNextWordStart
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn fresh_zero_moves_to_line_start() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::MoveToLineStart
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn count_before_operator_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
+        assert_eq!(map.pending_text(), Some("2d"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::DeleteWord
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn count_after_operator_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(map.pending_text(), Some("d2"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::DeleteWord
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn doubled_operator_takes_count() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::DeleteLine
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::DeleteLine
+        );
+    }
+
+    #[test]
+    fn operator_zero_sequences_resolve() {
+        for (operator, action) in [
+            ('d', Action::DeleteToStart),
+            ('c', Action::ChangeToStart),
+            ('y', Action::YankToStart),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                Action::BeginOperator
+            );
+            assert_eq!(map.map(plain(KeyCode::Char('0')), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn esc_with_pending_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]

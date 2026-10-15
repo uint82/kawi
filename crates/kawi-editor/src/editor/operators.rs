@@ -16,8 +16,26 @@ impl Editor {
     }
 
     pub(super) fn change_line(&mut self) {
+        let count = self.take_count();
         let row = self.cursor.row();
-        self.change_lines(row, row);
+        let Some(last) = self.counted_last_row(count) else {
+            return;
+        };
+        self.change_lines(row, last);
+    }
+
+    pub(super) fn change_to_start(&mut self) {
+        if self.cursor.col() == 0 {
+            self.switch_to_insert();
+            return;
+        }
+        let row = self.cursor.row();
+        self.record_boundary();
+        self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.buffer
+            .delete_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.cursor.set_position(row, 0);
+        self.switch_to_insert();
     }
 
     fn change_object_span(&mut self, span: Option<objects::AroundSpan>) {
@@ -36,24 +54,28 @@ impl Editor {
     }
 
     pub(super) fn change_to_end(&mut self) {
-        let Some(tail) = self.line_tail() else {
+        let count = self.take_count();
+        let Some(tail) = self.line_tail(count) else {
             self.enter_insert();
             return;
         };
         self.record_boundary();
         self.yank_to_end();
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
-        self.clamp_col_normal();
+        self.cursor.set_position(tail.0, tail.1);
         self.switch_to_insert();
     }
 
     pub(super) fn change_word(&mut self) {
-        let span = words::cw_change_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span =
+            words::cw_change_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, true);
     }
 
     pub(super) fn change_word_end(&mut self) {
-        let span = words::ce_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span = words::ce_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, true);
     }
 
@@ -110,12 +132,6 @@ impl Editor {
         self.cursor.set_position(row, self.first_non_blank_of(row));
     }
 
-    fn clamp_col_normal(&mut self) {
-        let width = self.line_width(self.cursor.row());
-        self.cursor
-            .set_col(self.cursor.col().min(width.saturating_sub(1)));
-    }
-
     pub(super) fn collapse_to(&mut self, row: usize, col: usize) {
         self.selection = Some(Selection::new(row, col));
     }
@@ -134,23 +150,44 @@ impl Editor {
     }
 
     pub(super) fn delete_forward(&mut self) {
-        if !self.mode.is_insert() && self.buffer.line_len(self.cursor.row()) == 0 {
+        if self.mode.is_insert() {
+            self.record_maybe();
+            self.buffer
+                .delete_forward(self.cursor.row(), self.cursor.col());
             return;
         }
+        let width = self.buffer.line_len(self.cursor.row());
+        if width == 0 {
+            return;
+        }
+        let count = self.take_count();
+        let end = self
+            .cursor
+            .col()
+            .saturating_add(count.saturating_sub(1))
+            .min(width.saturating_sub(1));
         self.record_maybe();
+        self.yank_range(self.cursor.row(), self.cursor.col(), self.cursor.row(), end);
         self.buffer
-            .delete_forward(self.cursor.row(), self.cursor.col());
+            .delete_range(self.cursor.row(), self.cursor.col(), self.cursor.row(), end);
     }
 
+    // TODO(counts): extend iw and aw spans by count like vim d2iw.
     pub(super) fn delete_inner_word(&mut self) {
         let span = objects::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.delete_object_span(span);
     }
 
     pub(super) fn delete_line(&mut self) {
-        self.yank_current_line();
-        self.buffer.delete_line(self.cursor.row());
-        self.cursor.set_col(0);
+        let count = self.take_count();
+        let row = self.cursor.row();
+        let Some(last) = self.counted_last_row(count) else {
+            return;
+        };
+        self.register.set_lines(self.take_lines(row, last));
+        self.drop_lines(row, last);
+        let row = row.min(self.buffer.line_count().saturating_sub(1));
+        self.cursor.set_position(row, 0);
     }
 
     fn delete_object_span(&mut self, span: Option<objects::AroundSpan>) -> bool {
@@ -202,26 +239,44 @@ impl Editor {
     }
 
     pub(super) fn delete_to_end(&mut self) {
-        let Some(tail) = self.line_tail() else {
+        let count = self.take_count();
+        let Some(tail) = self.line_tail(count) else {
             return;
         };
         self.record_boundary();
         self.yank_to_end();
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
+        let col = tail.1.min(self.max_col_for_row(tail.0));
+        self.cursor.set_position(tail.0, col);
+    }
+
+    pub(super) fn delete_to_start(&mut self) {
+        if self.cursor.col() == 0 {
+            return;
+        }
+        let row = self.cursor.row();
+        self.record_boundary();
+        self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.buffer
+            .delete_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.cursor.set_position(row, 0);
     }
 
     pub(super) fn delete_word(&mut self) {
-        let span = words::dw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span = words::dw_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, false);
     }
 
     pub(super) fn delete_word_backward(&mut self) {
-        let span = words::db_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span = words::db_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, false);
     }
 
     pub(super) fn delete_word_end(&mut self) {
-        let span = words::cw_range(&self.buffer, self.cursor.row(), self.cursor.col());
+        let count = self.take_count();
+        let span = words::cw_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, false);
     }
 
@@ -268,13 +323,26 @@ impl Editor {
         width == 0 || self.cursor.col() >= width
     }
 
-    fn line_tail(&self) -> Option<(usize, usize, usize, usize)> {
+    fn line_tail(&self, count: usize) -> Option<(usize, usize, usize, usize)> {
         if self.line_is_empty_at_cursor() {
             return None;
         }
-        let row = self.cursor.row();
-        let last = self.line_width(row).saturating_sub(1);
-        Some((row, self.cursor.col(), row, last))
+        let end_row = self.counted_last_row(count)?;
+        let last = self.line_width(end_row).saturating_sub(1);
+        Some((self.cursor.row(), self.cursor.col(), end_row, last))
+    }
+
+    fn counted_last_row(&self, count: usize) -> Option<usize> {
+        let max = self.buffer.line_count().saturating_sub(1);
+        if self.cursor.row() >= max && count > 1 {
+            return None;
+        }
+        Some(
+            self.cursor
+                .row()
+                .saturating_add(count.saturating_sub(1))
+                .min(max),
+        )
     }
 
     pub(super) fn open_line_below(&mut self) {
@@ -301,23 +369,28 @@ impl Editor {
         if self.register.is_empty() {
             return;
         }
+        let count = self.take_count();
         self.record_boundary();
         match self.register.kind() {
-            RegisterKind::CharWise => self.paste_inline(),
-            RegisterKind::LineWise => self.paste_lines(),
+            RegisterKind::CharWise => self.paste_inline(count),
+            RegisterKind::LineWise => self.paste_lines(count),
         }
     }
 
-    fn paste_inline(&mut self) {
-        let text = self.register.text().to_string();
+    fn paste_inline(&mut self, count: usize) {
+        let text = self.register.text().repeat(count.max(1));
         let (row, col) = self
             .buffer
             .paste_after(self.cursor.row(), self.cursor.col(), &text);
         self.cursor.set_position(row, col);
     }
 
-    fn paste_lines(&mut self) {
-        let lines: Vec<String> = self.register.text().lines().map(str::to_string).collect();
+    fn paste_lines(&mut self, count: usize) {
+        let yanked: Vec<String> = self.register.text().lines().map(str::to_string).collect();
+        let mut lines = Vec::with_capacity(yanked.len().saturating_mul(count.max(1)));
+        for _ in 0..count.max(1) {
+            lines.extend(yanked.iter().cloned());
+        }
         let row = self.buffer.paste_lines_below(self.cursor.row(), &lines);
         self.cursor.set_position(row, self.first_non_blank_of(row));
     }
@@ -346,14 +419,18 @@ impl Editor {
         self.yank_object_span(span);
     }
 
-    pub(super) fn yank_current_line(&mut self) {
-        let text = self.buffer.line_text(self.cursor.row());
-        self.register.set_lines(vec![text]);
-    }
-
     pub(super) fn yank_inner_word(&mut self) {
         let span = objects::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.yank_object_span(span);
+    }
+
+    pub(super) fn yank_lines(&mut self) {
+        let count = self.take_count();
+        let row = self.cursor.row();
+        let Some(last) = self.counted_last_row(count) else {
+            return;
+        };
+        self.register.set_lines(self.take_lines(row, last));
     }
 
     fn yank_object_span(&mut self, span: Option<objects::AroundSpan>) {
@@ -384,10 +461,20 @@ impl Editor {
     }
 
     pub(super) fn yank_to_end(&mut self) {
-        if let Some(tail) = self.line_tail() {
+        let count = self.take_count();
+        if let Some(tail) = self.line_tail(count) {
             let text = self.buffer.range_text(tail.0, tail.1, tail.2, tail.3);
             self.register.set_text(text);
         }
+    }
+
+    pub(super) fn yank_to_start(&mut self) {
+        if self.cursor.col() == 0 {
+            return;
+        }
+        let row = self.cursor.row();
+        self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.cursor.set_desired(0);
     }
 }
 
@@ -400,6 +487,16 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn push_digits(e: &mut Editor, digits: &[u8]) {
+        for digit in digits {
+            e.apply(Action::PushCount(*digit));
+        }
+    }
+
+    fn begin_operator(e: &mut Editor) {
+        e.apply(Action::BeginOperator);
     }
 
     #[test]
@@ -544,8 +641,12 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::ChangeToEnd);
         assert_eq!(e.text_lines()[0], "ab");
-        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!((e.row(), e.col()), (0, 2));
         assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "abX");
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 
     #[test]
@@ -980,6 +1081,353 @@ mod tests {
         e.apply(Action::DeleteWord);
         assert_eq!(e.text_lines()[0], "bar");
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_with_count_deletes_words() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        e.apply(Action::DeleteWord);
+        assert_eq!(e.text_lines()[0], "baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_multiplies_counts() {
+        let mut e = editor_with("foo bar qux baz");
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteWord);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_word_backward_with_count() {
+        let mut e = editor_with("foo bar baz");
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        e.apply(Action::DeleteWordBackward);
+        assert_eq!(e.text_lines()[0], "foo z");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_word_end_with_count() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        e.apply(Action::DeleteWordEnd);
+        assert_eq!(e.text_lines()[0], " baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_word_with_count() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        e.apply(Action::ChangeWord);
+        assert_eq!(e.text_lines()[0], " baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn change_word_end_with_count() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        begin_operator(&mut e);
+        e.apply(Action::ChangeWordEnd);
+        assert_eq!(e.text_lines()[0], " baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn delete_line_with_count() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "c");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn delete_line_with_operator_count() {
+        let mut e = editor_with("a\nb\nc");
+        begin_operator(&mut e);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "c");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_line_count_past_end_is_noop() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        push_digits(&mut e, &[9]);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn delete_line_count_clamps_to_end() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        push_digits(&mut e, &[3]);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.line_count(), 1);
+        assert_eq!(e.text_lines()[0], "a");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn change_line_count_past_end_is_noop() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        push_digits(&mut e, &[9]);
+        e.apply(Action::ChangeLine);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn yank_lines_count_past_end_is_noop() {
+        let mut e = editor_with("a\nb");
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankLine);
+        push_digits(&mut e, &[5]);
+        e.apply(Action::YankLine);
+        e.apply(Action::MoveToLineStart);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "b");
+        assert_eq!(e.text_lines()[2], "b");
+    }
+
+    #[test]
+    fn delete_to_end_count_past_end_is_noop() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.text_lines()[0], "ab");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_line_with_count() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ChangeLine);
+        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines()[0], "");
+        assert_eq!(e.text_lines()[1], "c");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn yank_lines_with_count_pastes_block() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::YankLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines().len(), 5);
+        assert_eq!(e.text_lines()[2], "a");
+        assert_eq!(e.text_lines()[3], "b");
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn delete_to_end_with_count() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "a");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_to_end_with_count() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ChangeToEnd);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "a");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aX");
+    }
+
+    #[test]
+    fn yank_to_end_with_count() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::YankToEnd);
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+        e.apply(Action::MoveDown);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "ghbcdef");
+        assert_eq!(e.text_lines()[2], "ghijklijkl");
+    }
+
+    #[test]
+    fn delete_to_end_then_down_keeps_column() {
+        let mut e = editor_with("abcdef\ngh");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteToEnd);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 1));
+    }
+
+    #[test]
+    fn delete_to_end_multiline_then_down_starts_line() {
+        let mut e = editor_with("abcdef\nghijkl\nxy");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn delete_forward_with_count() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteForward);
+        assert_eq!(e.text_lines()[0], "abcd");
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn delete_forward_with_count_clamps() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteForward);
+        assert_eq!(e.text_lines()[0], "abcde");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_forward_yanks_single() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteForward);
+        assert_eq!(e.text_lines()[0], "acdef");
+        e.apply(Action::MoveToLineStart);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[0], "abcdef");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn paste_with_count_repeats_block() {
+        let mut e = editor_with("ab");
+        e.apply(Action::YankLine);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "ab");
+        assert_eq!(e.text_lines()[2], "ab");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn paste_charwise_with_count_repeats() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankToEnd);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[0], "abbcdefbcdefcdef");
+        assert_eq!((e.row(), e.col()), (0, 11));
+    }
+
+    #[test]
+    fn delete_to_start_cuts_to_zero() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..3 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteToStart);
+        assert_eq!(e.text_lines()[0], "def");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn delete_to_start_at_zero_is_noop() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::DeleteToStart);
+        assert_eq!(e.text_lines()[0], "abcdef");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_to_start_cuts_to_zero() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..3 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::ChangeToStart);
+        assert_eq!(e.text_lines()[0], "def");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn yank_to_start_yanks_before_cursor() {
+        let mut e = editor_with("abcdef\nghi");
+        for _ in 0..3 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::YankToStart);
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+        e.apply(Action::MoveDown);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[1], "gabchi");
+        assert_eq!((e.row(), e.col()), (1, 3));
+    }
+
+    #[test]
+    fn ignored_count_does_not_leak() {
+        let mut e = editor_with("foo bar");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteInnerWord);
+        assert_eq!(e.text_lines()[0], " bar");
+        e.apply(Action::MoveRight);
+        assert_eq!((e.row(), e.col()), (0, 1));
     }
 
     #[test]

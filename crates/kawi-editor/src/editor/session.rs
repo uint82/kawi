@@ -3,6 +3,7 @@ use crate::mode::Mode;
 use crate::selection::Selection;
 
 impl Editor {
+    // TODO(counts): repeat typed text for insert entry with count like vim 3o.
     pub(super) fn append(&mut self) {
         self.cursor.move_right();
         self.enter_insert();
@@ -97,7 +98,12 @@ impl Editor {
     }
 
     pub(super) fn redo(&mut self) {
-        let _ = self.try_redo();
+        let count = self.take_count();
+        for _ in 0..count {
+            if !self.try_redo() {
+                break;
+            }
+        }
     }
 
     fn retreat_after_insert(&mut self) {
@@ -136,7 +142,12 @@ impl Editor {
     }
 
     pub(super) fn undo(&mut self) {
-        let _ = self.try_undo();
+        let count = self.take_count();
+        for _ in 0..count {
+            if !self.try_undo() {
+                break;
+            }
+        }
     }
 }
 
@@ -148,6 +159,12 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn push_digits(e: &mut Editor, digits: &[u8]) {
+        for digit in digits {
+            e.apply(Action::PushCount(*digit));
+        }
     }
 
     #[test]
@@ -457,6 +474,43 @@ mod tests {
         e.apply(Action::Undo);
         assert_eq!(e.text_lines()[0], "aa");
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn undo_with_count_undoes_each_change() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteWord);
+        e.apply(Action::DeleteWord);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "bar");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "foo bar");
+    }
+
+    #[test]
+    fn redo_with_count_redoes_each_change() {
+        let mut e = editor_with("foo bar");
+        e.apply(Action::DeleteWord);
+        e.apply(Action::DeleteWord);
+        e.apply(Action::Undo);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "foo bar");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Redo);
+        assert_eq!(e.text_lines()[0], "");
+    }
+
+    #[test]
+    fn repeated_paste_undoes_together() {
+        let mut e = editor_with("ab");
+        e.apply(Action::YankLine);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines().len(), 3);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "ab");
     }
 
     #[test]
