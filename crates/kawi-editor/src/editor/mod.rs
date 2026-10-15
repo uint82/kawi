@@ -15,6 +15,8 @@ mod operators;
 mod search_mode;
 mod session;
 
+use session::InsertEdit;
+
 pub struct Editor {
     buffer: Buffer,
     cursor: Cursor,
@@ -27,6 +29,10 @@ pub struct Editor {
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
+    insert_repeat: Option<usize>,
+    insert_reopen: bool,
+    insert_record: Vec<InsertEdit>,
+    insert_moved: bool,
 }
 
 struct SearchStatus {
@@ -99,7 +105,10 @@ impl Editor {
             Action::PasteAfter => self.paste_after(),
             Action::Undo => self.undo(),
             Action::Redo => self.redo(),
-            Action::EnterInsert => self.enter_insert(),
+            Action::EnterInsert => {
+                self.arm_insert_repeat(false);
+                self.enter_insert();
+            }
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
             Action::AppendLineEnd => self.append_line_end(),
@@ -209,6 +218,10 @@ impl Editor {
             register: Register::new(),
             count_digits: 0,
             operator_count: None,
+            insert_repeat: None,
+            insert_reopen: false,
+            insert_record: Vec::new(),
+            insert_moved: false,
         }
     }
 

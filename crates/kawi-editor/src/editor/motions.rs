@@ -13,6 +13,7 @@ impl Editor {
     }
 
     pub(super) fn jump_to(&mut self, row: usize, col: usize) {
+        self.track_insert_move();
         self.cursor.set_position(row, col);
     }
 
@@ -26,6 +27,7 @@ impl Editor {
     }
 
     pub(super) fn move_down(&mut self) {
+        self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
             let before = self.cursor.row();
@@ -38,6 +40,7 @@ impl Editor {
     }
 
     pub(super) fn move_left(&mut self) {
+        self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
             let before = (self.cursor.row(), self.cursor.col());
@@ -49,6 +52,7 @@ impl Editor {
     }
 
     pub(super) fn move_right(&mut self) {
+        self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
             let before = (self.cursor.row(), self.cursor.col());
@@ -60,6 +64,7 @@ impl Editor {
     }
 
     pub(super) fn move_to_line_end(&mut self) {
+        self.track_insert_move();
         let count = self.take_count();
         let row = self
             .cursor
@@ -72,6 +77,7 @@ impl Editor {
     }
 
     pub(super) fn move_to_line_start(&mut self) {
+        self.track_insert_move();
         self.cursor.move_to_line_start(self.cursor.row());
     }
 
@@ -110,6 +116,7 @@ impl Editor {
     }
 
     pub(super) fn move_up(&mut self) {
+        self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
             let before = self.cursor.row();
