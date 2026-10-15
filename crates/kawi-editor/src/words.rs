@@ -7,49 +7,53 @@ pub(crate) enum WordClass {
     Space,
 }
 
-pub fn next_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    fwd_word(buffer, row, col, false)
+pub fn next_word_start(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    fwd_word(buffer, row, col, false, count)
 }
 
-pub fn prev_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    bck_word(buffer, row, col)
+pub fn prev_word_start(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    bck_word(buffer, row, col, count)
 }
 
-pub fn next_word_end(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    end_word(buffer, row, col, false)
+pub fn next_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    end_word(buffer, row, col, false, count)
 }
 
-pub fn dw_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
-    resolve_exclusive(buffer, (row, col), fwd_word_raw(buffer, row, col, true))
+pub fn dw_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_exclusive(
+        buffer,
+        (row, col),
+        fwd_word_raw(buffer, row, col, true, count),
+    )
 }
 
-pub fn db_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
-    resolve_exclusive(buffer, (row, col), bck_word(buffer, row, col))
+pub fn db_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_exclusive(buffer, (row, col), bck_word(buffer, row, col, count))
 }
 
-pub fn cw_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+pub fn cw_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
     resolve_inclusive(
         buffer,
         (row, col),
-        end_word_raw(buffer, row, col, false),
+        end_word_raw(buffer, row, col, false, count),
         true,
     )
 }
 
-pub fn ce_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+pub fn ce_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
     resolve_inclusive(
         buffer,
         (row, col),
-        end_word_raw(buffer, row, col, false),
+        end_word_raw(buffer, row, col, false, count),
         false,
     )
 }
 
-pub fn cw_change_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+pub fn cw_change_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
     match char_at(buffer, row, col).map(class_of) {
-        Some(WordClass::Space) | None => dw_range(buffer, row, col),
+        Some(WordClass::Space) | None => dw_range(buffer, row, col, count),
         _ => {
-            let end = end_word_raw(buffer, row, col, true);
+            let end = end_word_raw(buffer, row, col, true, count);
             let (end, _) = adjust_end(buffer, (row, col), end, true);
             let (start, end) = ordered_span((row, col), end);
             WordSpan::Charwise { start, end }
@@ -140,94 +144,148 @@ fn adjust_end(
     (end, inclusive)
 }
 
-fn fwd_word(buffer: &Buffer, row: usize, col: usize, eol: bool) -> (usize, usize) {
+fn fwd_word(buffer: &Buffer, row: usize, col: usize, eol: bool, count: usize) -> (usize, usize) {
     let start = (row, col);
-    adjust_end(buffer, start, fwd_word_raw(buffer, row, col, eol), false).0
+    adjust_end(
+        buffer,
+        start,
+        fwd_word_raw(buffer, row, col, eol, count),
+        false,
+    )
+    .0
 }
 
-fn fwd_word_raw(buffer: &Buffer, row: usize, col: usize, eol: bool) -> (usize, usize) {
+fn fwd_word_raw(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    eol: bool,
+    count: usize,
+) -> (usize, usize) {
     let last_line = row.saturating_add(1) == buffer.line_count();
-    let sclass = class_at(buffer, row, col);
-    let (mut pos, step) = inc_pos(buffer, row, col);
-    if step == -1 || (step >= 1 && last_line) {
-        return pos;
-    }
-    if step >= 1 && eol {
-        return pos;
-    }
-    if sclass != WordClass::Space {
-        while class_at(buffer, pos.0, pos.1) == sclass {
-            let (next, step) = inc_pos(buffer, pos.0, pos.1);
-            pos = next;
-            if step == -1 || (step >= 1 && eol) {
-                return pos;
-            }
-        }
-    }
-    while class_at(buffer, pos.0, pos.1) == WordClass::Space {
-        if pos.1 == 0 && line_is_empty(buffer, pos.0) {
-            break;
-        }
+    let mut pos = (row, col);
+    for remaining in (0..count).rev() {
+        let last = remaining == 0;
+        let sclass = class_at(buffer, pos.0, pos.1);
         let (next, step) = inc_pos(buffer, pos.0, pos.1);
         pos = next;
-        if step == -1 || (step >= 1 && eol) {
+        if step == -1 || (step >= 1 && last_line) {
             return pos;
+        }
+        if step >= 1 && eol && last {
+            return pos;
+        }
+        if sclass != WordClass::Space {
+            while class_at(buffer, pos.0, pos.1) == sclass {
+                let (next, step) = inc_pos(buffer, pos.0, pos.1);
+                pos = next;
+                if step == -1 || (step >= 1 && eol && last) {
+                    return pos;
+                }
+            }
+        }
+        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+            if pos.1 == 0 && line_is_empty(buffer, pos.0) {
+                break;
+            }
+            let (next, step) = inc_pos(buffer, pos.0, pos.1);
+            pos = next;
+            if step == -1 || (step >= 1 && eol && last) {
+                return pos;
+            }
         }
     }
     pos
 }
 
-fn end_word(buffer: &Buffer, row: usize, col: usize, stop: bool) -> (usize, usize) {
+fn end_word(buffer: &Buffer, row: usize, col: usize, stop: bool, count: usize) -> (usize, usize) {
     let start = (row, col);
-    adjust_end(buffer, start, end_word_raw(buffer, row, col, stop), true).0
+    adjust_end(
+        buffer,
+        start,
+        end_word_raw(buffer, row, col, stop, count),
+        true,
+    )
+    .0
 }
 
-fn end_word_raw(buffer: &Buffer, row: usize, col: usize, stop: bool) -> (usize, usize) {
-    let sclass = class_at(buffer, row, col);
-    let (mut pos, step) = inc_pos(buffer, row, col);
-    if step == -1 {
-        return pos;
-    }
-    if class_at(buffer, pos.0, pos.1) == sclass && sclass != WordClass::Space {
-        if skip_same_class(buffer, &mut pos, true) {
+fn end_word_raw(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    stop: bool,
+    count: usize,
+) -> (usize, usize) {
+    let mut pos = (row, col);
+    let mut stop = stop;
+    for _ in 0..count {
+        let iter_start = pos;
+        let settled = !stop;
+        let sclass = class_at(buffer, pos.0, pos.1);
+        let (next, step) = inc_pos(buffer, pos.0, pos.1);
+        pos = next;
+        if step == -1 {
             return pos;
         }
-    } else if !stop || sclass == WordClass::Space {
-        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
-            let (next, step) = inc_pos(buffer, pos.0, pos.1);
-            pos = next;
-            if step == -1 {
+        if class_at(buffer, pos.0, pos.1) == sclass && sclass != WordClass::Space {
+            if skip_same_class(buffer, &mut pos, true) {
+                return pos;
+            }
+        } else if !stop || sclass == WordClass::Space {
+            while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+                let (next, step) = inc_pos(buffer, pos.0, pos.1);
+                pos = next;
+                if step == -1 {
+                    return pos;
+                }
+            }
+            if skip_same_class(buffer, &mut pos, true) {
                 return pos;
             }
         }
-        if skip_same_class(buffer, &mut pos, true) {
-            return pos;
+        let (back, _) = dec_pos(buffer, pos.0, pos.1);
+        pos = back;
+        stop = false;
+        if settled && pos == iter_start {
+            break;
         }
     }
-    let (back, _) = dec_pos(buffer, pos.0, pos.1);
-    back
+    pos
 }
 
-fn bck_word(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    let (mut pos, step) = dec_pos(buffer, row, col);
-    if step == -1 {
-        return pos;
-    }
-    while class_at(buffer, pos.0, pos.1) == WordClass::Space {
-        if pos.1 == 0 && line_is_empty(buffer, pos.0) {
-            return pos;
-        }
+fn bck_word(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    let mut pos = (row, col);
+    for _ in 0..count {
+        let iter_start = pos;
         let (next, step) = dec_pos(buffer, pos.0, pos.1);
         pos = next;
         if step == -1 {
             return pos;
         }
+        let mut landed_empty = false;
+        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+            if pos.1 == 0 && line_is_empty(buffer, pos.0) {
+                landed_empty = true;
+                break;
+            }
+            let (next, step) = dec_pos(buffer, pos.0, pos.1);
+            pos = next;
+            if step == -1 {
+                return pos;
+            }
+        }
+        if !landed_empty {
+            if skip_same_class(buffer, &mut pos, false) {
+                return pos;
+            }
+            let (next, _) = inc_pos(buffer, pos.0, pos.1);
+            pos = next;
+        }
+        if pos == iter_start {
+            break;
+        }
     }
-    if skip_same_class(buffer, &mut pos, false) {
-        return pos;
-    }
-    let (next, _) = inc_pos(buffer, pos.0, pos.1);
-    next
+    pos
 }
 
 fn skip_same_class(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) -> bool {
@@ -372,150 +430,201 @@ mod tests {
     }
 
     #[test]
+    fn word_motions_take_count() {
+        let lines = lines_of("foo bar baz");
+        assert_eq!(next_word_start(&lines, 0, 0, 2), (0, 8));
+        assert_eq!(prev_word_start(&lines, 0, 8, 2), (0, 0));
+        assert_eq!(next_word_end(&lines, 0, 0, 2), (0, 6));
+    }
+
+    #[test]
+    fn word_motions_take_long_count() {
+        let lines = lines_of("a b c d e f g h i j k");
+        assert_eq!(next_word_start(&lines, 0, 0, 10), (0, 20));
+    }
+
+    #[test]
+    fn dw_takes_count() {
+        let lines = lines_of("foo bar baz");
+        assert_eq!(dw_range(&lines, 0, 0, 2), charwise((0, 0), (0, 7)));
+    }
+
+    #[test]
+    fn dw_multiplies_counts() {
+        let lines = lines_of("foo bar qux baz");
+        assert_eq!(dw_range(&lines, 0, 0, 4), charwise((0, 0), (0, 14)));
+    }
+
+    #[test]
+    fn db_takes_count() {
+        let lines = lines_of("foo bar baz");
+        assert_eq!(db_range(&lines, 0, 10, 2), charwise((0, 4), (0, 9)));
+    }
+
+    #[test]
+    fn de_takes_count() {
+        let lines = lines_of("foo bar baz");
+        assert_eq!(cw_range(&lines, 0, 0, 2), charwise((0, 0), (0, 6)));
+        assert_eq!(ce_range(&lines, 0, 0, 2), charwise((0, 0), (0, 6)));
+    }
+
+    #[test]
+    fn cw_takes_count() {
+        let lines = lines_of("foo bar baz");
+        assert_eq!(cw_change_range(&lines, 0, 0, 2), charwise((0, 0), (0, 6)));
+    }
+
+    #[test]
+    fn cw_from_end_takes_count() {
+        let lines = lines_of("foo bar");
+        assert_eq!(cw_change_range(&lines, 0, 2, 2), charwise((0, 2), (0, 6)));
+    }
+
+    #[test]
     fn w_moves_to_next_start() {
         let lines = lines_of("foo bar");
-        assert_eq!(next_word_start(&lines, 0, 0), (0, 4));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (0, 4));
     }
 
     #[test]
     fn w_stops_on_punct() {
         let lines = lines_of("foo, bar");
-        assert_eq!(next_word_start(&lines, 0, 0), (0, 3));
-        assert_eq!(next_word_start(&lines, 0, 3), (0, 5));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (0, 3));
+        assert_eq!(next_word_start(&lines, 0, 3, 1), (0, 5));
     }
 
     #[test]
     fn w_skips_gaps() {
         let lines = lines_of("foo   bar");
-        assert_eq!(next_word_start(&lines, 0, 1), (0, 6));
+        assert_eq!(next_word_start(&lines, 0, 1, 1), (0, 6));
     }
 
     #[test]
     fn w_stays_at_last_word() {
         let lines = lines_of("foo");
-        assert_eq!(next_word_start(&lines, 0, 2), (0, 2));
+        assert_eq!(next_word_start(&lines, 0, 2, 1), (0, 2));
     }
 
     #[test]
     fn w_stops_on_empty_line() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(next_word_start(&lines, 0, 0), (1, 0));
-        assert_eq!(next_word_start(&lines, 1, 0), (2, 0));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (1, 0));
+        assert_eq!(next_word_start(&lines, 1, 0, 1), (2, 0));
     }
 
     #[test]
     fn b_moves_to_prev_start() {
         let lines = lines_of("foo bar");
-        assert_eq!(prev_word_start(&lines, 0, 4), (0, 0));
+        assert_eq!(prev_word_start(&lines, 0, 4, 1), (0, 0));
     }
 
     #[test]
     fn b_stays_at_first_word() {
         let lines = lines_of("foo");
-        assert_eq!(prev_word_start(&lines, 0, 0), (0, 0));
+        assert_eq!(prev_word_start(&lines, 0, 0, 1), (0, 0));
     }
 
     #[test]
     fn b_stops_on_empty_line() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(prev_word_start(&lines, 2, 0), (1, 0));
-        assert_eq!(prev_word_start(&lines, 1, 0), (0, 0));
+        assert_eq!(prev_word_start(&lines, 2, 0, 1), (1, 0));
+        assert_eq!(prev_word_start(&lines, 1, 0, 1), (0, 0));
     }
 
     #[test]
     fn b_crosses_lines() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(prev_word_start(&lines, 1, 0), (0, 0));
+        assert_eq!(prev_word_start(&lines, 1, 0, 1), (0, 0));
     }
 
     #[test]
     fn e_moves_to_word_end() {
         let lines = lines_of("foo bar");
-        assert_eq!(next_word_end(&lines, 0, 0), (0, 2));
-        assert_eq!(next_word_end(&lines, 0, 2), (0, 6));
+        assert_eq!(next_word_end(&lines, 0, 0, 1), (0, 2));
+        assert_eq!(next_word_end(&lines, 0, 2, 1), (0, 6));
     }
 
     #[test]
     fn e_stops_on_punct_end() {
         let lines = lines_of("foo, bar");
-        assert_eq!(next_word_end(&lines, 0, 2), (0, 3));
-        assert_eq!(next_word_end(&lines, 0, 3), (0, 7));
+        assert_eq!(next_word_end(&lines, 0, 2, 1), (0, 3));
+        assert_eq!(next_word_end(&lines, 0, 3, 1), (0, 7));
     }
 
     #[test]
     fn word_end_from_empty_line() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(next_word_end(&lines, 1, 0), (2, 2));
+        assert_eq!(next_word_end(&lines, 1, 0, 1), (2, 2));
     }
 
     #[test]
     fn e_skips_empty_lines() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(next_word_end(&lines, 0, 2), (2, 2));
+        assert_eq!(next_word_end(&lines, 0, 2, 1), (2, 2));
     }
 
     #[test]
     fn e_stays_at_last_end() {
         let lines = lines_of("foo");
-        assert_eq!(next_word_end(&lines, 0, 2), (0, 2));
+        assert_eq!(next_word_end(&lines, 0, 2, 1), (0, 2));
     }
 
     #[test]
     fn b_from_indent_returns_to_line_start() {
         let lines = lines_of("  foo");
-        assert_eq!(prev_word_start(&lines, 0, 2), (0, 0));
+        assert_eq!(prev_word_start(&lines, 0, 2, 1), (0, 0));
     }
 
     #[test]
     fn w_advances_to_end_on_last_word() {
         let lines = lines_of("foo");
-        assert_eq!(next_word_start(&lines, 0, 0), (0, 2));
-        assert_eq!(next_word_start(&lines, 0, 1), (0, 2));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (0, 2));
+        assert_eq!(next_word_start(&lines, 0, 1, 1), (0, 2));
     }
 
     #[test]
     fn w_moves_to_trailing_space() {
         let lines = lines_of("foo ");
-        assert_eq!(next_word_start(&lines, 0, 0), (0, 3));
-        assert_eq!(next_word_start(&lines, 0, 2), (0, 3));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (0, 3));
+        assert_eq!(next_word_start(&lines, 0, 2, 1), (0, 3));
     }
 
     #[test]
     fn w_moves_off_whitespace_line() {
         let lines = lines_of("  ");
-        assert_eq!(next_word_start(&lines, 0, 0), (0, 1));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (0, 1));
     }
 
     #[test]
     fn w_moves_to_next_empty_line() {
         let lines = lines_of("\n\n");
-        assert_eq!(next_word_start(&lines, 0, 0), (1, 0));
+        assert_eq!(next_word_start(&lines, 0, 0, 1), (1, 0));
     }
 
     #[test]
     fn e_moves_off_whitespace_line() {
         let lines = lines_of("  ");
-        assert_eq!(next_word_end(&lines, 0, 0), (0, 1));
+        assert_eq!(next_word_end(&lines, 0, 0, 1), (0, 1));
     }
 
     #[test]
     fn b_moves_off_whitespace_line() {
         let lines = lines_of("  ");
-        assert_eq!(prev_word_start(&lines, 0, 1), (0, 0));
+        assert_eq!(prev_word_start(&lines, 0, 1, 1), (0, 0));
     }
 
     #[test]
     fn change_word_on_end_stays_on_char() {
         let lines = lines_of("foo bar");
         assert_eq!(
-            cw_change_range(&lines, 0, 2),
+            cw_change_range(&lines, 0, 2, 1),
             WordSpan::Charwise {
                 start: (0, 2),
                 end: (0, 2)
             }
         );
         assert_eq!(
-            cw_change_range(&lines, 0, 0),
+            cw_change_range(&lines, 0, 0, 1),
             WordSpan::Charwise {
                 start: (0, 0),
                 end: (0, 2)
@@ -527,7 +636,7 @@ mod tests {
     fn change_word_on_space_reaches_next_word() {
         let lines = lines_of("foo   bar");
         assert_eq!(
-            cw_change_range(&lines, 0, 4),
+            cw_change_range(&lines, 0, 4, 1),
             WordSpan::Charwise {
                 start: (0, 4),
                 end: (0, 5)
@@ -539,7 +648,7 @@ mod tests {
     fn change_word_on_empty_changes_line() {
         let lines = lines_of("foo\n\nbar");
         assert_eq!(
-            cw_change_range(&lines, 1, 0),
+            cw_change_range(&lines, 1, 0, 1),
             WordSpan::Linewise { first: 1, last: 1 }
         );
     }
@@ -548,7 +657,7 @@ mod tests {
     fn change_word_on_first_empty_changes_line() {
         let lines = lines_of("\nbar");
         assert_eq!(
-            cw_change_range(&lines, 0, 0),
+            cw_change_range(&lines, 0, 0, 1),
             WordSpan::Linewise { first: 0, last: 0 }
         );
     }
@@ -557,7 +666,7 @@ mod tests {
     fn change_word_on_word_end_stays_single() {
         let lines = lines_of("foo\nbar");
         assert_eq!(
-            cw_change_range(&lines, 0, 2),
+            cw_change_range(&lines, 0, 2, 1),
             WordSpan::Charwise {
                 start: (0, 2),
                 end: (0, 2)
@@ -568,50 +677,50 @@ mod tests {
     #[test]
     fn dw_deletes_to_next_start() {
         let lines = lines_of("foo bar");
-        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 3)));
+        assert_eq!(dw_range(&lines, 0, 0, 1), charwise((0, 0), (0, 3)));
     }
 
     #[test]
     fn dw_last_word_deletes_to_end() {
         let lines = lines_of("foo bar");
-        assert_eq!(dw_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
+        assert_eq!(dw_range(&lines, 0, 4, 1), charwise((0, 4), (0, 6)));
     }
 
     #[test]
     fn dw_space_deletes_spaces() {
         let lines = lines_of("foo   bar");
-        assert_eq!(dw_range(&lines, 0, 3), charwise((0, 3), (0, 5)));
+        assert_eq!(dw_range(&lines, 0, 3, 1), charwise((0, 3), (0, 5)));
     }
 
     #[test]
     fn dw_last_char_deletes_single() {
         let lines = lines_of("foo");
-        assert_eq!(dw_range(&lines, 0, 2), charwise((0, 2), (0, 2)));
+        assert_eq!(dw_range(&lines, 0, 2, 1), charwise((0, 2), (0, 2)));
     }
 
     #[test]
     fn dw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(dw_range(&lines, 0, 0), WordSpan::Empty);
+        assert_eq!(dw_range(&lines, 0, 0, 1), WordSpan::Empty);
     }
 
     #[test]
     fn dw_across_lines_stops_before_target() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
+        assert_eq!(dw_range(&lines, 0, 0, 1), charwise((0, 0), (0, 2)));
     }
 
     #[test]
     fn dw_empty_line_keeps_newline() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
+        assert_eq!(dw_range(&lines, 0, 0, 1), charwise((0, 0), (0, 2)));
     }
 
     #[test]
     fn dw_on_empty_line_removes_line() {
         let lines = lines_of("foo\n\nbar");
         assert_eq!(
-            dw_range(&lines, 1, 0),
+            dw_range(&lines, 1, 0, 1),
             WordSpan::Linewise { first: 1, last: 1 }
         );
     }
@@ -620,7 +729,7 @@ mod tests {
     fn dw_on_first_of_two_empties_removes_line() {
         let lines = lines_of("\n\n");
         assert_eq!(
-            dw_range(&lines, 0, 0),
+            dw_range(&lines, 0, 0, 1),
             WordSpan::Linewise { first: 0, last: 0 }
         );
     }
@@ -628,33 +737,33 @@ mod tests {
     #[test]
     fn dw_on_trailing_space_deletes_space() {
         let lines = lines_of("foo \nbar");
-        assert_eq!(dw_range(&lines, 0, 3), charwise((0, 3), (0, 3)));
+        assert_eq!(dw_range(&lines, 0, 3, 1), charwise((0, 3), (0, 3)));
     }
 
     #[test]
     fn dw_stops_at_line_end() {
         let lines = lines_of("ab \ncd");
-        assert_eq!(dw_range(&lines, 0, 2), charwise((0, 2), (0, 2)));
+        assert_eq!(dw_range(&lines, 0, 2, 1), charwise((0, 2), (0, 2)));
     }
 
     #[test]
     fn cw_deletes_to_word_end() {
         let lines = lines_of("foo bar");
-        assert_eq!(cw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
-        assert_eq!(cw_range(&lines, 0, 1), charwise((0, 1), (0, 2)));
+        assert_eq!(cw_range(&lines, 0, 0, 1), charwise((0, 0), (0, 2)));
+        assert_eq!(cw_range(&lines, 0, 1, 1), charwise((0, 1), (0, 2)));
     }
 
     #[test]
     fn cw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(cw_range(&lines, 0, 0), WordSpan::Empty);
+        assert_eq!(cw_range(&lines, 0, 0, 1), WordSpan::Empty);
     }
 
     #[test]
     fn de_empty_line_takes_next_word() {
         let lines = lines_of("\nbar");
         assert_eq!(
-            cw_range(&lines, 0, 0),
+            cw_range(&lines, 0, 0, 1),
             WordSpan::Linewise { first: 0, last: 1 }
         );
     }
@@ -663,7 +772,7 @@ mod tests {
     fn de_two_empties_takes_both() {
         let lines = lines_of("\n\n");
         assert_eq!(
-            cw_range(&lines, 0, 0),
+            cw_range(&lines, 0, 0, 1),
             WordSpan::Linewise { first: 0, last: 1 }
         );
     }
@@ -671,33 +780,33 @@ mod tests {
     #[test]
     fn de_crosses_to_word_end() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(cw_range(&lines, 0, 2), charwise((0, 2), (1, 2)));
+        assert_eq!(cw_range(&lines, 0, 2, 1), charwise((0, 2), (1, 2)));
     }
 
     #[test]
     fn ce_crosses_to_word_end() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(ce_range(&lines, 0, 2), charwise((0, 2), (1, 2)));
+        assert_eq!(ce_range(&lines, 0, 2, 1), charwise((0, 2), (1, 2)));
     }
 
     #[test]
     fn ce_matches_de_within_line() {
         let lines = lines_of("foo bar");
-        assert_eq!(cw_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
-        assert_eq!(ce_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
+        assert_eq!(cw_range(&lines, 0, 4, 1), charwise((0, 4), (0, 6)));
+        assert_eq!(ce_range(&lines, 0, 4, 1), charwise((0, 4), (0, 6)));
     }
 
     #[test]
     fn ce_skips_linewise_upgrade() {
         let lines = lines_of("\nbar");
-        assert_eq!(ce_range(&lines, 0, 0), charwise((0, 0), (1, 2)));
+        assert_eq!(ce_range(&lines, 0, 0, 1), charwise((0, 0), (1, 2)));
     }
 
     #[test]
     fn db_line_start_removes_prev_line() {
         let lines = lines_of("foo\nbar");
         assert_eq!(
-            db_range(&lines, 1, 0),
+            db_range(&lines, 1, 0, 1),
             WordSpan::Linewise { first: 0, last: 0 }
         );
     }
@@ -706,7 +815,7 @@ mod tests {
     fn db_across_lines_removes_middle() {
         let lines = lines_of("ab\ncd\nef");
         assert_eq!(
-            db_range(&lines, 2, 0),
+            db_range(&lines, 2, 0, 1),
             WordSpan::Linewise { first: 1, last: 1 }
         );
     }
@@ -715,7 +824,7 @@ mod tests {
     fn db_across_empty_takes_both_lines() {
         let lines = lines_of("foo\n  \nbar");
         assert_eq!(
-            db_range(&lines, 2, 0),
+            db_range(&lines, 2, 0, 1),
             WordSpan::Linewise { first: 0, last: 1 }
         );
     }
@@ -723,18 +832,18 @@ mod tests {
     #[test]
     fn db_same_line_deletes_back() {
         let lines = lines_of("foo bar");
-        assert_eq!(db_range(&lines, 0, 4), charwise((0, 0), (0, 3)));
+        assert_eq!(db_range(&lines, 0, 4, 1), charwise((0, 0), (0, 3)));
     }
 
     #[test]
     fn db_at_start_is_empty() {
         let lines = lines_of("foo");
-        assert_eq!(db_range(&lines, 0, 0), WordSpan::Empty);
+        assert_eq!(db_range(&lines, 0, 0, 1), WordSpan::Empty);
     }
 
     #[test]
     fn de_last_empty_line_is_empty() {
         let lines = lines_of("a\n");
-        assert_eq!(cw_range(&lines, 1, 0), WordSpan::Empty);
+        assert_eq!(cw_range(&lines, 1, 0, 1), WordSpan::Empty);
     }
 }

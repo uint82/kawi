@@ -25,6 +25,8 @@ pub struct Editor {
     search_status: Option<SearchStatus>,
     selection: Option<Selection>,
     register: Register,
+    count_digits: usize,
+    operator_count: Option<usize>,
 }
 
 struct SearchStatus {
@@ -37,6 +39,21 @@ struct SearchStatus {
 
 impl Editor {
     pub fn apply(&mut self, action: Action) {
+        match action {
+            Action::PushCount(digit) => {
+                self.push_count_digit(digit);
+                return;
+            }
+            Action::BeginOperator => {
+                self.begin_operator();
+                return;
+            }
+            Action::CancelPending => {
+                self.clear_count();
+                return;
+            }
+            _ => {}
+        }
         if self.needs_checkpoint(action) {
             self.record_boundary();
         }
@@ -71,9 +88,12 @@ impl Editor {
             Action::YankAroundWord => self.yank_around_word(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
-            Action::YankLine => self.yank_current_line(),
+            Action::YankLine => self.yank_lines(),
             Action::YankToEnd => self.yank_to_end(),
             Action::DeleteToEnd => self.delete_to_end(),
+            Action::DeleteToStart => self.delete_to_start(),
+            Action::YankToStart => self.yank_to_start(),
+            Action::ChangeToStart => self.change_to_start(),
             Action::ChangeLine => self.change_line(),
             Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
@@ -106,9 +126,11 @@ impl Editor {
             Action::PrevMatch => self.prev_match(),
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
+            Action::PushCount(_) | Action::BeginOperator | Action::CancelPending => self.noop(),
         }
         self.normalize_cursor();
         self.track_head(action);
+        self.clear_count();
     }
 
     pub fn byte_count(&self) -> usize {
@@ -185,7 +207,36 @@ impl Editor {
             search_status: None,
             selection: None,
             register: Register::new(),
+            count_digits: 0,
+            operator_count: None,
         }
+    }
+
+    pub(super) fn push_count_digit(&mut self, digit: u8) {
+        let digit = usize::from(digit);
+        self.count_digits = self.count_digits.saturating_mul(10).saturating_add(digit);
+        if self.count_digits > 999_999_999 {
+            self.count_digits = 999_999_999;
+        }
+    }
+
+    pub(super) fn begin_operator(&mut self) {
+        let pending = std::mem::replace(&mut self.count_digits, 0);
+        self.operator_count = Some(if pending == 0 { 1 } else { pending });
+    }
+
+    pub(super) fn take_count(&mut self) -> usize {
+        let operator = self.operator_count.take().unwrap_or(1);
+        let pending = std::mem::replace(&mut self.count_digits, 0);
+        if pending == 0 {
+            return operator;
+        }
+        operator.saturating_mul(pending).min(999_999_999)
+    }
+
+    pub(super) fn clear_count(&mut self) {
+        self.count_digits = 0;
+        self.operator_count = None;
     }
 
     pub(super) fn record_boundary(&mut self) {
