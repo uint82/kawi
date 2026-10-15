@@ -9,6 +9,8 @@ pub enum Action {
     MoveToNextWordStart,
     MoveToPrevWordStart,
     MoveToNextWordEnd,
+    MoveToNextLineStart,
+    MoveToPrevLineStart,
     InsertChar(char),
     InsertNewline,
     DeleteBackward,

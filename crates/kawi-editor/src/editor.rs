@@ -139,6 +139,8 @@ impl Editor {
             Action::MoveToNextWordStart => self.move_to_next_word_start(),
             Action::MoveToPrevWordStart => self.move_to_prev_word_start(),
             Action::MoveToNextWordEnd => self.move_to_next_word_end(),
+            Action::MoveToNextLineStart => self.move_to_next_line_start(),
+            Action::MoveToPrevLineStart => self.move_to_prev_line_start(),
             Action::InsertChar(c) => self.insert_char(c),
             Action::InsertNewline => self.insert_newline(),
             Action::DeleteBackward => self.delete_backward(),
@@ -231,6 +233,28 @@ impl Editor {
 
     fn move_to_next_word_end(&mut self) {
         let (row, col) = words::next_word_end(&self.buffer, self.cursor.row(), self.cursor.col());
+        self.cursor.set_position(row, col);
+    }
+
+    fn move_to_next_line_start(&mut self) {
+        let row = self.cursor.row().saturating_add(1);
+        if row > self.buffer.max_cursor_row() {
+            return;
+        }
+        self.jump_to_line_start(row);
+    }
+
+    fn move_to_prev_line_start(&mut self) {
+        let row = self.cursor.row().saturating_sub(1);
+        self.jump_to_line_start(row);
+    }
+
+    fn jump_to_line_start(&mut self, row: usize) {
+        let row = row.min(self.buffer.max_cursor_row());
+        let col = self
+            .buffer
+            .line_cow(row)
+            .map_or(0, |line| line_start_col(&line));
         self.cursor.set_position(row, col);
     }
 
@@ -879,6 +903,13 @@ fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize
     }
 }
 
+fn line_start_col(line: &str) -> usize {
+    match line.chars().enumerate().find(|(_, ch)| !ch.is_whitespace()) {
+        Some((idx, _)) => idx,
+        None => line.chars().count().saturating_sub(1),
+    }
+}
+
 fn status_line(pattern: &str, index: usize, total: usize) -> String {
     format!("/{pattern} [{index}/{total}]")
 }
@@ -976,6 +1007,60 @@ mod tests {
         assert_eq!(e.col(), 2);
         e.apply(Action::MoveToLineStart);
         assert_eq!(e.col(), 0);
+    }
+
+    #[test]
+    fn enter_lands_on_next_first_content() {
+        let mut e = editor_with("  ab\n    cd\nef");
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (1, 4));
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn enter_ignores_start_column() {
+        let mut e = editor_with("ab\n    cd");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (1, 4));
+    }
+
+    #[test]
+    fn enter_on_empty_line_stays_at_start() {
+        let mut e = editor_with("ab\n\ncd");
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn enter_on_whitespace_line_stops_at_end() {
+        let mut e = editor_with("ab\n   \ncd");
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (1, 2));
+    }
+
+    #[test]
+    fn enter_on_last_line_stays() {
+        let mut e = editor_with("ab\ncd");
+        e.apply(Action::MoveToNextLineStart);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (1, 1));
+    }
+
+    #[test]
+    fn minus_moves_to_prev_line_start() {
+        let mut e = editor_with("ab\n   \ncd");
+        e.apply(Action::MoveToNextLineStart);
+        e.apply(Action::MoveToNextLineStart);
+        assert_eq!((e.row(), e.col()), (2, 0));
+        e.apply(Action::MoveToPrevLineStart);
+        assert_eq!((e.row(), e.col()), (1, 2));
+        e.apply(Action::MoveToPrevLineStart);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::MoveToPrevLineStart);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
