@@ -62,6 +62,7 @@ impl Editor {
             Action::ChangeWord => self.change_word(),
             Action::DeleteWordBackward => self.delete_word_backward(),
             Action::DeleteWordEnd => self.delete_word_end(),
+            Action::ChangeWordEnd => self.change_word_end(),
             Action::DeleteInnerWord => self.delete_inner_word(),
             Action::DeleteAroundWord => self.delete_around_word(),
             Action::ChangeInnerWord => self.change_inner_word(),

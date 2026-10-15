@@ -17,6 +17,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
+    ("ce", Action::ChangeWordEnd),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
@@ -699,6 +700,19 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('b')), Mode::Normal),
             Action::DeleteWordBackward
+        );
+    }
+
+    #[test]
+    fn c_e_changes_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::ChangeWordEnd
         );
     }
 

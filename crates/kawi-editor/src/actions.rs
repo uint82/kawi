@@ -21,6 +21,7 @@ pub enum Action {
     ChangeWord,
     DeleteWordBackward,
     DeleteWordEnd,
+    ChangeWordEnd,
     DeleteInnerWord,
     DeleteAroundWord,
     ChangeInnerWord,
