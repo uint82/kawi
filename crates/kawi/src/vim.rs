@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::keymap::{has_ctrl_or_alt, normalize_interrupt, Keymap};
 use kawi_editor::Action;
 use kawi_editor::Mode;
+use kawi_editor::Object;
 
 fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
@@ -43,6 +44,36 @@ fn is_sequence_prefix(sequence: &str) -> bool {
 
 fn is_operator_start(pushed: char) -> bool {
     matches!(pushed, 'd' | 'c' | 'y')
+}
+
+fn object_action(sequence: &str) -> Option<Action> {
+    let mut chars = sequence.chars();
+    let operator = chars.next()?;
+    let scope = chars.next()?;
+    let target = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    if !matches!(operator, 'd' | 'c' | 'y') || !matches!(scope, 'i' | 'a') {
+        return None;
+    }
+    let object = match target {
+        '(' | ')' => Object::Paren,
+        '{' | '}' => Object::Brace,
+        '[' | ']' => Object::Bracket,
+        '<' | '>' => Object::Angle,
+        '\'' => Object::SingleQuote,
+        '"' => Object::DoubleQuote,
+        '`' => Object::Backtick,
+        'p' => Object::Paragraph,
+        _ => return None,
+    };
+    let inner = scope == 'i';
+    Some(match operator {
+        'd' => Action::DeleteObject { inner, object },
+        'c' => Action::ChangeObject { inner, object },
+        _ => Action::YankObject { inner, object },
+    })
 }
 
 fn trailing_operator(pending: &str) -> Option<char> {
@@ -240,11 +271,16 @@ impl VimKeymap {
             .chars()
             .filter(|ch| !ch.is_ascii_digit())
             .collect();
-        match sequence_action(&stripped) {
-            Some(action) => self.complete_sequence(action),
-            None if is_sequence_prefix(&stripped) => Action::Noop,
-            None => self.cancel_sequence(),
+        if let Some(action) = sequence_action(&stripped) {
+            return self.complete_sequence(action);
         }
+        if let Some(action) = object_action(&stripped) {
+            return self.complete_sequence(action);
+        }
+        if is_sequence_prefix(&stripped) {
+            return Action::Noop;
+        }
+        self.cancel_sequence()
     }
 
     fn complete_sequence(&mut self, action: Action) -> Action {
@@ -849,6 +885,134 @@ mod tests {
     }
 
     #[test]
+    fn object_sequences_resolve() {
+        for (keys, action) in [
+            (
+                "di(",
+                Action::DeleteObject {
+                    inner: true,
+                    object: Object::Paren,
+                },
+            ),
+            (
+                "da(",
+                Action::DeleteObject {
+                    inner: false,
+                    object: Object::Paren,
+                },
+            ),
+            (
+                "di)",
+                Action::DeleteObject {
+                    inner: true,
+                    object: Object::Paren,
+                },
+            ),
+            (
+                "ci{",
+                Action::ChangeObject {
+                    inner: true,
+                    object: Object::Brace,
+                },
+            ),
+            (
+                "ya[",
+                Action::YankObject {
+                    inner: false,
+                    object: Object::Bracket,
+                },
+            ),
+            (
+                "di<",
+                Action::DeleteObject {
+                    inner: true,
+                    object: Object::Angle,
+                },
+            ),
+            (
+                "di'",
+                Action::DeleteObject {
+                    inner: true,
+                    object: Object::SingleQuote,
+                },
+            ),
+            (
+                "da\"",
+                Action::DeleteObject {
+                    inner: false,
+                    object: Object::DoubleQuote,
+                },
+            ),
+            (
+                "yi`",
+                Action::YankObject {
+                    inner: true,
+                    object: Object::Backtick,
+                },
+            ),
+            (
+                "dip",
+                Action::DeleteObject {
+                    inner: true,
+                    object: Object::Paragraph,
+                },
+            ),
+            (
+                "cap",
+                Action::ChangeObject {
+                    inner: false,
+                    object: Object::Paragraph,
+                },
+            ),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut resolved = Action::Noop;
+            for key in keys.chars() {
+                resolved = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            }
+            assert_eq!(resolved, action);
+        }
+    }
+
+    #[test]
+    fn unknown_object_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        map.map(plain(KeyCode::Char('i')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('q')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn object_with_count_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginOperator
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), Some("2di"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('(')), Mode::Normal),
+            Action::DeleteObject {
+                inner: true,
+                object: Object::Paren,
+            }
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
     fn count_flows_into_editor() {
         let mut map = VimKeymap::new();
         let mut editor =
@@ -859,6 +1023,19 @@ mod tests {
         }
         assert_eq!(editor.visible_lines(0, 2), vec![String::new()]);
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn object_flows_into_editor() {
+        let mut map = VimKeymap::new();
+        let mut editor =
+            kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("foo (bar) baz"));
+        for key in ['d', 'i', '('] {
+            let action = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            editor.apply(action);
+        }
+        assert_eq!(editor.visible_lines(0, 2), vec!["foo () baz".to_string()]);
+        assert_eq!((editor.row(), editor.col()), (0, 5));
     }
 
     #[test]

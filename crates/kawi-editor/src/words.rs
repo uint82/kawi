@@ -71,24 +71,30 @@ pub enum WordSpan {
         first: usize,
         last: usize,
     },
-    Empty,
+    Empty {
+        at: (usize, usize),
+    },
 }
 
-fn resolve_exclusive(buffer: &Buffer, start: (usize, usize), raw_end: (usize, usize)) -> WordSpan {
+pub(crate) fn resolve_exclusive(
+    buffer: &Buffer,
+    start: (usize, usize),
+    raw_end: (usize, usize),
+) -> WordSpan {
     let (end, inclusive) = adjust_end(buffer, start, raw_end, false);
     let (start, end) = ordered_span(start, end);
     if inclusive {
         return WordSpan::Charwise { start, end };
     }
     if start == end {
-        return WordSpan::Empty;
+        return WordSpan::Empty { at: start };
     }
     if end.1 == 0 && end.0 > start.0 {
         return shift_exclusive_end(buffer, start, end);
     }
     match prev_char_pos(buffer, end.0, end.1) {
         Some(before) => WordSpan::Charwise { start, end: before },
-        None => WordSpan::Empty,
+        None => WordSpan::Empty { at: start },
     }
 }
 
@@ -108,11 +114,11 @@ fn shift_exclusive_end(buffer: &Buffer, start: (usize, usize), end: (usize, usiz
     }
     match prev_char_pos(buffer, prev, 0) {
         Some(before) => WordSpan::Charwise { start, end: before },
-        None => WordSpan::Empty,
+        None => WordSpan::Empty { at: start },
     }
 }
 
-fn resolve_inclusive(
+pub(crate) fn resolve_inclusive(
     buffer: &Buffer,
     start: (usize, usize),
     raw_end: (usize, usize),
@@ -121,7 +127,7 @@ fn resolve_inclusive(
     let (end, _) = adjust_end(buffer, start, raw_end, true);
     let (start, end) = ordered_span(start, end);
     if start == end && line_is_empty(buffer, start.0) {
-        return WordSpan::Empty;
+        return WordSpan::Empty { at: start };
     }
     if upgrade && end.0 > start.0 && tail_blank(buffer, end) && start_blank(buffer, start) {
         return WordSpan::Linewise {
@@ -306,7 +312,7 @@ fn skip_same_class(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) -> 
     }
 }
 
-fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
+pub(crate) fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
     let len = line_len(buffer, row);
     let col = col.min(len);
     if col < len {
@@ -320,7 +326,7 @@ fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
     ((row, col), -1)
 }
 
-fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
+pub(crate) fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
     if col > 0 {
         return ((row, col.saturating_sub(1)), 0);
     }
@@ -701,7 +707,7 @@ mod tests {
     #[test]
     fn dw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(dw_range(&lines, 0, 0, 1), WordSpan::Empty);
+        assert_eq!(dw_range(&lines, 0, 0, 1), WordSpan::Empty { at: (0, 0) });
     }
 
     #[test]
@@ -756,7 +762,7 @@ mod tests {
     #[test]
     fn cw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(cw_range(&lines, 0, 0, 1), WordSpan::Empty);
+        assert_eq!(cw_range(&lines, 0, 0, 1), WordSpan::Empty { at: (0, 0) });
     }
 
     #[test]
@@ -838,12 +844,12 @@ mod tests {
     #[test]
     fn db_at_start_is_empty() {
         let lines = lines_of("foo");
-        assert_eq!(db_range(&lines, 0, 0, 1), WordSpan::Empty);
+        assert_eq!(db_range(&lines, 0, 0, 1), WordSpan::Empty { at: (0, 0) });
     }
 
     #[test]
     fn de_last_empty_line_is_empty() {
         let lines = lines_of("a\n");
-        assert_eq!(cw_range(&lines, 1, 0, 1), WordSpan::Empty);
+        assert_eq!(cw_range(&lines, 1, 0, 1), WordSpan::Empty { at: (1, 0) });
     }
 }

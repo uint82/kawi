@@ -28,6 +28,9 @@ pub enum Action {
     ChangeAroundWord,
     YankInnerWord,
     YankAroundWord,
+    DeleteObject { inner: bool, object: Object },
+    ChangeObject { inner: bool, object: Object },
+    YankObject { inner: bool, object: Object },
     DeleteSelection,
     YankSelection,
     YankLine,
@@ -70,6 +73,18 @@ pub enum Action {
     NextMatch,
     PrevMatch,
     Noop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Object {
+    Paren,
+    Brace,
+    Bracket,
+    Angle,
+    SingleQuote,
+    DoubleQuote,
+    Backtick,
+    Paragraph,
 }
 
 // TODO(helix): shared SelectLine action for helix x line select.

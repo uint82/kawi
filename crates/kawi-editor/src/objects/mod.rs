@@ -2,6 +2,10 @@ use kawi_buffer::Buffer;
 
 use crate::words::{class_of, remainder_blank, start_blank, WordClass};
 
+pub mod brackets;
+pub mod paragraph;
+pub mod quotes;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AroundSpan {
     pub anchor: (usize, usize),

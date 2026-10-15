@@ -10,7 +10,7 @@ pub mod search;
 pub mod selection;
 pub mod words;
 
-pub use actions::Action;
+pub use actions::{Action, Object};
 pub use command::{parse, Command, CommandLine};
 pub use cursor::Cursor;
 pub use editor::Editor;
