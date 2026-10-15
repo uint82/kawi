@@ -11,14 +11,31 @@ pub struct MatchColors {
 }
 
 pub struct Theme {
+    pub name: &'static str,
     pub base: BaseColors,
     pub search_match: MatchColors,
     pub search_current: MatchColors,
+    pub selection: MatchColors,
+    pub status: MatchColors,
 }
 
-impl Default for Theme {
-    fn default() -> Self {
+impl Theme {
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "default" => Some(Self::default_theme()),
+            "gruvbox-dark" => Some(Self::gruvbox_dark()),
+            "gruvbox-light" => Some(Self::gruvbox_light()),
+            _ => None,
+        }
+    }
+
+    pub fn names() -> [&'static str; 3] {
+        ["default", "gruvbox-dark", "gruvbox-light"]
+    }
+
+    pub fn default_theme() -> Self {
         Self {
+            name: "default",
             base: BaseColors {
                 foreground: Color::Rgb {
                     r: 224,
@@ -51,7 +68,161 @@ impl Default for Theme {
                     b: 148,
                 },
             },
+            selection: MatchColors {
+                foreground: Color::Black,
+                background: Color::White,
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 20,
+                    g: 22,
+                    b: 27,
+                },
+                background: Color::Rgb {
+                    r: 224,
+                    g: 226,
+                    b: 234,
+                },
+            },
         }
+    }
+
+    pub fn gruvbox_dark() -> Self {
+        Self {
+            name: "gruvbox-dark",
+            base: BaseColors {
+                foreground: Color::Rgb {
+                    r: 235,
+                    g: 219,
+                    b: 178,
+                },
+                background: Color::Rgb {
+                    r: 40,
+                    g: 40,
+                    b: 40,
+                },
+            },
+            search_match: MatchColors {
+                foreground: Color::Rgb {
+                    r: 40,
+                    g: 40,
+                    b: 40,
+                },
+                background: Color::Rgb {
+                    r: 250,
+                    g: 189,
+                    b: 47,
+                },
+            },
+            search_current: MatchColors {
+                foreground: Color::Rgb {
+                    r: 40,
+                    g: 40,
+                    b: 40,
+                },
+                background: Color::Rgb {
+                    r: 254,
+                    g: 128,
+                    b: 25,
+                },
+            },
+            selection: MatchColors {
+                foreground: Color::Rgb {
+                    r: 235,
+                    g: 219,
+                    b: 178,
+                },
+                background: Color::Rgb {
+                    r: 102,
+                    g: 92,
+                    b: 84,
+                },
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 235,
+                    g: 219,
+                    b: 178,
+                },
+                background: Color::Rgb {
+                    r: 80,
+                    g: 73,
+                    b: 69,
+                },
+            },
+        }
+    }
+
+    pub fn gruvbox_light() -> Self {
+        Self {
+            name: "gruvbox-light",
+            base: BaseColors {
+                foreground: Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                },
+                background: Color::Rgb {
+                    r: 251,
+                    g: 241,
+                    b: 199,
+                },
+            },
+            search_match: MatchColors {
+                foreground: Color::Rgb {
+                    r: 251,
+                    g: 241,
+                    b: 199,
+                },
+                background: Color::Rgb {
+                    r: 181,
+                    g: 118,
+                    b: 20,
+                },
+            },
+            search_current: MatchColors {
+                foreground: Color::Rgb {
+                    r: 251,
+                    g: 241,
+                    b: 199,
+                },
+                background: Color::Rgb {
+                    r: 175,
+                    g: 58,
+                    b: 3,
+                },
+            },
+            selection: MatchColors {
+                foreground: Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                },
+                background: Color::Rgb {
+                    r: 189,
+                    g: 174,
+                    b: 147,
+                },
+            },
+            status: MatchColors {
+                foreground: Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                },
+                background: Color::Rgb {
+                    r: 213,
+                    g: 196,
+                    b: 161,
+                },
+            },
+        }
+    }
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::default_theme()
     }
 }
 
@@ -60,8 +231,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn registry_resolves_all_names() {
+        for name in Theme::names() {
+            assert_eq!(Theme::named(name).map(|theme| theme.name), Some(name));
+        }
+        assert!(Theme::named("nope").is_none());
+    }
+
+    #[test]
     fn defaults_follow_neovim_base() {
         let theme = Theme::default();
+        assert_eq!(theme.name, "default");
         assert_eq!(
             theme.base.background,
             Color::Rgb {
@@ -116,6 +296,107 @@ mod tests {
         assert_ne!(
             theme.search_match.background,
             theme.search_current.background
+        );
+    }
+
+    #[test]
+    fn selection_uses_light_background() {
+        let theme = Theme::default();
+        assert_eq!(theme.selection.foreground, Color::Black);
+        assert_eq!(theme.selection.background, Color::White);
+    }
+
+    #[test]
+    fn status_reverses_base() {
+        let theme = Theme::default();
+        assert_eq!(theme.status.foreground, theme.base.background);
+        assert_eq!(theme.status.background, theme.base.foreground);
+    }
+
+    #[test]
+    fn gruvbox_dark_selection_and_status() {
+        let theme = Theme::named("gruvbox-dark").expect("theme");
+        assert_eq!(
+            theme.selection.background,
+            Color::Rgb {
+                r: 102,
+                g: 92,
+                b: 84
+            }
+        );
+        assert_eq!(
+            theme.status.background,
+            Color::Rgb {
+                r: 80,
+                g: 73,
+                b: 69
+            }
+        );
+    }
+
+    #[test]
+    fn gruvbox_dark_matches_user_neovim() {
+        let theme = Theme::named("gruvbox-dark").expect("theme");
+        assert_eq!(
+            theme.base.background,
+            Color::Rgb {
+                r: 40,
+                g: 40,
+                b: 40
+            }
+        );
+        assert_eq!(
+            theme.base.foreground,
+            Color::Rgb {
+                r: 235,
+                g: 219,
+                b: 178
+            }
+        );
+        assert_eq!(
+            theme.search_match.background,
+            Color::Rgb {
+                r: 250,
+                g: 189,
+                b: 47
+            }
+        );
+        assert_eq!(
+            theme.search_current.background,
+            Color::Rgb {
+                r: 254,
+                g: 128,
+                b: 25
+            }
+        );
+    }
+
+    #[test]
+    fn gruvbox_light_uses_dark_accents() {
+        let theme = Theme::named("gruvbox-light").expect("theme");
+        assert_eq!(
+            theme.base.background,
+            Color::Rgb {
+                r: 251,
+                g: 241,
+                b: 199
+            }
+        );
+        assert_eq!(
+            theme.search_match.background,
+            Color::Rgb {
+                r: 181,
+                g: 118,
+                b: 20
+            }
+        );
+        assert_eq!(
+            theme.search_current.background,
+            Color::Rgb {
+                r: 175,
+                g: 58,
+                b: 3
+            }
         );
     }
 }

@@ -1,4 +1,5 @@
 use crate::statusbar::StatusInfo;
+use crate::theme::Theme;
 use crate::viewport::Viewport;
 
 pub struct Frame<'a> {
@@ -15,6 +16,7 @@ pub struct Frame<'a> {
     pub showcmd: Option<&'a str>,
     pub insert_mode: bool,
     pub selection: Option<((usize, usize), (usize, usize))>,
+    pub theme: &'a Theme,
 }
 
 pub struct SearchSpan {
