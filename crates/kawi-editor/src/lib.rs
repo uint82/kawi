@@ -2,6 +2,7 @@ pub mod actions;
 pub mod command;
 pub mod cursor;
 pub mod editor;
+pub mod find;
 pub mod matcher;
 pub mod mode;
 pub mod objects;

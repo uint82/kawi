@@ -456,7 +456,7 @@ mod tests {
     fn change_with_count_does_not_repeat() {
         let mut e = editor_with("foo bar baz");
         push_digits(&mut e, &[2]);
-        e.apply(Action::BeginOperator);
+        e.apply(Action::BeginSequence);
         e.apply(Action::ChangeWord);
         e.apply(Action::InsertChar('X'));
         e.apply(Action::ExitInsert);
