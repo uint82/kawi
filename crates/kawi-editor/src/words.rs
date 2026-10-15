@@ -1,328 +1,319 @@
 use kawi_buffer::Buffer;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum WordClass {
+pub(crate) enum WordClass {
     Word,
     Punct,
     Space,
 }
 
 pub fn next_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    let mut pos = next_slot(buffer, row, col);
-    while let Some((r, c)) = pos {
-        if line_len(buffer, r) == 0 {
-            return (r, c);
-        }
-        if let Some(found) = word_start_at(buffer, r, c) {
-            return found;
-        }
-        pos = next_slot(buffer, r, c);
-    }
-    (row, col)
+    fwd_word(buffer, row, col, false)
 }
 
 pub fn prev_word_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    let mut pos = prev_slot(buffer, row, col);
-    while let Some((r, c)) = pos {
-        if line_len(buffer, r) == 0 {
-            return (r, c);
-        }
-        if let Some(found) = word_start_at(buffer, r, c) {
-            return found;
-        }
-        pos = prev_slot(buffer, r, c);
-    }
-    (row, col)
+    bck_word(buffer, row, col)
 }
 
 pub fn next_word_end(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    let mut pos = next_slot(buffer, row, col);
-    while let Some((r, c)) = pos {
-        if let Some(found) = word_end_at(buffer, r, c) {
-            return found;
+    end_word(buffer, row, col, false)
+}
+
+pub fn dw_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+    resolve_exclusive(buffer, (row, col), fwd_word_raw(buffer, row, col, true))
+}
+
+pub fn db_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+    resolve_exclusive(buffer, (row, col), bck_word(buffer, row, col))
+}
+
+pub fn cw_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+    resolve_inclusive(
+        buffer,
+        (row, col),
+        end_word_raw(buffer, row, col, false),
+        true,
+    )
+}
+
+pub fn ce_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+    resolve_inclusive(
+        buffer,
+        (row, col),
+        end_word_raw(buffer, row, col, false),
+        false,
+    )
+}
+
+pub fn cw_change_range(buffer: &Buffer, row: usize, col: usize) -> WordSpan {
+    match char_at(buffer, row, col).map(class_of) {
+        Some(WordClass::Space) | None => dw_range(buffer, row, col),
+        _ => {
+            let end = end_word_raw(buffer, row, col, true);
+            let (end, _) = adjust_end(buffer, (row, col), end, true);
+            let (start, end) = ordered_span((row, col), end);
+            WordSpan::Charwise { start, end }
         }
-        pos = next_slot(buffer, r, c);
     }
-    (row, col)
-}
-
-pub fn dw_range(
-    buffer: &Buffer,
-    row: usize,
-    col: usize,
-) -> Option<((usize, usize), (usize, usize))> {
-    let target = next_word_start(buffer, row, col);
-    let end_exclusive = dw_end(buffer, row, col, target);
-    let (end_row, end_col) = end_exclusive;
-    let end = prev_char_pos(buffer, end_row, end_col)?;
-    if (row, col) == end_exclusive {
-        return None;
-    }
-    Some(((row, col), end))
-}
-
-fn dw_end(buffer: &Buffer, row: usize, col: usize, target: (usize, usize)) -> (usize, usize) {
-    if target != (row, col) {
-        return target;
-    }
-    (row, line_len(buffer, row))
-}
-
-pub fn cw_range(
-    buffer: &Buffer,
-    row: usize,
-    col: usize,
-) -> Option<((usize, usize), (usize, usize))> {
-    if line_len(buffer, row) == 0 {
-        return None;
-    }
-    Some(((row, col), next_word_end(buffer, row, col)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AroundSpan {
-    pub anchor: (usize, usize),
-    pub start: (usize, usize),
-    pub end: (usize, usize),
+pub enum WordSpan {
+    Charwise {
+        start: (usize, usize),
+        end: (usize, usize),
+    },
+    Linewise {
+        first: usize,
+        last: usize,
+    },
+    Empty,
 }
 
-impl AroundSpan {
-    pub fn spans_lines(&self, buffer: &Buffer) -> bool {
-        self.end.0 > self.start.0
-            && remainder_blank(buffer, self.end)
-            && start_blank(buffer, self.start)
+fn resolve_exclusive(buffer: &Buffer, start: (usize, usize), raw_end: (usize, usize)) -> WordSpan {
+    let (end, inclusive) = adjust_end(buffer, start, raw_end, false);
+    let (start, end) = ordered_span(start, end);
+    if inclusive {
+        return WordSpan::Charwise { start, end };
+    }
+    if start == end {
+        return WordSpan::Empty;
+    }
+    if end.1 == 0 && end.0 > start.0 {
+        return shift_exclusive_end(buffer, start, end);
+    }
+    match prev_char_pos(buffer, end.0, end.1) {
+        Some(before) => WordSpan::Charwise { start, end: before },
+        None => WordSpan::Empty,
     }
 }
 
-pub fn iw_range(buffer: &Buffer, row: usize, col: usize) -> Option<AroundSpan> {
-    let text = line_chars(buffer, row)?;
-    let class = class_of(*text.get(col)?);
-    let start = span_start(&text, col, class);
-    let end = span_end(&text, col, class).saturating_add(1);
-    Some(AroundSpan {
-        anchor: (row, start),
-        start: (row, start),
-        end: (row, end),
-    })
+fn shift_exclusive_end(buffer: &Buffer, start: (usize, usize), end: (usize, usize)) -> WordSpan {
+    if start_blank(buffer, start) {
+        return WordSpan::Linewise {
+            first: start.0,
+            last: end.0.saturating_sub(1),
+        };
+    }
+    let prev = end.0.saturating_sub(1);
+    if line_len(buffer, prev) > 0 {
+        return WordSpan::Charwise {
+            start,
+            end: (prev, line_len(buffer, prev).saturating_sub(1)),
+        };
+    }
+    match prev_char_pos(buffer, prev, 0) {
+        Some(before) => WordSpan::Charwise { start, end: before },
+        None => WordSpan::Empty,
+    }
 }
 
-pub fn aw_range(buffer: &Buffer, row: usize, col: usize) -> Option<AroundSpan> {
-    let line = buffer.line_cow(row)?;
-    if line.is_empty() {
-        return aw_scan(buffer, row, col);
+fn resolve_inclusive(
+    buffer: &Buffer,
+    start: (usize, usize),
+    raw_end: (usize, usize),
+    upgrade: bool,
+) -> WordSpan {
+    let (end, _) = adjust_end(buffer, start, raw_end, true);
+    let (start, end) = ordered_span(start, end);
+    if start == end && line_is_empty(buffer, start.0) {
+        return WordSpan::Empty;
     }
-    let text: Vec<char> = line.chars().collect();
-    let class = class_of(*text.get(col)?);
-    if class == WordClass::Space {
-        return aw_scan(buffer, row, col);
+    if upgrade && end.0 > start.0 && tail_blank(buffer, end) && start_blank(buffer, start) {
+        return WordSpan::Linewise {
+            first: start.0,
+            last: end.0,
+        };
     }
-    aw_from_word(&text, row, col, class)
+    WordSpan::Charwise { start, end }
 }
 
-fn aw_from_word(text: &[char], row: usize, col: usize, class: WordClass) -> Option<AroundSpan> {
-    let start = span_start(text, col, class);
-    let end = span_end(text, col, class);
-    match trailing_spaces(text, end.saturating_add(1)) {
-        Some(last) => Some(AroundSpan {
-            anchor: (row, start),
-            start: (row, start),
-            end: (row, last.saturating_add(1)),
-        }),
-        None => {
-            let head = leading_head(start, leading_start(text, start));
-            Some(AroundSpan {
-                anchor: (row, head),
-                start: (row, head),
-                end: (row, end.saturating_add(1)),
-            })
+fn adjust_end(
+    buffer: &Buffer,
+    start: (usize, usize),
+    end: (usize, usize),
+    inclusive: bool,
+) -> ((usize, usize), bool) {
+    if end > start && end.1 > 0 && end.1 == line_len(buffer, end.0) {
+        return ((end.0, end.1.saturating_sub(1)), true);
+    }
+    (end, inclusive)
+}
+
+fn fwd_word(buffer: &Buffer, row: usize, col: usize, eol: bool) -> (usize, usize) {
+    let start = (row, col);
+    adjust_end(buffer, start, fwd_word_raw(buffer, row, col, eol), false).0
+}
+
+fn fwd_word_raw(buffer: &Buffer, row: usize, col: usize, eol: bool) -> (usize, usize) {
+    let last_line = row.saturating_add(1) == buffer.line_count();
+    let sclass = class_at(buffer, row, col);
+    let (mut pos, step) = inc_pos(buffer, row, col);
+    if step == -1 || (step >= 1 && last_line) {
+        return pos;
+    }
+    if step >= 1 && eol {
+        return pos;
+    }
+    if sclass != WordClass::Space {
+        while class_at(buffer, pos.0, pos.1) == sclass {
+            let (next, step) = inc_pos(buffer, pos.0, pos.1);
+            pos = next;
+            if step == -1 || (step >= 1 && eol) {
+                return pos;
+            }
         }
     }
-}
-
-fn leading_head(start: usize, head: usize) -> usize {
-    if head == 0 && start > 0 {
-        return start;
+    while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+        if pos.1 == 0 && line_is_empty(buffer, pos.0) {
+            break;
+        }
+        let (next, step) = inc_pos(buffer, pos.0, pos.1);
+        pos = next;
+        if step == -1 || (step >= 1 && eol) {
+            return pos;
+        }
     }
-    head
+    pos
 }
 
-enum ScanFound {
-    Word { row: usize, end: usize },
-    Empty { row: usize },
+fn end_word(buffer: &Buffer, row: usize, col: usize, stop: bool) -> (usize, usize) {
+    let start = (row, col);
+    adjust_end(buffer, start, end_word_raw(buffer, row, col, stop), true).0
 }
 
-fn aw_scan(buffer: &Buffer, row: usize, col: usize) -> Option<AroundSpan> {
-    let anchor = (row, col);
-    let eat = rewind_start(buffer, row, col);
-    match scan_forward(buffer, row, col)? {
-        ScanFound::Word { row: found, end } => Some(AroundSpan {
-            anchor,
-            start: eat,
-            end: (found, end),
-        }),
-        ScanFound::Empty { row: empty } => Some(AroundSpan {
-            anchor,
-            start: eat,
-            end: (empty, 0),
-        }),
+fn end_word_raw(buffer: &Buffer, row: usize, col: usize, stop: bool) -> (usize, usize) {
+    let sclass = class_at(buffer, row, col);
+    let (mut pos, step) = inc_pos(buffer, row, col);
+    if step == -1 {
+        return pos;
     }
+    if class_at(buffer, pos.0, pos.1) == sclass && sclass != WordClass::Space {
+        if skip_same_class(buffer, &mut pos, true) {
+            return pos;
+        }
+    } else if !stop || sclass == WordClass::Space {
+        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+            let (next, step) = inc_pos(buffer, pos.0, pos.1);
+            pos = next;
+            if step == -1 {
+                return pos;
+            }
+        }
+        if skip_same_class(buffer, &mut pos, true) {
+            return pos;
+        }
+    }
+    let (back, _) = dec_pos(buffer, pos.0, pos.1);
+    back
 }
 
-fn scan_forward(buffer: &Buffer, row: usize, col: usize) -> Option<ScanFound> {
-    let mut current = row;
-    let mut from = col;
+fn bck_word(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
+    let (mut pos, step) = dec_pos(buffer, row, col);
+    if step == -1 {
+        return pos;
+    }
+    while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+        if pos.1 == 0 && line_is_empty(buffer, pos.0) {
+            return pos;
+        }
+        let (next, step) = dec_pos(buffer, pos.0, pos.1);
+        pos = next;
+        if step == -1 {
+            return pos;
+        }
+    }
+    if skip_same_class(buffer, &mut pos, false) {
+        return pos;
+    }
+    let (next, _) = inc_pos(buffer, pos.0, pos.1);
+    next
+}
+
+fn skip_same_class(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) -> bool {
+    let class = class_at(buffer, pos.0, pos.1);
     loop {
-        let text = line_chars(buffer, current)?;
-        if current != row && text.is_empty() {
-            return Some(ScanFound::Empty { row: current });
+        if class_at(buffer, pos.0, pos.1) != class {
+            return false;
         }
-        if let Some(start) = content_start(&text, from) {
-            let end = span_end(&text, start, class_of(text[start])).saturating_add(1);
-            return Some(ScanFound::Word { row: current, end });
+        let (next, step) = if forward {
+            inc_pos(buffer, pos.0, pos.1)
+        } else {
+            dec_pos(buffer, pos.0, pos.1)
+        };
+        *pos = next;
+        if step == -1 {
+            return true;
         }
-        current = current.saturating_add(1);
-        from = 0;
     }
 }
 
-fn rewind_start(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
-    let Some(line) = buffer.line_cow(row) else {
-        return (row, col);
-    };
-    let text: Vec<char> = line.chars().collect();
-    let mut start = col.min(text.len());
-    while start > 0 && text[start.saturating_sub(1)].is_whitespace() {
-        start = start.saturating_sub(1);
+fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
+    let len = line_len(buffer, row);
+    let col = col.min(len);
+    if col < len {
+        let next = col.saturating_add(1);
+        let step = if next < len { 0 } else { 2 };
+        return ((row, next), step);
     }
-    (row, start)
+    if row.saturating_add(1) < buffer.line_count() {
+        return ((row.saturating_add(1), 0), 1);
+    }
+    ((row, col), -1)
 }
 
-fn remainder_blank(buffer: &Buffer, end: (usize, usize)) -> bool {
+fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
+    if col > 0 {
+        return ((row, col.saturating_sub(1)), 0);
+    }
+    if row > 0 {
+        let prev = row.saturating_sub(1);
+        return ((prev, line_len(buffer, prev)), 1);
+    }
+    ((row, col), -1)
+}
+
+fn class_at(buffer: &Buffer, row: usize, col: usize) -> WordClass {
+    match char_at(buffer, row, col) {
+        Some(ch) => class_of(ch),
+        None => WordClass::Space,
+    }
+}
+
+fn line_is_empty(buffer: &Buffer, row: usize) -> bool {
+    line_len(buffer, row) == 0
+}
+
+fn tail_blank(buffer: &Buffer, end: (usize, usize)) -> bool {
+    match buffer.line_cow(end.0) {
+        None => true,
+        Some(line) => line
+            .chars()
+            .skip(end.1.saturating_add(1))
+            .all(|ch| ch.is_whitespace()),
+    }
+}
+
+fn ordered_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if first <= second {
+        (first, second)
+    } else {
+        (second, first)
+    }
+}
+
+pub(crate) fn remainder_blank(buffer: &Buffer, end: (usize, usize)) -> bool {
     match buffer.line_cow(end.0) {
         None => true,
         Some(line) => line.chars().skip(end.1).all(|ch| ch.is_whitespace()),
     }
 }
 
-fn start_blank(buffer: &Buffer, start: (usize, usize)) -> bool {
+pub(crate) fn start_blank(buffer: &Buffer, start: (usize, usize)) -> bool {
     match buffer.line_cow(start.0) {
         None => true,
         Some(line) => line.chars().take(start.1).all(|ch| ch.is_whitespace()),
     }
-}
-
-fn leading_start(text: &[char], start: usize) -> usize {
-    let mut head = start;
-    while head > 0 && text[head.saturating_sub(1)].is_whitespace() {
-        head = head.saturating_sub(1);
-    }
-    head
-}
-
-fn content_start(text: &[char], from: usize) -> Option<usize> {
-    (from..text.len()).find(|idx| !text[*idx].is_whitespace())
-}
-
-fn trailing_spaces(text: &[char], from: usize) -> Option<usize> {
-    if text.get(from).is_none_or(|ch| !ch.is_whitespace()) {
-        return None;
-    }
-    let mut last = from;
-    while last.saturating_add(1) < text.len() && text[last.saturating_add(1)].is_whitespace() {
-        last = last.saturating_add(1);
-    }
-    Some(last)
-}
-
-fn line_chars(buffer: &Buffer, row: usize) -> Option<Vec<char>> {
-    buffer.line_cow(row).map(|line| line.chars().collect())
-}
-
-fn span_start(text: &[char], col: usize, class: WordClass) -> usize {
-    let mut start = col;
-    while start > 0 && class_of(text[start.saturating_sub(1)]) == class {
-        start = start.saturating_sub(1);
-    }
-    start
-}
-
-fn span_end(text: &[char], col: usize, class: WordClass) -> usize {
-    let mut end = col;
-    while end.saturating_add(1) < text.len() && class_of(text[end.saturating_add(1)]) == class {
-        end = end.saturating_add(1);
-    }
-    end
-}
-
-fn word_start_at(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
-    let ch = char_at(buffer, row, col)?;
-    if class_of(ch) == WordClass::Space {
-        return None;
-    }
-    if is_word_start(buffer, row, col) {
-        return Some((row, col));
-    }
-    None
-}
-
-fn is_word_start(buffer: &Buffer, row: usize, col: usize) -> bool {
-    if col == 0 {
-        return true;
-    }
-    match char_at(buffer, row, col.saturating_sub(1)) {
-        None => true,
-        Some(prev) => {
-            let current = char_at(buffer, row, col).map(class_of);
-            let previous = class_of(prev);
-            previous == WordClass::Space || current != Some(previous)
-        }
-    }
-}
-
-fn word_end_at(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
-    let ch = char_at(buffer, row, col)?;
-    if class_of(ch) == WordClass::Space {
-        return None;
-    }
-    Some(run_end(buffer, row, col, class_of(ch)))
-}
-
-fn run_end(buffer: &Buffer, row: usize, col: usize, class: WordClass) -> (usize, usize) {
-    let mut end = (row, col);
-    let mut pos = next_slot(buffer, row, col);
-    while let Some((r, c)) = pos {
-        match char_at(buffer, r, c) {
-            Some(ch) if class_of(ch) == class => end = (r, c),
-            _ => break,
-        }
-        pos = next_slot(buffer, r, c);
-    }
-    end
-}
-
-fn next_slot(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
-    if col.saturating_add(1) < line_len(buffer, row) {
-        return Some((row, col.saturating_add(1)));
-    }
-    if row.saturating_add(1) < buffer.line_count() {
-        return Some((row.saturating_add(1), 0));
-    }
-    None
-}
-
-fn prev_slot(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
-    if col > 0 {
-        return Some((row, col.saturating_sub(1)));
-    }
-    if row > 0 {
-        let prev = row.saturating_sub(1);
-        let len = line_len(buffer, prev);
-        if len == 0 {
-            return Some((prev, 0));
-        }
-        return Some((prev, len.saturating_sub(1)));
-    }
-    None
 }
 
 fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
@@ -349,15 +340,15 @@ fn backward_char_pos(buffer: &Buffer, mut row: usize) -> Option<(usize, usize)> 
     }
 }
 
-fn char_at(buffer: &Buffer, row: usize, col: usize) -> Option<char> {
+pub(crate) fn char_at(buffer: &Buffer, row: usize, col: usize) -> Option<char> {
     buffer.line_cow(row)?.chars().nth(col)
 }
 
-fn line_len(buffer: &Buffer, row: usize) -> usize {
+pub(crate) fn line_len(buffer: &Buffer, row: usize) -> usize {
     buffer.line_len(row)
 }
 
-fn class_of(ch: char) -> WordClass {
+pub(crate) fn class_of(ch: char) -> WordClass {
     if ch.is_alphanumeric() || ch == '_' {
         WordClass::Word
     } else if ch.is_whitespace() {
@@ -374,6 +365,10 @@ mod tests {
 
     fn lines_of(text: &str) -> Buffer {
         Buffer::from_string(text)
+    }
+
+    fn charwise(start: (usize, usize), end: (usize, usize)) -> WordSpan {
+        WordSpan::Charwise { start, end }
     }
 
     #[test]
@@ -421,12 +416,6 @@ mod tests {
     }
 
     #[test]
-    fn b_skips_leading_space() {
-        let lines = lines_of("  foo");
-        assert_eq!(prev_word_start(&lines, 0, 2), (0, 2));
-    }
-
-    #[test]
     fn b_stops_on_empty_line() {
         let lines = lines_of("foo\n\nbar");
         assert_eq!(prev_word_start(&lines, 2, 0), (1, 0));
@@ -454,6 +443,12 @@ mod tests {
     }
 
     #[test]
+    fn word_end_from_empty_line() {
+        let lines = lines_of("foo\n\nbar");
+        assert_eq!(next_word_end(&lines, 1, 0), (2, 2));
+    }
+
+    #[test]
     fn e_skips_empty_lines() {
         let lines = lines_of("foo\n\nbar");
         assert_eq!(next_word_end(&lines, 0, 2), (2, 2));
@@ -466,197 +461,280 @@ mod tests {
     }
 
     #[test]
+    fn b_from_indent_returns_to_line_start() {
+        let lines = lines_of("  foo");
+        assert_eq!(prev_word_start(&lines, 0, 2), (0, 0));
+    }
+
+    #[test]
+    fn w_advances_to_end_on_last_word() {
+        let lines = lines_of("foo");
+        assert_eq!(next_word_start(&lines, 0, 0), (0, 2));
+        assert_eq!(next_word_start(&lines, 0, 1), (0, 2));
+    }
+
+    #[test]
+    fn w_moves_to_trailing_space() {
+        let lines = lines_of("foo ");
+        assert_eq!(next_word_start(&lines, 0, 0), (0, 3));
+        assert_eq!(next_word_start(&lines, 0, 2), (0, 3));
+    }
+
+    #[test]
+    fn w_moves_off_whitespace_line() {
+        let lines = lines_of("  ");
+        assert_eq!(next_word_start(&lines, 0, 0), (0, 1));
+    }
+
+    #[test]
+    fn w_moves_to_next_empty_line() {
+        let lines = lines_of("\n\n");
+        assert_eq!(next_word_start(&lines, 0, 0), (1, 0));
+    }
+
+    #[test]
+    fn e_moves_off_whitespace_line() {
+        let lines = lines_of("  ");
+        assert_eq!(next_word_end(&lines, 0, 0), (0, 1));
+    }
+
+    #[test]
+    fn b_moves_off_whitespace_line() {
+        let lines = lines_of("  ");
+        assert_eq!(prev_word_start(&lines, 0, 1), (0, 0));
+    }
+
+    #[test]
+    fn change_word_on_end_stays_on_char() {
+        let lines = lines_of("foo bar");
+        assert_eq!(
+            cw_change_range(&lines, 0, 2),
+            WordSpan::Charwise {
+                start: (0, 2),
+                end: (0, 2)
+            }
+        );
+        assert_eq!(
+            cw_change_range(&lines, 0, 0),
+            WordSpan::Charwise {
+                start: (0, 0),
+                end: (0, 2)
+            }
+        );
+    }
+
+    #[test]
+    fn change_word_on_space_reaches_next_word() {
+        let lines = lines_of("foo   bar");
+        assert_eq!(
+            cw_change_range(&lines, 0, 4),
+            WordSpan::Charwise {
+                start: (0, 4),
+                end: (0, 5)
+            }
+        );
+    }
+
+    #[test]
+    fn change_word_on_empty_changes_line() {
+        let lines = lines_of("foo\n\nbar");
+        assert_eq!(
+            cw_change_range(&lines, 1, 0),
+            WordSpan::Linewise { first: 1, last: 1 }
+        );
+    }
+
+    #[test]
+    fn change_word_on_first_empty_changes_line() {
+        let lines = lines_of("\nbar");
+        assert_eq!(
+            cw_change_range(&lines, 0, 0),
+            WordSpan::Linewise { first: 0, last: 0 }
+        );
+    }
+
+    #[test]
+    fn change_word_on_word_end_stays_single() {
+        let lines = lines_of("foo\nbar");
+        assert_eq!(
+            cw_change_range(&lines, 0, 2),
+            WordSpan::Charwise {
+                start: (0, 2),
+                end: (0, 2)
+            }
+        );
+    }
+
+    #[test]
     fn dw_deletes_to_next_start() {
         let lines = lines_of("foo bar");
-        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 3))));
+        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 3)));
     }
 
     #[test]
     fn dw_last_word_deletes_to_end() {
         let lines = lines_of("foo bar");
-        assert_eq!(dw_range(&lines, 0, 4), Some(((0, 4), (0, 6))));
+        assert_eq!(dw_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
     }
 
     #[test]
     fn dw_space_deletes_spaces() {
         let lines = lines_of("foo   bar");
-        assert_eq!(dw_range(&lines, 0, 3), Some(((0, 3), (0, 5))));
+        assert_eq!(dw_range(&lines, 0, 3), charwise((0, 3), (0, 5)));
     }
 
     #[test]
     fn dw_last_char_deletes_single() {
         let lines = lines_of("foo");
-        assert_eq!(dw_range(&lines, 0, 2), Some(((0, 2), (0, 2))));
+        assert_eq!(dw_range(&lines, 0, 2), charwise((0, 2), (0, 2)));
     }
 
     #[test]
-    fn dw_empty_line_is_none() {
+    fn dw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(dw_range(&lines, 0, 0), None);
+        assert_eq!(dw_range(&lines, 0, 0), WordSpan::Empty);
     }
 
     #[test]
     fn dw_across_lines_stops_before_target() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
     }
 
     #[test]
     fn dw_empty_line_keeps_newline() {
         let lines = lines_of("foo\n\nbar");
-        assert_eq!(dw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+        assert_eq!(dw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
+    }
+
+    #[test]
+    fn dw_on_empty_line_removes_line() {
+        let lines = lines_of("foo\n\nbar");
+        assert_eq!(
+            dw_range(&lines, 1, 0),
+            WordSpan::Linewise { first: 1, last: 1 }
+        );
+    }
+
+    #[test]
+    fn dw_on_first_of_two_empties_removes_line() {
+        let lines = lines_of("\n\n");
+        assert_eq!(
+            dw_range(&lines, 0, 0),
+            WordSpan::Linewise { first: 0, last: 0 }
+        );
+    }
+
+    #[test]
+    fn dw_on_trailing_space_deletes_space() {
+        let lines = lines_of("foo \nbar");
+        assert_eq!(dw_range(&lines, 0, 3), charwise((0, 3), (0, 3)));
+    }
+
+    #[test]
+    fn dw_stops_at_line_end() {
+        let lines = lines_of("ab \ncd");
+        assert_eq!(dw_range(&lines, 0, 2), charwise((0, 2), (0, 2)));
     }
 
     #[test]
     fn cw_deletes_to_word_end() {
         let lines = lines_of("foo bar");
-        assert_eq!(cw_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
-        assert_eq!(cw_range(&lines, 0, 1), Some(((0, 1), (0, 2))));
+        assert_eq!(cw_range(&lines, 0, 0), charwise((0, 0), (0, 2)));
+        assert_eq!(cw_range(&lines, 0, 1), charwise((0, 1), (0, 2)));
     }
 
     #[test]
-    fn cw_empty_line_is_none() {
+    fn cw_empty_file_is_empty() {
         let lines = lines_of("");
-        assert_eq!(cw_range(&lines, 0, 0), None);
-    }
-
-    fn around(anchor: (usize, usize), start: (usize, usize), end: (usize, usize)) -> AroundSpan {
-        AroundSpan { anchor, start, end }
+        assert_eq!(cw_range(&lines, 0, 0), WordSpan::Empty);
     }
 
     #[test]
-    fn iw_selects_word_run() {
-        let lines = lines_of("foo bar");
-        assert_eq!(iw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 3))));
-        assert_eq!(iw_range(&lines, 0, 1), Some(around((0, 0), (0, 0), (0, 3))));
-        assert_eq!(iw_range(&lines, 0, 5), Some(around((0, 4), (0, 4), (0, 7))));
-    }
-
-    #[test]
-    fn iw_selects_space_run() {
-        let lines = lines_of("foo bar");
-        assert_eq!(iw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 4))));
-        let lines = lines_of("foo   bar");
-        assert_eq!(iw_range(&lines, 0, 4), Some(around((0, 3), (0, 3), (0, 6))));
-    }
-
-    #[test]
-    fn iw_selects_punct_run() {
-        let lines = lines_of("foo, bar");
-        assert_eq!(iw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 4))));
-        let lines = lines_of("foo...bar");
-        assert_eq!(iw_range(&lines, 0, 4), Some(around((0, 3), (0, 3), (0, 6))));
-    }
-
-    #[test]
-    fn iw_empty_line_is_none() {
-        let lines = lines_of("");
-        assert_eq!(iw_range(&lines, 0, 0), None);
-        let lines = lines_of("\nfoo");
-        assert_eq!(iw_range(&lines, 0, 0), None);
-    }
-
-    #[test]
-    fn iw_stays_on_single_line() {
-        let lines = lines_of("xx\n   \nbar");
-        assert_eq!(iw_range(&lines, 1, 1), Some(around((1, 0), (1, 0), (1, 3))));
-    }
-
-    #[test]
-    fn aw_takes_word_plus_trailing_space() {
-        let lines = lines_of("foo bar");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 4))));
-        let lines = lines_of("foo   bar");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 6))));
-        let lines = lines_of("foo, bar");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 5))));
-    }
-
-    #[test]
-    fn aw_at_end_takes_leading_space() {
-        let lines = lines_of("foo bar");
-        assert_eq!(aw_range(&lines, 0, 4), Some(around((0, 3), (0, 3), (0, 7))));
-        let lines = lines_of("xx foo,bar");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 2), (0, 2), (0, 6))));
-        let lines = lines_of("foo,bar");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 3))));
-    }
-
-    #[test]
-    fn aw_without_spaces_takes_word() {
-        let lines = lines_of("foo");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 3))));
-        let lines = lines_of("foo,");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 4))));
-        let lines = lines_of("xx\nbar\nbaz");
-        assert_eq!(aw_range(&lines, 1, 0), Some(around((1, 0), (1, 0), (1, 3))));
-    }
-
-    #[test]
-    fn aw_keeps_indent_at_line_start() {
-        let lines = lines_of("   foo\nbar");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 6))));
-        let lines = lines_of("   foo");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 6))));
-    }
-
-    #[test]
-    fn aw_on_space_takes_following_word() {
-        let lines = lines_of("foo bar");
-        assert_eq!(aw_range(&lines, 0, 3), Some(around((0, 3), (0, 3), (0, 7))));
-        let lines = lines_of("   foo");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 6))));
-        let lines = lines_of("  foo  ");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (0, 5))));
-    }
-
-    #[test]
-    fn aw_without_following_word_is_none() {
-        let lines = lines_of("foo   ");
-        assert_eq!(aw_range(&lines, 0, 4), None);
-        let lines = lines_of("foo\n\n   ");
-        assert_eq!(aw_range(&lines, 1, 0), None);
-        let lines = lines_of("");
-        assert_eq!(aw_range(&lines, 0, 0), None);
-    }
-
-    #[test]
-    fn aw_crosses_lines_from_space() {
-        let lines = lines_of("foo   \nbar");
-        assert_eq!(aw_range(&lines, 0, 4), Some(around((0, 4), (0, 3), (1, 3))));
-        let lines = lines_of("foo   \n\nbar");
-        assert_eq!(aw_range(&lines, 0, 4), Some(around((0, 4), (0, 3), (1, 0))));
-    }
-
-    #[test]
-    fn aw_on_empty_line_takes_next_word() {
-        let lines = lines_of("\nfoo");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (1, 3))));
-        let lines = lines_of("\nfoo bar");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (1, 3))));
-        let lines = lines_of("foo\n\nbar");
-        assert_eq!(aw_range(&lines, 1, 0), Some(around((1, 0), (1, 0), (2, 3))));
-    }
-
-    #[test]
-    fn aw_on_empty_line_stops_at_empty() {
-        let lines = lines_of("\n\nfoo");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (1, 0))));
-        let lines = lines_of("\n\n\nfoo");
-        assert_eq!(aw_range(&lines, 0, 0), Some(around((0, 0), (0, 0), (1, 0))));
-    }
-
-    #[test]
-    fn aw_upgrades_to_lines_over_blank() {
-        let lines = lines_of("foo\n   \nbar");
-        let span = aw_range(&lines, 1, 0).expect("span");
+    fn de_empty_line_takes_next_word() {
+        let lines = lines_of("\nbar");
         assert_eq!(
-            (span.anchor, span.start, span.end),
-            ((1, 0), (1, 0), (2, 3))
+            cw_range(&lines, 0, 0),
+            WordSpan::Linewise { first: 0, last: 1 }
         );
-        assert!(span.spans_lines(&lines));
-        let lines = lines_of("foo   \nbar");
-        let span = aw_range(&lines, 0, 3).expect("span");
-        assert!(!span.spans_lines(&lines));
+    }
+
+    #[test]
+    fn de_two_empties_takes_both() {
+        let lines = lines_of("\n\n");
+        assert_eq!(
+            cw_range(&lines, 0, 0),
+            WordSpan::Linewise { first: 0, last: 1 }
+        );
+    }
+
+    #[test]
+    fn de_crosses_to_word_end() {
+        let lines = lines_of("foo\nbar");
+        assert_eq!(cw_range(&lines, 0, 2), charwise((0, 2), (1, 2)));
+    }
+
+    #[test]
+    fn ce_crosses_to_word_end() {
+        let lines = lines_of("foo\nbar");
+        assert_eq!(ce_range(&lines, 0, 2), charwise((0, 2), (1, 2)));
+    }
+
+    #[test]
+    fn ce_matches_de_within_line() {
+        let lines = lines_of("foo bar");
+        assert_eq!(cw_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
+        assert_eq!(ce_range(&lines, 0, 4), charwise((0, 4), (0, 6)));
+    }
+
+    #[test]
+    fn ce_skips_linewise_upgrade() {
+        let lines = lines_of("\nbar");
+        assert_eq!(ce_range(&lines, 0, 0), charwise((0, 0), (1, 2)));
+    }
+
+    #[test]
+    fn db_line_start_removes_prev_line() {
+        let lines = lines_of("foo\nbar");
+        assert_eq!(
+            db_range(&lines, 1, 0),
+            WordSpan::Linewise { first: 0, last: 0 }
+        );
+    }
+
+    #[test]
+    fn db_across_lines_removes_middle() {
+        let lines = lines_of("ab\ncd\nef");
+        assert_eq!(
+            db_range(&lines, 2, 0),
+            WordSpan::Linewise { first: 1, last: 1 }
+        );
+    }
+
+    #[test]
+    fn db_across_empty_takes_both_lines() {
+        let lines = lines_of("foo\n  \nbar");
+        assert_eq!(
+            db_range(&lines, 2, 0),
+            WordSpan::Linewise { first: 0, last: 1 }
+        );
+    }
+
+    #[test]
+    fn db_same_line_deletes_back() {
+        let lines = lines_of("foo bar");
+        assert_eq!(db_range(&lines, 0, 4), charwise((0, 0), (0, 3)));
+    }
+
+    #[test]
+    fn db_at_start_is_empty() {
+        let lines = lines_of("foo");
+        assert_eq!(db_range(&lines, 0, 0), WordSpan::Empty);
+    }
+
+    #[test]
+    fn de_last_empty_line_is_empty() {
+        let lines = lines_of("a\n");
+        assert_eq!(cw_range(&lines, 1, 0), WordSpan::Empty);
     }
 }
