@@ -1,3 +1,4 @@
+use super::session::InsertEdit;
 use super::Editor;
 use crate::objects;
 use crate::register::RegisterKind;
@@ -143,6 +144,7 @@ impl Editor {
 
     pub(super) fn delete_backward(&mut self) {
         self.record_maybe();
+        self.record_insert(InsertEdit::Backspace);
         let (row, col) = self
             .buffer
             .delete_backward(self.cursor.row(), self.cursor.col());
@@ -152,6 +154,7 @@ impl Editor {
     pub(super) fn delete_forward(&mut self) {
         if self.mode.is_insert() {
             self.record_maybe();
+            self.record_insert(InsertEdit::Delete);
             self.buffer
                 .delete_forward(self.cursor.row(), self.cursor.col());
             return;
@@ -288,6 +291,7 @@ impl Editor {
 
     pub(super) fn insert_char(&mut self, c: char) {
         self.record_maybe();
+        self.record_insert(InsertEdit::Char(c));
         self.buffer
             .insert_char(self.cursor.row(), self.cursor.col(), c);
         self.cursor.advance_col();
@@ -301,6 +305,7 @@ impl Editor {
     }
 
     pub(super) fn insert_newline(&mut self) {
+        self.record_insert(InsertEdit::Newline);
         let row = self.cursor.row();
         self.insert_newline_at(row, self.cursor.col());
     }
@@ -346,13 +351,17 @@ impl Editor {
     }
 
     pub(super) fn open_line_below(&mut self) {
-        let row = self.cursor.row();
+        self.arm_insert_repeat(true);
+        self.buffer.begin_change();
+        self.open_line_after(self.cursor.row());
+        self.switch_to_insert();
+    }
+
+    pub(super) fn open_line_after(&mut self, row: usize) {
         let width = self.line_width(row);
         let indent = self.line_indent(row);
-        self.buffer.begin_change();
         self.insert_newline_at(row, width);
         self.insert_indent(row.saturating_add(1), &indent);
-        self.switch_to_insert();
     }
 
     fn operator_range(&self) -> ((usize, usize), (usize, usize)) {

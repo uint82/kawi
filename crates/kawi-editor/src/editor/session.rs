@@ -2,17 +2,38 @@ use super::Editor;
 use crate::mode::Mode;
 use crate::selection::Selection;
 
+#[derive(Clone, Copy)]
+pub(super) enum InsertEdit {
+    Char(char),
+    Newline,
+    Backspace,
+    Delete,
+}
+
 impl Editor {
-    // TODO(counts): repeat typed text for insert entry with count like vim 3o.
     pub(super) fn append(&mut self) {
+        self.arm_insert_repeat(false);
         self.cursor.move_right();
         self.enter_insert();
     }
 
     pub(super) fn append_line_end(&mut self) {
+        self.arm_insert_repeat(false);
         let end = self.line_width(self.cursor.row());
         self.cursor.set_position(self.cursor.row(), end);
         self.enter_insert();
+    }
+
+    pub(super) fn arm_insert_repeat(&mut self, reopen: bool) {
+        let count = self.take_count();
+        self.insert_repeat = if count > 1 {
+            Some(count.saturating_sub(1))
+        } else {
+            None
+        };
+        self.insert_reopen = reopen;
+        self.insert_record.clear();
+        self.insert_moved = false;
     }
 
     pub(super) fn cancel_command(&mut self) {
@@ -49,10 +70,57 @@ impl Editor {
 
     pub(super) fn exit_insert(&mut self) {
         if self.mode == Mode::Insert {
+            self.replay_insert();
             self.buffer.end_change();
             self.retreat_after_insert();
         }
         self.mode = Mode::Normal;
+        self.insert_repeat = None;
+        self.insert_reopen = false;
+        self.insert_record.clear();
+        self.insert_moved = false;
+    }
+
+    fn replay_insert(&mut self) {
+        let repeats = self.insert_repeat.take().unwrap_or(0);
+        if self.insert_moved || repeats == 0 {
+            return;
+        }
+        let record = std::mem::take(&mut self.insert_record);
+        let reopen = std::mem::replace(&mut self.insert_reopen, false);
+        for _ in 0..repeats {
+            if reopen {
+                self.replay_open_line();
+            }
+            for edit in &record {
+                self.replay_edit(*edit);
+            }
+        }
+    }
+
+    fn replay_open_line(&mut self) {
+        self.open_line_after(self.cursor.row());
+    }
+
+    fn replay_edit(&mut self, edit: InsertEdit) {
+        match edit {
+            InsertEdit::Char(c) => self.insert_char(c),
+            InsertEdit::Newline => self.insert_newline(),
+            InsertEdit::Backspace => self.delete_backward(),
+            InsertEdit::Delete => self.delete_forward(),
+        }
+    }
+
+    pub(super) fn record_insert(&mut self, edit: InsertEdit) {
+        if self.insert_repeat.is_some() {
+            self.insert_record.push(edit);
+        }
+    }
+
+    pub(super) fn track_insert_move(&mut self) {
+        if self.mode.is_insert() && self.insert_repeat.is_some() {
+            self.insert_moved = true;
+        }
     }
 
     pub(super) fn exit_visual(&mut self) {
@@ -78,6 +146,7 @@ impl Editor {
     }
 
     pub(super) fn insert_line_start(&mut self) {
+        self.arm_insert_repeat(false);
         let row = self.cursor.row();
         let start = self.buffer.insert_start_col(row);
         self.cursor.set_position(row, start);
@@ -220,6 +289,191 @@ mod tests {
         assert_eq!((e.row(), e.col()), (0, 1));
         e.apply(Action::ExitInsert);
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn append_with_count_repeats_typed() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Append);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aXXb");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn enter_insert_with_count_repeats_typed() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "XXab");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn append_line_end_with_count_repeats_typed() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::AppendLineEnd);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "abXX");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn insert_line_start_with_count_repeats_typed() {
+        let mut e = editor_with("  ab");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::InsertLineStart);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "  XXab");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn open_line_below_with_count_repeats_per_line() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "X");
+        assert_eq!(e.text_lines()[2], "X");
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn open_line_below_with_count_three_repeats_twice() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[3]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines().len(), 4);
+        assert_eq!(e.text_lines()[1], "X");
+        assert_eq!(e.text_lines()[2], "X");
+        assert_eq!(e.text_lines()[3], "X");
+        assert_eq!((e.row(), e.col()), (3, 0));
+    }
+
+    #[test]
+    fn open_line_below_with_count_copies_indent() {
+        let mut e = editor_with("  ab");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!(e.text_lines()[1], "  X");
+        assert_eq!(e.text_lines()[2], "  X");
+        assert_eq!((e.row(), e.col()), (2, 2));
+    }
+
+    #[test]
+    fn open_line_below_with_count_empty_session() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines().len(), 3);
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn repeat_undoes_together() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines().len(), 1);
+        assert_eq!(e.text_lines()[0], "ab");
+    }
+
+    #[test]
+    fn repeat_append_undoes_together() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Append);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "ab");
+    }
+
+    #[test]
+    fn repeat_with_newline_replays_lines() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::OpenLineBelow);
+        e.apply(Action::InsertNewline);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines().len(), 5);
+        assert_eq!(e.text_lines()[2], "X");
+        assert_eq!(e.text_lines()[4], "X");
+        assert_eq!((e.row(), e.col()), (4, 0));
+    }
+
+    #[test]
+    fn repeat_with_backspace_replays_keys() {
+        let mut e = editor_with("ab");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Append);
+        e.apply(Action::DeleteBackward);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aX");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn arrow_cancels_repeat() {
+        let mut e = editor_with("ab");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::Append);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::MoveLeft);
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aYXb");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn change_with_count_does_not_repeat() {
+        let mut e = editor_with("foo bar baz");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::BeginOperator);
+        e.apply(Action::ChangeWord);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "X baz");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn change_to_end_with_count_does_not_repeat() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ChangeToEnd);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "aX");
+        assert_eq!((e.row(), e.col()), (0, 1));
     }
 
     #[test]
