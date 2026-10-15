@@ -1,6 +1,7 @@
 use kawi_buffer::Buffer;
 
 use super::Editor;
+use crate::find;
 use crate::words;
 
 impl Editor {
@@ -10,6 +11,16 @@ impl Editor {
             .desired()
             .min(self.max_col_for_row(self.cursor.row()));
         self.cursor.set_col(col);
+    }
+
+    pub(super) fn find_char_to(&mut self, target: char, forward: bool, till: bool, repeat: bool) {
+        let count = self.take_count();
+        let pos = (self.cursor.row(), self.cursor.col());
+        if let Some((row, col)) =
+            find::find_motion(&self.buffer, pos, target, forward, till, count, repeat)
+        {
+            self.cursor.set_position(row, col);
+        }
     }
 
     pub(super) fn jump_to(&mut self, row: usize, col: usize) {
@@ -286,6 +297,149 @@ mod tests {
             e.apply(Action::MoveRight);
         }
         assert_eq!(e.col(), 6);
+    }
+
+    #[test]
+    fn find_forward_moves_to_char() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::FindChar {
+            target: 'c',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn find_forward_on_target_stays() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::FindChar {
+            target: 'c',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn find_forward_missing_stays() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::FindChar {
+            target: 'z',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn find_forward_with_count() {
+        let mut e = editor_with("abcbdb");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::FindChar {
+            target: 'b',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn find_backward_moves_to_char() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::FindChar {
+            target: 'e',
+            forward: false,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn till_forward_lands_before() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::FindChar {
+            target: 'c',
+            forward: true,
+            till: true,
+        });
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn till_backward_lands_after() {
+        let mut e = editor_with("abcdef");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::FindChar {
+            target: 'b',
+            forward: false,
+            till: true,
+        });
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn repeat_find_moves_again() {
+        let mut e = editor_with("abcb");
+        e.apply(Action::FindChar {
+            target: 'b',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 1));
+        e.apply(Action::RepeatFind {
+            target: 'b',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn repeat_find_reversed_moves_back() {
+        let mut e = editor_with("abcb");
+        e.apply(Action::FindChar {
+            target: 'b',
+            forward: true,
+            till: false,
+        });
+        e.apply(Action::RepeatFind {
+            target: 'b',
+            forward: true,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 3));
+        e.apply(Action::RepeatFind {
+            target: 'b',
+            forward: false,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn repeat_till_forces_first_move() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::FindChar {
+            target: 'x',
+            forward: true,
+            till: true,
+        });
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::RepeatFind {
+            target: 'x',
+            forward: true,
+            till: true,
+        });
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 
     #[test]

@@ -50,8 +50,8 @@ impl Editor {
                 self.push_count_digit(digit);
                 return;
             }
-            Action::BeginOperator => {
-                self.begin_operator();
+            Action::BeginSequence => {
+                self.begin_sequence();
                 return;
             }
             Action::CancelPending => {
@@ -93,6 +93,46 @@ impl Editor {
             Action::DeleteObject { inner, object } => self.delete_object(inner, object),
             Action::ChangeObject { inner, object } => self.change_object(inner, object),
             Action::YankObject { inner, object } => self.yank_object(inner, object),
+            Action::FindChar {
+                target,
+                forward,
+                till,
+            } => self.find_char_to(target, forward, till, false),
+            Action::RepeatFind {
+                target,
+                forward,
+                till,
+            } => self.find_char_to(target, forward, till, true),
+            Action::DeleteFind {
+                target,
+                forward,
+                till,
+            } => self.delete_find(target, forward, till, false),
+            Action::DeleteRepeatFind {
+                target,
+                forward,
+                till,
+            } => self.delete_find(target, forward, till, true),
+            Action::ChangeFind {
+                target,
+                forward,
+                till,
+            } => self.change_find(target, forward, till, false),
+            Action::ChangeRepeatFind {
+                target,
+                forward,
+                till,
+            } => self.change_find(target, forward, till, true),
+            Action::YankFind {
+                target,
+                forward,
+                till,
+            } => self.yank_find(target, forward, till, false),
+            Action::YankRepeatFind {
+                target,
+                forward,
+                till,
+            } => self.yank_find(target, forward, till, true),
             Action::YankInnerWord => self.yank_inner_word(),
             Action::YankAroundWord => self.yank_around_word(),
             Action::DeleteSelection => self.delete_selection(),
@@ -138,7 +178,7 @@ impl Editor {
             Action::PrevMatch => self.prev_match(),
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
-            Action::PushCount(_) | Action::BeginOperator | Action::CancelPending => self.noop(),
+            Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         self.normalize_cursor();
         self.track_head(action);
@@ -236,9 +276,11 @@ impl Editor {
         }
     }
 
-    pub(super) fn begin_operator(&mut self) {
-        let pending = std::mem::replace(&mut self.count_digits, 0);
-        self.operator_count = Some(if pending == 0 { 1 } else { pending });
+    pub(super) fn begin_sequence(&mut self) {
+        if self.operator_count.is_none() {
+            let pending = std::mem::replace(&mut self.count_digits, 0);
+            self.operator_count = Some(if pending == 0 { 1 } else { pending });
+        }
     }
 
     pub(super) fn take_count(&mut self) -> usize {

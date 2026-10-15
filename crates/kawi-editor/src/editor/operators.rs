@@ -1,6 +1,7 @@
 use super::session::InsertEdit;
 use super::Editor;
 use crate::actions::Object;
+use crate::find;
 use crate::objects;
 use crate::register::RegisterKind;
 use crate::selection::Selection;
@@ -10,6 +11,17 @@ impl Editor {
     pub(super) fn change_around_word(&mut self) {
         let span = objects::aw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.change_object_span(span);
+    }
+
+    pub(super) fn change_find(&mut self, target: char, forward: bool, till: bool, repeat: bool) {
+        let count = self.take_count();
+        let pos = (self.cursor.row(), self.cursor.col());
+        if let Some((start, end)) =
+            find::find_span(&self.buffer, pos, target, forward, till, count, repeat)
+        {
+            self.remove_range(start, end);
+            self.switch_to_insert();
+        }
     }
 
     pub(super) fn change_inner_word(&mut self) {
@@ -161,6 +173,16 @@ impl Editor {
             .buffer
             .delete_backward(self.cursor.row(), self.cursor.col());
         self.cursor.set_position(row, col);
+    }
+
+    pub(super) fn delete_find(&mut self, target: char, forward: bool, till: bool, repeat: bool) {
+        let count = self.take_count();
+        let pos = (self.cursor.row(), self.cursor.col());
+        if let Some((start, end)) =
+            find::find_span(&self.buffer, pos, target, forward, till, count, repeat)
+        {
+            self.remove_range(start, end);
+        }
     }
 
     pub(super) fn delete_forward(&mut self) {
@@ -477,6 +499,17 @@ impl Editor {
         self.yank_object_span(span);
     }
 
+    pub(super) fn yank_find(&mut self, target: char, forward: bool, till: bool, repeat: bool) {
+        let count = self.take_count();
+        let pos = (self.cursor.row(), self.cursor.col());
+        if let Some((start, end)) =
+            find::find_span(&self.buffer, pos, target, forward, till, count, repeat)
+        {
+            self.yank_range(start.0, start.1, end.0, end.1);
+            self.cursor.set_position(start.0, start.1);
+        }
+    }
+
     pub(super) fn yank_inner_word(&mut self) {
         let span = objects::iw_range(&self.buffer, self.cursor.row(), self.cursor.col());
         self.yank_object_span(span);
@@ -576,8 +609,8 @@ mod tests {
         }
     }
 
-    fn begin_operator(e: &mut Editor) {
-        e.apply(Action::BeginOperator);
+    fn begin_sequence(e: &mut Editor) {
+        e.apply(Action::BeginSequence);
     }
 
     #[test]
@@ -1482,7 +1515,7 @@ mod tests {
     fn delete_word_with_count_deletes_words() {
         let mut e = editor_with("foo bar baz");
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         e.apply(Action::DeleteWord);
         assert_eq!(e.text_lines()[0], "baz");
         assert_eq!((e.row(), e.col()), (0, 0));
@@ -1492,7 +1525,7 @@ mod tests {
     fn delete_word_multiplies_counts() {
         let mut e = editor_with("foo bar qux baz");
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         push_digits(&mut e, &[2]);
         e.apply(Action::DeleteWord);
         assert_eq!(e.text_lines()[0], "");
@@ -1506,7 +1539,7 @@ mod tests {
             e.apply(Action::MoveRight);
         }
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         e.apply(Action::DeleteWordBackward);
         assert_eq!(e.text_lines()[0], "foo z");
         assert_eq!((e.row(), e.col()), (0, 4));
@@ -1516,7 +1549,7 @@ mod tests {
     fn delete_word_end_with_count() {
         let mut e = editor_with("foo bar baz");
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         e.apply(Action::DeleteWordEnd);
         assert_eq!(e.text_lines()[0], " baz");
         assert_eq!((e.row(), e.col()), (0, 0));
@@ -1526,7 +1559,7 @@ mod tests {
     fn change_word_with_count() {
         let mut e = editor_with("foo bar baz");
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         e.apply(Action::ChangeWord);
         assert_eq!(e.text_lines()[0], " baz");
         assert_eq!((e.row(), e.col()), (0, 0));
@@ -1537,7 +1570,7 @@ mod tests {
     fn change_word_end_with_count() {
         let mut e = editor_with("foo bar baz");
         push_digits(&mut e, &[2]);
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         e.apply(Action::ChangeWordEnd);
         assert_eq!(e.text_lines()[0], " baz");
         assert_eq!((e.row(), e.col()), (0, 0));
@@ -1558,7 +1591,7 @@ mod tests {
     #[test]
     fn delete_line_with_operator_count() {
         let mut e = editor_with("a\nb\nc");
-        begin_operator(&mut e);
+        begin_sequence(&mut e);
         push_digits(&mut e, &[2]);
         e.apply(Action::DeleteLine);
         assert_eq!(e.text_lines().len(), 1);
@@ -1744,6 +1777,182 @@ mod tests {
         e.apply(Action::PasteAfter);
         assert_eq!(e.text_lines()[0], "abcdef");
         assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn delete_find_forward_deletes_through_char() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "bxc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn delete_find_till_deletes_before_char() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: true,
+            till: true,
+        });
+        assert_eq!(e.text_lines()[0], "xbxc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_find_backward_excludes_start() {
+        let mut e = editor_with("abxcx");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: false,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "abx");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_find_backward_till() {
+        let mut e = editor_with("abxcx");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: false,
+            till: true,
+        });
+        assert_eq!(e.text_lines()[0], "abxx");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_find_with_count() {
+        let mut e = editor_with("axbxcxd");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "cxd");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_find_multiplies_counts() {
+        let mut e = editor_with("axbxcxdxex");
+        push_digits(&mut e, &[2]);
+        begin_sequence(&mut e);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "ex");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_find_missing_is_noop() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::DeleteFind {
+            target: 'z',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "abcdef");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[0], "abcdef");
+    }
+
+    #[test]
+    fn change_find_enters_insert() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::ChangeFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "bxc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "Xbxc");
+    }
+
+    #[test]
+    fn change_find_backward_inserts_at_found() {
+        let mut e = editor_with("abxcx");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::ChangeFind {
+            target: 'x',
+            forward: false,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "abx");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn yank_find_yanks_through_char() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::YankFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "axbxc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[0], "axbxcax");
+    }
+
+    #[test]
+    fn yank_find_backward_moves_to_found() {
+        let mut e = editor_with("abxcx");
+        for _ in 0..4 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::YankFind {
+            target: 'x',
+            forward: false,
+            till: false,
+        });
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn delete_repeat_find_uses_stored_target() {
+        let mut e = editor_with("axbxc");
+        e.apply(Action::DeleteFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        e.apply(Action::DeleteRepeatFind {
+            target: 'x',
+            forward: true,
+            till: false,
+        });
+        assert_eq!(e.text_lines()[0], "c");
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
