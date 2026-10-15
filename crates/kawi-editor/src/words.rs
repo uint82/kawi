@@ -79,6 +79,27 @@ pub fn cw_range(
     Some(((row, col), next_word_end(buffer, row, col)))
 }
 
+pub fn cw_change_range(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+) -> Option<((usize, usize), (usize, usize))> {
+    match char_at(buffer, row, col).map(class_of) {
+        Some(WordClass::Space) | None => dw_range(buffer, row, col),
+        _ => ce_range(buffer, row, col),
+    }
+}
+
+fn ce_range(buffer: &Buffer, row: usize, col: usize) -> Option<((usize, usize), (usize, usize))> {
+    let text = line_chars(buffer, row)?;
+    let class = class_of(*text.get(col)?);
+    if class == WordClass::Space {
+        return None;
+    }
+    let end = span_end(&text, col, class);
+    Some(((row, col), (row, end)))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AroundSpan {
     pub anchor: (usize, usize),
@@ -451,6 +472,25 @@ mod tests {
         let lines = lines_of("foo, bar");
         assert_eq!(next_word_end(&lines, 0, 2), (0, 3));
         assert_eq!(next_word_end(&lines, 0, 3), (0, 7));
+    }
+
+    #[test]
+    fn change_word_on_end_stays_on_char() {
+        let lines = lines_of("foo bar");
+        assert_eq!(cw_change_range(&lines, 0, 2), Some(((0, 2), (0, 2))));
+        assert_eq!(cw_change_range(&lines, 0, 0), Some(((0, 0), (0, 2))));
+    }
+
+    #[test]
+    fn change_word_on_space_reaches_next_word() {
+        let lines = lines_of("foo   bar");
+        assert_eq!(cw_change_range(&lines, 0, 4), Some(((0, 4), (0, 5))));
+    }
+
+    #[test]
+    fn word_end_from_empty_line() {
+        let lines = lines_of("foo\n\nbar");
+        assert_eq!(next_word_end(&lines, 1, 0), (2, 2));
     }
 
     #[test]
