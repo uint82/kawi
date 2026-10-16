@@ -16,6 +16,7 @@ mod motions;
 mod operators;
 mod search_mode;
 mod session;
+mod shift_ops;
 
 use session::InsertEdit;
 
@@ -30,6 +31,7 @@ pub struct Editor {
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
     last_insert: Option<(usize, usize)>,
+    shiftwidth: usize,
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
@@ -160,6 +162,9 @@ impl Editor {
             Action::YankToFirstLine => self.yank_to_first_line(),
             Action::ChangeToLastLine => self.change_to_last_line(),
             Action::ChangeToFirstLine => self.change_to_first_line(),
+            Action::ShiftRight => self.shift_right(),
+            Action::ShiftLeft => self.shift_left(),
+            Action::Reindent => self.reindent(),
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
             Action::ExitVisual => self.exit_visual(),
@@ -234,6 +239,10 @@ impl Editor {
         self.cursor.col()
     }
 
+    pub fn set_shiftwidth(&mut self, width: usize) {
+        self.shiftwidth = width;
+    }
+
     pub fn command_prompt(&self) -> Option<&str> {
         if self.mode == Mode::Command {
             Some(self.command.text())
@@ -291,6 +300,7 @@ impl Editor {
             selection: None,
             previous_visual: None,
             last_insert: None,
+            shiftwidth: 8,
             register: Register::new(),
             count_digits: 0,
             operator_count: None,

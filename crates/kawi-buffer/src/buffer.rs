@@ -296,6 +296,68 @@ impl Buffer {
         self.rope.slice(start.min(end)..end.max(start)).to_string()
     }
 
+    pub fn indent_end(&self, row: usize) -> usize {
+        match self.line_cow(row) {
+            None => 0,
+            Some(line) => line
+                .chars()
+                .take_while(|ch| *ch == ' ' || *ch == '\t')
+                .count(),
+        }
+    }
+
+    pub fn indent_width(&self, row: usize, tabstop: usize) -> usize {
+        let mut width = 0;
+        if let Some(line) = self.line_cow(row) {
+            for ch in line.chars() {
+                if ch != ' ' && ch != '\t' {
+                    break;
+                }
+                width += tab_width(ch, width, tabstop);
+            }
+        }
+        width
+    }
+
+    pub fn screen_col(&self, row: usize, col: usize, tabstop: usize) -> usize {
+        let mut screen = 0;
+        if let Some(line) = self.line_cow(row) {
+            for ch in line.chars().take(col) {
+                screen += tab_width(ch, screen, tabstop);
+            }
+        }
+        screen
+    }
+
+    pub fn char_col(&self, row: usize, screen: usize, tabstop: usize) -> usize {
+        let width = self.line_len(row);
+        if width == 0 {
+            return 0;
+        }
+        let mut screen_pos = 0;
+        let mut found = 0;
+        if let Some(line) = self.line_cow(row) {
+            for (index, ch) in line.chars().enumerate() {
+                if screen_pos > screen {
+                    break;
+                }
+                found = index;
+                screen_pos += tab_width(ch, screen_pos, tabstop);
+            }
+        }
+        found.min(width.saturating_sub(1))
+    }
+
+    pub fn set_indent(&mut self, row: usize, indent: &str) {
+        let end = self.indent_end(row);
+        if end > 0 {
+            self.delete_range(row, 0, row, end.saturating_sub(1));
+        }
+        if !indent.is_empty() {
+            let (_, _) = self.paste_before(row, 0, indent);
+        }
+    }
+
     pub fn shift_case_range(
         &mut self,
         start_row: usize,
@@ -623,6 +685,14 @@ fn slice_from_col(line: &str, col: usize) -> String {
     line.chars().skip(col).collect()
 }
 
+fn tab_width(ch: char, screen: usize, tabstop: usize) -> usize {
+    if ch != '\t' {
+        return 1;
+    }
+    let tabstop = tabstop.max(1);
+    tabstop - screen % tabstop
+}
+
 fn read_file_text(path: &str) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("failed to open {path}"))
 }
@@ -857,6 +927,46 @@ mod tests {
         let mut b = Buffer::from_string("def");
         assert_eq!(b.paste_before(0, 0, "abc"), (0, 3));
         assert_eq!(b.line(0).as_deref(), Some("abcdef"));
+    }
+
+    #[test]
+    fn indent_width_counts_tabs() {
+        let b = Buffer::from_string("  x\n\ty\n  \tz");
+        assert_eq!(b.indent_width(0, 8), 2);
+        assert_eq!(b.indent_width(1, 8), 8);
+        assert_eq!(b.indent_width(2, 8), 8);
+    }
+
+    #[test]
+    fn indent_end_counts_chars() {
+        let b = Buffer::from_string("  \tx");
+        assert_eq!(b.indent_end(0), 3);
+    }
+
+    #[test]
+    fn screen_col_expands_tabs() {
+        let b = Buffer::from_string("\tfoo");
+        assert_eq!(b.screen_col(0, 0, 8), 0);
+        assert_eq!(b.screen_col(0, 1, 8), 8);
+        assert_eq!(b.screen_col(0, 2, 8), 9);
+    }
+
+    #[test]
+    fn char_col_snaps_tab_interior() {
+        let b = Buffer::from_string("\tfoo");
+        assert_eq!(b.char_col(0, 0, 8), 0);
+        assert_eq!(b.char_col(0, 1, 8), 0);
+        assert_eq!(b.char_col(0, 8, 8), 1);
+        assert_eq!(b.char_col(0, 99, 8), 3);
+    }
+
+    #[test]
+    fn set_indent_rebuilds_canonical() {
+        let mut b = Buffer::from_string("          foo");
+        b.set_indent(0, "\t");
+        assert_eq!(b.line(0).as_deref(), Some("\tfoo"));
+        b.set_indent(0, "");
+        assert_eq!(b.line(0).as_deref(), Some("foo"));
     }
 
     #[test]

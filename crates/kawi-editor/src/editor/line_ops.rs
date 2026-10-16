@@ -69,7 +69,7 @@ impl Editor {
         (row.min(target), row.max(target))
     }
 
-    fn touched_rows(&self) -> (usize, usize) {
+    pub(super) fn touched_rows(&self) -> (usize, usize) {
         let ((first, _), (last, _)) = self.operator_range();
         (first, last)
     }

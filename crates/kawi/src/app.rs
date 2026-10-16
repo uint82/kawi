@@ -376,6 +376,7 @@ impl App {
             Command::WriteQuit => self.handle_write_quit(),
             Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::SetTheme(name) => self.switch_theme(&name),
+            Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
             Command::Unknown => Ok(false),
         }
     }
@@ -389,6 +390,11 @@ impl App {
 
     fn report_unknown_keymap(&mut self, name: &str) -> Result<bool> {
         self.show_message(format!("Unknown keymap: {name}"));
+        Ok(false)
+    }
+
+    fn switch_shiftwidth(&mut self, width: usize) -> Result<bool> {
+        self.editor.set_shiftwidth(width);
         Ok(false)
     }
 
@@ -500,6 +506,9 @@ fn is_operator(action: Action) -> bool {
             | Action::PasteOverSelection
             | Action::DeleteLines
             | Action::YankLines
+            | Action::ShiftRight
+            | Action::ShiftLeft
+            | Action::Reindent
             | Action::ToggleCase
             | Action::Lowercase
             | Action::Uppercase
@@ -793,6 +802,37 @@ mod tests {
         app.handle_key(key(KeyCode::Esc)).expect("escape");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 1));
+    }
+
+    #[test]
+    fn vim_normal_shift_right() {
+        let mut app = App::new(Buffer::from_string("foo"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('>'))).expect("shift");
+        app.handle_key(key(KeyCode::Char('>'))).expect("shift");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_shift_right_exits() {
+        let mut app = App::new(Buffer::from_string("ab\ncd"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('j'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('>'))).expect("shift");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_reindent_exits() {
+        let mut app = App::new(Buffer::from_string("    a\n    b"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("linewise");
+        app.handle_key(key(KeyCode::Char('j'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('='))).expect("reindent");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 0));
     }
 
     #[test]
