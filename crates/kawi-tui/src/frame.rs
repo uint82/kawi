@@ -1,6 +1,6 @@
 use crate::statusbar::StatusInfo;
 use crate::theme::Theme;
-use crate::viewport::Viewport;
+use kawi_editor::Viewport;
 
 pub struct Frame<'a> {
     pub lines: &'a [String],

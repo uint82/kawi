@@ -12,12 +12,10 @@ use kawi_tui::{
     statusbar::StatusInfo,
     terminal,
     theme::Theme,
-    viewport::Viewport,
 };
 
 pub struct App {
     editor: Editor,
-    viewport: Viewport,
     keymap: ActiveKeymap,
     theme: Theme,
     quit_armed: bool,
@@ -28,7 +26,6 @@ impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
         Self {
             editor: Editor::new(buffer),
-            viewport: Viewport::new(fallback_height(), fallback_width()),
             keymap: ActiveKeymap::for_flavor(flavor),
             theme: Theme::default(),
             quit_armed: false,
@@ -58,7 +55,7 @@ impl App {
 
     #[cfg(test)]
     pub fn viewport_top(&self) -> usize {
-        self.viewport.top()
+        self.editor.view_top()
     }
 
     #[cfg(test)]
@@ -92,12 +89,12 @@ impl App {
         let status = self.status_snapshot();
         let window = self
             .editor
-            .visible_lines(self.viewport.top(), self.viewport.height());
+            .visible_lines(self.editor.view_top(), self.editor.view_height());
         let search_status = self.editor.search_status_text();
         let search_spans = frame_search_spans(
             &self
                 .editor
-                .search_spans(self.viewport.top(), self.viewport.height()),
+                .search_spans(self.editor.view_top(), self.editor.view_height()),
         );
         let frame = self.build_frame(&status, &window, search_status.as_deref(), &search_spans);
         render::draw(out, &frame)
@@ -114,7 +111,7 @@ impl App {
             lines: window,
             col: self.editor.col(),
             row: self.editor.row(),
-            viewport: &self.viewport,
+            viewport: self.editor.viewport(),
             status,
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
@@ -157,10 +154,10 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if let Some((row, col)) = press_position(&mouse, &self.viewport) {
+        if let Some((row, col)) = press_position(&mouse, self.view_geometry()) {
             return self.jump_to(row, col);
         }
-        if let Some((row, col)) = drag_position(&mouse, &self.viewport) {
+        if let Some((row, col)) = drag_position(&mouse, self.view_geometry()) {
             return self.drag_to(row, col);
         }
         if let Some(delta) = wheel_delta(&mouse) {
@@ -193,19 +190,8 @@ impl App {
 
     fn scroll_by(&mut self, delta: isize) -> Result<bool> {
         self.disarm_quit();
-        self.viewport.scroll_lines(delta, self.editor.line_count());
-        self.follow_cursor_into_view();
+        self.editor.scroll_wheel(delta);
         Ok(false)
-    }
-
-    fn follow_cursor_into_view(&mut self) {
-        let row = self.editor.row().clamp(
-            self.viewport.top(),
-            self.viewport.visible_end().saturating_sub(1),
-        );
-        if row != self.editor.row() {
-            self.editor.apply(Action::JumpTo(row, self.editor.col()));
-        }
     }
 
     fn ensure_visual(&mut self) {
@@ -222,7 +208,7 @@ impl App {
 
     fn set_viewport_size(&mut self, cols: u16, rows: u16) {
         let (width, height) = content_size(cols, rows);
-        self.viewport.set_size(width, height);
+        self.editor.set_view_size(width, height);
     }
 
     fn sync_viewport_size(&mut self) {
@@ -231,8 +217,12 @@ impl App {
         }
     }
 
+    fn view_geometry(&self) -> (usize, usize) {
+        (self.editor.view_top(), self.editor.view_height())
+    }
+
     fn reveal_cursor(&mut self) {
-        self.viewport.ensure_visible(self.editor.row());
+        self.editor.reveal_cursor();
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -527,14 +517,6 @@ fn content_size(cols: u16, rows: u16) -> (usize, usize) {
     (width, height)
 }
 
-fn fallback_width() -> usize {
-    80
-}
-
-fn fallback_height() -> usize {
-    24
-}
-
 #[cfg(test)]
 mod tests {
     // NOTE(probes): nvim verification lessons. Run one insert entry per
@@ -584,6 +566,52 @@ mod tests {
         app.handle_mouse(drag(4, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+    }
+
+    #[test]
+    fn ctrl_d_scrolls_half_page() {
+        let text = (1..=100)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut app = App::new(Buffer::from_string(&text), Flavor::Vim);
+        app.handle_resize(80, 22).expect("resize");
+        for key in [
+            key(KeyCode::Char('5')),
+            key(KeyCode::Char('0')),
+            key(KeyCode::Char('G')),
+        ] {
+            app.handle_key(key).expect("goto");
+        }
+        assert_eq!(app.cursor_position(), (49, 0));
+        assert_eq!(app.viewport_top(), 30);
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
+            .expect("scroll");
+        assert_eq!(app.cursor_position(), (59, 0));
+        assert_eq!(app.viewport_top(), 40);
+    }
+
+    #[test]
+    fn zz_centers_cursor() {
+        let text = (1..=100)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut app = App::new(Buffer::from_string(&text), Flavor::Vim);
+        app.handle_resize(80, 22).expect("resize");
+        for key in [
+            key(KeyCode::Char('5')),
+            key(KeyCode::Char('0')),
+            key(KeyCode::Char('G')),
+        ] {
+            app.handle_key(key).expect("goto");
+        }
+        app.handle_key(key(KeyCode::Char('z'))).expect("arm");
+        app.handle_key(key(KeyCode::Char('z'))).expect("center");
+        assert_eq!(app.cursor_position(), (49, 0));
+        assert_eq!(app.viewport_top(), 40);
+        app.handle_key(key(KeyCode::Char('H'))).expect("top");
+        assert_eq!(app.cursor_position(), (40, 0));
     }
 
     #[test]

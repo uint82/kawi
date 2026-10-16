@@ -10,7 +10,7 @@ use crate::frame::{Frame, SearchSpan};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
-use crate::viewport::Viewport;
+use kawi_editor::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;

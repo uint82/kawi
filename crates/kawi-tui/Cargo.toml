@@ -11,3 +11,4 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
+kawi-editor = { path = "../kawi-editor" }
