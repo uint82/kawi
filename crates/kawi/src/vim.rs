@@ -56,8 +56,11 @@ fn is_sequence_prefix(sequence: &str) -> bool {
         .any(|(keys, _)| *keys != sequence && keys.starts_with(sequence))
 }
 
-fn is_operator_start(pushed: char) -> bool {
-    matches!(pushed, 'd' | 'c' | 'y')
+fn arms_pending(pushed: char) -> bool {
+    matches!(
+        pushed,
+        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g'
+    )
 }
 
 fn is_visual_motion_key(pushed: char) -> bool {
@@ -731,7 +734,7 @@ impl VimKeymap {
 
     fn extend_sequence(&mut self, pushed: char) -> Action {
         if self.only_digits_pending() {
-            if is_operator_start(pushed) {
+            if arms_pending(pushed) {
                 self.pending.push(pushed);
                 return Action::BeginSequence;
             }
@@ -1860,7 +1863,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('g')), Mode::Normal),
-            Action::Noop
+            Action::BeginSequence
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('~')), Mode::Normal),
@@ -2053,7 +2056,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('g')), Mode::Normal),
-            Action::Noop
+            Action::BeginSequence
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Normal),
@@ -2903,6 +2906,43 @@ mod tests {
                 },
             }
         );
+    }
+
+    #[test]
+    fn digit_operator_keeps_pending_display() {
+        for operator in ['d', '>', '<', '=', 'f', 'g'] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('2')), Mode::Normal),
+                Action::PushCount(2)
+            );
+            map.map(plain(KeyCode::Char(operator)), Mode::Normal);
+            assert_eq!(
+                map.pending_text(),
+                Some(match operator {
+                    'd' => "2d",
+                    '>' => "2>",
+                    '<' => "2<",
+                    '=' => "2=",
+                    'f' => "2f",
+                    _ => "2g",
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn digit_shift_completes() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('2')), Mode::Normal);
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::WordForward,
+            }
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]
