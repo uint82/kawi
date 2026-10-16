@@ -215,6 +215,7 @@ impl VimKeymap {
             KeyCode::Char('d') => self.arm_operator(key, 'd'),
             KeyCode::Char('c') => self.arm_operator(key, 'c'),
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
+            KeyCode::Char('.') => self.map_plain_or_noop(key, Action::RepeatLastChange),
             KeyCode::Char('>') => self.arm_operator(key, '>'),
             KeyCode::Char('<') => self.arm_operator(key, '<'),
             KeyCode::Char('=') => self.arm_operator(key, '='),
@@ -2990,6 +2991,35 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('>')), Mode::Normal),
             Action::ShiftRight
+        );
+    }
+
+    #[test]
+    fn dot_repeats_last_change() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('.')), Mode::Normal),
+            Action::RepeatLastChange
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn dot_with_pending_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('d')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('.')), Mode::Normal),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn dot_in_visual_stays() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('.')), Mode::Visual),
+            Action::Noop
         );
     }
 

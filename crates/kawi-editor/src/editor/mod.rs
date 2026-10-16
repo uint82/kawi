@@ -15,6 +15,7 @@ mod indent;
 mod line_ops;
 mod motions;
 mod operators;
+mod repeat;
 mod search_mode;
 mod session;
 mod shift_ops;
@@ -32,6 +33,9 @@ pub struct Editor {
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
     last_insert: Option<(usize, usize)>,
+    insert_entry: Option<(Action, usize)>,
+    last_change: Option<repeat::RepeatChange>,
+    undone_change: Option<repeat::RepeatChange>,
     file_indent: indent::IndentConfig,
     shiftwidth_override: Option<usize>,
     expandtab_override: Option<bool>,
@@ -72,6 +76,12 @@ impl Editor {
         if self.needs_checkpoint(action) {
             self.record_boundary();
         }
+        if repeat::is_insert_entry(action) {
+            self.insert_entry = Some((action, self.peek_count()));
+        }
+        let was_normal = self.mode == Mode::Normal;
+        let revision = self.buffer.revision();
+        let change_count = self.peek_count();
         match action {
             Action::MoveUp => self.move_up(),
             Action::MoveDown => self.move_down(),
@@ -189,8 +199,13 @@ impl Editor {
             Action::ChangeLine => self.change_line(),
             Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
-            Action::Undo => self.undo(),
-            Action::Redo => self.redo(),
+            Action::Undo => {
+                self.undo();
+            }
+            Action::Redo => {
+                self.redo();
+            }
+            Action::RepeatLastChange => self.repeat_last_change(),
             Action::EnterInsert => {
                 self.arm_insert_repeat(false);
                 self.enter_insert();
@@ -225,6 +240,19 @@ impl Editor {
         self.normalize_cursor();
         self.track_head(action);
         self.clear_count();
+        if was_normal
+            && !matches!(
+                action,
+                Action::Undo | Action::Redo | Action::RepeatLastChange
+            )
+            && self.buffer.revision() != revision
+        {
+            self.record_change(repeat::RepeatChange::Edit {
+                action,
+                count: change_count,
+                record: Vec::new(),
+            });
+        }
     }
 
     pub fn byte_count(&self) -> usize {
@@ -323,6 +351,9 @@ impl Editor {
             selection: None,
             previous_visual: None,
             last_insert: None,
+            insert_entry: None,
+            last_change: None,
+            undone_change: None,
             file_indent,
             shiftwidth_override: None,
             expandtab_override: None,
@@ -355,6 +386,14 @@ impl Editor {
 
     pub(super) fn has_count(&self) -> bool {
         self.count_digits != 0 || self.operator_count.is_some()
+    }
+
+    pub(super) fn peek_count(&self) -> usize {
+        let operator = self.operator_count.unwrap_or(1);
+        if self.count_digits == 0 {
+            return operator;
+        }
+        operator.saturating_mul(self.count_digits).min(999_999_999)
     }
 
     pub(super) fn take_count(&mut self) -> usize {

@@ -1,6 +1,6 @@
 use super::session::InsertEdit;
 use super::Editor;
-use crate::actions::Object;
+use crate::actions::{Action, Object};
 use crate::find;
 use crate::mode::Mode;
 use crate::objects;
@@ -291,6 +291,7 @@ impl Editor {
 
     pub(super) fn delete_selection(&mut self) {
         self.snapshot_visual();
+        self.note_visual_repeat(Action::DeleteSelection);
         if self.mode == Mode::VisualLine {
             self.delete_touched_lines();
             return;
@@ -302,6 +303,7 @@ impl Editor {
 
     pub(super) fn change_selection(&mut self) {
         self.snapshot_visual();
+        self.note_visual_repeat(Action::ChangeSelection);
         if self.mode == Mode::VisualLine {
             self.change_touched_lines();
             return;
@@ -490,6 +492,7 @@ impl Editor {
             return;
         }
         self.snapshot_visual();
+        self.note_visual_repeat(Action::PasteOverSelection);
         if self.mode == Mode::VisualLine {
             self.paste_over_lines();
             return;
@@ -627,7 +630,13 @@ impl Editor {
         }
     }
 
-    fn yank_range(&mut self, start_row: usize, start_col: usize, end_row: usize, end_col: usize) {
+    pub(super) fn yank_range(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) {
         let text = self
             .buffer
             .range_text(start_row, start_col, end_row, end_col);

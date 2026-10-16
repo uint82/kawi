@@ -1,5 +1,7 @@
 use super::Editor;
-use crate::actions::Object;
+use crate::actions::{Action, Object};
+
+use super::repeat::RepeatChange;
 use crate::mode::Mode;
 use crate::objects;
 use crate::selection::{SavedVisual, Selection};
@@ -104,6 +106,7 @@ impl Editor {
             self.replay_insert();
             self.buffer.end_change();
             self.retreat_after_insert();
+            self.store_insert_session();
         }
         self.mode = Mode::Normal;
         self.insert_repeat = None;
@@ -133,7 +136,7 @@ impl Editor {
         self.open_line_after(self.cursor.row());
     }
 
-    fn replay_edit(&mut self, edit: InsertEdit) {
+    pub(super) fn replay_edit(&mut self, edit: InsertEdit) {
         match edit {
             InsertEdit::Char(c) => self.insert_char(c),
             InsertEdit::Newline => self.insert_newline(),
@@ -143,9 +146,7 @@ impl Editor {
     }
 
     pub(super) fn record_insert(&mut self, edit: InsertEdit) {
-        if self.insert_repeat.is_some() {
-            self.insert_record.push(edit);
-        }
+        self.insert_record.push(edit);
     }
 
     pub(super) fn track_insert_move(&mut self) {
@@ -241,16 +242,57 @@ impl Editor {
         }
     }
 
-    pub(super) fn redo(&mut self) {
+    pub(super) fn redo(&mut self) -> bool {
         let count = self.take_count();
+        let mut changed = false;
         for _ in 0..count {
             if !self.try_redo() {
                 break;
             }
+            changed = true;
         }
+        if changed {
+            if let Some(undone) = self.undone_change.take() {
+                self.last_change = Some(undone);
+            }
+        }
+        changed
     }
 
-    fn retreat_after_insert(&mut self) {
+    fn store_insert_session(&mut self) {
+        let Some((entry, count)) = self.insert_entry.take() else {
+            return;
+        };
+        let record = self.insert_record.clone();
+        if matches!(entry, Action::ChangeSelection | Action::ChangeLines) {
+            self.fill_visual_change(entry, record);
+            return;
+        }
+        self.record_change(RepeatChange::Edit {
+            action: entry,
+            count,
+            record,
+        });
+    }
+
+    fn fill_visual_change(&mut self, entry: Action, record: Vec<InsertEdit>) {
+        let Some(saved) = self.previous_visual else {
+            self.record_change(RepeatChange::Edit {
+                action: entry,
+                count: 1,
+                record,
+            });
+            return;
+        };
+        self.record_change(RepeatChange::Visual {
+            action: entry,
+            anchor: saved.selection().anchor(),
+            head: saved.selection().head(),
+            record,
+        });
+    }
+
+    pub(super) fn retreat_after_insert(&mut self) {
         if self.cursor.col() > 0 {
             self.cursor.move_left();
         }
@@ -457,13 +499,21 @@ impl Editor {
         }
     }
 
-    pub(super) fn undo(&mut self) {
+    pub(super) fn undo(&mut self) -> bool {
         let count = self.take_count();
+        let mut changed = false;
         for _ in 0..count {
             if !self.try_undo() {
                 break;
             }
+            changed = true;
         }
+        if changed {
+            let undone = self.last_change.take();
+            self.undone_change = undone;
+            self.last_change = Some(RepeatChange::Undo);
+        }
+        changed
     }
 }
 
