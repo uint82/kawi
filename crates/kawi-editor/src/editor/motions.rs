@@ -173,6 +173,10 @@ impl Editor {
         self.step_word(words::prev_word_start);
     }
 
+    pub(super) fn move_to_prev_word_end(&mut self) {
+        self.step_word(words::prev_word_end);
+    }
+
     pub(super) fn move_up(&mut self) {
         self.track_insert_move();
         let count = self.take_count();
@@ -687,5 +691,51 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::GotoFirstLine);
         assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn prev_word_end_from_space() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::MoveToPrevWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn prev_word_end_from_mid_word() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::MoveToPrevWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn prev_word_end_with_count() {
+        let mut e = editor_with("foo BAR baz qux");
+        for _ in 0..12 {
+            e.apply(Action::MoveRight);
+        }
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToPrevWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn prev_word_end_crosses_lines() {
+        let mut e = editor_with("foo\nbar baz");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveToPrevWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn prev_word_end_at_start_is_noop() {
+        let mut e = editor_with("foo");
+        e.apply(Action::MoveToPrevWordEnd);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 }

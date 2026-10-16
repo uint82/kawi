@@ -19,6 +19,19 @@ pub fn next_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (
     end_word(buffer, row, col, false, false, count)
 }
 
+pub fn prev_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    bckend_word(buffer, row, col, count)
+}
+
+pub fn ge_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    let end = bckend_word(buffer, row, col, count);
+    if end == (row, col) {
+        return WordSpan::Empty { at: (row, col) };
+    }
+    let (start, end) = ordered_span(end, (row, col));
+    WordSpan::Charwise { start, end }
+}
+
 pub fn dw_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
     resolve_exclusive(
         buffer,

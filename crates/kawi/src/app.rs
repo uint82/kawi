@@ -885,6 +885,31 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_ge_moves() {
+        let mut app = App::new(Buffer::from_string("foo BAR baz"), Flavor::Vim);
+        for _ in 0..7 {
+            app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        }
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('e'))).expect("motion");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 6));
+    }
+
+    #[test]
+    fn vim_normal_dge_deletes() {
+        let mut app = App::new(Buffer::from_string("foo BAR baz"), Flavor::Vim);
+        for _ in 0..7 {
+            app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        }
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('e'))).expect("motion");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 6));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");

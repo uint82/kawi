@@ -165,6 +165,10 @@ impl Editor {
             Action::Lowercase => self.lowercase(),
             Action::Uppercase => self.uppercase(),
             Action::ToggleCaseAt { motion } => self.toggle_case_at(motion),
+            Action::MoveToPrevWordEnd => self.move_to_prev_word_end(),
+            Action::DeleteWordEndBackward => self.delete_word_end_backward(),
+            Action::ChangeWordEndBackward => self.change_word_end_backward(),
+            Action::YankWordEndBackward => self.yank_word_end_backward(),
             Action::LowercaseAt { motion } => self.lowercase_at(motion),
             Action::UppercaseAt { motion } => self.uppercase_at(motion),
             Action::GotoLastLine => self.goto_last_line(),
@@ -505,6 +509,7 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart
             | Action::MoveToNextWordEnd
+            | Action::MoveToPrevWordEnd
             | Action::FindChar { .. }
             | Action::RepeatFind { .. }
             | Action::GotoLastLine
