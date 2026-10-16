@@ -10,8 +10,13 @@ impl Editor {
             if let Some(line) = self.percent_line(count) {
                 self.cursor.set_position(line, self.cursor.col());
             }
-            return;
+        } else {
+            self.jump_to_match();
         }
+        self.reveal_jump();
+    }
+
+    fn jump_to_match(&mut self) {
         let row = self.cursor.row();
         let col = self.cursor.col();
         match match_target(&self.buffer, row, col) {
@@ -28,38 +33,41 @@ impl Editor {
 
     pub(super) fn delete_match(&mut self) {
         if self.has_post_digits() {
-            return self.delete_percent_line();
+            self.delete_percent_line();
+        } else if self.buffer.line_len(self.cursor.row()) == 0 {
+            self.delete_line();
+        } else {
+            let (start, end) = self.match_char_span();
+            self.remove_range(start, end);
         }
-        if self.buffer.line_len(self.cursor.row()) == 0 {
-            return self.delete_line();
-        }
-        let (start, end) = self.match_char_span();
-        self.remove_range(start, end);
+        self.reveal_jump();
     }
 
     pub(super) fn yank_match(&mut self) {
         if self.has_post_digits() {
-            return self.yank_percent_line();
+            self.yank_percent_line();
+        } else if self.buffer.line_len(self.cursor.row()) == 0 {
+            self.yank_lines();
+        } else {
+            let (start, end) = self.match_char_span();
+            self.yank_range(start.0, start.1, end.0, end.1);
+            self.cursor.set_position(start.0, start.1);
         }
-        if self.buffer.line_len(self.cursor.row()) == 0 {
-            return self.yank_lines();
-        }
-        let (start, end) = self.match_char_span();
-        self.yank_range(start.0, start.1, end.0, end.1);
-        self.cursor.set_position(start.0, start.1);
+        self.reveal_jump();
     }
 
     pub(super) fn change_match(&mut self) {
         if self.has_post_digits() {
-            return self.change_percent_line();
+            self.change_percent_line();
+        } else if self.buffer.line_len(self.cursor.row()) == 0 {
+            let row = self.cursor.row();
+            self.change_lines(row, row);
+        } else {
+            let (start, end) = self.match_char_span();
+            self.remove_range(start, end);
+            self.switch_to_insert();
         }
-        let row = self.cursor.row();
-        if self.buffer.line_len(row) == 0 {
-            return self.change_lines(row, row);
-        }
-        let (start, end) = self.match_char_span();
-        self.remove_range(start, end);
-        self.switch_to_insert();
+        self.reveal_jump();
     }
 
     fn match_char_span(&self) -> ((usize, usize), (usize, usize)) {
@@ -463,5 +471,120 @@ mod tests {
         e.apply(Action::DeleteToMatch);
         assert_eq!(e.text_lines()[1], "    line 5");
         assert_eq!((e.row(), e.col()), (1, 4));
+    }
+
+    fn tall_editor() -> Editor {
+        let text = (1..=100)
+            .map(|i| format!("    line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.set_view_size(80, 20);
+        e
+    }
+
+    fn place_top(e: &mut Editor, top: usize) {
+        e.viewport.place_top(top, e.line_count());
+    }
+
+    #[test]
+    fn percent_jump_far_centers_view() {
+        let mut e = tall_editor();
+        push_digits(&mut e, &[5, 0]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (49, 0));
+        assert_eq!(e.view_top(), 40);
+    }
+
+    #[test]
+    fn percent_jump_near_scrolls_minimally() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[6, 1]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (60, 0));
+        assert_eq!(e.view_top(), 41);
+    }
+
+    #[test]
+    fn percent_jump_visible_keeps_view() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(44, 0));
+        push_digits(&mut e, &[4, 5]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (44, 0));
+        assert_eq!(e.view_top(), 40);
+    }
+
+    #[test]
+    fn percent_jump_up_far_centers_view() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[3, 0]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (29, 0));
+        assert_eq!(e.view_top(), 20);
+    }
+
+    #[test]
+    fn percent_jump_up_near_scrolls_minimally() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(44, 0));
+        push_digits(&mut e, &[3, 6]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (35, 0));
+        assert_eq!(e.view_top(), 35);
+    }
+
+    #[test]
+    fn delete_percent_line_reveals_cursor() {
+        let mut e = tall_editor();
+        e.apply(Action::JumpTo(0, 0));
+        push_digits(&mut e, &[5, 0]);
+        e.apply(Action::DeleteToMatch);
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.view_top(), 0);
+    }
+
+    #[test]
+    fn delete_percent_line_backward_reveals_cursor() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToMatch);
+        assert_eq!(e.line_count(), 52);
+        assert_eq!(e.text_lines()[1], "    line 50");
+        assert_eq!((e.row(), e.col()), (1, 4));
+        assert_eq!(e.view_top(), 0);
+    }
+
+    #[test]
+    fn match_far_bracket_falls_back_to_minimal_past_max() {
+        let mut text = vec!["(".to_string()];
+        text.extend((1..=29).map(|i| format!("x{i}")));
+        text.push(")".to_string());
+        let mut e = editor_with(&text.join("\n"));
+        e.set_view_size(80, 20);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (30, 0));
+        assert_eq!(e.view_top(), 11);
+    }
+
+    #[test]
+    fn match_mid_bracket_scrolls_past_minimal() {
+        let mut text = vec!["(".to_string()];
+        text.extend((1..=29).map(|i| format!("x{i}")));
+        text.push(")".to_string());
+        text.extend((32..=100).map(|i| format!("y{i}")));
+        let mut e = editor_with(&text.join("\n"));
+        e.set_view_size(80, 20);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (30, 0));
+        assert_eq!(e.view_top(), 20);
     }
 }
