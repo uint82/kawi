@@ -1795,6 +1795,62 @@ mod tests {
     }
 
     #[test]
+    fn normal_g_unimplemented_second_keys_cancel() {
+        let implemented = ['~', 'u', 'U', 'g'];
+        for code in 0..128u8 {
+            let pushed = code as char;
+            if !pushed.is_ascii_graphic() || pushed == 'g' {
+                continue;
+            }
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            let action = map.map(plain(KeyCode::Char(pushed)), Mode::Normal);
+            if implemented.contains(&pushed) {
+                continue;
+            }
+            assert_eq!(action, Action::CancelPending, "g{pushed}");
+            assert_eq!(
+                map.map(plain(KeyCode::Char('l')), Mode::Normal),
+                Action::MoveRight,
+                "clean after g{pushed}"
+            );
+        }
+    }
+
+    #[test]
+    fn normal_case_operator_invalid_third_cancels() {
+        for pushed in ['x', 'q', 'd', ';'] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            map.map(plain(KeyCode::Char('~')), Mode::Normal);
+            assert_eq!(
+                map.map(plain(KeyCode::Char(pushed)), Mode::Normal),
+                Action::CancelPending,
+                "g~{pushed}"
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('l')), Mode::Normal),
+                Action::MoveRight,
+                "clean after g~{pushed}"
+            );
+        }
+    }
+
+    #[test]
+    fn visual_g_junk_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Visual),
+            Action::CancelPending
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('l')), Mode::Visual),
+            Action::MoveRight
+        );
+    }
+
+    #[test]
     fn visual_line_toggle_maps() {
         let mut map = VimKeymap::new();
         assert_eq!(
