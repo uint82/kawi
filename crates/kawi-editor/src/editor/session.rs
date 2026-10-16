@@ -1499,6 +1499,18 @@ mod tests {
     }
 
     #[test]
+    fn visual_toggle_case_keeps_selection() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
+    }
+
+    #[test]
     fn visual_toggle_case_ignores_count() {
         let mut e = editor_with("aBcDeF");
         e.apply(Action::MoveRight);

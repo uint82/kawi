@@ -90,6 +90,15 @@ pub enum Action {
     ToggleCase,
     Lowercase,
     Uppercase,
+    ToggleCaseAt {
+        motion: CaseMotion,
+    },
+    LowercaseAt {
+        motion: CaseMotion,
+    },
+    UppercaseAt {
+        motion: CaseMotion,
+    },
     EnterVisualLine,
     SwapSelectionEnds,
     SelectInnerWord,
@@ -150,6 +159,32 @@ pub enum Object {
     DoubleQuote,
     Backtick,
     Paragraph,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaseMotion {
+    WordForward,
+    WordBackward,
+    WordEnd,
+    LineEnd,
+    LineStart,
+    Find {
+        target: char,
+        forward: bool,
+        till: bool,
+    },
+    RepeatFind {
+        target: char,
+        forward: bool,
+        till: bool,
+    },
+    Object {
+        inner: bool,
+        object: Object,
+    },
+    Lines {
+        upward: bool,
+    },
 }
 
 // TODO(helix): shared SelectLine action for helix x line select.
