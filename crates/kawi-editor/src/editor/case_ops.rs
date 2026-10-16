@@ -112,8 +112,7 @@ impl Editor {
                 self.record_boundary();
                 self.buffer
                     .shift_case_range(start.0, start.1, end.0, end.1, shift);
-                self.collapse_to(start.0, start.1);
-                self.cursor.set_position(start.0, start.1);
+                self.place_case_cursor(start);
             }
             words::WordSpan::Linewise { first, last } => {
                 self.record_boundary();
@@ -124,12 +123,15 @@ impl Editor {
                     let end = self.buffer.line_len(row).saturating_sub(1);
                     self.buffer.shift_case_range(row, 0, row, end, shift);
                 }
-                let col = self.first_non_blank_of(first);
-                self.collapse_to(first, col);
-                self.cursor.set_position(first, col);
+                self.place_case_cursor((first, self.first_non_blank_of(first)));
             }
             words::WordSpan::Empty { .. } => {}
         }
+    }
+
+    fn place_case_cursor(&mut self, pos: (usize, usize)) {
+        self.selection = None;
+        self.cursor.set_position(pos.0, pos.1);
     }
 }
 
@@ -176,6 +178,24 @@ mod tests {
         });
         assert_eq!(editor.text_lines()[0], "FOO BAR baz");
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn toggle_word_clears_selection() {
+        let mut editor = editor_with("foo BAR baz");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::WordForward,
+        });
+        assert_eq!(editor.selection_range(), None);
+    }
+
+    #[test]
+    fn toggle_lines_clears_selection() {
+        let mut editor = editor_with("foo BAR\nbaz QUX");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::Lines { upward: false },
+        });
+        assert_eq!(editor.selection_range(), None);
     }
 
     #[test]

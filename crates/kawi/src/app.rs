@@ -663,6 +663,7 @@ mod tests {
         app.handle_key(key(KeyCode::Char('~'))).expect("tilde");
         app.handle_key(key(KeyCode::Char('w'))).expect("word");
         assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
         assert_eq!(app.cursor_position(), (0, 0));
     }
 
