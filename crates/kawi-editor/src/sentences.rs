@@ -101,8 +101,26 @@ fn step_sentence(buffer: &Buffer, pos: (usize, usize), forward: bool, more: bool
     }
     skip_back(buffer, &mut pos, forward);
     let start_row = pos.0;
+    match find_sentence_end(buffer, pos, start_row, forward, more) {
+        Scan::Fail => Step::Fail,
+        Scan::Found(found, true) => Step::Done(skip_spaces(buffer, found)),
+        Scan::Found(found, false) => Step::Done(found),
+    }
+}
+
+enum Scan {
+    Found((usize, usize), bool),
+    Fail,
+}
+
+fn find_sentence_end(
+    buffer: &Buffer,
+    mut pos: (usize, usize),
+    start_row: usize,
+    forward: bool,
+    more: bool,
+) -> Scan {
     let last_row = buffer.line_count().saturating_sub(1);
-    let mut noskip = false;
     loop {
         let c = char_at(buffer, pos.0, pos.1);
         if c.is_none() {
@@ -110,13 +128,13 @@ fn step_sentence(buffer: &Buffer, pos: (usize, usize), forward: bool, more: bool
                 if pos.0 != start_row {
                     pos.0 = pos.0.saturating_add(1);
                 }
-                break;
+                return Scan::Found(pos, true);
             }
             if pos.0 >= last_row || buffer.line_len(pos.0) == 0 {
-                break;
+                return Scan::Found(pos, true);
             }
             match advance(buffer, pos, true) {
-                None => break,
+                None => return Scan::Found(pos, true),
                 Some(next) => {
                     pos = next;
                     continue;
@@ -127,7 +145,7 @@ fn step_sentence(buffer: &Buffer, pos: (usize, usize), forward: bool, more: bool
             if !forward && pos.0 != start_row {
                 pos.0 = pos.0.saturating_add(1);
             }
-            break;
+            return Scan::Found(pos, true);
         }
         if matches!(c, Some('.' | '!' | '?')) {
             if let Some(mut found) = sentence_end(buffer, pos) {
@@ -137,26 +155,19 @@ fn step_sentence(buffer: &Buffer, pos: (usize, usize), forward: bool, more: bool
                         found = next;
                     }
                 }
-                pos = found;
-                break;
+                return Scan::Found(found, true);
             }
         }
         match advance(buffer, pos, forward) {
             None => {
                 if more {
-                    return Step::Fail;
+                    return Scan::Fail;
                 }
-                noskip = true;
-                break;
+                return Scan::Found(pos, false);
             }
             Some(next) => pos = next,
         }
     }
-    Step::Done(if noskip {
-        pos
-    } else {
-        skip_spaces(buffer, pos)
-    })
 }
 
 fn is_eol(buffer: &Buffer, pos: (usize, usize)) -> bool {
