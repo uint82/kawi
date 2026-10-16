@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::keymap::{has_ctrl_or_alt, normalize_interrupt, Keymap};
 use kawi_editor::Action;
+use kawi_editor::CaseMotion;
 use kawi_editor::Mode;
 use kawi_editor::Object;
 
@@ -64,23 +65,27 @@ fn object_action(sequence: &str) -> Option<Action> {
     if !matches!(operator, 'd' | 'c' | 'y') || !matches!(scope, 'i' | 'a') {
         return None;
     }
-    let object = match target {
-        '(' | ')' => Object::Paren,
-        '{' | '}' => Object::Brace,
-        '[' | ']' => Object::Bracket,
-        '<' | '>' => Object::Angle,
-        '\'' => Object::SingleQuote,
-        '"' => Object::DoubleQuote,
-        '`' => Object::Backtick,
-        'p' => Object::Paragraph,
-        _ => return None,
-    };
+    let object = object_target(target)?;
     let inner = scope == 'i';
     Some(match operator {
         'd' => Action::DeleteObject { inner, object },
         'c' => Action::ChangeObject { inner, object },
         _ => Action::YankObject { inner, object },
     })
+}
+
+fn object_target(target: char) -> Option<Object> {
+    match target {
+        '(' | ')' => Some(Object::Paren),
+        '{' | '}' => Some(Object::Brace),
+        '[' | ']' => Some(Object::Bracket),
+        '<' | '>' => Some(Object::Angle),
+        '\'' => Some(Object::SingleQuote),
+        '"' => Some(Object::DoubleQuote),
+        '`' => Some(Object::Backtick),
+        'p' => Some(Object::Paragraph),
+        _ => None,
+    }
 }
 
 fn trailing_operator(pending: &str) -> Option<char> {
@@ -197,6 +202,7 @@ impl VimKeymap {
             KeyCode::Char('d') => self.arm_operator(key, 'd'),
             KeyCode::Char('c') => self.arm_operator(key, 'c'),
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
+            KeyCode::Char('g') => self.arm_case_operator(key),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             KeyCode::Char('V') => self.map_plain_or_noop(key, Action::EnterVisualLine),
@@ -228,6 +234,134 @@ impl VimKeymap {
         }
         self.pending.push(operator);
         Action::BeginSequence
+    }
+
+    fn arm_case_operator(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('g');
+        Action::Noop
+    }
+
+    fn case_prefix_armed(&self) -> bool {
+        self.pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .starts_with('g')
+    }
+
+    fn resolve_case_pending(&mut self, pushed: char) -> Action {
+        let body: String = self
+            .pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .to_string();
+        if let Some(rest) = body.strip_prefix("g~") {
+            return self.complete_case_operator("g~", rest, pushed);
+        }
+        if let Some(rest) = body.strip_prefix("gu") {
+            return self.complete_case_operator("gu", rest, pushed);
+        }
+        if let Some(rest) = body.strip_prefix("gU") {
+            return self.complete_case_operator("gU", rest, pushed);
+        }
+        self.arm_case_motion(pushed, &body)
+    }
+
+    fn arm_case_motion(&mut self, pushed: char, body: &str) -> Action {
+        if body == "g" && matches!(pushed, '~' | 'u' | 'U') {
+            self.pending.push(pushed);
+            return Action::BeginSequence;
+        }
+        self.cancel_sequence()
+    }
+
+    fn complete_case_operator(&mut self, operator: &str, rest: &str, pushed: char) -> Action {
+        if rest.is_empty() || rest.chars().all(|ch| ch.is_ascii_digit()) {
+            if (pushed == '0' && rest.is_empty()) || !pushed.is_ascii_digit() {
+                return self.complete_case_motion(operator, pushed);
+            }
+            return self.push_digit(pushed);
+        }
+        match rest {
+            "f" | "F" | "t" | "T" => self.complete_case_find(operator, rest, pushed),
+            "i" | "a" => self.complete_case_object(operator, rest, pushed),
+            _ => self.cancel_sequence(),
+        }
+    }
+
+    fn complete_case_motion(&mut self, operator: &str, pushed: char) -> Action {
+        if matches!(pushed, ';' | ',') {
+            return self.repeat_case_motion(operator, pushed == ',');
+        }
+        let motion = match pushed {
+            'w' => CaseMotion::WordForward,
+            'b' => CaseMotion::WordBackward,
+            'e' => CaseMotion::WordEnd,
+            '$' => CaseMotion::LineEnd,
+            '0' => CaseMotion::LineStart,
+            'j' => CaseMotion::Lines { upward: false },
+            'k' => CaseMotion::Lines { upward: true },
+            'f' | 'F' | 't' | 'T' | 'i' | 'a' => {
+                self.pending.push(pushed);
+                return if matches!(pushed, 'i' | 'a') {
+                    Action::Noop
+                } else {
+                    Action::BeginSequence
+                };
+            }
+            '~' | 'u' | 'U' if Some(pushed) == operator.chars().nth(1) => {
+                CaseMotion::Lines { upward: false }
+            }
+            _ => return self.cancel_sequence(),
+        };
+        self.clear_pending();
+        self.case_motion_action(operator, motion)
+    }
+
+    fn case_motion_action(&self, operator: &str, motion: CaseMotion) -> Action {
+        match operator {
+            "g~" => Action::ToggleCaseAt { motion },
+            "gu" => Action::LowercaseAt { motion },
+            _ => Action::UppercaseAt { motion },
+        }
+    }
+
+    fn repeat_case_motion(&mut self, operator: &str, reverse: bool) -> Action {
+        let Some(found) = self.last_find else {
+            return self.cancel_sequence();
+        };
+        let motion = CaseMotion::RepeatFind {
+            target: found.target,
+            forward: found.forward != reverse,
+            till: found.till,
+        };
+        self.clear_pending();
+        self.case_motion_action(operator, motion)
+    }
+
+    fn complete_case_find(&mut self, operator: &str, find: &str, target: char) -> Action {
+        let forward = matches!(find, "f" | "t");
+        let till = matches!(find, "t" | "T");
+        self.store_find(target, forward, till);
+        let motion = CaseMotion::Find {
+            target,
+            forward,
+            till,
+        };
+        self.clear_pending();
+        self.case_motion_action(operator, motion)
+    }
+
+    fn complete_case_object(&mut self, operator: &str, scope: &str, pushed: char) -> Action {
+        let Some(object) = object_target(pushed) else {
+            return self.cancel_sequence();
+        };
+        let motion = CaseMotion::Object {
+            inner: scope == "i",
+            object,
+        };
+        self.clear_pending();
+        self.case_motion_action(operator, motion)
     }
 
     fn arm_find(&mut self, key: KeyEvent, find: char) -> Action {
@@ -295,6 +429,9 @@ impl VimKeymap {
     fn resolve_pending(&mut self, key: KeyEvent) -> Action {
         match key.code {
             KeyCode::Char(c) if !has_ctrl_or_alt(key) => {
+                if self.case_prefix_armed() {
+                    return self.resolve_case_pending(c);
+                }
                 if self.pending_find().is_some() {
                     return self.complete_find(c);
                 }
@@ -344,11 +481,7 @@ impl VimKeymap {
         };
         let forward = matches!(find, 'f' | 't');
         let till = matches!(find, 't' | 'T');
-        self.last_find = Some(FindMemory {
-            target,
-            forward,
-            till,
-        });
+        self.store_find(target, forward, till);
         let action = match operator {
             Some('d') => Action::DeleteFind {
                 target,
@@ -377,6 +510,14 @@ impl VimKeymap {
 
     fn operator_armed(&self) -> bool {
         matches!(self.stripped_pending().as_str(), "d" | "c" | "y")
+    }
+
+    fn store_find(&mut self, target: char, forward: bool, till: bool) {
+        self.last_find = Some(FindMemory {
+            target,
+            forward,
+            till,
+        });
     }
 
     fn stripped_pending(&self) -> String {
@@ -1270,6 +1411,269 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('D')), Mode::Visual),
             Action::DeleteLines
+        );
+    }
+
+    #[test]
+    fn normal_g_arms_case_operator() {
+        for operator in ['~', 'u', 'U'] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('g')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                Action::BeginSequence
+            );
+        }
+    }
+
+    #[test]
+    fn normal_g_digit_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn normal_case_word_motions_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::WordForward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('u')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('b')), Mode::Normal),
+            Action::LowercaseAt {
+                motion: CaseMotion::WordBackward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('U')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::UppercaseAt {
+                motion: CaseMotion::WordEnd,
+            }
+        );
+    }
+
+    #[test]
+    fn normal_case_line_motions_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('$')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::LineEnd,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::LineStart,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('U')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('j')), Mode::Normal),
+            Action::UppercaseAt {
+                motion: CaseMotion::Lines { upward: false },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('u')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('k')), Mode::Normal),
+            Action::LowercaseAt {
+                motion: CaseMotion::Lines { upward: true },
+            }
+        );
+    }
+
+    #[test]
+    fn normal_case_double_operator_is_linewise() {
+        for (operator, action) in [
+            (
+                '~',
+                Action::ToggleCaseAt {
+                    motion: CaseMotion::Lines { upward: false },
+                },
+            ),
+            (
+                'u',
+                Action::LowercaseAt {
+                    motion: CaseMotion::Lines { upward: false },
+                },
+            ),
+            (
+                'U',
+                Action::UppercaseAt {
+                    motion: CaseMotion::Lines { upward: false },
+                },
+            ),
+        ] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            map.map(plain(KeyCode::Char(operator)), Mode::Normal);
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                action
+            );
+        }
+    }
+
+    #[test]
+    fn normal_case_mixed_operators_cancel() {
+        for second in ['u', 'U'] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            map.map(plain(KeyCode::Char('~')), Mode::Normal);
+            assert_eq!(
+                map.map(plain(KeyCode::Char(second)), Mode::Normal),
+                Action::CancelPending
+            );
+        }
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('u')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::Normal),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn normal_case_find_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::Find {
+                    target: 'x',
+                    forward: true,
+                    till: false,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn normal_case_object_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('U')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('(')), Mode::Normal),
+            Action::UppercaseAt {
+                motion: CaseMotion::Object {
+                    inner: true,
+                    object: Object::Paren,
+                },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        map.map(plain(KeyCode::Char('i')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn normal_case_repeat_find_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char(';')), Mode::Normal),
+            Action::CancelPending
+        );
+        let mut map = VimKeymap::new();
+        for key in ['f', 'x'] {
+            map.map(plain(KeyCode::Char(key)), Mode::Normal);
+        }
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char(';')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::RepeatFind {
+                    target: 'x',
+                    forward: true,
+                    till: false,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn normal_case_counts_flow() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::WordForward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::WordForward,
+            }
         );
     }
 

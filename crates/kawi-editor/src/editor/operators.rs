@@ -31,7 +31,8 @@ impl Editor {
     }
 
     pub(super) fn change_object(&mut self, inner: bool, object: Object) {
-        if let Some(span) = self.object_edit(inner, object) {
+        let count = self.take_count();
+        if let Some(span) = self.object_edit(inner, object, count) {
             self.apply_span(span, true);
         }
     }
@@ -217,14 +218,19 @@ impl Editor {
     }
 
     pub(super) fn delete_object(&mut self, inner: bool, object: Object) {
-        if let Some(span) = self.object_edit(inner, object) {
+        let count = self.take_count();
+        if let Some(span) = self.object_edit(inner, object, count) {
             self.apply_span(span, false);
         }
     }
 
-    fn object_edit(&mut self, inner: bool, object: Object) -> Option<words::WordSpan> {
+    pub(super) fn object_edit(
+        &self,
+        inner: bool,
+        object: Object,
+        count: usize,
+    ) -> Option<words::WordSpan> {
         let (row, col) = (self.cursor.row(), self.cursor.col());
-        let count = self.take_count();
         match object {
             Object::Paren => {
                 objects::brackets::bracket_range(&self.buffer, row, col, '(', ')', inner, count)
@@ -348,15 +354,21 @@ impl Editor {
     }
 
     pub(super) fn delete_to_start(&mut self) {
-        if self.cursor.col() == 0 {
+        let Some((start, end)) = self.line_start_span() else {
             return;
+        };
+        self.record_boundary();
+        self.yank_range(start.0, start.1, end.0, end.1);
+        self.buffer.delete_range(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+    }
+
+    pub(super) fn line_start_span(&self) -> Option<((usize, usize), (usize, usize))> {
+        if self.cursor.col() == 0 {
+            return None;
         }
         let row = self.cursor.row();
-        self.record_boundary();
-        self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
-        self.buffer
-            .delete_range(row, 0, row, self.cursor.col().saturating_sub(1));
-        self.cursor.set_position(row, 0);
+        Some(((row, 0), (row, self.cursor.col().saturating_sub(1))))
     }
 
     pub(super) fn delete_word(&mut self) {
@@ -422,7 +434,7 @@ impl Editor {
         width == 0 || self.cursor.col() >= width
     }
 
-    fn line_tail(&self, count: usize) -> Option<(usize, usize, usize, usize)> {
+    pub(super) fn line_tail(&self, count: usize) -> Option<(usize, usize, usize, usize)> {
         if self.line_is_empty_at_cursor() {
             return None;
         }
@@ -431,7 +443,7 @@ impl Editor {
         Some((self.cursor.row(), self.cursor.col(), end_row, last))
     }
 
-    fn counted_last_row(&self, count: usize) -> Option<usize> {
+    pub(super) fn counted_last_row(&self, count: usize) -> Option<usize> {
         let max = self.buffer.line_count().saturating_sub(1);
         if self.cursor.row() >= max && count > 1 {
             return None;
@@ -582,7 +594,8 @@ impl Editor {
     }
 
     pub(super) fn yank_object(&mut self, inner: bool, object: Object) {
-        let Some(span) = self.object_edit(inner, object) else {
+        let count = self.take_count();
+        let Some(span) = self.object_edit(inner, object, count) else {
             return;
         };
         match span {

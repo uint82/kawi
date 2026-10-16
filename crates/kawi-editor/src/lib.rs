@@ -11,7 +11,7 @@ pub mod search;
 pub mod selection;
 pub mod words;
 
-pub use actions::{Action, Object};
+pub use actions::{Action, CaseMotion, Object};
 pub use command::{parse, Command, CommandLine};
 pub use cursor::Cursor;
 pub use editor::Editor;

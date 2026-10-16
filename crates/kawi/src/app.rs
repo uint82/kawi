@@ -657,6 +657,26 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_tilde_w_toggles_word() {
+        let mut app = App::new(Buffer::from_string("foo BAR baz"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('~'))).expect("tilde");
+        app.handle_key(key(KeyCode::Char('w'))).expect("word");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_normal_lower_line_toggles_line() {
+        let mut app = App::new(Buffer::from_string("foo BAR"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('u'))).expect("lower");
+        app.handle_key(key(KeyCode::Char('u'))).expect("line");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");
