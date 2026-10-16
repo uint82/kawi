@@ -1,6 +1,6 @@
 use super::Editor;
 use crate::actions::ShiftMotion;
-use crate::editor::indent::IndentConfig;
+use crate::editor::indent::{shift_span_text, IndentConfig, IndentShift};
 use crate::find;
 use crate::words;
 
@@ -56,16 +56,30 @@ impl Editor {
             .buffer
             .screen_col(self.cursor.row(), self.cursor.col(), indent.tabstop);
         let screen = here.max(self.cursor.desired());
-        if self.shift_affects(first, last, shift) {
-            self.record_boundary();
-            for row in first..=last {
-                match shift {
-                    Shift::Right => self.shift_row(row, true, &indent),
-                    Shift::Left => self.shift_row(row, false, &indent),
-                    Shift::Reindent => self.buffer.set_indent(row, ""),
-                }
+        let text = self.buffer.lines_text(first, last);
+        let shift_text = match shift {
+            Shift::Right => shift_span_text(
+                &text,
+                IndentShift::In(shift_amount(&indent)),
+                indent.expandtab,
+                indent.tabstop,
+            ),
+            Shift::Left => shift_span_text(
+                &text,
+                IndentShift::Out(shift_amount(&indent)),
+                indent.expandtab,
+                indent.tabstop,
+            ),
+            Shift::Reindent => {
+                shift_span_text(&text, IndentShift::Clear, indent.expandtab, indent.tabstop)
             }
-        }
+        };
+        let Some(shifted) = shift_text else {
+            self.place_shift_cursor(first, screen, indent.tabstop);
+            return;
+        };
+        self.record_boundary();
+        self.buffer.replace_lines(first, last, &shifted);
         self.place_shift_cursor(first, screen, indent.tabstop);
     }
 
@@ -140,36 +154,6 @@ impl Editor {
         }
     }
 
-    fn shift_affects(&self, first: usize, last: usize, shift: Shift) -> bool {
-        let tabstop = self.effective_indent().tabstop;
-        (first..=last).any(|row| match shift {
-            Shift::Right => self.buffer.line_len(row) != 0,
-            Shift::Left => self.buffer.indent_width(row, tabstop) != 0,
-            Shift::Reindent => self.buffer.indent_end(row) != 0,
-        })
-    }
-
-    fn shift_row(&mut self, row: usize, right: bool, indent: &IndentConfig) {
-        if self.buffer.line_len(row) == 0 {
-            return;
-        }
-        let width = self.buffer.indent_width(row, indent.tabstop);
-        let amount = if indent.shiftwidth == 0 {
-            indent.tabstop
-        } else {
-            indent.shiftwidth
-        };
-        let indented = if right {
-            width + amount
-        } else {
-            width.saturating_sub(amount)
-        };
-        self.buffer.set_indent(
-            row,
-            &canonical_indent(indented, indent.expandtab, indent.tabstop),
-        );
-    }
-
     fn place_shift_cursor(&mut self, row: usize, screen: usize, tabstop: usize) {
         let row = row.min(self.buffer.line_count().saturating_sub(1));
         let col = self.buffer.char_col(row, screen, tabstop);
@@ -184,20 +168,20 @@ enum Shift {
     Reindent,
 }
 
+fn shift_amount(indent: &IndentConfig) -> usize {
+    if indent.shiftwidth == 0 {
+        indent.tabstop
+    } else {
+        indent.shiftwidth
+    }
+}
+
 fn span_rows(span: words::WordSpan) -> Option<(usize, usize)> {
     match span {
         words::WordSpan::Charwise { start, end } => Some((start.0, end.0)),
         words::WordSpan::Linewise { first, last } => Some((first, last)),
         words::WordSpan::Empty { .. } => None,
     }
-}
-
-fn canonical_indent(width: usize, expandtab: bool, tabstop: usize) -> String {
-    if expandtab {
-        return " ".repeat(width);
-    }
-    let tabstop = tabstop.max(1);
-    "\t".repeat(width / tabstop) + &" ".repeat(width % tabstop)
 }
 
 #[cfg(test)]
@@ -675,5 +659,21 @@ mod tests {
             motion: ShiftMotion::WordForward,
         });
         assert_eq!(editor.register_text(), String::new());
+    }
+
+    #[test]
+    fn shift_many_lines_single_splice() {
+        let text = (0..2000)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut editor = editor_with(&text);
+        push_digits(&mut editor, &[2, 0, 0, 0]);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.line_count(), 2000);
+        assert_eq!(editor.text_lines()[0], "\tline 0");
+        assert_eq!(editor.text_lines()[1999], "\tline 1999");
+        editor.apply(Action::Undo);
+        assert_eq!(editor.text_lines()[0], "line 0");
     }
 }

@@ -1,4 +1,63 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndentShift {
+    In(usize),
+    Out(usize),
+    Clear,
+}
+
+pub fn shift_span_text(
+    text: &str,
+    shift: IndentShift,
+    expandtab: bool,
+    tabstop: usize,
+) -> Option<String> {
+    let mut changed = false;
+    let mut out = String::with_capacity(text.len());
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        match shift_line(line, shift, expandtab, tabstop) {
+            Some(next) => {
+                changed = true;
+                out.push_str(&next);
+            }
+            None => out.push_str(line),
+        }
+    }
+    if changed {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+fn shift_line(line: &str, shift: IndentShift, expandtab: bool, tabstop: usize) -> Option<String> {
+    if line.is_empty() {
+        return None;
+    }
+    let rest = line.trim_start_matches([' ', '\t']);
+    let width = kawi_buffer::indent_width_of(line, tabstop);
+    let indented = match shift {
+        IndentShift::In(amount) => width + amount,
+        IndentShift::Out(amount) => width.saturating_sub(amount),
+        IndentShift::Clear => 0,
+    };
+    if indented == width {
+        return None;
+    }
+    Some(canonical_indent(indented, expandtab, tabstop) + rest)
+}
+
+fn canonical_indent(width: usize, expandtab: bool, tabstop: usize) -> String {
+    if expandtab {
+        return " ".repeat(width);
+    }
+    let tabstop = tabstop.max(1);
+    "\t".repeat(width / tabstop) + &" ".repeat(width % tabstop)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndentConfig {
     pub shiftwidth: usize,
     pub expandtab: bool,
