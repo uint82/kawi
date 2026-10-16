@@ -861,6 +861,30 @@ mod tests {
     }
 
     #[test]
+    fn vim_dot_repeats_delete() {
+        let mut app = App::new(Buffer::from_string("a\nb\nc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        app.handle_key(key(KeyCode::Char('d'))).expect("line");
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('.'))).expect("repeat");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_dot_repeats_change_text() {
+        let mut app = App::new(Buffer::from_string("aaa\nbbb"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('c'))).expect("change");
+        app.handle_key(key(KeyCode::Char('c'))).expect("line");
+        app.handle_key(key(KeyCode::Char('X'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('.'))).expect("repeat");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (1, 0));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");

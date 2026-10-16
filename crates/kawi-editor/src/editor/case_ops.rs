@@ -1,18 +1,21 @@
 use super::Editor;
-use crate::actions::CaseMotion;
+use crate::actions::{Action, CaseMotion};
 use crate::find;
 use crate::words;
 
 impl Editor {
     pub(super) fn toggle_case(&mut self) {
+        self.note_visual_repeat(Action::ToggleCase);
         self.shift_selection_case(toggle_ascii_case);
     }
 
     pub(super) fn lowercase(&mut self) {
+        self.note_visual_repeat(Action::Lowercase);
         self.shift_selection_case(lower_ascii_case);
     }
 
     pub(super) fn uppercase(&mut self) {
+        self.note_visual_repeat(Action::Uppercase);
         self.shift_selection_case(upper_ascii_case);
     }
 
@@ -147,7 +150,7 @@ impl Editor {
 }
 
 // TODO(case): match vim towupper for non-ASCII text.
-fn toggle_ascii_case(ch: char) -> char {
+pub(super) fn toggle_ascii_case(ch: char) -> char {
     if ch.is_ascii_lowercase() {
         ch.to_ascii_uppercase()
     } else if ch.is_ascii_uppercase() {
@@ -157,11 +160,11 @@ fn toggle_ascii_case(ch: char) -> char {
     }
 }
 
-fn lower_ascii_case(ch: char) -> char {
+pub(super) fn lower_ascii_case(ch: char) -> char {
     ch.to_ascii_lowercase()
 }
 
-fn upper_ascii_case(ch: char) -> char {
+pub(super) fn upper_ascii_case(ch: char) -> char {
     ch.to_ascii_uppercase()
 }
 
