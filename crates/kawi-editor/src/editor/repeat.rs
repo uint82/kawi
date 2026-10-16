@@ -19,6 +19,9 @@ pub(super) fn is_insert_entry(action: Action) -> bool {
             | Action::ChangeToEnd
             | Action::ChangeToStart
             | Action::ChangeToFirstNonBlank
+            | Action::ChangeToViewportTop
+            | Action::ChangeToViewportMiddle
+            | Action::ChangeToViewportBottom
             | Action::ChangeWord
             | Action::ChangeWordEnd
             | Action::ChangeObject { .. }

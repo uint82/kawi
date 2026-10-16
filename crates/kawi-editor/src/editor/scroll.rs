@@ -84,11 +84,7 @@ impl Editor {
 
     pub(super) fn move_to_viewport_top(&mut self) {
         self.track_insert_move();
-        let target = self
-            .viewport
-            .top()
-            .saturating_add(self.take_count().saturating_sub(1))
-            .min(self.last_row());
+        let target = self.viewport_top_target().min(self.last_row());
         self.keep_column_to(target);
     }
 
@@ -100,11 +96,23 @@ impl Editor {
 
     pub(super) fn move_to_viewport_bottom(&mut self) {
         self.track_insert_move();
-        let target = self
-            .visible_bot()
-            .saturating_sub(self.take_count().saturating_sub(1))
-            .max(self.viewport.top());
+        let target = self.viewport_bottom_target().max(self.viewport.top());
         self.keep_column_to(target);
+    }
+
+    pub(super) fn viewport_top_target(&mut self) -> usize {
+        self.viewport
+            .top()
+            .saturating_add(self.take_count().saturating_sub(1))
+    }
+
+    pub(super) fn viewport_middle_target(&self) -> usize {
+        self.viewport.top().saturating_add(self.middle_offset())
+    }
+
+    pub(super) fn viewport_bottom_target(&mut self) -> usize {
+        self.visible_bot()
+            .saturating_sub(self.take_count().saturating_sub(1))
     }
 
     pub(super) fn place_center(&mut self) {
@@ -195,7 +203,7 @@ impl Editor {
         half.saturating_sub(1).min(visible.saturating_sub(1))
     }
 
-    fn last_row(&self) -> usize {
+    pub(super) fn last_row(&self) -> usize {
         self.buffer.line_count().saturating_sub(1)
     }
 }

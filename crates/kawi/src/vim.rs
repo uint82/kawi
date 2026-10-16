@@ -43,6 +43,9 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("d$", Action::DeleteToEnd),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
+    ("dH", Action::DeleteToViewportTop),
+    ("dM", Action::DeleteToViewportMiddle),
+    ("dL", Action::DeleteToViewportBottom),
     ("dge", Action::DeleteWordEndBackward),
     (">>", Action::ShiftRight),
     ("<<", Action::ShiftLeft),
@@ -57,6 +60,9 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("c$", Action::ChangeToEnd),
     ("cG", Action::ChangeToLastLine),
     ("cgg", Action::ChangeToFirstLine),
+    ("cH", Action::ChangeToViewportTop),
+    ("cM", Action::ChangeToViewportMiddle),
+    ("cL", Action::ChangeToViewportBottom),
     ("cge", Action::ChangeWordEndBackward),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
@@ -66,6 +72,9 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("y$", Action::YankToEnd),
     ("yG", Action::YankToLastLine),
     ("ygg", Action::YankToFirstLine),
+    ("yH", Action::YankToViewportTop),
+    ("yM", Action::YankToViewportMiddle),
+    ("yL", Action::YankToViewportBottom),
     ("yge", Action::YankWordEndBackward),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
@@ -2193,6 +2202,43 @@ mod tests {
             map.map(plain(KeyCode::Char('g')), Mode::Normal);
             assert_eq!(map.map(plain(KeyCode::Char('g')), Mode::Normal), action);
         }
+    }
+
+    #[test]
+    fn viewport_operators_map() {
+        for (keys, action) in [
+            ("dH", Action::DeleteToViewportTop),
+            ("dM", Action::DeleteToViewportMiddle),
+            ("dL", Action::DeleteToViewportBottom),
+            ("cH", Action::ChangeToViewportTop),
+            ("cM", Action::ChangeToViewportMiddle),
+            ("cL", Action::ChangeToViewportBottom),
+            ("yH", Action::YankToViewportTop),
+            ("yM", Action::YankToViewportMiddle),
+            ("yL", Action::YankToViewportBottom),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut resolved = Action::Noop;
+            for key in keys.chars() {
+                resolved = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            }
+            assert_eq!(resolved, action);
+            assert_eq!(map.pending_text(), None);
+        }
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('H')), Mode::Normal),
+            Action::DeleteToViewportTop
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]
