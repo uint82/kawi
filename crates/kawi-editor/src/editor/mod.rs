@@ -20,6 +20,7 @@ mod operators;
 mod repeat;
 mod scroll;
 mod search_mode;
+mod sent_ops;
 mod session;
 mod shift_ops;
 
@@ -104,6 +105,22 @@ impl Editor {
             Action::DeleteToMatch => self.delete_match(),
             Action::YankToMatch => self.yank_match(),
             Action::ChangeToMatch => self.change_match(),
+            Action::MoveToNextSentence => self.move_to_next_sentence(),
+            Action::MoveToPrevSentence => self.move_to_prev_sentence(),
+            Action::MoveToNextParagraph => self.move_to_next_paragraph(),
+            Action::MoveToPrevParagraph => self.move_to_prev_paragraph(),
+            Action::DeleteToNextSentence => self.delete_next_sentence(),
+            Action::DeleteToPrevSentence => self.delete_prev_sentence(),
+            Action::DeleteToNextParagraph => self.delete_next_paragraph(),
+            Action::DeleteToPrevParagraph => self.delete_prev_paragraph(),
+            Action::YankToNextSentence => self.yank_next_sentence(),
+            Action::YankToPrevSentence => self.yank_prev_sentence(),
+            Action::YankToNextParagraph => self.yank_next_paragraph(),
+            Action::YankToPrevParagraph => self.yank_prev_paragraph(),
+            Action::ChangeToNextSentence => self.change_next_sentence(),
+            Action::ChangeToPrevSentence => self.change_prev_sentence(),
+            Action::ChangeToNextParagraph => self.change_next_paragraph(),
+            Action::ChangeToPrevParagraph => self.change_prev_paragraph(),
             Action::PlaceCenter => self.place_center(),
             Action::PlaceTop => self.place_top(),
             Action::PlaceBottom => self.place_bottom(),
@@ -556,6 +573,10 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToViewportMiddle
             | Action::MoveToViewportBottom
             | Action::MoveToMatch
+            | Action::MoveToNextSentence
+            | Action::MoveToPrevSentence
+            | Action::MoveToNextParagraph
+            | Action::MoveToPrevParagraph
             | Action::MoveToLineEnd
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart

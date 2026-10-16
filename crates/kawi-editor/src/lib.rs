@@ -12,6 +12,8 @@ pub mod selection;
 pub mod viewport;
 pub mod words;
 
+mod sentences;
+
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
 pub use command::{parse, Command, CommandLine};
 pub use cursor::Cursor;
