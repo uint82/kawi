@@ -11,6 +11,7 @@ use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
 
 mod case_ops;
+mod indent;
 mod line_ops;
 mod motions;
 mod operators;
@@ -31,7 +32,9 @@ pub struct Editor {
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
     last_insert: Option<(usize, usize)>,
-    shiftwidth: usize,
+    file_indent: indent::IndentConfig,
+    shiftwidth_override: Option<usize>,
+    expandtab_override: Option<bool>,
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
@@ -240,7 +243,23 @@ impl Editor {
     }
 
     pub fn set_shiftwidth(&mut self, width: usize) {
-        self.shiftwidth = width;
+        self.shiftwidth_override = Some(width);
+    }
+
+    pub fn set_expandtab(&mut self, expandtab: bool) {
+        self.expandtab_override = Some(expandtab);
+    }
+
+    pub(super) fn effective_indent(&self) -> indent::IndentConfig {
+        indent::IndentConfig {
+            shiftwidth: self
+                .shiftwidth_override
+                .unwrap_or(self.file_indent.shiftwidth),
+            expandtab: self
+                .expandtab_override
+                .unwrap_or(self.file_indent.expandtab),
+            tabstop: self.file_indent.tabstop,
+        }
     }
 
     pub fn command_prompt(&self) -> Option<&str> {
@@ -289,6 +308,7 @@ impl Editor {
     }
 
     pub fn new(buffer: Buffer) -> Self {
+        let file_indent = indent::detect(buffer.path.as_deref());
         Self {
             buffer,
             cursor: Cursor::new(),
@@ -300,7 +320,9 @@ impl Editor {
             selection: None,
             previous_visual: None,
             last_insert: None,
-            shiftwidth: 8,
+            file_indent,
+            shiftwidth_override: None,
+            expandtab_override: None,
             register: Register::new(),
             count_digits: 0,
             operator_count: None,

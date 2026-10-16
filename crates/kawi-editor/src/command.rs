@@ -6,6 +6,7 @@ pub enum Command {
     SetKeymap(String),
     SetTheme(String),
     SetShiftWidth(usize),
+    SetExpandTab(bool),
     Unknown,
 }
 
@@ -24,6 +25,8 @@ fn parse_set_command(text: &str) -> Command {
         ["set", "keymap", name] => name_command(name),
         ["set", "theme", name] => theme_command(name),
         ["set", "shiftwidth", value] => shiftwidth_command(value),
+        ["set", "expandtab"] => Command::SetExpandTab(true),
+        ["set", "noexpandtab"] => Command::SetExpandTab(false),
         ["set", combined] => equals_command(combined),
         _ => Command::Unknown,
     }
@@ -136,6 +139,12 @@ mod tests {
         assert_eq!(parse("set shiftwidth 4"), Command::SetShiftWidth(4));
         assert_eq!(parse("set shiftwidth=4"), Command::SetShiftWidth(4));
         assert_eq!(parse("set shiftwidth 0"), Command::SetShiftWidth(0));
+    }
+
+    #[test]
+    fn parses_set_expandtab() {
+        assert_eq!(parse("set expandtab"), Command::SetExpandTab(true));
+        assert_eq!(parse("set noexpandtab"), Command::SetExpandTab(false));
     }
 
     #[test]
