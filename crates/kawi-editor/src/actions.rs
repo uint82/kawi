@@ -117,6 +117,8 @@ pub enum Action {
     ReselectVisual,
     CancelVisual,
     InsertAtLast,
+    InsertAtColumnStart,
+    ToggleChar,
     RepeatLastChange,
     ToggleCaseAt {
         motion: CaseMotion,

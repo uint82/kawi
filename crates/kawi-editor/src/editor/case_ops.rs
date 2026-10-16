@@ -19,6 +19,32 @@ impl Editor {
         self.shift_selection_case(upper_ascii_case);
     }
 
+    pub(super) fn toggle_char(&mut self) {
+        let count = self.take_count();
+        let mut recorded = false;
+        for _ in 0..count {
+            let (row, col) = (self.cursor.row(), self.cursor.col());
+            if let Some(toggled) = self.toggled_char_at(row, col) {
+                if !recorded {
+                    self.record_boundary();
+                    recorded = true;
+                }
+                self.buffer.delete_forward(row, col);
+                self.buffer.insert_char(row, col, toggled);
+            }
+            self.cursor.move_right();
+        }
+    }
+
+    fn toggled_char_at(&self, row: usize, col: usize) -> Option<char> {
+        let current = self.buffer.line_cow(row)?.chars().nth(col)?;
+        let toggled = toggle_ascii_case(current);
+        if toggled == current {
+            return None;
+        }
+        Some(toggled)
+    }
+
     pub(super) fn toggle_case_at(&mut self, motion: CaseMotion) {
         self.shift_case_motion(motion, toggle_ascii_case);
     }
@@ -577,6 +603,80 @@ mod tests {
         });
         assert_eq!(editor.text_lines()[0], "foo BAr baz");
         assert_eq!((editor.row(), editor.col()), (0, 6));
+    }
+
+    #[test]
+    fn toggle_char_basic() {
+        let mut editor = editor_with("aBc");
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "abc");
+        assert_eq!((editor.row(), editor.col()), (0, 2));
+    }
+
+    #[test]
+    fn toggle_char_at_end_stays() {
+        let mut editor = editor_with("abc");
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "abC");
+        assert_eq!((editor.row(), editor.col()), (0, 2));
+    }
+
+    #[test]
+    fn toggle_char_empty_noop() {
+        let mut editor = editor_with("\nb");
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+        assert!(!editor.is_dirty());
+    }
+
+    #[test]
+    fn toggle_char_count() {
+        let mut editor = editor_with("aBcDe");
+        push_digits(&mut editor, &[3]);
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "AbCDe");
+        assert_eq!((editor.row(), editor.col()), (0, 3));
+    }
+
+    #[test]
+    fn toggle_char_space_advances_clean() {
+        let mut editor = editor_with("a b");
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "a b");
+        assert_eq!((editor.row(), editor.col()), (0, 2));
+        assert!(!editor.is_dirty());
+    }
+
+    #[test]
+    fn toggle_char_undoes_together() {
+        let mut editor = editor_with("aBcDe");
+        push_digits(&mut editor, &[3]);
+        editor.apply(Action::ToggleChar);
+        editor.apply(Action::Undo);
+        assert_eq!(editor.text_lines()[0], "aBcDe");
+    }
+
+    #[test]
+    fn toggle_char_leaves_register() {
+        let mut editor = editor_with("aBc");
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.register_text(), String::new());
+    }
+
+    #[test]
+    fn toggle_char_repeats() {
+        let mut editor = editor_with("aBcDe");
+        editor.apply(Action::ToggleChar);
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::MoveRight);
+        editor.apply(Action::RepeatLastChange);
+        assert_eq!(editor.text_lines()[0], "ABcde");
+        assert_eq!((editor.row(), editor.col()), (0, 4));
     }
 
     #[test]

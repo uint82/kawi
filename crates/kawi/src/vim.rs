@@ -70,6 +70,16 @@ fn is_visual_motion_key(pushed: char) -> bool {
     matches!(pushed, 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$')
 }
 
+fn display_motion_action(pushed: char) -> Option<Action> {
+    match pushed {
+        'j' => Some(Action::MoveDown),
+        'k' => Some(Action::MoveUp),
+        '0' => Some(Action::MoveToLineStart),
+        '$' => Some(Action::MoveToLineEnd),
+        _ => None,
+    }
+}
+
 fn object_action(sequence: &str) -> Option<Action> {
     let mut chars = sequence.chars();
     let operator = chars.next()?;
@@ -198,6 +208,7 @@ impl VimKeymap {
             KeyCode::Char('A') => self.map_plain_or_noop(key, Action::AppendLineEnd),
             KeyCode::Char('I') => self.map_plain_or_noop(key, Action::InsertLineStart),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
+            KeyCode::Char('~') => self.map_plain_or_noop(key, Action::ToggleChar),
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
@@ -305,9 +316,19 @@ impl VimKeymap {
             self.clear_pending();
             return Action::InsertAtLast;
         }
+        if body == "g" && pushed == 'I' {
+            self.clear_pending();
+            return Action::InsertAtColumnStart;
+        }
         if body == "g" && pushed == 'e' {
             self.clear_pending();
             return Action::MoveToPrevWordEnd;
+        }
+        if body == "g" {
+            if let Some(action) = display_motion_action(pushed) {
+                self.clear_pending();
+                return action;
+            }
         }
         self.cancel_sequence()
     }
@@ -926,6 +947,24 @@ impl VimKeymap {
     }
 
     fn visual_pending_key(&mut self, pushed: char, mode: Mode) -> Action {
+        if self.stripped_pending() == "g" {
+            if pushed == 'g' {
+                self.clear_pending();
+                return Action::GotoFirstLine;
+            }
+            if pushed == 'v' {
+                self.clear_pending();
+                return Action::ReselectVisual;
+            }
+            if pushed == 'e' {
+                self.clear_pending();
+                return Action::MoveToPrevWordEnd;
+            }
+            if let Some(action) = display_motion_action(pushed) {
+                self.clear_pending();
+                return action;
+            }
+        }
         if pushed.is_ascii_digit() {
             return self.push_digit(pushed);
         }
@@ -937,18 +976,6 @@ impl VimKeymap {
         }
         if let Some(action) = self.complete_visual_g(pushed) {
             return action;
-        }
-        if self.stripped_pending() == "g" && pushed == 'g' {
-            self.clear_pending();
-            return Action::GotoFirstLine;
-        }
-        if self.stripped_pending() == "g" && pushed == 'v' {
-            self.clear_pending();
-            return Action::ReselectVisual;
-        }
-        if self.stripped_pending() == "g" && pushed == 'e' {
-            self.clear_pending();
-            return Action::MoveToPrevWordEnd;
         }
         if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
             self.clear_pending();
@@ -1985,6 +2012,49 @@ mod tests {
     }
 
     #[test]
+    fn normal_tilde_toggles_char() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::Normal),
+            Action::ToggleChar
+        );
+    }
+
+    #[test]
+    fn normal_g_display_motions_map() {
+        for (key, action) in [
+            ('j', Action::MoveDown),
+            ('k', Action::MoveUp),
+            ('0', Action::MoveToLineStart),
+            ('$', Action::MoveToLineEnd),
+        ] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+        }
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('I')), Mode::Normal),
+            Action::InsertAtColumnStart
+        );
+    }
+
+    #[test]
+    fn visual_g_display_motions_map() {
+        for (key, action) in [
+            ('j', Action::MoveDown),
+            ('k', Action::MoveUp),
+            ('0', Action::MoveToLineStart),
+            ('$', Action::MoveToLineEnd),
+        ] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Visual);
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
+        }
+    }
+
+    #[test]
     fn normal_goto_maps() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -2073,7 +2143,7 @@ mod tests {
 
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
-        let implemented = ['~', 'u', 'U', 'g', 'v', 'i', 'e'];
+        let implemented = ['~', 'u', 'U', 'g', 'v', 'i', 'e', 'I', 'j', 'k', '0', '$'];
         for code in 0..128u8 {
             let pushed = code as char;
             if !pushed.is_ascii_graphic() || pushed == 'g' {

@@ -215,6 +215,8 @@ impl Editor {
                 self.enter_insert();
             }
             Action::InsertAtLast => self.insert_at_last(),
+            Action::InsertAtColumnStart => self.insert_at_column_start(),
+            Action::ToggleChar => self.toggle_char(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
             Action::AppendLineEnd => self.append_line_end(),
