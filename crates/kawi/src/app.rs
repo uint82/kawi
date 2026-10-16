@@ -774,6 +774,23 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_gi_resumes_insert() {
+        let mut app = App::new(Buffer::from_string("ab"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('i'))).expect("insert");
+        app.handle_key(key(KeyCode::Char('X'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        app.handle_key(key(KeyCode::Char('h'))).expect("move");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('i'))).expect("resume");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.cursor_position(), (0, 1));
+        app.handle_key(key(KeyCode::Char('Z'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 1));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");
