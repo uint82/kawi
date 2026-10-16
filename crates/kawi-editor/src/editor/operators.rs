@@ -408,6 +408,62 @@ impl Editor {
             .map_or(0, |line| kawi_buffer::first_non_blank(&line))
     }
 
+    pub(super) fn caret_target(&self, row: usize) -> usize {
+        let Some(line) = self.buffer.line(row) else {
+            return 0;
+        };
+        let len = line.chars().count();
+        if len == 0 {
+            return 0;
+        }
+        if line.chars().all(|ch| ch.is_whitespace()) {
+            return len.saturating_sub(1);
+        }
+        kawi_buffer::first_non_blank(&line)
+    }
+
+    fn caret_span(&self) -> Option<((usize, usize), (usize, usize))> {
+        let row = self.cursor.row();
+        let target = self.caret_target(row);
+        let col = self.cursor.col();
+        if target == col {
+            return None;
+        }
+        let start = target.min(col);
+        let end = target.max(col).saturating_sub(1);
+        Some(((row, start), (row, end)))
+    }
+
+    pub(super) fn delete_to_first_non_blank(&mut self) {
+        let Some((start, end)) = self.caret_span() else {
+            return;
+        };
+        self.record_boundary();
+        self.yank_range(start.0, start.1, end.0, end.1);
+        self.buffer.delete_range(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+    }
+
+    pub(super) fn yank_to_first_non_blank(&mut self) {
+        let Some((start, end)) = self.caret_span() else {
+            return;
+        };
+        self.yank_range(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+    }
+
+    pub(super) fn change_to_first_non_blank(&mut self) {
+        let Some((start, end)) = self.caret_span() else {
+            self.switch_to_insert();
+            return;
+        };
+        self.record_boundary();
+        self.yank_range(start.0, start.1, end.0, end.1);
+        self.buffer.delete_range(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+        self.switch_to_insert();
+    }
+
     pub(super) fn insert_char(&mut self, c: char) {
         self.record_maybe();
         self.record_insert(InsertEdit::Char(c));
@@ -2271,6 +2327,127 @@ mod tests {
         e.apply(Action::PasteAfter);
         assert_eq!(e.text_lines()[1], "gabchi");
         assert_eq!((e.row(), e.col()), (1, 3));
+    }
+
+    #[test]
+    fn caret_motion_lands_on_first_non_blank() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!((e.row(), e.col()), (0, 4));
+        e.apply(Action::JumpTo(0, 6));
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn caret_motion_whitespace_only_goes_last() {
+        let mut e = editor_with("abc\n   \nx");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!((e.row(), e.col()), (1, 2));
+    }
+
+    #[test]
+    fn caret_motion_empty_line_stays() {
+        let mut e = editor_with("abc\n\nx");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn caret_motion_ignores_count() {
+        let mut e = editor_with("    abc\n  de\nf");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_caret_before_indent() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::DeleteToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], " abc");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.register_text(), "   ");
+    }
+
+    #[test]
+    fn delete_caret_adjacent_to_target() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "   abc");
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.register_text(), " ");
+    }
+
+    #[test]
+    fn delete_caret_at_target_is_noop() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 4));
+        e.apply(Action::DeleteToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "    abc");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_caret_past_indent() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::DeleteToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "    bc");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.register_text(), "a");
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 6));
+        e.apply(Action::DeleteToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "    c");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.register_text(), "ab");
+    }
+
+    #[test]
+    fn yank_caret_yanks_to_target() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::YankToFirstNonBlank);
+        assert_eq!(e.register_text(), "    ");
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::YankToFirstNonBlank);
+        assert_eq!(e.register_text(), "a");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn change_caret_enters_insert_at_span_start() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::ChangeToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "  abc");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn change_caret_at_target_enters_insert() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 4));
+        e.apply(Action::ChangeToFirstNonBlank);
+        assert_eq!(e.text_lines()[0], "    abc");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.mode(), Mode::Insert);
+    }
+
+    #[test]
+    fn visual_caret_moves_head_to_target() {
+        let mut e = editor_with("    abc");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveToFirstNonBlank);
+        assert_eq!(e.selection_range(), Some(((0, 4), (0, 5))));
+        assert_eq!((e.row(), e.col()), (0, 4));
     }
 
     #[test]

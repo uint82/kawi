@@ -17,6 +17,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("db", Action::DeleteWordBackward),
     ("de", Action::DeleteWordEnd),
     ("d0", Action::DeleteToStart),
+    ("d^", Action::DeleteToFirstNonBlank),
     ("d$", Action::DeleteToEnd),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
@@ -30,6 +31,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("cw", Action::ChangeWord),
     ("ce", Action::ChangeWordEnd),
     ("c0", Action::ChangeToStart),
+    ("c^", Action::ChangeToFirstNonBlank),
     ("c$", Action::ChangeToEnd),
     ("cG", Action::ChangeToLastLine),
     ("cgg", Action::ChangeToFirstLine),
@@ -38,6 +40,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
     ("y0", Action::YankToStart),
+    ("y^", Action::YankToFirstNonBlank),
     ("y$", Action::YankToEnd),
     ("yG", Action::YankToLastLine),
     ("ygg", Action::YankToFirstLine),
@@ -67,7 +70,7 @@ fn arms_pending(pushed: char) -> bool {
 }
 
 fn is_visual_motion_key(pushed: char) -> bool {
-    matches!(pushed, 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$')
+    matches!(pushed, 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$' | '^')
 }
 
 fn display_motion_action(pushed: char) -> Option<Action> {
@@ -200,6 +203,7 @@ impl VimKeymap {
             KeyCode::Char('l') => self.map_plain_or_noop(key, Action::MoveRight),
             KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteForward),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
+            KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('+') => self.map_plain_or_noop(key, Action::MoveToNextLineStart),
             KeyCode::Char('-') => self.map_plain_or_noop(key, Action::MoveToPrevLineStart),
@@ -838,6 +842,7 @@ impl VimKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
+            KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
@@ -3411,6 +3416,47 @@ mod tests {
             assert_eq!(map.map(plain(KeyCode::Char('0')), Mode::Normal), action);
             assert_eq!(map.pending_text(), None);
         }
+    }
+
+    #[test]
+    fn caret_motion_and_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('^')), Mode::Normal),
+            Action::MoveToFirstNonBlank
+        );
+        for (operator, action) in [
+            ('d', Action::DeleteToFirstNonBlank),
+            ('c', Action::ChangeToFirstNonBlank),
+            ('y', Action::YankToFirstNonBlank),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                Action::BeginSequence
+            );
+            assert_eq!(map.map(plain(KeyCode::Char('^')), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+        }
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('^')), Mode::Normal),
+            Action::DeleteToFirstNonBlank
+        );
+        assert_eq!(map.pending_text(), None);
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('^')), Mode::Visual),
+            Action::MoveToFirstNonBlank
+        );
     }
 
     #[test]

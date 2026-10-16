@@ -88,6 +88,7 @@ impl Editor {
             Action::MoveLeft => self.move_left(),
             Action::MoveRight => self.move_right(),
             Action::MoveToLineStart => self.move_to_line_start(),
+            Action::MoveToFirstNonBlank => self.move_to_first_non_blank(),
             Action::MoveToLineEnd => self.move_to_line_end(),
             Action::MoveToNextWordStart => self.move_to_next_word_start(),
             Action::MoveToPrevWordStart => self.move_to_prev_word_start(),
@@ -198,8 +199,11 @@ impl Editor {
             Action::YankToEnd => self.yank_to_end(),
             Action::DeleteToEnd => self.delete_to_end(),
             Action::DeleteToStart => self.delete_to_start(),
+            Action::DeleteToFirstNonBlank => self.delete_to_first_non_blank(),
             Action::YankToStart => self.yank_to_start(),
+            Action::YankToFirstNonBlank => self.yank_to_first_non_blank(),
             Action::ChangeToStart => self.change_to_start(),
+            Action::ChangeToFirstNonBlank => self.change_to_first_non_blank(),
             Action::ChangeLine => self.change_line(),
             Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
@@ -507,6 +511,7 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveLeft
             | Action::MoveRight
             | Action::MoveToLineStart
+            | Action::MoveToFirstNonBlank
             | Action::MoveToLineEnd
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart

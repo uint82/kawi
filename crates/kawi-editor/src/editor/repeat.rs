@@ -18,6 +18,7 @@ pub(super) fn is_insert_entry(action: Action) -> bool {
             | Action::ChangeLine
             | Action::ChangeToEnd
             | Action::ChangeToStart
+            | Action::ChangeToFirstNonBlank
             | Action::ChangeWord
             | Action::ChangeWordEnd
             | Action::ChangeObject { .. }
