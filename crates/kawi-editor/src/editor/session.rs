@@ -2,7 +2,7 @@ use super::Editor;
 use crate::actions::Object;
 use crate::mode::Mode;
 use crate::objects;
-use crate::selection::Selection;
+use crate::selection::{SavedVisual, Selection};
 use crate::words;
 
 #[derive(Clone, Copy)]
@@ -146,6 +146,50 @@ impl Editor {
     pub(super) fn exit_visual(&mut self) {
         self.selection = None;
         self.mode = Mode::Normal;
+    }
+
+    pub(super) fn snapshot_visual(&mut self) {
+        if !self.mode.is_visual() {
+            return;
+        }
+        if let Some(selection) = self.selection {
+            self.previous_visual = Some(SavedVisual::new(selection, self.mode));
+        }
+    }
+
+    pub(super) fn cancel_visual(&mut self) {
+        self.snapshot_visual();
+        self.exit_visual();
+    }
+
+    pub(super) fn reselect_visual(&mut self) {
+        let Some(saved) = self.previous_visual else {
+            return;
+        };
+        if self.mode.is_visual() {
+            let Some(current) = self.selection else {
+                return;
+            };
+            self.previous_visual = Some(SavedVisual::new(current, self.mode));
+        }
+        self.selection = Some(saved.selection());
+        self.mode = saved.mode();
+        self.clamp_saved_selection();
+    }
+
+    fn clamp_saved_selection(&mut self) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let anchor = self.clamp_saved_pos(selection.anchor());
+        let head = self.clamp_saved_pos(selection.head());
+        self.selection = Some(Selection::from_ends(anchor, head));
+        self.cursor.set_position(head.0, head.1);
+    }
+
+    fn clamp_saved_pos(&self, pos: (usize, usize)) -> (usize, usize) {
+        let row = pos.0.min(self.buffer.line_count().saturating_sub(1));
+        (row, pos.1.min(self.max_col_for_row(row)))
     }
 
     pub(super) fn insert_after_selection(&mut self) {
@@ -1508,6 +1552,134 @@ mod tests {
         e.apply(Action::ToggleCase);
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
+    }
+
+    #[test]
+    fn visual_reselect_after_escape() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::CancelVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_reselect_after_delete() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_reselect_after_yank() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_reselect_linewise() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::CancelVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::VisualLine);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 1))));
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_reselect_linewise_delete_clamps() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::VisualLine);
+        assert_eq!(e.selection_range(), Some(((0, 0), (0, 1))));
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_reselect_in_visual_exchanges() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::CancelVisual);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveLeft);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.selection_range(), Some(((0, 2), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn visual_reselect_fresh_is_noop() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.selection_range(), None);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_reselect_ignores_count() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::CancelVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn visual_reselect_backward_orientation() {
+        let mut e = editor_with("abcdef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::SwapSelectionEnds);
+        e.apply(Action::CancelVisual);
+        e.apply(Action::ReselectVisual);
+        assert_eq!(e.mode(), Mode::Visual);
+        assert_eq!(e.selection_range(), Some(((0, 1), (0, 3))));
+        assert_eq!((e.row(), e.col()), (0, 1));
     }
 
     #[test]

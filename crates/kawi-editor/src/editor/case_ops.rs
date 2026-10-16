@@ -29,6 +29,7 @@ impl Editor {
     }
 
     fn shift_selection_case(&mut self, shift: fn(char) -> char) {
+        self.snapshot_visual();
         let (start, end) = self.operator_range();
         self.record_boundary();
         self.buffer

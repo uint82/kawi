@@ -271,10 +271,10 @@ impl VimKeymap {
         if let Some(rest) = body.strip_prefix("gU") {
             return self.complete_case_operator("gU", rest, pushed);
         }
-        self.arm_case_motion(pushed, &body)
+        self.complete_g_prefix(pushed, &body)
     }
 
-    fn arm_case_motion(&mut self, pushed: char, body: &str) -> Action {
+    fn complete_g_prefix(&mut self, pushed: char, body: &str) -> Action {
         if body == "g" && matches!(pushed, '~' | 'u' | 'U') {
             self.pending.push(pushed);
             return Action::BeginSequence;
@@ -282,6 +282,10 @@ impl VimKeymap {
         if body == "g" && pushed == 'g' {
             self.clear_pending();
             return Action::GotoFirstLine;
+        }
+        if body == "g" && pushed == 'v' {
+            self.clear_pending();
+            return Action::ReselectVisual;
         }
         self.cancel_sequence()
     }
@@ -625,7 +629,7 @@ impl VimKeymap {
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
         match key.code {
-            KeyCode::Esc => Action::ExitVisual,
+            KeyCode::Esc => Action::CancelVisual,
             KeyCode::Up => Action::MoveUp,
             KeyCode::Down => Action::MoveDown,
             KeyCode::Left => Action::MoveLeft,
@@ -675,14 +679,14 @@ impl VimKeymap {
     fn visual_v_action(&self, mode: Mode) -> Action {
         match mode {
             Mode::VisualLine => Action::EnterVisual,
-            _ => Action::ExitVisual,
+            _ => Action::CancelVisual,
         }
     }
 
     fn visual_big_v_action(&self, mode: Mode) -> Action {
         match mode {
             Mode::Visual => Action::EnterVisualLine,
-            _ => Action::ExitVisual,
+            _ => Action::CancelVisual,
         }
     }
 
@@ -725,7 +729,7 @@ impl VimKeymap {
         match key.code {
             KeyCode::Esc => {
                 self.clear_pending();
-                Action::ExitVisual
+                Action::CancelVisual
             }
             KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.visual_pending_key(c, mode),
             KeyCode::Up
@@ -762,6 +766,10 @@ impl VimKeymap {
         if self.stripped_pending() == "g" && pushed == 'g' {
             self.clear_pending();
             return Action::GotoFirstLine;
+        }
+        if self.stripped_pending() == "g" && pushed == 'v' {
+            self.clear_pending();
+            return Action::ReselectVisual;
         }
         if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
             self.clear_pending();
@@ -1060,7 +1068,7 @@ mod tests {
         );
         assert_eq!(
             map.map(ctrl(KeyCode::Char('c')), Mode::Visual),
-            Action::ExitVisual
+            Action::CancelVisual
         );
         assert_eq!(
             map.map(ctrl(KeyCode::Char('c')), Mode::Command),
@@ -1175,7 +1183,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Esc), Mode::Visual),
-            Action::ExitVisual
+            Action::CancelVisual
         );
     }
 
@@ -1197,7 +1205,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Visual),
-            Action::ExitVisual
+            Action::CancelVisual
         );
     }
 
@@ -1796,7 +1804,7 @@ mod tests {
 
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
-        let implemented = ['~', 'u', 'U', 'g'];
+        let implemented = ['~', 'u', 'U', 'g', 'v'];
         for code in 0..128u8 {
             let pushed = code as char;
             if !pushed.is_ascii_graphic() || pushed == 'g' {
@@ -1837,6 +1845,47 @@ mod tests {
     }
 
     #[test]
+    fn normal_gv_reselects() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::ReselectVisual
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn normal_gv_count_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::ReselectVisual
+        );
+    }
+
+    #[test]
+    fn visual_gv_reselects() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Visual),
+            Action::ReselectVisual
+        );
+    }
+
+    #[test]
     fn visual_g_junk_cancels() {
         let mut map = VimKeymap::new();
         map.map(plain(KeyCode::Char('g')), Mode::Visual);
@@ -1859,7 +1908,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('V')), Mode::VisualLine),
-            Action::ExitVisual
+            Action::CancelVisual
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::VisualLine),

@@ -744,6 +744,36 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_gv_reselects() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('v'))).expect("exit");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('v'))).expect("reselect");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
+        assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
+    fn vim_visual_gv_exchanges() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('v'))).expect("exit");
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('h'))).expect("shrink");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('v'))).expect("exchange");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
+        assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");

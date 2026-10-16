@@ -98,6 +98,8 @@ pub enum Action {
     ToggleCase,
     Lowercase,
     Uppercase,
+    ReselectVisual,
+    CancelVisual,
     ToggleCaseAt {
         motion: CaseMotion,
     },

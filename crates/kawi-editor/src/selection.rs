@@ -1,4 +1,24 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SavedVisual {
+    selection: Selection,
+    mode: crate::mode::Mode,
+}
+
+impl SavedVisual {
+    pub fn new(selection: Selection, mode: crate::mode::Mode) -> Self {
+        Self { selection, mode }
+    }
+
+    pub fn selection(&self) -> Selection {
+        self.selection
+    }
+
+    pub fn mode(&self) -> crate::mode::Mode {
+        self.mode
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Selection {
     anchor_row: usize,
     anchor_col: usize,

@@ -290,6 +290,7 @@ impl Editor {
     }
 
     pub(super) fn delete_selection(&mut self) {
+        self.snapshot_visual();
         if self.mode == Mode::VisualLine {
             self.delete_touched_lines();
             return;
@@ -300,6 +301,7 @@ impl Editor {
     }
 
     pub(super) fn change_selection(&mut self) {
+        self.snapshot_visual();
         if self.mode == Mode::VisualLine {
             self.change_touched_lines();
             return;
@@ -487,6 +489,7 @@ impl Editor {
         if self.register.is_empty() {
             return;
         }
+        self.snapshot_visual();
         if self.mode == Mode::VisualLine {
             self.paste_over_lines();
             return;
@@ -632,6 +635,7 @@ impl Editor {
     }
 
     pub(super) fn yank_selection(&mut self) {
+        self.snapshot_visual();
         if self.mode == Mode::VisualLine {
             self.yank_touched_lines();
             return;
