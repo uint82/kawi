@@ -678,6 +678,47 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_goto_last_line() {
+        let mut app = App::new(Buffer::from_string("abcdef\ngh"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('l'))).expect("move");
+        app.handle_key(key(KeyCode::Char('G'))).expect("goto");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (1, 1));
+    }
+
+    #[test]
+    fn vim_normal_goto_first_line() {
+        let mut app = App::new(Buffer::from_string("ab\ncd\nef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('g'))).expect("goto");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_normal_delete_to_last_line() {
+        let mut app = App::new(Buffer::from_string("a\nbb\ncc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('d'))).expect("delete");
+        app.handle_key(key(KeyCode::Char('G'))).expect("goto");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_goto_extends() {
+        let mut app = App::new(Buffer::from_string("ab\ncd\nef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('G'))).expect("goto");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.editor_selection(), Some(((0, 0), (2, 0))));
+        assert_eq!(app.cursor_position(), (2, 0));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");

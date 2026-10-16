@@ -38,20 +38,29 @@ impl Editor {
     }
 
     fn shift_case_motion(&mut self, motion: CaseMotion, shift: fn(char) -> char) {
-        let count = self.take_count();
-        let Some(span) = self.case_motion_span(motion, count) else {
+        let Some(span) = self.case_motion_span(motion) else {
             return;
         };
         self.apply_case_span(span, shift);
     }
 
-    fn case_motion_span(&self, motion: CaseMotion, count: usize) -> Option<words::WordSpan> {
+    fn case_motion_span(&mut self, motion: CaseMotion) -> Option<words::WordSpan> {
         let (row, col) = (self.cursor.row(), self.cursor.col());
         match motion {
-            CaseMotion::WordForward => Some(words::dw_range(&self.buffer, row, col, count)),
-            CaseMotion::WordBackward => Some(words::db_range(&self.buffer, row, col, count)),
-            CaseMotion::WordEnd => Some(words::cw_range(&self.buffer, row, col, count)),
+            CaseMotion::WordForward => {
+                let count = self.take_count();
+                Some(words::dw_range(&self.buffer, row, col, count))
+            }
+            CaseMotion::WordBackward => {
+                let count = self.take_count();
+                Some(words::db_range(&self.buffer, row, col, count))
+            }
+            CaseMotion::WordEnd => {
+                let count = self.take_count();
+                Some(words::cw_range(&self.buffer, row, col, count))
+            }
             CaseMotion::LineEnd => {
+                let count = self.take_count();
                 let tail = self.line_tail(count)?;
                 Some(words::WordSpan::Charwise {
                     start: (tail.0, tail.1),
@@ -67,6 +76,7 @@ impl Editor {
                 forward,
                 till,
             } => {
+                let count = self.take_count();
                 let (start, end) = find::find_span(
                     &self.buffer,
                     (row, col),
@@ -83,12 +93,23 @@ impl Editor {
                 forward,
                 till,
             } => {
+                let count = self.take_count();
                 let (start, end) =
                     find::find_span(&self.buffer, (row, col), target, forward, till, count, true)?;
                 Some(words::WordSpan::Charwise { start, end })
             }
-            CaseMotion::Object { inner, object } => self.object_edit(inner, object, count),
+            CaseMotion::Object { inner, object } => {
+                let count = self.take_count();
+                self.object_edit(inner, object, count)
+            }
+            CaseMotion::GotoLine { last } => {
+                let row = self.cursor.row();
+                let target = self.goto_target(last);
+                let (first, last) = (row.min(target), row.max(target));
+                Some(words::WordSpan::Linewise { first, last })
+            }
             CaseMotion::Lines { upward } => {
+                let count = self.take_count();
                 let max = self.buffer.line_count().saturating_sub(1);
                 let (first, last) = if upward {
                     if row == 0 {
@@ -521,6 +542,31 @@ mod tests {
             motion: CaseMotion::WordForward,
         });
         assert_eq!(editor.register_text(), String::new());
+    }
+
+    #[test]
+    fn toggle_goto_last_line() {
+        let mut editor = editor_with("foo BAR\nbaz");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::GotoLine { last: true },
+        });
+        assert_eq!(editor.text_lines()[0], "FOO bar");
+        assert_eq!(editor.text_lines()[1], "BAZ");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn toggle_goto_first_line() {
+        let mut editor = editor_with("a\nbb\ncc");
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::GotoLine { last: false },
+        });
+        assert_eq!(editor.text_lines()[0], "A");
+        assert_eq!(editor.text_lines()[1], "BB");
+        assert_eq!(editor.text_lines()[2], "CC");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
     }
 
     #[test]

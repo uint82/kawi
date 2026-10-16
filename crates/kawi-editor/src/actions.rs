@@ -87,6 +87,14 @@ pub enum Action {
     DeleteLines,
     YankLines,
     ChangeLines,
+    GotoLastLine,
+    GotoFirstLine,
+    DeleteToLastLine,
+    DeleteToFirstLine,
+    YankToLastLine,
+    YankToFirstLine,
+    ChangeToLastLine,
+    ChangeToFirstLine,
     ToggleCase,
     Lowercase,
     Uppercase,
@@ -184,6 +192,9 @@ pub enum CaseMotion {
     },
     Lines {
         upward: bool,
+    },
+    GotoLine {
+        last: bool,
     },
 }
 
