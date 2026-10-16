@@ -401,6 +401,13 @@ mod tests {
     }
 
     #[test]
+    fn scala_file_uses_two_spaces() {
+        let mut editor = editor_with_path("x", "x.scala");
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "  x");
+    }
+
+    #[test]
     fn manual_expandtab_beats_filetype() {
         let mut editor = editor_with_path("foo", "x.c");
         editor.set_expandtab(true);
