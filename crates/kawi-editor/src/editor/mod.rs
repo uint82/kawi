@@ -305,7 +305,9 @@ impl Editor {
     pub(super) fn begin_sequence(&mut self) {
         if self.operator_count.is_none() {
             let pending = std::mem::replace(&mut self.count_digits, 0);
-            self.operator_count = Some(if pending == 0 { 1 } else { pending });
+            if pending != 0 {
+                self.operator_count = Some(pending);
+            }
         }
     }
 

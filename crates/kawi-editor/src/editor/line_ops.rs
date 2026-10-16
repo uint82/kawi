@@ -3,16 +3,22 @@ use super::Editor;
 impl Editor {
     pub(super) fn delete_touched_lines(&mut self) {
         let (first, last) = self.touched_rows();
-        self.delete_line_range(first, last, self.cursor.col());
+        let (row, col) = self.delete_line_range(first, last, self.cursor.col());
+        self.collapse_to(row, col);
     }
 
-    pub(super) fn delete_line_range(&mut self, first: usize, last: usize, col: usize) {
+    pub(super) fn delete_line_range(
+        &mut self,
+        first: usize,
+        last: usize,
+        col: usize,
+    ) -> (usize, usize) {
         self.remove_lines(first, last);
         let row = first.min(self.buffer.line_count().saturating_sub(1));
         let max = self.buffer.line_len(row).saturating_sub(1);
         let col = col.min(max);
-        self.collapse_to(row, col);
         self.cursor.set_position(row, col);
+        (row, col)
     }
 
     pub(super) fn yank_touched_lines(&mut self) {
@@ -85,6 +91,10 @@ mod tests {
         }
     }
 
+    fn begin_sequence(editor: &mut Editor) {
+        editor.apply(Action::BeginSequence);
+    }
+
     #[test]
     fn delete_to_last_line() {
         let mut editor = editor_with("abcdef\ngh\nijkl");
@@ -133,6 +143,50 @@ mod tests {
         assert_eq!(editor.text_lines(), vec!["a".to_string(), "dd".to_string()]);
         assert_eq!((editor.row(), editor.col()), (1, 0));
         assert_eq!(editor.register_text(), "bb\ncc");
+    }
+
+    #[test]
+    fn delete_to_last_line_from_first_deletes_all() {
+        let mut editor = editor_with("a\nbb\ncc");
+        begin_sequence(&mut editor);
+        editor.apply(Action::DeleteToLastLine);
+        assert_eq!(editor.text_lines(), vec![String::new()]);
+        assert_eq!(editor.line_count(), 1);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+        assert_eq!(editor.selection_range(), None);
+    }
+
+    #[test]
+    fn delete_count_one_to_last_line_targets_first_line() {
+        let mut editor = editor_with("a\nbb\ncc\ndd");
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[1]);
+        editor.apply(Action::DeleteToLastLine);
+        assert_eq!(editor.text_lines()[0], "cc");
+        assert_eq!(editor.text_lines()[1], "dd");
+        assert_eq!(editor.line_count(), 2);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_to_first_line_from_first_keeps_rest() {
+        let mut editor = editor_with("a\nbb\ncc");
+        begin_sequence(&mut editor);
+        editor.apply(Action::DeleteToFirstLine);
+        assert_eq!(editor.text_lines()[0], "bb");
+        assert_eq!(editor.text_lines()[1], "cc");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_count_one_to_first_line() {
+        let mut editor = editor_with("a\nbb\ncc\ndd");
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[1]);
+        editor.apply(Action::DeleteToFirstLine);
+        assert_eq!(editor.text_lines(), vec!["dd".to_string()]);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
     }
 
     #[test]
