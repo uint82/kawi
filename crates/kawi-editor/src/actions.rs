@@ -98,6 +98,15 @@ pub enum Action {
     ShiftRight,
     ShiftLeft,
     Reindent,
+    ShiftRightAt {
+        motion: ShiftMotion,
+    },
+    ShiftLeftAt {
+        motion: ShiftMotion,
+    },
+    ReindentAt {
+        motion: ShiftMotion,
+    },
     ToggleCase,
     Lowercase,
     Uppercase,
@@ -201,6 +210,35 @@ pub enum CaseMotion {
     },
     GotoLine {
         last: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShiftMotion {
+    WordForward,
+    WordBackward,
+    WordEnd,
+    LineEnd,
+    LineStart,
+    Find {
+        target: char,
+        forward: bool,
+        till: bool,
+    },
+    RepeatFind {
+        target: char,
+        forward: bool,
+        till: bool,
+    },
+    Object {
+        inner: bool,
+        object: Object,
+    },
+    GotoLine {
+        last: bool,
+    },
+    Lines {
+        upward: bool,
     },
 }
 

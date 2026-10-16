@@ -842,6 +842,25 @@ mod tests {
     }
 
     #[test]
+    fn vim_normal_shift_word() {
+        let mut app = App::new(Buffer::from_string("foo BAR"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('>'))).expect("shift");
+        app.handle_key(key(KeyCode::Char('w'))).expect("word");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_normal_shift_find() {
+        let mut app = App::new(Buffer::from_string("axbxc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('>'))).expect("shift");
+        app.handle_key(key(KeyCode::Char('f'))).expect("find");
+        app.handle_key(key(KeyCode::Char('x'))).expect("target");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
     fn vim_visual_o_swaps_ends() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");
