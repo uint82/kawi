@@ -350,6 +350,57 @@ impl Buffer {
         (row, col.saturating_add(char_count(fragment)))
     }
 
+    pub fn paste_before(&mut self, row: usize, col: usize, text: &str) -> (usize, usize) {
+        if !text.is_empty() {
+            self.touch();
+        }
+        let fragments: Vec<&str> = text.split('\n').collect();
+        match fragments.as_slice() {
+            [first] => self.paste_single_before(row, col, first),
+            [first, rest @ ..] => self.paste_multiple_before(row, col, first, rest),
+            [] => (row, col),
+        }
+    }
+
+    fn paste_single_before(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
+        self.ensure_line_exists(row);
+        let at = self.position_to_char(row, col);
+        self.rope.insert(at.min(self.rope.len_chars()), fragment);
+        (row, col.saturating_add(char_count(fragment)))
+    }
+
+    fn paste_multiple_before(
+        &mut self,
+        row: usize,
+        col: usize,
+        first: &str,
+        rest: &[&str],
+    ) -> (usize, usize) {
+        self.ensure_line_exists(row);
+        let width = self.line_len(row);
+        let insert_col = col.min(width);
+        let at = self.position_to_char(row, insert_col);
+        let right = self
+            .line(row)
+            .map_or(String::new(), |line| slice_from_col(&line, insert_col));
+        let last = rest.last().copied().unwrap_or("");
+        let mut composed = String::from(first);
+        for part in rest {
+            composed.push('\n');
+            composed.push_str(part);
+        }
+        composed.push_str(&right);
+        let remove_end = at
+            .saturating_add(char_count(&right))
+            .min(self.rope.len_chars());
+        self.rope.remove(at.min(remove_end)..remove_end);
+        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        (
+            row.saturating_add(rest.len()),
+            col.saturating_add(char_count(last)),
+        )
+    }
+
     fn paste_multiple(
         &mut self,
         row: usize,
@@ -734,6 +785,21 @@ mod tests {
         let mut b = Buffer::from_string("aef");
         assert_eq!(b.paste_after(0, 1, "bcd"), (0, 4));
         assert_eq!(b.line(0).as_deref(), Some("aebcdf"));
+    }
+
+    #[test]
+    fn paste_before_inserts_at_position() {
+        let mut b = Buffer::from_string("def");
+        assert_eq!(b.paste_before(0, 0, "abc"), (0, 3));
+        assert_eq!(b.line(0).as_deref(), Some("abcdef"));
+    }
+
+    #[test]
+    fn paste_before_splits_multiple_lines() {
+        let mut b = Buffer::from_string("12");
+        assert_eq!(b.paste_before(0, 1, "ab\nc"), (1, 2));
+        assert_eq!(b.line(0).as_deref(), Some("1ab"));
+        assert_eq!(b.line(1).as_deref(), Some("c2"));
     }
 
     #[test]

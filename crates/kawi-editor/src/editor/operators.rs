@@ -2,6 +2,7 @@ use super::session::InsertEdit;
 use super::Editor;
 use crate::actions::Object;
 use crate::find;
+use crate::mode::Mode;
 use crate::objects;
 use crate::register::RegisterKind;
 use crate::selection::Selection;
@@ -255,13 +256,15 @@ impl Editor {
     pub(super) fn delete_line(&mut self) {
         let count = self.take_count();
         let row = self.cursor.row();
+        let col = self.cursor.col();
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
         self.register.set_lines(self.take_lines(row, last));
         self.drop_lines(row, last);
         let row = row.min(self.buffer.line_count().saturating_sub(1));
-        self.cursor.set_position(row, 0);
+        let max = self.buffer.line_len(row).saturating_sub(1);
+        self.cursor.set_position(row, col.min(max));
     }
 
     fn delete_object_span(&mut self, span: Option<objects::AroundSpan>) -> bool {
@@ -281,9 +284,34 @@ impl Editor {
     }
 
     pub(super) fn delete_selection(&mut self) {
+        if self.mode == Mode::VisualLine {
+            let ((first, _), (last, _)) = self.operator_range();
+            let col = self.cursor.col();
+            self.remove_lines(first, last);
+            let row = first.min(self.buffer.line_count().saturating_sub(1));
+            let max = self.buffer.line_len(row).saturating_sub(1);
+            let col = col.min(max);
+            self.collapse_to(row, col);
+            self.cursor.set_position(row, col);
+            return;
+        }
         let (start, end) = self.operator_range();
         self.remove_range(start, end);
         self.collapse_to(start.0, start.1);
+    }
+
+    pub(super) fn change_selection(&mut self) {
+        if self.mode == Mode::VisualLine {
+            let ((first, _), (last, _)) = self.operator_range();
+            self.exit_visual();
+            self.change_lines(first, last);
+            return;
+        }
+        let (start, end) = self.operator_range();
+        self.remove_range(start, end);
+        self.collapse_to(start.0, start.1);
+        self.exit_visual();
+        self.switch_to_insert();
     }
 
     fn delete_span_lines(&mut self, span: &objects::AroundSpan) {
@@ -457,6 +485,49 @@ impl Editor {
         }
     }
 
+    pub(super) fn paste_over_selection(&mut self) {
+        if self.register.is_empty() {
+            return;
+        }
+        if self.mode == Mode::VisualLine {
+            self.paste_over_lines();
+            return;
+        }
+        let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
+        let put_text = self.register.text().to_string();
+        let put_kind = self.register.kind();
+        self.record_boundary();
+        self.yank_range(start_row, start_col, end_row, end_col);
+        self.buffer
+            .delete_range(start_row, start_col, end_row, end_col);
+        self.cursor.set_position(start_row, start_col);
+        match put_kind {
+            RegisterKind::CharWise => {
+                let (_, _) = self.buffer.paste_before(start_row, start_col, &put_text);
+                self.cursor.set_position(start_row, start_col);
+            }
+            RegisterKind::LineWise => self.paste_lines_split(start_row, start_col, &put_text),
+        }
+    }
+
+    fn paste_over_lines(&mut self) {
+        let ((first, _), (last, _)) = self.operator_range();
+        let put_text = self.register.text().to_string();
+        let put_lines: Vec<String> = put_text.lines().map(str::to_string).collect();
+        self.record_boundary();
+        self.register.set_lines(self.take_lines(first, last));
+        self.buffer.paste_lines_below(last, &put_lines);
+        self.drop_lines(first, last);
+        self.cursor.set_position(first, 0);
+    }
+
+    fn paste_lines_split(&mut self, row: usize, col: usize, text: &str) {
+        let lines: Vec<String> = text.lines().map(str::to_string).collect();
+        self.buffer.insert_newline(row, col);
+        let row = self.buffer.paste_lines_below(row, &lines);
+        self.cursor.set_position(row, 0);
+    }
+
     fn paste_inline(&mut self, count: usize) {
         let text = self.register.text().repeat(count.max(1));
         let (row, col) = self
@@ -562,6 +633,12 @@ impl Editor {
     }
 
     pub(super) fn yank_selection(&mut self) {
+        if self.mode == Mode::VisualLine {
+            let ((first, _), (last, _)) = self.operator_range();
+            self.yank_line_range(first, last);
+            self.cursor.set_position(first, 0);
+            return;
+        }
         let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
         self.yank_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
@@ -1296,6 +1373,17 @@ mod tests {
         e.apply(Action::DeleteLine);
         assert_eq!(e.text_lines().len(), 2);
         assert_eq!(e.text_lines()[1], "c");
+    }
+
+    #[test]
+    fn delete_line_preserves_column() {
+        let mut e = editor_with("abcdef\ngh");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines(), vec!["gh".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 1));
     }
 
     #[test]

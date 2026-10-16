@@ -16,9 +16,31 @@ impl Selection {
         }
     }
 
+    pub fn from_ends(anchor: (usize, usize), head: (usize, usize)) -> Self {
+        Self {
+            anchor_row: anchor.0,
+            anchor_col: anchor.1,
+            head_row: head.0,
+            head_col: head.1,
+        }
+    }
+
     pub fn set_head(&mut self, row: usize, col: usize) {
         self.head_row = row;
         self.head_col = col;
+    }
+
+    pub fn anchor(&self) -> (usize, usize) {
+        (self.anchor_row, self.anchor_col)
+    }
+
+    pub fn head(&self) -> (usize, usize) {
+        (self.head_row, self.head_col)
+    }
+
+    pub fn swap_ends(&mut self) {
+        std::mem::swap(&mut self.anchor_row, &mut self.head_row);
+        std::mem::swap(&mut self.anchor_col, &mut self.head_col);
     }
 
     pub fn start(&self) -> (usize, usize) {

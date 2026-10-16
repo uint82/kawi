@@ -97,7 +97,7 @@ impl Keymap for HelixKeymap {
             Mode::Insert => self.map_insert(key),
             Mode::Command => map_command_mode(key),
             Mode::Search => map_search_mode(key),
-            Mode::Normal | Mode::Visual => self.map_select(key, mode),
+            Mode::Normal | Mode::Visual | Mode::VisualLine => self.map_select(key, mode),
         }
     }
 

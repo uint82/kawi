@@ -72,6 +72,42 @@ fn paragraph_span(
     Some((start as usize, end as usize))
 }
 
+pub fn paragraph_step(buffer: &Buffer, row: usize, forward: bool, include: bool) -> usize {
+    let last = buffer.line_count().saturating_sub(1) as isize;
+    let edge = if forward { last } else { 0 };
+    let mut line = row as isize;
+    if line == edge {
+        return row;
+    }
+    let dir = if forward { 1 } else { -1 };
+    let mut prev_white: Option<bool> = None;
+    for _ in 0..2 {
+        line += dir;
+        let white = line_blank(buffer, line);
+        if prev_white == Some(white) {
+            line -= dir;
+            break;
+        }
+        loop {
+            if line == edge {
+                break;
+            }
+            if white != line_blank(buffer, line + dir) {
+                break;
+            }
+            line += dir;
+        }
+        if !include {
+            break;
+        }
+        if line == edge {
+            break;
+        }
+        prev_white = Some(white);
+    }
+    line as usize
+}
+
 fn line_blank(buffer: &Buffer, row: isize) -> bool {
     if row < 0 {
         return false;

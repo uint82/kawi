@@ -137,6 +137,15 @@ impl Editor {
             Action::YankAroundWord => self.yank_around_word(),
             Action::DeleteSelection => self.delete_selection(),
             Action::YankSelection => self.yank_selection(),
+            Action::PasteOverSelection => self.paste_over_selection(),
+            Action::ChangeSelection => self.change_selection(),
+            Action::EnterVisual => self.enter_visual(),
+            Action::EnterVisualLine => self.enter_visual_line(),
+            Action::ExitVisual => self.exit_visual(),
+            Action::SwapSelectionEnds => self.swap_selection_ends(),
+            Action::SelectInnerWord => self.select_inner_word(),
+            Action::SelectAroundWord => self.select_around_word(),
+            Action::SelectObject { inner, object } => self.select_object(inner, object),
             Action::YankLine => self.yank_lines(),
             Action::YankToEnd => self.yank_to_end(),
             Action::DeleteToEnd => self.delete_to_end(),
@@ -159,8 +168,6 @@ impl Editor {
             Action::InsertBeforeSelection => self.insert_before_selection(),
             Action::InsertAfterSelection => self.insert_after_selection(),
             Action::CollapseSelection => self.collapse_selection(),
-            Action::EnterVisual => self.enter_visual(),
-            Action::ExitVisual => self.exit_visual(),
             Action::JumpTo(row, col) => self.jump_to(row, col),
             Action::EnterCommand => self.enter_command(),
             Action::PushCommandChar(c) => self.push_command_char(c),
@@ -233,7 +240,7 @@ impl Editor {
 
     pub(super) fn max_col_for_row(&self, row: usize) -> usize {
         let width = self.line_width(row);
-        if self.mode.is_insert() {
+        if self.mode.is_insert() || self.mode.is_visual() {
             width
         } else {
             width.saturating_sub(1)
@@ -315,6 +322,11 @@ impl Editor {
         self.register.kind()
     }
 
+    #[cfg(test)]
+    pub fn register_text(&self) -> String {
+        self.register.text().to_string()
+    }
+
     pub fn row(&self) -> usize {
         self.cursor.row()
     }
@@ -348,9 +360,13 @@ impl Editor {
     }
 
     pub fn selection_range(&self) -> Option<((usize, usize), (usize, usize))> {
-        self.selection
-            .as_ref()
-            .map(|selection| (selection.start(), selection.end()))
+        let selection = self.selection.as_ref()?;
+        if self.mode != Mode::VisualLine {
+            return Some((selection.start(), selection.end()));
+        }
+        let ((start_row, _), (end_row, _)) = (selection.start(), selection.end());
+        let end_col = self.buffer.line_len(end_row);
+        Some(((start_row, 0), (end_row, end_col)))
     }
 
     #[cfg(test)]
@@ -383,6 +399,8 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart
             | Action::MoveToNextWordEnd
+            | Action::FindChar { .. }
+            | Action::RepeatFind { .. }
             | Action::JumpTo(_, _)
     )
 }

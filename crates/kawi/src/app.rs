@@ -493,7 +493,10 @@ fn save_report(filename: &str, line_count: usize, byte_count: usize) -> String {
 }
 
 fn is_operator(action: Action) -> bool {
-    matches!(action, Action::DeleteSelection | Action::YankSelection)
+    matches!(
+        action,
+        Action::DeleteSelection | Action::YankSelection | Action::PasteOverSelection
+    )
 }
 
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {
@@ -554,6 +557,44 @@ mod tests {
         app.handle_mouse(drag(4, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+    }
+
+    #[test]
+    fn vim_visual_c_enters_insert() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('c'))).expect("change");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.editor_selection(), None);
+        app.handle_key(key(KeyCode::Char('X'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_line_toggle() {
+        let mut app = App::new(Buffer::from_string("a\nb\nc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("linewise");
+        assert_eq!(app.editor_mode(), Mode::VisualLine);
+        app.handle_key(key(KeyCode::Char('j'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('V'))).expect("exit");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_visual_o_swaps_ends() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('o'))).expect("swap");
+        assert_eq!(app.editor_mode(), Mode::Visual);
+        assert_eq!(app.cursor_position(), (0, 0));
+        assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
     }
 
     #[test]
