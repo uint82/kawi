@@ -377,6 +377,7 @@ impl App {
             Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::SetTheme(name) => self.switch_theme(&name),
             Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
+            Command::SetExpandTab(expandtab) => self.switch_expandtab(expandtab),
             Command::Unknown => Ok(false),
         }
     }
@@ -395,6 +396,11 @@ impl App {
 
     fn switch_shiftwidth(&mut self, width: usize) -> Result<bool> {
         self.editor.set_shiftwidth(width);
+        Ok(false)
+    }
+
+    fn switch_expandtab(&mut self, expandtab: bool) -> Result<bool> {
+        self.editor.set_expandtab(expandtab);
         Ok(false)
     }
 

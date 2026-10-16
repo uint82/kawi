@@ -1,6 +1,5 @@
 use super::Editor;
-
-const TAB_STOP: usize = 8;
+use crate::editor::indent::IndentConfig;
 
 #[derive(Clone, Copy)]
 enum Shift {
@@ -33,61 +32,66 @@ impl Editor {
             };
             (row, last)
         };
+        let indent = self.effective_indent();
         let screen = self
             .buffer
-            .screen_col(self.cursor.row(), self.cursor.col(), TAB_STOP);
+            .screen_col(self.cursor.row(), self.cursor.col(), indent.tabstop);
         if self.shift_affects(first, last, shift) {
             self.record_boundary();
             for row in first..=last {
                 match shift {
-                    Shift::Right => self.shift_row(row, true),
-                    Shift::Left => self.shift_row(row, false),
+                    Shift::Right => self.shift_row(row, true, &indent),
+                    Shift::Left => self.shift_row(row, false, &indent),
                     Shift::Reindent => self.buffer.set_indent(row, ""),
                 }
             }
         }
-        self.place_shift_cursor(first, screen);
+        self.place_shift_cursor(first, screen, indent.tabstop);
     }
 
     fn shift_affects(&self, first: usize, last: usize, shift: Shift) -> bool {
+        let tabstop = self.effective_indent().tabstop;
         (first..=last).any(|row| match shift {
             Shift::Right => self.buffer.line_len(row) != 0,
-            Shift::Left => self.buffer.indent_width(row, TAB_STOP) != 0,
+            Shift::Left => self.buffer.indent_width(row, tabstop) != 0,
             Shift::Reindent => self.buffer.indent_end(row) != 0,
         })
     }
 
-    fn shift_row(&mut self, row: usize, right: bool) {
+    fn shift_row(&mut self, row: usize, right: bool, indent: &IndentConfig) {
         if self.buffer.line_len(row) == 0 {
             return;
         }
-        let width = self.buffer.indent_width(row, TAB_STOP);
-        let amount = self.shift_amount();
+        let width = self.buffer.indent_width(row, indent.tabstop);
+        let amount = if indent.shiftwidth == 0 {
+            indent.tabstop
+        } else {
+            indent.shiftwidth
+        };
         let indented = if right {
             width + amount
         } else {
             width.saturating_sub(amount)
         };
-        self.buffer.set_indent(row, &canonical_indent(indented));
+        self.buffer.set_indent(
+            row,
+            &canonical_indent(indented, indent.expandtab, indent.tabstop),
+        );
     }
 
-    fn shift_amount(&self) -> usize {
-        if self.shiftwidth == 0 {
-            TAB_STOP
-        } else {
-            self.shiftwidth
-        }
-    }
-
-    fn place_shift_cursor(&mut self, row: usize, screen: usize) {
+    fn place_shift_cursor(&mut self, row: usize, screen: usize, tabstop: usize) {
         let row = row.min(self.buffer.line_count().saturating_sub(1));
-        let col = self.buffer.char_col(row, screen, TAB_STOP);
+        let col = self.buffer.char_col(row, screen, tabstop);
         self.cursor.set_position(row, col);
     }
 }
 
-fn canonical_indent(width: usize) -> String {
-    "\t".repeat(width / TAB_STOP) + &" ".repeat(width % TAB_STOP)
+fn canonical_indent(width: usize, expandtab: bool, tabstop: usize) -> String {
+    if expandtab {
+        return " ".repeat(width);
+    }
+    let tabstop = tabstop.max(1);
+    "\t".repeat(width / tabstop) + &" ".repeat(width % tabstop)
 }
 
 #[cfg(test)]
@@ -99,6 +103,12 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn editor_with_path(text: &str, path: &str) -> Editor {
+        let mut buffer = Buffer::from_string(text);
+        buffer.path = Some(path.to_string());
+        Editor::new(buffer)
     }
 
     fn push_digits(editor: &mut Editor, digits: &[u8]) {
@@ -314,6 +324,16 @@ mod tests {
     }
 
     #[test]
+    fn shift_undoes_together() {
+        let mut editor = editor_with("a\nb");
+        push_digits(&mut editor, &[2]);
+        editor.apply(Action::ShiftRight);
+        editor.apply(Action::Undo);
+        assert_eq!(editor.text_lines()[0], "a");
+        assert_eq!(editor.text_lines()[1], "b");
+    }
+
+    #[test]
     fn shift_width_four_spaces() {
         let mut editor = editor_with("  foo");
         editor.set_shiftwidth(4);
@@ -352,12 +372,39 @@ mod tests {
     }
 
     #[test]
-    fn shift_undoes_together() {
-        let mut editor = editor_with("a\nb");
-        push_digits(&mut editor, &[2]);
+    fn python_file_uses_four_spaces() {
+        let mut editor = editor_with_path("foo", "x.py");
         editor.apply(Action::ShiftRight);
-        editor.apply(Action::Undo);
-        assert_eq!(editor.text_lines()[0], "a");
-        assert_eq!(editor.text_lines()[1], "b");
+        assert_eq!(editor.text_lines()[0], "    foo");
+    }
+
+    #[test]
+    fn go_file_uses_tabs() {
+        let mut editor = editor_with_path("foo", "x.go");
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "\tfoo");
+    }
+
+    #[test]
+    fn yaml_file_uses_two_spaces() {
+        let mut editor = editor_with_path("k: v", "x.yaml");
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "  k: v");
+    }
+
+    #[test]
+    fn manual_shiftwidth_beats_filetype() {
+        let mut editor = editor_with_path("foo", "x.py");
+        editor.set_shiftwidth(2);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "  foo");
+    }
+
+    #[test]
+    fn manual_expandtab_beats_filetype() {
+        let mut editor = editor_with_path("foo", "x.c");
+        editor.set_expandtab(true);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "        foo");
     }
 }
