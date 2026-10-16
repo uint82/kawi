@@ -500,7 +500,6 @@ fn is_operator(action: Action) -> bool {
             | Action::PasteOverSelection
             | Action::DeleteLines
             | Action::YankLines
-            | Action::ChangeLines
             | Action::ToggleCase
             | Action::Lowercase
             | Action::Uppercase
@@ -580,6 +579,46 @@ mod tests {
         app.handle_key(key(KeyCode::Esc)).expect("escape");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_capital_c_enters_insert() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('C'))).expect("change");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_visual_line_capital_c_enters_insert() {
+        let mut app = App::new(Buffer::from_string("abc\ndef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("linewise");
+        app.handle_key(key(KeyCode::Char('C'))).expect("change");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_visual_capital_s_enters_insert() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('S'))).expect("substitute");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_visual_line_capital_s_enters_insert() {
+        let mut app = App::new(Buffer::from_string("abc\ndef"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("linewise");
+        app.handle_key(key(KeyCode::Char('S'))).expect("substitute");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.editor_selection(), None);
     }
 
     #[test]

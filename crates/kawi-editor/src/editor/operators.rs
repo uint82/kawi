@@ -81,7 +81,7 @@ impl Editor {
             return;
         };
         self.record_boundary();
-        self.yank_to_end();
+        self.yank_range(tail.0, tail.1, tail.2, tail.3);
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
         self.cursor.set_position(tail.0, tail.1);
         self.switch_to_insert();
@@ -336,8 +336,12 @@ impl Editor {
         let Some(tail) = self.line_tail(count) else {
             return;
         };
+        if tail.2 > tail.0 && tail.1 <= self.first_non_blank_of(tail.0) {
+            self.delete_line_range(tail.0, tail.2, tail.1);
+            return;
+        }
         self.record_boundary();
-        self.yank_to_end();
+        self.yank_range(tail.0, tail.1, tail.2, tail.3);
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
         let col = tail.1.min(self.max_col_for_row(tail.0));
         self.cursor.set_position(tail.0, col);
@@ -373,7 +377,7 @@ impl Editor {
         self.apply_span(span, false);
     }
 
-    fn first_non_blank_of(&self, row: usize) -> usize {
+    pub(super) fn first_non_blank_of(&self, row: usize) -> usize {
         self.buffer
             .line(row)
             .map_or(0, |line| kawi_buffer::first_non_blank(&line))
@@ -1391,6 +1395,65 @@ mod tests {
         e.apply(Action::DeleteToEnd);
         e.apply(Action::Undo);
         assert_eq!(e.text_lines()[0], "");
+    }
+
+    #[test]
+    fn delete_to_end_count_from_line_start_upgrades_linewise() {
+        let mut e = editor_with("abcdef\nghijkl");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_text(), "abcdef\nghijkl");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn delete_to_end_count_mid_stays_charwise() {
+        let mut e = editor_with("abcdef\nghijkl");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.text_lines(), vec!["abc".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.register_text(), "def\nghijkl");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn delete_to_end_count_at_indent_edge_upgrades_linewise() {
+        let mut e = editor_with("  abc\ndef");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteToEnd);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn change_to_end_count_from_start_stays_charwise() {
+        let mut e = editor_with("abcdef\ngh");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ChangeToEnd);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines(), vec!["X".to_string()]);
+        assert_eq!(e.register_text(), "abcdef\ngh");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn yank_to_end_count_from_start_stays_charwise() {
+        let mut e = editor_with("abcdef\ngh");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::YankToEnd);
+        assert_eq!(e.text_lines(), vec!["abcdef".to_string(), "gh".to_string()]);
+        assert_eq!(e.register_text(), "abcdef\ngh");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
     }
 
     #[test]

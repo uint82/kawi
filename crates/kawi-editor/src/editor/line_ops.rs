@@ -3,7 +3,10 @@ use super::Editor;
 impl Editor {
     pub(super) fn delete_touched_lines(&mut self) {
         let (first, last) = self.touched_rows();
-        let col = self.cursor.col();
+        self.delete_line_range(first, last, self.cursor.col());
+    }
+
+    pub(super) fn delete_line_range(&mut self, first: usize, last: usize, col: usize) {
         self.remove_lines(first, last);
         let row = first.min(self.buffer.line_count().saturating_sub(1));
         let max = self.buffer.line_len(row).saturating_sub(1);
