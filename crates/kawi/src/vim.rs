@@ -19,6 +19,9 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("d$", Action::DeleteToEnd),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
+    (">>", Action::ShiftRight),
+    ("<<", Action::ShiftLeft),
+    ("==", Action::Reindent),
     ("diw", Action::DeleteInnerWord),
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
@@ -208,6 +211,9 @@ impl VimKeymap {
             KeyCode::Char('d') => self.arm_operator(key, 'd'),
             KeyCode::Char('c') => self.arm_operator(key, 'c'),
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
+            KeyCode::Char('>') => self.arm_operator(key, '>'),
+            KeyCode::Char('<') => self.arm_operator(key, '<'),
+            KeyCode::Char('=') => self.arm_operator(key, '='),
             KeyCode::Char('g') => self.arm_case_operator(key),
             KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char(':') => self.arm_command(key),
@@ -658,6 +664,9 @@ impl VimKeymap {
             KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLines),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeLines),
             KeyCode::Char('S') => self.map_plain_or_noop(key, Action::ChangeLines),
+            KeyCode::Char('>') => self.map_plain_or_noop(key, Action::ShiftRight),
+            KeyCode::Char('<') => self.map_plain_or_noop(key, Action::ShiftLeft),
+            KeyCode::Char('=') => self.map_plain_or_noop(key, Action::Reindent),
             KeyCode::Char('~') => self.map_plain_or_noop(key, Action::ToggleCase),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Lowercase),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Uppercase),
@@ -786,6 +795,18 @@ impl VimKeymap {
         if matches!(pushed, 'C' | 'S') && self.only_digits_pending() {
             self.clear_pending();
             return Action::ChangeLines;
+        }
+        if matches!(pushed, '>' | '<') && self.only_digits_pending() {
+            self.clear_pending();
+            return if pushed == '>' {
+                Action::ShiftRight
+            } else {
+                Action::ShiftLeft
+            };
+        }
+        if pushed == '=' && self.only_digits_pending() {
+            self.clear_pending();
+            return Action::Reindent;
         }
         if matches!(pushed, '~' | 'u' | 'U') && self.only_digits_pending() {
             self.clear_pending();
@@ -2525,6 +2546,68 @@ mod tests {
         }
         assert_eq!(editor.visible_lines(0, 2), vec!["bxc".to_string()]);
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn shift_sequences_resolve() {
+        assert_eq!(sequence_action(">>"), Some(Action::ShiftRight));
+        assert_eq!(sequence_action("<<"), Some(Action::ShiftLeft));
+        assert_eq!(sequence_action("=="), Some(Action::Reindent));
+        assert!(is_sequence_prefix(">"));
+        assert!(is_sequence_prefix("<"));
+        assert!(is_sequence_prefix("="));
+    }
+
+    #[test]
+    fn shift_count_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Normal),
+            Action::ShiftRight
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn visual_shift_maps() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Visual),
+            Action::ShiftRight
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('<')), Mode::Visual),
+            Action::ShiftLeft
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('=')), Mode::Visual),
+            Action::Reindent
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::VisualLine),
+            Action::ShiftRight
+        );
+    }
+
+    #[test]
+    fn visual_shift_count_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Visual),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Visual),
+            Action::ShiftRight
+        );
     }
 
     #[test]

@@ -16,6 +16,7 @@ mod motions;
 mod operators;
 mod search_mode;
 mod session;
+mod shift_ops;
 
 use session::InsertEdit;
 
@@ -160,6 +161,9 @@ impl Editor {
             Action::YankToFirstLine => self.yank_to_first_line(),
             Action::ChangeToLastLine => self.change_to_last_line(),
             Action::ChangeToFirstLine => self.change_to_first_line(),
+            Action::ShiftRight => self.shift_right(),
+            Action::ShiftLeft => self.shift_left(),
+            Action::Reindent => self.reindent(),
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
             Action::ExitVisual => self.exit_visual(),
