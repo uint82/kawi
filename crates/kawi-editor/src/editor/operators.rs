@@ -328,7 +328,7 @@ impl Editor {
         self.buffer.lines_text(first, last)
     }
 
-    fn drop_lines(&mut self, first: usize, last: usize) {
+    pub(super) fn drop_lines(&mut self, first: usize, last: usize) {
         self.buffer.delete_lines(first, last);
     }
 

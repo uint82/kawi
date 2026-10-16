@@ -42,6 +42,10 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("d^", Action::DeleteToFirstNonBlank),
     ("d$", Action::DeleteToEnd),
     ("d%", Action::DeleteToMatch),
+    ("d(", Action::DeleteToPrevSentence),
+    ("d)", Action::DeleteToNextSentence),
+    ("d{", Action::DeleteToPrevParagraph),
+    ("d}", Action::DeleteToNextParagraph),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
     ("dH", Action::DeleteToViewportTop),
@@ -60,6 +64,10 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("c^", Action::ChangeToFirstNonBlank),
     ("c$", Action::ChangeToEnd),
     ("c%", Action::ChangeToMatch),
+    ("c(", Action::ChangeToPrevSentence),
+    ("c)", Action::ChangeToNextSentence),
+    ("c{", Action::ChangeToPrevParagraph),
+    ("c}", Action::ChangeToNextParagraph),
     ("cG", Action::ChangeToLastLine),
     ("cgg", Action::ChangeToFirstLine),
     ("cH", Action::ChangeToViewportTop),
@@ -73,6 +81,10 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("y^", Action::YankToFirstNonBlank),
     ("y$", Action::YankToEnd),
     ("y%", Action::YankToMatch),
+    ("y(", Action::YankToPrevSentence),
+    ("y)", Action::YankToNextSentence),
+    ("y{", Action::YankToPrevParagraph),
+    ("y}", Action::YankToNextParagraph),
     ("yG", Action::YankToLastLine),
     ("ygg", Action::YankToFirstLine),
     ("yH", Action::YankToViewportTop),
@@ -106,7 +118,7 @@ fn arms_pending(pushed: char) -> bool {
 fn is_visual_motion_key(pushed: char) -> bool {
     matches!(
         pushed,
-        'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$' | '^' | '%'
+        'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$' | '^' | '%' | '(' | ')' | '{' | '}'
     )
 }
 
@@ -246,6 +258,10 @@ impl VimKeymap {
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
+            KeyCode::Char('(') => self.map_plain_or_noop(key, Action::MoveToPrevSentence),
+            KeyCode::Char(')') => self.map_plain_or_noop(key, Action::MoveToNextSentence),
+            KeyCode::Char('{') => self.map_plain_or_noop(key, Action::MoveToPrevParagraph),
+            KeyCode::Char('}') => self.map_plain_or_noop(key, Action::MoveToNextParagraph),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('+') => self.map_plain_or_noop(key, Action::MoveToNextLineStart),
             KeyCode::Char('-') => self.map_plain_or_noop(key, Action::MoveToPrevLineStart),
@@ -932,6 +948,10 @@ impl VimKeymap {
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
+            KeyCode::Char('(') => self.map_plain_or_noop(key, Action::MoveToPrevSentence),
+            KeyCode::Char(')') => self.map_plain_or_noop(key, Action::MoveToNextSentence),
+            KeyCode::Char('{') => self.map_plain_or_noop(key, Action::MoveToPrevParagraph),
+            KeyCode::Char('}') => self.map_plain_or_noop(key, Action::MoveToNextParagraph),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
@@ -3650,6 +3670,57 @@ mod tests {
             map.map(plain(KeyCode::Char('^')), Mode::Visual),
             Action::MoveToFirstNonBlank
         );
+    }
+
+    #[test]
+    fn statement_motions_and_operators_map() {
+        for (key, action) in [
+            ('(', Action::MoveToPrevSentence),
+            (')', Action::MoveToNextSentence),
+            ('{', Action::MoveToPrevParagraph),
+            ('}', Action::MoveToNextParagraph),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
+        }
+        for (keys, action) in [
+            ("d(", Action::DeleteToPrevSentence),
+            ("d)", Action::DeleteToNextSentence),
+            ("d{", Action::DeleteToPrevParagraph),
+            ("d}", Action::DeleteToNextParagraph),
+            ("c(", Action::ChangeToPrevSentence),
+            ("c)", Action::ChangeToNextSentence),
+            ("c{", Action::ChangeToPrevParagraph),
+            ("c}", Action::ChangeToNextParagraph),
+            ("y(", Action::YankToPrevSentence),
+            ("y)", Action::YankToNextSentence),
+            ("y{", Action::YankToPrevParagraph),
+            ("y}", Action::YankToNextParagraph),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut resolved = Action::Noop;
+            for key in keys.chars() {
+                resolved = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            }
+            assert_eq!(resolved, action);
+            assert_eq!(map.pending_text(), None);
+        }
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('}')), Mode::Normal),
+            Action::DeleteToNextParagraph
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]

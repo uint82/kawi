@@ -515,9 +515,7 @@ impl Editor {
             changed = true;
         }
         if changed {
-            let undone = self.last_change.take();
-            self.undone_change = undone;
-            self.last_change = Some(RepeatChange::Undo);
+            self.undone_change = self.last_change.clone();
         }
         changed
     }

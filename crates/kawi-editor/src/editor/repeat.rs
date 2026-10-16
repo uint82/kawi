@@ -23,6 +23,10 @@ pub(super) fn is_insert_entry(action: Action) -> bool {
             | Action::ChangeToViewportMiddle
             | Action::ChangeToViewportBottom
             | Action::ChangeToMatch
+            | Action::ChangeToNextSentence
+            | Action::ChangeToPrevSentence
+            | Action::ChangeToNextParagraph
+            | Action::ChangeToPrevParagraph
             | Action::ChangeWord
             | Action::ChangeWordEnd
             | Action::ChangeObject { .. }
@@ -48,7 +52,6 @@ pub(super) enum RepeatChange {
         head: (usize, usize),
         record: Vec<InsertEdit>,
     },
-    Undo,
 }
 
 impl Editor {
@@ -71,9 +74,6 @@ impl Editor {
                 head,
                 record,
             } => self.repeat_visual(action, anchor, head, &record),
-            RepeatChange::Undo => {
-                self.undo();
-            }
         }
     }
 
@@ -353,12 +353,12 @@ mod tests {
     }
 
     #[test]
-    fn repeat_undo_redoes_undo() {
+    fn repeat_after_undo_reapplies_change() {
         let mut editor = editor_with("a\nb");
         editor.apply(Action::DeleteLine);
         editor.apply(Action::Undo);
         editor.apply(Action::RepeatLastChange);
-        assert_eq!(editor.text_lines(), vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(editor.text_lines(), vec!["b".to_string()]);
     }
 
     #[test]
