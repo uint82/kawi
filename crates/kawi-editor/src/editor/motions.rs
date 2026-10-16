@@ -92,6 +92,14 @@ impl Editor {
         self.cursor.move_to_line_start(self.cursor.row());
     }
 
+    pub(super) fn move_to_first_non_blank(&mut self) {
+        self.track_insert_move();
+        let _ = self.take_count();
+        let row = self.cursor.row();
+        let target = self.caret_target(row).min(self.max_col_for_row(row));
+        self.cursor.set_position(row, target);
+    }
+
     pub(super) fn move_to_next_line_start(&mut self) {
         let count = self.take_count();
         let mut row = self.cursor.row();
