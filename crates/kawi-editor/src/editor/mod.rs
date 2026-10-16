@@ -14,6 +14,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 mod case_ops;
 mod indent;
 mod line_ops;
+mod match_ops;
 mod motions;
 mod operators;
 mod repeat;
@@ -99,6 +100,10 @@ impl Editor {
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
+            Action::MoveToMatch => self.move_to_match(),
+            Action::DeleteToMatch => self.delete_match(),
+            Action::YankToMatch => self.yank_match(),
+            Action::ChangeToMatch => self.change_match(),
             Action::PlaceCenter => self.place_center(),
             Action::PlaceTop => self.place_top(),
             Action::PlaceBottom => self.place_bottom(),
@@ -438,6 +443,14 @@ impl Editor {
         operator.saturating_mul(pending).min(999_999_999)
     }
 
+    pub(super) fn has_post_digits(&self) -> bool {
+        self.count_digits != 0
+    }
+
+    pub(super) fn take_count0(&mut self) -> usize {
+        std::mem::replace(&mut self.count_digits, 0)
+    }
+
     pub(super) fn clear_count(&mut self) {
         self.count_digits = 0;
         self.operator_count = None;
@@ -542,6 +555,7 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToViewportTop
             | Action::MoveToViewportMiddle
             | Action::MoveToViewportBottom
+            | Action::MoveToMatch
             | Action::MoveToLineEnd
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart

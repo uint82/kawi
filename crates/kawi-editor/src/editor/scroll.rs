@@ -21,6 +21,57 @@ impl Editor {
         self.viewport.ensure_visible(self.cursor.row());
     }
 
+    pub(super) fn reveal_jump(&mut self) {
+        let row = self.cursor.row();
+        let top = self.viewport.top();
+        let height = self.view_height();
+        if row >= top && row < top.saturating_add(height) {
+            return;
+        }
+        if row < top {
+            self.reveal_above(row);
+        } else {
+            self.reveal_below(row, height);
+        }
+    }
+
+    fn reveal_above(&mut self, row: usize) {
+        let under = self.viewport.top().saturating_sub(row);
+        let top = if under < self.half_height() {
+            row
+        } else {
+            row.saturating_sub(self.center_offset())
+        };
+        self.viewport.place_top(top, self.buffer.line_count());
+    }
+
+    fn reveal_below(&mut self, row: usize, height: usize) {
+        let over = row.saturating_sub(self.viewport.top().saturating_add(height));
+        let top = if over <= self.half_height() {
+            row.saturating_sub(height.saturating_sub(1))
+        } else if over <= height {
+            row.saturating_sub(height / 2)
+        } else {
+            row.saturating_sub(self.center_offset())
+        };
+        if top > self.max_top() {
+            self.viewport.place_top(
+                row.saturating_sub(height.saturating_sub(1)),
+                self.buffer.line_count(),
+            );
+            return;
+        }
+        self.viewport.place_top(top, self.buffer.line_count());
+    }
+
+    fn half_height(&self) -> usize {
+        (self.view_height() / 2).saturating_sub(1).max(2)
+    }
+
+    fn center_offset(&self) -> usize {
+        self.view_height().saturating_sub(1) / 2
+    }
+
     pub fn scroll_wheel(&mut self, delta: isize) {
         self.viewport.scroll_lines(delta, self.buffer.line_count());
         let row = self.cursor.row().clamp(

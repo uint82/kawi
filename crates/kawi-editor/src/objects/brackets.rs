@@ -83,7 +83,7 @@ fn exclude_brackets(
 }
 
 // TODO(objects): skip brackets inside quotes like vim smartmatch.
-fn find_open_backward(
+pub(crate) fn find_open_backward(
     buffer: &Buffer,
     row: usize,
     col: usize,
@@ -132,7 +132,7 @@ fn find_open_forward(
     }
 }
 
-fn find_close_forward(
+pub(crate) fn find_close_forward(
     buffer: &Buffer,
     row: usize,
     col: usize,
