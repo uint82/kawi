@@ -113,8 +113,7 @@ impl Editor {
         if col == 0 {
             return self.remove_lines(first, last.saturating_sub(1));
         }
-        let (end, _) = dec_pos(&self.buffer, last, col);
-        self.remove_range((first, col), end);
+        self.delete_percent_span(first, last, col);
     }
 
     fn yank_percent_line(&mut self) {
@@ -133,9 +132,7 @@ impl Editor {
             self.cursor.set_position(first, col);
             return;
         }
-        let (end, _) = dec_pos(&self.buffer, last, col);
-        self.yank_range(first, col, end.0, end.1);
-        self.cursor.set_position(first, col);
+        self.yank_percent_span(first, last, col);
     }
 
     fn change_percent_line(&mut self) {
@@ -152,9 +149,28 @@ impl Editor {
         if col == 0 {
             return self.change_lines(first, last.saturating_sub(1));
         }
-        let (end, _) = dec_pos(&self.buffer, last, col);
-        self.remove_range((first, col), end);
+        self.delete_percent_span(first, last, col);
         self.switch_to_insert();
+    }
+
+    fn delete_percent_span(&mut self, first: usize, last: usize, col: usize) {
+        let end = self.percent_span_end(last, col);
+        self.remove_range((first, col), end);
+    }
+
+    fn yank_percent_span(&mut self, first: usize, last: usize, col: usize) {
+        let end = self.percent_span_end(last, col);
+        self.yank_range(first, col, end.0, end.1);
+        self.cursor.set_position(first, col);
+    }
+
+    fn percent_span_end(&self, last: usize, col: usize) -> (usize, usize) {
+        if col > self.buffer.line_len(last) {
+            let prev = last.saturating_sub(1);
+            return (prev, self.buffer.line_len(prev).saturating_sub(1));
+        }
+        let (end, _) = dec_pos(&self.buffer, last, col);
+        end
     }
 
     fn percent_line(&self, count: usize) -> Option<usize> {
@@ -441,6 +457,31 @@ mod tests {
         assert_eq!(e.text_lines()[1], "    line 5");
         assert_eq!((e.row(), e.col()), (1, 8));
         assert_eq!(e.register_text(), " 2\n    line 3\n    line 4\n    line");
+    }
+
+    #[test]
+    fn delete_percent_span_ending_on_empty_line_keeps_split() {
+        let mut e = editor_with("def function_1():\n    a = 1\n    b = 2\n\n    c = 3");
+        e.apply(Action::JumpTo(0, 4));
+        push_digits(&mut e, &[8, 0]);
+        e.apply(Action::DeleteToMatch);
+        assert_eq!(
+            e.text_lines(),
+            vec!["def ".to_string(), "".to_string(), "    c = 3".to_string()]
+        );
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.register_text(), "function_1():\n    a = 1\n    b = 2");
+    }
+
+    #[test]
+    fn yank_percent_span_ending_on_empty_line_keeps_split() {
+        let mut e = editor_with("def function_1():\n    a = 1\n    b = 2\n\n    c = 3");
+        e.apply(Action::JumpTo(0, 4));
+        push_digits(&mut e, &[8, 0]);
+        e.apply(Action::YankToMatch);
+        assert_eq!(e.register_text(), "function_1():\n    a = 1\n    b = 2");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!(e.text_lines().len(), 5);
     }
 
     #[test]
