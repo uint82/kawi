@@ -146,6 +146,21 @@ mod tests {
     }
 
     #[test]
+    fn delete_many_lines_pastes_back() {
+        let text = (0..500)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut editor = editor_with(&text);
+        editor.apply(Action::DeleteToLastLine);
+        assert_eq!(editor.line_count(), 1);
+        assert_eq!(editor.register_text(), text);
+        editor.apply(Action::PasteAfter);
+        assert_eq!(editor.line_count(), 500);
+        assert_eq!(editor.text_lines()[499], "line 499");
+    }
+
+    #[test]
     fn delete_to_last_line_from_first_deletes_all() {
         let mut editor = editor_with("a\nbb\ncc");
         begin_sequence(&mut editor);

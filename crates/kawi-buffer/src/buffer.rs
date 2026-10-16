@@ -251,6 +251,12 @@ impl Buffer {
     }
 
     pub fn paste_lines_below(&mut self, row: usize, lines: &[String]) -> usize {
+        if self.rope.len_chars() == 0 {
+            let composed = lines.join("\n");
+            self.rope.insert(0, &composed);
+            self.touch();
+            return 0;
+        }
         let row = row.min(self.len().saturating_sub(1));
         let at = self.line_end_char(row);
         let mut composed = String::new();
@@ -314,6 +320,39 @@ impl Buffer {
         self.rope.remove(start..end);
         self.rope.insert(start, &mapped);
         self.touch();
+    }
+
+    pub fn lines_text(&self, first: usize, last: usize) -> String {
+        if first >= self.len() {
+            return String::new();
+        }
+        let last = last.min(self.len().saturating_sub(1));
+        if first > last {
+            return String::new();
+        }
+        let start = self.line_start_char(first);
+        let end = self.position_to_char(last, self.line_len(last));
+        self.rope.slice(start..end.max(start)).to_string()
+    }
+
+    pub fn delete_lines(&mut self, first: usize, last: usize) {
+        if first >= self.len() {
+            return;
+        }
+        let last = last.min(self.len().saturating_sub(1));
+        if first > last {
+            return;
+        }
+        let start = self.line_start_char(first);
+        let end = if last.saturating_add(1) < self.raw_line_count() {
+            self.line_start_char(last.saturating_add(1))
+        } else {
+            self.rope.len_chars()
+        };
+        if start < end {
+            self.rope.remove(start..end);
+            self.touch();
+        }
     }
 
     pub fn delete_range(

@@ -320,21 +320,12 @@ impl Editor {
         self.drop_lines(span.start.0, last);
     }
 
-    fn take_lines(&self, first: usize, last: usize) -> Vec<String> {
-        (first..=last)
-            .map(|row| self.buffer.line_text(row))
-            .collect()
+    fn take_lines(&self, first: usize, last: usize) -> String {
+        self.buffer.lines_text(first, last)
     }
 
     fn drop_lines(&mut self, first: usize, last: usize) {
-        let mut row = last;
-        loop {
-            self.buffer.delete_line(row);
-            if row <= first {
-                break;
-            }
-            row = row.saturating_sub(1);
-        }
+        self.buffer.delete_lines(first, last);
     }
 
     pub(super) fn delete_to_end(&mut self) {
