@@ -11,6 +11,28 @@ fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
 }
 
+fn scroll_action(key: KeyEvent) -> Option<Action> {
+    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('u') | KeyCode::Char('U') => Some(Action::ScrollHalfUp),
+        KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::ScrollHalfDown),
+        KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::ScrollPageDown),
+        KeyCode::Char('b') | KeyCode::Char('B') => Some(Action::ScrollPageUp),
+        _ => None,
+    }
+}
+
+fn place_action(pushed: char) -> Option<Action> {
+    match pushed {
+        'z' => Some(Action::PlaceCenter),
+        't' => Some(Action::PlaceTop),
+        'b' => Some(Action::PlaceBottom),
+        _ => None,
+    }
+}
+
 const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("dd", Action::DeleteLine),
     ("dw", Action::DeleteWord),
@@ -65,7 +87,7 @@ fn is_sequence_prefix(sequence: &str) -> bool {
 fn arms_pending(pushed: char) -> bool {
     matches!(
         pushed,
-        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g'
+        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z'
     )
 }
 
@@ -171,6 +193,10 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
+        if let Some(action) = scroll_action(key) {
+            self.clear_pending();
+            return action;
+        }
         if !self.pending.is_empty() {
             return self.resolve_pending(key);
         }
@@ -238,6 +264,10 @@ impl VimKeymap {
             KeyCode::Char('<') => self.arm_operator(key, '<'),
             KeyCode::Char('=') => self.arm_operator(key, '='),
             KeyCode::Char('g') => self.arm_case_operator(key),
+            KeyCode::Char('z') => self.arm_place(key),
+            KeyCode::Char('H') => self.map_plain_or_noop(key, Action::MoveToViewportTop),
+            KeyCode::Char('M') => self.map_plain_or_noop(key, Action::MoveToViewportMiddle),
+            KeyCode::Char('L') => self.map_plain_or_noop(key, Action::MoveToViewportBottom),
             KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
@@ -278,6 +308,41 @@ impl VimKeymap {
         }
         self.pending.push('g');
         Action::Noop
+    }
+
+    fn arm_place(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('z');
+        Action::Noop
+    }
+
+    fn z_prefix_armed(&self) -> bool {
+        self.pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .starts_with('z')
+    }
+
+    fn resolve_z_pending(&mut self, pushed: char) -> Action {
+        let body: String = self
+            .pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .to_string();
+        let Some(tail) = body.strip_prefix('z') else {
+            return self.cancel_sequence();
+        };
+        if !tail.chars().all(|ch| ch.is_ascii_digit()) {
+            return self.cancel_sequence();
+        }
+        if pushed.is_ascii_digit() {
+            return self.push_digit(pushed);
+        }
+        let Some(action) = place_action(pushed) else {
+            return self.cancel_sequence();
+        };
+        self.clear_pending();
+        action
     }
 
     fn case_prefix_armed(&self) -> bool {
@@ -655,6 +720,9 @@ impl VimKeymap {
                 if self.case_prefix_armed() {
                     return self.resolve_case_pending(c);
                 }
+                if self.z_prefix_armed() {
+                    return self.resolve_z_pending(c);
+                }
                 if self.pending_find().is_some() {
                     return self.complete_find(c);
                 }
@@ -818,6 +886,10 @@ impl VimKeymap {
     }
 
     fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if let Some(action) = scroll_action(key) {
+            self.clear_pending();
+            return action;
+        }
         if !self.pending.is_empty() {
             return self.resolve_visual_pending(key, mode);
         }
@@ -859,6 +931,10 @@ impl VimKeymap {
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Lowercase),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Uppercase),
             KeyCode::Char('g') => self.arm_visual_g(key),
+            KeyCode::Char('z') => self.arm_visual_z(key),
+            KeyCode::Char('H') => self.map_plain_or_noop(key, Action::MoveToViewportTop),
+            KeyCode::Char('M') => self.map_plain_or_noop(key, Action::MoveToViewportMiddle),
+            KeyCode::Char('L') => self.map_plain_or_noop(key, Action::MoveToViewportBottom),
             KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
             KeyCode::Char('O') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
@@ -919,6 +995,14 @@ impl VimKeymap {
         Action::Noop
     }
 
+    fn arm_visual_z(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('z');
+        Action::Noop
+    }
+
     fn push_visual_digit(&mut self, key: KeyEvent, digit: char) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
@@ -969,6 +1053,16 @@ impl VimKeymap {
                 self.clear_pending();
                 return action;
             }
+        }
+        if self.stripped_pending() == "z" {
+            if let Some(action) = place_action(pushed) {
+                self.clear_pending();
+                return action;
+            }
+        }
+        if pushed == 'z' && self.only_digits_pending() {
+            self.pending.push(pushed);
+            return Action::Noop;
         }
         if pushed.is_ascii_digit() {
             return self.push_digit(pushed);
@@ -3457,6 +3551,111 @@ mod tests {
             map.map(plain(KeyCode::Char('^')), Mode::Visual),
             Action::MoveToFirstNonBlank
         );
+    }
+
+    #[test]
+    fn ctrl_scroll_keys_resolve() {
+        for (key, action) in [
+            ('u', Action::ScrollHalfUp),
+            ('d', Action::ScrollHalfDown),
+            ('f', Action::ScrollPageDown),
+            ('b', Action::ScrollPageUp),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(ctrl(KeyCode::Char(key)), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(ctrl(KeyCode::Char(key)), Mode::Visual), action);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn ctrl_scroll_keeps_count_and_clears_pending() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('d')), Mode::Normal),
+            Action::ScrollHalfDown
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn viewport_motions_resolve() {
+        for (key, action) in [
+            ('H', Action::MoveToViewportTop),
+            ('M', Action::MoveToViewportMiddle),
+            ('L', Action::MoveToViewportBottom),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
+        }
+    }
+
+    #[test]
+    fn place_sequences_resolve() {
+        for (key, action) in [
+            ('z', Action::PlaceCenter),
+            ('t', Action::PlaceTop),
+            ('b', Action::PlaceBottom),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('z')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('z')), Mode::Visual),
+                Action::Noop
+            );
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn place_sequence_with_count_resolves() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('3')), Mode::Normal),
+            Action::PushCount(3)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::PushCount(0)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('z')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('z')), Mode::Normal),
+            Action::PlaceCenter
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn place_sequence_junk_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('z')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]

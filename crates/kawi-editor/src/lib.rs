@@ -9,6 +9,7 @@ pub mod objects;
 pub mod register;
 pub mod search;
 pub mod selection;
+pub mod viewport;
 pub mod words;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
@@ -19,3 +20,4 @@ pub use mode::Mode;
 pub use register::Register;
 pub use search::{MatchSpan, SearchOutcome};
 pub use selection::Selection;
+pub use viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};

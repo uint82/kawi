@@ -1,20 +1,18 @@
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-use kawi_tui::viewport::Viewport;
-
 pub const WHEEL_LINES: isize = 3;
 
-pub fn press_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize, usize)> {
+pub fn press_position(event: &MouseEvent, view: (usize, usize)) -> Option<(usize, usize)> {
     if !is_left_press(event.kind) {
         return None;
     }
-    to_buffer_position(event.column, event.row, viewport)
+    to_buffer_position(event.column, event.row, view)
 }
 
-pub fn drag_position(event: &MouseEvent, viewport: &Viewport) -> Option<(usize, usize)> {
+pub fn drag_position(event: &MouseEvent, view: (usize, usize)) -> Option<(usize, usize)> {
     if !is_left_drag(event.kind) {
         return None;
     }
-    to_buffer_position(event.column, event.row, viewport)
+    to_buffer_position(event.column, event.row, view)
 }
 
 pub fn wheel_delta(event: &MouseEvent) -> Option<isize> {
@@ -33,10 +31,15 @@ fn is_left_drag(kind: MouseEventKind) -> bool {
     matches!(kind, MouseEventKind::Drag(MouseButton::Left))
 }
 
-fn to_buffer_position(column: u16, screen_row: u16, viewport: &Viewport) -> Option<(usize, usize)> {
-    let row = usize::from(screen_row).saturating_add(viewport.top());
+fn to_buffer_position(
+    column: u16,
+    screen_row: u16,
+    view: (usize, usize),
+) -> Option<(usize, usize)> {
+    let (top, height) = view;
+    let row = usize::from(screen_row).saturating_add(top);
     let col = usize::from(column);
-    if usize::from(screen_row) >= viewport.height() {
+    if usize::from(screen_row) >= height {
         return None;
     }
     Some((row, col))
@@ -55,8 +58,8 @@ mod tests {
         }
     }
 
-    fn viewport() -> Viewport {
-        Viewport::new(10, 80)
+    fn viewport() -> (usize, usize) {
+        (0, 10)
     }
 
     fn drag(column: u16, row: u16) -> MouseEvent {
@@ -70,14 +73,12 @@ mod tests {
 
     #[test]
     fn click_maps_through_offset() {
-        let mut view = viewport();
-        view.ensure_visible(15);
-        assert_eq!(press_position(&press(3, 2), &view), Some((8, 3)));
+        assert_eq!(press_position(&press(3, 2), (6, 10)), Some((8, 3)));
     }
 
     #[test]
     fn click_on_status_row_ignored() {
-        assert_eq!(press_position(&press(3, 10), &viewport()), None);
+        assert_eq!(press_position(&press(3, 10), viewport()), None);
     }
 
     #[test]
@@ -88,7 +89,7 @@ mod tests {
             row: 2,
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
-        assert_eq!(press_position(&event, &viewport()), None);
+        assert_eq!(press_position(&event, viewport()), None);
     }
 
     #[test]
@@ -99,17 +100,17 @@ mod tests {
             row: 2,
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
-        assert_eq!(press_position(&event, &viewport()), None);
+        assert_eq!(press_position(&event, viewport()), None);
     }
 
     #[test]
     fn drag_maps_like_press() {
-        assert_eq!(drag_position(&drag(3, 2), &viewport()), Some((2, 3)));
+        assert_eq!(drag_position(&drag(3, 2), viewport()), Some((2, 3)));
     }
 
     #[test]
     fn drag_on_status_row_ignored() {
-        assert_eq!(drag_position(&drag(3, 10), &viewport()), None);
+        assert_eq!(drag_position(&drag(3, 10), viewport()), None);
     }
 
     #[test]
@@ -120,12 +121,12 @@ mod tests {
             row: 2,
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
-        assert_eq!(drag_position(&event, &viewport()), None);
+        assert_eq!(drag_position(&event, viewport()), None);
     }
 
     #[test]
     fn press_is_not_drag() {
-        assert_eq!(drag_position(&press(3, 2), &viewport()), None);
+        assert_eq!(drag_position(&press(3, 2), viewport()), None);
     }
 
     #[test]

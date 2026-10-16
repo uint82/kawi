@@ -1,3 +1,6 @@
+pub const FALLBACK_WIDTH: usize = 80;
+pub const FALLBACK_HEIGHT: usize = 24;
+
 pub struct Viewport {
     top: usize,
     height: usize,
@@ -26,6 +29,10 @@ impl Viewport {
     pub fn scroll_lines(&mut self, delta: isize, line_count: usize) {
         let shifted = self.top.saturating_add_signed(delta);
         self.top = shifted.min(max_top(line_count, self.height));
+    }
+
+    pub fn place_top(&mut self, top: usize, line_count: usize) {
+        self.top = top.min(line_count.saturating_sub(1));
     }
 
     pub fn top(&self) -> usize {
@@ -135,5 +142,19 @@ mod tests {
         let mut v = Viewport::new(10, 80);
         v.scroll_lines(3, 4);
         assert_eq!(v.top(), 0);
+    }
+
+    #[test]
+    fn place_top_past_max_sticks() {
+        let mut v = Viewport::new(10, 80);
+        v.place_top(95, 100);
+        assert_eq!(v.top(), 95);
+    }
+
+    #[test]
+    fn place_top_clamps_to_last_line() {
+        let mut v = Viewport::new(10, 80);
+        v.place_top(500, 100);
+        assert_eq!(v.top(), 99);
     }
 }

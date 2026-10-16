@@ -9,6 +9,7 @@ use crate::register::Register;
 #[cfg(test)]
 use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
+use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
 mod indent;
@@ -16,6 +17,7 @@ mod line_ops;
 mod motions;
 mod operators;
 mod repeat;
+mod scroll;
 mod search_mode;
 mod session;
 mod shift_ops;
@@ -46,6 +48,7 @@ pub struct Editor {
     insert_reopen: bool,
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
+    viewport: Viewport,
 }
 
 struct SearchStatus {
@@ -89,6 +92,16 @@ impl Editor {
             Action::MoveRight => self.move_right(),
             Action::MoveToLineStart => self.move_to_line_start(),
             Action::MoveToFirstNonBlank => self.move_to_first_non_blank(),
+            Action::ScrollHalfUp => self.scroll_half_up(),
+            Action::ScrollHalfDown => self.scroll_half_down(),
+            Action::ScrollPageUp => self.scroll_page_up(),
+            Action::ScrollPageDown => self.scroll_page_down(),
+            Action::MoveToViewportTop => self.move_to_viewport_top(),
+            Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
+            Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
+            Action::PlaceCenter => self.place_center(),
+            Action::PlaceTop => self.place_top(),
+            Action::PlaceBottom => self.place_bottom(),
             Action::MoveToLineEnd => self.move_to_line_end(),
             Action::MoveToNextWordStart => self.move_to_next_word_start(),
             Action::MoveToPrevWordStart => self.move_to_prev_word_start(),
@@ -374,6 +387,7 @@ impl Editor {
             insert_reopen: false,
             insert_record: Vec::new(),
             insert_moved: false,
+            viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
         }
     }
 
@@ -512,6 +526,13 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveRight
             | Action::MoveToLineStart
             | Action::MoveToFirstNonBlank
+            | Action::ScrollHalfUp
+            | Action::ScrollHalfDown
+            | Action::ScrollPageUp
+            | Action::ScrollPageDown
+            | Action::MoveToViewportTop
+            | Action::MoveToViewportMiddle
+            | Action::MoveToViewportBottom
             | Action::MoveToLineEnd
             | Action::MoveToNextWordStart
             | Action::MoveToPrevWordStart
