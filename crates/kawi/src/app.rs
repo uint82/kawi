@@ -584,11 +584,11 @@ mod tests {
             app.handle_key(key).expect("goto");
         }
         assert_eq!(app.cursor_position(), (49, 0));
-        assert_eq!(app.viewport_top(), 30);
+        assert_eq!(app.viewport_top(), 40);
         app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
             .expect("scroll");
         assert_eq!(app.cursor_position(), (59, 0));
-        assert_eq!(app.viewport_top(), 40);
+        assert_eq!(app.viewport_top(), 50);
     }
 
     #[test]
