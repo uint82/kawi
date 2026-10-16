@@ -5,6 +5,7 @@ pub enum Command {
     WriteQuit,
     SetKeymap(String),
     SetTheme(String),
+    SetShiftWidth(usize),
     Unknown,
 }
 
@@ -22,6 +23,7 @@ fn parse_set_command(text: &str) -> Command {
     match words.as_slice() {
         ["set", "keymap", name] => name_command(name),
         ["set", "theme", name] => theme_command(name),
+        ["set", "shiftwidth", value] => shiftwidth_command(value),
         ["set", combined] => equals_command(combined),
         _ => Command::Unknown,
     }
@@ -48,7 +50,17 @@ fn equals_command(combined: &str) -> Command {
     if let Some(name) = combined.strip_prefix("theme=") {
         return theme_command(name);
     }
+    if let Some(value) = combined.strip_prefix("shiftwidth=") {
+        return shiftwidth_command(value);
+    }
     Command::Unknown
+}
+
+fn shiftwidth_command(value: &str) -> Command {
+    match value.parse::<usize>() {
+        Ok(width) => Command::SetShiftWidth(width),
+        Err(_) => Command::Unknown,
+    }
 }
 
 pub struct CommandLine {
@@ -117,6 +129,20 @@ mod tests {
     #[test]
     fn empty_is_unknown() {
         assert_eq!(parse(""), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_set_shiftwidth() {
+        assert_eq!(parse("set shiftwidth 4"), Command::SetShiftWidth(4));
+        assert_eq!(parse("set shiftwidth=4"), Command::SetShiftWidth(4));
+        assert_eq!(parse("set shiftwidth 0"), Command::SetShiftWidth(0));
+    }
+
+    #[test]
+    fn rejects_bad_shiftwidth() {
+        assert_eq!(parse("set shiftwidth"), Command::Unknown);
+        assert_eq!(parse("set shiftwidth four"), Command::Unknown);
+        assert_eq!(parse("set shiftwidth 4 extra"), Command::Unknown);
     }
 
     #[test]

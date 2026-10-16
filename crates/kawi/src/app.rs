@@ -376,6 +376,7 @@ impl App {
             Command::WriteQuit => self.handle_write_quit(),
             Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::SetTheme(name) => self.switch_theme(&name),
+            Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
             Command::Unknown => Ok(false),
         }
     }
@@ -389,6 +390,11 @@ impl App {
 
     fn report_unknown_keymap(&mut self, name: &str) -> Result<bool> {
         self.show_message(format!("Unknown keymap: {name}"));
+        Ok(false)
+    }
+
+    fn switch_shiftwidth(&mut self, width: usize) -> Result<bool> {
+        self.editor.set_shiftwidth(width);
         Ok(false)
     }
 

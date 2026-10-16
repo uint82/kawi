@@ -31,6 +31,7 @@ pub struct Editor {
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
     last_insert: Option<(usize, usize)>,
+    shiftwidth: usize,
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
@@ -238,6 +239,10 @@ impl Editor {
         self.cursor.col()
     }
 
+    pub fn set_shiftwidth(&mut self, width: usize) {
+        self.shiftwidth = width;
+    }
+
     pub fn command_prompt(&self) -> Option<&str> {
         if self.mode == Mode::Command {
             Some(self.command.text())
@@ -295,6 +300,7 @@ impl Editor {
             selection: None,
             previous_visual: None,
             last_insert: None,
+            shiftwidth: 8,
             register: Register::new(),
             count_digits: 0,
             operator_count: None,

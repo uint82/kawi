@@ -1,6 +1,5 @@
 use super::Editor;
 
-const SHIFT_WIDTH: usize = 8;
 const TAB_STOP: usize = 8;
 
 #[derive(Clone, Copy)]
@@ -63,12 +62,21 @@ impl Editor {
             return;
         }
         let width = self.buffer.indent_width(row, TAB_STOP);
+        let amount = self.shift_amount();
         let indented = if right {
-            width + SHIFT_WIDTH
+            width + amount
         } else {
-            width.saturating_sub(SHIFT_WIDTH)
+            width.saturating_sub(amount)
         };
         self.buffer.set_indent(row, &canonical_indent(indented));
+    }
+
+    fn shift_amount(&self) -> usize {
+        if self.shiftwidth == 0 {
+            TAB_STOP
+        } else {
+            self.shiftwidth
+        }
     }
 
     fn place_shift_cursor(&mut self, row: usize, screen: usize) {
@@ -303,6 +311,44 @@ mod tests {
         assert_eq!(editor.text_lines()[0], "a");
         assert_eq!(editor.text_lines()[1], "b");
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn shift_width_four_spaces() {
+        let mut editor = editor_with("  foo");
+        editor.set_shiftwidth(4);
+        move_right(&mut editor, 2);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "      foo");
+        assert_eq!((editor.row(), editor.col()), (0, 2));
+    }
+
+    #[test]
+    fn shift_width_four_tab_rebuild() {
+        let mut editor = editor_with("\tfoo");
+        editor.set_shiftwidth(4);
+        move_right(&mut editor, 1);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "\t    foo");
+        assert_eq!((editor.row(), editor.col()), (0, 1));
+    }
+
+    #[test]
+    fn shift_width_four_left() {
+        let mut editor = editor_with("      foo");
+        editor.set_shiftwidth(4);
+        move_right(&mut editor, 6);
+        editor.apply(Action::ShiftLeft);
+        assert_eq!(editor.text_lines()[0], "  foo");
+        assert_eq!((editor.row(), editor.col()), (0, 4));
+    }
+
+    #[test]
+    fn shift_width_zero_follows_tabstop() {
+        let mut editor = editor_with("foo");
+        editor.set_shiftwidth(0);
+        editor.apply(Action::ShiftRight);
+        assert_eq!(editor.text_lines()[0], "\tfoo");
     }
 
     #[test]
