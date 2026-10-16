@@ -111,18 +111,7 @@ impl Editor {
             }
             CaseMotion::Lines { upward } => {
                 let count = self.take_count();
-                let max = self.buffer.line_count().saturating_sub(1);
-                let (first, last) = if upward {
-                    if row == 0 {
-                        return None;
-                    }
-                    (row.saturating_sub(count), row)
-                } else {
-                    if row >= max {
-                        return None;
-                    }
-                    (row, row.saturating_add(count).min(max))
-                };
+                let (first, last) = self.counted_line_span(upward, count)?;
                 Some(words::WordSpan::Linewise { first, last })
             }
         }

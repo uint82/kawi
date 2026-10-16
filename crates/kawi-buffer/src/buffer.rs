@@ -307,16 +307,10 @@ impl Buffer {
     }
 
     pub fn indent_width(&self, row: usize, tabstop: usize) -> usize {
-        let mut width = 0;
-        if let Some(line) = self.line_cow(row) {
-            for ch in line.chars() {
-                if ch != ' ' && ch != '\t' {
-                    break;
-                }
-                width += tab_width(ch, width, tabstop);
-            }
+        match self.line_cow(row) {
+            None => 0,
+            Some(line) => indent_width_of(&line, tabstop),
         }
-        width
     }
 
     pub fn screen_col(&self, row: usize, col: usize, tabstop: usize) -> usize {
@@ -346,16 +340,6 @@ impl Buffer {
             }
         }
         found.min(width.saturating_sub(1))
-    }
-
-    pub fn set_indent(&mut self, row: usize, indent: &str) {
-        let end = self.indent_end(row);
-        if end > 0 {
-            self.delete_range(row, 0, row, end.saturating_sub(1));
-        }
-        if !indent.is_empty() {
-            let (_, _) = self.paste_before(row, 0, indent);
-        }
     }
 
     pub fn shift_case_range(
@@ -398,6 +382,16 @@ impl Buffer {
     }
 
     pub fn delete_lines(&mut self, first: usize, last: usize) {
+        let Some((start, end)) = self.line_span_range(first, last) else {
+            return;
+        };
+        if start < end {
+            self.rope.remove(start..end);
+            self.touch();
+        }
+    }
+
+    pub fn replace_lines(&mut self, first: usize, last: usize, text: &str) {
         if first >= self.len() {
             return;
         }
@@ -406,15 +400,27 @@ impl Buffer {
             return;
         }
         let start = self.line_start_char(first);
+        let end = self.position_to_char(last, self.line_len(last));
+        self.rope.remove(start..end.max(start));
+        self.rope.insert(start.min(self.rope.len_chars()), text);
+        self.touch();
+    }
+
+    fn line_span_range(&self, first: usize, last: usize) -> Option<(usize, usize)> {
+        if first >= self.len() {
+            return None;
+        }
+        let last = last.min(self.len().saturating_sub(1));
+        if first > last {
+            return None;
+        }
+        let start = self.line_start_char(first);
         let end = if last.saturating_add(1) < self.raw_line_count() {
             self.line_start_char(last.saturating_add(1))
         } else {
             self.rope.len_chars()
         };
-        if start < end {
-            self.rope.remove(start..end);
-            self.touch();
-        }
+        Some((start, end))
     }
 
     pub fn delete_range(
@@ -701,6 +707,17 @@ fn char_count(text: &str) -> usize {
     text.chars().count()
 }
 
+pub fn indent_width_of(line: &str, tabstop: usize) -> usize {
+    let mut width = 0;
+    for ch in line.chars() {
+        if ch != ' ' && ch != '\t' {
+            break;
+        }
+        width += tab_width(ch, width, tabstop);
+    }
+    width
+}
+
 pub fn first_non_blank(line: &str) -> usize {
     line.chars()
         .enumerate()
@@ -958,15 +975,6 @@ mod tests {
         assert_eq!(b.char_col(0, 1, 8), 0);
         assert_eq!(b.char_col(0, 8, 8), 1);
         assert_eq!(b.char_col(0, 99, 8), 3);
-    }
-
-    #[test]
-    fn set_indent_rebuilds_canonical() {
-        let mut b = Buffer::from_string("          foo");
-        b.set_indent(0, "\t");
-        assert_eq!(b.line(0).as_deref(), Some("\tfoo"));
-        b.set_indent(0, "");
-        assert_eq!(b.line(0).as_deref(), Some("foo"));
     }
 
     #[test]

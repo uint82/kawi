@@ -132,6 +132,26 @@ impl Editor {
         self.place_goto(row);
     }
 
+    pub(super) fn counted_line_span(
+        &mut self,
+        upward: bool,
+        count: usize,
+    ) -> Option<(usize, usize)> {
+        let row = self.cursor.row();
+        if upward {
+            if row == 0 {
+                return None;
+            }
+            Some((row.saturating_sub(count), row))
+        } else {
+            let max = self.buffer.line_count().saturating_sub(1);
+            if row >= max {
+                return None;
+            }
+            Some((row, row.saturating_add(count).min(max)))
+        }
+    }
+
     pub(super) fn goto_target(&mut self, last: bool) -> usize {
         let max = self.buffer.line_count().saturating_sub(1);
         if self.has_count() {
@@ -166,7 +186,7 @@ impl Editor {
         }
     }
 
-    fn remember_line_end(&mut self) {
+    pub(super) fn remember_line_end(&mut self) {
         if self.mode.is_insert() {
             self.cursor.set_desired(self.cursor.col());
         } else {

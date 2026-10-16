@@ -5,6 +5,7 @@ use kawi_editor::Action;
 use kawi_editor::CaseMotion;
 use kawi_editor::Mode;
 use kawi_editor::Object;
+use kawi_editor::ShiftMotion;
 
 fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
@@ -55,8 +56,11 @@ fn is_sequence_prefix(sequence: &str) -> bool {
         .any(|(keys, _)| *keys != sequence && keys.starts_with(sequence))
 }
 
-fn is_operator_start(pushed: char) -> bool {
-    matches!(pushed, 'd' | 'c' | 'y')
+fn arms_pending(pushed: char) -> bool {
+    matches!(
+        pushed,
+        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g'
+    )
 }
 
 fn is_visual_motion_key(pushed: char) -> bool {
@@ -323,6 +327,128 @@ impl VimKeymap {
         self.case_motion_action(operator, CaseMotion::GotoLine { last: false })
     }
 
+    fn shift_prefix_armed(&self) -> bool {
+        let body: String = self
+            .pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .to_string();
+        body.starts_with('>') || body.starts_with('<') || body.starts_with('=')
+    }
+
+    fn resolve_shift_pending(&mut self, pushed: char) -> Action {
+        let candidate = format!("{}{}", self.stripped_pending(), pushed);
+        if sequence_action(&candidate).is_some() || is_sequence_prefix(&candidate) {
+            return self.extend_sequence(pushed);
+        }
+        let body: String = self
+            .pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit())
+            .to_string();
+        let operator = body.chars().next().unwrap_or('>');
+        let rest = body.get(1..).unwrap_or("");
+        self.complete_shift_operator(operator, rest, pushed)
+    }
+
+    fn complete_shift_operator(&mut self, operator: char, rest: &str, pushed: char) -> Action {
+        if rest.is_empty() || rest.chars().all(|ch| ch.is_ascii_digit()) {
+            if (pushed == '0' && rest.is_empty()) || !pushed.is_ascii_digit() {
+                return self.complete_shift_motion(operator, pushed);
+            }
+            return self.push_digit(pushed);
+        }
+        match rest {
+            "f" | "F" | "t" | "T" => self.complete_shift_find(operator, rest, pushed),
+            "i" | "a" => self.complete_shift_object(operator, rest, pushed),
+            "g" => self.complete_shift_goto(operator, pushed),
+            _ => self.cancel_sequence(),
+        }
+    }
+
+    fn complete_shift_motion(&mut self, operator: char, pushed: char) -> Action {
+        if matches!(pushed, ';' | ',') {
+            return self.repeat_shift_motion(operator, pushed == ',');
+        }
+        let motion = match pushed {
+            'w' => ShiftMotion::WordForward,
+            'b' => ShiftMotion::WordBackward,
+            'e' => ShiftMotion::WordEnd,
+            '$' => ShiftMotion::LineEnd,
+            '0' => ShiftMotion::LineStart,
+            'j' => ShiftMotion::Lines { upward: false },
+            'k' => ShiftMotion::Lines { upward: true },
+            'G' => ShiftMotion::GotoLine { last: true },
+            'g' => {
+                self.pending.push(pushed);
+                return Action::Noop;
+            }
+            'f' | 'F' | 't' | 'T' | 'i' | 'a' => {
+                self.pending.push(pushed);
+                return if matches!(pushed, 'i' | 'a') {
+                    Action::Noop
+                } else {
+                    Action::BeginSequence
+                };
+            }
+            _ => return self.cancel_sequence(),
+        };
+        self.clear_pending();
+        self.shift_motion_action(operator, motion)
+    }
+
+    fn shift_motion_action(&self, operator: char, motion: ShiftMotion) -> Action {
+        match operator {
+            '>' => Action::ShiftRightAt { motion },
+            '<' => Action::ShiftLeftAt { motion },
+            _ => Action::ReindentAt { motion },
+        }
+    }
+
+    fn repeat_shift_motion(&mut self, operator: char, reverse: bool) -> Action {
+        let Some(found) = self.last_find else {
+            return self.cancel_sequence();
+        };
+        let motion = ShiftMotion::RepeatFind {
+            target: found.target,
+            forward: found.forward != reverse,
+            till: found.till,
+        };
+        self.clear_pending();
+        self.shift_motion_action(operator, motion)
+    }
+
+    fn complete_shift_find(&mut self, operator: char, find: &str, target: char) -> Action {
+        let forward = matches!(find, "f" | "t");
+        let till = matches!(find, "t" | "T");
+        self.store_find(target, forward, till);
+        let motion = ShiftMotion::Find {
+            target,
+            forward,
+            till,
+        };
+        self.clear_pending();
+        self.shift_motion_action(operator, motion)
+    }
+
+    fn complete_shift_object(&mut self, operator: char, scope: &str, pushed: char) -> Action {
+        let Some(object) = object_target(pushed) else {
+            return self.cancel_sequence();
+        };
+        let motion = ShiftMotion::Object {
+            inner: scope == "i",
+            object,
+        };
+        self.clear_pending();
+        self.shift_motion_action(operator, motion)
+    }
+
+    fn complete_shift_goto(&mut self, operator: char, pushed: char) -> Action {
+        if pushed != 'g' {
+            return self.cancel_sequence();
+        }
+        self.clear_pending();
+        self.shift_motion_action(operator, ShiftMotion::GotoLine { last: false })
+    }
+
     fn complete_case_motion(&mut self, operator: &str, pushed: char) -> Action {
         if matches!(pushed, ';' | ',') {
             return self.repeat_case_motion(operator, pushed == ',');
@@ -452,6 +578,27 @@ impl VimKeymap {
                 forward,
                 till: remembered.till,
             },
+            ">" => Action::ShiftRightAt {
+                motion: ShiftMotion::RepeatFind {
+                    target: remembered.target,
+                    forward,
+                    till: remembered.till,
+                },
+            },
+            "<" => Action::ShiftLeftAt {
+                motion: ShiftMotion::RepeatFind {
+                    target: remembered.target,
+                    forward,
+                    till: remembered.till,
+                },
+            },
+            "=" => Action::ReindentAt {
+                motion: ShiftMotion::RepeatFind {
+                    target: remembered.target,
+                    forward,
+                    till: remembered.till,
+                },
+            },
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -473,6 +620,9 @@ impl VimKeymap {
                 }
                 if self.pending_find().is_some() {
                     return self.complete_find(c);
+                }
+                if self.shift_prefix_armed() {
+                    return self.resolve_shift_pending(c);
                 }
                 match c {
                     ';' => self.repeat_pending(false),
@@ -584,7 +734,7 @@ impl VimKeymap {
 
     fn extend_sequence(&mut self, pushed: char) -> Action {
         if self.only_digits_pending() {
-            if is_operator_start(pushed) {
+            if arms_pending(pushed) {
                 self.pending.push(pushed);
                 return Action::BeginSequence;
             }
@@ -1713,7 +1863,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('g')), Mode::Normal),
-            Action::Noop
+            Action::BeginSequence
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('~')), Mode::Normal),
@@ -1906,7 +2056,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('g')), Mode::Normal),
-            Action::Noop
+            Action::BeginSequence
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Normal),
@@ -2606,6 +2756,239 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('>')), Mode::Visual),
+            Action::ShiftRight
+        );
+    }
+
+    #[test]
+    fn shift_word_motions_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::WordForward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('<')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('b')), Mode::Normal),
+            Action::ShiftLeftAt {
+                motion: ShiftMotion::WordBackward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('=')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::ReindentAt {
+                motion: ShiftMotion::WordEnd,
+            }
+        );
+    }
+
+    #[test]
+    fn shift_line_motions_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('$')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::LineEnd,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::LineStart,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('j')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::Lines { upward: false },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('<')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('k')), Mode::Normal),
+            Action::ShiftLeftAt {
+                motion: ShiftMotion::Lines { upward: true },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('G')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::GotoLine { last: true },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('=')), Mode::Normal);
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::ReindentAt {
+                motion: ShiftMotion::GotoLine { last: false },
+            }
+        );
+    }
+
+    #[test]
+    fn shift_find_object_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::Find {
+                    target: 'x',
+                    forward: true,
+                    till: false,
+                },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('<')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('(')), Mode::Normal),
+            Action::ShiftLeftAt {
+                motion: ShiftMotion::Object {
+                    inner: true,
+                    object: Object::Paren,
+                },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('=')), Mode::Normal);
+        map.map(plain(KeyCode::Char('i')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn shift_repeat_find_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char(';')), Mode::Normal),
+            Action::CancelPending
+        );
+        let mut map = VimKeymap::new();
+        for key in ['f', 'x'] {
+            map.map(plain(KeyCode::Char(key)), Mode::Normal);
+        }
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char(';')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::RepeatFind {
+                    target: 'x',
+                    forward: true,
+                    till: false,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn digit_operator_keeps_pending_display() {
+        for operator in ['d', '>', '<', '=', 'f', 'g'] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('2')), Mode::Normal),
+                Action::PushCount(2)
+            );
+            map.map(plain(KeyCode::Char(operator)), Mode::Normal);
+            assert_eq!(
+                map.pending_text(),
+                Some(match operator {
+                    'd' => "2d",
+                    '>' => "2>",
+                    '<' => "2<",
+                    '=' => "2=",
+                    'f' => "2f",
+                    _ => "2g",
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn digit_shift_completes() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('2')), Mode::Normal);
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::WordForward,
+            }
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn shift_counts_flow() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::WordForward,
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('>')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('j')), Mode::Normal),
+            Action::ShiftRightAt {
+                motion: ShiftMotion::Lines { upward: false },
+            }
+        );
+    }
+
+    #[test]
+    fn shift_double_operator_still_resolves() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('>')), Mode::Normal),
             Action::ShiftRight
         );
     }
