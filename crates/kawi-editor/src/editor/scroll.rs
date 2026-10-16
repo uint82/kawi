@@ -40,7 +40,7 @@ impl Editor {
         let top = if under < self.half_height() {
             row
         } else {
-            row.saturating_sub(self.half_height())
+            row.saturating_sub(self.center_offset())
         };
         self.viewport.place_top(top, self.buffer.line_count());
     }
@@ -52,7 +52,7 @@ impl Editor {
         } else if over <= height {
             row.saturating_sub(height / 2)
         } else {
-            row.saturating_sub(self.half_height())
+            row.saturating_sub(self.center_offset())
         };
         if top > self.max_top() {
             self.viewport.place_top(
@@ -66,6 +66,10 @@ impl Editor {
 
     fn half_height(&self) -> usize {
         (self.view_height() / 2).saturating_sub(1).max(2)
+    }
+
+    fn center_offset(&self) -> usize {
+        self.view_height().saturating_sub(1) / 2
     }
 
     pub fn scroll_wheel(&mut self, delta: isize) {

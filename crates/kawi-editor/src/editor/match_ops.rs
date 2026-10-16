@@ -538,6 +538,20 @@ mod tests {
     }
 
     #[test]
+    fn percent_jump_odd_height_centers_exactly() {
+        let text = (1..=30)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.set_view_size(80, 5);
+        push_digits(&mut e, &[4, 0]);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (11, 0));
+        assert_eq!(e.view_top(), 9);
+    }
+
+    #[test]
     fn percent_jump_near_scrolls_minimally() {
         let mut e = tall_editor();
         place_top(&mut e, 40);
