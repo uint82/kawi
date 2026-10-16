@@ -29,6 +29,7 @@ pub struct Editor {
     search_status: Option<SearchStatus>,
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
+    last_insert: Option<(usize, usize)>,
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
@@ -183,6 +184,7 @@ impl Editor {
                 self.arm_insert_repeat(false);
                 self.enter_insert();
             }
+            Action::InsertAtLast => self.insert_at_last(),
             Action::ExitInsert => self.exit_insert(),
             Action::Append => self.append(),
             Action::AppendLineEnd => self.append_line_end(),
@@ -288,6 +290,7 @@ impl Editor {
             search_status: None,
             selection: None,
             previous_visual: None,
+            last_insert: None,
             register: Register::new(),
             count_digits: 0,
             operator_count: None,

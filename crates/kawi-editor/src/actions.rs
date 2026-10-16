@@ -100,6 +100,7 @@ pub enum Action {
     Uppercase,
     ReselectVisual,
     CancelVisual,
+    InsertAtLast,
     ToggleCaseAt {
         motion: CaseMotion,
     },

@@ -287,6 +287,10 @@ impl VimKeymap {
             self.clear_pending();
             return Action::ReselectVisual;
         }
+        if body == "g" && pushed == 'i' {
+            self.clear_pending();
+            return Action::InsertAtLast;
+        }
         self.cancel_sequence()
     }
 
@@ -1804,7 +1808,7 @@ mod tests {
 
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
-        let implemented = ['~', 'u', 'U', 'g', 'v'];
+        let implemented = ['~', 'u', 'U', 'g', 'v', 'i'];
         for code in 0..128u8 {
             let pushed = code as char;
             if !pushed.is_ascii_graphic() || pushed == 'g' {
@@ -1845,6 +1849,20 @@ mod tests {
     }
 
     #[test]
+    fn normal_gi_inserts_at_last() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Normal),
+            Action::InsertAtLast
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
     fn normal_gv_reselects() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -1882,6 +1900,20 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('v')), Mode::Visual),
             Action::ReselectVisual
+        );
+    }
+
+    #[test]
+    fn visual_gi_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('i')), Mode::Visual),
+            Action::CancelPending
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('l')), Mode::Visual),
+            Action::MoveRight
         );
     }
 

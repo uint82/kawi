@@ -66,6 +66,16 @@ impl Editor {
         self.switch_to_insert();
     }
 
+    pub(super) fn insert_at_last(&mut self) {
+        if let Some(pos) = self.last_insert {
+            let row = pos.0.min(self.buffer.line_count().saturating_sub(1));
+            let col = pos.1.min(self.buffer.line_len(row));
+            self.cursor.set_position(row, col);
+        }
+        self.arm_insert_repeat(false);
+        self.enter_insert();
+    }
+
     pub(super) fn enter_visual(&mut self) {
         if self.selection.is_none() {
             self.selection = Some(Selection::new(self.cursor.row(), self.cursor.col()));
@@ -90,6 +100,7 @@ impl Editor {
 
     pub(super) fn exit_insert(&mut self) {
         if self.mode == Mode::Insert {
+            self.last_insert = Some((self.cursor.row(), self.cursor.col()));
             self.replay_insert();
             self.buffer.end_change();
             self.retreat_after_insert();
@@ -1552,6 +1563,94 @@ mod tests {
         e.apply(Action::ToggleCase);
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 1), (0, 1))));
+    }
+
+    #[test]
+    fn insert_at_last_basic() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::MoveLeft);
+        e.apply(Action::InsertAtLast);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn insert_at_last_after_append() {
+        let mut e = editor_with("ab");
+        e.apply(Action::MoveToLineEnd);
+        e.apply(Action::Append);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::InsertChar('B'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::MoveLeft);
+        e.apply(Action::InsertAtLast);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn insert_at_last_updates() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::InsertAtLast);
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn insert_at_last_fresh_enters_insert() {
+        let mut e = editor_with("ab");
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertAtLast);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn insert_at_last_clamps_deleted_rows() {
+        let mut e = editor_with("a\nb\ncc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::MoveUp);
+        e.apply(Action::MoveUp);
+        e.apply(Action::DeleteLine);
+        e.apply(Action::DeleteLine);
+        e.apply(Action::InsertAtLast);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn insert_at_last_ignores_count() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::InsertAtLast);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn insert_at_last_empty_session() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::ExitInsert);
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertAtLast);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]

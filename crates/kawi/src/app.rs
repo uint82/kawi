@@ -522,6 +522,11 @@ fn fallback_height() -> usize {
 
 #[cfg(test)]
 mod tests {
+    // NOTE(probes): nvim verification lessons. Run one insert entry per
+    // `:normal` call because later entries are dropped, end insert-ending
+    // sequences with a real Esc because stopinsert also moves the cursor
+    // left, and keep every motion succeeding because :normal aborts the
+    // rest of the keys after a failed one.
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
     use kawi_editor::Mode;
@@ -771,6 +776,23 @@ mod tests {
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
         assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
+    fn vim_normal_gi_resumes_insert() {
+        let mut app = App::new(Buffer::from_string("ab"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('i'))).expect("insert");
+        app.handle_key(key(KeyCode::Char('X'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        app.handle_key(key(KeyCode::Char('h'))).expect("move");
+        app.handle_key(key(KeyCode::Char('g'))).expect("g");
+        app.handle_key(key(KeyCode::Char('i'))).expect("resume");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.cursor_position(), (0, 1));
+        app.handle_key(key(KeyCode::Char('Z'))).expect("type");
+        app.handle_key(key(KeyCode::Esc)).expect("escape");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 1));
     }
 
     #[test]
