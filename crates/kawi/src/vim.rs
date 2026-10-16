@@ -17,6 +17,8 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("de", Action::DeleteWordEnd),
     ("d0", Action::DeleteToStart),
     ("d$", Action::DeleteToEnd),
+    ("dG", Action::DeleteToLastLine),
+    ("dgg", Action::DeleteToFirstLine),
     ("diw", Action::DeleteInnerWord),
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
@@ -24,11 +26,15 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("ce", Action::ChangeWordEnd),
     ("c0", Action::ChangeToStart),
     ("c$", Action::ChangeToEnd),
+    ("cG", Action::ChangeToLastLine),
+    ("cgg", Action::ChangeToFirstLine),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
     ("y0", Action::YankToStart),
     ("y$", Action::YankToEnd),
+    ("yG", Action::YankToLastLine),
+    ("ygg", Action::YankToFirstLine),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
 ];
@@ -203,6 +209,7 @@ impl VimKeymap {
             KeyCode::Char('c') => self.arm_operator(key, 'c'),
             KeyCode::Char('y') => self.arm_operator(key, 'y'),
             KeyCode::Char('g') => self.arm_case_operator(key),
+            KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             KeyCode::Char('V') => self.map_plain_or_noop(key, Action::EnterVisualLine),
@@ -272,6 +279,10 @@ impl VimKeymap {
             self.pending.push(pushed);
             return Action::BeginSequence;
         }
+        if body == "g" && pushed == 'g' {
+            self.clear_pending();
+            return Action::GotoFirstLine;
+        }
         self.cancel_sequence()
     }
 
@@ -285,8 +296,17 @@ impl VimKeymap {
         match rest {
             "f" | "F" | "t" | "T" => self.complete_case_find(operator, rest, pushed),
             "i" | "a" => self.complete_case_object(operator, rest, pushed),
+            "g" => self.complete_case_goto(operator, pushed),
             _ => self.cancel_sequence(),
         }
+    }
+
+    fn complete_case_goto(&mut self, operator: &str, pushed: char) -> Action {
+        if pushed != 'g' {
+            return self.cancel_sequence();
+        }
+        self.clear_pending();
+        self.case_motion_action(operator, CaseMotion::GotoLine { last: false })
     }
 
     fn complete_case_motion(&mut self, operator: &str, pushed: char) -> Action {
@@ -301,6 +321,11 @@ impl VimKeymap {
             '0' => CaseMotion::LineStart,
             'j' => CaseMotion::Lines { upward: false },
             'k' => CaseMotion::Lines { upward: true },
+            'G' => CaseMotion::GotoLine { last: true },
+            'g' => {
+                self.pending.push(pushed);
+                return Action::Noop;
+            }
             'f' | 'F' | 't' | 'T' | 'i' | 'a' => {
                 self.pending.push(pushed);
                 return if matches!(pushed, 'i' | 'a') {
@@ -629,6 +654,7 @@ impl VimKeymap {
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Lowercase),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Uppercase),
             KeyCode::Char('g') => self.arm_visual_g(key),
+            KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
             KeyCode::Char('O') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
             KeyCode::Char('v') => self.map_plain_or_noop(key, self.visual_v_action(mode)),
@@ -732,6 +758,10 @@ impl VimKeymap {
         }
         if let Some(action) = self.complete_visual_g(pushed) {
             return action;
+        }
+        if self.stripped_pending() == "g" && pushed == 'g' {
+            self.clear_pending();
+            return Action::GotoFirstLine;
         }
         if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
             self.clear_pending();
@@ -1674,6 +1704,149 @@ mod tests {
             Action::ToggleCaseAt {
                 motion: CaseMotion::WordForward,
             }
+        );
+    }
+
+    #[test]
+    fn normal_goto_maps() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('G')), Mode::Normal),
+            Action::GotoLastLine
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::GotoFirstLine
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn normal_goto_operators_map() {
+        for (first, second, action) in [
+            ('d', 'G', Action::DeleteToLastLine),
+            ('c', 'G', Action::ChangeToLastLine),
+            ('y', 'G', Action::YankToLastLine),
+        ] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char(first)), Mode::Normal);
+            assert_eq!(map.map(plain(KeyCode::Char(second)), Mode::Normal), action);
+        }
+        for (first, action) in [
+            ('d', Action::DeleteToFirstLine),
+            ('c', Action::ChangeToFirstLine),
+            ('y', Action::YankToFirstLine),
+        ] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char(first)), Mode::Normal);
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            assert_eq!(map.map(plain(KeyCode::Char('g')), Mode::Normal), action);
+        }
+    }
+
+    #[test]
+    fn normal_case_goto_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('G')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::GotoLine { last: true },
+            }
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::GotoLine { last: false },
+            }
+        );
+    }
+
+    #[test]
+    fn visual_goto_maps() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('G')), Mode::Visual),
+            Action::GotoLastLine
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('G')), Mode::VisualLine),
+            Action::GotoLastLine
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::GotoFirstLine
+        );
+    }
+
+    #[test]
+    fn normal_g_unimplemented_second_keys_cancel() {
+        let implemented = ['~', 'u', 'U', 'g'];
+        for code in 0..128u8 {
+            let pushed = code as char;
+            if !pushed.is_ascii_graphic() || pushed == 'g' {
+                continue;
+            }
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            let action = map.map(plain(KeyCode::Char(pushed)), Mode::Normal);
+            if implemented.contains(&pushed) {
+                continue;
+            }
+            assert_eq!(action, Action::CancelPending, "g{pushed}");
+            assert_eq!(
+                map.map(plain(KeyCode::Char('l')), Mode::Normal),
+                Action::MoveRight,
+                "clean after g{pushed}"
+            );
+        }
+    }
+
+    #[test]
+    fn normal_case_operator_invalid_third_cancels() {
+        for pushed in ['x', 'q', 'd', ';'] {
+            let mut map = VimKeymap::new();
+            map.map(plain(KeyCode::Char('g')), Mode::Normal);
+            map.map(plain(KeyCode::Char('~')), Mode::Normal);
+            assert_eq!(
+                map.map(plain(KeyCode::Char(pushed)), Mode::Normal),
+                Action::CancelPending,
+                "g~{pushed}"
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('l')), Mode::Normal),
+                Action::MoveRight,
+                "clean after g~{pushed}"
+            );
+        }
+    }
+
+    #[test]
+    fn visual_g_junk_cancels() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Visual),
+            Action::CancelPending
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('l')), Mode::Visual),
+            Action::MoveRight
         );
     }
 

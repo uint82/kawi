@@ -150,6 +150,14 @@ impl Editor {
             Action::ToggleCaseAt { motion } => self.toggle_case_at(motion),
             Action::LowercaseAt { motion } => self.lowercase_at(motion),
             Action::UppercaseAt { motion } => self.uppercase_at(motion),
+            Action::GotoLastLine => self.goto_last_line(),
+            Action::GotoFirstLine => self.goto_first_line(),
+            Action::DeleteToLastLine => self.delete_to_last_line(),
+            Action::DeleteToFirstLine => self.delete_to_first_line(),
+            Action::YankToLastLine => self.yank_to_last_line(),
+            Action::YankToFirstLine => self.yank_to_first_line(),
+            Action::ChangeToLastLine => self.change_to_last_line(),
+            Action::ChangeToFirstLine => self.change_to_first_line(),
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
             Action::ExitVisual => self.exit_visual(),
@@ -297,8 +305,14 @@ impl Editor {
     pub(super) fn begin_sequence(&mut self) {
         if self.operator_count.is_none() {
             let pending = std::mem::replace(&mut self.count_digits, 0);
-            self.operator_count = Some(if pending == 0 { 1 } else { pending });
+            if pending != 0 {
+                self.operator_count = Some(pending);
+            }
         }
+    }
+
+    pub(super) fn has_count(&self) -> bool {
+        self.count_digits != 0 || self.operator_count.is_some()
     }
 
     pub(super) fn take_count(&mut self) -> usize {
@@ -412,6 +426,8 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToNextWordEnd
             | Action::FindChar { .. }
             | Action::RepeatFind { .. }
+            | Action::GotoLastLine
+            | Action::GotoFirstLine
             | Action::JumpTo(_, _)
     )
 }

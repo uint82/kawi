@@ -122,6 +122,33 @@ impl Editor {
         self.jump_to_line_start(row);
     }
 
+    pub(super) fn goto_last_line(&mut self) {
+        let row = self.goto_target(true);
+        self.place_goto(row);
+    }
+
+    pub(super) fn goto_first_line(&mut self) {
+        let row = self.goto_target(false);
+        self.place_goto(row);
+    }
+
+    pub(super) fn goto_target(&mut self, last: bool) -> usize {
+        let max = self.buffer.line_count().saturating_sub(1);
+        if self.has_count() {
+            return self.take_count().saturating_sub(1).min(max);
+        }
+        if last {
+            max
+        } else {
+            0
+        }
+    }
+
+    fn place_goto(&mut self, row: usize) {
+        let col = self.cursor.desired().min(self.max_col_for_row(row));
+        self.cursor.set_position(row, col);
+    }
+
     pub(super) fn move_to_prev_word_start(&mut self) {
         self.step_word(words::prev_word_start);
     }
@@ -576,5 +603,69 @@ mod tests {
         let mut e = editor_with("foo bar");
         e.apply(Action::MoveToNextWordStart);
         assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn goto_last_line_preserves_column() {
+        let mut e = editor_with("abcdef\ngh\n    ijkl");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::GotoLastLine);
+        assert_eq!((e.row(), e.col()), (2, 3));
+    }
+
+    #[test]
+    fn goto_last_line_clamps_column() {
+        let mut e = editor_with("abcdef\ngh");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::GotoLastLine);
+        assert_eq!((e.row(), e.col()), (1, 1));
+    }
+
+    #[test]
+    fn goto_last_line_with_count() {
+        let mut e = editor_with("a\nb\nc\nd");
+        push_digits(&mut e, &[2]);
+        e.apply(Action::GotoLastLine);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn goto_last_line_count_past_end_clamps() {
+        let mut e = editor_with("a\nb\nc");
+        push_digits(&mut e, &[9]);
+        e.apply(Action::GotoLastLine);
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn goto_first_line() {
+        let mut e = editor_with("a\nb\nc");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::GotoFirstLine);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn goto_first_line_with_count() {
+        let mut e = editor_with("a\nb\nc\nd");
+        push_digits(&mut e, &[3]);
+        e.apply(Action::GotoFirstLine);
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn goto_first_line_preserves_column() {
+        let mut e = editor_with("    ab\ncd\n  ef");
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::GotoFirstLine);
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 }
