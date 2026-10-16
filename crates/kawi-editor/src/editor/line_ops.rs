@@ -36,11 +36,13 @@ impl Editor {
     pub(super) fn delete_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.delete_line_range(first, last, self.cursor.col());
+        self.reveal_jump();
     }
 
     pub(super) fn delete_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.delete_line_range(first, last, self.cursor.col());
+        self.reveal_jump();
     }
 
     pub(super) fn delete_to_viewport_top(&mut self) {
@@ -110,21 +112,25 @@ impl Editor {
     pub(super) fn yank_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.yank_viewport_span(first, last);
+        self.reveal_jump();
     }
 
     pub(super) fn yank_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.yank_viewport_span(first, last);
+        self.reveal_jump();
     }
 
     pub(super) fn change_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.change_lines(first, last);
+        self.reveal_jump();
     }
 
     pub(super) fn change_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.change_lines(first, last);
+        self.reveal_jump();
     }
 
     fn goto_span(&mut self, last: bool) -> (usize, usize) {
@@ -319,6 +325,87 @@ mod tests {
 
     fn place_top(editor: &mut Editor, top: usize) {
         editor.viewport.place_top(top, editor.line_count());
+    }
+
+    #[test]
+    fn goto_last_line_far_centers_view() {
+        let mut editor = tall_editor();
+        editor.apply(Action::JumpTo(0, 0));
+        editor.apply(Action::GotoLastLine);
+        assert_eq!((editor.row(), editor.col()), (99, 0));
+        assert_eq!(editor.view_top(), 80);
+    }
+
+    #[test]
+    fn goto_last_line_falls_back_past_max() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(44, 0));
+        editor.apply(Action::GotoLastLine);
+        assert_eq!((editor.row(), editor.col()), (99, 0));
+        assert_eq!(editor.view_top(), 80);
+    }
+
+    #[test]
+    fn goto_first_line_far_centers_view() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 80);
+        editor.apply(Action::JumpTo(94, 0));
+        editor.apply(Action::GotoFirstLine);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+        assert_eq!(editor.view_top(), 0);
+    }
+
+    #[test]
+    fn goto_first_line_uses_count() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 80);
+        editor.apply(Action::JumpTo(94, 0));
+        push_digits(&mut editor, &[5]);
+        editor.apply(Action::GotoFirstLine);
+        assert_eq!((editor.row(), editor.col()), (4, 0));
+        assert_eq!(editor.view_top(), 0);
+    }
+
+    #[test]
+    fn delete_to_last_line_reveals_cursor() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 0));
+        editor.apply(Action::DeleteToLastLine);
+        assert_eq!((editor.row(), editor.col()), (48, 0));
+        assert_eq!(editor.view_top(), 40);
+    }
+
+    #[test]
+    fn delete_to_first_line_reveals_cursor() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 0));
+        editor.apply(Action::DeleteToFirstLine);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+        assert_eq!(editor.view_top(), 0);
+    }
+
+    #[test]
+    fn yank_to_first_line_reveals_cursor() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 0));
+        editor.apply(Action::YankToFirstLine);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+        assert_eq!(editor.view_top(), 0);
+    }
+
+    #[test]
+    fn visual_goto_last_line_extends_and_reveals() {
+        let mut editor = tall_editor();
+        editor.apply(Action::JumpTo(0, 0));
+        editor.apply(Action::EnterVisual);
+        editor.apply(Action::GotoLastLine);
+        assert_eq!(editor.selection_range(), Some(((0, 0), (99, 0))));
+        assert_eq!((editor.row(), editor.col()), (99, 0));
+        assert_eq!(editor.view_top(), 80);
     }
 
     #[test]
