@@ -20,6 +20,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("d$", Action::DeleteToEnd),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
+    ("dge", Action::DeleteWordEndBackward),
     (">>", Action::ShiftRight),
     ("<<", Action::ShiftLeft),
     ("==", Action::Reindent),
@@ -32,6 +33,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("c$", Action::ChangeToEnd),
     ("cG", Action::ChangeToLastLine),
     ("cgg", Action::ChangeToFirstLine),
+    ("cge", Action::ChangeWordEndBackward),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
@@ -39,6 +41,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("y$", Action::YankToEnd),
     ("yG", Action::YankToLastLine),
     ("ygg", Action::YankToFirstLine),
+    ("yge", Action::YankWordEndBackward),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
 ];
@@ -302,6 +305,10 @@ impl VimKeymap {
             self.clear_pending();
             return Action::InsertAtLast;
         }
+        if body == "g" && pushed == 'e' {
+            self.clear_pending();
+            return Action::MoveToPrevWordEnd;
+        }
         self.cancel_sequence()
     }
 
@@ -315,17 +322,19 @@ impl VimKeymap {
         match rest {
             "f" | "F" | "t" | "T" => self.complete_case_find(operator, rest, pushed),
             "i" | "a" => self.complete_case_object(operator, rest, pushed),
-            "g" => self.complete_case_goto(operator, pushed),
+            "g" => self.complete_case_g_motion(operator, pushed),
             _ => self.cancel_sequence(),
         }
     }
 
-    fn complete_case_goto(&mut self, operator: &str, pushed: char) -> Action {
-        if pushed != 'g' {
-            return self.cancel_sequence();
-        }
+    fn complete_case_g_motion(&mut self, operator: &str, pushed: char) -> Action {
+        let motion = match pushed {
+            'g' => CaseMotion::GotoLine { last: false },
+            'e' => CaseMotion::WordEndBackward,
+            _ => return self.cancel_sequence(),
+        };
         self.clear_pending();
-        self.case_motion_action(operator, CaseMotion::GotoLine { last: false })
+        self.case_motion_action(operator, motion)
     }
 
     fn shift_prefix_armed(&self) -> bool {
@@ -360,7 +369,7 @@ impl VimKeymap {
         match rest {
             "f" | "F" | "t" | "T" => self.complete_shift_find(operator, rest, pushed),
             "i" | "a" => self.complete_shift_object(operator, rest, pushed),
-            "g" => self.complete_shift_goto(operator, pushed),
+            "g" => self.complete_shift_g_motion(operator, pushed),
             _ => self.cancel_sequence(),
         }
     }
@@ -442,12 +451,14 @@ impl VimKeymap {
         self.shift_motion_action(operator, motion)
     }
 
-    fn complete_shift_goto(&mut self, operator: char, pushed: char) -> Action {
-        if pushed != 'g' {
-            return self.cancel_sequence();
-        }
+    fn complete_shift_g_motion(&mut self, operator: char, pushed: char) -> Action {
+        let motion = match pushed {
+            'g' => ShiftMotion::GotoLine { last: false },
+            'e' => ShiftMotion::WordEndBackward,
+            _ => return self.cancel_sequence(),
+        };
         self.clear_pending();
-        self.shift_motion_action(operator, ShiftMotion::GotoLine { last: false })
+        self.shift_motion_action(operator, motion)
     }
 
     fn complete_case_motion(&mut self, operator: &str, pushed: char) -> Action {
@@ -934,6 +945,10 @@ impl VimKeymap {
         if self.stripped_pending() == "g" && pushed == 'v' {
             self.clear_pending();
             return Action::ReselectVisual;
+        }
+        if self.stripped_pending() == "g" && pushed == 'e' {
+            self.clear_pending();
+            return Action::MoveToPrevWordEnd;
         }
         if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
             self.clear_pending();
@@ -1892,6 +1907,84 @@ mod tests {
     }
 
     #[test]
+    fn normal_ge_moves_to_prev_word_end() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::MoveToPrevWordEnd
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn normal_g_arms_without_digits() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(map.pending_text(), Some("2g"));
+    }
+
+    #[test]
+    fn normal_ge_sequences_resolve() {
+        assert_eq!(sequence_action("dge"), Some(Action::DeleteWordEndBackward));
+        assert_eq!(sequence_action("cge"), Some(Action::ChangeWordEndBackward));
+        assert_eq!(sequence_action("yge"), Some(Action::YankWordEndBackward));
+    }
+
+    #[test]
+    fn normal_ge_count_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(map.pending_text(), Some("2g"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::MoveToPrevWordEnd
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn normal_case_ge_maps() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        map.map(plain(KeyCode::Char('~')), Mode::Normal);
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Normal),
+            Action::ToggleCaseAt {
+                motion: CaseMotion::WordEndBackward,
+            }
+        );
+    }
+
+    #[test]
+    fn visual_ge_extends() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('e')), Mode::Visual),
+            Action::MoveToPrevWordEnd
+        );
+    }
+
+    #[test]
     fn normal_goto_maps() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -1980,7 +2073,7 @@ mod tests {
 
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
-        let implemented = ['~', 'u', 'U', 'g', 'v', 'i'];
+        let implemented = ['~', 'u', 'U', 'g', 'v', 'i', 'e'];
         for code in 0..128u8 {
             let pushed = code as char;
             if !pushed.is_ascii_graphic() || pushed == 'g' {

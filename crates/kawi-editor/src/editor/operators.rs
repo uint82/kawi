@@ -384,6 +384,24 @@ impl Editor {
         self.apply_span(span, false);
     }
 
+    pub(super) fn delete_word_end_backward(&mut self) {
+        let count = self.take_count();
+        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        self.apply_span(span, false);
+    }
+
+    pub(super) fn change_word_end_backward(&mut self) {
+        let count = self.take_count();
+        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        self.apply_span(span, true);
+    }
+
+    pub(super) fn yank_word_end_backward(&mut self) {
+        let count = self.take_count();
+        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        self.yank_word_span(span);
+    }
+
     pub(super) fn first_non_blank_of(&self, row: usize) -> usize {
         self.buffer
             .line(row)
@@ -595,6 +613,10 @@ impl Editor {
         let Some(span) = self.object_edit(inner, object, count) else {
             return;
         };
+        self.yank_word_span(span);
+    }
+
+    fn yank_word_span(&mut self, span: words::WordSpan) {
         match span {
             words::WordSpan::Charwise { start, end } => {
                 self.yank_range(start.0, start.1, end.0, end.1);
@@ -1383,6 +1405,76 @@ mod tests {
         e.apply(Action::DeleteLine);
         assert_eq!(e.text_lines().len(), 2);
         assert_eq!(e.text_lines()[1], "c");
+    }
+
+    #[test]
+    fn delete_word_end_backward() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteWordEndBackward);
+        assert_eq!(e.text_lines()[0], "foo BAbaz");
+        assert_eq!((e.row(), e.col()), (0, 6));
+        assert_eq!(e.register_text(), "R ");
+    }
+
+    #[test]
+    fn delete_word_end_backward_mid_word() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..5 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::DeleteWordEndBackward);
+        assert_eq!(e.text_lines()[0], "foR baz");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.register_text(), "o BA");
+    }
+
+    #[test]
+    fn delete_word_end_backward_count() {
+        let mut e = editor_with("aa bb cc dd");
+        for _ in 0..10 {
+            e.apply(Action::MoveRight);
+        }
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteWordEndBackward);
+        assert_eq!(e.text_lines()[0], "aa b");
+        assert_eq!((e.row(), e.col()), (0, 3));
+        assert_eq!(e.register_text(), "b cc dd");
+    }
+
+    #[test]
+    fn delete_word_end_backward_at_start_noop() {
+        let mut e = editor_with("foo");
+        e.apply(Action::DeleteWordEndBackward);
+        assert_eq!(e.text_lines()[0], "foo");
+        assert_eq!(e.register_text(), String::new());
+    }
+
+    #[test]
+    fn change_word_end_backward() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::ChangeWordEndBackward);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "foo BAXbaz");
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn yank_word_end_backward() {
+        let mut e = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            e.apply(Action::MoveRight);
+        }
+        e.apply(Action::YankWordEndBackward);
+        assert_eq!(e.text_lines()[0], "foo BAR baz");
+        assert_eq!(e.register_text(), "R ");
+        assert_eq!((e.row(), e.col()), (0, 6));
     }
 
     #[test]

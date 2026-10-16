@@ -101,6 +101,11 @@ impl Editor {
                 let span = words::cw_range(&self.buffer, row, col, count);
                 span_rows(span)
             }
+            ShiftMotion::WordEndBackward => {
+                let count = self.take_count();
+                let span = words::ge_range(&self.buffer, row, col, count);
+                span_rows(span)
+            }
             ShiftMotion::LineEnd => {
                 let count = self.take_count();
                 let tail = self.line_tail(count)?;
@@ -587,6 +592,19 @@ mod tests {
             },
         });
         assert_eq!(editor.text_lines()[0], "\tfoo (bar) baz");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn shift_word_end_backward() {
+        let mut editor = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            editor.apply(Action::MoveRight);
+        }
+        editor.apply(Action::ShiftRightAt {
+            motion: ShiftMotion::WordEndBackward,
+        });
+        assert_eq!(editor.text_lines()[0], "\tfoo BAR baz");
         assert_eq!((editor.row(), editor.col()), (0, 0));
     }
 

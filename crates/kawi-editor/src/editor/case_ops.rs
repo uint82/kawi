@@ -63,6 +63,10 @@ impl Editor {
                 let count = self.take_count();
                 Some(words::cw_range(&self.buffer, row, col, count))
             }
+            CaseMotion::WordEndBackward => {
+                let count = self.take_count();
+                Some(words::ge_range(&self.buffer, row, col, count))
+            }
             CaseMotion::LineEnd => {
                 let count = self.take_count();
                 let tail = self.line_tail(count)?;
@@ -560,6 +564,19 @@ mod tests {
         assert_eq!(editor.text_lines()[1], "BB");
         assert_eq!(editor.text_lines()[2], "CC");
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn toggle_word_end_backward() {
+        let mut editor = editor_with("foo BAR baz");
+        for _ in 0..7 {
+            editor.apply(Action::MoveRight);
+        }
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::WordEndBackward,
+        });
+        assert_eq!(editor.text_lines()[0], "foo BAr baz");
+        assert_eq!((editor.row(), editor.col()), (0, 6));
     }
 
     #[test]
