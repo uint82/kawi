@@ -477,6 +477,14 @@ impl VimKeymap {
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
             KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeSelection),
             KeyCode::Char('s') => self.map_plain_or_noop(key, Action::ChangeSelection),
+            KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteLines),
+            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLines),
+            KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeLines),
+            KeyCode::Char('S') => self.map_plain_or_noop(key, Action::ChangeLines),
+            KeyCode::Char('~') => self.map_plain_or_noop(key, Action::ToggleCase),
+            KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Lowercase),
+            KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Uppercase),
+            KeyCode::Char('g') => self.arm_visual_g(key),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
             KeyCode::Char('O') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
             KeyCode::Char('v') => self.map_plain_or_noop(key, self.visual_v_action(mode)),
@@ -528,6 +536,14 @@ impl VimKeymap {
         Action::BeginSequence
     }
 
+    fn arm_visual_g(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('g');
+        Action::Noop
+    }
+
     fn push_visual_digit(&mut self, key: KeyEvent, digit: char) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
@@ -569,6 +585,25 @@ impl VimKeymap {
         }
         if let Some(action) = self.complete_visual_object(pushed) {
             return action;
+        }
+        if let Some(action) = self.complete_visual_g(pushed) {
+            return action;
+        }
+        if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
+            self.clear_pending();
+            return if pushed == 'D' {
+                Action::DeleteLines
+            } else {
+                Action::YankLines
+            };
+        }
+        if matches!(pushed, 'C' | 'S') && self.only_digits_pending() {
+            self.clear_pending();
+            return Action::ChangeLines;
+        }
+        if matches!(pushed, '~' | 'u' | 'U') && self.only_digits_pending() {
+            self.clear_pending();
+            return self.case_action(pushed);
         }
         if matches!(pushed, ';' | ',') && self.only_digits_pending() {
             self.clear_pending();
@@ -624,6 +659,26 @@ impl VimKeymap {
             forward,
             till,
         })
+    }
+
+    fn complete_visual_g(&mut self, pushed: char) -> Option<Action> {
+        if self.stripped_pending() != "g" {
+            return None;
+        }
+        let action = match pushed {
+            '~' | 'u' | 'U' => self.case_action(pushed),
+            _ => return None,
+        };
+        self.clear_pending();
+        Some(action)
+    }
+
+    fn case_action(&self, pushed: char) -> Action {
+        match pushed {
+            '~' => Action::ToggleCase,
+            'u' => Action::Lowercase,
+            _ => Action::Uppercase,
+        }
     }
 
     fn complete_visual_object(&mut self, pushed: char) -> Option<Action> {
@@ -1118,6 +1173,100 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('V')), Mode::Normal),
             Action::EnterVisualLine
+        );
+    }
+
+    #[test]
+    fn visual_line_operators_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('D')), Mode::Visual),
+            Action::DeleteLines
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Y')), Mode::Visual),
+            Action::YankLines
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('C')), Mode::Visual),
+            Action::ChangeLines
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('S')), Mode::Visual),
+            Action::ChangeLines
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('D')), Mode::VisualLine),
+            Action::DeleteLines
+        );
+    }
+
+    #[test]
+    fn visual_case_operators_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::Visual),
+            Action::ToggleCase
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('u')), Mode::Visual),
+            Action::Lowercase
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('U')), Mode::Visual),
+            Action::Uppercase
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::VisualLine),
+            Action::ToggleCase
+        );
+    }
+
+    #[test]
+    fn visual_g_case_maps() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('~')), Mode::Visual),
+            Action::ToggleCase
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('u')), Mode::Visual),
+            Action::Lowercase
+        );
+    }
+
+    #[test]
+    fn visual_g_invalid_cancels() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Visual),
+            Action::CancelPending
+        );
+    }
+
+    #[test]
+    fn visual_count_capital_d_deletes() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Visual),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('D')), Mode::Visual),
+            Action::DeleteLines
         );
     }
 
