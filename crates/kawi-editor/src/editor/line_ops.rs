@@ -43,14 +43,78 @@ impl Editor {
         self.delete_line_range(first, last, self.cursor.col());
     }
 
+    pub(super) fn delete_to_viewport_top(&mut self) {
+        let target = self.viewport_top_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.delete_line_range(first, last, self.cursor.col());
+    }
+
+    pub(super) fn delete_to_viewport_middle(&mut self) {
+        let target = self.viewport_middle_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.delete_line_range(first, last, self.cursor.col());
+    }
+
+    pub(super) fn delete_to_viewport_bottom(&mut self) {
+        let target = self.viewport_bottom_target().max(self.view_top());
+        let (first, last) = self.viewport_span(target);
+        self.delete_line_range(first, last, self.cursor.col());
+    }
+
+    pub(super) fn yank_to_viewport_top(&mut self) {
+        let target = self.viewport_top_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.yank_viewport_span(first, last);
+    }
+
+    pub(super) fn yank_to_viewport_middle(&mut self) {
+        let target = self.viewport_middle_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.yank_viewport_span(first, last);
+    }
+
+    pub(super) fn yank_to_viewport_bottom(&mut self) {
+        let target = self.viewport_bottom_target().max(self.view_top());
+        let (first, last) = self.viewport_span(target);
+        self.yank_viewport_span(first, last);
+    }
+
+    pub(super) fn change_to_viewport_top(&mut self) {
+        let target = self.viewport_top_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.change_lines(first, last);
+    }
+
+    pub(super) fn change_to_viewport_middle(&mut self) {
+        let target = self.viewport_middle_target().min(self.last_row());
+        let (first, last) = self.viewport_span(target);
+        self.change_lines(first, last);
+    }
+
+    pub(super) fn change_to_viewport_bottom(&mut self) {
+        let target = self.viewport_bottom_target().max(self.view_top());
+        let (first, last) = self.viewport_span(target);
+        self.change_lines(first, last);
+    }
+
+    fn viewport_span(&self, target: usize) -> (usize, usize) {
+        let row = self.cursor.row();
+        (row.min(target), row.max(target))
+    }
+
+    fn yank_viewport_span(&mut self, first: usize, last: usize) {
+        self.yank_line_range(first, last);
+        self.cursor.set_position(first, self.cursor.col());
+    }
+
     pub(super) fn yank_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
-        self.yank_line_range(first, last);
+        self.yank_viewport_span(first, last);
     }
 
     pub(super) fn yank_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
-        self.yank_line_range(first, last);
+        self.yank_viewport_span(first, last);
     }
 
     pub(super) fn change_to_last_line(&mut self) {
@@ -234,13 +298,121 @@ mod tests {
     }
 
     #[test]
-    fn yank_to_first_line_keeps_cursor() {
+    fn yank_to_first_line_moves_to_first() {
         let mut editor = editor_with("a\nbb\ncc");
         editor.apply(Action::MoveDown);
         editor.apply(Action::MoveDown);
         editor.apply(Action::YankToFirstLine);
         assert_eq!(editor.register_text(), "a\nbb\ncc");
-        assert_eq!((editor.row(), editor.col()), (2, 0));
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    fn tall_editor() -> Editor {
+        let text = (1..=100)
+            .map(|i| format!("    {i} abcdef"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut editor = editor_with(&text);
+        editor.set_view_size(80, 20);
+        editor
+    }
+
+    fn place_top(editor: &mut Editor, top: usize) {
+        editor.viewport.place_top(top, editor.line_count());
+    }
+
+    #[test]
+    fn delete_to_viewport_top_keeps_column() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 8));
+        editor.apply(Action::DeleteToViewportTop);
+        assert_eq!(editor.text_lines()[40], "    51 abcdef");
+        assert_eq!((editor.row(), editor.col()), (40, 8));
+        assert_eq!(editor.register_text().lines().count(), 10);
+    }
+
+    #[test]
+    fn delete_to_viewport_top_uses_count() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 0));
+        push_digits(&mut editor, &[2]);
+        editor.apply(Action::DeleteToViewportTop);
+        assert_eq!(editor.text_lines()[40], "    41 abcdef");
+        assert_eq!((editor.row(), editor.col()), (41, 0));
+        assert_eq!(editor.register_text().lines().count(), 9);
+    }
+
+    #[test]
+    fn delete_to_viewport_middle_straddles() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 45);
+        editor.apply(Action::JumpTo(64, 8));
+        editor.apply(Action::DeleteToViewportMiddle);
+        assert_eq!(editor.text_lines()[54], "    66 abcdef");
+        assert_eq!((editor.row(), editor.col()), (54, 8));
+        let mut editor = tall_editor();
+        place_top(&mut editor, 45);
+        editor.apply(Action::JumpTo(45, 8));
+        editor.apply(Action::DeleteToViewportMiddle);
+        assert_eq!(editor.text_lines()[45], "    56 abcdef");
+        assert_eq!((editor.row(), editor.col()), (45, 8));
+    }
+
+    #[test]
+    fn delete_to_viewport_bottom_keeps_column() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 8));
+        editor.apply(Action::DeleteToViewportBottom);
+        assert_eq!(editor.text_lines()[49], "    61 abcdef");
+        assert_eq!((editor.row(), editor.col()), (49, 8));
+        assert_eq!(editor.register_text().lines().count(), 11);
+    }
+
+    #[test]
+    fn yank_to_viewport_top_moves_to_first() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 8));
+        editor.apply(Action::YankToViewportTop);
+        assert_eq!(editor.text_lines().len(), 100);
+        assert_eq!((editor.row(), editor.col()), (40, 8));
+        assert_eq!(editor.register_text().lines().count(), 10);
+    }
+
+    #[test]
+    fn yank_to_viewport_bottom_keeps_cursor() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 8));
+        editor.apply(Action::YankToViewportBottom);
+        assert_eq!((editor.row(), editor.col()), (49, 8));
+        assert_eq!(editor.register_text().lines().count(), 11);
+    }
+
+    #[test]
+    fn change_to_viewport_top_keeps_indent() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 40);
+        editor.apply(Action::JumpTo(49, 8));
+        editor.apply(Action::ChangeToViewportTop);
+        assert_eq!(editor.text_lines()[40], "    ");
+        assert_eq!((editor.row(), editor.col()), (40, 4));
+        assert_eq!(editor.mode(), crate::mode::Mode::Insert);
+        assert_eq!(editor.register_text().lines().count(), 10);
+    }
+
+    #[test]
+    fn change_to_viewport_middle_straddles() {
+        let mut editor = tall_editor();
+        place_top(&mut editor, 45);
+        editor.apply(Action::JumpTo(64, 0));
+        editor.apply(Action::ChangeToViewportMiddle);
+        assert_eq!(editor.text_lines()[54], "    ");
+        assert_eq!((editor.row(), editor.col()), (54, 4));
+        assert_eq!(editor.mode(), crate::mode::Mode::Insert);
     }
 
     #[test]
