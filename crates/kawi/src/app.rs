@@ -522,6 +522,11 @@ fn fallback_height() -> usize {
 
 #[cfg(test)]
 mod tests {
+    // NOTE(probes): nvim verification lessons. Run one insert entry per
+    // `:normal` call because later entries are dropped, end insert-ending
+    // sequences with a real Esc because stopinsert also moves the cursor
+    // left, and keep every motion succeeding because :normal aborts the
+    // rest of the keys after a failed one.
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
     use kawi_editor::Mode;
