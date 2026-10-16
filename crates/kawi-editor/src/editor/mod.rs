@@ -8,7 +8,7 @@ use crate::mode::Mode;
 use crate::register::Register;
 #[cfg(test)]
 use crate::register::RegisterKind;
-use crate::selection::Selection;
+use crate::selection::{SavedVisual, Selection};
 
 mod case_ops;
 mod line_ops;
@@ -28,6 +28,7 @@ pub struct Editor {
     search_origin: Option<(usize, usize)>,
     search_status: Option<SearchStatus>,
     selection: Option<Selection>,
+    previous_visual: Option<SavedVisual>,
     register: Register,
     count_digits: usize,
     operator_count: Option<usize>,
@@ -161,6 +162,8 @@ impl Editor {
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
             Action::ExitVisual => self.exit_visual(),
+            Action::CancelVisual => self.cancel_visual(),
+            Action::ReselectVisual => self.reselect_visual(),
             Action::SwapSelectionEnds => self.swap_selection_ends(),
             Action::SelectInnerWord => self.select_inner_word(),
             Action::SelectAroundWord => self.select_around_word(),
@@ -284,6 +287,7 @@ impl Editor {
             search_origin: None,
             search_status: None,
             selection: None,
+            previous_visual: None,
             register: Register::new(),
             count_digits: 0,
             operator_count: None,
