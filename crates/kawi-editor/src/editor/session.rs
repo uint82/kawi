@@ -68,6 +68,12 @@ impl Editor {
         self.switch_to_insert();
     }
 
+    pub(super) fn insert_at_column_start(&mut self) {
+        self.cursor.set_position(self.cursor.row(), 0);
+        self.arm_insert_repeat(false);
+        self.enter_insert();
+    }
+
     pub(super) fn insert_at_last(&mut self) {
         if let Some(pos) = self.last_insert {
             let row = pos.0.min(self.buffer.line_count().saturating_sub(1));
@@ -1701,6 +1707,43 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::InsertAtLast);
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn insert_at_column_start_basic() {
+        let mut e = editor_with("abc");
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertAtColumnStart);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "Xabc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn insert_at_column_start_indented() {
+        let mut e = editor_with("  abc");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertAtColumnStart);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "X  abc");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn insert_at_column_start_count() {
+        let mut e = editor_with("abc");
+        e.apply(Action::MoveRight);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::InsertAtColumnStart);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "XXabc");
     }
 
     #[test]
