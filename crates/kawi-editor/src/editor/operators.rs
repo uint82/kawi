@@ -636,7 +636,7 @@ impl Editor {
             .delete_span(span.start.0, span.start.1, span.end.0, span.end.1);
     }
 
-    fn remove_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+    pub(super) fn remove_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_boundary_at(start.0, start.1);
         self.yank_range(start.0, start.1, end.0, end.1);
         self.buffer.delete_range(start.0, start.1, end.0, end.1);

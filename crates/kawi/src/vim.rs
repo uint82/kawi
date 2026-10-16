@@ -41,6 +41,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("d0", Action::DeleteToStart),
     ("d^", Action::DeleteToFirstNonBlank),
     ("d$", Action::DeleteToEnd),
+    ("d%", Action::DeleteToMatch),
     ("dG", Action::DeleteToLastLine),
     ("dgg", Action::DeleteToFirstLine),
     ("dH", Action::DeleteToViewportTop),
@@ -58,6 +59,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("c0", Action::ChangeToStart),
     ("c^", Action::ChangeToFirstNonBlank),
     ("c$", Action::ChangeToEnd),
+    ("c%", Action::ChangeToMatch),
     ("cG", Action::ChangeToLastLine),
     ("cgg", Action::ChangeToFirstLine),
     ("cH", Action::ChangeToViewportTop),
@@ -70,6 +72,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("y0", Action::YankToStart),
     ("y^", Action::YankToFirstNonBlank),
     ("y$", Action::YankToEnd),
+    ("y%", Action::YankToMatch),
     ("yG", Action::YankToLastLine),
     ("ygg", Action::YankToFirstLine),
     ("yH", Action::YankToViewportTop),
@@ -101,7 +104,10 @@ fn arms_pending(pushed: char) -> bool {
 }
 
 fn is_visual_motion_key(pushed: char) -> bool {
-    matches!(pushed, 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$' | '^')
+    matches!(
+        pushed,
+        'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '$' | '^' | '%'
+    )
 }
 
 fn display_motion_action(pushed: char) -> Option<Action> {
@@ -239,6 +245,7 @@ impl VimKeymap {
             KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteForward),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
+            KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('+') => self.map_plain_or_noop(key, Action::MoveToNextLineStart),
             KeyCode::Char('-') => self.map_plain_or_noop(key, Action::MoveToPrevLineStart),
@@ -924,6 +931,7 @@ impl VimKeymap {
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
+            KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
@@ -2237,6 +2245,51 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('H')), Mode::Normal),
             Action::DeleteToViewportTop
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn match_motion_and_operators_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('%')), Mode::Normal),
+            Action::MoveToMatch
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('%')), Mode::Visual),
+            Action::MoveToMatch
+        );
+        for (keys, action) in [
+            ("d%", Action::DeleteToMatch),
+            ("c%", Action::ChangeToMatch),
+            ("y%", Action::YankToMatch),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut resolved = Action::Noop;
+            for key in keys.chars() {
+                resolved = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            }
+            assert_eq!(resolved, action);
+            assert_eq!(map.pending_text(), None);
+        }
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('5')), Mode::Normal),
+            Action::PushCount(5)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::PushCount(0)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('%')), Mode::Normal),
+            Action::DeleteToMatch
         );
         assert_eq!(map.pending_text(), None);
     }
