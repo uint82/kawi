@@ -15,16 +15,19 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("db", Action::DeleteWordBackward),
     ("de", Action::DeleteWordEnd),
     ("d0", Action::DeleteToStart),
+    ("d$", Action::DeleteToEnd),
     ("diw", Action::DeleteInnerWord),
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
     ("ce", Action::ChangeWordEnd),
     ("c0", Action::ChangeToStart),
+    ("c$", Action::ChangeToEnd),
     ("ciw", Action::ChangeInnerWord),
     ("caw", Action::ChangeAroundWord),
     ("yy", Action::YankLine),
     ("y0", Action::YankToStart),
+    ("y$", Action::YankToEnd),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
 ];
@@ -1867,6 +1870,72 @@ mod tests {
     }
 
     #[test]
+    fn dollar_sequences_flow() {
+        for (operator, action) in [
+            ('d', Action::DeleteToEnd),
+            ('c', Action::ChangeToEnd),
+            ('y', Action::YankToEnd),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                Action::BeginSequence
+            );
+            assert_eq!(map.map(plain(KeyCode::Char('$')), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn dollar_count_after_operator_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('$')), Mode::Normal),
+            Action::DeleteToEnd
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn dollar_count_before_operator_flows() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('$')), Mode::Normal),
+            Action::DeleteToEnd
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn dollar_flows_into_editor() {
+        let mut map = VimKeymap::new();
+        let mut editor =
+            kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("abcdef\nghijkl"));
+        for key in ['d', '2', '$'] {
+            let action = map.map(plain(KeyCode::Char(key)), Mode::Normal);
+            editor.apply(action);
+        }
+        assert_eq!(editor.visible_lines(0, 2), vec![String::new()]);
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
     fn repeat_flows_into_editor() {
         let mut map = VimKeymap::new();
         let mut editor = kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("axbxc"));
@@ -1884,8 +1953,11 @@ mod tests {
         assert_eq!(sequence_action("db"), Some(Action::DeleteWordBackward));
         assert_eq!(sequence_action("de"), Some(Action::DeleteWordEnd));
         assert_eq!(sequence_action("d0"), Some(Action::DeleteToStart));
+        assert_eq!(sequence_action("d$"), Some(Action::DeleteToEnd));
         assert_eq!(sequence_action("c0"), Some(Action::ChangeToStart));
+        assert_eq!(sequence_action("c$"), Some(Action::ChangeToEnd));
         assert_eq!(sequence_action("y0"), Some(Action::YankToStart));
+        assert_eq!(sequence_action("y$"), Some(Action::YankToEnd));
         assert_eq!(sequence_action("dx"), None);
     }
 
