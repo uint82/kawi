@@ -1345,4 +1345,179 @@ mod tests {
         assert_eq!(e.text_lines(), vec![" qux".to_string()]);
         assert_eq!((e.row(), e.col()), (0, 0));
     }
+
+    #[test]
+    fn visual_capital_d_deletes_touched_lines() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteLines);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.register_text(), "aBcDeF");
+        assert_eq!(e.register_kind(), crate::register::RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn visual_capital_d_multiline() {
+        let mut e = editor_with("aBcDeF\ngHiJkL");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::DeleteLines);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_capital_d_ignores_count() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteLines);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_capital_y_yanks_touched_lines() {
+        let mut e = editor_with("aBcDeF\ngHiJkL");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankLines);
+        assert_eq!(
+            e.text_lines(),
+            vec!["aBcDeF".to_string(), "gHiJkL".to_string()]
+        );
+        assert_eq!(e.register_text(), "aBcDeF\ngHiJkL");
+        assert_eq!(e.register_kind(), crate::register::RegisterKind::LineWise);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_capital_c_changes_touched_lines() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ChangeLines);
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines(), vec!["X".to_string()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn visual_toggle_case() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "abCdeF");
+        assert_eq!((e.row(), e.col()), (0, 1));
+        assert_eq!(e.register_text(), String::new());
+    }
+
+    #[test]
+    fn visual_lowercase() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::Lowercase);
+        assert_eq!(e.text_lines()[0], "abcdeF");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_uppercase() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::Uppercase);
+        assert_eq!(e.text_lines()[0], "aBCDeF");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_toggle_case_multiline() {
+        let mut e = editor_with("aBcDeF\ngHiJkL");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "abCdEf");
+        assert_eq!(e.text_lines()[1], "GhiJkL");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_toggle_case_linewise() {
+        let mut e = editor_with("aBcDeF\ngHiJkL");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "AbCdEf");
+        assert_eq!(e.text_lines()[1], "GhIjKl");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_toggle_case_point() {
+        let mut e = editor_with("aBc");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "abc");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_toggle_case_backward() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveLeft);
+        e.apply(Action::SwapSelectionEnds);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "aBCdeF");
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn visual_toggle_case_ignores_count() {
+        let mut e = editor_with("aBcDeF");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::ToggleCase);
+        assert_eq!(e.text_lines()[0], "abcDeF");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn visual_toggle_case_undoes_together() {
+        let mut e = editor_with("aBcDeF\ngHiJkL");
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ToggleCase);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "aBcDeF");
+        assert_eq!(e.text_lines()[1], "gHiJkL");
+    }
 }

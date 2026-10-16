@@ -290,6 +290,32 @@ impl Buffer {
         self.rope.slice(start.min(end)..end.max(start)).to_string()
     }
 
+    pub fn shift_case_range(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+        shift: fn(char) -> char,
+    ) {
+        if start_row >= self.len() {
+            return;
+        }
+        let end_row = end_row.min(self.len().saturating_sub(1));
+        let start = self.position_to_char(start_row, start_col);
+        let end = self
+            .position_to_char(end_row, end_col)
+            .saturating_add(1)
+            .min(self.rope.len_chars());
+        if start >= end {
+            return;
+        }
+        let mapped: String = self.rope.slice(start..end).chars().map(shift).collect();
+        self.rope.remove(start..end);
+        self.rope.insert(start, &mapped);
+        self.touch();
+    }
+
     pub fn delete_range(
         &mut self,
         start_row: usize,
@@ -800,6 +826,27 @@ mod tests {
         assert_eq!(b.paste_before(0, 1, "ab\nc"), (1, 2));
         assert_eq!(b.line(0).as_deref(), Some("1ab"));
         assert_eq!(b.line(1).as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn shift_case_range_toggles_single_line() {
+        let mut b = Buffer::from_string("aBcDeF");
+        b.shift_case_range(0, 1, 0, 3, |ch| {
+            if ch.is_ascii_lowercase() {
+                ch.to_ascii_uppercase()
+            } else {
+                ch.to_ascii_lowercase()
+            }
+        });
+        assert_eq!(b.line(0).as_deref(), Some("abCdeF"));
+    }
+
+    #[test]
+    fn shift_case_range_spans_lines() {
+        let mut b = Buffer::from_string("aBcDeF\ngHiJkL");
+        b.shift_case_range(0, 1, 1, 1, |ch| ch.to_ascii_lowercase());
+        assert_eq!(b.line(0).as_deref(), Some("abcdef"));
+        assert_eq!(b.line(1).as_deref(), Some("ghiJkL"));
     }
 
     #[test]

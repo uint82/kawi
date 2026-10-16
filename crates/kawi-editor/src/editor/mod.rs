@@ -10,6 +10,8 @@ use crate::register::Register;
 use crate::register::RegisterKind;
 use crate::selection::Selection;
 
+mod case_ops;
+mod line_ops;
 mod motions;
 mod operators;
 mod search_mode;
@@ -139,6 +141,12 @@ impl Editor {
             Action::YankSelection => self.yank_selection(),
             Action::PasteOverSelection => self.paste_over_selection(),
             Action::ChangeSelection => self.change_selection(),
+            Action::DeleteLines => self.delete_touched_lines(),
+            Action::YankLines => self.yank_touched_lines(),
+            Action::ChangeLines => self.change_touched_lines(),
+            Action::ToggleCase => self.toggle_case(),
+            Action::Lowercase => self.lowercase(),
+            Action::Uppercase => self.uppercase(),
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
             Action::ExitVisual => self.exit_visual(),

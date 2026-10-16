@@ -495,7 +495,15 @@ fn save_report(filename: &str, line_count: usize, byte_count: usize) -> String {
 fn is_operator(action: Action) -> bool {
     matches!(
         action,
-        Action::DeleteSelection | Action::YankSelection | Action::PasteOverSelection
+        Action::DeleteSelection
+            | Action::YankSelection
+            | Action::PasteOverSelection
+            | Action::DeleteLines
+            | Action::YankLines
+            | Action::ChangeLines
+            | Action::ToggleCase
+            | Action::Lowercase
+            | Action::Uppercase
     )
 }
 
@@ -583,6 +591,30 @@ mod tests {
         app.handle_key(key(KeyCode::Char('V'))).expect("exit");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
+    }
+
+    #[test]
+    fn vim_visual_capital_d_deletes_lines() {
+        let mut app = App::new(Buffer::from_string("aBcDeF"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('D'))).expect("delete");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_visual_tilde_toggles() {
+        let mut app = App::new(Buffer::from_string("aBcDeF"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('l'))).expect("extend");
+        app.handle_key(key(KeyCode::Char('~'))).expect("toggle");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.editor_selection(), None);
+        assert_eq!(app.cursor_position(), (0, 0));
     }
 
     #[test]

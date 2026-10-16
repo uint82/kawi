@@ -125,7 +125,7 @@ impl Editor {
         }
     }
 
-    fn change_lines(&mut self, first: usize, last: usize) {
+    pub(super) fn change_lines(&mut self, first: usize, last: usize) {
         let last = last.min(self.buffer.line_count().saturating_sub(1));
         let first = first.min(last);
         self.register.set_lines(self.take_lines(first, last));
@@ -146,7 +146,7 @@ impl Editor {
         self.switch_to_insert();
     }
 
-    fn remove_lines(&mut self, first: usize, last: usize) {
+    pub(super) fn remove_lines(&mut self, first: usize, last: usize) {
         let last = last.min(self.buffer.line_count().saturating_sub(1));
         if first > last {
             return;
@@ -285,14 +285,7 @@ impl Editor {
 
     pub(super) fn delete_selection(&mut self) {
         if self.mode == Mode::VisualLine {
-            let ((first, _), (last, _)) = self.operator_range();
-            let col = self.cursor.col();
-            self.remove_lines(first, last);
-            let row = first.min(self.buffer.line_count().saturating_sub(1));
-            let max = self.buffer.line_len(row).saturating_sub(1);
-            let col = col.min(max);
-            self.collapse_to(row, col);
-            self.cursor.set_position(row, col);
+            self.delete_touched_lines();
             return;
         }
         let (start, end) = self.operator_range();
@@ -302,9 +295,7 @@ impl Editor {
 
     pub(super) fn change_selection(&mut self) {
         if self.mode == Mode::VisualLine {
-            let ((first, _), (last, _)) = self.operator_range();
-            self.exit_visual();
-            self.change_lines(first, last);
+            self.change_touched_lines();
             return;
         }
         let (start, end) = self.operator_range();
@@ -463,7 +454,7 @@ impl Editor {
         self.insert_indent(row.saturating_add(1), &indent);
     }
 
-    fn operator_range(&self) -> ((usize, usize), (usize, usize)) {
+    pub(super) fn operator_range(&self) -> ((usize, usize), (usize, usize)) {
         match self.selection_range() {
             Some(range) => range,
             None => (
@@ -605,7 +596,7 @@ impl Editor {
         }
     }
 
-    fn yank_line_range(&mut self, first: usize, last: usize) {
+    pub(super) fn yank_line_range(&mut self, first: usize, last: usize) {
         self.register.set_lines(self.take_lines(first, last));
     }
 
@@ -634,9 +625,7 @@ impl Editor {
 
     pub(super) fn yank_selection(&mut self) {
         if self.mode == Mode::VisualLine {
-            let ((first, _), (last, _)) = self.operator_range();
-            self.yank_line_range(first, last);
-            self.cursor.set_position(first, 0);
+            self.yank_touched_lines();
             return;
         }
         let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
