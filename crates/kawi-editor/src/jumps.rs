@@ -1,4 +1,5 @@
-// TODO(jumps): adjust entries when lines are inserted or deleted like mark_adjust.
+use kawi_buffer::LineAdjust;
+
 const JUMP_LIMIT: usize = 100;
 
 #[derive(Debug, Default)]
@@ -26,6 +27,23 @@ impl Jumps {
 
     pub(crate) fn newer(&mut self, count: usize, cursor: (usize, usize)) -> Option<(usize, usize)> {
         self.navigate(count as isize, cursor)
+    }
+
+    pub(crate) fn adjust(&mut self, adjust: LineAdjust) {
+        for (row, _) in &mut self.entries {
+            let lnum = *row + 1;
+            let lnum = if lnum >= adjust.line1 && lnum <= adjust.line2 {
+                match adjust.amount {
+                    None => adjust.line1,
+                    Some(amount) => lnum.saturating_add_signed(amount),
+                }
+            } else if adjust.amount_after != 0 && lnum > adjust.line2 {
+                lnum.saturating_add_signed(adjust.amount_after)
+            } else {
+                lnum
+            };
+            *row = lnum.saturating_sub(1);
+        }
     }
 
     #[cfg(test)]
@@ -174,6 +192,49 @@ mod tests {
         assert_eq!(jumps.older(1, (2, 4)), None);
         assert_eq!(jumps.entries(), &[]);
         assert_eq!(jumps.index(), 0);
+    }
+
+    fn adjust(
+        line1: usize,
+        line2: usize,
+        amount: Option<isize>,
+        amount_after: isize,
+    ) -> LineAdjust {
+        LineAdjust {
+            line1,
+            line2,
+            amount,
+            amount_after,
+        }
+    }
+
+    #[test]
+    fn adjust_clamps_deleted_range() {
+        let mut jumps = Jumps::new();
+        for row in [0, 4, 5, 6, 19] {
+            jumps.record((row, 3));
+        }
+        jumps.adjust(adjust(5, 6, None, -2));
+        assert_eq!(jumps.entries(), &[(0, 3), (4, 3), (4, 3), (4, 3), (17, 3)]);
+    }
+
+    #[test]
+    fn adjust_shifts_after_open_ended_insertion() {
+        let mut jumps = Jumps::new();
+        for row in [4, 5, 19] {
+            jumps.record((row, 1));
+        }
+        jumps.adjust(adjust(6, usize::MAX, Some(2), 0));
+        assert_eq!(jumps.entries(), &[(4, 1), (7, 1), (21, 1)]);
+    }
+
+    #[test]
+    fn adjust_empty_range_shifts_lines_after() {
+        let mut jumps = Jumps::new();
+        jumps.record((0, 0));
+        jumps.record((3, 0));
+        jumps.adjust(adjust(2, 1, None, 1));
+        assert_eq!(jumps.entries(), &[(0, 0), (4, 0)]);
     }
 
     #[test]

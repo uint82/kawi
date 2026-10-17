@@ -3,12 +3,15 @@ use ropey::Rope;
 use std::fs;
 
 use crate::history::History;
+use crate::line_adjust::{self, LineAdjust};
 
 pub struct Buffer {
     rope: Rope,
     pub path: Option<String>,
     history: History,
     revision: u64,
+    line_changes: u64,
+    adjustments: Vec<LineAdjust>,
 }
 
 impl Buffer {
@@ -18,6 +21,8 @@ impl Buffer {
             path: None,
             history: History::new(),
             revision: 0,
+            line_changes: 0,
+            adjustments: Vec::new(),
         }
     }
 
@@ -28,6 +33,8 @@ impl Buffer {
             path: Some(path.to_string()),
             history: History::new(),
             revision: 0,
+            line_changes: 0,
+            adjustments: Vec::new(),
         })
     }
 
@@ -40,15 +47,7 @@ impl Buffer {
     }
 
     pub fn len(&self) -> usize {
-        if self.rope.len_chars() == 0 {
-            return 1;
-        }
-        let lines = self.rope.len_lines();
-        if self.ends_with_newline() {
-            lines.saturating_sub(1).max(1)
-        } else {
-            lines
-        }
+        line_adjust::logical_line_count(&self.rope)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -141,48 +140,67 @@ impl Buffer {
     }
 
     pub fn checkpoint(&mut self, row: usize, col: usize) {
-        self.history.checkpoint(&self.rope, row, col);
+        self.history
+            .checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn maybe_checkpoint(&mut self, row: usize, col: usize) {
-        self.history.maybe_checkpoint(&self.rope, row, col);
+        self.history
+            .maybe_checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn undo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let restored = self.history.undo(&mut self.rope, row, col);
-        if restored.is_some() {
-            self.touch();
-        }
-        restored
+        let (restored, adjust) = self
+            .history
+            .undo(&mut self.rope, row, col, self.line_changes)?;
+        self.push_adjustment(adjust);
+        self.touch();
+        Some(restored)
     }
 
     pub fn redo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let restored = self.history.redo(&mut self.rope, row, col);
-        if restored.is_some() {
-            self.touch();
-        }
-        restored
+        let (restored, adjust) = self
+            .history
+            .redo(&mut self.rope, row, col, self.line_changes)?;
+        self.push_adjustment(adjust);
+        self.touch();
+        Some(restored)
     }
 
     pub fn redo_keep_cursor(&mut self, row: usize, col: usize) -> bool {
-        let restored = self.history.redo(&mut self.rope, row, col).is_some();
-        if restored {
-            self.touch();
+        let Some((_, adjust)) = self
+            .history
+            .redo(&mut self.rope, row, col, self.line_changes)
+        else {
+            return false;
+        };
+        self.push_adjustment(adjust);
+        self.touch();
+        true
+    }
+
+    pub fn take_line_adjustments(&mut self) -> Vec<LineAdjust> {
+        std::mem::take(&mut self.adjustments)
+    }
+
+    fn push_adjustment(&mut self, adjust: Option<LineAdjust>) {
+        if let Some(adjust) = adjust {
+            self.adjustments.push(adjust);
+            self.line_changes = self.line_changes.wrapping_add(1);
         }
-        restored
     }
 
     pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
         self.ensure_line_exists(row);
         let idx = self.position_to_char(row, col);
-        self.rope.insert(idx, &ch.to_string());
+        self.insert_text(idx, &ch.to_string());
         self.touch();
     }
 
     pub fn insert_newline(&mut self, row: usize, col: usize) {
         self.ensure_line_exists(row);
         let idx = self.position_to_char(row, col);
-        self.rope.insert(idx, "\n");
+        self.insert_text(idx, "\n");
         self.touch();
     }
 
@@ -192,7 +210,7 @@ impl Buffer {
         }
         if col > 0 {
             let idx = self.position_to_char(row, col);
-            self.rope.remove(idx.saturating_sub(1)..idx);
+            self.remove_text(idx.saturating_sub(1), idx);
             self.touch();
             return (row, col.saturating_sub(1));
         }
@@ -205,8 +223,7 @@ impl Buffer {
         }
         if col < self.line_len(row) {
             let idx = self.position_to_char(row, col);
-            self.rope
-                .remove(idx..idx.saturating_add(1).min(self.rope.len_chars()));
+            self.remove_text(idx, idx.saturating_add(1).min(self.rope.len_chars()));
             self.touch();
             return;
         }
@@ -215,16 +232,10 @@ impl Buffer {
 
     pub fn delete_line(&mut self, row: usize) {
         if self.len() <= 1 {
-            self.rope.remove(0..self.rope.len_chars());
-            self.touch();
+            self.remove_row_range(0, 0);
             return;
         }
-        if row >= self.len() {
-            return;
-        }
-        let (start, end) = self.line_span(row);
-        self.rope.remove(start..end);
-        self.touch();
+        self.remove_row_range(row, row);
     }
 
     pub fn line_text(&self, row: usize) -> String {
@@ -238,7 +249,7 @@ impl Buffer {
         let start = self.line_start_char(row);
         let end = start.saturating_add(self.line_len(row));
         if start < end {
-            self.rope.remove(start..end);
+            self.remove_text(start, end);
             self.touch();
         }
     }
@@ -253,7 +264,7 @@ impl Buffer {
     pub fn paste_lines_below(&mut self, row: usize, lines: &[String]) -> usize {
         if self.rope.len_chars() == 0 {
             let composed = lines.join("\n");
-            self.rope.insert(0, &composed);
+            self.insert_text(0, &composed);
             self.touch();
             return 0;
         }
@@ -264,7 +275,7 @@ impl Buffer {
             composed.push('\n');
             composed.push_str(line);
         }
-        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.insert_text(at.min(self.rope.len_chars()), &composed);
         self.touch();
         row.saturating_add(1)
     }
@@ -277,7 +288,7 @@ impl Buffer {
             composed.push_str(line);
             composed.push('\n');
         }
-        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.insert_text(at.min(self.rope.len_chars()), &composed);
         self.touch();
         row
     }
@@ -376,8 +387,7 @@ impl Buffer {
             return;
         }
         let mapped: String = self.rope.slice(start..end).chars().map(shift).collect();
-        self.rope.remove(start..end);
-        self.rope.insert(start, &mapped);
+        self.rewrite_text(start, end, &mapped);
         self.touch();
     }
 
@@ -395,13 +405,7 @@ impl Buffer {
     }
 
     pub fn delete_lines(&mut self, first: usize, last: usize) {
-        let Some((start, end)) = self.line_span_range(first, last) else {
-            return;
-        };
-        if start < end {
-            self.rope.remove(start..end);
-            self.touch();
-        }
+        self.remove_row_range(first, last);
     }
 
     pub fn replace_lines(&mut self, first: usize, last: usize, text: &str) {
@@ -414,8 +418,7 @@ impl Buffer {
         }
         let start = self.line_start_char(first);
         let end = self.position_to_char(last, self.line_len(last));
-        self.rope.remove(start..end.max(start));
-        self.rope.insert(start.min(self.rope.len_chars()), text);
+        self.rewrite_text(start, end, text);
         self.touch();
     }
 
@@ -453,7 +456,7 @@ impl Buffer {
             .saturating_add(1)
             .min(self.rope.len_chars());
         if start < end {
-            self.rope.remove(start..end);
+            self.remove_text(start, end);
             self.touch();
         }
     }
@@ -472,7 +475,7 @@ impl Buffer {
         let start = self.position_to_char(start_row, start_col);
         let end = self.position_to_char(end_row, end_col);
         if start < end {
-            self.rope.remove(start..end);
+            self.remove_text(start, end);
             self.touch();
         }
     }
@@ -492,7 +495,7 @@ impl Buffer {
     fn paste_single(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
         self.ensure_line_exists(row);
         let at = self.position_to_char(row, col.saturating_add(1));
-        self.rope.insert(at.min(self.rope.len_chars()), fragment);
+        self.insert_text(at.min(self.rope.len_chars()), fragment);
         (row, col.saturating_add(char_count(fragment)))
     }
 
@@ -511,7 +514,7 @@ impl Buffer {
     fn paste_single_before(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
         self.ensure_line_exists(row);
         let at = self.position_to_char(row, col);
-        self.rope.insert(at.min(self.rope.len_chars()), fragment);
+        self.insert_text(at.min(self.rope.len_chars()), fragment);
         (row, col.saturating_add(char_count(fragment)))
     }
 
@@ -539,8 +542,8 @@ impl Buffer {
         let remove_end = at
             .saturating_add(char_count(&right))
             .min(self.rope.len_chars());
-        self.rope.remove(at.min(remove_end)..remove_end);
-        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.remove_text(at.min(remove_end), remove_end);
+        self.insert_text(at.min(self.rope.len_chars()), &composed);
         (
             row.saturating_add(rest.len()),
             col.saturating_add(char_count(last)),
@@ -571,8 +574,8 @@ impl Buffer {
         let remove_end = at
             .saturating_add(char_count(&right))
             .min(self.rope.len_chars());
-        self.rope.remove(at.min(remove_end)..remove_end);
-        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.remove_text(at.min(remove_end), remove_end);
+        self.insert_text(at.min(self.rope.len_chars()), &composed);
         (
             row.saturating_add(rest.len()),
             col.saturating_add(char_count(last)),
@@ -646,8 +649,41 @@ impl Buffer {
     fn ensure_line_exists(&mut self, row: usize) {
         while self.raw_line_count() <= row {
             let end = self.rope.len_chars();
-            self.rope.insert(end, "\n");
+            self.insert_text(end, "\n");
         }
+    }
+
+    fn insert_text(&mut self, index: usize, text: &str) {
+        self.push_adjustment(line_adjust::insertion(&self.rope, index, text));
+        self.rope.insert(index, text);
+    }
+
+    fn remove_text(&mut self, start: usize, end: usize) {
+        self.push_adjustment(line_adjust::char_removal(&self.rope, start, end));
+        self.rope.remove(start..end);
+    }
+
+    fn remove_row_range(&mut self, first: usize, last: usize) {
+        if first >= self.len() {
+            return;
+        }
+        let last = last.min(self.len().saturating_sub(1));
+        if first > last {
+            return;
+        }
+        let Some((start, end)) = self.line_span_range(first, last) else {
+            return;
+        };
+        if start < end {
+            self.push_adjustment(Some(line_adjust::row_removal(first, last)));
+            self.rope.remove(start..end);
+            self.touch();
+        }
+    }
+
+    fn rewrite_text(&mut self, start: usize, end: usize, text: &str) {
+        self.rope.remove(start..end.max(start));
+        self.rope.insert(start.min(self.rope.len_chars()), text);
     }
 
     fn delete_at_line_start(&mut self, row: usize) -> (usize, usize) {
@@ -657,7 +693,7 @@ impl Buffer {
         let prev = row.saturating_sub(1);
         let prev_width = self.line_len(prev);
         let idx = self.line_start_char(row);
-        self.rope.remove(idx.saturating_sub(1)..idx);
+        self.remove_text(idx.saturating_sub(1), idx);
         self.touch();
         (prev, prev_width)
     }
@@ -667,17 +703,8 @@ impl Buffer {
             return;
         }
         let end = self.line_end_char(row);
-        self.rope
-            .remove(end..end.saturating_add(1).min(self.rope.len_chars()));
+        self.remove_text(end, end.saturating_add(1).min(self.rope.len_chars()));
         self.touch();
-    }
-
-    fn line_span(&self, row: usize) -> (usize, usize) {
-        let start = self.line_start_char(row);
-        if row.saturating_add(1) < self.raw_line_count() {
-            return (start, self.line_start_char(row.saturating_add(1)));
-        }
-        (start, self.rope.len_chars())
     }
 }
 
@@ -743,6 +770,113 @@ fn start_col_of(line: &str) -> usize {
         .enumerate()
         .find(|(_, ch)| !ch.is_whitespace())
         .map_or(char_count(line), |(idx, _)| idx)
+}
+
+#[cfg(test)]
+mod adjust_tests {
+    use super::*;
+
+    fn adjust(
+        line1: usize,
+        line2: usize,
+        amount: Option<isize>,
+        amount_after: isize,
+    ) -> LineAdjust {
+        LineAdjust {
+            line1,
+            line2,
+            amount,
+            amount_after,
+        }
+    }
+
+    #[test]
+    fn delete_line_records_row_adjustment() {
+        let mut buffer = Buffer::from_string("a\nb\nc");
+        buffer.delete_line(1);
+        assert_eq!(buffer.take_line_adjustments(), vec![adjust(2, 2, None, -1)]);
+        assert!(buffer.take_line_adjustments().is_empty());
+    }
+
+    #[test]
+    fn delete_lines_records_row_adjustment() {
+        let mut buffer = Buffer::from_string("a\nb\nc\nd");
+        buffer.delete_lines(1, 2);
+        assert_eq!(buffer.take_line_adjustments(), vec![adjust(2, 3, None, -2)]);
+    }
+
+    #[test]
+    fn insert_newline_records_insertion_adjustment() {
+        let mut buffer = Buffer::from_string("ab\ncd");
+        buffer.insert_newline(0, 1);
+        assert_eq!(
+            buffer.take_line_adjustments(),
+            vec![adjust(2, usize::MAX, Some(1), 0)]
+        );
+    }
+
+    #[test]
+    fn paste_lines_below_records_insertion_adjustment() {
+        let mut buffer = Buffer::from_string("a\nb");
+        buffer.paste_lines_below(0, &["x".to_string(), "y".to_string()]);
+        assert_eq!(
+            buffer.take_line_adjustments(),
+            vec![adjust(2, usize::MAX, Some(2), 0)]
+        );
+    }
+
+    #[test]
+    fn paste_lines_above_records_insertion_adjustment() {
+        let mut buffer = Buffer::from_string("a\nb");
+        buffer.paste_lines_above(1, &["x".to_string()]);
+        assert_eq!(
+            buffer.take_line_adjustments(),
+            vec![adjust(2, usize::MAX, Some(1), 0)]
+        );
+    }
+
+    #[test]
+    fn delete_span_across_lines_records_char_adjustment() {
+        let mut buffer = Buffer::from_string("ab\ncd\nef");
+        buffer.delete_span(0, 1, 1, 1);
+        assert_eq!(buffer.take_line_adjustments(), vec![adjust(2, 2, None, -1)]);
+    }
+
+    #[test]
+    fn char_edits_record_nothing() {
+        let mut buffer = Buffer::from_string("ab\ncd");
+        buffer.insert_char(0, 1, 'x');
+        buffer.delete_range(0, 0, 0, 0);
+        buffer.clear_line(1);
+        assert!(buffer.take_line_adjustments().is_empty());
+    }
+
+    #[test]
+    fn replace_lines_records_nothing() {
+        let mut buffer = Buffer::from_string("  a\n  b\n  c");
+        buffer.replace_lines(0, 2, "    a\n    b\n    c");
+        assert!(buffer.take_line_adjustments().is_empty());
+    }
+
+    #[test]
+    fn undo_without_line_changes_records_nothing() {
+        let mut buffer = Buffer::from_string("a\nb");
+        buffer.checkpoint(0, 0);
+        buffer.delete_range(1, 0, 1, 0);
+        buffer.take_line_adjustments();
+        buffer.undo(0, 0);
+        assert!(buffer.take_line_adjustments().is_empty());
+    }
+
+    #[test]
+    fn undo_records_adjustment() {
+        let mut buffer = Buffer::from_string("a\nb\nc");
+        buffer.checkpoint(0, 0);
+        buffer.delete_line(1);
+        buffer.take_line_adjustments();
+        buffer.undo(0, 0);
+        assert_eq!(buffer.take_line_adjustments(), vec![adjust(2, 1, None, 1)]);
+    }
 }
 
 #[cfg(test)]

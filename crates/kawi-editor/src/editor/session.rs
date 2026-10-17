@@ -258,9 +258,12 @@ impl Editor {
         let count = self.take_count();
         let mut changed = false;
         for _ in 0..count {
+            let before = (self.cursor.row(), self.cursor.col());
             if !self.try_redo() {
                 break;
             }
+            self.set_pcmark_at(before);
+            self.apply_line_adjustments();
             changed = true;
         }
         if changed {
@@ -477,9 +480,12 @@ impl Editor {
         let count = self.take_count();
         let mut changed = false;
         for _ in 0..count {
+            let before = (self.cursor.row(), self.cursor.col());
             if !self.try_undo() {
                 break;
             }
+            self.set_pcmark_at(before);
+            self.apply_line_adjustments();
             changed = true;
         }
         if changed {

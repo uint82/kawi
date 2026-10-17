@@ -324,6 +324,7 @@ impl Editor {
         ) {
             self.set_pcmark_at(jump_before);
         }
+        self.apply_line_adjustments();
         if was_normal
             && !matches!(
                 action,
