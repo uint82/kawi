@@ -2,12 +2,15 @@ use super::Editor;
 use crate::objects;
 use crate::objects::matchit::{match_target, MatchTarget};
 
+type CharSpan = ((usize, usize), (usize, usize));
+
 impl Editor {
     pub(super) fn move_to_match(&mut self) {
         self.track_insert_move();
         if self.has_post_digits() {
             let count = self.take_count0();
             if let Some(line) = self.percent_line(count) {
+                self.set_pcmark();
                 self.cursor.set_position(line, self.cursor.col());
             }
         } else {
@@ -19,15 +22,17 @@ impl Editor {
     fn jump_to_match(&mut self) {
         let row = self.cursor.row();
         let col = self.cursor.col();
-        match match_target(&self.buffer, row, col) {
-            Some(MatchTarget::Bracket { pos }) | Some(MatchTarget::Comment { pos }) => {
-                self.cursor.set_position(pos.0, pos.1);
+        if let Some(target) = match_target(&self.buffer, row, col) {
+            self.set_pcmark();
+            match target {
+                MatchTarget::Bracket { pos } | MatchTarget::Comment { pos } => {
+                    self.cursor.set_position(pos.0, pos.1);
+                }
+                MatchTarget::Hash { line, .. } => {
+                    self.cursor
+                        .set_position(line, self.first_non_blank_of(line));
+                }
             }
-            Some(MatchTarget::Hash { line, .. }) => {
-                self.cursor
-                    .set_position(line, self.first_non_blank_of(line));
-            }
-            None => {}
         }
     }
 
@@ -35,7 +40,10 @@ impl Editor {
         if let Some(count) = self.take_percent_count() {
             self.delete_percent(count);
         } else {
-            let (start, end) = self.match_char_span();
+            let (matched, (start, end)) = self.match_char_span();
+            if matched {
+                self.set_pcmark();
+            }
             self.remove_range(start, end);
         }
         self.reveal_jump();
@@ -45,7 +53,10 @@ impl Editor {
         if let Some(count) = self.take_percent_count() {
             self.yank_percent(count);
         } else {
-            let (start, end) = self.match_char_span();
+            let (matched, (start, end)) = self.match_char_span();
+            if matched {
+                self.set_pcmark();
+            }
             self.yank_range(start.0, start.1, end.0, end.1);
             self.cursor.set_position(start.0, start.1);
         }
@@ -56,7 +67,10 @@ impl Editor {
         if let Some(count) = self.take_percent_count() {
             self.change_percent(count);
         } else {
-            let (start, end) = self.match_char_span();
+            let (matched, (start, end)) = self.match_char_span();
+            if matched {
+                self.set_pcmark();
+            }
             self.remove_range(start, end);
             self.switch_to_insert();
         }
@@ -70,15 +84,17 @@ impl Editor {
         Some(self.take_count())
     }
 
-    fn match_char_span(&self) -> ((usize, usize), (usize, usize)) {
+    fn match_char_span(&self) -> (bool, CharSpan) {
         let row = self.cursor.row();
         let col = self.cursor.col();
         match match_target(&self.buffer, row, col) {
             Some(MatchTarget::Bracket { pos }) | Some(MatchTarget::Comment { pos }) => {
-                order_span((row, col), pos)
+                (true, order_span((row, col), pos))
             }
-            Some(MatchTarget::Hash { line, forward }) => self.hash_span(row, col, line, forward),
-            None => ((row, col), (row, col)),
+            Some(MatchTarget::Hash { line, forward }) => {
+                (true, self.hash_span(row, col, line, forward))
+            }
+            None => (false, ((row, col), (row, col))),
         }
     }
 
@@ -99,36 +115,55 @@ impl Editor {
 
     fn delete_percent(&mut self, count: usize) {
         match self.percent_span(count) {
-            Some(PercentSpan::Lines { first, last }) => self.remove_lines(first, last),
-            Some(PercentSpan::Chars { start, end }) => self.delete_charwise_span(start, end),
-            Some(PercentSpan::Empty) | None => {}
+            Some(PercentSpan::Lines { first, last }) => {
+                self.set_pcmark();
+                self.remove_lines(first, last);
+            }
+            Some(PercentSpan::Chars { start, end }) => {
+                self.set_pcmark();
+                self.delete_charwise_span(start, end);
+            }
+            Some(PercentSpan::Empty) => self.set_pcmark(),
+            None => {}
         }
     }
 
     fn yank_percent(&mut self, count: usize) {
         match self.percent_span(count) {
             Some(PercentSpan::Lines { first, last }) => {
+                self.set_pcmark();
                 let col = self.cursor.col();
                 self.yank_line_range(first, last);
                 self.cursor.set_position(first, col);
             }
             Some(PercentSpan::Chars { start, end }) => {
+                self.set_pcmark();
                 self.yank_span(start.0, start.1, end.0, end.1);
                 self.cursor.set_position(start.0, start.1);
             }
-            Some(PercentSpan::Empty) => self.register.set_text(String::new()),
+            Some(PercentSpan::Empty) => {
+                self.set_pcmark();
+                self.register.set_text(String::new());
+            }
             None => {}
         }
     }
 
     fn change_percent(&mut self, count: usize) {
         match self.percent_span(count) {
-            Some(PercentSpan::Lines { first, last }) => self.change_lines(first, last),
+            Some(PercentSpan::Lines { first, last }) => {
+                self.set_pcmark();
+                self.change_lines(first, last);
+            }
             Some(PercentSpan::Chars { start, end }) => {
+                self.set_pcmark();
                 self.delete_charwise_span(start, end);
                 self.switch_to_insert();
             }
-            Some(PercentSpan::Empty) => self.switch_to_insert(),
+            Some(PercentSpan::Empty) => {
+                self.set_pcmark();
+                self.switch_to_insert();
+            }
             None => {}
         }
     }
@@ -185,7 +220,7 @@ enum PercentSpan {
     Empty,
 }
 
-fn order_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+fn order_span(first: (usize, usize), second: (usize, usize)) -> CharSpan {
     if first <= second {
         (first, second)
     } else {

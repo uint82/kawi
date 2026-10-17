@@ -13,6 +13,8 @@ pub enum Action {
     MoveToViewportTop,
     MoveToViewportMiddle,
     MoveToViewportBottom,
+    JumpOlder,
+    JumpNewer,
     MoveToMatch,
     DeleteToMatch,
     YankToMatch,

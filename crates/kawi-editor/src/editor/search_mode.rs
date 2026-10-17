@@ -22,7 +22,13 @@ impl Editor {
         }
         self.refresh_search_status();
         if self.search_status.is_some() {
+            if let Some(origin) = self.search_origin {
+                self.set_pcmark_at(origin);
+            }
             return Some(SearchOutcome::Found { wrapped: false });
+        }
+        if let Some((row, col)) = self.search_origin {
+            self.cursor.set_position(row, col);
         }
         Some(SearchOutcome::Missing)
     }
@@ -79,7 +85,10 @@ impl Editor {
     }
 
     pub(super) fn next_match(&mut self) {
-        let _ = self.search_next();
+        let before = (self.cursor.row(), self.cursor.col());
+        if matches!(self.search_next(), SearchOutcome::Found { .. }) {
+            self.set_pcmark_at(before);
+        }
     }
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
@@ -89,7 +98,10 @@ impl Editor {
     }
 
     pub(super) fn prev_match(&mut self) {
-        let _ = self.search_prev();
+        let before = (self.cursor.row(), self.cursor.col());
+        if matches!(self.search_prev(), SearchOutcome::Found { .. }) {
+            self.set_pcmark_at(before);
+        }
     }
 
     pub(super) fn push_search_char(&mut self, c: char) {

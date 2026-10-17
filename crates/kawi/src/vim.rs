@@ -11,6 +11,17 @@ fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
 }
 
+fn jump_action(key: KeyEvent) -> Option<Action> {
+    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('o') | KeyCode::Char('O') => Some(Action::JumpOlder),
+        KeyCode::Char('i') | KeyCode::Char('I') => Some(Action::JumpNewer),
+        _ => None,
+    }
+}
+
 fn scroll_action(key: KeyEvent) -> Option<Action> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -221,6 +232,10 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
+        if let Some(action) = jump_action(key) {
+            self.clear_pending();
+            return action;
+        }
         if let Some(action) = scroll_action(key) {
             self.clear_pending();
             return action;
@@ -243,6 +258,7 @@ impl VimKeymap {
         match key.code {
             KeyCode::Esc => Action::Noop,
             KeyCode::Enter => Action::MoveToNextLineStart,
+            KeyCode::Tab => Action::JumpNewer,
             KeyCode::Backspace => Action::MoveLeft,
             KeyCode::Delete => Action::DeleteForward,
             KeyCode::Home => Action::MoveToLineStart,
@@ -1317,6 +1333,33 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('h')), Mode::Normal),
             Action::MoveLeft
+        );
+    }
+
+    #[test]
+    fn normal_ctrl_o_jumps_older() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('o')), Mode::Normal),
+            Action::JumpOlder
+        );
+    }
+
+    #[test]
+    fn normal_ctrl_i_jumps_newer() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('i')), Mode::Normal),
+            Action::JumpNewer
+        );
+    }
+
+    #[test]
+    fn normal_tab_jumps_newer() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Tab), Mode::Normal),
+            Action::JumpNewer
         );
     }
 

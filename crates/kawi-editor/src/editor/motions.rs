@@ -40,13 +40,15 @@ impl Editor {
     pub(super) fn move_down(&mut self) {
         self.track_insert_move();
         let count = self.take_count();
+        let max = self.buffer.max_cursor_row();
         for _ in 0..count {
             let before = self.cursor.row();
-            self.cursor.move_down();
-            self.apply_desired_column();
-            if self.cursor.row() == before {
+            let row = before.saturating_add(1).min(max);
+            self.cursor.set_row(row);
+            if row == before {
                 break;
             }
+            self.apply_desired_column();
         }
     }
 
@@ -192,11 +194,12 @@ impl Editor {
         let count = self.take_count();
         for _ in 0..count {
             let before = self.cursor.row();
-            self.cursor.move_up();
-            self.apply_desired_column();
-            if self.cursor.row() == before {
+            let row = before.saturating_sub(1);
+            self.cursor.set_row(row);
+            if row == before {
                 break;
             }
+            self.apply_desired_column();
         }
     }
 
