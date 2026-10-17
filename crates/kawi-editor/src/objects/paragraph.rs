@@ -1,5 +1,6 @@
 use kawi_buffer::Buffer;
 
+use crate::paragraphs::is_paragraph_start;
 use crate::words::WordSpan;
 
 pub fn paragraph_range(
@@ -26,7 +27,7 @@ fn paragraph_span(
             if !line_blank(buffer, start - 1) {
                 break;
             }
-        } else if line_blank(buffer, start - 1) {
+        } else if line_blank(buffer, start - 1) || is_paragraph_start(buffer, start as usize) {
             break;
         }
         start -= 1;
@@ -51,7 +52,10 @@ fn paragraph_span(
         }
         if include || !do_white {
             end += 1;
-            while end < line_count - 1 && !line_blank(buffer, end + 1) {
+            while end < line_count - 1
+                && !line_blank(buffer, end + 1)
+                && !is_paragraph_start(buffer, (end + 1) as usize)
+            {
                 end += 1;
             }
         }
@@ -95,6 +99,9 @@ pub fn paragraph_step(buffer: &Buffer, row: usize, forward: bool, include: bool)
             if white != line_blank(buffer, line + dir) {
                 break;
             }
+            if !white && is_paragraph_start(buffer, (line + if forward { 1 } else { 0 }) as usize) {
+                break;
+            }
             line += dir;
         }
         if !include {
@@ -133,6 +140,32 @@ mod tests {
 
     fn ln(first: usize, last: usize) -> WordSpan {
         WordSpan::Linewise { first, last }
+    }
+
+    #[test]
+    fn inner_paragraph_at_macro_line() {
+        let lines = lines_of("intro line\n.PP\npara two\n.IP tag\npara three\n.SH NAME\ntail");
+        assert_eq!(para(&lines, 0, true, 1), Some(ln(0, 0)));
+        assert_eq!(para(&lines, 1, true, 1), Some(ln(1, 2)));
+        assert_eq!(para(&lines, 3, true, 1), Some(ln(3, 4)));
+        assert_eq!(para(&lines, 5, true, 1), Some(ln(5, 6)));
+    }
+
+    #[test]
+    fn around_paragraph_at_macro_line() {
+        let lines = lines_of("intro line\n.PP\npara two\n.IP tag\npara three\n.SH NAME\ntail");
+        assert_eq!(para(&lines, 0, false, 1), Some(ln(0, 0)));
+        assert_eq!(para(&lines, 1, false, 1), Some(ln(1, 2)));
+    }
+
+    #[test]
+    fn paragraphs_next_to_macro_line() {
+        let lines = lines_of("a\n\nb\n.PP\nc\n\nd");
+        assert_eq!(para(&lines, 1, false, 1), Some(ln(1, 2)));
+        assert_eq!(para(&lines, 4, true, 1), Some(ln(3, 4)));
+        assert_eq!(para(&lines, 4, false, 1), Some(ln(3, 5)));
+        assert_eq!(para(&lines, 5, true, 1), Some(ln(5, 5)));
+        assert_eq!(para(&lines, 5, false, 1), Some(ln(5, 6)));
     }
 
     #[test]

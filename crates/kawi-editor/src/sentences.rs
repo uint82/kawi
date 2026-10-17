@@ -1,5 +1,6 @@
 use kawi_buffer::Buffer;
 
+use crate::paragraphs;
 use crate::words::{char_at, dec_pos, inc_pos};
 
 pub(crate) struct ParagraphTarget {
@@ -8,6 +9,7 @@ pub(crate) struct ParagraphTarget {
     pub eof: bool,
 }
 
+// TODO(sentence): operator span at the end of the buffer still differs from nvim.
 pub(crate) fn sentence_target(
     buffer: &Buffer,
     row: usize,
@@ -87,7 +89,7 @@ fn step_sentence(buffer: &Buffer, pos: (usize, usize), forward: bool, more: bool
         if forward {
             return Step::Done(skip_spaces(buffer, pos));
         }
-    } else if forward && pos.1 == 0 && is_para_start(buffer, pos.0) {
+    } else if forward && pos.1 == 0 && paragraphs::is_paragraph_start(buffer, pos.0) {
         if pos.0 >= buffer.line_count().saturating_sub(1) {
             return Step::Fail;
         }
@@ -141,7 +143,7 @@ fn find_sentence_end(
                 }
             }
         }
-        if pos.1 == 0 && is_para_start(buffer, pos.0) {
+        if pos.1 == 0 && paragraphs::is_paragraph_start(buffer, pos.0) {
             if !forward && pos.0 != start_row {
                 pos.0 = pos.0.saturating_add(1);
             }
@@ -172,14 +174,6 @@ fn find_sentence_end(
 
 fn is_eol(buffer: &Buffer, pos: (usize, usize)) -> bool {
     pos.1 >= buffer.line_len(pos.0)
-}
-
-fn is_para_start(buffer: &Buffer, row: usize) -> bool {
-    // TODO(paragraph): nroff section and paragraph macros.
-    match buffer.line_cow(row) {
-        None => false,
-        Some(line) => line.is_empty() || line.starts_with('\x0c'),
-    }
 }
 
 fn skip_spaces(buffer: &Buffer, mut pos: (usize, usize)) -> (usize, usize) {
@@ -272,7 +266,8 @@ pub(crate) fn paragraph_target(
             }
         }
     }
-    let col = if eof {
+    let last_line_landing = forward && curr == last;
+    let col = if eof || last_line_landing {
         buffer.line_len(curr).saturating_sub(1)
     } else {
         0
@@ -280,7 +275,7 @@ pub(crate) fn paragraph_target(
     Some(ParagraphTarget {
         line: curr,
         col,
-        eof,
+        eof: eof || last_line_landing,
     })
 }
 
@@ -297,7 +292,7 @@ fn paragraph_hop(buffer: &Buffer, row: usize, forward: bool, more: bool, last: u
         if buffer.line_len(curr) > 0 {
             did_skip = true;
         }
-        if !first && did_skip && is_para_start(buffer, curr) {
+        if !first && did_skip && paragraphs::is_paragraph_start(buffer, curr) {
             return Hop::Target {
                 line: curr,
                 edge: false,
