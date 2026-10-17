@@ -12,6 +12,8 @@ pub(super) enum InsertEdit {
     Char(char),
     Newline,
     Tab,
+    ShiftRight,
+    ShiftLeft { collapse: bool },
     Backspace,
     Delete,
 }
@@ -148,6 +150,8 @@ impl Editor {
             InsertEdit::Char(c) => self.insert_char(c),
             InsertEdit::Newline => self.insert_newline(),
             InsertEdit::Tab => self.insert_tab(),
+            InsertEdit::ShiftRight => self.insert_shift_right(),
+            InsertEdit::ShiftLeft { collapse } => self.replay_insert_shift_left(collapse),
             InsertEdit::Backspace => self.delete_backward(),
             InsertEdit::Delete => self.delete_forward(),
         }
@@ -445,6 +449,7 @@ impl Editor {
 
     pub(super) fn switch_to_insert(&mut self) {
         self.mode = Mode::Insert;
+        self.insert_last_char = None;
     }
 
     pub(super) fn sync_head(&mut self) {

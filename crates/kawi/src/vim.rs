@@ -11,6 +11,17 @@ fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
 }
 
+fn insert_control_action(key: KeyEvent) -> Option<Action> {
+    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('t') | KeyCode::Char('T') => Some(Action::InsertShiftRight),
+        KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::InsertShiftLeft),
+        _ => None,
+    }
+}
+
 fn jump_action(key: KeyEvent) -> Option<Action> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -207,6 +218,9 @@ impl VimKeymap {
 
     fn map_insert(&mut self, key: KeyEvent) -> Action {
         self.clear_pending();
+        if let Some(action) = insert_control_action(key) {
+            return action;
+        }
         match key.code {
             KeyCode::Esc => Action::ExitInsert,
             KeyCode::Enter => Action::InsertNewline,
@@ -1369,6 +1383,24 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('i')), Mode::Normal),
             Action::EnterInsert
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_t_shifts_right() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('t')), Mode::Insert),
+            Action::InsertShiftRight
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_d_shifts_left() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('d')), Mode::Insert),
+            Action::InsertShiftLeft
         );
     }
 
