@@ -407,48 +407,16 @@ impl Editor {
     fn select_word_object(&mut self, inner: bool) {
         let count = self.take_count().max(1);
         let cursor = (self.cursor.row(), self.cursor.col());
-        let (anchor, head) = match &self.selection {
-            Some(selection) => (selection.anchor(), selection.head()),
-            None => {
-                self.selection = Some(Selection::new(cursor.0, cursor.1));
-                (cursor, cursor)
-            }
-        };
-        if anchor != head {
-            let head = words::extend_word_head(&self.buffer, anchor, head, inner, count);
-            self.place_selection_head(head);
-            self.downgrade_to_charwise();
-            return;
-        }
-        let span = if inner {
-            objects::iw_range(&self.buffer, cursor.0, cursor.1)
-        } else {
-            objects::aw_range(&self.buffer, cursor.0, cursor.1)
-        };
-        let Some(span) = span else {
+        let visual = self.selection.as_ref().map(|selection| selection.anchor());
+        let Some(selection) =
+            objects::word::current_word(&self.buffer, cursor, !inner, count, visual)
+        else {
             return;
         };
-        self.select_span(span.start, span.end);
+        self.selection = Some(Selection::from_ends(selection.anchor, selection.cursor));
+        self.cursor
+            .set_position(selection.cursor.0, selection.cursor.1);
         self.downgrade_to_charwise();
-        let head = self.selection_head();
-        let next = words::extend_word_head(
-            &self.buffer,
-            self.selection_anchor(),
-            head,
-            inner,
-            count.saturating_sub(1),
-        );
-        self.place_selection_head(next);
-    }
-
-    fn select_span(&mut self, start: (usize, usize), end: (usize, usize)) {
-        let end = if start == end {
-            start
-        } else {
-            words::prev_char_pos(&self.buffer, end.0, end.1).unwrap_or(start)
-        };
-        self.selection = Some(Selection::from_ends(start, end));
-        self.cursor.set_position(end.0, end.1);
     }
 
     fn select_lines(&mut self, first: usize, last: usize) {
@@ -471,13 +439,6 @@ impl Editor {
             .map_or((self.cursor.row(), self.cursor.col()), |selection| {
                 selection.head()
             })
-    }
-
-    fn place_selection_head(&mut self, head: (usize, usize)) {
-        if let Some(selection) = self.selection.as_mut() {
-            selection.set_head(head.0, head.1);
-        }
-        self.cursor.set_position(head.0, head.1);
     }
 
     pub(super) fn switch_to_insert(&mut self) {
@@ -1370,6 +1331,53 @@ mod tests {
         assert_eq!(e.mode(), Mode::Visual);
         assert_eq!(e.selection_range(), Some(((0, 0), (1, 3))));
         assert_eq!((e.row(), e.col()), (1, 3));
+    }
+
+    #[test]
+    fn visual_iw_count_two_from_empty_line() {
+        let mut e = editor_with("foo\n\nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.selection_range(), Some(((1, 0), (2, 2))));
+        assert_eq!((e.row(), e.col()), (2, 2));
+    }
+
+    #[test]
+    fn visual_iw_count_two_from_empty_line_delete() {
+        let mut e = editor_with("foo\n\nbar");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec!["foo".to_string(), String::new()]);
+        assert_eq!(e.register_text(), "\nbar");
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn visual_iw_count_two_backward_to_line_start() {
+        let mut e = editor_with("foo\n\n");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        assert_eq!(e.selection_range(), Some(((0, 0), (1, 0))));
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn visual_iw_count_two_backward_delete_joins_lines() {
+        let mut e = editor_with("foo\n\n");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterVisual);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::SelectInnerWord);
+        e.apply(Action::DeleteSelection);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
