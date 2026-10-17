@@ -294,11 +294,27 @@ mod tests {
     }
 
     #[test]
-    fn match_hash_needs_directive_column() {
+    fn match_hash_after_directive_word() {
         let mut e = editor_with("#if FOO\nint a;\n#endif");
         e.apply(Action::JumpTo(0, 4));
         e.apply(Action::MoveToMatch);
-        assert_eq!((e.row(), e.col()), (0, 4));
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn match_hash_column_beats_bracket() {
+        let mut e = editor_with("  #if (x)\n#endif");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn match_bracket_beats_hash_after_column() {
+        let mut e = editor_with("#if (x)\n#endif");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
     }
 
     #[test]
@@ -641,5 +657,134 @@ mod tests {
         e.apply(Action::MoveToMatch);
         assert_eq!((e.row(), e.col()), (30, 0));
         assert_eq!(e.view_top(), 20);
+    }
+
+    #[test]
+    fn match_skips_bracket_inside_string() {
+        let mut e = editor_with("x = f(\"a)b\");");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 11));
+    }
+
+    #[test]
+    fn match_backward_stops_at_opening_quote() {
+        let mut e = editor_with("x = f(\"a)b\");");
+        e.apply(Action::JumpTo(0, 8));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 8));
+    }
+
+    #[test]
+    fn match_from_inside_string_matches_inside() {
+        let mut e = editor_with("f(\"a(b)c\")");
+        e.apply(Action::JumpTo(0, 4));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn match_skips_single_quoted_chars() {
+        let mut e = editor_with("a = ['(', ')']");
+        e.apply(Action::JumpTo(0, 4));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 13));
+    }
+
+    #[test]
+    fn match_backward_skips_single_quoted_chars() {
+        let mut e = editor_with("a = ['(', ')']");
+        e.apply(Action::JumpTo(0, 13));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn match_escaped_quote_keeps_string_open() {
+        let mut e = editor_with("f(\"a\\\")b\")");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 9));
+    }
+
+    #[test]
+    fn match_across_continued_string_line() {
+        let mut e = editor_with("x = \"a\\\n(b) c\"");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 2));
+    }
+
+    #[test]
+    fn match_escaped_brackets_pair_up() {
+        let mut e = editor_with("\\(a\\)");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn match_escaped_bracket_skips_unescaped_close() {
+        let mut e = editor_with("\\(a)b\\)");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn delete_match_skips_bracket_inside_string() {
+        let mut e = editor_with("x = f(\"a)b\");");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::DeleteToMatch);
+        assert_eq!(e.text_lines()[0], "x = f;");
+        assert_eq!(e.register_text(), "(\"a)b\")");
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn match_skips_quoted_brackets_in_call() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 19));
+    }
+
+    #[test]
+    fn match_multiline_string_odd_quotes_takes_inner_close() {
+        let mut e = editor_with("bar(\"multi\nline ) string\", x);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 5));
+    }
+
+    #[test]
+    fn match_multiline_string_continuation_skips_inner_close() {
+        let mut e = editor_with("bar(\"multi\\\nline ) string\", x);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 17));
+    }
+
+    #[test]
+    fn match_escaped_call_pair() {
+        let mut e = editor_with("baz(\\(y\\), z);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 12));
+        let mut e = editor_with("baz(\\(y\\), z);");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 8));
+    }
+
+    #[test]
+    fn match_hash_column_excludes_bracket() {
+        let mut e = editor_with("#if (A)\nw(1);\n#endif ");
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (2, 0));
+        let mut e = editor_with("#if (A)\nw(1);\n#endif ");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
     }
 }

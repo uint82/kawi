@@ -1,5 +1,6 @@
 use kawi_buffer::Buffer;
 
+use super::smartmatch::{find_block_open, find_close_forward, find_open_backward, MatchConfig};
 use crate::words::{char_at, dec_pos, inc_pos, resolve_exclusive, resolve_inclusive, WordSpan};
 
 pub fn bracket_range(
@@ -18,7 +19,11 @@ pub fn bracket_range(
     let mut start = None;
     let mut backward_ok = true;
     for _ in 0..count {
-        match find_open_backward(buffer, cursor_row, cursor_col, open, close) {
+        match find_open_backward(
+            buffer,
+            (cursor_row, cursor_col),
+            MatchConfig::blind(open, close),
+        ) {
             Some(found) => {
                 cursor_row = found.0;
                 cursor_col = found.1;
@@ -36,14 +41,14 @@ pub fn bracket_range(
             let mut cursor = (row, col);
             let mut found = None;
             for _ in 0..count {
-                let next = find_open_forward(buffer, cursor.0, cursor.1, open)?;
+                let next = find_block_open(buffer, cursor, MatchConfig::blind(open, close))?;
                 cursor = next;
                 found = Some(next);
             }
             found?
         }
     };
-    let end = find_close_forward(buffer, start.0, start.1, open, close)?;
+    let end = find_close_forward(buffer, start, MatchConfig::smart(open, close, false))?;
     if !inner {
         return Some(resolve_inclusive(buffer, start, end, true));
     }
@@ -80,85 +85,6 @@ fn exclude_brackets(
         end = incl_pos(buffer, end.0, end.1);
     }
     (start, end, sol)
-}
-
-// TODO(objects): skip brackets inside quotes like vim smartmatch.
-pub(crate) fn find_open_backward(
-    buffer: &Buffer,
-    row: usize,
-    col: usize,
-    open: char,
-    close: char,
-) -> Option<(usize, usize)> {
-    let (mut row, mut col) = (row, col);
-    let mut depth = 0;
-    loop {
-        let (next, step) = dec_pos(buffer, row, col);
-        if step == -1 {
-            return None;
-        }
-        row = next.0;
-        col = next.1;
-        match char_at(buffer, row, col) {
-            Some(ch) if ch == close => depth += 1,
-            Some(ch) if ch == open => {
-                if depth == 0 {
-                    return Some((row, col));
-                }
-                depth -= 1;
-            }
-            _ => {}
-        }
-    }
-}
-
-fn find_open_forward(
-    buffer: &Buffer,
-    row: usize,
-    col: usize,
-    open: char,
-) -> Option<(usize, usize)> {
-    let (mut row, mut col) = (row, col);
-    loop {
-        let (next, step) = inc_pos(buffer, row, col);
-        if step == -1 {
-            return None;
-        }
-        row = next.0;
-        col = next.1;
-        if char_at(buffer, row, col) == Some(open) {
-            return Some((row, col));
-        }
-    }
-}
-
-pub(crate) fn find_close_forward(
-    buffer: &Buffer,
-    row: usize,
-    col: usize,
-    open: char,
-    close: char,
-) -> Option<(usize, usize)> {
-    let (mut row, mut col) = (row, col);
-    let mut depth = 0;
-    loop {
-        let (next, step) = inc_pos(buffer, row, col);
-        if step == -1 {
-            return None;
-        }
-        row = next.0;
-        col = next.1;
-        match char_at(buffer, row, col) {
-            Some(ch) if ch == open => depth += 1,
-            Some(ch) if ch == close => {
-                if depth == 0 {
-                    return Some((row, col));
-                }
-                depth -= 1;
-            }
-            _ => {}
-        }
-    }
 }
 
 fn incl_pos(buffer: &Buffer, row: usize, col: usize) -> (usize, usize) {
