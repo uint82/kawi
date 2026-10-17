@@ -260,7 +260,10 @@ impl Editor {
             resolved.yank_end.1,
         );
         match resolved.kind {
-            RegisterKind::LineWise => self.register.set_lines(text),
+            RegisterKind::LineWise => {
+                let text = text.strip_suffix('\n').map(str::to_string).unwrap_or(text);
+                self.register.set_lines(text);
+            }
             RegisterKind::CharWise => self.register.set_text(text),
         }
     }
@@ -558,7 +561,7 @@ mod tests {
         e.apply(Action::DeleteToNextSentence);
         assert_eq!(e.text_lines()[0], "");
         assert_eq!((e.row(), e.col()), (0, 0));
-        assert_eq!(e.register_text(), "First sentence. Second here.\n");
+        assert_eq!(e.register_text(), "First sentence. Second here.");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -598,7 +601,7 @@ mod tests {
         assert_eq!(e.text_lines()[0], "");
         assert_eq!(e.text_lines()[1], "para two");
         assert_eq!((e.row(), e.col()), (0, 0));
-        assert_eq!(e.register_text(), "para one line1\npara one line2\n");
+        assert_eq!(e.register_text(), "para one line1\npara one line2");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -609,7 +612,7 @@ mod tests {
         e.apply(Action::DeleteToPrevParagraph);
         assert_eq!(e.text_lines()[0], "para one line2");
         assert_eq!((e.row(), e.col()), (0, 0));
-        assert_eq!(e.register_text(), "para one line1\n");
+        assert_eq!(e.register_text(), "para one line1");
     }
 
     #[test]
@@ -619,7 +622,7 @@ mod tests {
         e.apply(Action::DeleteToPrevParagraph);
         assert_eq!(e.text_lines()[2], "para two");
         assert_eq!((e.row(), e.col()), (2, 0));
-        assert_eq!(e.register_text(), "\n");
+        assert_eq!(e.register_text(), "");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -643,7 +646,7 @@ mod tests {
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(
             e.register_text(),
-            "para one line1\npara one line2\n\npara two\n"
+            "para one line1\npara one line2\n\npara two"
         );
     }
 
@@ -652,7 +655,7 @@ mod tests {
         let mut e = editor_with(&para_text());
         e.apply(Action::JumpTo(3, 0));
         e.apply(Action::YankToPrevParagraph);
-        assert_eq!(e.register_text(), "\n");
+        assert_eq!(e.register_text(), "");
         assert_eq!((e.row(), e.col()), (2, 0));
     }
 
@@ -689,7 +692,7 @@ mod tests {
             ]
         );
         assert_eq!((e.row(), e.col()), (3, 0));
-        assert_eq!(e.register_text(), ".IP tag\npara three\n");
+        assert_eq!(e.register_text(), ".IP tag\npara three");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -770,7 +773,7 @@ mod tests {
         e.apply(Action::DeleteToNextParagraph);
         assert_eq!(e.text_lines()[0], "");
         assert_eq!((e.row(), e.col()), (0, 0));
-        assert_eq!(e.register_text(), "    ind one\n    ind two\n");
+        assert_eq!(e.register_text(), "    ind one\n    ind two");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -812,7 +815,7 @@ mod tests {
         e.apply(Action::DeleteToNextSentence);
         assert_eq!(e.text_lines()[0], "bbb");
         assert_eq!((e.row(), e.col()), (0, 0));
-        assert_eq!(e.register_text(), "aaa.\n");
+        assert_eq!(e.register_text(), "aaa.");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
@@ -823,7 +826,7 @@ mod tests {
         e.apply(Action::DeleteToPrevSentence);
         assert_eq!(e.text_lines()[3], "(Paren.) \"Quoted.\" Atas.");
         assert_eq!((e.row(), e.col()), (3, 0));
-        assert_eq!(e.register_text(), "No terminator here\n");
+        assert_eq!(e.register_text(), "No terminator here");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 }

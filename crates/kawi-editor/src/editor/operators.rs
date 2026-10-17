@@ -617,8 +617,7 @@ impl Editor {
 
     fn paste_over_lines(&mut self) {
         let ((first, _), (last, _)) = self.operator_range();
-        let put_text = self.register.text().to_string();
-        let put_lines: Vec<String> = put_text.lines().map(str::to_string).collect();
+        let put_lines = self.register.lines();
         self.record_boundary();
         self.register.set_lines(self.take_lines(first, last));
         self.buffer.paste_lines_below(last, &put_lines);
@@ -627,7 +626,7 @@ impl Editor {
     }
 
     fn paste_lines_split(&mut self, row: usize, col: usize, text: &str) {
-        let lines: Vec<String> = text.lines().map(str::to_string).collect();
+        let lines = crate::register::split_lines(text);
         self.buffer.insert_newline(row, col);
         let row = self.buffer.paste_lines_below(row, &lines);
         self.cursor.set_position(row, 0);
@@ -660,11 +659,7 @@ impl Editor {
     }
 
     fn paste_lines(&mut self, count: usize, before: bool) {
-        let yanked: Vec<String> = if self.register.text().is_empty() {
-            vec![String::new()]
-        } else {
-            self.register.text().lines().map(str::to_string).collect()
-        };
+        let yanked = self.register.lines();
         let mut lines = Vec::with_capacity(yanked.len().saturating_mul(count.max(1)));
         for _ in 0..count.max(1) {
             lines.extend(yanked.iter().cloned());
@@ -3216,6 +3211,65 @@ mod tests {
         e.apply(Action::PasteAfter);
         e.apply(Action::Undo);
         assert_eq!(e.text_lines()[0], "ab");
+    }
+
+    #[test]
+    fn paste_before_keeps_trailing_blank_from_linewise_yank() {
+        let mut e = editor_with("def function_1():\n    return value\n\ndef function_2():");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::PasteBefore);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "def function_1():".to_string(),
+                "    return value".to_string(),
+                String::new(),
+                "def function_1():".to_string(),
+                "    return value".to_string(),
+                String::new(),
+                "def function_2():".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn paste_after_keeps_trailing_blank_from_linewise_yank() {
+        let mut e = editor_with("def function_1():\n    return value\n\ndef function_2():");
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::PasteAfter);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "def function_1():".to_string(),
+                "def function_1():".to_string(),
+                "    return value".to_string(),
+                String::new(),
+                "    return value".to_string(),
+                String::new(),
+                "def function_2():".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn paste_after_span_linewise_register_adds_no_blank() {
+        let mut e = editor_with("intro line\n.PP\npara two\n.IP tag\npara three\n.SH NAME\ntail");
+        e.apply(Action::JumpTo(3, 0));
+        e.apply(Action::DeleteToNextParagraph);
+        assert_eq!(e.register_text(), ".IP tag\npara three");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines()[1], ".IP tag");
+        assert_eq!(e.text_lines()[2], "para three");
     }
 
     #[test]
