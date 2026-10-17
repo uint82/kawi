@@ -5,11 +5,7 @@ impl Editor {
     pub(super) fn insert_tab(&mut self) {
         self.record_insert(InsertEdit::Tab);
         let indent = self.effective_indent();
-        let shift = if indent.shiftwidth == 0 {
-            indent.tabstop
-        } else {
-            indent.shiftwidth
-        };
+        let shift = indent.shift_unit();
         let row = self.cursor.row();
         let col = self.cursor.col();
         let in_indent = col <= self.first_non_blank_of(row);

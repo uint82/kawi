@@ -48,6 +48,8 @@ pub enum Action {
     InsertChar(char),
     InsertNewline,
     InsertTab,
+    InsertShiftRight,
+    InsertShiftLeft,
     DeleteBackward,
     DeleteForward,
     DeleteLine,

@@ -36,7 +36,6 @@ fn shift_line(line: &str, shift: IndentShift, expandtab: bool, tabstop: usize) -
     if line.is_empty() {
         return None;
     }
-    let rest = line.trim_start_matches([' ', '\t']);
     let width = kawi_buffer::indent_width_of(line, tabstop);
     let indented = match shift {
         IndentShift::In(amount) => width + amount,
@@ -46,7 +45,24 @@ fn shift_line(line: &str, shift: IndentShift, expandtab: bool, tabstop: usize) -
     if indented == width {
         return None;
     }
-    Some(canonical_indent(indented, expandtab, tabstop) + rest)
+    Some(reindent_line(line, indented, expandtab, tabstop))
+}
+
+pub(super) fn reindent_line(line: &str, width: usize, expandtab: bool, tabstop: usize) -> String {
+    let rest = line.trim_start_matches([' ', '\t']);
+    canonical_indent(width, expandtab, tabstop) + rest
+}
+
+pub(super) fn rounded_indent_width(width: usize, left: bool, unit: usize) -> usize {
+    if !left {
+        return (width / unit + 1) * unit;
+    }
+    let steps = width / unit;
+    if width.is_multiple_of(unit) {
+        steps.saturating_sub(1) * unit
+    } else {
+        steps * unit
+    }
 }
 
 fn canonical_indent(width: usize, expandtab: bool, tabstop: usize) -> String {
@@ -65,6 +81,14 @@ pub struct IndentConfig {
 }
 
 impl IndentConfig {
+    pub(super) fn shift_unit(&self) -> usize {
+        if self.shiftwidth == 0 {
+            self.tabstop
+        } else {
+            self.shiftwidth
+        }
+    }
+
     fn filetype(shiftwidth: usize, expandtab: bool, tabstop: usize) -> Self {
         Self {
             shiftwidth,
