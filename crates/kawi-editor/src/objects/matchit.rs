@@ -1,6 +1,6 @@
 use kawi_buffer::Buffer;
 
-use super::brackets::{find_close_forward, find_open_backward};
+use super::smartmatch::{find_close_forward, find_open_backward, starts_escaped, MatchConfig};
 use crate::words::char_at;
 
 pub enum MatchTarget {
@@ -12,23 +12,40 @@ pub enum MatchTarget {
 const PAIRS: [(char, char); 3] = [('(', ')'), ('{', '}'), ('[', ']')];
 
 pub fn match_target(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
-    if let Some(found) = hash_jump(buffer, row, col) {
+    if let Some(found) = hash_jump_before_hash(buffer, row, col) {
         return Some(found);
     }
     if let Some(found) = comment_jump(buffer, row, col) {
         return Some(found);
     }
-    bracket_jump(buffer, row, col)
+    if let Some(found) = bracket_jump(buffer, row, col) {
+        return Some(found);
+    }
+    hash_jump_anywhere(buffer, row)
 }
 
-fn hash_jump(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
-    let line = buffer.line_cow(row)?;
-    let text: Vec<char> = line.chars().collect();
-    let col = col.min(text.len().saturating_sub(1));
-    let (end, kind) = hash_directive(&text)?;
-    if col > end {
+fn hash_jump_before_hash(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
+    let hash = hash_column(buffer, row)?;
+    if col > hash {
         return None;
     }
+    hash_directive_target(buffer, row)
+}
+
+fn hash_jump_anywhere(buffer: &Buffer, row: usize) -> Option<MatchTarget> {
+    hash_column(buffer, row)?;
+    hash_directive_target(buffer, row)
+}
+
+fn hash_column(buffer: &Buffer, row: usize) -> Option<usize> {
+    let line = buffer.line_cow(row)?;
+    let text: Vec<char> = line.chars().collect();
+    let hash = text.iter().position(|ch| !ch.is_whitespace())?;
+    (text.get(hash) == Some(&'#')).then_some(hash)
+}
+
+fn hash_directive_target(buffer: &Buffer, row: usize) -> Option<MatchTarget> {
+    let kind = hash_line(buffer, row)?;
     let forward = !matches!(kind, HashKind::Endif);
     hash_match(buffer, row, forward).map(|line| MatchTarget::Hash { line, forward })
 }
@@ -40,7 +57,7 @@ enum HashKind {
     Endif,
 }
 
-fn hash_directive(text: &[char]) -> Option<(usize, HashKind)> {
+fn hash_directive(text: &[char]) -> Option<HashKind> {
     let hash = text.iter().position(|ch| !ch.is_whitespace())?;
     if text.get(hash) != Some(&'#') {
         return None;
@@ -51,18 +68,17 @@ fn hash_directive(text: &[char]) -> Option<(usize, HashKind)> {
         end = end.saturating_add(1);
     }
     let word: String = text[start..end].iter().collect();
-    let kind = if word.starts_with("endif") {
-        HashKind::Endif
+    if word.starts_with("endif") {
+        Some(HashKind::Endif)
     } else if word.starts_with("if") || word.starts_with("el") {
         if word.starts_with("el") {
-            HashKind::Else
+            Some(HashKind::Else)
         } else {
-            HashKind::If
+            Some(HashKind::If)
         }
     } else {
-        return None;
-    };
-    Some((end.saturating_sub(1), kind))
+        None
+    }
 }
 
 fn hash_match(buffer: &Buffer, row: usize, forward: bool) -> Option<usize> {
@@ -81,7 +97,7 @@ fn hash_match(buffer: &Buffer, row: usize, forward: bool) -> Option<usize> {
             }
             line = line.saturating_sub(1);
         }
-        let Some((_, kind)) = hash_line(buffer, line) else {
+        let Some(kind) = hash_line(buffer, line) else {
             continue;
         };
         match (kind, forward) {
@@ -103,7 +119,7 @@ fn hash_match(buffer: &Buffer, row: usize, forward: bool) -> Option<usize> {
     }
 }
 
-fn hash_line(buffer: &Buffer, row: usize) -> Option<(usize, HashKind)> {
+fn hash_line(buffer: &Buffer, row: usize) -> Option<HashKind> {
     let line = buffer.line_cow(row)?;
     hash_directive(&line.chars().collect::<Vec<_>>())
 }
@@ -167,10 +183,11 @@ fn bracket_jump(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> 
     let col = col.min(text.len().saturating_sub(1));
     for (at, ch) in text.iter().enumerate().skip(col) {
         if let Some((open, close, forward)) = pair_of(*ch) {
+            let config = MatchConfig::smart(open, close, starts_escaped(buffer, (row, at)));
             let found = if forward {
-                find_close_forward(buffer, row, at, open, close)
+                find_close_forward(buffer, (row, at), config)
             } else {
-                find_open_backward(buffer, row, at, open, close)
+                find_open_backward(buffer, (row, at), config)
             };
             return found.map(|pos| MatchTarget::Bracket { pos });
         }

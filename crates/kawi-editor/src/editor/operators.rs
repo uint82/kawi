@@ -1268,6 +1268,52 @@ mod tests {
     }
 
     #[test]
+    fn delete_inner_paren_ignores_quotes_for_open() {
+        let mut e = editor_with("f(\"a)b\")");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "f()");
+        assert_eq!(e.register_text(), "\"a)b\"");
+    }
+
+    #[test]
+    fn delete_inner_paren_skips_escaped_close() {
+        let mut e = editor_with("f(a\\)b)");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "f()");
+        assert_eq!(e.register_text(), "a\\)b");
+    }
+
+    #[test]
+    fn delete_inner_paren_takes_innermost_inside_string() {
+        let mut e = editor_with("f(\"a(b)c\")");
+        e.apply(Action::JumpTo(0, 6));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "f(\"a()c\")");
+    }
+
+    #[test]
+    fn delete_inner_paren_around_escaped_pair() {
+        let mut e = editor_with("f(\\(a\\))");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "f()");
+    }
+
+    #[test]
     fn delete_inner_single_quote() {
         let mut e = editor_with("a 'bc' d");
         for _ in 0..4 {
