@@ -97,14 +97,22 @@ impl Editor {
         let Some(span) = self.statement_span(forward, paragraph) else {
             return;
         };
+        if span.start == span.end && !span.eof {
+            return;
+        }
         self.record_boundary_at(span.start.0, span.start.1);
-        let resolved = self.resolve_span(span);
+        let resolved = self.resolve_span(span, true);
         self.yank_resolved(&resolved);
         match resolved.rows {
             Some((first, last)) => {
                 self.drop_lines(first, last);
                 let row = first.min(self.buffer.line_count().saturating_sub(1));
-                self.cursor.set_position(row, span.start.1);
+                let col = if span.eof {
+                    span.start.1
+                } else {
+                    self.first_non_blank_of(row)
+                };
+                self.cursor.set_position(row, col);
             }
             None => {
                 self.buffer.delete_span(
@@ -123,7 +131,10 @@ impl Editor {
         let Some(span) = self.statement_span(forward, paragraph) else {
             return;
         };
-        let resolved = self.resolve_span(span);
+        if span.start == span.end && !span.eof {
+            return;
+        }
+        let resolved = self.resolve_span(span, false);
         self.yank_resolved(&resolved);
         self.cursor.set_position(span.start.0, span.start.1);
         self.reveal_jump();
@@ -133,12 +144,17 @@ impl Editor {
         let Some(span) = self.statement_span(forward, paragraph) else {
             return;
         };
+        if span.start == span.end && !span.eof {
+            self.switch_to_insert();
+            self.reveal_jump();
+            return;
+        }
         self.record_boundary_at(span.start.0, span.start.1);
-        let resolved = self.resolve_span(span);
-        self.yank_resolved(&resolved);
+        let resolved = self.resolve_span(span, false);
         match resolved.rows {
-            Some((first, last)) => self.clear_span_first(first, last),
+            Some((first, last)) => self.change_lines(first, last),
             None => {
+                self.yank_resolved(&resolved);
                 self.buffer.delete_span(
                     resolved.start.0,
                     resolved.start.1,
@@ -146,9 +162,9 @@ impl Editor {
                     resolved.edit_end.1,
                 );
                 self.cursor.set_position(span.start.0, span.start.1);
+                self.switch_to_insert();
             }
         }
-        self.switch_to_insert();
         self.reveal_jump();
     }
 
@@ -170,22 +186,12 @@ impl Editor {
         } else {
             ((row, col), target)
         };
-        if start == end {
-            return None;
-        }
         Some(Span { start, end, eof })
     }
 
-    fn resolve_span(&self, span: Span) -> ResolvedSpan {
+    fn resolve_span(&self, span: Span, is_delete: bool) -> ResolvedSpan {
         if span.eof {
-            return ResolvedSpan {
-                start: span.start,
-                yank_start: (span.start.0, 0),
-                yank_end: (span.end.0, self.buffer.line_len(span.end.0)),
-                edit_end: span.end,
-                kind: RegisterKind::LineWise,
-                rows: Some((span.start.0, span.end.0)),
-            };
+            return self.resolve_eof_span(span, is_delete);
         }
         if span.end.0 > span.start.0 && span.end.1 == 0 {
             if self.in_indent(span.start) {
@@ -219,6 +225,29 @@ impl Editor {
         }
     }
 
+    fn resolve_eof_span(&self, span: Span, is_delete: bool) -> ResolvedSpan {
+        let row = span.end.0;
+        let content_end = (row, self.buffer.line_len(row));
+        if is_delete && span.start.0 < row && self.in_indent(span.start) {
+            return ResolvedSpan {
+                start: span.start,
+                yank_start: (span.start.0, 0),
+                yank_end: content_end,
+                edit_end: span.end,
+                kind: RegisterKind::LineWise,
+                rows: Some((span.start.0, row)),
+            };
+        }
+        ResolvedSpan {
+            start: span.start,
+            yank_start: span.start,
+            yank_end: content_end,
+            edit_end: content_end,
+            kind: RegisterKind::CharWise,
+            rows: None,
+        }
+    }
+
     fn in_indent(&self, pos: (usize, usize)) -> bool {
         pos.1 <= self.first_non_blank_of(pos.0)
     }
@@ -234,18 +263,6 @@ impl Editor {
             RegisterKind::LineWise => self.register.set_lines(text),
             RegisterKind::CharWise => self.register.set_text(text),
         }
-    }
-
-    fn clear_span_first(&mut self, first: usize, last: usize) {
-        if last > first {
-            self.drop_lines(first.saturating_add(1), last);
-        }
-        let width = self.buffer.line_len(first);
-        if width > 0 {
-            self.buffer
-                .delete_range(first, 0, first, width.saturating_sub(1));
-        }
-        self.cursor.set_position(first, 0);
     }
 }
 
@@ -285,6 +302,14 @@ mod tests {
 
     fn sent_text() -> String {
         "First sentence. Second here.\n\n  Indented start!  Spaced?  End.\nNo terminator here\n(Paren.) \"Quoted.\" Atas.\nEnd!  ".to_string()
+    }
+
+    fn macro_text() -> String {
+        "intro line\n.PP\npara two\n.IP tag\npara three\n.SH NAME\ntail".to_string()
+    }
+
+    fn macro_tail_text() -> String {
+        "one\n.PPx rest\ntwo\n.P\nthree\n.p\nfour\n.PP".to_string()
     }
 
     fn para_text() -> String {
@@ -632,12 +657,102 @@ mod tests {
     }
 
     #[test]
-    fn change_paragraph_clears_fully() {
+    fn next_paragraph_stops_at_macro() {
+        let mut e = editor_with(&macro_text());
+        e.apply(Action::MoveToNextParagraph);
+        assert_eq!((e.row(), e.col()), (1, 0));
+        e.apply(Action::MoveToNextParagraph);
+        assert_eq!((e.row(), e.col()), (3, 0));
+    }
+
+    #[test]
+    fn next_paragraph_stops_at_section_macro() {
+        let mut e = editor_with(&macro_text());
+        e.apply(Action::JumpTo(3, 0));
+        e.apply(Action::MoveToNextParagraph);
+        assert_eq!((e.row(), e.col()), (5, 0));
+    }
+
+    #[test]
+    fn delete_to_macro_paragraph_is_linewise() {
+        let mut e = editor_with(&macro_text());
+        e.apply(Action::JumpTo(3, 0));
+        e.apply(Action::DeleteToNextParagraph);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "intro line".to_string(),
+                ".PP".to_string(),
+                "para two".to_string(),
+                ".SH NAME".to_string(),
+                "tail".to_string()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (3, 0));
+        assert_eq!(e.register_text(), ".IP tag\npara three\n");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn yank_to_last_line_macro_is_charwise() {
+        let mut e = editor_with(&macro_tail_text());
+        e.apply(Action::JumpTo(3, 0));
+        e.apply(Action::YankToNextParagraph);
+        assert_eq!(e.register_text(), ".P\nthree\n.p\nfour\n.PP");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+        assert_eq!((e.row(), e.col()), (3, 0));
+    }
+
+    #[test]
+    fn delete_to_last_line_macro_is_linewise() {
+        let mut e = editor_with(&macro_tail_text());
+        e.apply(Action::JumpTo(3, 0));
+        e.apply(Action::DeleteToNextParagraph);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "one".to_string(),
+                ".PPx rest".to_string(),
+                "two".to_string(),
+                String::new()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (2, 0));
+        assert_eq!(e.register_text(), ".P\nthree\n.p\nfour\n.PP");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn next_paragraph_macro_on_last_line_lands_on_char() {
+        let mut e = editor_with(&macro_tail_text());
+        e.apply(Action::JumpTo(4, 0));
+        e.apply(Action::MoveToNextParagraph);
+        assert_eq!((e.row(), e.col()), (7, 2));
+    }
+
+    #[test]
+    fn change_to_macro_paragraph_keeps_indent() {
+        let mut e = editor_with("  one\n  two\n.PP\ntail");
+        e.apply(Action::ChangeToNextParagraph);
+        assert_eq!(e.text_lines()[0], "  ");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
+        e.apply(Action::InsertChar('Z'));
+        assert_eq!(e.text_lines()[0], "  Z");
+        assert_eq!(e.register_text(), "  one\n  two");
+    }
+
+    #[test]
+    fn change_paragraph_keeps_indent() {
         let mut e = editor_with("    ind one\n    ind two\n\n    ind three\n");
         e.apply(Action::ChangeToNextParagraph);
-        assert_eq!(e.text_lines()[0], "");
-        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.text_lines()[0], "    ");
+        assert_eq!((e.row(), e.col()), (0, 4));
         assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!(e.register_text(), "    ind one\n    ind two");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+        e.apply(Action::InsertChar('Z'));
+        assert_eq!(e.text_lines()[0], "    Z");
     }
 
     #[test]
