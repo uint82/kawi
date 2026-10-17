@@ -608,9 +608,7 @@ impl VimKeymap {
                     Action::BeginSequence
                 };
             }
-            '~' | 'u' | 'U' if Some(pushed) == operator.chars().nth(1) => {
-                CaseMotion::Lines { upward: false }
-            }
+            '~' | 'u' | 'U' if Some(pushed) == operator.chars().nth(1) => CaseMotion::OperatorLines,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -1911,19 +1909,19 @@ mod tests {
             (
                 '~',
                 Action::ToggleCaseAt {
-                    motion: CaseMotion::Lines { upward: false },
+                    motion: CaseMotion::OperatorLines,
                 },
             ),
             (
                 'u',
                 Action::LowercaseAt {
-                    motion: CaseMotion::Lines { upward: false },
+                    motion: CaseMotion::OperatorLines,
                 },
             ),
             (
                 'U',
                 Action::UppercaseAt {
-                    motion: CaseMotion::Lines { upward: false },
+                    motion: CaseMotion::OperatorLines,
                 },
             ),
         ] {

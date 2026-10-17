@@ -148,7 +148,22 @@ impl Editor {
                 let (first, last) = self.counted_line_span(upward, count)?;
                 Some(words::WordSpan::Linewise { first, last })
             }
+            CaseMotion::OperatorLines => {
+                let count = self.take_count();
+                Some(words::WordSpan::Linewise {
+                    first: self.cursor.row(),
+                    last: self.operator_lines_last(count),
+                })
+            }
         }
+    }
+
+    fn operator_lines_last(&self, count: usize) -> usize {
+        let last_row = self.buffer.line_count().saturating_sub(1);
+        self.cursor
+            .row()
+            .saturating_add(count.saturating_sub(1))
+            .min(last_row)
     }
 
     fn apply_case_span(&mut self, span: words::WordSpan, shift: fn(char) -> char) {
@@ -455,6 +470,61 @@ mod tests {
             vec!["a".to_string(), "B".to_string(), "C".to_string()]
         );
         assert_eq!((editor.row(), editor.col()), (1, 0));
+    }
+
+    #[test]
+    fn toggle_operator_lines_covers_current_line() {
+        let mut editor = editor_with("foo BAR\nbaz QUX");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["FOO bar".to_string(), "baz QUX".to_string()]
+        );
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn upper_operator_lines_uses_count() {
+        let mut editor = editor_with("aaa\nbbb\nccc");
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[2]);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaa".to_string(), "BBB".to_string(), "CCC".to_string()]
+        );
+        assert_eq!((editor.row(), editor.col()), (1, 0));
+    }
+
+    #[test]
+    fn upper_operator_lines_clamps_at_last_line() {
+        let mut editor = editor_with("aaA\nbbB\nccC");
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[9]);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaA".to_string(), "BBB".to_string(), "CCC".to_string()]
+        );
+    }
+
+    #[test]
+    fn upper_operator_lines_at_last_line_still_applies() {
+        let mut editor = editor_with("aaa\nbbb");
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaa".to_string(), "BBB".to_string()]
+        );
     }
 
     #[test]
