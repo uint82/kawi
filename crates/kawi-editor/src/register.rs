@@ -38,6 +38,21 @@ impl Register {
     pub fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
+
+    pub fn lines(&self) -> Vec<String> {
+        split_lines(&self.text)
+    }
+}
+
+pub(crate) fn split_lines(text: &str) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    if text.ends_with('\n') {
+        lines.push(String::new());
+    }
+    lines
 }
 
 impl Default for Register {
@@ -64,6 +79,30 @@ mod tests {
         register.set_text("bcd".to_string());
         assert_eq!(register.text(), "bcd");
         assert_eq!(register.kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn lines_keeps_trailing_blank_line() {
+        let mut register = Register::new();
+        register.set_lines("a\nb\n".to_string());
+        assert_eq!(
+            register.lines(),
+            vec!["a".to_string(), "b".to_string(), String::new()]
+        );
+    }
+
+    #[test]
+    fn lines_splits_without_trailing_newline() {
+        let mut register = Register::new();
+        register.set_lines("a\nb".to_string());
+        assert_eq!(register.lines(), vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn lines_empty_text_is_one_blank_line() {
+        let mut register = Register::new();
+        register.set_lines(String::new());
+        assert_eq!(register.lines(), vec![String::new()]);
     }
 
     #[test]

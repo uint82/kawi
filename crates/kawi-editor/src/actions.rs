@@ -193,6 +193,7 @@ pub enum Action {
     BeginSequence,
     CancelPending,
     PasteAfter,
+    PasteBefore,
     Undo,
     Redo,
     Save,
@@ -298,5 +299,4 @@ pub enum ShiftMotion {
 
 // TODO(helix): shared SelectLine action for helix x line select.
 // TODO(helix): shared ChangeSelection action for helix c and vim visual c.
-// TODO(helix): shared PasteBefore action for helix P.
 // TODO(personal): third keymap flavor alongside vim and helix.

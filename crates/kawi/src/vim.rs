@@ -277,6 +277,7 @@ impl VimKeymap {
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
+            KeyCode::Char('P') => self.map_plain_or_noop(key, Action::PasteBefore),
             KeyCode::Char('n') => self.map_plain_or_noop(key, Action::NextMatch),
             KeyCode::Char('N') => self.map_plain_or_noop(key, Action::PrevMatch),
             KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
@@ -954,6 +955,7 @@ impl VimKeymap {
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
+            KeyCode::Char('P') => self.map_plain_or_noop(key, Action::PasteOverSelection),
             KeyCode::Char('c') => self.map_plain_or_noop(key, Action::ChangeSelection),
             KeyCode::Char('s') => self.map_plain_or_noop(key, Action::ChangeSelection),
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteLines),
@@ -2519,6 +2521,10 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('p')), Mode::Normal),
             Action::PasteAfter
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('P')), Mode::Normal),
+            Action::PasteBefore
         );
     }
 

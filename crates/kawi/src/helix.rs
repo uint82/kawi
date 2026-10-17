@@ -65,6 +65,7 @@ impl HelixKeymap {
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
+            KeyCode::Char('P') => self.map_plain_or_noop(key, Action::PasteBefore),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Undo),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Redo),
             KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
@@ -231,6 +232,10 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('p')), Mode::Normal),
             Action::PasteAfter
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('P')), Mode::Normal),
+            Action::PasteBefore
         );
     }
 
