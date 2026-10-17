@@ -23,6 +23,7 @@ mod search_mode;
 mod sent_ops;
 mod session;
 mod shift_ops;
+mod tab;
 
 use session::InsertEdit;
 
@@ -133,6 +134,7 @@ impl Editor {
             Action::MoveToPrevLineStart => self.move_to_prev_line_start(),
             Action::InsertChar(c) => self.insert_char(c),
             Action::InsertNewline => self.insert_newline(),
+            Action::InsertTab => self.insert_tab(),
             Action::DeleteBackward => self.delete_backward(),
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),

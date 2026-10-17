@@ -45,6 +45,7 @@ pub enum Action {
     MoveToPrevLineStart,
     InsertChar(char),
     InsertNewline,
+    InsertTab,
     DeleteBackward,
     DeleteForward,
     DeleteLine,

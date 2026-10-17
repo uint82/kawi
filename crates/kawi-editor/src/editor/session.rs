@@ -11,6 +11,7 @@ use crate::words;
 pub(super) enum InsertEdit {
     Char(char),
     Newline,
+    Tab,
     Backspace,
     Delete,
 }
@@ -146,6 +147,7 @@ impl Editor {
         match edit {
             InsertEdit::Char(c) => self.insert_char(c),
             InsertEdit::Newline => self.insert_newline(),
+            InsertEdit::Tab => self.insert_tab(),
             InsertEdit::Backspace => self.delete_backward(),
             InsertEdit::Delete => self.delete_forward(),
         }
