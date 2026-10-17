@@ -1,9 +1,10 @@
 use anyhow::Result;
 use kawi_buffer::Buffer;
 
-use crate::actions::Action;
+use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
+use crate::jumps::Jumps;
 use crate::mode::Mode;
 use crate::register::Register;
 #[cfg(test)]
@@ -13,6 +14,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
 mod indent;
+mod jumps;
 mod line_ops;
 mod match_ops;
 mod motions;
@@ -52,6 +54,7 @@ pub struct Editor {
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     viewport: Viewport,
+    jumps: Jumps,
     scroll_amount: Option<usize>,
 }
 
@@ -80,6 +83,8 @@ impl Editor {
             }
             _ => {}
         }
+        let jump = jump_recording(action);
+        let jump_before = (self.cursor.row(), self.cursor.col());
         if self.needs_checkpoint(action) {
             self.record_boundary();
         }
@@ -103,6 +108,8 @@ impl Editor {
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
+            Action::JumpOlder => self.jump_older(),
+            Action::JumpNewer => self.jump_newer(),
             Action::MoveToMatch => self.move_to_match(),
             Action::DeleteToMatch => self.delete_match(),
             Action::YankToMatch => self.yank_match(),
@@ -298,6 +305,14 @@ impl Editor {
         self.normalize_cursor();
         self.track_head(action);
         self.clear_count();
+        if jump_records(
+            jump,
+            jump_before,
+            (self.cursor.row(), self.cursor.col()),
+            change_count,
+        ) {
+            self.set_pcmark_at(jump_before);
+        }
         if was_normal
             && !matches!(
                 action,
@@ -423,6 +438,7 @@ impl Editor {
             insert_record: Vec::new(),
             insert_moved: false,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
+            jumps: Jumps::new(),
             scroll_amount: None,
         }
     }
@@ -558,6 +574,85 @@ impl Editor {
 
     pub fn visible_lines(&self, top: usize, height: usize) -> Vec<String> {
         self.buffer.window_lines(top, height)
+    }
+}
+
+enum JumpRecording {
+    Never,
+    Always,
+    IfMovedOrSingle,
+}
+
+fn jump_recording(action: Action) -> JumpRecording {
+    match action {
+        Action::GotoLastLine
+        | Action::GotoFirstLine
+        | Action::MoveToViewportTop
+        | Action::MoveToViewportMiddle
+        | Action::MoveToViewportBottom
+        | Action::DeleteToViewportTop
+        | Action::DeleteToViewportMiddle
+        | Action::DeleteToViewportBottom
+        | Action::YankToViewportTop
+        | Action::YankToViewportMiddle
+        | Action::YankToViewportBottom
+        | Action::ChangeToViewportTop
+        | Action::ChangeToViewportMiddle
+        | Action::ChangeToViewportBottom
+        | Action::DeleteToLastLine
+        | Action::DeleteToFirstLine
+        | Action::YankToLastLine
+        | Action::YankToFirstLine
+        | Action::ChangeToLastLine
+        | Action::ChangeToFirstLine
+        | Action::ShiftRightAt {
+            motion: ShiftMotion::GotoLine { .. },
+        }
+        | Action::ShiftLeftAt {
+            motion: ShiftMotion::GotoLine { .. },
+        }
+        | Action::ReindentAt {
+            motion: ShiftMotion::GotoLine { .. },
+        }
+        | Action::ToggleCaseAt {
+            motion: CaseMotion::GotoLine { .. },
+        }
+        | Action::LowercaseAt {
+            motion: CaseMotion::GotoLine { .. },
+        }
+        | Action::UppercaseAt {
+            motion: CaseMotion::GotoLine { .. },
+        } => JumpRecording::Always,
+        Action::MoveToNextSentence
+        | Action::MoveToPrevSentence
+        | Action::DeleteToNextSentence
+        | Action::DeleteToPrevSentence
+        | Action::YankToNextSentence
+        | Action::YankToPrevSentence
+        | Action::ChangeToNextSentence
+        | Action::ChangeToPrevSentence
+        | Action::MoveToNextParagraph
+        | Action::MoveToPrevParagraph
+        | Action::DeleteToNextParagraph
+        | Action::DeleteToPrevParagraph
+        | Action::YankToNextParagraph
+        | Action::YankToPrevParagraph
+        | Action::ChangeToNextParagraph
+        | Action::ChangeToPrevParagraph => JumpRecording::IfMovedOrSingle,
+        _ => JumpRecording::Never,
+    }
+}
+
+fn jump_records(
+    recording: JumpRecording,
+    before: (usize, usize),
+    after: (usize, usize),
+    count: usize,
+) -> bool {
+    match recording {
+        JumpRecording::Never => false,
+        JumpRecording::Always => true,
+        JumpRecording::IfMovedOrSingle => before != after || count <= 1,
     }
 }
 

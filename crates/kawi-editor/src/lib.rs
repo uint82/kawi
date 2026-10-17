@@ -13,6 +13,7 @@ pub mod viewport;
 pub mod words;
 
 mod case_map;
+mod jumps;
 mod paragraphs;
 mod sentences;
 
