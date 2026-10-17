@@ -9,6 +9,12 @@ impl Editor {
         self.jumps.record(position);
     }
 
+    pub(super) fn apply_line_adjustments(&mut self) {
+        for adjust in self.buffer.take_line_adjustments() {
+            self.jumps.adjust(adjust);
+        }
+    }
+
     pub(super) fn jump_older(&mut self) {
         self.jump_step(true);
     }
@@ -177,6 +183,71 @@ mod tests {
         editor.apply(Action::JumpOlder);
         assert_eq!(editor.jumps.entries(), &[(0, 0), (1, 0)]);
         assert_eq!(editor.jumps.index(), 0);
+    }
+
+    #[test]
+    fn delete_line_adjusts_recorded_jumps() {
+        let mut editor = editor_with("a\nb\nc\nd");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::PushCount(3));
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::DeleteLine);
+        assert_eq!(editor.jumps.entries(), &[(0, 0), (2, 0)]);
+    }
+
+    #[test]
+    fn open_line_adjusts_recorded_jumps() {
+        let mut editor = editor_with("a\nb\nc\nd");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::PushCount(3));
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::OpenLineBelow);
+        editor.apply(Action::ExitInsert);
+        assert_eq!(editor.jumps.entries(), &[(0, 0), (4, 0)]);
+    }
+
+    #[test]
+    fn paste_below_adjusts_recorded_jumps() {
+        let mut editor = editor_with("a\nb\nc\nd");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::PushCount(3));
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::YankLine);
+        editor.apply(Action::PasteAfter);
+        assert_eq!(editor.jumps.entries(), &[(0, 0), (4, 0)]);
+    }
+
+    #[test]
+    fn undo_records_and_adjusts_jumps() {
+        let mut editor = editor_with("a\nb\nc\nd");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::PushCount(3));
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::DeleteLine);
+        editor.apply(Action::Undo);
+        assert_eq!(editor.jumps.entries(), &[(0, 0), (3, 0), (3, 0)]);
+        assert_eq!(editor.jumps.index(), 3);
+    }
+
+    #[test]
+    fn redo_records_and_adjusts_jumps() {
+        let mut editor = editor_with("a\nb\nc\nd");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::PushCount(3));
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::DeleteLine);
+        editor.apply(Action::Undo);
+        editor.apply(Action::Redo);
+        assert_eq!(editor.jumps.entries(), &[(0, 0), (2, 0), (2, 0), (2, 0)]);
+    }
+
+    #[test]
+    fn undo_without_history_keeps_jumps() {
+        let mut editor = editor_with("ab");
+        editor.apply(Action::GotoLastLine);
+        editor.apply(Action::Undo);
+        assert_eq!(editor.jumps.entries(), &[(0, 0)]);
+        assert_eq!(editor.jumps.index(), 1);
     }
 
     #[test]

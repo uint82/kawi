@@ -2,6 +2,8 @@ const MAX_HISTORY: usize = 200;
 
 use ropey::Rope;
 
+use crate::line_adjust::{self, LineAdjust};
+
 struct Snapshot {
     id: u64,
     text: Rope,
@@ -50,16 +52,28 @@ impl History {
         }
     }
 
-    pub fn undo(&mut self, text: &mut Rope, row: usize, col: usize) -> Option<(usize, usize)> {
-        self.undo
-            .pop()
-            .map(|snapshot| self.restore_snapshot(text, row, col, snapshot, true))
+    pub fn undo(
+        &mut self,
+        text: &mut Rope,
+        row: usize,
+        col: usize,
+    ) -> Option<((usize, usize), Option<LineAdjust>)> {
+        let snapshot = self.undo.pop()?;
+        let adjust = line_adjust::undo(text, &snapshot.text);
+        let restored = self.restore_snapshot(text, row, col, snapshot, true);
+        Some((restored, adjust))
     }
 
-    pub fn redo(&mut self, text: &mut Rope, row: usize, col: usize) -> Option<(usize, usize)> {
-        self.redo
-            .pop()
-            .map(|snapshot| self.restore_snapshot(text, row, col, snapshot, false))
+    pub fn redo(
+        &mut self,
+        text: &mut Rope,
+        row: usize,
+        col: usize,
+    ) -> Option<((usize, usize), Option<LineAdjust>)> {
+        let snapshot = self.redo.pop()?;
+        let adjust = line_adjust::undo(text, &snapshot.text);
+        let restored = self.restore_snapshot(text, row, col, snapshot, false);
+        Some((restored, adjust))
     }
 
     pub fn mark_clean(&mut self) {
@@ -129,7 +143,6 @@ impl Default for History {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ropey::Rope;
 
     fn rope_of(text: &str) -> Rope {
         Rope::from_str(text)
@@ -158,7 +171,7 @@ mod tests {
         let before = rope_of("ab");
         history.checkpoint(&before, 0, 1);
         let mut now = rope_of("abcd");
-        assert_eq!(history.undo(&mut now, 0, 3), Some((0, 1)));
+        assert_eq!(history.undo(&mut now, 0, 3), Some(((0, 1), None)));
         assert_eq!(text_of(&now), text_of(&before));
     }
 
@@ -168,7 +181,7 @@ mod tests {
         history.checkpoint(&rope_of("ab"), 0, 0);
         let mut now = rope_of("abcd");
         history.undo(&mut now, 0, 3);
-        assert_eq!(history.redo(&mut now, 0, 0), Some((0, 3)));
+        assert_eq!(history.redo(&mut now, 0, 0), Some(((0, 3), None)));
         assert_eq!(text_of(&now), "abcd");
     }
 
