@@ -17,6 +17,7 @@ impl HelixKeymap {
         match key.code {
             KeyCode::Esc => Action::ExitInsert,
             KeyCode::Enter => Action::InsertNewline,
+            KeyCode::Tab => Action::InsertTab,
             KeyCode::Backspace => Action::DeleteBackward,
             KeyCode::Delete => Action::DeleteForward,
             KeyCode::Home => Action::MoveToLineStart,
@@ -138,6 +139,15 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('w')), Mode::Visual),
             Action::MoveToNextWordStart
+        );
+    }
+
+    #[test]
+    fn insert_tab_maps() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Tab), Mode::Insert),
+            Action::InsertTab
         );
     }
 
