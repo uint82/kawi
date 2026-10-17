@@ -1,6 +1,6 @@
 use super::Editor;
 use crate::actions::ShiftMotion;
-use crate::editor::indent::{shift_span_text, IndentConfig, IndentShift};
+use crate::editor::indent::{shift_span_text, IndentShift};
 use crate::find;
 use crate::words;
 
@@ -60,13 +60,13 @@ impl Editor {
         let shift_text = match shift {
             Shift::Right => shift_span_text(
                 &text,
-                IndentShift::In(shift_amount(&indent)),
+                IndentShift::In(indent.shift_unit()),
                 indent.expandtab,
                 indent.tabstop,
             ),
             Shift::Left => shift_span_text(
                 &text,
-                IndentShift::Out(shift_amount(&indent)),
+                IndentShift::Out(indent.shift_unit()),
                 indent.expandtab,
                 indent.tabstop,
             ),
@@ -171,14 +171,6 @@ enum Shift {
     Right,
     Left,
     Reindent,
-}
-
-fn shift_amount(indent: &IndentConfig) -> usize {
-    if indent.shiftwidth == 0 {
-        indent.tabstop
-    } else {
-        indent.shiftwidth
-    }
 }
 
 fn span_rows(span: words::WordSpan) -> Option<(usize, usize)> {

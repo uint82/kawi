@@ -14,6 +14,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
 mod indent;
+mod insert_shift;
 mod jumps;
 mod line_ops;
 mod match_ops;
@@ -53,6 +54,7 @@ pub struct Editor {
     insert_reopen: bool,
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
+    insert_last_char: Option<char>,
     viewport: Viewport,
     jumps: Jumps,
     scroll_amount: Option<usize>,
@@ -83,6 +85,7 @@ impl Editor {
             }
             _ => {}
         }
+        let was_insert = self.mode.is_insert();
         let jump = jump_recording(action);
         let jump_before = (self.cursor.row(), self.cursor.col());
         if self.needs_checkpoint(action) {
@@ -142,6 +145,8 @@ impl Editor {
             Action::InsertChar(c) => self.insert_char(c),
             Action::InsertNewline => self.insert_newline(),
             Action::InsertTab => self.insert_tab(),
+            Action::InsertShiftRight => self.insert_shift_right(),
+            Action::InsertShiftLeft => self.insert_shift_left(),
             Action::DeleteBackward => self.delete_backward(),
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),
@@ -302,6 +307,12 @@ impl Editor {
             Action::Quit | Action::Noop => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
+        if was_insert {
+            self.insert_last_char = match action {
+                Action::InsertChar(c) => Some(c),
+                _ => None,
+            };
+        }
         self.normalize_cursor();
         self.track_head(action);
         self.clear_count();
@@ -437,6 +448,7 @@ impl Editor {
             insert_reopen: false,
             insert_record: Vec::new(),
             insert_moved: false,
+            insert_last_char: None,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
             scroll_amount: None,
