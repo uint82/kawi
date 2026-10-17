@@ -1,22 +1,23 @@
 use super::Editor;
 use crate::actions::{Action, CaseMotion};
+use crate::case_map;
 use crate::find;
 use crate::words;
 
 impl Editor {
     pub(super) fn toggle_case(&mut self) {
         self.note_visual_repeat(Action::ToggleCase);
-        self.shift_selection_case(toggle_ascii_case);
+        self.shift_selection_case(swap_case);
     }
 
     pub(super) fn lowercase(&mut self) {
         self.note_visual_repeat(Action::Lowercase);
-        self.shift_selection_case(lower_ascii_case);
+        self.shift_selection_case(lower_case);
     }
 
     pub(super) fn uppercase(&mut self) {
         self.note_visual_repeat(Action::Uppercase);
-        self.shift_selection_case(upper_ascii_case);
+        self.shift_selection_case(upper_case);
     }
 
     pub(super) fn toggle_char(&mut self) {
@@ -38,7 +39,7 @@ impl Editor {
 
     fn toggled_char_at(&self, row: usize, col: usize) -> Option<char> {
         let current = self.buffer.line_cow(row)?.chars().nth(col)?;
-        let toggled = toggle_ascii_case(current);
+        let toggled = swap_case(current);
         if toggled == current {
             return None;
         }
@@ -46,15 +47,15 @@ impl Editor {
     }
 
     pub(super) fn toggle_case_at(&mut self, motion: CaseMotion) {
-        self.shift_case_motion(motion, toggle_ascii_case);
+        self.shift_case_motion(motion, swap_case);
     }
 
     pub(super) fn lowercase_at(&mut self, motion: CaseMotion) {
-        self.shift_case_motion(motion, lower_ascii_case);
+        self.shift_case_motion(motion, lower_case);
     }
 
     pub(super) fn uppercase_at(&mut self, motion: CaseMotion) {
-        self.shift_case_motion(motion, upper_ascii_case);
+        self.shift_case_motion(motion, upper_case);
     }
 
     fn shift_selection_case(&mut self, shift: fn(char) -> char) {
@@ -147,7 +148,22 @@ impl Editor {
                 let (first, last) = self.counted_line_span(upward, count)?;
                 Some(words::WordSpan::Linewise { first, last })
             }
+            CaseMotion::OperatorLines => {
+                let count = self.take_count();
+                Some(words::WordSpan::Linewise {
+                    first: self.cursor.row(),
+                    last: self.operator_lines_last(count),
+                })
+            }
         }
+    }
+
+    fn operator_lines_last(&self, count: usize) -> usize {
+        let last_row = self.buffer.line_count().saturating_sub(1);
+        self.cursor
+            .row()
+            .saturating_add(count.saturating_sub(1))
+            .min(last_row)
     }
 
     fn apply_case_span(&mut self, span: words::WordSpan, shift: fn(char) -> char) {
@@ -179,23 +195,30 @@ impl Editor {
     }
 }
 
-// TODO(case): match vim towupper for non-ASCII text.
-pub(super) fn toggle_ascii_case(ch: char) -> char {
-    if ch.is_ascii_lowercase() {
-        ch.to_ascii_uppercase()
-    } else if ch.is_ascii_uppercase() {
-        ch.to_ascii_lowercase()
+pub(super) fn swap_case(ch: char) -> char {
+    if case_map::is_lower(ch) {
+        case_map::to_upper(ch)
+    } else if case_map::is_upper(ch) {
+        case_map::to_lower(ch)
     } else {
         ch
     }
 }
 
-pub(super) fn lower_ascii_case(ch: char) -> char {
-    ch.to_ascii_lowercase()
+pub(super) fn lower_case(ch: char) -> char {
+    if !case_map::is_lower(ch) && case_map::is_upper(ch) {
+        case_map::to_lower(ch)
+    } else {
+        ch
+    }
 }
 
-pub(super) fn upper_ascii_case(ch: char) -> char {
-    ch.to_ascii_uppercase()
+pub(super) fn upper_case(ch: char) -> char {
+    if case_map::is_lower(ch) {
+        case_map::to_upper(ch)
+    } else {
+        ch
+    }
 }
 
 #[cfg(test)]
@@ -250,6 +273,59 @@ mod tests {
         });
         assert_eq!(editor.text_lines()[0], "foo bar");
         assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn toggle_char_toggles_sharp_s() {
+        let mut editor = editor_with("aßb");
+        push_digits(&mut editor, &[8]);
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "AẞB");
+        assert_eq!((editor.row(), editor.col()), (0, 2));
+    }
+
+    #[test]
+    fn toggle_char_skips_ligature() {
+        let mut editor = editor_with("ﬁ ﬁ");
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "ﬁ ﬁ");
+        assert_eq!((editor.row(), editor.col()), (0, 1));
+    }
+
+    #[test]
+    fn toggle_char_dotted_capital_i() {
+        let mut editor = editor_with("İ i I");
+        editor.apply(Action::ToggleChar);
+        assert_eq!(editor.text_lines()[0], "i i I");
+        assert_eq!((editor.row(), editor.col()), (0, 1));
+    }
+
+    #[test]
+    fn toggle_word_uses_unicode_cases() {
+        let mut editor = editor_with("ǅx ǰx ﬁx İx ßx");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::WordForward,
+        });
+        assert_eq!(editor.text_lines()[0], "ǄX ǰx ﬁx İx ßx");
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn upper_word_skips_lowercase_first_chars() {
+        let mut editor = editor_with("ǅx ǰx ﬁx İx ßx");
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::WordForward,
+        });
+        assert_eq!(editor.text_lines()[0], "ǄX ǰx ﬁx İx ßx");
+    }
+
+    #[test]
+    fn lower_word_skips_titlecase_first_char() {
+        let mut editor = editor_with("ǅx ǰx ﬁx İx ßx");
+        editor.apply(Action::LowercaseAt {
+            motion: CaseMotion::WordForward,
+        });
+        assert_eq!(editor.text_lines()[0], "ǅx ǰx ﬁx İx ßx");
     }
 
     #[test]
@@ -394,6 +470,61 @@ mod tests {
             vec!["a".to_string(), "B".to_string(), "C".to_string()]
         );
         assert_eq!((editor.row(), editor.col()), (1, 0));
+    }
+
+    #[test]
+    fn toggle_operator_lines_covers_current_line() {
+        let mut editor = editor_with("foo BAR\nbaz QUX");
+        editor.apply(Action::ToggleCaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["FOO bar".to_string(), "baz QUX".to_string()]
+        );
+        assert_eq!((editor.row(), editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn upper_operator_lines_uses_count() {
+        let mut editor = editor_with("aaa\nbbb\nccc");
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[2]);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaa".to_string(), "BBB".to_string(), "CCC".to_string()]
+        );
+        assert_eq!((editor.row(), editor.col()), (1, 0));
+    }
+
+    #[test]
+    fn upper_operator_lines_clamps_at_last_line() {
+        let mut editor = editor_with("aaA\nbbB\nccC");
+        editor.apply(Action::MoveDown);
+        push_digits(&mut editor, &[9]);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaA".to_string(), "BBB".to_string(), "CCC".to_string()]
+        );
+    }
+
+    #[test]
+    fn upper_operator_lines_at_last_line_still_applies() {
+        let mut editor = editor_with("aaa\nbbb");
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::UppercaseAt {
+            motion: CaseMotion::OperatorLines,
+        });
+        assert_eq!(
+            editor.text_lines(),
+            vec!["aaa".to_string(), "BBB".to_string()]
+        );
     }
 
     #[test]

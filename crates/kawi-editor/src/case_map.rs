@@ -1,0 +1,234 @@
+const UPPER_EXCEPTIONS: [(u32, u32); 122] = [
+    (0x00DF, 0x1E9E),
+    (0x0149, 0x0149),
+    (0x01F0, 0x01F0),
+    (0x0277, 0xA7DD),
+    (0x027C, 0xA7E2),
+    (0x0390, 0x0390),
+    (0x03B0, 0x03B0),
+    (0x0587, 0x0587),
+    (0x1E96, 0x1E96),
+    (0x1E97, 0x1E97),
+    (0x1E98, 0x1E98),
+    (0x1E99, 0x1E99),
+    (0x1E9A, 0x1E9A),
+    (0x1F50, 0x1F50),
+    (0x1F52, 0x1F52),
+    (0x1F54, 0x1F54),
+    (0x1F56, 0x1F56),
+    (0x1F80, 0x1F88),
+    (0x1F81, 0x1F89),
+    (0x1F82, 0x1F8A),
+    (0x1F83, 0x1F8B),
+    (0x1F84, 0x1F8C),
+    (0x1F85, 0x1F8D),
+    (0x1F86, 0x1F8E),
+    (0x1F87, 0x1F8F),
+    (0x1F88, 0x1F88),
+    (0x1F89, 0x1F89),
+    (0x1F8A, 0x1F8A),
+    (0x1F8B, 0x1F8B),
+    (0x1F8C, 0x1F8C),
+    (0x1F8D, 0x1F8D),
+    (0x1F8E, 0x1F8E),
+    (0x1F8F, 0x1F8F),
+    (0x1F90, 0x1F98),
+    (0x1F91, 0x1F99),
+    (0x1F92, 0x1F9A),
+    (0x1F93, 0x1F9B),
+    (0x1F94, 0x1F9C),
+    (0x1F95, 0x1F9D),
+    (0x1F96, 0x1F9E),
+    (0x1F97, 0x1F9F),
+    (0x1F98, 0x1F98),
+    (0x1F99, 0x1F99),
+    (0x1F9A, 0x1F9A),
+    (0x1F9B, 0x1F9B),
+    (0x1F9C, 0x1F9C),
+    (0x1F9D, 0x1F9D),
+    (0x1F9E, 0x1F9E),
+    (0x1F9F, 0x1F9F),
+    (0x1FA0, 0x1FA8),
+    (0x1FA1, 0x1FA9),
+    (0x1FA2, 0x1FAA),
+    (0x1FA3, 0x1FAB),
+    (0x1FA4, 0x1FAC),
+    (0x1FA5, 0x1FAD),
+    (0x1FA6, 0x1FAE),
+    (0x1FA7, 0x1FAF),
+    (0x1FA8, 0x1FA8),
+    (0x1FA9, 0x1FA9),
+    (0x1FAA, 0x1FAA),
+    (0x1FAB, 0x1FAB),
+    (0x1FAC, 0x1FAC),
+    (0x1FAD, 0x1FAD),
+    (0x1FAE, 0x1FAE),
+    (0x1FAF, 0x1FAF),
+    (0x1FB2, 0x1FB2),
+    (0x1FB3, 0x1FBC),
+    (0x1FB4, 0x1FB4),
+    (0x1FB6, 0x1FB6),
+    (0x1FB7, 0x1FB7),
+    (0x1FBC, 0x1FBC),
+    (0x1FC2, 0x1FC2),
+    (0x1FC3, 0x1FCC),
+    (0x1FC4, 0x1FC4),
+    (0x1FC6, 0x1FC6),
+    (0x1FC7, 0x1FC7),
+    (0x1FCC, 0x1FCC),
+    (0x1FD2, 0x1FD2),
+    (0x1FD3, 0x1FD3),
+    (0x1FD6, 0x1FD6),
+    (0x1FD7, 0x1FD7),
+    (0x1FE2, 0x1FE2),
+    (0x1FE3, 0x1FE3),
+    (0x1FE4, 0x1FE4),
+    (0x1FE6, 0x1FE6),
+    (0x1FE7, 0x1FE7),
+    (0x1FF2, 0x1FF2),
+    (0x1FF3, 0x1FFC),
+    (0x1FF4, 0x1FF4),
+    (0x1FF6, 0x1FF6),
+    (0x1FF7, 0x1FF7),
+    (0x1FFC, 0x1FFC),
+    (0xAB4B, 0xAB6C),
+    (0xAB4C, 0xAB6D),
+    (0xFB00, 0xFB00),
+    (0xFB01, 0xFB01),
+    (0xFB02, 0xFB02),
+    (0xFB03, 0xFB03),
+    (0xFB04, 0xFB04),
+    (0xFB05, 0xFB05),
+    (0xFB06, 0xFB06),
+    (0xFB13, 0xFB13),
+    (0xFB14, 0xFB14),
+    (0xFB15, 0xFB15),
+    (0xFB16, 0xFB16),
+    (0xFB17, 0xFB17),
+    (0x1DF41, 0x1DF40),
+    (0x1DF49, 0x1DF48),
+    (0x1DF4B, 0x1DF4A),
+    (0x1DF4E, 0x1DF4D),
+    (0x1DF52, 0x1DF51),
+    (0x1DF69, 0x1DF68),
+    (0x1DF6B, 0x1DF6A),
+    (0x1DF6D, 0x1DF6C),
+    (0x1DF6F, 0x1DF6E),
+    (0x1DF73, 0x1DF72),
+    (0x1DF75, 0x1DF74),
+    (0x1DF77, 0x1DF76),
+    (0x1DF79, 0x1DF78),
+    (0x1DF7B, 0x1DF7A),
+    (0x1DF7D, 0x1DF7C),
+    (0x1DF7F, 0x1DF7E),
+];
+
+const LOWER_EXCEPTIONS: [(u32, u32); 20] = [
+    (0xA7DD, 0x0277),
+    (0xA7E2, 0x027C),
+    (0xAB6C, 0xAB4B),
+    (0xAB6D, 0xAB4C),
+    (0x1DF40, 0x1DF41),
+    (0x1DF48, 0x1DF49),
+    (0x1DF4A, 0x1DF4B),
+    (0x1DF4D, 0x1DF4E),
+    (0x1DF51, 0x1DF52),
+    (0x1DF68, 0x1DF69),
+    (0x1DF6A, 0x1DF6B),
+    (0x1DF6C, 0x1DF6D),
+    (0x1DF6E, 0x1DF6F),
+    (0x1DF72, 0x1DF73),
+    (0x1DF74, 0x1DF75),
+    (0x1DF76, 0x1DF77),
+    (0x1DF78, 0x1DF79),
+    (0x1DF7A, 0x1DF7B),
+    (0x1DF7C, 0x1DF7D),
+    (0x1DF7E, 0x1DF7F),
+];
+
+fn exception(table: &[(u32, u32)], ch: char) -> Option<char> {
+    let cp = ch as u32;
+    table
+        .binary_search_by_key(&cp, |(source, _)| *source)
+        .ok()
+        .and_then(|index| char::from_u32(table[index].1))
+}
+
+pub(crate) fn to_upper(ch: char) -> char {
+    exception(&UPPER_EXCEPTIONS, ch).unwrap_or_else(|| ch.to_uppercase().next().unwrap_or(ch))
+}
+
+pub(crate) fn to_lower(ch: char) -> char {
+    exception(&LOWER_EXCEPTIONS, ch).unwrap_or_else(|| ch.to_lowercase().next().unwrap_or(ch))
+}
+
+pub(crate) fn is_lower(ch: char) -> bool {
+    to_upper(ch) != ch
+}
+
+pub(crate) fn is_upper(ch: char) -> bool {
+    to_lower(ch) != ch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sharp_s_maps_to_capital_sharp_s() {
+        assert_eq!(to_upper('ß'), 'ẞ');
+        assert_eq!(to_lower('ẞ'), 'ß');
+    }
+
+    #[test]
+    fn expanding_ligatures_are_unchanged() {
+        assert_eq!(to_upper('ﬁ'), 'ﬁ');
+        assert_eq!(to_upper('ﬄ'), 'ﬄ');
+    }
+
+    #[test]
+    fn combining_latin_stays_unchanged() {
+        assert_eq!(to_upper('ǰ'), 'ǰ');
+        assert_eq!(to_upper('ΐ'), 'ΐ');
+    }
+
+    #[test]
+    fn greek_iota_subscript_maps_to_prosgegrammeni() {
+        assert_eq!(to_upper('ᾀ'), 'ᾈ');
+        assert_eq!(to_lower('ᾈ'), 'ᾀ');
+    }
+
+    #[test]
+    fn dotted_capital_i_lowercases_to_ascii_i() {
+        assert_eq!(to_lower('İ'), 'i');
+    }
+
+    #[test]
+    fn titlecase_letter_maps_both_ways() {
+        assert_eq!(to_upper('ǅ'), 'Ǆ');
+        assert_eq!(to_lower('ǅ'), 'ǆ');
+    }
+
+    #[test]
+    fn predicates_follow_mappings() {
+        assert!(is_lower('ß'));
+        assert!(!is_upper('ß'));
+        assert!(is_upper('ẞ'));
+        assert!(!is_lower('ẞ'));
+        assert!(is_lower('ǅ'));
+        assert!(is_upper('ǅ'));
+        assert!(!is_lower('ﬁ'));
+        assert!(!is_upper('ﬁ'));
+        assert!(is_upper('İ'));
+        assert!(!is_lower('İ'));
+    }
+
+    #[test]
+    fn ascii_and_uncased_stay_stable() {
+        assert_eq!(to_upper('a'), 'A');
+        assert_eq!(to_lower('A'), 'a');
+        assert_eq!(to_upper('1'), '1');
+        assert!(!is_lower('1'));
+        assert!(!is_upper('1'));
+    }
+}

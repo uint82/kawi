@@ -259,6 +259,7 @@ pub enum CaseMotion {
     Lines {
         upward: bool,
     },
+    OperatorLines,
     GotoLine {
         last: bool,
     },
