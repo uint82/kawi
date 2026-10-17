@@ -11,6 +11,10 @@ pub enum MatchTarget {
 
 const PAIRS: [(char, char); 3] = [('(', ')'), ('{', '}'), ('[', ']')];
 
+// TODO(matchit): nvim loads the matchit plugin by default and maps percent to
+// a syntax-aware search: candidates in string, character, singlequote, escape,
+// symbol or comment syntax regions are skipped, then b:match_words keyword
+// pairs are matched per filetype. Needs a syntax model or treesitter captures.
 pub fn match_target(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
     if let Some(found) = hash_jump_before_hash(buffer, row, col) {
         return Some(found);
