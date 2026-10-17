@@ -51,6 +51,7 @@ pub struct Editor {
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     viewport: Viewport,
+    scroll_amount: Option<usize>,
 }
 
 struct SearchStatus {
@@ -419,6 +420,7 @@ impl Editor {
             insert_record: Vec::new(),
             insert_moved: false,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
+            scroll_amount: None,
         }
     }
 
