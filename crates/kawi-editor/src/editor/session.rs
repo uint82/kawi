@@ -421,24 +421,15 @@ impl Editor {
             return;
         }
         let span = if inner {
-            objects::iw_range(&self.buffer, cursor.0, cursor.1)
+            objects::iw_range(&self.buffer, cursor.0, cursor.1, count)
         } else {
-            objects::aw_range(&self.buffer, cursor.0, cursor.1)
+            objects::aw_range(&self.buffer, cursor.0, cursor.1, count)
         };
         let Some(span) = span else {
             return;
         };
         self.select_span(span.start, span.end);
         self.downgrade_to_charwise();
-        let head = self.selection_head();
-        let next = words::extend_word_head(
-            &self.buffer,
-            self.selection_anchor(),
-            head,
-            inner,
-            count.saturating_sub(1),
-        );
-        self.place_selection_head(next);
     }
 
     fn select_span(&mut self, start: (usize, usize), end: (usize, usize)) {
