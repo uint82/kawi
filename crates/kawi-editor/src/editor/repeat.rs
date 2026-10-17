@@ -1,7 +1,7 @@
 use super::session::InsertEdit;
 use super::Editor;
 use crate::actions::Action;
-use crate::editor::case_ops::{lower_ascii_case, toggle_ascii_case, upper_ascii_case};
+use crate::editor::case_ops::{lower_case, swap_case, upper_case};
 use crate::mode::Mode;
 
 pub(super) fn is_insert_entry(action: Action) -> bool {
@@ -129,9 +129,9 @@ impl Editor {
             Action::ToggleCase | Action::Lowercase | Action::Uppercase => {
                 self.record_boundary();
                 let shift = match action {
-                    Action::Lowercase => lower_ascii_case,
-                    Action::Uppercase => upper_ascii_case,
-                    _ => toggle_ascii_case,
+                    Action::Lowercase => lower_case,
+                    Action::Uppercase => upper_case,
+                    _ => swap_case,
                 };
                 self.buffer
                     .shift_case_range(start.0, start.1, end.0, end.1, shift);

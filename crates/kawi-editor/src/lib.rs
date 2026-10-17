@@ -12,6 +12,7 @@ pub mod selection;
 pub mod viewport;
 pub mod words;
 
+mod case_map;
 mod sentences;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
