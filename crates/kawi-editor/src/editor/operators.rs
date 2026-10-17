@@ -1376,6 +1376,19 @@ mod tests {
     }
 
     #[test]
+    fn delete_inner_paren_across_continued_string() {
+        let mut e = editor_with("bar(\"multi\\\nline ) string\", x);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines(), vec!["bar();".to_string()]);
+        assert_eq!(e.register_text(), "\"multi\\\nline ) string\", x");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
     fn delete_inner_paren_undo_and_repeat() {
         let mut e = editor_with("foo(\"a)b\", 'c', ')');");
         e.apply(Action::JumpTo(0, 5));

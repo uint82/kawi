@@ -758,6 +758,14 @@ mod tests {
     }
 
     #[test]
+    fn match_multiline_string_continuation_skips_inner_close() {
+        let mut e = editor_with("bar(\"multi\\\nline ) string\", x);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 17));
+    }
+
+    #[test]
     fn match_escaped_call_pair() {
         let mut e = editor_with("baz(\\(y\\), z);");
         e.apply(Action::JumpTo(0, 3));
