@@ -70,10 +70,7 @@ impl Editor {
         };
         match span {
             objects::word::WordSpan::Charwise { start, end } => {
-                self.record_boundary_at(start.0, start.1);
-                self.yank_span(start.0, start.1, end.0, end.1);
-                self.buffer.delete_span(start.0, start.1, end.0, end.1);
-                self.cursor.set_position(start.0, start.1);
+                self.delete_charwise_span(start, end);
                 self.switch_to_insert();
             }
             objects::word::WordSpan::Linewise { first, last, .. } => {
@@ -308,10 +305,7 @@ impl Editor {
                     let max = self.buffer.line_len(row).saturating_sub(1);
                     self.cursor.set_position(row, old_col.min(max));
                 } else {
-                    self.record_boundary_at(start.0, start.1);
-                    self.yank_span(start.0, start.1, end.0, end.1);
-                    self.buffer.delete_span(start.0, start.1, end.0, end.1);
-                    self.cursor.set_position(start.0, start.1);
+                    self.delete_charwise_span(start, end);
                 }
             }
             objects::word::WordSpan::Linewise { first, last, .. } => {
@@ -762,7 +756,20 @@ impl Editor {
         self.cursor.set_position(start_row, start_col);
     }
 
-    fn yank_span(&mut self, start_row: usize, start_col: usize, end_row: usize, end_col: usize) {
+    pub(super) fn delete_charwise_span(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_boundary_at(start.0, start.1);
+        self.yank_span(start.0, start.1, end.0, end.1);
+        self.buffer.delete_span(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+    }
+
+    pub(super) fn yank_span(
+        &mut self,
+        start_row: usize,
+        start_col: usize,
+        end_row: usize,
+        end_col: usize,
+    ) {
         let text = self
             .buffer
             .span_text(start_row, start_col, end_row, end_col);

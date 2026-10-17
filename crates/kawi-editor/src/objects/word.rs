@@ -39,8 +39,22 @@ fn span(buffer: &Buffer, row: usize, col: usize, include: bool, count: usize) ->
 }
 
 fn normal_span(buffer: &Buffer, selection: WordSelection) -> WordSpan {
-    let (start, mut end) = ordered(selection.anchor, selection.cursor);
-    let mut inclusive = selection.inclusive;
+    motion_span(
+        buffer,
+        selection.anchor,
+        selection.cursor,
+        selection.inclusive,
+    )
+}
+
+pub(crate) fn motion_span(
+    buffer: &Buffer,
+    first: (usize, usize),
+    second: (usize, usize),
+    inclusive: bool,
+) -> WordSpan {
+    let (start, mut end) = ordered(first, second);
+    let mut inclusive = inclusive;
     if !inclusive && end.1 == 0 && end.0 > start.0 {
         end.0 -= 1;
         if words::start_blank(buffer, start) {

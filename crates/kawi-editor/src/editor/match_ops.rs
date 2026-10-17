@@ -1,6 +1,6 @@
 use super::Editor;
+use crate::objects;
 use crate::objects::matchit::{match_target, MatchTarget};
-use crate::words::dec_pos;
 
 impl Editor {
     pub(super) fn move_to_match(&mut self) {
@@ -32,10 +32,8 @@ impl Editor {
     }
 
     pub(super) fn delete_match(&mut self) {
-        if self.has_post_digits() {
-            self.delete_percent_line();
-        } else if self.buffer.line_len(self.cursor.row()) == 0 {
-            self.delete_line();
+        if let Some(count) = self.take_percent_count() {
+            self.delete_percent(count);
         } else {
             let (start, end) = self.match_char_span();
             self.remove_range(start, end);
@@ -44,10 +42,8 @@ impl Editor {
     }
 
     pub(super) fn yank_match(&mut self) {
-        if self.has_post_digits() {
-            self.yank_percent_line();
-        } else if self.buffer.line_len(self.cursor.row()) == 0 {
-            self.yank_lines();
+        if let Some(count) = self.take_percent_count() {
+            self.yank_percent(count);
         } else {
             let (start, end) = self.match_char_span();
             self.yank_range(start.0, start.1, end.0, end.1);
@@ -57,11 +53,8 @@ impl Editor {
     }
 
     pub(super) fn change_match(&mut self) {
-        if self.has_post_digits() {
-            self.change_percent_line();
-        } else if self.buffer.line_len(self.cursor.row()) == 0 {
-            let row = self.cursor.row();
-            self.change_lines(row, row);
+        if let Some(count) = self.take_percent_count() {
+            self.change_percent(count);
         } else {
             let (start, end) = self.match_char_span();
             self.remove_range(start, end);
@@ -70,9 +63,14 @@ impl Editor {
         self.reveal_jump();
     }
 
+    fn take_percent_count(&mut self) -> Option<usize> {
+        if self.operator_count.is_none() && !self.has_post_digits() {
+            return None;
+        }
+        Some(self.take_count())
+    }
+
     fn match_char_span(&self) -> ((usize, usize), (usize, usize)) {
-        // TODO(percent): pre-operator counts multiply uniformly instead of
-        // nvim operator-pending percent quirks.
         let row = self.cursor.row();
         let col = self.cursor.col();
         match match_target(&self.buffer, row, col) {
@@ -99,78 +97,66 @@ impl Editor {
         }
     }
 
-    fn delete_percent_line(&mut self) {
-        let count = self.take_count0();
-        let Some(target) = self.percent_line(count) else {
-            return;
-        };
+    fn delete_percent(&mut self, count: usize) {
+        match self.percent_span(count) {
+            Some(PercentSpan::Lines { first, last }) => self.remove_lines(first, last),
+            Some(PercentSpan::Chars { start, end }) => self.delete_charwise_span(start, end),
+            Some(PercentSpan::Empty) | None => {}
+        }
+    }
+
+    fn yank_percent(&mut self, count: usize) {
+        match self.percent_span(count) {
+            Some(PercentSpan::Lines { first, last }) => {
+                let col = self.cursor.col();
+                self.yank_line_range(first, last);
+                self.cursor.set_position(first, col);
+            }
+            Some(PercentSpan::Chars { start, end }) => {
+                self.yank_span(start.0, start.1, end.0, end.1);
+                self.cursor.set_position(start.0, start.1);
+            }
+            Some(PercentSpan::Empty) => self.register.set_text(String::new()),
+            None => {}
+        }
+    }
+
+    fn change_percent(&mut self, count: usize) {
+        match self.percent_span(count) {
+            Some(PercentSpan::Lines { first, last }) => self.change_lines(first, last),
+            Some(PercentSpan::Chars { start, end }) => {
+                self.delete_charwise_span(start, end);
+                self.switch_to_insert();
+            }
+            Some(PercentSpan::Empty) => self.switch_to_insert(),
+            None => {}
+        }
+    }
+
+    fn percent_span(&self, count: usize) -> Option<PercentSpan> {
+        let target = self.percent_line(count)?;
         let row = self.cursor.row();
+        if target == row {
+            return Some(PercentSpan::Empty);
+        }
         let col = self.cursor.col();
-        let (first, last) = (row.min(target), row.max(target));
-        if first == last {
-            return;
-        }
         if col == 0 {
-            return self.remove_lines(first, last.saturating_sub(1));
+            let first = row.min(target);
+            let last = row.max(target).saturating_sub(1);
+            return Some(PercentSpan::Lines { first, last });
         }
-        self.delete_percent_span(first, last, col);
-    }
-
-    fn yank_percent_line(&mut self) {
-        let count = self.take_count0();
-        let Some(target) = self.percent_line(count) else {
-            return;
-        };
-        let row = self.cursor.row();
-        let col = self.cursor.col();
-        let (first, last) = (row.min(target), row.max(target));
-        if first == last {
-            return;
-        }
-        if col == 0 {
-            self.yank_line_range(first, last.saturating_sub(1));
-            self.cursor.set_position(first, col);
-            return;
-        }
-        self.yank_percent_span(first, last, col);
-    }
-
-    fn change_percent_line(&mut self) {
-        let count = self.take_count0();
-        let Some(target) = self.percent_line(count) else {
-            return;
-        };
-        let row = self.cursor.row();
-        let col = self.cursor.col();
-        let (first, last) = (row.min(target), row.max(target));
-        if first == last {
-            return;
-        }
-        if col == 0 {
-            return self.change_lines(first, last.saturating_sub(1));
-        }
-        self.delete_percent_span(first, last, col);
-        self.switch_to_insert();
-    }
-
-    fn delete_percent_span(&mut self, first: usize, last: usize, col: usize) {
-        let end = self.percent_span_end(last, col);
-        self.remove_range((first, col), end);
-    }
-
-    fn yank_percent_span(&mut self, first: usize, last: usize, col: usize) {
-        let end = self.percent_span_end(last, col);
-        self.yank_range(first, col, end.0, end.1);
-        self.cursor.set_position(first, col);
-    }
-
-    fn percent_span_end(&self, last: usize, col: usize) -> (usize, usize) {
-        if col > self.buffer.line_len(last) {
-            let prev = last.saturating_sub(1);
-            return (prev, self.buffer.line_len(prev).saturating_sub(1));
-        }
-        let (end, _) = dec_pos(&self.buffer, last, col);
-        end
+        let end_col = col.min(self.buffer.line_len(target).saturating_sub(1));
+        Some(
+            match objects::word::motion_span(&self.buffer, (row, col), (target, end_col), false) {
+                objects::word::WordSpan::Charwise { start, end } => {
+                    PercentSpan::Chars { start, end }
+                }
+                objects::word::WordSpan::Linewise { first, last, .. } => {
+                    PercentSpan::Lines { first, last }
+                }
+                objects::word::WordSpan::Empty { .. } => PercentSpan::Empty,
+            },
+        )
     }
 
     fn percent_line(&self, count: usize) -> Option<usize> {
@@ -187,6 +173,18 @@ impl Editor {
     }
 }
 
+enum PercentSpan {
+    Lines {
+        first: usize,
+        last: usize,
+    },
+    Chars {
+        start: (usize, usize),
+        end: (usize, usize),
+    },
+    Empty,
+}
+
 fn order_span(first: (usize, usize), second: (usize, usize)) -> ((usize, usize), (usize, usize)) {
     if first <= second {
         (first, second)
@@ -200,6 +198,7 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::mode::Mode;
+    use crate::register::RegisterKind;
     use kawi_buffer::Buffer;
 
     fn editor_with(text: &str) -> Editor {
@@ -372,15 +371,37 @@ mod tests {
         assert_eq!(e.text_lines()[0], "xxyy");
         assert_eq!((e.row(), e.col()), (0, 2));
         assert_eq!(e.register_text(), "(");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
     }
 
     #[test]
-    fn delete_match_empty_line_deletes_line() {
+    fn delete_match_empty_line_joins_lines() {
         let mut e = editor_with("aaa\n\nccc");
         e.apply(Action::JumpTo(1, 0));
         e.apply(Action::DeleteToMatch);
         assert_eq!(e.text_lines(), vec!["aaa".to_string(), "ccc".to_string()]);
         assert_eq!((e.row(), e.col()), (1, 0));
+        assert_eq!(e.register_text(), "\n");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn yank_match_unmatched_yanks_single_char() {
+        let mut e = editor_with("xx(yy");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::YankToMatch);
+        assert_eq!(e.register_text(), "(");
+        assert_eq!(e.text_lines()[0], "xx(yy");
+    }
+
+    #[test]
+    fn change_match_unmatched_replaces_single_char() {
+        let mut e = editor_with("xx(yy");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::ChangeToMatch);
+        assert_eq!(e.text_lines()[0], "xxyy");
+        assert_eq!((e.row(), e.col()), (0, 2));
+        assert_eq!(e.mode(), Mode::Insert);
     }
 
     #[test]
@@ -445,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_percent_line_uses_line_span() {
+    fn delete_percent_line_uses_exclusive_line_span() {
         let text = (1..=100)
             .map(|i| format!("    line {i}"))
             .collect::<Vec<_>>()
@@ -458,10 +479,11 @@ mod tests {
         assert_eq!(e.line_count(), 97);
         assert_eq!((e.row(), e.col()), (1, 4));
         assert_eq!(e.register_text(), "    line 2\n    line 3\n    line 4");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
     #[test]
-    fn delete_percent_line_charwise_off_column() {
+    fn delete_percent_line_off_column_is_charwise() {
         let text = (1..=100)
             .map(|i| format!("    line {i}"))
             .collect::<Vec<_>>()
@@ -471,31 +493,35 @@ mod tests {
         push_digits(&mut e, &[2]);
         e.apply(Action::DeleteToMatch);
         assert_eq!(e.text_lines()[1], "    line 5");
+        assert_eq!(e.line_count(), 97);
         assert_eq!((e.row(), e.col()), (1, 8));
         assert_eq!(e.register_text(), " 2\n    line 3\n    line 4\n    line");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
     }
 
     #[test]
-    fn delete_percent_span_ending_on_empty_line_keeps_split() {
+    fn delete_percent_charwise_through_empty_line() {
         let mut e = editor_with("def function_1():\n    a = 1\n    b = 2\n\n    c = 3");
         e.apply(Action::JumpTo(0, 4));
         push_digits(&mut e, &[8, 0]);
         e.apply(Action::DeleteToMatch);
         assert_eq!(
             e.text_lines(),
-            vec!["def ".to_string(), "".to_string(), "    c = 3".to_string()]
+            vec!["def ".to_string(), String::new(), "    c = 3".to_string()]
         );
         assert_eq!((e.row(), e.col()), (0, 3));
         assert_eq!(e.register_text(), "function_1():\n    a = 1\n    b = 2");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
     }
 
     #[test]
-    fn yank_percent_span_ending_on_empty_line_keeps_split() {
+    fn yank_percent_charwise_through_empty_line() {
         let mut e = editor_with("def function_1():\n    a = 1\n    b = 2\n\n    c = 3");
         e.apply(Action::JumpTo(0, 4));
         push_digits(&mut e, &[8, 0]);
         e.apply(Action::YankToMatch);
         assert_eq!(e.register_text(), "function_1():\n    a = 1\n    b = 2");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
         assert_eq!((e.row(), e.col()), (0, 4));
         assert_eq!(e.text_lines().len(), 5);
     }
@@ -512,10 +538,27 @@ mod tests {
         e.apply(Action::DeleteToMatch);
         assert_eq!(e.line_count(), 100);
         assert_eq!((e.row(), e.col()), (4, 0));
+        assert_eq!(e.register_text(), "");
     }
 
     #[test]
-    fn percent_line_uses_post_count_only() {
+    fn yank_percent_line_self_sets_empty_register() {
+        let text = (1..=100)
+            .map(|i| format!("    line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.apply(Action::JumpTo(4, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::YankToMatch);
+        assert_eq!(e.line_count(), 100);
+        assert_eq!((e.row(), e.col()), (4, 0));
+        assert_eq!(e.register_text(), "");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn percent_line_multiplies_counts() {
         let text = (1..=100)
             .map(|i| format!("    line {i}"))
             .collect::<Vec<_>>()
@@ -526,8 +569,32 @@ mod tests {
         begin_sequence(&mut e);
         push_digits(&mut e, &[2]);
         e.apply(Action::DeleteToMatch);
-        assert_eq!(e.text_lines()[1], "    line 5");
+        assert_eq!(e.line_count(), 99);
+        assert_eq!(e.text_lines()[3], "    line 5");
+        assert_eq!((e.row(), e.col()), (3, 4));
+        assert_eq!(e.register_text(), "    line 4");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn percent_operator_uses_pre_count() {
+        let text = (1..=100)
+            .map(|i| format!("    line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.apply(Action::JumpTo(10, 0));
+        push_digits(&mut e, &[2]);
+        begin_sequence(&mut e);
+        e.apply(Action::DeleteToMatch);
+        assert_eq!(e.line_count(), 91);
+        assert_eq!(e.text_lines()[1], "    line 11");
         assert_eq!((e.row(), e.col()), (1, 4));
+        assert_eq!(
+            e.register_text(),
+            "    line 2\n    line 3\n    line 4\n    line 5\n    line 6\n    line 7\n    line 8\n    line 9\n    line 10"
+        );
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
     }
 
     fn tall_editor() -> Editor {
@@ -612,11 +679,49 @@ mod tests {
     }
 
     #[test]
+    fn change_percent_charwise_replaces_span() {
+        let mut e = editor_with("aaa\nb(c)d\neee\nf(g)h\niii\njjj");
+        e.apply(Action::JumpTo(2, 2));
+        push_digits(&mut e, &[2, 5]);
+        e.apply(Action::ChangeToMatch);
+        e.apply(Action::InsertChar('Z'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[1], "b(Ze");
+        assert_eq!(e.register_text(), "c)d\nee");
+        assert_eq!(e.register_kind(), RegisterKind::CharWise);
+    }
+
+    #[test]
+    fn change_percent_line_keeps_indent() {
+        let mut e = editor_with("    aaa\n    bbb\n    ccc");
+        e.apply(Action::JumpTo(1, 0));
+        push_digits(&mut e, &[2, 5]);
+        e.apply(Action::ChangeToMatch);
+        e.apply(Action::InsertChar('Z'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(e.text_lines()[0], "    Z");
+        assert_eq!(e.register_text(), "    aaa");
+        assert_eq!(e.register_kind(), RegisterKind::LineWise);
+    }
+
+    #[test]
+    fn change_percent_same_line_enters_insert() {
+        let mut e = editor_with("aaa\nb(c)d\neee\nf(g)h\niii\njjj");
+        e.apply(Action::JumpTo(2, 0));
+        push_digits(&mut e, &[5, 0]);
+        e.apply(Action::ChangeToMatch);
+        assert_eq!(e.mode(), Mode::Insert);
+        assert_eq!(e.text_lines()[1], "b(c)d");
+        assert_eq!(e.register_text(), "");
+    }
+
+    #[test]
     fn delete_percent_line_reveals_cursor() {
         let mut e = tall_editor();
         e.apply(Action::JumpTo(0, 0));
         push_digits(&mut e, &[5, 0]);
         e.apply(Action::DeleteToMatch);
+        assert_eq!(e.line_count(), 51);
         assert_eq!((e.row(), e.col()), (0, 4));
         assert_eq!(e.view_top(), 0);
     }
