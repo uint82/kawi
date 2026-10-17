@@ -10,6 +10,7 @@ pub struct Buffer {
     pub path: Option<String>,
     history: History,
     revision: u64,
+    line_changes: u64,
     adjustments: Vec<LineAdjust>,
 }
 
@@ -20,6 +21,7 @@ impl Buffer {
             path: None,
             history: History::new(),
             revision: 0,
+            line_changes: 0,
             adjustments: Vec::new(),
         }
     }
@@ -31,6 +33,7 @@ impl Buffer {
             path: Some(path.to_string()),
             history: History::new(),
             revision: 0,
+            line_changes: 0,
             adjustments: Vec::new(),
         })
     }
@@ -137,29 +140,38 @@ impl Buffer {
     }
 
     pub fn checkpoint(&mut self, row: usize, col: usize) {
-        self.history.checkpoint(&self.rope, row, col);
+        self.history
+            .checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn maybe_checkpoint(&mut self, row: usize, col: usize) {
-        self.history.maybe_checkpoint(&self.rope, row, col);
+        self.history
+            .maybe_checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn undo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let (restored, adjust) = self.history.undo(&mut self.rope, row, col)?;
+        let (restored, adjust) = self
+            .history
+            .undo(&mut self.rope, row, col, self.line_changes)?;
         self.push_adjustment(adjust);
         self.touch();
         Some(restored)
     }
 
     pub fn redo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let (restored, adjust) = self.history.redo(&mut self.rope, row, col)?;
+        let (restored, adjust) = self
+            .history
+            .redo(&mut self.rope, row, col, self.line_changes)?;
         self.push_adjustment(adjust);
         self.touch();
         Some(restored)
     }
 
     pub fn redo_keep_cursor(&mut self, row: usize, col: usize) -> bool {
-        let Some((_, adjust)) = self.history.redo(&mut self.rope, row, col) else {
+        let Some((_, adjust)) = self
+            .history
+            .redo(&mut self.rope, row, col, self.line_changes)
+        else {
             return false;
         };
         self.push_adjustment(adjust);
@@ -174,6 +186,7 @@ impl Buffer {
     fn push_adjustment(&mut self, adjust: Option<LineAdjust>) {
         if let Some(adjust) = adjust {
             self.adjustments.push(adjust);
+            self.line_changes = self.line_changes.wrapping_add(1);
         }
     }
 
@@ -641,16 +654,12 @@ impl Buffer {
     }
 
     fn insert_text(&mut self, index: usize, text: &str) {
-        if let Some(adjust) = line_adjust::insertion(&self.rope, index, text) {
-            self.adjustments.push(adjust);
-        }
+        self.push_adjustment(line_adjust::insertion(&self.rope, index, text));
         self.rope.insert(index, text);
     }
 
     fn remove_text(&mut self, start: usize, end: usize) {
-        if let Some(adjust) = line_adjust::char_removal(&self.rope, start, end) {
-            self.adjustments.push(adjust);
-        }
+        self.push_adjustment(line_adjust::char_removal(&self.rope, start, end));
         self.rope.remove(start..end);
     }
 
@@ -666,7 +675,7 @@ impl Buffer {
             return;
         };
         if start < end {
-            self.adjustments.push(line_adjust::row_removal(first, last));
+            self.push_adjustment(Some(line_adjust::row_removal(first, last)));
             self.rope.remove(start..end);
             self.touch();
         }
@@ -846,6 +855,16 @@ mod adjust_tests {
     fn replace_lines_records_nothing() {
         let mut buffer = Buffer::from_string("  a\n  b\n  c");
         buffer.replace_lines(0, 2, "    a\n    b\n    c");
+        assert!(buffer.take_line_adjustments().is_empty());
+    }
+
+    #[test]
+    fn undo_without_line_changes_records_nothing() {
+        let mut buffer = Buffer::from_string("a\nb");
+        buffer.checkpoint(0, 0);
+        buffer.delete_range(1, 0, 1, 0);
+        buffer.take_line_adjustments();
+        buffer.undo(0, 0);
         assert!(buffer.take_line_adjustments().is_empty());
     }
 

@@ -1,4 +1,4 @@
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineAdjust {
@@ -57,7 +57,7 @@ pub(crate) fn undo(old: &Rope, new: &Rope) -> Option<LineAdjust> {
     let new_len = logical_line_count(new);
     let limit = old_len.min(new_len);
     let top = common_prefix(old, new, limit);
-    let suffix = common_suffix(old, new, old_len, new_len, top);
+    let suffix = common_suffix(old, new, limit - top);
     let oldsize = old_len - top - suffix;
     let newsize = new_len - top - suffix;
     if oldsize == newsize {
@@ -83,25 +83,66 @@ pub(crate) fn logical_line_count(rope: &Rope) -> usize {
     }
 }
 
+const BLOCK_LINES: usize = 1024;
+
 fn common_prefix(old: &Rope, new: &Rope, limit: usize) -> usize {
-    let mut prefix = 0;
-    while prefix < limit && line_matches(old, prefix, new, prefix) {
-        prefix += 1;
+    let mut matched = 0;
+    while matched < limit {
+        let count = BLOCK_LINES.min(limit - matched);
+        if same_lines(old, matched, new, matched, count) {
+            matched += count;
+            continue;
+        }
+        return matched + scan_prefix(old, new, matched, count);
     }
-    prefix
+    matched
 }
 
-fn common_suffix(old: &Rope, new: &Rope, old_len: usize, new_len: usize, top: usize) -> usize {
-    let limit = old_len.min(new_len) - top;
-    let mut suffix = 0;
-    while suffix < limit && line_matches(old, old_len - 1 - suffix, new, new_len - 1 - suffix) {
-        suffix += 1;
+fn common_suffix(old: &Rope, new: &Rope, limit: usize) -> usize {
+    let mut matched = 0;
+    while matched < limit {
+        let count = BLOCK_LINES.min(limit - matched);
+        let old_line = old.len_lines() - matched - count;
+        let new_line = new.len_lines() - matched - count;
+        if same_lines(old, old_line, new, new_line, count) {
+            matched += count;
+            continue;
+        }
+        return matched + scan_suffix(old, new, count);
     }
-    suffix
+    matched
 }
 
-fn line_matches(old: &Rope, old_line: usize, new: &Rope, new_line: usize) -> bool {
-    old.line(old_line).chars().eq(new.line(new_line).chars())
+fn same_lines(old: &Rope, old_line: usize, new: &Rope, new_line: usize, count: usize) -> bool {
+    let old_start = old.line_to_char(old_line);
+    let old_end = old.line_to_char(old_line + count);
+    let new_start = new.line_to_char(new_line);
+    let new_end = new.line_to_char(new_line + count);
+    old.slice(old_start..old_end) == new.slice(new_start..new_end)
+}
+
+fn scan_prefix(old: &Rope, new: &Rope, line: usize, count: usize) -> usize {
+    old.lines_at(line)
+        .zip(new.lines_at(line))
+        .take(count)
+        .take_while(|(old, new)| line_matches(*old, *new))
+        .count()
+}
+
+fn scan_suffix(old: &Rope, new: &Rope, count: usize) -> usize {
+    old.lines_at(old.len_lines())
+        .reversed()
+        .zip(new.lines_at(new.len_lines()).reversed())
+        .take(count)
+        .take_while(|(old, new)| line_matches(*old, *new))
+        .count()
+}
+
+fn line_matches(old: RopeSlice<'_>, new: RopeSlice<'_>) -> bool {
+    match (old.as_str(), new.as_str()) {
+        (Some(old), Some(new)) => old == new,
+        _ => old.chars().eq(new.chars()),
+    }
 }
 
 #[cfg(test)]
