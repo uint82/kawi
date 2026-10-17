@@ -569,14 +569,22 @@ impl Editor {
     }
 
     pub(super) fn paste_after(&mut self) {
-        if self.register.is_empty() {
+        self.paste(false);
+    }
+
+    pub(super) fn paste_before(&mut self) {
+        self.paste(true);
+    }
+
+    fn paste(&mut self, before: bool) {
+        if self.register.is_empty() && self.register.kind() == RegisterKind::CharWise {
             return;
         }
         let count = self.take_count();
         self.record_boundary();
         match self.register.kind() {
-            RegisterKind::CharWise => self.paste_inline(count),
-            RegisterKind::LineWise => self.paste_lines(count),
+            RegisterKind::CharWise => self.paste_inline(count, before),
+            RegisterKind::LineWise => self.paste_lines(count, before),
         }
     }
 
@@ -625,21 +633,47 @@ impl Editor {
         self.cursor.set_position(row, 0);
     }
 
-    fn paste_inline(&mut self, count: usize) {
+    fn paste_inline(&mut self, count: usize, before: bool) {
         let text = self.register.text().repeat(count.max(1));
-        let (row, col) = self
-            .buffer
-            .paste_after(self.cursor.row(), self.cursor.col(), &text);
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let at_line_end = col >= self.buffer.line_len(row);
+        let col = if before {
+            self.buffer.paste_before(row, col, &text);
+            if text.contains('\n') {
+                col
+            } else {
+                col.saturating_add(text.chars().count().saturating_sub(1))
+            }
+        } else {
+            self.buffer.paste_after(row, col, &text);
+            if text.contains('\n') {
+                if at_line_end {
+                    col
+                } else {
+                    col.saturating_add(1)
+                }
+            } else {
+                col.saturating_add(text.chars().count())
+            }
+        };
         self.cursor.set_position(row, col);
     }
 
-    fn paste_lines(&mut self, count: usize) {
-        let yanked: Vec<String> = self.register.text().lines().map(str::to_string).collect();
+    fn paste_lines(&mut self, count: usize, before: bool) {
+        let yanked: Vec<String> = if self.register.text().is_empty() {
+            vec![String::new()]
+        } else {
+            self.register.text().lines().map(str::to_string).collect()
+        };
         let mut lines = Vec::with_capacity(yanked.len().saturating_mul(count.max(1)));
         for _ in 0..count.max(1) {
             lines.extend(yanked.iter().cloned());
         }
-        let row = self.buffer.paste_lines_below(self.cursor.row(), &lines);
+        let row = if before {
+            self.buffer.paste_lines_above(self.cursor.row(), &lines)
+        } else {
+            self.buffer.paste_lines_below(self.cursor.row(), &lines)
+        };
         self.cursor.set_position(row, self.first_non_blank_of(row));
     }
 
@@ -3182,6 +3216,146 @@ mod tests {
         e.apply(Action::PasteAfter);
         e.apply(Action::Undo);
         assert_eq!(e.text_lines()[0], "ab");
+    }
+
+    #[test]
+    fn paste_before_inserts_charwise_before_cursor() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::PasteBefore);
+        assert_eq!(e.text_lines()[0], "abbc");
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn paste_before_multichar_puts_cursor_on_last_char() {
+        let mut e = editor_with("abc def");
+        e.apply(Action::JumpTo(0, 4));
+        e.apply(Action::YankInnerWord);
+        e.apply(Action::PasteBefore);
+        assert_eq!(e.text_lines()[0], "abc defdef");
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn paste_before_count_repeats() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::PushCount(3));
+        e.apply(Action::PasteBefore);
+        assert_eq!(e.text_lines()[0], "abbbbc");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn paste_before_linewise_inserts_above() {
+        let mut e = editor_with("one\ntwo\nthree");
+        e.apply(Action::JumpTo(1, 2));
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteBefore);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "one".to_string(),
+                "two".to_string(),
+                "two".to_string(),
+                "three".to_string()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn paste_before_linewise_uses_first_non_blank() {
+        let mut e = editor_with("  one\n  two\n  three");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteBefore);
+        assert_eq!(e.text_lines()[1], "  two");
+        assert_eq!((e.row(), e.col()), (1, 2));
+    }
+
+    #[test]
+    fn paste_before_linewise_at_first_line() {
+        let mut e = editor_with("one\ntwo");
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteBefore);
+        assert_eq!(
+            e.text_lines(),
+            vec!["one".to_string(), "one".to_string(), "two".to_string()]
+        );
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn paste_before_multiline_charwise_splits_line() {
+        let mut e = editor_with("ab\ncd\nef");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::PasteBefore);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "ab".to_string(),
+                "cd".to_string(),
+                "ecd".to_string(),
+                "ef".to_string()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn paste_after_empty_linewise_register_adds_line() {
+        let mut e = editor_with("one\n\ntwo");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteAfter);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "one".to_string(),
+                String::new(),
+                String::new(),
+                "two".to_string()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn paste_before_empty_linewise_register_adds_line() {
+        let mut e = editor_with("one\n\ntwo");
+        e.apply(Action::JumpTo(1, 0));
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteBefore);
+        assert_eq!(
+            e.text_lines(),
+            vec![
+                "one".to_string(),
+                String::new(),
+                String::new(),
+                "two".to_string()
+            ]
+        );
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn paste_before_linewise_empty_buffer() {
+        let mut e = editor_with("");
+        e.apply(Action::YankLines);
+        e.apply(Action::PasteBefore);
+        assert_eq!(e.text_lines(), vec![String::new(), String::new()]);
     }
 
     #[test]

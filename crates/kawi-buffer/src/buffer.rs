@@ -269,6 +269,19 @@ impl Buffer {
         row.saturating_add(1)
     }
 
+    pub fn paste_lines_above(&mut self, row: usize, lines: &[String]) -> usize {
+        let row = row.min(self.len().saturating_sub(1));
+        let at = self.line_start_char(row);
+        let mut composed = String::new();
+        for line in lines {
+            composed.push_str(line);
+            composed.push('\n');
+        }
+        self.rope.insert(at.min(self.rope.len_chars()), &composed);
+        self.touch();
+        row
+    }
+
     pub fn range_text(
         &self,
         start_row: usize,
@@ -1055,6 +1068,22 @@ mod tests {
         assert_eq!(b.paste_lines_below(1, &["bb".to_string()]), 2);
         assert_eq!(b.len(), 4);
         assert_eq!(b.line(2).as_deref(), Some("bb"));
+    }
+
+    #[test]
+    fn paste_lines_above_inserts() {
+        let mut b = Buffer::from_string("aa\nbb\ncc");
+        assert_eq!(b.paste_lines_above(1, &["bb".to_string()]), 1);
+        assert_eq!(b.len(), 4);
+        assert_eq!(b.line(1).as_deref(), Some("bb"));
+        assert_eq!(b.line(2).as_deref(), Some("bb"));
+    }
+
+    #[test]
+    fn paste_lines_above_empty_buffer_inserts() {
+        let mut b = Buffer::from_string("");
+        assert_eq!(b.paste_lines_above(0, &[String::new()]), 0);
+        assert_eq!(b.window_lines(0, 3), vec![String::new(), String::new()]);
     }
 
     #[test]

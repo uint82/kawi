@@ -254,6 +254,7 @@ impl Editor {
             Action::ChangeLine => self.change_line(),
             Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
+            Action::PasteBefore => self.paste_before(),
             Action::Undo => {
                 self.undo();
             }
