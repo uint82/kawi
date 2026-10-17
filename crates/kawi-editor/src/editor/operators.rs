@@ -1314,6 +1314,85 @@ mod tests {
     }
 
     #[test]
+    fn delete_inner_paren_skips_quoted_brackets() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo();");
+        assert_eq!(e.register_text(), "\"a)b\", 'c', ')'");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn delete_around_paren_skips_quoted_brackets() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: false,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo;");
+        assert_eq!(e.register_text(), "(\"a)b\", 'c', ')')");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn delete_inner_paren_count_two_without_outer_is_none() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo(\"a)b\", 'c', ')');");
+        assert_eq!(e.register_text(), "");
+    }
+
+    #[test]
+    fn delete_inner_brace_without_braces_is_none() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Brace,
+        });
+        assert_eq!(e.text_lines()[0], "foo(\"a)b\", 'c', ')');");
+    }
+
+    #[test]
+    fn delete_inner_paren_from_inside_string() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo();");
+        assert_eq!(e.register_text(), "\"a)b\", 'c', ')'");
+    }
+
+    #[test]
+    fn delete_inner_paren_undo_and_repeat() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::DeleteObject {
+            inner: true,
+            object: Object::Paren,
+        });
+        assert_eq!(e.text_lines()[0], "foo();");
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "foo(\"a)b\", 'c', ')');");
+        assert_eq!((e.row(), e.col()), (0, 4));
+        e.apply(Action::RepeatLastChange);
+        assert_eq!(e.text_lines()[0], "foo();");
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
     fn delete_inner_single_quote() {
         let mut e = editor_with("a 'bc' d");
         for _ in 0..4 {

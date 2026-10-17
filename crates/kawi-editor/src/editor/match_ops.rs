@@ -740,4 +740,43 @@ mod tests {
         assert_eq!(e.register_text(), "(\"a)b\")");
         assert_eq!((e.row(), e.col()), (0, 5));
     }
+
+    #[test]
+    fn match_skips_quoted_brackets_in_call() {
+        let mut e = editor_with("foo(\"a)b\", 'c', ')');");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 19));
+    }
+
+    #[test]
+    fn match_multiline_string_odd_quotes_takes_inner_close() {
+        let mut e = editor_with("bar(\"multi\nline ) string\", x);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (1, 5));
+    }
+
+    #[test]
+    fn match_escaped_call_pair() {
+        let mut e = editor_with("baz(\\(y\\), z);");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 12));
+        let mut e = editor_with("baz(\\(y\\), z);");
+        e.apply(Action::JumpTo(0, 5));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 8));
+    }
+
+    #[test]
+    fn match_hash_column_excludes_bracket() {
+        let mut e = editor_with("#if (A)\nw(1);\n#endif ");
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (2, 0));
+        let mut e = editor_with("#if (A)\nw(1);\n#endif ");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
 }
