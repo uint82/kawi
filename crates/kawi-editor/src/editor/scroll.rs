@@ -14,7 +14,11 @@ impl Editor {
     }
 
     pub fn set_view_size(&mut self, width: usize, height: usize) {
+        let previous_height = self.viewport.height();
         self.viewport.set_size(width, height);
+        if self.viewport.height() != previous_height {
+            self.scroll_amount = None;
+        }
     }
 
     pub fn reveal_cursor(&mut self) {
@@ -84,27 +88,29 @@ impl Editor {
     }
 
     pub(super) fn scroll_half_up(&mut self) {
-        self.track_insert_move();
-        let amount = self.scroll_count_or(self.half_page());
-        let top = self
-            .viewport
-            .top()
-            .saturating_sub(amount)
-            .min(self.max_top());
-        self.viewport.place_top(top, self.buffer.line_count());
-        self.keep_column_in_view(self.cursor.row().saturating_sub(amount));
+        self.scroll_half(false);
     }
 
     pub(super) fn scroll_half_down(&mut self) {
+        self.scroll_half(true);
+    }
+
+    fn scroll_half(&mut self, forward: bool) {
         self.track_insert_move();
-        let amount = self.scroll_count_or(self.half_page());
-        let top = self
-            .viewport
-            .top()
-            .saturating_add(amount)
-            .min(self.max_top());
-        self.viewport.place_top(top, self.buffer.line_count());
-        self.keep_column_in_view(self.cursor.row().saturating_add(amount));
+        let amount = self.half_scroll_amount();
+        let top = if forward {
+            self.viewport.top().saturating_add(amount)
+        } else {
+            self.viewport.top().saturating_sub(amount)
+        };
+        self.viewport
+            .place_top(top.min(self.max_top()), self.buffer.line_count());
+        let row = if forward {
+            self.cursor.row().saturating_add(amount)
+        } else {
+            self.cursor.row().saturating_sub(amount)
+        };
+        self.keep_column_in_view(row);
     }
 
     pub(super) fn scroll_page_up(&mut self) {
@@ -218,13 +224,15 @@ impl Editor {
         self.cursor.set_position(row, self.cursor.col());
     }
 
-    fn scroll_count_or(&mut self, fallback: usize) -> usize {
-        // TODO(scroll): persist counted amount across bare repeats like vim 'scroll'.
+    fn half_scroll_amount(&mut self) -> usize {
         if self.has_count() {
-            self.take_count()
-        } else {
-            fallback
+            self.persist_half_scroll();
         }
+        self.scroll_amount.unwrap_or_else(|| self.half_page())
+    }
+
+    fn persist_half_scroll(&mut self) {
+        self.scroll_amount = Some(self.take_count().min(self.view_height()));
     }
 
     fn half_page(&self) -> usize {
@@ -358,6 +366,93 @@ mod tests {
         e.apply(Action::ScrollHalfDown);
         assert_eq!((e.row(), e.col()), (54, 0));
         assert_eq!(e.view_top(), 45);
+    }
+
+    #[test]
+    fn half_down_reuses_counted_amount() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::ScrollHalfDown);
+        e.apply(Action::ScrollHalfDown);
+        assert_eq!((e.row(), e.col()), (59, 0));
+        assert_eq!(e.view_top(), 50);
+    }
+
+    #[test]
+    fn half_up_reuses_counted_amount() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[7]);
+        e.apply(Action::ScrollHalfUp);
+        e.apply(Action::ScrollHalfUp);
+        assert_eq!((e.row(), e.col()), (35, 0));
+        assert_eq!(e.view_top(), 26);
+    }
+
+    #[test]
+    fn half_scroll_amount_shared_between_directions() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::ScrollHalfDown);
+        e.apply(Action::ScrollHalfUp);
+        assert_eq!((e.row(), e.col()), (49, 0));
+        assert_eq!(e.view_top(), 40);
+    }
+
+    #[test]
+    fn half_scroll_count_clamps_to_view_height() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[9, 9]);
+        e.apply(Action::ScrollHalfDown);
+        e.apply(Action::ScrollHalfDown);
+        assert_eq!((e.row(), e.col()), (89, 0));
+        assert_eq!(e.view_top(), 80);
+    }
+
+    #[test]
+    fn resize_resets_scroll_amount() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::ScrollHalfDown);
+        e.set_view_size(80, 40);
+        e.apply(Action::ScrollHalfDown);
+        assert_eq!((e.row(), e.col()), (74, 0));
+        assert_eq!(e.view_top(), 60);
+    }
+
+    #[test]
+    fn width_change_keeps_scroll_amount() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::ScrollHalfDown);
+        e.set_view_size(60, 20);
+        e.apply(Action::ScrollHalfDown);
+        assert_eq!((e.row(), e.col()), (59, 0));
+        assert_eq!(e.view_top(), 50);
+    }
+
+    #[test]
+    fn page_scroll_keeps_scroll_amount() {
+        let mut e = tall_editor();
+        place_top(&mut e, 40);
+        e.apply(Action::JumpTo(49, 0));
+        push_digits(&mut e, &[5]);
+        e.apply(Action::ScrollHalfDown);
+        e.apply(Action::ScrollPageDown);
+        e.apply(Action::ScrollHalfDown);
+        assert_eq!((e.row(), e.col()), (68, 0));
+        assert_eq!(e.view_top(), 68);
     }
 
     #[test]
