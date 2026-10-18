@@ -419,6 +419,31 @@ impl Editor {
         }
     }
 
+    pub fn cursor_screen_col(&self) -> usize {
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        let tabstop = self.effective_indent().tabstop;
+        if self.cursor_shows_tab_end(row, col) {
+            return self
+                .buffer
+                .screen_col(row, col.saturating_add(1), tabstop)
+                .saturating_sub(1);
+        }
+        self.buffer.screen_col(row, col, tabstop)
+    }
+
+    fn cursor_shows_tab_end(&self, row: usize, col: usize) -> bool {
+        self.mode.is_normal_state()
+            && self.buffer.char_at(row, col) == Some('\t')
+            && !self.cursor_at_selection_start(row, col)
+    }
+
+    fn cursor_at_selection_start(&self, row: usize, col: usize) -> bool {
+        self.selection
+            .as_ref()
+            .is_some_and(|selection| selection.start() == (row, col))
+    }
+
     pub fn cursor_line_empty(&self) -> bool {
         self.buffer.line_len(self.cursor.row()) == 0
     }
@@ -829,6 +854,54 @@ mod ruler_tests {
         e.apply(Action::JumpTo(0, 2));
         assert_eq!(e.col(), 2);
         assert_eq!(e.virtcol(), 2);
+    }
+
+    #[test]
+    fn cursor_screen_col_matches_column_for_ascii() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        assert_eq!(e.cursor_screen_col(), 2);
+    }
+
+    #[test]
+    fn cursor_screen_col_shows_tab_end_in_normal_mode() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        assert_eq!(e.cursor_screen_col(), 7);
+    }
+
+    #[test]
+    fn cursor_screen_col_starts_tab_in_insert_mode() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::InsertAtColumnStart);
+        assert_eq!(e.col(), 0);
+        assert_eq!(e.cursor_screen_col(), 0);
+    }
+
+    #[test]
+    fn cursor_screen_col_at_selection_start_starts_tab() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::EnterVisual);
+        assert_eq!(e.cursor_screen_col(), 0);
+    }
+
+    #[test]
+    fn cursor_screen_col_after_selection_start_shows_tab_end() {
+        let mut e = editor_with("a\tbc");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        assert_eq!(e.col(), 1);
+        assert_eq!(e.cursor_screen_col(), 7);
+    }
+
+    #[test]
+    fn cursor_screen_col_at_insert_line_end_is_line_width() {
+        let mut e = editor_with("\tab");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::AppendLineEnd);
+        assert_eq!(e.cursor_screen_col(), 10);
     }
 
     #[test]

@@ -139,11 +139,14 @@ mod tests {
         e.apply(Action::ReplaceChar('\t'));
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(e.virtcol(), 7);
+        assert_eq!(e.cursor_screen_col(), 7);
         e.apply(Action::MoveDown);
         assert_eq!((e.row(), e.col()), (1, 7));
+        assert_eq!(e.cursor_screen_col(), 7);
         e.apply(Action::MoveUp);
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(e.virtcol(), 7);
+        assert_eq!(e.cursor_screen_col(), 7);
     }
 
     #[test]

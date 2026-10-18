@@ -145,7 +145,7 @@ pub fn cw_big_change_range(buffer: &Buffer, row: usize, col: usize, count: usize
 }
 
 fn cw_change_span(buffer: &Buffer, row: usize, col: usize, count: usize, big: bool) -> WordSpan {
-    match char_at(buffer, row, col).map(|ch| class_of_kind(ch, big)) {
+    match buffer.char_at(row, col).map(|ch| class_of_kind(ch, big)) {
         Some(WordClass::Space) | None => {
             if big {
                 dw_big_range(buffer, row, col, count)
@@ -531,14 +531,14 @@ pub(crate) fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize
 }
 
 pub(crate) fn class_at(buffer: &Buffer, row: usize, col: usize) -> WordClass {
-    match char_at(buffer, row, col) {
+    match buffer.char_at(row, col) {
         Some(ch) => class_of(ch),
         None => WordClass::Space,
     }
 }
 
 fn class_at_kind(buffer: &Buffer, row: usize, col: usize, big: bool) -> WordClass {
-    match char_at(buffer, row, col) {
+    match buffer.char_at(row, col) {
         Some(ch) => class_of_kind(ch, big),
         None => WordClass::Space,
     }
@@ -590,7 +590,9 @@ pub(crate) fn start_blank(buffer: &Buffer, start: (usize, usize)) -> bool {
 
 pub(crate) fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
     if col > 0 {
-        return char_at(buffer, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
+        return buffer
+            .char_at(row, col.saturating_sub(1))
+            .map(|_| (row, col.saturating_sub(1)));
     }
     if row == 0 {
         return None;
@@ -610,10 +612,6 @@ fn backward_char_pos(buffer: &Buffer, mut row: usize) -> Option<(usize, usize)> 
         }
         row = row.saturating_sub(1);
     }
-}
-
-pub(crate) fn char_at(buffer: &Buffer, row: usize, col: usize) -> Option<char> {
-    buffer.line_cow(row)?.chars().nth(col)
 }
 
 pub(crate) fn line_len(buffer: &Buffer, row: usize) -> usize {

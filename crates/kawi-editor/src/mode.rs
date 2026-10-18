@@ -17,6 +17,10 @@ impl Mode {
         matches!(self, Self::Visual | Self::VisualLine)
     }
 
+    pub fn is_normal_state(self) -> bool {
+        matches!(self, Self::Normal | Self::Visual | Self::VisualLine)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
@@ -42,6 +46,16 @@ mod tests {
     fn visual_detects_visual() {
         assert!(Mode::Visual.is_visual());
         assert!(!Mode::Normal.is_visual());
+    }
+
+    #[test]
+    fn normal_state_covers_normal_and_visual() {
+        assert!(Mode::Normal.is_normal_state());
+        assert!(Mode::Visual.is_normal_state());
+        assert!(Mode::VisualLine.is_normal_state());
+        assert!(!Mode::Insert.is_normal_state());
+        assert!(!Mode::Command.is_normal_state());
+        assert!(!Mode::Search.is_normal_state());
     }
 
     #[test]

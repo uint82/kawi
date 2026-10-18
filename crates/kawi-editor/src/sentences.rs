@@ -1,7 +1,7 @@
 use kawi_buffer::Buffer;
 
 use crate::paragraphs;
-use crate::words::{char_at, dec_pos, inc_pos};
+use crate::words::{dec_pos, inc_pos};
 
 pub(crate) struct ParagraphTarget {
     pub line: usize,
@@ -124,7 +124,7 @@ fn find_sentence_end(
 ) -> Scan {
     let last_row = buffer.line_count().saturating_sub(1);
     loop {
-        let c = char_at(buffer, pos.0, pos.1);
+        let c = buffer.char_at(pos.0, pos.1);
         if c.is_none() {
             if !forward {
                 if pos.0 != start_row {
@@ -151,7 +151,7 @@ fn find_sentence_end(
         }
         if matches!(c, Some('.' | '!' | '?')) {
             if let Some(mut found) = sentence_end(buffer, pos) {
-                if char_at(buffer, found.0, found.1).is_none() {
+                if buffer.char_at(found.0, found.1).is_none() {
                     let (next, step) = inc_pos(buffer, found.0, found.1);
                     if step != -1 {
                         found = next;
@@ -177,7 +177,7 @@ fn is_eol(buffer: &Buffer, pos: (usize, usize)) -> bool {
 }
 
 fn skip_spaces(buffer: &Buffer, mut pos: (usize, usize)) -> (usize, usize) {
-    while matches!(char_at(buffer, pos.0, pos.1), Some(' ' | '\t')) {
+    while matches!(buffer.char_at(pos.0, pos.1), Some(' ' | '\t')) {
         let (next, step) = inc_pos(buffer, pos.0, pos.1);
         if step == -1 {
             break;
@@ -190,7 +190,7 @@ fn skip_spaces(buffer: &Buffer, mut pos: (usize, usize)) -> (usize, usize) {
 fn skip_back(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) {
     let mut found_dot = false;
     loop {
-        let c = char_at(buffer, pos.0, pos.1);
+        let c = buffer.char_at(pos.0, pos.1);
         if !matches!(
             c,
             Some(' ' | '\t' | '.' | '!' | '?' | ')' | ']' | '"' | '\'')
@@ -210,7 +210,7 @@ fn skip_back(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) {
         }
         if matches!(c, ')' | ']' | '"' | '\'')
             && !matches!(
-                char_at(buffer, prev.0, prev.1),
+                buffer.char_at(prev.0, prev.1),
                 Some('.' | '!' | '?' | ')' | ']' | '"' | '\'')
             )
         {
@@ -229,13 +229,13 @@ fn sentence_end(buffer: &Buffer, pos: (usize, usize)) -> Option<(usize, usize)> 
         }
         cursor = next;
         if !matches!(
-            char_at(buffer, cursor.0, cursor.1),
+            buffer.char_at(cursor.0, cursor.1),
             Some(')' | ']' | '"' | '\'')
         ) {
             break;
         }
     }
-    match char_at(buffer, cursor.0, cursor.1) {
+    match buffer.char_at(cursor.0, cursor.1) {
         None => Some(cursor),
         Some(' ' | '\t') => Some(cursor),
         _ => None,

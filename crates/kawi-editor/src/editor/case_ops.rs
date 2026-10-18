@@ -38,7 +38,7 @@ impl Editor {
     }
 
     fn toggled_char_at(&self, row: usize, col: usize) -> Option<char> {
-        let current = self.buffer.line_cow(row)?.chars().nth(col)?;
+        let current = self.buffer.char_at(row, col)?;
         let toggled = swap_case(current);
         if toggled == current {
             return None;

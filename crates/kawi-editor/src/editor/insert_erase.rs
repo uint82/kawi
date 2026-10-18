@@ -94,7 +94,7 @@ impl Editor {
     }
 
     fn buffer_class(&self, row: usize, col: usize) -> WordClass {
-        match self.buffer.line(row).and_then(|line| line.chars().nth(col)) {
+        match self.buffer.char_at(row, col) {
             Some(ch) if ch.is_alphanumeric() || ch == '_' => WordClass::Word,
             Some(ch) if ch.is_whitespace() => WordClass::Space,
             Some(_) => WordClass::Punct,

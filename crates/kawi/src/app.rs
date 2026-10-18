@@ -111,7 +111,7 @@ impl App {
     ) -> Frame<'a> {
         Frame {
             lines: window,
-            col: self.editor.col(),
+            cursor_col: self.editor.cursor_screen_col(),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
             status,
