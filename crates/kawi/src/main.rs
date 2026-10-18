@@ -2,6 +2,7 @@ mod app;
 mod helix;
 mod keymap;
 mod mouse;
+mod state;
 mod vim;
 use anyhow::Result;
 use app::App;
@@ -15,7 +16,10 @@ fn main() -> Result<()> {
     let (path, flavor) = parse_cli(std::env::args().skip(1).collect());
     let buffer = load_buffer(path)?;
     let mut app = App::new(buffer, flavor);
-    run_app(&mut app)
+    app.load_state();
+    let outcome = run_app(&mut app);
+    app.save_state();
+    outcome
 }
 
 fn parse_cli(args: Vec<String>) -> (Option<String>, Flavor) {

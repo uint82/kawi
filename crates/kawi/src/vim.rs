@@ -1503,6 +1503,10 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::CONTROL)
     }
 
+    fn shift(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::SHIFT)
+    }
+
     #[test]
     fn normal_h_moves_left() {
         let mut map = VimKeymap::new();
@@ -1637,6 +1641,65 @@ mod tests {
                 Mode::Command
             ),
             Action::CompleteCommandBackward
+        );
+    }
+
+    #[test]
+    fn command_mode_history_keys_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Up), Mode::Command),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Down), Mode::Command),
+            Action::HistoryNewer
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::PageUp), Mode::Command),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::PageDown), Mode::Command),
+            Action::HistoryNewer
+        );
+        assert_eq!(
+            map.map(shift(KeyCode::Up), Mode::Command),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(shift(KeyCode::Down), Mode::Command),
+            Action::HistoryNewer
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('p')), Mode::Command),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('n')), Mode::Command),
+            Action::HistoryNewer
+        );
+        assert_eq!(map.map(ctrl(KeyCode::Up), Mode::Command), Action::Noop);
+    }
+
+    #[test]
+    fn search_mode_history_keys_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Up), Mode::Search),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Down), Mode::Search),
+            Action::HistoryNewer
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('p')), Mode::Search),
+            Action::HistoryOlder
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('n')), Mode::Search),
+            Action::HistoryNewer
         );
     }
 

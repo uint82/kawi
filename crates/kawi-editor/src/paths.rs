@@ -1,5 +1,9 @@
 use std::path::{Component, Path, PathBuf};
 
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
 pub fn absolute(path: &str, cwd: &Path) -> PathBuf {
     let joined = if Path::new(path).is_absolute() {
         PathBuf::from(path)

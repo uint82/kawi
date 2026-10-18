@@ -5,6 +5,7 @@ use crate::search::{self, SearchOutcome};
 
 impl Editor {
     pub(super) fn cancel_search(&mut self) {
+        self.record_search_history();
         if let Some((row, col)) = self.search_origin {
             self.cursor.set_position(row, col);
         }
@@ -14,6 +15,7 @@ impl Editor {
     }
 
     pub fn confirm_search(&mut self) -> Option<SearchOutcome> {
+        self.record_search_history();
         if self.mode == Mode::Search {
             self.mode = Mode::Normal;
         }
@@ -40,6 +42,7 @@ impl Editor {
         if self.mode != Mode::Search {
             return;
         }
+        self.search_history.mark_edited();
         self.search.pop();
         if self.search.text().is_empty() {
             self.cancel_search();
@@ -51,6 +54,7 @@ impl Editor {
     pub(super) fn enter_search(&mut self) {
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
+        self.search_history.reset_browse();
         self.search_whole_word = false;
         self.search_status = None;
         self.mode = Mode::Search;
@@ -68,7 +72,7 @@ impl Editor {
         }
     }
 
-    fn jump_to_first_result(&mut self) {
+    pub(super) fn jump_to_first_result(&mut self) {
         let origin = self
             .search_origin
             .unwrap_or((self.cursor.row(), self.cursor.col()));
@@ -116,6 +120,7 @@ impl Editor {
         if self.mode != Mode::Search {
             return;
         }
+        self.search_history.mark_edited();
         self.search.push(c);
         self.jump_to_first_result();
     }

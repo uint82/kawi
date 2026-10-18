@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use super::Editor;
 use crate::command::{COMMAND_NAMES, SET_OPTION_NAMES};
 use crate::mode::Mode;
+use crate::paths;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CompletionState {
@@ -105,6 +106,7 @@ impl Editor {
             Some(_) => format!("{}{}", &state.original()[..state.start()], state.text()),
             None => state.original().to_string(),
         };
+        self.command_history.mark_edited();
         self.command.replace(&text);
     }
 
@@ -117,7 +119,11 @@ impl Editor {
         let command = text[..start].split_whitespace().next().unwrap_or("");
         let kind = completion_kind(command)?;
         let candidates = match kind {
-            CompletionKind::File => file_candidates(pattern, &current_dir(), &home_dir()),
+            CompletionKind::File => file_candidates(
+                pattern,
+                &current_dir(),
+                &paths::home_dir().unwrap_or_default(),
+            ),
             CompletionKind::Buffer => self.buffer_candidates(pattern),
             CompletionKind::Option => option_candidates(pattern),
         };
@@ -214,10 +220,6 @@ fn directory_path(dir_part: &str, cwd: &Path, home: &Path) -> PathBuf {
 
 fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_default()
-}
-
-fn home_dir() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default())
 }
 
 #[cfg(test)]

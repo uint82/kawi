@@ -23,7 +23,10 @@ mod sentences;
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
 pub use command::{parse, Command, CommandLine};
 pub use cursor::Cursor;
-pub use editor::{BufferError, EditError, Editor, WriteOutcome};
+pub use editor::{
+    BufferError, EditError, Editor, HistoryEntries, WriteOutcome, DEFAULT_HISTORY_LIMIT,
+    MAX_HISTORY_LIMIT,
+};
 pub use mode::Mode;
 pub use register::Register;
 pub use search::{MatchSpan, SearchOutcome};

@@ -5,6 +5,7 @@ use std::io::{stdout, Stdout};
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
+use crate::state::{self, StatePaths};
 use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
 use kawi_tui::{
     frame::{Frame, SearchSpan},
@@ -38,6 +39,22 @@ impl App {
     pub fn run(&mut self) -> Result<()> {
         self.sync_viewport_size();
         self.run_loop()
+    }
+
+    pub fn load_state(&mut self) {
+        let Some(paths) = StatePaths::resolve() else {
+            return;
+        };
+        if let Some(warning) = state::load(&mut self.editor, &paths) {
+            self.message = Some(warning);
+        }
+    }
+
+    pub fn save_state(&self) {
+        let Some(paths) = StatePaths::resolve() else {
+            return;
+        };
+        let _ = state::save(&self.editor, &paths);
     }
 
     #[cfg(test)]
@@ -1932,5 +1949,30 @@ mod tests {
         assert_eq!(app.last_message(), None);
         assert_eq!(app.cursor_position(), (0, 3));
         assert_eq!(app.search_status_line().as_deref(), Some("/ar [2/3]"));
+    }
+
+    #[test]
+    fn command_prompts_feed_the_history() {
+        let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char(':'))).expect("colon");
+        for character in "set nu".chars() {
+            app.handle_key(key(KeyCode::Char(character))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("execute");
+        app.handle_key(key(KeyCode::Char(':'))).expect("colon");
+        for character in "aborted".chars() {
+            app.handle_key(key(KeyCode::Char(character))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Esc)).expect("cancel");
+        assert_eq!(
+            app.editor.history_entries().command,
+            vec!["set nu", "aborted"]
+        );
+        app.handle_key(key(KeyCode::Char(':'))).expect("colon");
+        app.handle_key(key(KeyCode::Up)).expect("up");
+        assert_eq!(app.editor.command_text(), "aborted");
+        app.handle_key(key(KeyCode::Up)).expect("up");
+        assert_eq!(app.editor.command_text(), "set nu");
+        app.handle_key(key(KeyCode::Esc)).expect("cancel");
     }
 }

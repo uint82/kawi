@@ -24,6 +24,7 @@ mod line_ops;
 mod match_ops;
 mod motions;
 mod operators;
+mod prompt_history;
 mod registers;
 mod repeat;
 mod replace;
@@ -38,6 +39,7 @@ mod word_search;
 use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
+pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 
 pub struct Editor {
     buffer: Buffer,
@@ -45,6 +47,8 @@ pub struct Editor {
     mode: Mode,
     command: CommandLine,
     search: CommandLine,
+    command_history: prompt_history::PromptHistory,
+    search_history: prompt_history::PromptHistory,
     search_origin: Option<(usize, usize)>,
     search_status: Option<SearchStatus>,
     selection: Option<Selection>,
@@ -368,6 +372,8 @@ impl Editor {
             Action::DeleteCommandChar => self.delete_command_char(),
             Action::CancelCommand => self.cancel_command(),
             Action::ExecuteCommand => self.noop(),
+            Action::HistoryOlder => self.history_older(),
+            Action::HistoryNewer => self.history_newer(),
             Action::EnterSearch => self.enter_search(),
             Action::PushSearchChar(c) => self.push_search_char(c),
             Action::DeleteSearchChar => self.delete_search_char(),
@@ -566,6 +572,8 @@ impl Editor {
             mode: Mode::Normal,
             command: CommandLine::new(),
             search: CommandLine::new(),
+            command_history: prompt_history::PromptHistory::new(DEFAULT_HISTORY_LIMIT),
+            search_history: prompt_history::PromptHistory::new(DEFAULT_HISTORY_LIMIT),
             search_origin: None,
             search_status: None,
             selection: None,

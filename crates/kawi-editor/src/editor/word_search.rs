@@ -12,6 +12,7 @@ impl Editor {
         self.set_pcmark_at(origin);
         self.cursor.set_position(start.0, start.1);
         self.search.replace(&word);
+        self.search_history.record(&word);
         self.search_whole_word = whole_word;
         self.search_origin = Some(origin);
         self.search_status = None;

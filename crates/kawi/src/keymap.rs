@@ -90,6 +90,9 @@ pub fn has_ctrl_or_alt(key: KeyEvent) -> bool {
 }
 
 pub fn map_command_mode(key: KeyEvent) -> Action {
+    if let Some(action) = map_history_key(key) {
+        return action;
+    }
     match key.code {
         KeyCode::Esc => Action::CancelCommand,
         KeyCode::Enter => Action::ExecuteCommand,
@@ -104,6 +107,17 @@ pub fn map_command_mode(key: KeyEvent) -> Action {
     }
 }
 
+fn map_history_key(key: KeyEvent) -> Option<Action> {
+    let plain = key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT;
+    match key.code {
+        KeyCode::Up | KeyCode::PageUp if plain => Some(Action::HistoryOlder),
+        KeyCode::Down | KeyCode::PageDown if plain => Some(Action::HistoryNewer),
+        KeyCode::Char('p') if key.modifiers == KeyModifiers::CONTROL => Some(Action::HistoryOlder),
+        KeyCode::Char('n') if key.modifiers == KeyModifiers::CONTROL => Some(Action::HistoryNewer),
+        _ => None,
+    }
+}
+
 fn map_command_char(key: KeyEvent, c: char) -> Action {
     if has_ctrl_or_alt(key) {
         return Action::Noop;
@@ -112,6 +126,9 @@ fn map_command_char(key: KeyEvent, c: char) -> Action {
 }
 
 pub fn map_search_mode(key: KeyEvent) -> Action {
+    if let Some(action) = map_history_key(key) {
+        return action;
+    }
     match key.code {
         KeyCode::Esc => Action::CancelSearch,
         KeyCode::Enter => Action::ConfirmSearch,
