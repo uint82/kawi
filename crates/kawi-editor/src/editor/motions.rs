@@ -6,10 +6,16 @@ use crate::words;
 
 impl Editor {
     fn apply_desired_column(&mut self) {
-        let col = self
-            .cursor
-            .desired()
-            .min(self.max_col_for_row(self.cursor.row()));
+        let row = self.cursor.row();
+        let desired = self.cursor.desired();
+        let tabstop = self.effective_indent().tabstop;
+        let width = self.line_width(row);
+        let total = self.buffer.screen_col(row, width, tabstop);
+        let col = if self.mode.is_insert() && desired >= total {
+            width
+        } else {
+            self.buffer.char_col(row, desired, tabstop)
+        };
         self.cursor.set_col(col);
     }
 

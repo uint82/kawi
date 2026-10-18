@@ -27,10 +27,12 @@ impl Editor {
                     let cursor = self.cursor.col().saturating_sub(1);
                     self.cursor.set_position(row, cursor);
                 }
+                self.cursor.set_desired(self.virtcol());
                 return;
             }
         }
         self.overwrite_chars(row, col, count, &replacement.to_string().repeat(count));
+        self.cursor.set_desired(self.virtcol());
     }
 
     fn replace_with_newline(&mut self, count: usize) {
@@ -128,6 +130,20 @@ mod tests {
         e.apply(Action::ReplaceChar('\t'));
         assert_eq!(e.text_lines()[0], "    abc");
         assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn replace_tab_keeps_virtual_column_for_vertical_moves() {
+        let mut e = editor_with("Hello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::ReplaceChar('\t'));
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.virtcol(), 7);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 7));
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.virtcol(), 7);
     }
 
     #[test]
