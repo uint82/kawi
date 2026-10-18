@@ -19,8 +19,13 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     draw_visible_lines(out, frame)?;
     draw_filler_rows(out, frame)?;
     draw_highlight(out, frame, frame.theme)?;
-    draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
-    draw_message_row(out, frame)?;
+    match frame.pager {
+        Some(lines) => draw_pager(out, frame, lines)?,
+        None => {
+            draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
+            draw_message_row(out, frame)?;
+        }
+    }
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
@@ -293,6 +298,36 @@ fn draw_status_row(
     draw_status(out, status, viewport.width(), viewport.height(), theme)
 }
 
+const PAGER_PROMPT: &str = "Press ENTER or type command to continue";
+
+fn draw_pager(out: &mut Stdout, frame: &Frame, lines: &[String]) -> Result<()> {
+    let width = frame.viewport.width();
+    let available = frame.viewport.height().saturating_add(1);
+    let visible = &lines[lines.len().saturating_sub(available)..];
+    for (index, line) in visible.iter().enumerate() {
+        let row = frame
+            .viewport
+            .height()
+            .saturating_sub(visible.len().saturating_sub(1).saturating_sub(index));
+        execute!(
+            out,
+            MoveTo(0, saturate_u16(row)),
+            Clear(ClearType::CurrentLine)
+        )
+        .context("clear pager row")?;
+        write!(out, "{}", truncate_to_width(line, width)).context("write pager line")?;
+    }
+    let prompt_row = frame.viewport.height().saturating_add(1);
+    execute!(
+        out,
+        MoveTo(0, saturate_u16(prompt_row)),
+        Clear(ClearType::CurrentLine)
+    )
+    .context("clear pager prompt")?;
+    write!(out, "{}", truncate_to_width(PAGER_PROMPT, width)).context("write pager prompt")?;
+    Ok(())
+}
+
 fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
     let layout = layout_message_row(
         frame.command,
@@ -395,6 +430,9 @@ fn cursor_style(insert_mode: bool) -> SetCursorStyle {
 }
 
 fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    if frame.pager.is_some() {
+        return place_pager_cursor(out, frame);
+    }
     if let Some(col) = prompt_cursor_col(
         frame.command,
         frame.search,
@@ -414,6 +452,20 @@ fn place_cursor_relative(
 ) -> Result<()> {
     let (x, y) = screen_coords(cursor_col, row, viewport);
     execute!(out, MoveTo(x, y)).context("place cursor")?;
+    Ok(())
+}
+
+fn place_pager_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let width = frame.viewport.width().max(1);
+    let x = PAGER_PROMPT.chars().count().min(width - 1);
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(x),
+            saturate_u16(frame.viewport.height().saturating_add(1))
+        )
+    )
+    .context("place pager cursor")?;
     Ok(())
 }
 

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use kawi_buffer::Buffer;
 
 use crate::actions::{Action, CaseMotion, ShiftMotion};
@@ -11,6 +10,7 @@ use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
+mod buffers;
 mod case_ops;
 mod gutter;
 mod indent;
@@ -33,6 +33,8 @@ mod shift_ops;
 mod tab;
 
 use session::InsertEdit;
+
+pub use buffers::{BufferError, EditError, WriteOutcome};
 
 pub struct Editor {
     buffer: Buffer,
@@ -69,6 +71,7 @@ pub struct Editor {
     number: bool,
     relativenumber: bool,
     numberwidth: usize,
+    buffers: buffers::Buffers,
 }
 
 struct SearchStatus {
@@ -129,8 +132,13 @@ impl Editor {
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
-            Action::JumpOlder => self.jump_older(),
-            Action::JumpNewer => self.jump_newer(),
+            Action::JumpOlder => {
+                let _ = self.jump_older();
+            }
+            Action::JumpNewer => {
+                let _ = self.jump_newer();
+            }
+            Action::EditAlternate => self.buffer_alternate(),
             Action::InsertRegister(name) => self.insert_register(name),
             Action::SelectRegister(_) => self.noop(),
             Action::MoveToMatch => self.move_to_match(),
@@ -437,9 +445,13 @@ impl Editor {
         self.buffer.screen_col(row, col, tabstop)
     }
 
+    pub(super) fn remember_wanted_column(&mut self) {
+        self.cursor.set_desired(self.cursor_screen_col());
+    }
+
     fn refresh_wanted_column(&mut self, action: Action) {
         if action.resets_wanted_column() {
-            self.cursor.set_desired(self.cursor_screen_col());
+            self.remember_wanted_column();
         }
     }
 
@@ -565,6 +577,7 @@ impl Editor {
             number: false,
             relativenumber: false,
             numberwidth: 4,
+            buffers: buffers::Buffers::new(),
         }
     }
 
@@ -652,10 +665,6 @@ impl Editor {
 
     pub fn row(&self) -> usize {
         self.cursor.row()
-    }
-
-    pub fn save(&mut self) -> Result<()> {
-        self.buffer.save()
     }
 
     pub fn search_pattern(&self) -> &str {
