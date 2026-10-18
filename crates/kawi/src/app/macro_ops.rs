@@ -161,6 +161,7 @@ impl App {
     }
 
     fn replay_macro(&mut self, text: &str, count: usize) -> Result<bool> {
+        // TODO: abort the remaining keys when a replayed key fails, like nvim
         if !self.macros.enter_replay() {
             return Ok(false);
         }

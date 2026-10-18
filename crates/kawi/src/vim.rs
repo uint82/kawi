@@ -530,6 +530,7 @@ impl VimKeymap {
         if is_macro_record_name(pushed) {
             Action::StartMacroRecording(pushed)
         } else {
+            // TODO: q:, q/ and q? open the command-line window
             Action::Noop
         }
     }
@@ -553,6 +554,7 @@ impl VimKeymap {
             ':' => Action::ExecuteLastCommand,
             '%' | '#' => Action::MacroRegisterError(pushed),
             _ if is_register_name(pushed) => Action::RunMacro(pushed),
+            // TODO: support the @. and @/ registers
             _ => Action::Noop,
         }
     }
@@ -1242,6 +1244,7 @@ impl VimKeymap {
             KeyCode::Char(';') => self.repeat_motion(key, false),
             KeyCode::Char(',') => self.repeat_motion(key, true),
             KeyCode::Char(c) if c.is_ascii_digit() => self.push_visual_digit(key, c),
+            // TODO: nvim supports q and @ in visual mode
             _ => Action::Noop,
         }
     }
