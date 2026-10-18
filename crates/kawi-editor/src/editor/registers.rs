@@ -10,9 +10,11 @@ impl Editor {
 
     // TODO(registers): support the read-only registers (". "% ": "/ "#) and the expression register.
     pub(super) fn select_register(&mut self, name: char) {
-        if matches!(name, 'a'..='z' | 'A'..='Z' | '0'..='9' | '"' | '-' | '+' | '*' | '_') {
-            self.pending_register = Some(name);
+        if !matches!(name, 'a'..='z' | 'A'..='Z' | '0'..='9' | '"' | '-' | '+' | '*' | '_') {
+            return;
         }
+        self.begin_sequence();
+        self.pending_register = Some(name);
     }
 
     pub(super) fn write_yank(&mut self, kind: RegisterKind, text: String) {
@@ -158,6 +160,20 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    #[test]
+    fn quoted_count_multiplies_next_count() {
+        let mut e = editor_with("one\ntwo");
+        e.apply(Action::YankLine);
+        e.apply(Action::PushCount(2));
+        e.apply(Action::SelectRegister('0'));
+        e.apply(Action::PushCount(3));
+        e.apply(Action::PasteAfter);
+        assert_eq!(
+            e.text_lines(),
+            vec!["one", "one", "one", "one", "one", "one", "one", "two"]
+        );
     }
 
     #[test]

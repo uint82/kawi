@@ -137,7 +137,7 @@ fn is_sequence_prefix(sequence: &str) -> bool {
 fn arms_pending(pushed: char) -> bool {
     matches!(
         pushed,
-        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z'
+        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z' | '"'
     )
 }
 
@@ -211,6 +211,8 @@ pub struct VimKeymap {
     pending: String,
     last_find: Option<FindMemory>,
     insert_register: bool,
+    register_display: Option<String>,
+    showcmd: Option<String>,
 }
 
 impl VimKeymap {
@@ -219,6 +221,8 @@ impl VimKeymap {
             pending: String::new(),
             last_find: None,
             insert_register: false,
+            register_display: None,
+            showcmd: None,
         }
     }
 
@@ -226,6 +230,7 @@ impl VimKeymap {
         self.clear_pending();
         if self.insert_register {
             self.insert_register = false;
+            self.showcmd = None;
             return match key.code {
                 KeyCode::Char(c) if is_register_name(c) => Action::InsertRegister(c),
                 _ => Action::Noop,
@@ -235,8 +240,10 @@ impl VimKeymap {
             && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R'))
         {
             self.insert_register = true;
+            self.showcmd = Some("^R".to_string());
             return Action::Noop;
         }
+        self.showcmd = None;
         if let Some(action) = insert_control_action(key) {
             return action;
         }
@@ -407,8 +414,27 @@ impl VimKeymap {
     }
 
     fn complete_register(&mut self, pushed: char) -> Action {
-        self.clear_pending();
+        if !is_register_name(pushed) {
+            self.clear_pending();
+            return Action::Noop;
+        }
+        let mut prefix = std::mem::take(&mut self.pending);
+        prefix.push(pushed);
+        self.register_display = Some(prefix);
         Action::SelectRegister(pushed)
+    }
+
+    fn refresh_showcmd(&mut self, action: Action) {
+        if !matches!(action, Action::SelectRegister(_)) && self.pending.is_empty() {
+            self.register_display = None;
+        }
+        let text = match (&self.register_display, self.pending_key()) {
+            (Some(prefix), Some(pending)) => Some(format!("{prefix}{pending}")),
+            (Some(prefix), None) => Some(prefix.clone()),
+            (None, Some(pending)) => Some(pending.to_string()),
+            (None, None) => None,
+        };
+        self.showcmd = text;
     }
 
     fn arm_place(&mut self, key: KeyEvent) -> Action {
@@ -1348,13 +1374,17 @@ impl VimKeymap {
 impl Keymap for VimKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         let key = normalize_interrupt(key);
-        match mode {
+        let action = match mode {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
             Mode::Visual | Mode::VisualLine => self.map_visual_mode(key, mode),
             Mode::Search => crate::keymap::map_search_mode(key),
+        };
+        if mode != Mode::Insert {
+            self.refresh_showcmd(action);
         }
+        action
     }
 
     fn operator_exits_visual(&self) -> bool {
@@ -1362,7 +1392,7 @@ impl Keymap for VimKeymap {
     }
 
     fn pending_text(&self) -> Option<&str> {
-        self.pending_key()
+        self.showcmd.as_deref()
     }
 }
 
@@ -1408,6 +1438,78 @@ mod tests {
     }
 
     #[test]
+    fn quote_shows_register_prefix() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('"')), Mode::Normal);
+        assert_eq!(map.pending_text(), Some("\""));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('0')), Mode::Normal),
+            Action::SelectRegister('0')
+        );
+        assert_eq!(map.pending_text(), Some("\"0"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(map.pending_text(), Some("\"0d"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::DeleteLine
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn quoted_count_shows_before_register() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('2')), Mode::Normal);
+        map.map(plain(KeyCode::Char('"')), Mode::Normal);
+        map.map(plain(KeyCode::Char('0')), Mode::Normal);
+        assert_eq!(map.pending_text(), Some("2\"0"));
+        map.map(plain(KeyCode::Char('3')), Mode::Normal);
+        assert_eq!(map.pending_text(), Some("2\"03"));
+        map.map(plain(KeyCode::Char('p')), Mode::Normal);
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn invalid_register_clears_display() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('"')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('?')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn insert_ctrl_r_shows_prompt() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('r')), Mode::Insert),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), Some("^R"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Insert),
+            Action::InsertRegister('a')
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn visual_quote_shows_register_prefix() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('"')), Mode::Visual);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Visual),
+            Action::SelectRegister('a')
+        );
+        assert_eq!(map.pending_text(), Some("\"a"));
+    }
+
+    #[test]
     fn count_before_register_prefix() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -1416,7 +1518,7 @@ mod tests {
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('"')), Mode::Normal),
-            Action::Noop
+            Action::BeginSequence
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('a')), Mode::Normal),
