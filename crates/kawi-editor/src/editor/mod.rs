@@ -12,6 +12,7 @@ use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
+mod gutter;
 mod indent;
 mod insert_erase;
 mod insert_shift;
@@ -65,6 +66,9 @@ pub struct Editor {
     viewport: Viewport,
     jumps: Jumps,
     scroll_amount: Option<usize>,
+    number: bool,
+    relativenumber: bool,
+    numberwidth: usize,
 }
 
 struct SearchStatus {
@@ -558,6 +562,9 @@ impl Editor {
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
             scroll_amount: None,
+            number: false,
+            relativenumber: false,
+            numberwidth: 4,
         }
     }
 

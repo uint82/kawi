@@ -17,6 +17,7 @@ pub struct Theme {
     pub search_current: MatchColors,
     pub selection: MatchColors,
     pub status: MatchColors,
+    pub line_number: Color,
 }
 
 impl Theme {
@@ -84,6 +85,11 @@ impl Theme {
                     b: 234,
                 },
             },
+            line_number: Color::Rgb {
+                r: 79,
+                g: 82,
+                b: 88,
+            },
         }
     }
 
@@ -150,6 +156,11 @@ impl Theme {
                     b: 69,
                 },
             },
+            line_number: Color::Rgb {
+                r: 146,
+                g: 131,
+                b: 116,
+            },
         }
     }
 
@@ -215,6 +226,11 @@ impl Theme {
                     g: 196,
                     b: 161,
                 },
+            },
+            line_number: Color::Rgb {
+                r: 146,
+                g: 131,
+                b: 116,
             },
         }
     }

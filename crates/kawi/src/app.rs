@@ -92,13 +92,22 @@ impl App {
         let window = self
             .editor
             .visible_lines(self.editor.view_top(), self.editor.view_height());
+        let gutter = self
+            .editor
+            .gutter_lines(self.editor.view_top(), self.editor.view_height());
         let search_status = self.editor.search_status_text();
         let search_spans = frame_search_spans(
             &self
                 .editor
                 .search_spans(self.editor.view_top(), self.editor.view_height()),
         );
-        let frame = self.build_frame(&status, &window, search_status.as_deref(), &search_spans);
+        let frame = self.build_frame(
+            &status,
+            &window,
+            &gutter,
+            search_status.as_deref(),
+            &search_spans,
+        );
         render::draw(out, &frame)
     }
 
@@ -106,12 +115,14 @@ impl App {
         &'a self,
         status: &'a StatusInfo<'a>,
         window: &'a [String],
+        gutter: &'a [String],
         search_status: Option<&'a str>,
         search_spans: &'a [SearchSpan],
     ) -> Frame<'a> {
         Frame {
             lines: window,
-            cursor_col: self.editor.cursor_screen_col(),
+            gutter,
+            cursor_col: self.editor.cursor_wcol(),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
             status,
@@ -160,10 +171,12 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if let Some((row, col)) = press_position(&mouse, self.view_geometry()) {
+        if let Some((row, screen_col)) = press_position(&mouse, self.view_geometry()) {
+            let col = self.editor.buffer_col_at_screen(row, screen_col);
             return self.jump_to(row, col);
         }
-        if let Some((row, col)) = drag_position(&mouse, self.view_geometry()) {
+        if let Some((row, screen_col)) = drag_position(&mouse, self.view_geometry()) {
+            let col = self.editor.buffer_col_at_screen(row, screen_col);
             return self.drag_to(row, col);
         }
         if let Some(delta) = wheel_delta(&mouse) {
@@ -374,6 +387,15 @@ impl App {
             Command::SetTheme(name) => self.switch_theme(&name),
             Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
             Command::SetExpandTab(expandtab) => self.switch_expandtab(expandtab),
+            Command::SetNumber(number) => self.switch_number(number),
+            Command::SetRelativeNumber(relativenumber) => {
+                self.switch_relativenumber(relativenumber)
+            }
+            Command::SetNumberWidth(width) => self.switch_numberwidth(width),
+            Command::SetError(message) => {
+                self.show_message(message);
+                Ok(false)
+            }
             Command::Unknown => Ok(false),
         }
     }
@@ -397,6 +419,21 @@ impl App {
 
     fn switch_expandtab(&mut self, expandtab: bool) -> Result<bool> {
         self.editor.set_expandtab(expandtab);
+        Ok(false)
+    }
+
+    fn switch_number(&mut self, number: bool) -> Result<bool> {
+        self.editor.set_number(number);
+        Ok(false)
+    }
+
+    fn switch_relativenumber(&mut self, relativenumber: bool) -> Result<bool> {
+        self.editor.set_relativenumber(relativenumber);
+        Ok(false)
+    }
+
+    fn switch_numberwidth(&mut self, width: usize) -> Result<bool> {
+        self.editor.set_numberwidth(width);
         Ok(false)
     }
 
@@ -1196,6 +1233,66 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 5));
+    }
+
+    fn type_command(app: &mut App, text: &str) {
+        for ch in format!(":{text}").chars() {
+            app.handle_key(key(KeyCode::Char(ch))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("run");
+    }
+
+    #[test]
+    fn set_number_command_shows_gutter() {
+        let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
+        type_command(&mut app, "set number");
+        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(
+            app.editor.gutter_lines(0, 3),
+            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+        );
+        assert_eq!(app.editor.cursor_wcol(), 4);
+    }
+
+    #[test]
+    fn set_relativenumber_command_marks_cursor_line() {
+        let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('j'))).expect("down");
+        type_command(&mut app, "set relativenumber");
+        assert_eq!(
+            app.editor.gutter_lines(0, 3),
+            vec!["  1 ".to_string(), "  0 ".to_string(), "  1 ".to_string()]
+        );
+    }
+
+    #[test]
+    fn set_numberwidth_command_validates() {
+        let mut app = App::new(Buffer::from_string("abc"), Flavor::Vim);
+        type_command(&mut app, "set numberwidth=0");
+        assert_eq!(
+            app.last_message(),
+            Some("E487: Argument must be positive: numberwidth=0")
+        );
+        assert_eq!(app.editor.numberwidth(), 4);
+        type_command(&mut app, "set numberwidth=21");
+        assert_eq!(
+            app.last_message(),
+            Some("E474: Invalid argument: numberwidth=21")
+        );
+        type_command(&mut app, "set numberwidth=2");
+        assert_eq!(app.editor.numberwidth(), 2);
+    }
+
+    #[test]
+    fn click_maps_through_gutter_and_tab() {
+        let mut app = App::new(Buffer::from_string("\tello world"), Flavor::Vim);
+        type_command(&mut app, "set number");
+        app.handle_mouse(press(3, 0)).expect("click gutter");
+        assert_eq!(app.cursor_position(), (0, 0));
+        app.handle_mouse(press(12, 0)).expect("click past tab");
+        assert_eq!(app.cursor_position(), (0, 1));
+        app.handle_mouse(press(4, 0)).expect("click tab start");
+        assert_eq!(app.cursor_position(), (0, 0));
     }
 
     #[test]

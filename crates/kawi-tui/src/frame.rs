@@ -4,6 +4,7 @@ use kawi_editor::Viewport;
 
 pub struct Frame<'a> {
     pub lines: &'a [String],
+    pub gutter: &'a [String],
     pub cursor_col: usize,
     pub row: usize,
     pub viewport: &'a Viewport,

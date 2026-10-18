@@ -7,6 +7,10 @@ pub enum Command {
     SetTheme(String),
     SetShiftWidth(usize),
     SetExpandTab(bool),
+    SetNumber(bool),
+    SetRelativeNumber(bool),
+    SetNumberWidth(usize),
+    SetError(String),
     Unknown,
 }
 
@@ -27,6 +31,10 @@ fn parse_set_command(text: &str) -> Command {
         ["set", "shiftwidth", value] => shiftwidth_command(value),
         ["set", "expandtab"] => Command::SetExpandTab(true),
         ["set", "noexpandtab"] => Command::SetExpandTab(false),
+        ["set", "number"] => Command::SetNumber(true),
+        ["set", "nonumber"] => Command::SetNumber(false),
+        ["set", "relativenumber"] => Command::SetRelativeNumber(true),
+        ["set", "norelativenumber"] => Command::SetRelativeNumber(false),
         ["set", combined] => equals_command(combined),
         _ => Command::Unknown,
     }
@@ -56,6 +64,9 @@ fn equals_command(combined: &str) -> Command {
     if let Some(value) = combined.strip_prefix("shiftwidth=") {
         return shiftwidth_command(value);
     }
+    if let Some(value) = combined.strip_prefix("numberwidth=") {
+        return numberwidth_command(value);
+    }
     Command::Unknown
 }
 
@@ -63,6 +74,21 @@ fn shiftwidth_command(value: &str) -> Command {
     match value.parse::<usize>() {
         Ok(width) => Command::SetShiftWidth(width),
         Err(_) => Command::Unknown,
+    }
+}
+
+fn numberwidth_command(value: &str) -> Command {
+    match value.parse::<i64>() {
+        Ok(width) if width < 1 => Command::SetError(format!(
+            "E487: Argument must be positive: numberwidth={value}"
+        )),
+        Ok(width) if width > 20 => {
+            Command::SetError(format!("E474: Invalid argument: numberwidth={value}"))
+        }
+        Ok(width) => Command::SetNumberWidth(width as usize),
+        Err(_) => Command::SetError(format!(
+            "E521: Number required after =: numberwidth={value}"
+        )),
     }
 }
 
@@ -145,6 +171,39 @@ mod tests {
     fn parses_set_expandtab() {
         assert_eq!(parse("set expandtab"), Command::SetExpandTab(true));
         assert_eq!(parse("set noexpandtab"), Command::SetExpandTab(false));
+    }
+
+    #[test]
+    fn parses_set_number_options() {
+        assert_eq!(parse("set number"), Command::SetNumber(true));
+        assert_eq!(parse("set nonumber"), Command::SetNumber(false));
+        assert_eq!(
+            parse("set relativenumber"),
+            Command::SetRelativeNumber(true)
+        );
+        assert_eq!(
+            parse("set norelativenumber"),
+            Command::SetRelativeNumber(false)
+        );
+        assert_eq!(parse("set numberwidth=4"), Command::SetNumberWidth(4));
+        assert_eq!(parse("set numberwidth=1"), Command::SetNumberWidth(1));
+        assert_eq!(parse("set numberwidth=20"), Command::SetNumberWidth(20));
+    }
+
+    #[test]
+    fn rejects_bad_numberwidth() {
+        assert_eq!(
+            parse("set numberwidth=0"),
+            Command::SetError("E487: Argument must be positive: numberwidth=0".to_string())
+        );
+        assert_eq!(
+            parse("set numberwidth=21"),
+            Command::SetError("E474: Invalid argument: numberwidth=21".to_string())
+        );
+        assert_eq!(
+            parse("set numberwidth=abc"),
+            Command::SetError("E521: Number required after =: numberwidth=abc".to_string())
+        );
     }
 
     #[test]

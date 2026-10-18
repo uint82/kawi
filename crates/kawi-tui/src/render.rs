@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
+    style::SetForegroundColor,
     terminal::{Clear, ClearType},
 };
 use std::io::{Stdout, Write};
@@ -15,7 +16,7 @@ use kawi_editor::Viewport;
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     clear_all(out)?;
-    draw_visible_lines(out, frame.lines, frame.viewport)?;
+    draw_visible_lines(out, frame)?;
     draw_highlight(out, frame, frame.theme)?;
     draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
     draw_message_row(out, frame)?;
@@ -30,17 +31,35 @@ fn clear_all(out: &mut Stdout) -> Result<()> {
     Ok(())
 }
 
-fn draw_visible_lines(out: &mut Stdout, lines: &[String], viewport: &Viewport) -> Result<()> {
-    for (screen_row, line) in lines.iter().enumerate().take(viewport.height()) {
-        draw_one_line(out, screen_row, line, viewport.width())?;
+fn draw_visible_lines(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let gutter_width = gutter_width(frame);
+    for (screen_row, line) in frame.lines.iter().enumerate().take(frame.viewport.height()) {
+        draw_one_line(out, frame, screen_row, line, gutter_width)?;
     }
     Ok(())
 }
 
-fn draw_one_line(out: &mut Stdout, screen_row: usize, text: &str, width: usize) -> Result<()> {
+fn draw_one_line(
+    out: &mut Stdout,
+    frame: &Frame,
+    screen_row: usize,
+    text: &str,
+    gutter_width: usize,
+) -> Result<()> {
     execute!(out, MoveTo(0, saturate_u16(screen_row))).context("move to line start")?;
+    if let Some(gutter) = frame.gutter.get(screen_row) {
+        execute!(out, SetForegroundColor(frame.theme.line_number))
+            .context("apply line number color")?;
+        write!(out, "{gutter}").context("write gutter")?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    let width = frame.viewport.width().saturating_sub(gutter_width);
     write!(out, "{}", truncate_to_width(text, width)).context("write line")?;
     Ok(())
+}
+
+fn gutter_width(frame: &Frame) -> usize {
+    frame.gutter.first().map_or(0, |line| line.chars().count())
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {
@@ -175,13 +194,14 @@ fn search_tint(current: bool) -> Tint {
 }
 
 fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> {
+    let gutter_width = gutter_width(frame);
     for span in search_highlight_spans(
         frame.search_spans,
         frame.lines,
         frame.viewport.top(),
         frame.viewport,
     ) {
-        paint_span(out, &span, theme)?;
+        paint_span(out, &span, gutter_width, theme)?;
     }
     for span in highlight_spans(
         frame.lines,
@@ -189,13 +209,18 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> 
         frame.selection,
         frame.viewport,
     ) {
-        paint_span(out, &span, theme)?;
+        paint_span(out, &span, gutter_width, theme)?;
     }
     Ok(())
 }
 
-fn paint_span(out: &mut Stdout, span: &HighlightSpan, theme: &Theme) -> Result<()> {
-    move_to_segment(out, span.from, span.screen_row)?;
+fn paint_span(
+    out: &mut Stdout,
+    span: &HighlightSpan,
+    gutter_width: usize,
+    theme: &Theme,
+) -> Result<()> {
+    move_to_segment(out, span.from.saturating_add(gutter_width), span.screen_row)?;
     match span.tint {
         Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
