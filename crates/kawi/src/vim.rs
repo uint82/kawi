@@ -1621,6 +1621,26 @@ mod tests {
     }
 
     #[test]
+    fn command_tab_completes_and_backtab_reverses() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Tab), Mode::Command),
+            Action::CompleteCommand
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::BackTab), Mode::Command),
+            Action::CompleteCommandBackward
+        );
+        assert_eq!(
+            map.map(
+                KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT),
+                Mode::Command
+            ),
+            Action::CompleteCommandBackward
+        );
+    }
+
+    #[test]
     fn normal_star_and_hash_map_to_word_search() {
         let mut map = VimKeymap::new();
         assert_eq!(

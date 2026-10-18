@@ -30,17 +30,65 @@ pub enum Command {
     Unknown,
 }
 
+pub const COMMAND_NAMES: &[&str] = &[
+    "b",
+    "b#",
+    "bd",
+    "bdelete",
+    "bn",
+    "bnext",
+    "bp",
+    "bprevious",
+    "buffer",
+    "buffers",
+    "e",
+    "edit",
+    "files",
+    "ls",
+    "q",
+    "q!",
+    "qa",
+    "qa!",
+    "quit",
+    "quit!",
+    "quitall",
+    "quitall!",
+    "set",
+    "w",
+    "w!",
+    "wall",
+    "write",
+    "write!",
+    "writequit",
+    "wq",
+    "wqa",
+    "wqall",
+];
+
+pub const SET_OPTION_NAMES: &[&str] = &[
+    "autoindent",
+    "expandtab",
+    "ignorecase",
+    "keymap",
+    "number",
+    "numberwidth",
+    "relativenumber",
+    "shiftwidth",
+    "smartcase",
+    "theme",
+];
+
 pub fn parse(text: &str) -> Command {
     let words: Vec<&str> = text.split_whitespace().collect();
     let Some((command, rest)) = words.split_first() else {
         return Command::Unknown;
     };
     match (*command, rest) {
-        ("q", []) => Command::Quit,
-        ("wq", []) => Command::WriteQuit,
-        ("q!", []) => Command::ForceQuit,
-        ("qa", []) => Command::QuitAll,
-        ("qa!", []) => Command::ForceQuitAll,
+        ("q" | "quit", []) => Command::Quit,
+        ("wq" | "writequit", []) => Command::WriteQuit,
+        ("q!" | "quit!", []) => Command::ForceQuit,
+        ("qa" | "quitall", []) => Command::QuitAll,
+        ("qa!" | "quitall!", []) => Command::ForceQuitAll,
         ("wall", []) => Command::WriteAll,
         ("wqa" | "wqall", []) => Command::WriteQuitAll,
         ("ls" | "buffers" | "files", []) => Command::ListBuffers,
@@ -222,6 +270,19 @@ impl Default for CommandLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completion_names_parse() {
+        for name in COMMAND_NAMES {
+            if *name == "set" {
+                continue;
+            }
+            assert!(
+                parse(name) != Command::Unknown || parse(&format!("{name} x")) != Command::Unknown,
+                "command {name} does not parse"
+            );
+        }
+    }
 
     #[test]
     fn parses_write() {

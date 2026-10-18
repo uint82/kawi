@@ -6,6 +6,7 @@ pub struct Frame<'a> {
     pub lines: &'a [String],
     pub gutter: &'a [String],
     pub pager: Option<&'a [String]>,
+    pub completion: Option<CompletionMenu<'a>>,
     pub cursor_col: usize,
     pub row: usize,
     pub viewport: &'a Viewport,
@@ -19,6 +20,11 @@ pub struct Frame<'a> {
     pub insert_mode: bool,
     pub selection: Option<((usize, usize), (usize, usize))>,
     pub theme: &'a Theme,
+}
+
+pub struct CompletionMenu<'a> {
+    pub items: &'a [String],
+    pub selected: Option<usize>,
 }
 
 pub struct SearchSpan {

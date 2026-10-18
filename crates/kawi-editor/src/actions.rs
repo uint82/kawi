@@ -247,6 +247,8 @@ pub enum Action {
     ExitVisual,
     JumpTo(usize, usize),
     EnterCommand,
+    CompleteCommand,
+    CompleteCommandBackward,
     PushCommandChar(char),
     DeleteCommandChar,
     ExecuteCommand,
@@ -295,6 +297,8 @@ impl Action {
                 | Self::BeginSequence
                 | Self::CancelPending
                 | Self::EnterCommand
+                | Self::CompleteCommand
+                | Self::CompleteCommandBackward
                 | Self::PushCommandChar(_)
                 | Self::DeleteCommandChar
                 | Self::ExecuteCommand

@@ -128,6 +128,10 @@ impl App {
             lines: window,
             gutter,
             pager: self.pager.as_deref(),
+            completion: self
+                .editor
+                .completion_view()
+                .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
             cursor_col: self.editor.cursor_wcol(),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
