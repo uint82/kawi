@@ -85,6 +85,7 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("daw", Action::DeleteAroundWord),
     ("cc", Action::ChangeLine),
     ("cw", Action::ChangeWord),
+    ("cb", Action::ChangeWordBackward),
     ("ce", Action::ChangeWordEnd),
     ("c0", Action::ChangeToStart),
     ("c^", Action::ChangeToFirstNonBlank),
@@ -119,6 +120,21 @@ const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
     ("yge", Action::YankWordEndBackward),
     ("yiw", Action::YankInnerWord),
     ("yaw", Action::YankAroundWord),
+    ("yw", Action::YankWord),
+    ("yb", Action::YankWordBackward),
+    ("ye", Action::YankWordEnd),
+    ("yW", Action::YankBigWord),
+    ("yB", Action::YankBigWordBackward),
+    ("yE", Action::YankBigWordEnd),
+    ("ygE", Action::YankBigWordEndBackward),
+    ("dW", Action::DeleteBigWord),
+    ("dB", Action::DeleteBigWordBackward),
+    ("dE", Action::DeleteBigWordEnd),
+    ("dgE", Action::DeleteBigWordEndBackward),
+    ("cW", Action::ChangeBigWord),
+    ("cB", Action::ChangeBigWordBackward),
+    ("cE", Action::ChangeBigWordEnd),
+    ("cgE", Action::ChangeBigWordEndBackward),
 ];
 
 fn sequence_action(sequence: &str) -> Option<Action> {
@@ -137,7 +153,7 @@ fn is_sequence_prefix(sequence: &str) -> bool {
 fn arms_pending(pushed: char) -> bool {
     matches!(
         pushed,
-        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z' | '"'
+        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z' | '"' | 'r'
     )
 }
 
@@ -243,6 +259,13 @@ impl VimKeymap {
             self.showcmd = Some("^R".to_string());
             return Action::Noop;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('w') | KeyCode::Char('W') => return Action::InsertBackspaceWord,
+                KeyCode::Char('u') | KeyCode::Char('U') => return Action::InsertBackspaceLine,
+                _ => {}
+            }
+        }
         self.showcmd = None;
         if let Some(action) = insert_control_action(key) {
             return action;
@@ -312,6 +335,12 @@ impl VimKeymap {
             KeyCode::Char('k') => self.map_plain_or_noop(key, Action::MoveUp),
             KeyCode::Char('l') => self.map_plain_or_noop(key, Action::MoveRight),
             KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteForward),
+            KeyCode::Char('X') => self.map_plain_or_noop(key, Action::DeleteBefore),
+            KeyCode::Char('r') => self.arm_replace(key),
+            KeyCode::Char('s') => self.map_plain_or_noop(key, Action::Substitute),
+            KeyCode::Char('S') => self.map_plain_or_noop(key, Action::ChangeLine),
+            KeyCode::Char('O') => self.map_plain_or_noop(key, Action::OpenLineAbove),
+            KeyCode::Char('J') => self.map_plain_or_noop(key, Action::JoinLines),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
@@ -331,6 +360,9 @@ impl VimKeymap {
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
+            KeyCode::Char('W') => self.map_plain_or_noop(key, Action::MoveToNextBigWordStart),
+            KeyCode::Char('B') => self.map_plain_or_noop(key, Action::MoveToPrevBigWordStart),
+            KeyCode::Char('E') => self.map_plain_or_noop(key, Action::MoveToNextBigWordEnd),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::OpenLineBelow),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteAfter),
             KeyCode::Char('P') => self.map_plain_or_noop(key, Action::PasteBefore),
@@ -339,7 +371,7 @@ impl VimKeymap {
             KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
-            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankToEnd),
+            KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
             KeyCode::Char('f') => self.arm_find(key, 'f'),
             KeyCode::Char('F') => self.arm_find(key, 'F'),
             KeyCode::Char('t') => self.arm_find(key, 't'),
@@ -399,6 +431,32 @@ impl VimKeymap {
         }
         self.pending.push('g');
         Action::Noop
+    }
+
+    fn arm_replace(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('r');
+        Action::Noop
+    }
+
+    fn replace_prefix_armed(&self) -> bool {
+        self.stripped_pending() == "r"
+    }
+
+    fn complete_replace(&mut self, key: KeyEvent) -> Action {
+        let replacement = match key.code {
+            KeyCode::Enter => Some('\n'),
+            KeyCode::Tab => Some('\t'),
+            KeyCode::Char(c) if !has_ctrl_or_alt(key) => Some(c),
+            _ => None,
+        };
+        self.clear_pending();
+        match replacement {
+            Some(replacement) => Action::ReplaceChar(replacement),
+            None => Action::Noop,
+        }
     }
 
     fn arm_register(&mut self, key: KeyEvent) -> Action {
@@ -508,6 +566,10 @@ impl VimKeymap {
             self.clear_pending();
             return Action::ReselectVisual;
         }
+        if body == "g" && pushed == 'J' {
+            self.clear_pending();
+            return Action::JoinLinesNoSpace;
+        }
         if body == "g" && pushed == 'i' {
             self.clear_pending();
             return Action::InsertAtLast;
@@ -519,6 +581,10 @@ impl VimKeymap {
         if body == "g" && pushed == 'e' {
             self.clear_pending();
             return Action::MoveToPrevWordEnd;
+        }
+        if body == "g" && pushed == 'E' {
+            self.clear_pending();
+            return Action::MoveToPrevBigWordEnd;
         }
         if body == "g" {
             if let Some(action) = display_motion_action(pushed) {
@@ -840,6 +906,9 @@ impl VimKeymap {
     }
 
     fn resolve_pending(&mut self, key: KeyEvent) -> Action {
+        if self.replace_prefix_armed() {
+            return self.complete_replace(key);
+        }
         match key.code {
             KeyCode::Char(c) if !has_ctrl_or_alt(key) => {
                 if self.register_prefix_armed() {
@@ -1040,6 +1109,9 @@ impl VimKeymap {
             KeyCode::Char('w') => self.map_plain_or_noop(key, Action::MoveToNextWordStart),
             KeyCode::Char('b') => self.map_plain_or_noop(key, Action::MoveToPrevWordStart),
             KeyCode::Char('e') => self.map_plain_or_noop(key, Action::MoveToNextWordEnd),
+            KeyCode::Char('W') => self.map_plain_or_noop(key, Action::MoveToNextBigWordStart),
+            KeyCode::Char('B') => self.map_plain_or_noop(key, Action::MoveToPrevBigWordStart),
+            KeyCode::Char('E') => self.map_plain_or_noop(key, Action::MoveToNextBigWordEnd),
             KeyCode::Char('$') => self.map_plain_or_noop(key, Action::MoveToLineEnd),
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
@@ -1186,6 +1258,10 @@ impl VimKeymap {
             if pushed == 'e' {
                 self.clear_pending();
                 return Action::MoveToPrevWordEnd;
+            }
+            if pushed == 'E' {
+                self.clear_pending();
+                return Action::MoveToPrevBigWordEnd;
             }
             if let Some(action) = display_motion_action(pushed) {
                 self.clear_pending();
@@ -1422,6 +1498,154 @@ mod tests {
             map.map(plain(KeyCode::Char('h')), Mode::Normal),
             Action::MoveLeft
         );
+    }
+
+    #[test]
+    fn normal_edit_gap_keys_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('X')), Mode::Normal),
+            Action::DeleteBefore
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('s')), Mode::Normal),
+            Action::Substitute
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('S')), Mode::Normal),
+            Action::ChangeLine
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('O')), Mode::Normal),
+            Action::OpenLineAbove
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('J')), Mode::Normal),
+            Action::JoinLines
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('W')), Mode::Normal),
+            Action::MoveToNextBigWordStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('B')), Mode::Normal),
+            Action::MoveToPrevBigWordStart
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('E')), Mode::Normal),
+            Action::MoveToNextBigWordEnd
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Y')), Mode::Normal),
+            Action::YankLine
+        );
+    }
+
+    #[test]
+    fn normal_g_prefix_big_motions_map() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('E')), Mode::Normal),
+            Action::MoveToPrevBigWordEnd
+        );
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('g')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('J')), Mode::Normal),
+            Action::JoinLinesNoSpace
+        );
+    }
+
+    #[test]
+    fn normal_replace_prefix_reads_char() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Z')), Mode::Normal),
+            Action::ReplaceChar('Z')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Enter), Mode::Normal),
+            Action::ReplaceChar('\n')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Tab), Mode::Normal),
+            Action::ReplaceChar('\t')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.map(plain(KeyCode::Esc), Mode::Normal), Action::Noop);
+    }
+
+    #[test]
+    fn normal_counted_replace_prefix() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Z')), Mode::Normal),
+            Action::ReplaceChar('Z')
+        );
+    }
+
+    #[test]
+    fn insert_ctrl_w_and_ctrl_u_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('w')), Mode::Insert),
+            Action::InsertBackspaceWord
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('u')), Mode::Insert),
+            Action::InsertBackspaceLine
+        );
+    }
+
+    #[test]
+    fn operator_word_sequences_map() {
+        for (keys, action) in [
+            ("yw", Action::YankWord),
+            ("yb", Action::YankWordBackward),
+            ("ye", Action::YankWordEnd),
+            ("yW", Action::YankBigWord),
+            ("yB", Action::YankBigWordBackward),
+            ("yE", Action::YankBigWordEnd),
+            ("yw", Action::YankWord),
+            ("dW", Action::DeleteBigWord),
+            ("dB", Action::DeleteBigWordBackward),
+            ("dE", Action::DeleteBigWordEnd),
+            ("cW", Action::ChangeBigWord),
+            ("cB", Action::ChangeBigWordBackward),
+            ("cE", Action::ChangeBigWordEnd),
+            ("cb", Action::ChangeWordBackward),
+        ] {
+            let mut map = VimKeymap::new();
+            let mut result = Action::Noop;
+            for ch in keys.chars() {
+                result = map.map(plain(KeyCode::Char(ch)), Mode::Normal);
+            }
+            assert_eq!(result, action, "{keys}");
+        }
     }
 
     #[test]
@@ -2662,7 +2886,9 @@ mod tests {
 
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
-        let implemented = ['~', 'u', 'U', 'g', 'v', 'i', 'e', 'I', 'j', 'k', '0', '$'];
+        let implemented = [
+            '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J',
+        ];
         for code in 0..128u8 {
             let pushed = code as char;
             if !pushed.is_ascii_graphic() || pushed == 'g' {
@@ -4152,7 +4378,7 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('Y')), Mode::Normal),
-            Action::YankToEnd
+            Action::YankLine
         );
     }
 

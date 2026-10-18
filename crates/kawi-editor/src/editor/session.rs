@@ -15,6 +15,8 @@ pub(super) enum InsertEdit {
     ShiftRight,
     ShiftLeft { collapse: bool },
     Backspace,
+    BackspaceWord,
+    BackspaceLine,
     Delete,
 }
 
@@ -133,16 +135,12 @@ impl Editor {
         let reopen = std::mem::replace(&mut self.insert_reopen, false);
         for _ in 0..repeats {
             if reopen {
-                self.replay_open_line();
+                self.open_line_after(self.cursor.row());
             }
             for edit in &record {
                 self.replay_edit(*edit);
             }
         }
-    }
-
-    fn replay_open_line(&mut self) {
-        self.open_line_after(self.cursor.row());
     }
 
     pub(super) fn replay_edit(&mut self, edit: InsertEdit) {
@@ -153,6 +151,8 @@ impl Editor {
             InsertEdit::ShiftRight => self.insert_shift_right(),
             InsertEdit::ShiftLeft { collapse } => self.replay_insert_shift_left(collapse),
             InsertEdit::Backspace => self.delete_backward(),
+            InsertEdit::BackspaceWord => self.insert_backspace_word(),
+            InsertEdit::BackspaceLine => self.insert_backspace_line(),
             InsertEdit::Delete => self.delete_forward(),
         }
     }
@@ -245,7 +245,11 @@ impl Editor {
 
     pub(super) fn normalize_cursor(&mut self) {
         self.clamp_row();
+        let before = self.cursor.col();
         self.clamp_col();
+        if self.cursor.col() != before {
+            self.cursor.set_desired(self.cursor.col());
+        }
     }
 
     pub(super) fn push_command_char(&mut self, c: char) {
@@ -461,6 +465,7 @@ impl Editor {
     pub(super) fn switch_to_insert(&mut self) {
         self.mode = Mode::Insert;
         self.insert_last_char = None;
+        self.insert_start = Some((self.cursor.row(), self.cursor.col()));
     }
 
     pub(super) fn sync_head(&mut self) {

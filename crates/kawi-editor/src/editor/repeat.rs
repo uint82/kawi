@@ -12,6 +12,8 @@ pub(super) fn is_insert_entry(action: Action) -> bool {
             | Action::AppendLineEnd
             | Action::InsertLineStart
             | Action::OpenLineBelow
+            | Action::OpenLineAbove
+            | Action::Substitute
             | Action::InsertAtLast
             | Action::InsertBeforeSelection
             | Action::InsertAfterSelection

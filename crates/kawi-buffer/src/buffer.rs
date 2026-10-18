@@ -675,6 +675,16 @@ impl Buffer {
             return;
         };
         if start < end {
+            let start = if end == self.rope.len_chars()
+                && first > 0
+                && start > 0
+                && self.line_len(first - 1) > 0
+                && self.rope.get_char(start - 1) == Some('\n')
+            {
+                start - 1
+            } else {
+                start
+            };
             self.push_adjustment(Some(line_adjust::row_removal(first, last)));
             self.rope.remove(start..end);
             self.touch();

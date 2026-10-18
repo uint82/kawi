@@ -1,31 +1,50 @@
 use super::session::InsertEdit;
 use super::Editor;
+use crate::editor::indent::IndentConfig;
+
+pub(super) enum TabExpansion {
+    Literal,
+    Spaces(usize),
+}
 
 impl Editor {
     pub(super) fn insert_tab(&mut self) {
         self.record_insert(InsertEdit::Tab);
         let indent = self.effective_indent();
-        let shift = indent.shift_unit();
         let row = self.cursor.row();
         let col = self.cursor.col();
+        let vcol = self.buffer.screen_col(row, col, indent.tabstop);
+        self.record_maybe();
+        match self.tab_expansion(row, col, vcol, &indent) {
+            TabExpansion::Literal => self.type_text("\t"),
+            TabExpansion::Spaces(width) => {
+                self.type_text(&" ".repeat(width));
+                if !indent.expandtab {
+                    self.tabify_indent(indent.tabstop);
+                }
+            }
+        }
+    }
+
+    pub(super) fn tab_expansion(
+        &self,
+        row: usize,
+        col: usize,
+        vcol: usize,
+        indent: &IndentConfig,
+    ) -> TabExpansion {
+        let shift = indent.shift_unit();
         let in_indent = col <= self.first_non_blank_of(row);
         let smart = in_indent && indent.tabstop != shift;
         if !indent.expandtab && !smart {
-            self.record_maybe();
-            self.type_text("\t");
-            return;
+            return TabExpansion::Literal;
         }
-        let vcol = self.buffer.screen_col(row, col, indent.tabstop);
         let width = if smart {
             shift - (vcol % shift)
         } else {
             indent.tabstop - (vcol % indent.tabstop)
         };
-        self.record_maybe();
-        self.type_text(&" ".repeat(width));
-        if !indent.expandtab {
-            self.tabify_indent(indent.tabstop);
-        }
+        TabExpansion::Spaces(width)
     }
 
     fn type_text(&mut self, text: &str) {
@@ -37,6 +56,10 @@ impl Editor {
     }
 
     fn tabify_indent(&mut self, tabstop: usize) {
+        self.tabify_indent_from(0, tabstop);
+    }
+
+    pub(super) fn tabify_indent_from(&mut self, floor: usize, tabstop: usize) {
         let row = self.cursor.row();
         let Some(line) = self.buffer.line(row) else {
             return;
@@ -44,7 +67,7 @@ impl Editor {
         let chars: Vec<char> = line.chars().collect();
         let cursor_col = self.cursor.col();
         let mut start = cursor_col;
-        while start > 0 && matches!(chars.get(start - 1), Some(' ' | '\t')) {
+        while start > floor && matches!(chars.get(start - 1), Some(' ' | '\t')) {
             start -= 1;
         }
         let want_vcol = self.buffer.screen_col(row, cursor_col, tabstop);

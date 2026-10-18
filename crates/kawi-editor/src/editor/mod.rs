@@ -13,7 +13,9 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
 mod indent;
+mod insert_erase;
 mod insert_shift;
+mod join;
 mod jumps;
 mod line_ops;
 mod match_ops;
@@ -21,6 +23,7 @@ mod motions;
 mod operators;
 mod registers;
 mod repeat;
+mod replace;
 mod scroll;
 mod search_mode;
 mod sent_ops;
@@ -55,6 +58,7 @@ pub struct Editor {
     operator_count: Option<usize>,
     insert_repeat: Option<usize>,
     insert_reopen: bool,
+    insert_start: Option<(usize, usize)>,
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     insert_last_char: Option<char>,
@@ -232,6 +236,34 @@ impl Editor {
             Action::DeleteWordEndBackward => self.delete_word_end_backward(),
             Action::ChangeWordEndBackward => self.change_word_end_backward(),
             Action::YankWordEndBackward => self.yank_word_end_backward(),
+            Action::YankBigWordEndBackward => self.yank_big_word_end_backward(),
+            Action::ReplaceChar(replacement) => self.replace_char(replacement),
+            Action::DeleteBefore => self.delete_before(),
+            Action::Substitute => self.substitute(),
+            Action::OpenLineAbove => self.open_line_above(),
+            Action::JoinLines => self.join_lines(false),
+            Action::JoinLinesNoSpace => self.join_lines(true),
+            Action::InsertBackspaceWord => self.insert_backspace_word(),
+            Action::InsertBackspaceLine => self.insert_backspace_line(),
+            Action::DeleteBigWordEndBackward => self.delete_big_word_end_backward(),
+            Action::ChangeBigWordEndBackward => self.change_big_word_end_backward(),
+            Action::YankWord => self.yank_word(),
+            Action::YankBigWord => self.yank_big_word(),
+            Action::YankWordBackward => self.yank_word_backward(),
+            Action::YankBigWordBackward => self.yank_big_word_backward(),
+            Action::YankWordEnd => self.yank_word_end(),
+            Action::YankBigWordEnd => self.yank_big_word_end(),
+            Action::DeleteBigWord => self.delete_big_word(),
+            Action::DeleteBigWordBackward => self.delete_big_word_backward(),
+            Action::DeleteBigWordEnd => self.delete_big_word_end(),
+            Action::ChangeBigWord => self.change_big_word(),
+            Action::ChangeBigWordBackward => self.change_big_word_backward(),
+            Action::ChangeWordBackward => self.change_word_backward(),
+            Action::ChangeBigWordEnd => self.change_big_word_end(),
+            Action::MoveToNextBigWordStart => self.move_to_next_big_word_start(),
+            Action::MoveToPrevBigWordStart => self.move_to_prev_big_word_start(),
+            Action::MoveToNextBigWordEnd => self.move_to_next_big_word_end(),
+            Action::MoveToPrevBigWordEnd => self.move_to_prev_big_word_end(),
             Action::LowercaseAt { motion } => self.lowercase_at(motion),
             Action::UppercaseAt { motion } => self.uppercase_at(motion),
             Action::GotoLastLine => self.goto_last_line(),
@@ -465,6 +497,7 @@ impl Editor {
             operator_count: None,
             insert_repeat: None,
             insert_reopen: false,
+            insert_start: None,
             insert_record: Vec::new(),
             insert_moved: false,
             insert_last_char: None,
@@ -737,6 +770,10 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToPrevWordStart
             | Action::MoveToNextWordEnd
             | Action::MoveToPrevWordEnd
+            | Action::MoveToNextBigWordStart
+            | Action::MoveToPrevBigWordStart
+            | Action::MoveToNextBigWordEnd
+            | Action::MoveToPrevBigWordEnd
             | Action::FindChar { .. }
             | Action::RepeatFind { .. }
             | Action::GotoLastLine

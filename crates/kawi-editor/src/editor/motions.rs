@@ -189,6 +189,22 @@ impl Editor {
         self.step_word(words::prev_word_end);
     }
 
+    pub(super) fn move_to_next_big_word_start(&mut self) {
+        self.step_word(words::next_big_word_start);
+    }
+
+    pub(super) fn move_to_prev_big_word_start(&mut self) {
+        self.step_word(words::prev_big_word_start);
+    }
+
+    pub(super) fn move_to_next_big_word_end(&mut self) {
+        self.step_word(words::next_big_word_end);
+    }
+
+    pub(super) fn move_to_prev_big_word_end(&mut self) {
+        self.step_word(words::prev_big_word_end);
+    }
+
     pub(super) fn move_up(&mut self) {
         self.track_insert_move();
         let count = self.take_count();
