@@ -15,6 +15,8 @@ pub enum Action {
     MoveToViewportBottom,
     JumpOlder,
     JumpNewer,
+    SelectRegister(char),
+    InsertRegister(char),
     MoveToMatch,
     DeleteToMatch,
     YankToMatch,

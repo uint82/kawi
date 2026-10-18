@@ -1,6 +1,7 @@
 use super::Editor;
 use crate::objects;
 use crate::objects::matchit::{match_target, MatchTarget};
+use crate::register::RegisterKind;
 
 type CharSpan = ((usize, usize), (usize, usize));
 
@@ -143,7 +144,7 @@ impl Editor {
             }
             Some(PercentSpan::Empty) => {
                 self.set_pcmark();
-                self.register.set_text(String::new());
+                self.write_yank(RegisterKind::CharWise, String::new());
             }
             None => {}
         }

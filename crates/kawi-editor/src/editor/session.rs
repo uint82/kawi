@@ -275,32 +275,40 @@ impl Editor {
     }
 
     fn store_insert_session(&mut self) {
-        let Some((entry, count)) = self.insert_entry.take() else {
+        let Some((entry, count, register)) = self.insert_entry.take() else {
             return;
         };
         let record = self.insert_record.clone();
         if matches!(entry, Action::ChangeSelection | Action::ChangeLines) {
-            self.fill_visual_change(entry, record);
+            self.fill_visual_change(entry, register, record);
             return;
         }
         self.record_change(RepeatChange::Edit {
             action: entry,
             count,
+            register,
             record,
         });
     }
 
-    fn fill_visual_change(&mut self, entry: Action, record: Vec<InsertEdit>) {
+    fn fill_visual_change(
+        &mut self,
+        entry: Action,
+        register: Option<char>,
+        record: Vec<InsertEdit>,
+    ) {
         let Some(saved) = self.previous_visual else {
             self.record_change(RepeatChange::Edit {
                 action: entry,
                 count: 1,
+                register,
                 record,
             });
             return;
         };
         self.record_change(RepeatChange::Visual {
             action: entry,
+            register,
             anchor: saved.selection().anchor(),
             head: saved.selection().head(),
             record,

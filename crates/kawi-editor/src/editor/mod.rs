@@ -6,7 +6,6 @@ use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::jumps::Jumps;
 use crate::mode::Mode;
-use crate::register::Register;
 #[cfg(test)]
 use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
@@ -20,6 +19,7 @@ mod line_ops;
 mod match_ops;
 mod motions;
 mod operators;
+mod registers;
 mod repeat;
 mod scroll;
 mod search_mode;
@@ -41,13 +41,16 @@ pub struct Editor {
     selection: Option<Selection>,
     previous_visual: Option<SavedVisual>,
     last_insert: Option<(usize, usize)>,
-    insert_entry: Option<(Action, usize)>,
+    insert_entry: Option<(Action, usize, Option<char>)>,
     last_change: Option<repeat::RepeatChange>,
     undone_change: Option<repeat::RepeatChange>,
     file_indent: indent::IndentConfig,
     shiftwidth_override: Option<usize>,
     expandtab_override: Option<bool>,
-    register: Register,
+    registers: crate::registers::Registers,
+    pending_register: Option<char>,
+    force_numbered_register: bool,
+    clipboard: Option<Box<dyn crate::clipboard::Clipboard>>,
     count_digits: usize,
     operator_count: Option<usize>,
     insert_repeat: Option<usize>,
@@ -81,18 +84,25 @@ impl Editor {
             }
             Action::CancelPending => {
                 self.clear_count();
+                self.pending_register = None;
+                return;
+            }
+            Action::SelectRegister(name) => {
+                self.select_register(name);
                 return;
             }
             _ => {}
         }
         let was_insert = self.mode.is_insert();
+        let change_register = self.pending_register;
+        self.force_numbered_register = uses_numbered_register(action);
         let jump = jump_recording(action);
         let jump_before = (self.cursor.row(), self.cursor.col());
         if self.needs_checkpoint(action) {
             self.record_boundary();
         }
         if repeat::is_insert_entry(action) {
-            self.insert_entry = Some((action, self.peek_count()));
+            self.insert_entry = Some((action, self.peek_count(), self.pending_register));
         }
         let was_normal = self.mode == Mode::Normal;
         let revision = self.buffer.revision();
@@ -113,6 +123,8 @@ impl Editor {
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
             Action::JumpOlder => self.jump_older(),
             Action::JumpNewer => self.jump_newer(),
+            Action::InsertRegister(name) => self.insert_register(name),
+            Action::SelectRegister(_) => self.noop(),
             Action::MoveToMatch => self.move_to_match(),
             Action::DeleteToMatch => self.delete_match(),
             Action::YankToMatch => self.yank_match(),
@@ -313,6 +325,8 @@ impl Editor {
                 _ => None,
             };
         }
+        self.pending_register = None;
+        self.force_numbered_register = false;
         self.normalize_cursor();
         self.track_head(action);
         self.clear_count();
@@ -335,6 +349,7 @@ impl Editor {
             self.record_change(repeat::RepeatChange::Edit {
                 action,
                 count: change_count,
+                register: change_register,
                 record: Vec::new(),
             });
         }
@@ -442,7 +457,10 @@ impl Editor {
             file_indent,
             shiftwidth_override: None,
             expandtab_override: None,
-            register: Register::new(),
+            registers: crate::registers::Registers::new(),
+            pending_register: None,
+            force_numbered_register: false,
+            clipboard: None,
             count_digits: 0,
             operator_count: None,
             insert_repeat: None,
@@ -522,12 +540,20 @@ impl Editor {
 
     #[cfg(test)]
     pub fn register_kind(&self) -> RegisterKind {
-        self.register.kind()
+        self.registers
+            .unnamed_slot()
+            .and_then(|slot| self.registers.get(slot))
+            .map(|register| register.kind())
+            .unwrap_or(RegisterKind::CharWise)
     }
 
     #[cfg(test)]
     pub fn register_text(&self) -> String {
-        self.register.text().to_string()
+        self.registers
+            .unnamed_slot()
+            .and_then(|slot| self.registers.get(slot))
+            .map(|register| register.text().to_string())
+            .unwrap_or_default()
     }
 
     pub fn row(&self) -> usize {
@@ -594,6 +620,22 @@ enum JumpRecording {
     Never,
     Always,
     IfMovedOrSingle,
+}
+
+fn uses_numbered_register(action: Action) -> bool {
+    matches!(
+        action,
+        Action::DeleteToMatch
+            | Action::ChangeToMatch
+            | Action::DeleteToPrevSentence
+            | Action::DeleteToNextSentence
+            | Action::ChangeToPrevSentence
+            | Action::ChangeToNextSentence
+            | Action::DeleteToPrevParagraph
+            | Action::DeleteToNextParagraph
+            | Action::ChangeToPrevParagraph
+            | Action::ChangeToNextParagraph
+    )
 }
 
 fn jump_recording(action: Action) -> JumpRecording {

@@ -13,8 +13,10 @@ pub mod viewport;
 pub mod words;
 
 mod case_map;
+pub mod clipboard;
 mod jumps;
 mod paragraphs;
+mod registers;
 mod sentences;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};

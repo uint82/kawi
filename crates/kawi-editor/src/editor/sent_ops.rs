@@ -102,7 +102,7 @@ impl Editor {
         }
         self.record_boundary_at(span.start.0, span.start.1);
         let resolved = self.resolve_span(span, true);
-        self.yank_resolved(&resolved);
+        self.delete_resolved(&resolved);
         match resolved.rows {
             Some((first, last)) => {
                 self.drop_lines(first, last);
@@ -154,7 +154,7 @@ impl Editor {
         match resolved.rows {
             Some((first, last)) => self.change_lines(first, last),
             None => {
-                self.yank_resolved(&resolved);
+                self.delete_resolved(&resolved);
                 self.buffer.delete_span(
                     resolved.start.0,
                     resolved.start.1,
@@ -253,6 +253,23 @@ impl Editor {
     }
 
     fn yank_resolved(&mut self, resolved: &ResolvedSpan) {
+        let (kind, text) = self.resolved_register(resolved);
+        self.write_yank(kind, text);
+    }
+
+    fn delete_resolved(&mut self, resolved: &ResolvedSpan) {
+        let (kind, text) = self.resolved_register(resolved);
+        let (line_count, linewise) = match resolved.rows {
+            Some((first, last)) => (last - first + 1, true),
+            None => (
+                resolved.edit_end.0.saturating_sub(resolved.start.0) + 1,
+                false,
+            ),
+        };
+        self.write_delete(kind, text, line_count, linewise);
+    }
+
+    fn resolved_register(&self, resolved: &ResolvedSpan) -> (RegisterKind, String) {
         let text = self.buffer.span_text(
             resolved.yank_start.0,
             resolved.yank_start.1,
@@ -262,9 +279,9 @@ impl Editor {
         match resolved.kind {
             RegisterKind::LineWise => {
                 let text = text.strip_suffix('\n').map(str::to_string).unwrap_or(text);
-                self.register.set_lines(text);
+                (RegisterKind::LineWise, text)
             }
-            RegisterKind::CharWise => self.register.set_text(text),
+            RegisterKind::CharWise => (RegisterKind::CharWise, text),
         }
     }
 }

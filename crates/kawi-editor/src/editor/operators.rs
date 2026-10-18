@@ -57,7 +57,7 @@ impl Editor {
         }
         let row = self.cursor.row();
         self.record_boundary();
-        self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
+        self.capture_delete_range((row, 0), (row, self.cursor.col().saturating_sub(1)));
         self.buffer
             .delete_range(row, 0, row, self.cursor.col().saturating_sub(1));
         self.cursor.set_position(row, 0);
@@ -78,7 +78,7 @@ impl Editor {
             }
             objects::word::WordSpan::Empty { at } => {
                 if !self.buffer.is_empty() {
-                    self.register.set_text(String::new());
+                    self.write_delete(RegisterKind::CharWise, String::new(), 1, false);
                 }
                 self.cursor.set_position(at.0, at.1);
                 self.switch_to_insert();
@@ -93,7 +93,7 @@ impl Editor {
             return;
         };
         self.record_boundary();
-        self.yank_range(tail.0, tail.1, tail.2, tail.3);
+        self.capture_delete_range((tail.0, tail.1), (tail.2, tail.3));
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
         self.cursor.set_position(tail.0, tail.1);
         self.switch_to_insert();
@@ -140,7 +140,8 @@ impl Editor {
     pub(super) fn change_lines(&mut self, first: usize, last: usize) {
         let last = last.min(self.buffer.line_count().saturating_sub(1));
         let first = first.min(last);
-        self.register.set_lines(self.take_lines(first, last));
+        let text = self.take_lines(first, last);
+        self.write_delete(RegisterKind::LineWise, text, last - first + 1, true);
         self.record_boundary_at(first, 0);
         if last > first {
             self.drop_lines(first.saturating_add(1), last);
@@ -164,7 +165,8 @@ impl Editor {
             return;
         }
         self.record_boundary_at(first, 0);
-        self.register.set_lines(self.take_lines(first, last));
+        let text = self.take_lines(first, last);
+        self.write_delete(RegisterKind::LineWise, text, last - first + 1, true);
         self.drop_lines(first, last);
         let row = first.min(self.buffer.line_count().saturating_sub(1));
         self.cursor.set_position(row, self.first_non_blank_of(row));
@@ -219,7 +221,10 @@ impl Editor {
             .saturating_add(count.saturating_sub(1))
             .min(width.saturating_sub(1));
         self.record_maybe();
-        self.yank_range(self.cursor.row(), self.cursor.col(), self.cursor.row(), end);
+        self.capture_delete_range(
+            (self.cursor.row(), self.cursor.col()),
+            (self.cursor.row(), end),
+        );
         self.buffer
             .delete_range(self.cursor.row(), self.cursor.col(), self.cursor.row(), end);
     }
@@ -280,7 +285,8 @@ impl Editor {
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
-        self.register.set_lines(self.take_lines(row, last));
+        let text = self.take_lines(row, last);
+        self.write_delete(RegisterKind::LineWise, text, last - row + 1, true);
         self.drop_lines(row, last);
         let row = row.min(self.buffer.line_count().saturating_sub(1));
         let max = self.buffer.line_len(row).saturating_sub(1);
@@ -299,7 +305,8 @@ impl Editor {
                     && words::start_blank(&self.buffer, start)
                 {
                     self.record_boundary_at(start.0, 0);
-                    self.register.set_lines(self.take_lines(start.0, end.0));
+                    let text = self.take_lines(start.0, end.0);
+                    self.write_delete(RegisterKind::LineWise, text, end.0 - start.0 + 1, true);
                     self.drop_lines(start.0, end.0);
                     let row = start.0.min(self.buffer.line_count().saturating_sub(1));
                     let max = self.buffer.line_len(row).saturating_sub(1);
@@ -361,7 +368,7 @@ impl Editor {
             return;
         }
         self.record_boundary();
-        self.yank_range(tail.0, tail.1, tail.2, tail.3);
+        self.capture_delete_range((tail.0, tail.1), (tail.2, tail.3));
         self.buffer.delete_range(tail.0, tail.1, tail.2, tail.3);
         let col = tail.1.min(self.max_col_for_row(tail.0));
         self.cursor.set_position(tail.0, col);
@@ -372,7 +379,7 @@ impl Editor {
             return;
         };
         self.record_boundary();
-        self.yank_range(start.0, start.1, end.0, end.1);
+        self.capture_delete_range(start, end);
         self.buffer.delete_range(start.0, start.1, end.0, end.1);
         self.cursor.set_position(start.0, start.1);
     }
@@ -458,7 +465,7 @@ impl Editor {
             return;
         };
         self.record_boundary();
-        self.yank_range(start.0, start.1, end.0, end.1);
+        self.capture_delete_range(start, end);
         self.buffer.delete_range(start.0, start.1, end.0, end.1);
         self.cursor.set_position(start.0, start.1);
     }
@@ -477,7 +484,7 @@ impl Editor {
             return;
         };
         self.record_boundary();
-        self.yank_range(start.0, start.1, end.0, end.1);
+        self.capture_delete_range(start, end);
         self.buffer.delete_range(start.0, start.1, end.0, end.1);
         self.cursor.set_position(start.0, start.1);
         self.switch_to_insert();
@@ -577,49 +584,57 @@ impl Editor {
     }
 
     fn paste(&mut self, before: bool) {
-        if self.register.is_empty() && self.register.kind() == RegisterKind::CharWise {
+        let Some(register) = self.read_register(self.pending_register) else {
+            return;
+        };
+        if register.kind() == RegisterKind::CharWise && register.is_empty() {
             return;
         }
         let count = self.take_count();
         self.record_boundary();
-        match self.register.kind() {
-            RegisterKind::CharWise => self.paste_inline(count, before),
-            RegisterKind::LineWise => self.paste_lines(count, before),
+        match register.kind() {
+            RegisterKind::CharWise => self.paste_inline(&register, count, before),
+            RegisterKind::LineWise => self.paste_lines(&register, count, before),
         }
     }
 
     pub(super) fn paste_over_selection(&mut self) {
-        if self.register.is_empty() {
+        let Some(register) = self.read_register(self.pending_register) else {
+            return;
+        };
+        if register.kind() == RegisterKind::CharWise && register.is_empty() {
             return;
         }
+        self.pending_register = None;
         self.snapshot_visual();
         self.note_visual_repeat(Action::PasteOverSelection);
         if self.mode == Mode::VisualLine {
-            self.paste_over_lines();
+            self.paste_over_lines(&register);
             return;
         }
         let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
-        let put_text = self.register.text().to_string();
-        let put_kind = self.register.kind();
         self.record_boundary();
-        self.yank_range(start_row, start_col, end_row, end_col);
+        self.capture_delete_range((start_row, start_col), (end_row, end_col));
         self.buffer
             .delete_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
-        match put_kind {
+        match register.kind() {
             RegisterKind::CharWise => {
-                let (_, _) = self.buffer.paste_before(start_row, start_col, &put_text);
+                let (_, _) = self
+                    .buffer
+                    .paste_before(start_row, start_col, register.text());
                 self.cursor.set_position(start_row, start_col);
             }
-            RegisterKind::LineWise => self.paste_lines_split(start_row, start_col, &put_text),
+            RegisterKind::LineWise => self.paste_lines_split(start_row, start_col, register.text()),
         }
     }
 
-    fn paste_over_lines(&mut self) {
+    fn paste_over_lines(&mut self, register: &crate::register::Register) {
         let ((first, _), (last, _)) = self.operator_range();
-        let put_lines = self.register.lines();
+        let put_lines = register.lines();
         self.record_boundary();
-        self.register.set_lines(self.take_lines(first, last));
+        let text = self.take_lines(first, last);
+        self.write_delete(RegisterKind::LineWise, text, last - first + 1, true);
         self.buffer.paste_lines_below(last, &put_lines);
         self.drop_lines(first, last);
         self.cursor.set_position(first, 0);
@@ -632,8 +647,8 @@ impl Editor {
         self.cursor.set_position(row, 0);
     }
 
-    fn paste_inline(&mut self, count: usize, before: bool) {
-        let text = self.register.text().repeat(count.max(1));
+    fn paste_inline(&mut self, register: &crate::register::Register, count: usize, before: bool) {
+        let text = register.text().repeat(count.max(1));
         let (row, col) = (self.cursor.row(), self.cursor.col());
         let at_line_end = col >= self.buffer.line_len(row);
         let col = if before {
@@ -658,8 +673,8 @@ impl Editor {
         self.cursor.set_position(row, col);
     }
 
-    fn paste_lines(&mut self, count: usize, before: bool) {
-        let yanked = self.register.lines();
+    fn paste_lines(&mut self, register: &crate::register::Register, count: usize, before: bool) {
+        let yanked = register.lines();
         let mut lines = Vec::with_capacity(yanked.len().saturating_mul(count.max(1)));
         for _ in 0..count.max(1) {
             lines.extend(yanked.iter().cloned());
@@ -674,7 +689,7 @@ impl Editor {
 
     pub(super) fn remove_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_boundary_at(start.0, start.1);
-        self.yank_range(start.0, start.1, end.0, end.1);
+        self.capture_delete_range(start, end);
         self.buffer.delete_range(start.0, start.1, end.0, end.1);
         self.cursor.set_position(start.0, start.1);
     }
@@ -729,7 +744,8 @@ impl Editor {
     }
 
     pub(super) fn yank_line_range(&mut self, first: usize, last: usize) {
-        self.register.set_lines(self.take_lines(first, last));
+        let text = self.take_lines(first, last);
+        self.write_yank(RegisterKind::LineWise, text);
     }
 
     pub(super) fn yank_lines(&mut self) {
@@ -738,7 +754,8 @@ impl Editor {
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
-        self.register.set_lines(self.take_lines(row, last));
+        let text = self.take_lines(row, last);
+        self.write_yank(RegisterKind::LineWise, text);
     }
 
     fn yank_word_object(&mut self, span: Option<objects::word::WordSpan>) {
@@ -755,7 +772,7 @@ impl Editor {
                 self.cursor.set_position(first, col);
             }
             objects::word::WordSpan::Empty { at } => {
-                self.register.set_text(String::new());
+                self.write_yank(RegisterKind::CharWise, String::new());
                 self.cursor.set_position(at.0, at.1);
             }
         }
@@ -771,7 +788,7 @@ impl Editor {
         let text = self
             .buffer
             .range_text(start_row, start_col, end_row, end_col);
-        self.register.set_text(text);
+        self.write_yank(RegisterKind::CharWise, text);
     }
 
     pub(super) fn yank_selection(&mut self) {
@@ -787,7 +804,7 @@ impl Editor {
 
     pub(super) fn delete_charwise_span(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_boundary_at(start.0, start.1);
-        self.yank_span(start.0, start.1, end.0, end.1);
+        self.capture_delete_span(start, end);
         self.buffer.delete_span(start.0, start.1, end.0, end.1);
         self.cursor.set_position(start.0, start.1);
     }
@@ -802,14 +819,14 @@ impl Editor {
         let text = self
             .buffer
             .span_text(start_row, start_col, end_row, end_col);
-        self.register.set_text(text);
+        self.write_yank(RegisterKind::CharWise, text);
     }
 
     pub(super) fn yank_to_end(&mut self) {
         let count = self.take_count();
         if let Some(tail) = self.line_tail(count) {
             let text = self.buffer.range_text(tail.0, tail.1, tail.2, tail.3);
-            self.register.set_text(text);
+            self.write_yank(RegisterKind::CharWise, text);
         }
     }
 
