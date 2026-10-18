@@ -44,10 +44,12 @@ pub(super) enum RepeatChange {
     Edit {
         action: Action,
         count: usize,
+        register: Option<char>,
         record: Vec<InsertEdit>,
     },
     Visual {
         action: Action,
+        register: Option<char>,
         anchor: (usize, usize),
         head: (usize, usize),
         record: Vec<InsertEdit>,
@@ -66,18 +68,26 @@ impl Editor {
             RepeatChange::Edit {
                 action,
                 count,
+                register,
                 record,
-            } => self.repeat_edit(action, count, &record),
+            } => self.repeat_edit(action, count, register, &record),
             RepeatChange::Visual {
                 action,
+                register,
                 anchor,
                 head,
                 record,
-            } => self.repeat_visual(action, anchor, head, &record),
+            } => self.repeat_visual(action, register, anchor, head, &record),
         }
     }
 
-    fn repeat_edit(&mut self, action: Action, count: usize, record: &[InsertEdit]) {
+    fn repeat_edit(
+        &mut self,
+        action: Action,
+        count: usize,
+        register: Option<char>,
+        record: &[InsertEdit],
+    ) {
         let saved_last = self.last_change.clone();
         let saved_undone = self.undone_change.clone();
         let count = if self.has_count() {
@@ -87,6 +97,7 @@ impl Editor {
         };
         self.count_digits = count;
         self.operator_count = None;
+        self.pending_register = register;
         self.apply(action);
         let armed = self.insert_repeat.take();
         for edit in record {
@@ -103,13 +114,18 @@ impl Editor {
     fn repeat_visual(
         &mut self,
         action: Action,
+        register: Option<char>,
         anchor: (usize, usize),
         head: (usize, usize),
         record: &[InsertEdit],
     ) {
         let (start, end) = self.translated_range(anchor, head);
+        self.pending_register = register;
         match action {
             Action::DeleteSelection | Action::PasteOverSelection => {
+                if action == Action::PasteOverSelection {
+                    self.pending_register = None;
+                }
                 self.record_boundary();
                 self.yank_range(start.0, start.1, end.0, end.1);
                 self.buffer.delete_range(start.0, start.1, end.0, end.1);
@@ -173,6 +189,7 @@ impl Editor {
         };
         self.record_change(RepeatChange::Visual {
             action,
+            register: self.pending_register,
             anchor: selection.anchor(),
             head: selection.head(),
             record: Vec::new(),

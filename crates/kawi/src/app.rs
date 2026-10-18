@@ -24,8 +24,10 @@ pub struct App {
 
 impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
+        let mut editor = Editor::new(buffer);
+        editor.set_clipboard(Box::new(kawi_tui::clipboard::SystemClipboard::new()));
         Self {
-            editor: Editor::new(buffer),
+            editor,
             keymap: ActiveKeymap::for_flavor(flavor),
             theme: Theme::default(),
             quit_armed: false,

@@ -1,3 +1,4 @@
+pub mod clipboard;
 pub mod frame;
 pub mod paint;
 pub mod render;
