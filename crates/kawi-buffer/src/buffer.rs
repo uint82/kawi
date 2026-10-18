@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use ropey::Rope;
 use std::fs;
+use std::io::Write;
 
 use crate::history::History;
 use crate::line_adjust::{self, LineAdjust};
@@ -622,16 +623,38 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> Result<()> {
-        let path = match &self.path {
-            Some(p) => p.clone(),
-            None => return Err(anyhow::anyhow!("E32: No file name")),
+        let Some(path) = self.path.clone() else {
+            anyhow::bail!("E32: No file name");
         };
-        let mut file = fs::File::create(&path).with_context(|| format!("failed to save {path}"))?;
+        self.write_to(&path)?;
+        self.history.mark_clean();
+        Ok(())
+    }
+
+    pub fn write_to(&self, path: &str) -> Result<()> {
+        let mut file = fs::File::create(path).with_context(|| format!("failed to save {path}"))?;
         self.rope
             .write_to(&mut file)
             .with_context(|| format!("failed to save {path}"))?;
-        self.history.mark_clean();
+        if self.needs_final_newline() {
+            file.write_all(b"\n")
+                .with_context(|| format!("failed to save {path}"))?;
+        }
         Ok(())
+    }
+
+    pub fn file_bytes(&self) -> usize {
+        self.rope.len_bytes() + usize::from(self.needs_final_newline())
+    }
+
+    fn needs_final_newline(&self) -> bool {
+        let bytes = self.rope.len_bytes();
+        bytes > 0 && self.rope.chars().last() != Some('\n')
+    }
+
+    pub fn adopt_path(&mut self, path: &str) {
+        self.path = Some(path.to_string());
+        self.history.mark_clean();
     }
 
     pub fn byte_count(&self) -> usize {

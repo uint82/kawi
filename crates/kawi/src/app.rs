@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyEvent, MouseEvent};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
@@ -19,6 +19,7 @@ pub struct App {
     keymap: ActiveKeymap,
     theme: Theme,
     message: Option<String>,
+    pager: Option<Vec<String>>,
 }
 
 impl App {
@@ -30,6 +31,7 @@ impl App {
             keymap: ActiveKeymap::for_flavor(flavor),
             theme: Theme::default(),
             message: None,
+            pager: None,
         }
     }
 
@@ -61,6 +63,11 @@ impl App {
     #[cfg(test)]
     pub fn last_message(&self) -> Option<&str> {
         self.message.as_deref()
+    }
+
+    #[cfg(test)]
+    pub fn pager_lines(&self) -> Option<&[String]> {
+        self.pager.as_deref()
     }
 
     #[cfg(test)]
@@ -120,6 +127,7 @@ impl App {
         Frame {
             lines: window,
             gutter,
+            pager: self.pager.as_deref(),
             cursor_col: self.editor.cursor_wcol(),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
@@ -137,11 +145,19 @@ impl App {
     }
 
     fn show_message(&mut self, text: String) {
-        self.message = Some(text);
+        let lines = pager_lines(&text, self.editor.viewport().width());
+        if lines.len() > 1 {
+            self.message = None;
+            self.pager = Some(lines);
+        } else {
+            self.pager = None;
+            self.message = Some(text);
+        }
     }
 
     fn clear_message(&mut self) {
         self.message = None;
+        self.pager = None;
     }
 
     fn status_snapshot(&self) -> StatusInfo<'_> {
@@ -168,6 +184,9 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        if self.pager.is_some() {
+            return self.handle_noop();
+        }
         if let Some((row, screen_col)) = press_position(&mouse, self.view_geometry()) {
             let col = self.editor.buffer_col_at_screen(row, screen_col);
             return self.jump_to(row, col);
@@ -239,6 +258,18 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.pager.is_some() {
+            return self.handle_pager_key(key);
+        }
+        let action = self.keymap.map(key, self.editor.mode());
+        self.dispatch_action(action)
+    }
+
+    fn handle_pager_key(&mut self, key: KeyEvent) -> Result<bool> {
+        self.pager = None;
+        if is_pager_dismiss(key) {
+            return Ok(false);
+        }
         let action = self.keymap.map(key, self.editor.mode());
         self.dispatch_action(action)
     }
@@ -272,24 +303,29 @@ impl App {
 
     fn save_and_report(&mut self) -> bool {
         match self.editor.save() {
-            Ok(()) => self.report_saved(),
-            Err(error) => self.report_error(error.to_string()),
+            Ok(outcome) => {
+                let report = written_report(self.editor.filename(), outcome);
+                self.show_message(report);
+                true
+            }
+            Err(error) => self.report_error(file_error_message(error)),
+        }
+    }
+
+    fn write_as_and_report(&mut self, name: &str, force: bool) -> bool {
+        match self.editor.write_as(name, force) {
+            Ok(outcome) => {
+                let report = written_report(name, outcome);
+                self.show_message(report);
+                true
+            }
+            Err(error) => self.report_error(file_error_message(error)),
         }
     }
 
     fn report_error(&mut self, text: String) -> bool {
         self.show_message(text);
         false
-    }
-
-    fn report_saved(&mut self) -> bool {
-        let report = save_report(
-            self.editor.filename(),
-            self.editor.line_count(),
-            self.editor.byte_count(),
-        );
-        self.show_message(report);
-        true
     }
 
     fn handle_undo(&mut self) -> Result<bool> {
@@ -380,6 +416,8 @@ impl App {
             Command::WriteAll => self.handle_save_all(),
             Command::WriteQuitAll => self.handle_write_quit_all(),
             Command::Edit { name, force } => self.handle_edit(name, force),
+            Command::WriteAs { name, force } => self.handle_write_as(name, force),
+            Command::DeleteBuffer { spec, force } => self.handle_delete_buffer(spec, force),
             Command::ListBuffers => self.handle_list_buffers(),
             Command::NextBuffer => self.handle_buffer_step(true),
             Command::PreviousBuffer => self.handle_buffer_step(false),
@@ -550,15 +588,33 @@ impl App {
     }
 
     fn handle_select_buffer(&mut self, arg: &str) -> Result<bool> {
-        match arg.parse::<usize>() {
+        let outcome = match arg.parse::<usize>() {
             Ok(number) => {
-                if !self.editor.buffer_select(number) {
-                    self.show_message(format!("E86: Buffer {number} does not exist"));
+                if self.editor.buffer_select(number) {
+                    Ok(())
+                } else {
+                    Err(kawi_editor::BufferError::Missing(number))
                 }
             }
-            Err(_) => self.show_message(format!("E94: No matching buffer for {arg}")),
+            Err(_) => self.editor.buffer_select_pattern(arg),
+        };
+        if let Err(error) = outcome {
+            self.show_message(buffer_error_message(error));
         }
         self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_write_as(&mut self, name: String, force: bool) -> Result<bool> {
+        self.write_as_and_report(&name, force);
+        Ok(false)
+    }
+
+    fn handle_delete_buffer(&mut self, spec: Option<String>, force: bool) -> Result<bool> {
+        match self.editor.buffer_delete(spec.as_deref(), force) {
+            Ok(()) => self.reveal_cursor(),
+            Err(error) => self.show_message(buffer_error_message(error)),
+        }
         Ok(false)
     }
 
@@ -615,8 +671,12 @@ fn missing_message(editor: &Editor) -> String {
     format!("E486: Pattern not found: {}", editor.search_pattern())
 }
 
-fn save_report(filename: &str, line_count: usize, byte_count: usize) -> String {
-    format!("\"{filename}\" {line_count}L, {byte_count}B written")
+fn written_report(name: &str, outcome: kawi_editor::WriteOutcome) -> String {
+    let new = if outcome.created { " [New]" } else { "" };
+    format!(
+        "\"{name}\"{new} {}L, {}B written",
+        outcome.lines, outcome.bytes
+    )
 }
 
 fn is_operator(action: Action) -> bool {
@@ -636,12 +696,59 @@ fn is_operator(action: Action) -> bool {
     )
 }
 
+fn buffer_error_message(error: kawi_editor::BufferError) -> String {
+    match error {
+        kawi_editor::BufferError::Missing(number) => {
+            format!("E86: Buffer {number} does not exist")
+        }
+        kawi_editor::BufferError::NotFound(spec) => {
+            format!("E94: No matching buffer for {spec}")
+        }
+        kawi_editor::BufferError::Ambiguous(spec) => {
+            format!("E93: More than one match for {spec}")
+        }
+        kawi_editor::BufferError::NoWrite(number) => {
+            format!("E89: No write since last change for buffer {number} (add ! to override)")
+        }
+    }
+}
+
+fn pager_lines(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut lines = Vec::new();
+    for line in text.split('\n') {
+        if line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        let mut len = 0;
+        for ch in line.chars() {
+            if len == width {
+                lines.push(std::mem::take(&mut current));
+                len = 0;
+            }
+            current.push(ch);
+            len += 1;
+        }
+        lines.push(current);
+    }
+    lines
+}
+
+fn is_pager_dismiss(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Enter | KeyCode::Esc)
+        || matches!(key.code, KeyCode::Char(' ') | KeyCode::Char('q'))
+        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
 fn file_error_message(error: kawi_editor::EditError) -> String {
     match error {
         kawi_editor::EditError::NoName => "E32: No file name".to_string(),
         kawi_editor::EditError::NoWrite => {
             "E37: No write since last change (add ! to override)".to_string()
         }
+        kawi_editor::EditError::FileExists => "E13: File exists (add ! to override)".to_string(),
         kawi_editor::EditError::CannotOpen(name) => {
             format!("E484: Can't open file {name}")
         }
@@ -1272,11 +1379,15 @@ mod tests {
     #[test]
     fn save_reports_lines_and_bytes() {
         let path = std::env::temp_dir().join("kawi_msg_test.txt");
+        let _ = std::fs::remove_file(&path);
         let mut buffer = Buffer::from_string("aa\nbb");
         buffer.path = Some(path.to_string_lossy().to_string());
         let mut app = App::new(buffer, Flavor::Vim);
         app.handle_save().expect("save");
-        let expected = format!("\"{}\" 2L, 5B written", path.to_string_lossy());
+        let expected = format!("\"{}\" [New] 2L, 6B written", path.to_string_lossy());
+        assert_eq!(app.last_message(), Some(expected.as_str()));
+        app.handle_save().expect("save again");
+        let expected = format!("\"{}\" 2L, 6B written", path.to_string_lossy());
         assert_eq!(app.last_message(), Some(expected.as_str()));
         let _ = std::fs::remove_file(&path);
     }
@@ -1311,10 +1422,24 @@ mod tests {
     }
 
     #[test]
-    fn save_report_formats_like_editor() {
+    fn written_report_formats_like_editor() {
+        let outcome = kawi_editor::WriteOutcome {
+            lines: 3,
+            bytes: 12,
+            created: false,
+        };
         assert_eq!(
-            save_report("notes.txt", 3, 12),
+            written_report("notes.txt", outcome),
             "\"notes.txt\" 3L, 12B written"
+        );
+        let created = kawi_editor::WriteOutcome {
+            lines: 0,
+            bytes: 0,
+            created: true,
+        };
+        assert_eq!(
+            written_report("fresh.txt", created),
+            "\"fresh.txt\" [New] 0L, 0B written"
         );
     }
 
@@ -1353,9 +1478,107 @@ mod tests {
     }
 
     fn temp_file(name: &str, text: &str) -> String {
-        let path = std::env::temp_dir().join(format!("kawi_app_{name}"));
+        let path = temp_path(name);
         std::fs::write(&path, text).unwrap();
-        path.to_string_lossy().into_owned()
+        path
+    }
+
+    fn temp_path(name: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("kawi_app_{name}"))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn write_as_command_names_unnamed_buffer() {
+        let target = temp_path("write_as_named.txt");
+        let _ = std::fs::remove_file(&target);
+        let mut app = App::new(kawi_buffer::Buffer::from_string("abc"), Flavor::Vim);
+        type_command(&mut app, &format!("w {target}"));
+        assert_eq!(app.editor.filename(), target);
+        assert_eq!(
+            app.last_message(),
+            Some(format!("\"{target}\" [New] 1L, 4B written").as_str())
+        );
+        assert!(!app.editor.is_dirty());
+        let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
+    fn write_as_existing_target_reports_e13() {
+        let alpha = temp_file("write_as_alpha.txt", "alpha\n");
+        let exists = temp_file("write_as_exists.txt", "old\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, &format!("w {exists}"));
+        assert_eq!(
+            app.last_message(),
+            Some("E13: File exists (add ! to override)")
+        );
+        type_command(&mut app, &format!("w! {exists}"));
+        assert_eq!(std::fs::read_to_string(&exists).unwrap(), "alpha\n");
+    }
+
+    #[test]
+    fn delete_buffer_command_works() {
+        let alpha = temp_file("delete_alpha.txt", "alpha\n");
+        let bravo = temp_file("delete_bravo.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, &format!("e {bravo}"));
+        type_command(&mut app, &format!("bd {alpha}"));
+        assert_eq!(app.editor.listed_buffer_count(), 1);
+        type_command(&mut app, "bd");
+        assert_eq!(app.editor.listed_buffer_count(), 1);
+        assert_eq!(app.editor.filename(), "[No Name]");
+    }
+
+    #[test]
+    fn delete_modified_buffer_reports_e89() {
+        let alpha = temp_file("delete_mod.txt", "alpha\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, "bd");
+        assert_eq!(
+            app.last_message(),
+            Some("E89: No write since last change for buffer 1 (add ! to override)")
+        );
+    }
+
+    #[test]
+    fn select_buffer_by_partial_name() {
+        let alpha = temp_file("select_name_alpha.txt", "alpha\n");
+        let bravo = temp_file("select_name_bravo.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, &format!("e {bravo}"));
+        type_command(&mut app, "b name_alpha");
+        assert_eq!(app.editor.filename(), alpha);
+        type_command(&mut app, "b zzz");
+        assert_eq!(app.last_message(), Some("E94: No matching buffer for zzz"));
+    }
+
+    #[test]
+    fn list_buffers_pages_when_rows_overflow() {
+        let alpha = temp_file("pager_alpha_file.txt", "one\ntwo\n");
+        let bravo = temp_file("pager_bravo_file.txt", "three\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_resize(40, 10).expect("resize");
+        type_command(&mut app, &format!("e {bravo}"));
+        type_command(&mut app, "ls");
+        assert!(app.pager_lines().is_some());
+        app.handle_key(key(KeyCode::Enter)).expect("dismiss");
+        assert!(app.pager_lines().is_none());
+    }
+
+    #[test]
+    fn pager_replays_non_dismiss_keys() {
+        let alpha = temp_file("pager_replay.txt", "one\ntwo\nthree\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_resize(40, 10).expect("resize");
+        type_command(&mut app, "ls");
+        assert!(app.pager_lines().is_some());
+        app.handle_key(key(KeyCode::Char('j'))).expect("replay");
+        assert!(app.pager_lines().is_none());
+        assert_eq!(app.cursor_position(), (1, 0));
     }
 
     #[test]

@@ -20,14 +20,50 @@ fn current_dir() -> PathBuf {
 pub enum EditError {
     NoName,
     NoWrite,
+    FileExists,
     CannotOpen(String),
     Io(String),
     InvalidMark,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferError {
+    Missing(usize),
+    NotFound(String),
+    Ambiguous(String),
+    NoWrite(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WriteOutcome {
+    pub lines: usize,
+    pub bytes: usize,
+    pub created: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MatchStage {
+    Exact,
+    Suffix,
+    Prefix,
+    Contains,
+}
+
+impl MatchStage {
+    fn matches(self, name: &str, pattern: &str) -> bool {
+        match self {
+            Self::Exact => name == pattern,
+            Self::Suffix => name.ends_with(pattern),
+            Self::Prefix => name.starts_with(pattern),
+            Self::Contains => name.contains(pattern),
+        }
+    }
+}
+
 pub struct Buffers {
     parked: Vec<BufferEntry>,
     current: usize,
+    current_listed: bool,
     alternate: Option<usize>,
     next_number: usize,
 }
@@ -39,6 +75,7 @@ struct BufferEntry {
 
 struct ParkedState {
     buffer: Buffer,
+    listed: bool,
     cursor: Cursor,
     file_indent: IndentConfig,
     viewport_top: usize,
@@ -57,6 +94,7 @@ impl Buffers {
         Self {
             parked: Vec::new(),
             current: 1,
+            current_listed: true,
             alternate: None,
             next_number: 2,
         }
@@ -100,6 +138,16 @@ impl Buffers {
         self.parked.push(BufferEntry { number, state });
     }
 
+    fn set_listed(&mut self, number: usize, listed: bool) {
+        if number == self.current {
+            self.current_listed = listed;
+            return;
+        }
+        if let Some(entry) = self.parked.iter_mut().find(|entry| entry.number == number) {
+            entry.state.listed = listed;
+        }
+    }
+
     fn entry(&self, number: usize) -> Option<&BufferEntry> {
         self.parked.iter().find(|entry| entry.number == number)
     }
@@ -109,15 +157,76 @@ impl Buffers {
             .map(|entry| entry.state.buffer.line_count())
     }
 
-    fn numbers(&mut self) -> Vec<usize> {
+    fn numbers(&self) -> Vec<usize> {
         let mut numbers: Vec<usize> = self.parked.iter().map(|entry| entry.number).collect();
         numbers.push(self.current);
+        numbers.sort_unstable();
+        numbers
+    }
+
+    fn listed_numbers(&self) -> Vec<usize> {
+        let mut numbers: Vec<usize> = self
+            .parked
+            .iter()
+            .filter(|entry| entry.state.listed)
+            .map(|entry| entry.number)
+            .collect();
+        if self.current_listed {
+            numbers.push(self.current);
+        }
         numbers.sort_unstable();
         numbers
     }
 }
 
 impl Editor {
+    pub fn save(&mut self) -> Result<WriteOutcome, EditError> {
+        if !self.has_file() {
+            return Err(EditError::NoName);
+        }
+        let path = self.buffer.path.clone().expect("file buffers carry a path");
+        self.write_current(&path)
+    }
+
+    pub fn write_as(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
+        let target = paths::absolute(name, &current_dir());
+        let current = self
+            .buffer
+            .path
+            .as_deref()
+            .map(|path| paths::absolute(path, &current_dir()));
+        if current.as_deref() == Some(target.as_path()) {
+            return self.write_current(name);
+        }
+        if target.exists() && !force {
+            return Err(EditError::FileExists);
+        }
+        let created = !target.exists();
+        self.buffer
+            .write_to(name)
+            .map_err(|error| EditError::Io(error.to_string()))?;
+        if current.is_none() {
+            self.buffer.adopt_path(name);
+        }
+        Ok(self.write_outcome(created))
+    }
+
+    fn write_current(&mut self, name: &str) -> Result<WriteOutcome, EditError> {
+        let created = !current_dir().join(name).exists();
+        self.buffer
+            .save()
+            .map_err(|error| EditError::Io(error.to_string()))?;
+        Ok(self.write_outcome(created))
+    }
+
+    fn write_outcome(&self, created: bool) -> WriteOutcome {
+        WriteOutcome {
+            lines: self.buffer.line_count(),
+            bytes: self.buffer.file_bytes(),
+            created,
+        }
+    }
+
     pub fn has_file(&self) -> bool {
         self.buffer.path.is_some()
     }
@@ -137,8 +246,12 @@ impl Editor {
             Some(name) => {
                 let target = paths::absolute(name, &current_dir());
                 match self.find_buffer(&target) {
-                    Some(number) if number == self.buffers.current() => self.reload_current(force),
+                    Some(number) if number == self.buffers.current() => {
+                        self.buffers.set_listed(number, true);
+                        self.reload_current(force)
+                    }
                     Some(number) => {
+                        self.buffers.set_listed(number, true);
                         self.switch_buffer(number);
                         Ok(())
                     }
@@ -170,12 +283,134 @@ impl Editor {
         true
     }
 
+    pub fn buffer_select_pattern(&mut self, pattern: &str) -> Result<(), BufferError> {
+        if pattern == "%" {
+            return Ok(());
+        }
+        let number = self.match_buffer(pattern)?;
+        self.switch_buffer(number);
+        Ok(())
+    }
+
+    pub fn buffer_delete(&mut self, spec: Option<&str>, force: bool) -> Result<(), BufferError> {
+        let target = match spec {
+            None => self.buffers.current(),
+            Some(spec) => self.match_buffer(spec)?,
+        };
+        let modified = if target == self.buffers.current() {
+            self.is_dirty()
+        } else {
+            self.buffers
+                .entry(target)
+                .is_some_and(|entry| entry.state.buffer.is_dirty())
+        };
+        if modified && !force {
+            return Err(BufferError::NoWrite(target));
+        }
+        let previous = self.buffers.current();
+        self.buffers.set_listed(target, false);
+        if target == previous {
+            match self.delete_replacement(target) {
+                Some(next) => self.switch_buffer(next),
+                None => {
+                    self.open_empty_buffer();
+                    self.buffers.set_alternate(Some(previous));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn delete_replacement(&self, target: usize) -> Option<usize> {
+        let alternate = self.buffers.alternate();
+        if let Some(number) = alternate {
+            if number != target && self.buffers.listed_numbers().contains(&number) {
+                return Some(number);
+            }
+        }
+        self.buffers
+            .listed_numbers()
+            .into_iter()
+            .find(|number| *number != target)
+    }
+
+    fn match_buffer(&self, pattern: &str) -> Result<usize, BufferError> {
+        let listed = self.buffers.listed_numbers();
+        for pass in [&listed, &self.buffers.numbers()] {
+            match self.match_within(pass, pattern) {
+                Err(BufferError::NotFound(_)) => {}
+                outcome => return outcome,
+            }
+        }
+        Err(BufferError::NotFound(pattern.to_string()))
+    }
+
+    fn match_within(&self, numbers: &[usize], pattern: &str) -> Result<usize, BufferError> {
+        let mut ambiguous = false;
+        for stage in [
+            MatchStage::Contains,
+            MatchStage::Prefix,
+            MatchStage::Suffix,
+            MatchStage::Exact,
+        ] {
+            let found: Vec<usize> = numbers
+                .iter()
+                .copied()
+                .filter(|number| self.buffer_matches(*number, stage, pattern))
+                .collect();
+            match found.len() {
+                1 => return Ok(found[0]),
+                0 => {}
+                _ => ambiguous = true,
+            }
+        }
+        if ambiguous {
+            Err(BufferError::Ambiguous(pattern.to_string()))
+        } else {
+            Err(BufferError::NotFound(pattern.to_string()))
+        }
+    }
+
+    fn buffer_matches(&self, number: usize, stage: MatchStage, pattern: &str) -> bool {
+        self.buffer_names(number)
+            .iter()
+            .any(|name| stage.matches(name, pattern))
+    }
+
+    fn buffer_names(&self, number: usize) -> Vec<String> {
+        let path = if number == self.buffers.current() {
+            self.buffer.path.clone()
+        } else {
+            self.buffers
+                .entry(number)
+                .and_then(|entry| entry.state.buffer.path.clone())
+        };
+        let Some(path) = path else {
+            return Vec::new();
+        };
+        let absolute = paths::absolute(&path, &current_dir())
+            .to_string_lossy()
+            .into_owned();
+        let mut names = vec![path.clone(), absolute.clone()];
+        for name in [&path, &absolute] {
+            let home = home_path(name);
+            if home != *name {
+                names.push(home);
+            }
+        }
+        names
+    }
+
     pub fn buffer_number(&self) -> usize {
         self.buffers.current()
     }
 
     pub fn buffer_count(&self) -> usize {
         self.buffers.parked.len().saturating_add(1)
+    }
+
+    pub fn listed_buffer_count(&self) -> usize {
+        self.buffers.listed_numbers().len()
     }
 
     pub fn alternate_buffer(&self) -> Option<usize> {
@@ -196,6 +431,7 @@ impl Editor {
             .buffers
             .parked
             .iter()
+            .filter(|entry| entry.state.listed)
             .map(|entry| {
                 let line = entry.state.cursor.row().saturating_add(1);
                 (
@@ -208,7 +444,9 @@ impl Editor {
                     ),
                 )
             })
-            .chain(std::iter::once((
+            .collect();
+        if self.buffers.current_listed {
+            rows.push((
                 self.buffers.current(),
                 self.buffer_row(
                     self.buffers.current(),
@@ -216,13 +454,13 @@ impl Editor {
                     self.is_dirty(),
                     self.cursor.row().saturating_add(1),
                 ),
-            )))
-            .collect();
+            ));
+        }
         rows.sort_by_key(|(number, _)| *number);
         rows.into_iter()
             .map(|(_, row)| row)
             .collect::<Vec<_>>()
-            .join(" | ")
+            .join("\n")
     }
 
     pub fn write_all(&mut self) -> Result<(), EditError> {
@@ -230,8 +468,7 @@ impl Editor {
             if !self.has_file() {
                 return Err(EditError::NoName);
             }
-            self.save()
-                .map_err(|error| EditError::Io(error.to_string()))?;
+            self.save()?;
         }
         for entry in self.buffers.parked.iter_mut() {
             if !entry.state.buffer.is_dirty() {
@@ -263,8 +500,13 @@ impl Editor {
             'h'
         };
         let changed = if dirty { '+' } else { ' ' };
-        let name = path.unwrap_or("[No Name]");
-        format!("{number:>3} {marker}{visible} {changed} \"{name}\" line {line}")
+        let name = match path {
+            Some(path) => home_path(path),
+            None => "[No Name]".to_string(),
+        };
+        let row = format!("{number:>3} {marker}{visible} {changed} \"{name}\"");
+        let padding = 40usize.saturating_sub(row.chars().count()).max(1);
+        format!("{row}{}line {line}", " ".repeat(padding))
     }
 
     fn find_buffer(&self, target: &Path) -> Option<usize> {
@@ -301,6 +543,13 @@ impl Editor {
         Ok(())
     }
 
+    fn open_empty_buffer(&mut self) {
+        self.store_current();
+        let number = self.buffers.allocate_number();
+        self.load_fresh(Buffer::from_string(""));
+        self.buffers.set_current(number);
+    }
+
     fn open_buffer(&mut self, name: &str) -> Result<(), EditError> {
         if self.buffer_reusable() {
             return self.reuse_buffer(name);
@@ -331,7 +580,7 @@ impl Editor {
     }
 
     fn step_buffer(&mut self, direction: isize) {
-        let numbers = self.buffers.numbers();
+        let numbers = self.buffers.listed_numbers();
         if numbers.len() < 2 {
             return;
         }
@@ -374,6 +623,7 @@ impl Editor {
     fn take_state(&mut self) -> ParkedState {
         ParkedState {
             buffer: std::mem::replace(&mut self.buffer, Buffer::from_string("")),
+            listed: self.buffers.current_listed,
             cursor: std::mem::take(&mut self.cursor),
             file_indent: std::mem::replace(&mut self.file_indent, indent::detect(None)),
             viewport_top: self.viewport.top(),
@@ -390,6 +640,7 @@ impl Editor {
 
     fn restore_state(&mut self, state: ParkedState) {
         self.buffer = state.buffer;
+        self.buffers.current_listed = state.listed;
         self.cursor = state.cursor;
         self.file_indent = state.file_indent;
         self.viewport
@@ -418,6 +669,7 @@ impl Editor {
         self.insert_moved = false;
         self.insert_last_char = None;
         self.search_status = None;
+        self.buffers.current_listed = true;
         self.reset_transient();
         self.remember_wanted_column();
     }
@@ -433,6 +685,21 @@ impl Editor {
         self.clear_count();
         self.search_origin = None;
         self.command.clear();
+    }
+}
+
+fn home_path(path: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    home_shortened(&home, path)
+}
+
+fn home_shortened(home: &str, path: &str) -> String {
+    if home.is_empty() {
+        return path.to_string();
+    }
+    match path.strip_prefix(home) {
+        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
+        _ => path.to_string(),
     }
 }
 
@@ -700,7 +967,7 @@ mod tests {
         assert_eq!(
             e.buffer_list(),
             format!(
-                "  1 #h + \"{}\" line 1 |   2 %a   \"{}\" line 1",
+                "  1 #h + \"{}\" line 1\n  2 %a   \"{}\" line 1",
                 file_path(&dir, "a.txt"),
                 file_path(&dir, "b.txt")
             )
@@ -727,6 +994,146 @@ mod tests {
         let mut e = Editor::new(Buffer::from_string(""));
         type_text(&mut e, "x");
         assert_eq!(e.write_all(), Err(EditError::NoName));
+    }
+
+    #[test]
+    fn write_as_names_an_unnamed_buffer() {
+        let dir = temp_dir("write_name");
+        let mut e = Editor::new(Buffer::from_string("alpha"));
+        let target = file_path(&dir, "named.txt");
+        let outcome = e.write_as(&target, false).unwrap();
+        assert_eq!(
+            outcome,
+            WriteOutcome {
+                lines: 1,
+                bytes: 6,
+                created: true
+            }
+        );
+        assert_eq!(e.filename(), target);
+        assert!(!e.is_dirty());
+        assert_eq!(read_file(&dir, "named.txt"), "alpha\n");
+    }
+
+    #[test]
+    fn write_as_copies_without_renaming() {
+        let dir = temp_dir("write_copy");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        let target = file_path(&dir, "copy.txt");
+        let outcome = e.write_as(&target, false).unwrap();
+        assert!(outcome.created);
+        assert_eq!(read_file(&dir, "copy.txt"), "xalpha\n");
+        assert_eq!(e.filename(), file_path(&dir, "a.txt"));
+        assert!(e.is_dirty());
+    }
+
+    #[test]
+    fn write_as_refuses_existing_target_without_force() {
+        let dir = temp_dir("write_exists");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "exists.txt", "old\n");
+        let mut e = editor_in(&dir, "a.txt");
+        let target = file_path(&dir, "exists.txt");
+        assert_eq!(e.write_as(&target, false), Err(EditError::FileExists));
+        e.write_as(&target, true).unwrap();
+        assert_eq!(read_file(&dir, "exists.txt"), "alpha\n");
+    }
+
+    #[test]
+    fn write_as_own_file_saves_and_cleans() {
+        let dir = temp_dir("write_own");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        let outcome = e.write_as(&file_path(&dir, "a.txt"), false).unwrap();
+        assert!(!outcome.created);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn delete_buffer_unlists_parked_buffer() {
+        let dir = temp_dir("delete_parked");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        write_file(&dir, "c.txt", "charlie\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        open(&mut e, &dir, "c.txt");
+        e.buffer_delete(Some(&file_path(&dir, "a.txt")), false)
+            .unwrap();
+        assert_eq!(e.listed_buffer_count(), 2);
+        assert_eq!(e.buffer_count(), 3);
+        assert_eq!(e.filename(), file_path(&dir, "c.txt"));
+    }
+
+    #[test]
+    fn delete_current_switches_to_alternate() {
+        let dir = temp_dir("delete_current");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        e.buffer_delete(None, false).unwrap();
+        assert_eq!(e.listed_buffer_count(), 1);
+        assert_eq!(e.filename(), file_path(&dir, "a.txt"));
+    }
+
+    #[test]
+    fn delete_modified_buffer_requires_force() {
+        let dir = temp_dir("delete_modified");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        assert_eq!(e.buffer_delete(None, false), Err(BufferError::NoWrite(1)));
+        assert_eq!(e.listed_buffer_count(), 1);
+        e.buffer_delete(None, true).unwrap();
+        assert_eq!(e.listed_buffer_count(), 1);
+        assert_eq!(e.filename(), "[No Name]");
+    }
+
+    #[test]
+    fn delete_last_buffer_opens_empty_buffer() {
+        let dir = temp_dir("delete_last");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        e.buffer_delete(None, false).unwrap();
+        assert_eq!(e.listed_buffer_count(), 1);
+        assert_eq!(e.buffer_number(), 2);
+        assert_eq!(e.filename(), "[No Name]");
+        assert!(e.is_empty());
+    }
+
+    #[test]
+    fn match_buffer_prefers_tighter_matches() {
+        let mut e = Editor::new(Buffer::from_string(""));
+        for name in ["ab.txt", "b.txt", "abc.txt", "xb.txt"] {
+            e.edit_file(Some(name), false).unwrap();
+        }
+        assert_eq!(e.match_buffer("b.txt").unwrap(), 2, "exact name");
+        assert_eq!(e.match_buffer("b").unwrap(), 2, "prefix beats contains");
+        assert_eq!(e.match_buffer("xb").unwrap(), 4, "contains");
+        assert_eq!(
+            e.match_buffer("ab").unwrap_err(),
+            BufferError::Ambiguous("ab".to_string())
+        );
+        assert_eq!(
+            e.match_buffer("zzz").unwrap_err(),
+            BufferError::NotFound("zzz".to_string())
+        );
+    }
+
+    #[test]
+    fn home_shortening_only_matches_directory_prefixes() {
+        assert_eq!(home_shortened("/home/user", "/home/user/x"), "~/x");
+        assert_eq!(home_shortened("/home/user", "/home/user"), "/home/user");
+        assert_eq!(
+            home_shortened("/home/user", "/home/userx/x"),
+            "/home/userx/x"
+        );
+        assert_eq!(home_shortened("", "/home/user/x"), "/home/user/x");
+        assert_eq!(home_shortened("/home/user", "x.txt"), "x.txt");
     }
 
     #[test]

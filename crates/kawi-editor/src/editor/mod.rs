@@ -1,4 +1,3 @@
-use anyhow::Result;
 use kawi_buffer::Buffer;
 
 use crate::actions::{Action, CaseMotion, ShiftMotion};
@@ -35,7 +34,7 @@ mod tab;
 
 use session::InsertEdit;
 
-pub use buffers::EditError;
+pub use buffers::{BufferError, EditError, WriteOutcome};
 
 pub struct Editor {
     buffer: Buffer,
@@ -666,10 +665,6 @@ impl Editor {
 
     pub fn row(&self) -> usize {
         self.cursor.row()
-    }
-
-    pub fn save(&mut self) -> Result<()> {
-        self.buffer.save()
     }
 
     pub fn search_pattern(&self) -> &str {

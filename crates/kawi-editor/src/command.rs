@@ -9,6 +9,8 @@ pub enum Command {
     WriteAll,
     WriteQuitAll,
     Edit { name: Option<String>, force: bool },
+    WriteAs { name: String, force: bool },
+    DeleteBuffer { spec: Option<String>, force: bool },
     ListBuffers,
     NextBuffer,
     PreviousBuffer,
@@ -31,7 +33,6 @@ pub fn parse(text: &str) -> Command {
         return Command::Unknown;
     };
     match (*command, rest) {
-        ("w", []) => Command::Write,
         ("q", []) => Command::Quit,
         ("wq", []) => Command::WriteQuit,
         ("q!", []) => Command::ForceQuit,
@@ -43,8 +44,15 @@ pub fn parse(text: &str) -> Command {
         ("bn" | "bnext", []) => Command::NextBuffer,
         ("bp" | "bprevious", []) => Command::PreviousBuffer,
         ("b#", []) => Command::AlternateBuffer,
-        ("e" | "edit" | "e!" | "edit!", []) => edit_command(command, None),
-        ("e" | "edit" | "e!" | "edit!", [name]) => edit_command(command, Some(name)),
+        ("e" | "edit" | "e!" | "edit!", rest) if rest.len() <= 1 => {
+            edit_command(command, rest.first().copied())
+        }
+        ("w" | "write" | "w!" | "write!", rest) if rest.len() <= 1 => {
+            write_command(command, rest.first().copied())
+        }
+        ("bd" | "bdelete" | "bd!" | "bdelete!", rest) if rest.len() <= 1 => {
+            delete_command(command, rest.first().copied())
+        }
         ("b" | "buffer", ["#"]) => Command::AlternateBuffer,
         ("b" | "buffer", [arg]) => Command::SelectBuffer(arg.to_string()),
         ("set", rest) => parse_set_command(rest),
@@ -52,11 +60,40 @@ pub fn parse(text: &str) -> Command {
     }
 }
 
-fn edit_command(command: &str, name: Option<&str>) -> Command {
-    let (force, command) = match command.strip_suffix('!') {
+fn write_command(command: &str, name: Option<&str>) -> Command {
+    let (force, command) = split_bang(command);
+    if !matches!(command, "w" | "write") {
+        return Command::Unknown;
+    }
+    match name {
+        Some(name) => Command::WriteAs {
+            name: name.to_string(),
+            force,
+        },
+        None => Command::Write,
+    }
+}
+
+fn delete_command(command: &str, spec: Option<&str>) -> Command {
+    let (force, command) = split_bang(command);
+    if !matches!(command, "bd" | "bdelete") {
+        return Command::Unknown;
+    }
+    Command::DeleteBuffer {
+        spec: spec.map(str::to_string),
+        force,
+    }
+}
+
+fn split_bang(command: &str) -> (bool, &str) {
+    match command.strip_suffix('!') {
         Some(command) => (true, command),
         None => (false, command),
-    };
+    }
+}
+
+fn edit_command(command: &str, name: Option<&str>) -> Command {
+    let (force, command) = split_bang(command);
     if !matches!(command, "e" | "edit") {
         return Command::Unknown;
     }
@@ -253,6 +290,52 @@ mod tests {
                 force: false
             }
         );
+    }
+
+    #[test]
+    fn parses_write_as_commands() {
+        assert_eq!(
+            parse("w copy.txt"),
+            Command::WriteAs {
+                name: "copy.txt".to_string(),
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("write! copy.txt"),
+            Command::WriteAs {
+                name: "copy.txt".to_string(),
+                force: true
+            }
+        );
+        assert_eq!(parse("write"), Command::Write);
+        assert_eq!(parse("w!"), Command::Write);
+    }
+
+    #[test]
+    fn parses_delete_buffer_commands() {
+        assert_eq!(
+            parse("bd"),
+            Command::DeleteBuffer {
+                spec: None,
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("bdelete! 2"),
+            Command::DeleteBuffer {
+                spec: Some("2".to_string()),
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("bdelete a.txt"),
+            Command::DeleteBuffer {
+                spec: Some("a.txt".to_string()),
+                force: false
+            }
+        );
+        assert_eq!(parse("bd a b"), Command::Unknown);
     }
 
     #[test]
