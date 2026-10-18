@@ -17,6 +17,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     clear_all(out)?;
     draw_visible_lines(out, frame)?;
+    draw_filler_rows(out, frame)?;
     draw_highlight(out, frame, frame.theme)?;
     draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
     draw_message_row(out, frame)?;
@@ -55,6 +56,20 @@ fn draw_one_line(
     }
     let width = frame.viewport.width().saturating_sub(gutter_width);
     write!(out, "{}", truncate_to_width(text, width)).context("write line")?;
+    Ok(())
+}
+
+fn draw_filler_rows(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    for screen_row in frame.lines.len()..frame.viewport.height() {
+        execute!(
+            out,
+            MoveTo(0, saturate_u16(screen_row)),
+            SetForegroundColor(frame.theme.non_text)
+        )
+        .context("move to filler row")?;
+        write!(out, "~").context("write filler")?;
+        paint::restore_base(out, frame.theme)?;
+    }
     Ok(())
 }
 
