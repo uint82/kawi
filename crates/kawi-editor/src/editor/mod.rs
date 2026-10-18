@@ -371,6 +371,7 @@ impl Editor {
             self.set_pcmark_at(jump_before);
         }
         self.apply_line_adjustments();
+        self.refresh_wanted_column(action);
         if was_normal
             && !matches!(
                 action,
@@ -430,6 +431,12 @@ impl Editor {
                 .saturating_sub(1);
         }
         self.buffer.screen_col(row, col, tabstop)
+    }
+
+    fn refresh_wanted_column(&mut self, action: Action) {
+        if action.resets_wanted_column() {
+            self.cursor.set_desired(self.cursor_screen_col());
+        }
     }
 
     fn cursor_shows_tab_end(&self, row: usize, col: usize) -> bool {

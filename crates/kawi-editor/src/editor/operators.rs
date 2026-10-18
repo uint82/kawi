@@ -308,7 +308,6 @@ impl Editor {
     pub(super) fn delete_line(&mut self) {
         let count = self.take_count();
         let row = self.cursor.row();
-        let col = self.cursor.col();
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
@@ -316,15 +315,14 @@ impl Editor {
         self.write_delete(RegisterKind::LineWise, text, last - row + 1, true);
         self.drop_lines(row, last);
         let row = row.min(self.buffer.line_count().saturating_sub(1));
-        let max = self.buffer.line_len(row).saturating_sub(1);
-        self.cursor.set_position(row, col.min(max));
+        self.cursor.set_row(row);
+        self.apply_desired_column();
     }
 
     fn delete_word_object(&mut self, span: Option<objects::word::WordSpan>) {
         let Some(span) = span else {
             return;
         };
-        let old_col = self.cursor.col();
         match span {
             objects::word::WordSpan::Charwise { start, end } => {
                 if end.0 > start.0
@@ -336,8 +334,8 @@ impl Editor {
                     self.write_delete(RegisterKind::LineWise, text, end.0 - start.0 + 1, true);
                     self.drop_lines(start.0, end.0);
                     let row = start.0.min(self.buffer.line_count().saturating_sub(1));
-                    let max = self.buffer.line_len(row).saturating_sub(1);
-                    self.cursor.set_position(row, old_col.min(max));
+                    self.cursor.set_row(row);
+                    self.apply_desired_column();
                 } else {
                     self.delete_charwise_span(start, end);
                 }
@@ -391,7 +389,7 @@ impl Editor {
             return;
         };
         if tail.2 > tail.0 && tail.1 <= self.first_non_blank_of(tail.0) {
-            self.delete_line_range(tail.0, tail.2, tail.1);
+            self.delete_line_range(tail.0, tail.2);
             return;
         }
         self.record_boundary();
@@ -949,7 +947,7 @@ impl Editor {
         }
         let row = self.cursor.row();
         self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
-        self.cursor.set_desired(0);
+        self.cursor.set_position(row, 0);
     }
 }
 
@@ -1786,6 +1784,25 @@ mod tests {
         e.apply(Action::DeleteInnerWord);
         assert_eq!(e.text_lines()[0], " bar");
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_line_lands_on_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::DeleteLine);
+        assert_eq!((e.row(), e.col()), (0, 7));
+    }
+
+    #[test]
+    fn yank_line_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\nshort\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 4));
+        e.apply(Action::YankLines);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 4));
     }
 
     #[test]

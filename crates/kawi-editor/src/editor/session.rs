@@ -245,11 +245,7 @@ impl Editor {
 
     pub(super) fn normalize_cursor(&mut self) {
         self.clamp_row();
-        let before = self.cursor.col();
         self.clamp_col();
-        if self.cursor.col() != before {
-            self.cursor.set_desired(self.cursor.col());
-        }
     }
 
     pub(super) fn push_command_char(&mut self, c: char) {
@@ -522,6 +518,38 @@ mod tests {
         for digit in digits {
             e.apply(Action::PushCount(*digit));
         }
+    }
+
+    #[test]
+    fn insert_on_tab_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::InsertAtColumnStart);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 0));
+    }
+
+    #[test]
+    fn insert_typing_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('X'));
+        assert_eq!((e.row(), e.col()), (0, 1));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 1));
+    }
+
+    #[test]
+    fn undo_preserves_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::DeleteForward);
+        e.apply(Action::MoveDown);
+        e.apply(Action::Undo);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 0));
     }
 
     #[test]

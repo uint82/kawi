@@ -258,6 +258,54 @@ pub enum Action {
     Noop,
 }
 
+impl Action {
+    pub fn resets_wanted_column(self) -> bool {
+        !matches!(
+            self,
+            Self::MoveUp
+                | Self::MoveDown
+                | Self::ScrollHalfUp
+                | Self::ScrollHalfDown
+                | Self::ScrollPageUp
+                | Self::ScrollPageDown
+                | Self::MoveToViewportTop
+                | Self::MoveToViewportMiddle
+                | Self::MoveToViewportBottom
+                | Self::PlaceCenter
+                | Self::PlaceTop
+                | Self::PlaceBottom
+                | Self::GotoLastLine
+                | Self::GotoFirstLine
+                | Self::MoveToLineEnd
+                | Self::Undo
+                | Self::Redo
+                | Self::EnterVisual
+                | Self::EnterVisualLine
+                | Self::ExitVisual
+                | Self::CancelVisual
+                | Self::ReselectVisual
+                | Self::SwapSelectionEnds
+                | Self::CollapseSelection
+                | Self::SelectRegister(_)
+                | Self::PushCount(_)
+                | Self::BeginSequence
+                | Self::CancelPending
+                | Self::EnterCommand
+                | Self::PushCommandChar(_)
+                | Self::DeleteCommandChar
+                | Self::ExecuteCommand
+                | Self::CancelCommand
+                | Self::EnterSearch
+                | Self::PushSearchChar(_)
+                | Self::DeleteSearchChar
+                | Self::CancelSearch
+                | Self::Save
+                | Self::Quit
+                | Self::Noop
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Object {
     Paren,

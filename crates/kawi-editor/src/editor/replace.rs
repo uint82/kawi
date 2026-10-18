@@ -27,12 +27,10 @@ impl Editor {
                     let cursor = self.cursor.col().saturating_sub(1);
                     self.cursor.set_position(row, cursor);
                 }
-                self.cursor.set_desired(self.virtcol());
                 return;
             }
         }
         self.overwrite_chars(row, col, count, &replacement.to_string().repeat(count));
-        self.cursor.set_desired(self.virtcol());
     }
 
     fn replace_with_newline(&mut self, count: usize) {

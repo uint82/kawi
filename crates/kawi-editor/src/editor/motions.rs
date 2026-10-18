@@ -5,7 +5,7 @@ use crate::find;
 use crate::words;
 
 impl Editor {
-    fn apply_desired_column(&mut self) {
+    pub(super) fn apply_desired_column(&mut self) {
         let row = self.cursor.row();
         let desired = self.cursor.desired();
         let tabstop = self.effective_indent().tabstop;
@@ -183,8 +183,8 @@ impl Editor {
     }
 
     fn place_goto(&mut self, row: usize) {
-        let col = self.cursor.desired().min(self.max_col_for_row(row));
-        self.cursor.set_position(row, col);
+        self.cursor.set_row(row);
+        self.apply_desired_column();
     }
 
     pub(super) fn move_to_prev_word_start(&mut self) {
@@ -226,11 +226,7 @@ impl Editor {
     }
 
     pub(super) fn remember_line_end(&mut self) {
-        if self.mode.is_insert() {
-            self.cursor.set_desired(self.cursor.col());
-        } else {
-            self.cursor.set_desired(usize::MAX);
-        }
+        self.cursor.set_desired(usize::MAX);
     }
 
     fn step_word(&mut self, step: fn(&Buffer, usize, usize, usize) -> (usize, usize)) {
@@ -662,6 +658,58 @@ mod tests {
         let mut e = editor_with("foo bar");
         e.apply(Action::MoveToNextWordStart);
         assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn right_onto_tab_keeps_wanted_column_for_vertical_moves() {
+        let mut e = editor_with("a\tbc\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        assert_eq!((e.row(), e.col()), (0, 1));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 7));
+        e.apply(Action::MoveUp);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn word_onto_tab_updates_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveToNextWordStart);
+        assert_eq!((e.row(), e.col()), (0, 1));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 8));
+    }
+
+    #[test]
+    fn horizontal_move_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 8));
+    }
+
+    #[test]
+    fn horizontal_move_back_to_tab_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveLeft);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 7));
+    }
+
+    #[test]
+    fn goto_last_line_onto_tab_keeps_wanted_column() {
+        let mut e = editor_with("01234567890123456789\na\tbc");
+        e.apply(Action::JumpTo(0, 7));
+        e.apply(Action::GotoLastLine);
+        assert_eq!((e.row(), e.col()), (1, 1));
+        e.apply(Action::GotoFirstLine);
+        assert_eq!((e.row(), e.col()), (0, 7));
     }
 
     #[test]
