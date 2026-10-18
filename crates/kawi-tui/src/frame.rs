@@ -16,7 +16,7 @@ pub struct Frame<'a> {
     pub search: Option<&'a str>,
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
-    pub showcmd: Option<&'a str>,
+    pub showcmd: Option<String>,
     pub insert_mode: bool,
     pub selection: Option<((usize, usize), (usize, usize))>,
     pub theme: &'a Theme,

@@ -158,8 +158,26 @@ fn is_sequence_prefix(sequence: &str) -> bool {
 fn arms_pending(pushed: char) -> bool {
     matches!(
         pushed,
-        'd' | 'c' | 'y' | '>' | '<' | '=' | 'f' | 'F' | 't' | 'T' | 'g' | 'z' | '"' | 'r'
+        'd' | 'c'
+            | 'y'
+            | '>'
+            | '<'
+            | '='
+            | 'f'
+            | 'F'
+            | 't'
+            | 'T'
+            | 'g'
+            | 'z'
+            | '"'
+            | 'r'
+            | '@'
+            | 'q'
     )
+}
+
+fn is_macro_record_name(name: char) -> bool {
+    matches!(name, 'a'..='z' | 'A'..='Z' | '0'..='9' | '"')
 }
 
 fn is_visual_motion_key(pushed: char) -> bool {
@@ -402,6 +420,9 @@ impl VimKeymap {
             KeyCode::Char('L') => self.map_plain_or_noop(key, Action::MoveToViewportBottom),
             KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char('"') => self.arm_register(key),
+            KeyCode::Char('q') => self.arm_macro_record(key),
+            KeyCode::Char('@') => self.arm_macro_run(key),
+            KeyCode::Char('Q') => self.map_plain_or_noop(key, Action::RepeatRecordedMacro),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             KeyCode::Char('V') => self.map_plain_or_noop(key, Action::EnterVisualLine),
@@ -490,6 +511,50 @@ impl VimKeymap {
         prefix.push(pushed);
         self.register_display = Some(prefix);
         Action::SelectRegister(pushed)
+    }
+
+    fn arm_macro_record(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('q');
+        Action::BeginSequence
+    }
+
+    fn macro_record_prefix_armed(&self) -> bool {
+        self.stripped_pending() == "q"
+    }
+
+    fn complete_macro_record(&mut self, pushed: char) -> Action {
+        self.clear_pending();
+        if is_macro_record_name(pushed) {
+            Action::StartMacroRecording(pushed)
+        } else {
+            Action::Noop
+        }
+    }
+
+    fn arm_macro_run(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('@');
+        Action::BeginSequence
+    }
+
+    fn macro_run_prefix_armed(&self) -> bool {
+        self.stripped_pending() == "@"
+    }
+
+    fn complete_macro_run(&mut self, pushed: char) -> Action {
+        self.clear_pending();
+        match pushed {
+            '@' => Action::RepeatLastMacro,
+            ':' => Action::ExecuteLastCommand,
+            '%' | '#' => Action::MacroRegisterError(pushed),
+            _ if is_register_name(pushed) => Action::RunMacro(pushed),
+            _ => Action::Noop,
+        }
     }
 
     fn refresh_showcmd(&mut self, action: Action) {
@@ -924,6 +989,12 @@ impl VimKeymap {
                 if self.register_prefix_armed() {
                     return self.complete_register(c);
                 }
+                if self.macro_record_prefix_armed() {
+                    return self.complete_macro_record(c);
+                }
+                if self.macro_run_prefix_armed() {
+                    return self.complete_macro_run(c);
+                }
                 if self.case_prefix_armed() {
                     return self.resolve_case_pending(c);
                 }
@@ -1133,6 +1204,9 @@ impl VimKeymap {
             KeyCode::Char('{') => self.map_plain_or_noop(key, Action::MoveToPrevParagraph),
             KeyCode::Char('}') => self.map_plain_or_noop(key, Action::MoveToNextParagraph),
             KeyCode::Char('"') => self.arm_register(key),
+            KeyCode::Char('q') => self.arm_macro_record(key),
+            KeyCode::Char('@') => self.arm_macro_run(key),
+            KeyCode::Char('Q') => self.map_plain_or_noop(key, Action::RepeatRecordedMacro),
             KeyCode::Char('d') => self.map_plain_or_noop(key, Action::DeleteSelection),
             KeyCode::Char('y') => self.map_plain_or_noop(key, Action::YankSelection),
             KeyCode::Char('p') => self.map_plain_or_noop(key, Action::PasteOverSelection),
@@ -1481,6 +1555,16 @@ impl Keymap for VimKeymap {
 
     fn pending_text(&self) -> Option<&str> {
         self.showcmd.as_deref()
+    }
+
+    fn pending_keys(&self) -> Option<&str> {
+        self.pending_key()
+    }
+
+    fn reset_pending(&mut self) {
+        self.clear_pending();
+        self.register_display = None;
+        self.showcmd = None;
     }
 }
 
@@ -2034,11 +2118,92 @@ mod tests {
     }
 
     #[test]
-    fn normal_q_is_noop() {
+    fn normal_q_arms_macro_recording() {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char('q')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(map.pending_text(), Some("q"));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::StartMacroRecording('a')
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn macro_recording_rejects_non_register_chars() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('q')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('-')), Mode::Normal),
             Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn at_runs_and_repeats_macros() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::RunMacro('a')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::RepeatLastMacro
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char(':')), Mode::Normal),
+            Action::ExecuteLastCommand
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('%')), Mode::Normal),
+            Action::MacroRegisterError('%')
+        );
+    }
+
+    #[test]
+    fn counted_at_runs_after_digits() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('@')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::RunMacro('a')
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn shift_q_repeats_recorded_macro() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('Q')), Mode::Normal),
+            Action::RepeatRecordedMacro
         );
     }
 

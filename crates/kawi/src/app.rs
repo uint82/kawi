@@ -3,6 +3,9 @@ use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent}
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
+mod macro_codec;
+mod macro_ops;
+
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
@@ -21,6 +24,8 @@ pub struct App {
     theme: Theme,
     message: Option<String>,
     pager: Option<Vec<String>>,
+    macros: macro_ops::MacroEngine,
+    last_command: Option<String>,
 }
 
 impl App {
@@ -33,6 +38,8 @@ impl App {
             theme: Theme::default(),
             message: None,
             pager: None,
+            macros: macro_ops::MacroEngine::new(),
+            last_command: None,
         }
     }
 
@@ -158,10 +165,18 @@ impl App {
             search: self.editor.search_prompt(),
             search_status,
             search_spans,
-            showcmd: self.keymap.pending_text(),
+            showcmd: self.showcmd_text(),
             insert_mode: self.editor.mode().is_insert(),
             selection: self.editor.selection_range(),
             theme: &self.theme,
+        }
+    }
+
+    fn showcmd_text(&self) -> Option<String> {
+        match (self.macros.recording_register(), self.keymap.pending_text()) {
+            (Some(register), Some(pending)) => Some(format!("recording @{register} {pending}")),
+            (Some(register), None) => Some(format!("recording @{register}")),
+            (None, pending) => pending.map(str::to_string),
         }
     }
 
@@ -279,8 +294,19 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if !self.stops_macro_recording(key) {
+            self.macros.record_key(key);
+        }
+        self.process_key(key)
+    }
+
+    fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
         if self.pager.is_some() {
             return self.handle_pager_key(key);
+        }
+        if self.stops_macro_recording(key) {
+            self.consume_macro_stop();
+            return Ok(false);
         }
         let action = self.keymap.map(key, self.editor.mode());
         self.dispatch_action(action)
@@ -311,6 +337,18 @@ impl App {
             Action::JumpNewer => self.handle_jump(false),
             Action::EditAlternate => self.handle_alternate(),
             Action::Noop => self.handle_noop(),
+            Action::StartMacroRecording(register) => {
+                self.start_macro_recording(register);
+                Ok(false)
+            }
+            Action::RunMacro(register) => self.run_macro(register),
+            Action::RepeatLastMacro => self.repeat_last_macro(),
+            Action::RepeatRecordedMacro => self.repeat_recorded_macro(),
+            Action::ExecuteLastCommand => self.execute_last_command(),
+            Action::MacroRegisterError(register) => {
+                self.report_macro_register_error(register);
+                Ok(false)
+            }
             _ => self.handle_engine_action(action),
         }
     }
@@ -424,7 +462,9 @@ impl App {
     }
 
     fn handle_execute(&mut self) -> Result<bool> {
-        let command = parse(self.editor.command_text());
+        let text = self.editor.command_text().to_string();
+        self.last_command = Some(text.clone());
+        let command = parse(&text);
         self.editor.apply(Action::CancelCommand);
         self.run_command(command)
     }

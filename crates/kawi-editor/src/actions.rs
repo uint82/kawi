@@ -255,6 +255,12 @@ pub enum Action {
     CancelCommand,
     HistoryOlder,
     HistoryNewer,
+    StartMacroRecording(char),
+    RunMacro(char),
+    RepeatLastMacro,
+    RepeatRecordedMacro,
+    ExecuteLastCommand,
+    MacroRegisterError(char),
     EnterSearch,
     PushSearchChar(char),
     DeleteSearchChar,
@@ -307,6 +313,12 @@ impl Action {
                 | Self::CancelCommand
                 | Self::HistoryOlder
                 | Self::HistoryNewer
+                | Self::StartMacroRecording(_)
+                | Self::RunMacro(_)
+                | Self::RepeatLastMacro
+                | Self::RepeatRecordedMacro
+                | Self::ExecuteLastCommand
+                | Self::MacroRegisterError(_)
                 | Self::EnterSearch
                 | Self::PushSearchChar(_)
                 | Self::DeleteSearchChar

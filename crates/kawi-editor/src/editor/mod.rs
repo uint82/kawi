@@ -5,7 +5,6 @@ use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::jumps::Jumps;
 use crate::mode::Mode;
-#[cfg(test)]
 use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
@@ -374,6 +373,12 @@ impl Editor {
             Action::ExecuteCommand => self.noop(),
             Action::HistoryOlder => self.history_older(),
             Action::HistoryNewer => self.history_newer(),
+            Action::StartMacroRecording(_)
+            | Action::RunMacro(_)
+            | Action::RepeatLastMacro
+            | Action::RepeatRecordedMacro
+            | Action::ExecuteLastCommand
+            | Action::MacroRegisterError(_) => self.noop(),
             Action::EnterSearch => self.enter_search(),
             Action::PushSearchChar(c) => self.push_search_char(c),
             Action::DeleteSearchChar => self.delete_search_char(),
@@ -642,7 +647,7 @@ impl Editor {
         operator.saturating_mul(self.count_digits).min(999_999_999)
     }
 
-    pub(super) fn take_count(&mut self) -> usize {
+    pub fn take_count(&mut self) -> usize {
         let operator = self.operator_count.take().unwrap_or(1);
         let pending = std::mem::replace(&mut self.count_digits, 0);
         if pending == 0 {
@@ -684,6 +689,14 @@ impl Editor {
             .and_then(|slot| self.registers.get(slot))
             .map(|register| register.kind())
             .unwrap_or(RegisterKind::CharWise)
+    }
+
+    pub fn store_macro_register(&mut self, name: char, text: String) {
+        self.registers.store_macro(name, text);
+    }
+
+    pub fn macro_register(&self, name: char) -> Option<(&str, RegisterKind)> {
+        self.registers.macro_register(name)
     }
 
     #[cfg(test)]

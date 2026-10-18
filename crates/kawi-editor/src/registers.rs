@@ -92,6 +92,30 @@ impl Registers {
         self.slot_of(name)
     }
 
+    pub(crate) fn store_macro(&mut self, name: char, text: String) {
+        let slot = match name {
+            '"' => RegisterSlot::Numbered(0),
+            other => match self.slot_of(other) {
+                Some(slot) => slot,
+                None => return,
+            },
+        };
+        self.write(
+            slot,
+            Register::from_parts(text, RegisterKind::CharWise),
+            name.is_ascii_uppercase(),
+        );
+    }
+
+    pub(crate) fn macro_register(&self, name: char) -> Option<(&str, RegisterKind)> {
+        let slot = match name {
+            '"' => RegisterSlot::Numbered(0),
+            other => self.slot_of(other)?,
+        };
+        self.get(slot)
+            .map(|register| (register.text(), register.kind()))
+    }
+
     pub(crate) fn store_clipboard(&mut self, slot: RegisterSlot, register: Register) {
         match slot {
             RegisterSlot::Star => self.star = Some(register),
