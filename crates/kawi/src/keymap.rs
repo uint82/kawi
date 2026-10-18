@@ -94,6 +94,11 @@ pub fn map_command_mode(key: KeyEvent) -> Action {
         KeyCode::Esc => Action::CancelCommand,
         KeyCode::Enter => Action::ExecuteCommand,
         KeyCode::Backspace => Action::DeleteCommandChar,
+        KeyCode::BackTab => Action::CompleteCommandBackward,
+        KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            Action::CompleteCommandBackward
+        }
+        KeyCode::Tab => Action::CompleteCommand,
         KeyCode::Char(c) => map_command_char(key, c),
         _ => Action::Noop,
     }

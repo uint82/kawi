@@ -13,6 +13,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 mod autoindent;
 mod buffers;
 mod case_ops;
+mod cmd_complete;
 mod gutter;
 mod indent;
 mod insert_erase;
@@ -76,6 +77,7 @@ pub struct Editor {
     ignorecase: bool,
     smartcase: bool,
     search_whole_word: bool,
+    completion: Option<cmd_complete::CompletionState>,
     autoindent: bool,
     pending_autoindent: Option<(usize, String)>,
     buffers: buffers::Buffers,
@@ -156,6 +158,8 @@ impl Editor {
             Action::SearchWordBackward => {
                 let _ = self.search_word(false);
             }
+            Action::CompleteCommand => self.complete_command(false),
+            Action::CompleteCommandBackward => self.complete_command(true),
             Action::DeleteToMatch => self.delete_match(),
             Action::YankToMatch => self.yank_match(),
             Action::ChangeToMatch => self.change_match(),
@@ -594,6 +598,7 @@ impl Editor {
             ignorecase: false,
             smartcase: false,
             search_whole_word: false,
+            completion: None,
             autoindent: true,
             pending_autoindent: None,
             buffers: buffers::Buffers::new(),
@@ -696,6 +701,11 @@ impl Editor {
         } else {
             None
         }
+    }
+
+    pub fn completion_view(&self) -> Option<(&[String], Option<usize>)> {
+        let state = self.completion.as_ref()?;
+        Some((state.items(), state.selected()))
     }
 
     pub fn search_status_text(&self) -> Option<String> {

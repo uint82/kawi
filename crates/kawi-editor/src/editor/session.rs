@@ -49,6 +49,7 @@ impl Editor {
     pub(super) fn cancel_command(&mut self) {
         self.mode = Mode::Normal;
         self.command.clear();
+        self.completion = None;
     }
 
     pub(super) fn collapse_selection(&mut self) {
@@ -57,15 +58,10 @@ impl Editor {
         }
     }
 
-    pub(super) fn delete_command_char(&mut self) {
-        if self.mode == Mode::Command {
-            self.command.pop();
-        }
-    }
-
     pub(super) fn enter_command(&mut self) {
         self.mode = Mode::Command;
         self.command.clear();
+        self.completion = None;
     }
 
     pub(super) fn enter_insert(&mut self) {
@@ -251,7 +247,15 @@ impl Editor {
 
     pub(super) fn push_command_char(&mut self, c: char) {
         if self.mode == Mode::Command {
+            self.completion = None;
             self.command.push(c);
+        }
+    }
+
+    pub(super) fn delete_command_char(&mut self) {
+        if self.mode == Mode::Command {
+            self.completion = None;
+            self.command.pop();
         }
     }
 

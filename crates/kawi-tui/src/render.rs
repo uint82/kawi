@@ -26,6 +26,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
             draw_message_row(out, frame)?;
         }
     }
+    draw_completion(out, frame)?;
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
@@ -296,6 +297,46 @@ fn draw_status_row(
     theme: &Theme,
 ) -> Result<()> {
     draw_status(out, status, viewport.width(), viewport.height(), theme)
+}
+
+fn draw_completion(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let Some(menu) = frame.completion.as_ref() else {
+        return Ok(());
+    };
+    if menu.items.is_empty() {
+        return Ok(());
+    }
+    let available = frame.viewport.height().saturating_add(1);
+    let shown = menu.items.len().min(available);
+    let start = menu_start(shown, menu.selected);
+    let width = frame.viewport.width();
+    for offset in 0..shown {
+        let index = start + offset;
+        let row = frame
+            .viewport
+            .height()
+            .saturating_sub(shown.saturating_sub(1).saturating_sub(offset));
+        execute!(
+            out,
+            MoveTo(0, saturate_u16(row)),
+            Clear(ClearType::CurrentLine)
+        )
+        .context("clear completion row")?;
+        if menu.selected == Some(index) {
+            paint::apply_match(out, &frame.theme.selection)?;
+        }
+        write!(out, "{}", truncate_to_width(&menu.items[index], width))
+            .context("write completion row")?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
+}
+
+fn menu_start(shown: usize, selected: Option<usize>) -> usize {
+    match selected {
+        Some(index) if index >= shown => index.saturating_add(1).saturating_sub(shown),
+        _ => 0,
+    }
 }
 
 const PAGER_PROMPT: &str = "Press ENTER or type command to continue";

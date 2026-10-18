@@ -158,7 +158,7 @@ impl Buffers {
             .map(|entry| entry.state.buffer.line_count())
     }
 
-    fn numbers(&self) -> Vec<usize> {
+    pub(super) fn numbers(&self) -> Vec<usize> {
         let mut numbers: Vec<usize> = self.parked.iter().map(|entry| entry.number).collect();
         numbers.push(self.current);
         numbers.sort_unstable();
