@@ -15,6 +15,7 @@ pub enum Action {
     MoveToViewportBottom,
     JumpOlder,
     JumpNewer,
+    EditAlternate,
     SelectRegister(char),
     InsertRegister(char),
     MoveToMatch,
@@ -277,6 +278,7 @@ impl Action {
                 | Self::GotoLastLine
                 | Self::GotoFirstLine
                 | Self::MoveToLineEnd
+                | Self::EditAlternate
                 | Self::Undo
                 | Self::Redo
                 | Self::EnterVisual

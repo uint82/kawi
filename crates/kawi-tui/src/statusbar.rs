@@ -13,7 +13,6 @@ pub struct StatusInfo<'a> {
     pub virtcol: usize,
     pub line_empty: bool,
     pub empty_buffer: bool,
-    pub quit_armed: bool,
     pub mode: &'a str,
 }
 
@@ -36,9 +35,6 @@ fn build_line(info: &StatusInfo, width: usize) -> String {
 }
 
 fn left_text(info: &StatusInfo) -> String {
-    if info.quit_armed {
-        return "Press :q again to quit".to_string();
-    }
     format!("-- {} -- {}", info.mode, file_part(info))
 }
 
@@ -109,7 +105,6 @@ mod tests {
             virtcol: 0,
             line_empty: false,
             empty_buffer: false,
-            quit_armed: false,
             mode,
         }
     }
@@ -117,13 +112,6 @@ mod tests {
     #[test]
     fn shows_dirty_mark() {
         assert!(build_line(&info("a.txt", true, "NORMAL"), 40).contains("[+]"));
-    }
-
-    #[test]
-    fn shows_quit_warning_when_armed() {
-        let mut status = info("a.txt", true, "NORMAL");
-        status.quit_armed = true;
-        assert!(build_line(&status, 40).contains(":q again"));
     }
 
     #[test]

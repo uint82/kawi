@@ -1,40 +1,73 @@
-use super::Editor;
+use super::{EditError, Editor};
+use crate::jumps::Jump;
 
 impl Editor {
     pub(super) fn set_pcmark(&mut self) {
-        self.set_pcmark_at((self.cursor.row(), self.cursor.col()));
+        let position = (self.cursor.row(), self.cursor.col());
+        self.set_pcmark_at(position);
     }
 
-    pub(super) fn set_pcmark_at(&mut self, position: (usize, usize)) {
-        self.jumps.record(position);
+    pub(super) fn set_pcmark_at(&mut self, (row, col): (usize, usize)) {
+        self.jumps.record(Jump {
+            buffer: self.buffers.current(),
+            row,
+            col,
+        });
     }
 
     pub(super) fn apply_line_adjustments(&mut self) {
+        let buffer = self.buffers.current();
         for adjust in self.buffer.take_line_adjustments() {
-            self.jumps.adjust(adjust);
+            self.jumps.adjust(buffer, adjust);
         }
     }
 
-    pub(super) fn jump_older(&mut self) {
-        self.jump_step(true);
+    pub fn jump_older(&mut self) -> Result<(), EditError> {
+        self.jump_step(true)
     }
 
-    pub(super) fn jump_newer(&mut self) {
-        self.jump_step(false);
+    pub fn jump_newer(&mut self) -> Result<(), EditError> {
+        self.jump_step(false)
     }
 
-    fn jump_step(&mut self, older: bool) {
+    fn jump_step(&mut self, older: bool) -> Result<(), EditError> {
         let count = self.take_count();
-        let cursor = (self.cursor.row(), self.cursor.col());
+        let cursor = self.current_jump();
         let found = if older {
             self.jumps.older(count, cursor)
         } else {
             self.jumps.newer(count, cursor)
         };
-        if let Some((row, col)) = found {
-            self.cursor.set_position(row, col);
-            self.reveal_jump();
+        let Some(target) = found else {
+            return Ok(());
+        };
+        if !self.jump_target_valid(target) {
+            return Err(EditError::InvalidMark);
         }
+        self.go_to_jump(target);
+        Ok(())
+    }
+
+    fn jump_target_valid(&self, target: Jump) -> bool {
+        let lines = if target.buffer == self.buffers.current() {
+            self.buffer.line_count()
+        } else {
+            match self.buffers.line_count(target.buffer) {
+                Some(lines) => lines,
+                None => return false,
+            }
+        };
+        target.row < lines
+    }
+
+    fn go_to_jump(&mut self, target: Jump) {
+        if target.buffer != self.buffers.current() {
+            self.switch_buffer(target.buffer);
+        }
+        let col = target.col.min(self.max_col_for_row(target.row));
+        self.cursor.set_position(target.row, col);
+        self.remember_wanted_column();
+        self.reveal_jump();
     }
 }
 
@@ -47,6 +80,10 @@ mod tests {
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn positions(entries: &[Jump]) -> Vec<(usize, usize)> {
+        entries.iter().map(|entry| (entry.row, entry.col)).collect()
     }
 
     fn search(editor: &mut Editor, pattern: &str) -> Option<SearchOutcome> {
@@ -179,9 +216,9 @@ mod tests {
         let mut editor = editor_with("ab\ncd");
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::GotoLastLine);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (1, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0), (1, 0)]);
         editor.apply(Action::JumpOlder);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (1, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0), (1, 0)]);
         assert_eq!(editor.jumps.index(), 0);
     }
 
@@ -192,7 +229,7 @@ mod tests {
         editor.apply(Action::PushCount(3));
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::DeleteLine);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (2, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0), (2, 0)]);
     }
 
     #[test]
@@ -203,7 +240,7 @@ mod tests {
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::OpenLineBelow);
         editor.apply(Action::ExitInsert);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (4, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0), (4, 0)]);
     }
 
     #[test]
@@ -214,7 +251,7 @@ mod tests {
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::YankLine);
         editor.apply(Action::PasteAfter);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (4, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0), (4, 0)]);
     }
 
     #[test]
@@ -225,7 +262,10 @@ mod tests {
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::DeleteLine);
         editor.apply(Action::Undo);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (3, 0), (3, 0)]);
+        assert_eq!(
+            positions(editor.jumps.entries()),
+            vec![(0, 0), (3, 0), (3, 0)]
+        );
         assert_eq!(editor.jumps.index(), 3);
     }
 
@@ -238,7 +278,10 @@ mod tests {
         editor.apply(Action::DeleteLine);
         editor.apply(Action::Undo);
         editor.apply(Action::Redo);
-        assert_eq!(editor.jumps.entries(), &[(0, 0), (2, 0), (2, 0), (2, 0)]);
+        assert_eq!(
+            positions(editor.jumps.entries()),
+            vec![(0, 0), (2, 0), (2, 0), (2, 0)]
+        );
     }
 
     #[test]
@@ -246,7 +289,7 @@ mod tests {
         let mut editor = editor_with("ab");
         editor.apply(Action::GotoLastLine);
         editor.apply(Action::Undo);
-        assert_eq!(editor.jumps.entries(), &[(0, 0)]);
+        assert_eq!(positions(editor.jumps.entries()), vec![(0, 0)]);
         assert_eq!(editor.jumps.index(), 1);
     }
 

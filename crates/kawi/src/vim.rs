@@ -11,6 +11,11 @@ fn is_register_name(name: char) -> bool {
     matches!(name, 'a'..='z' | 'A'..='Z' | '0'..='9' | '"' | '-' | '+' | '*' | '_')
 }
 
+fn is_alternate_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && matches!(key.code, KeyCode::Char('6') | KeyCode::Char('^'))
+}
+
 fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
 }
@@ -312,6 +317,9 @@ impl VimKeymap {
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
         if is_redo_key(key) {
             return Action::Redo;
+        }
+        if is_alternate_key(key) {
+            return Action::EditAlternate;
         }
         if let KeyCode::Char(c) = key.code {
             if matches!(c, '1'..='9') && !has_ctrl_or_alt(key) {
@@ -1605,6 +1613,19 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('Z')), Mode::Normal),
             Action::ReplaceChar('Z')
+        );
+    }
+
+    #[test]
+    fn normal_ctrl_caret_maps_to_alternate() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('6')), Mode::Normal),
+            Action::EditAlternate
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('^')), Mode::Normal),
+            Action::EditAlternate
         );
     }
 

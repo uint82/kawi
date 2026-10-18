@@ -28,14 +28,49 @@ impl Buffer {
 
     pub fn from_file(path: &str) -> Result<Self> {
         let text = read_file_text(path)?;
-        Ok(Self {
-            rope: Rope::from_str(&text),
-            path: Some(path.to_string()),
-            history: History::new(),
-            revision: 0,
-            line_changes: 0,
-            adjustments: Vec::new(),
-        })
+        Ok(Self::from_text_with_path(&text, path))
+    }
+
+    pub fn open(path: &str) -> Result<Self> {
+        match fs::read_to_string(path) {
+            Ok(text) => Ok(Self::from_text_with_path(&text, path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let mut buffer = Self::from_string("");
+                buffer.path = Some(path.to_string());
+                Ok(buffer)
+            }
+            Err(error) => Err(error).with_context(|| format!("failed to open {path}")),
+        }
+    }
+
+    fn from_text_with_path(text: &str, path: &str) -> Self {
+        let mut buffer = Self::from_string(text);
+        buffer.path = Some(path.to_string());
+        buffer
+    }
+
+    pub fn reload_from_disk(&mut self) -> Result<()> {
+        let Some(path) = self.path.clone() else {
+            anyhow::bail!("no file name");
+        };
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to open {path}"));
+            }
+        };
+        self.rope = Rope::from_str(&text);
+        self.touch();
+        Ok(())
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.history.mark_clean();
+    }
+
+    pub fn has_path(&self) -> bool {
+        self.path.is_some()
     }
 
     pub fn revision(&self) -> u64 {

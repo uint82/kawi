@@ -3,6 +3,17 @@ pub enum Command {
     Write,
     Quit,
     WriteQuit,
+    ForceQuit,
+    QuitAll,
+    ForceQuitAll,
+    WriteAll,
+    WriteQuitAll,
+    Edit { name: Option<String>, force: bool },
+    ListBuffers,
+    NextBuffer,
+    PreviousBuffer,
+    AlternateBuffer,
+    SelectBuffer(String),
     SetKeymap(String),
     SetTheme(String),
     SetShiftWidth(usize),
@@ -15,27 +26,58 @@ pub enum Command {
 }
 
 pub fn parse(text: &str) -> Command {
-    match text.trim() {
-        "w" => Command::Write,
-        "q" => Command::Quit,
-        "wq" => Command::WriteQuit,
-        _ => parse_set_command(text.trim()),
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let Some((command, rest)) = words.split_first() else {
+        return Command::Unknown;
+    };
+    match (*command, rest) {
+        ("w", []) => Command::Write,
+        ("q", []) => Command::Quit,
+        ("wq", []) => Command::WriteQuit,
+        ("q!", []) => Command::ForceQuit,
+        ("qa", []) => Command::QuitAll,
+        ("qa!", []) => Command::ForceQuitAll,
+        ("wall", []) => Command::WriteAll,
+        ("wqa" | "wqall", []) => Command::WriteQuitAll,
+        ("ls" | "buffers" | "files", []) => Command::ListBuffers,
+        ("bn" | "bnext", []) => Command::NextBuffer,
+        ("bp" | "bprevious", []) => Command::PreviousBuffer,
+        ("b#", []) => Command::AlternateBuffer,
+        ("e" | "edit" | "e!" | "edit!", []) => edit_command(command, None),
+        ("e" | "edit" | "e!" | "edit!", [name]) => edit_command(command, Some(name)),
+        ("b" | "buffer", ["#"]) => Command::AlternateBuffer,
+        ("b" | "buffer", [arg]) => Command::SelectBuffer(arg.to_string()),
+        ("set", rest) => parse_set_command(rest),
+        _ => Command::Unknown,
     }
 }
 
-fn parse_set_command(text: &str) -> Command {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    match words.as_slice() {
-        ["set", "keymap", name] => name_command(name),
-        ["set", "theme", name] => theme_command(name),
-        ["set", "shiftwidth", value] => shiftwidth_command(value),
-        ["set", "expandtab"] => Command::SetExpandTab(true),
-        ["set", "noexpandtab"] => Command::SetExpandTab(false),
-        ["set", "number"] => Command::SetNumber(true),
-        ["set", "nonumber"] => Command::SetNumber(false),
-        ["set", "relativenumber"] => Command::SetRelativeNumber(true),
-        ["set", "norelativenumber"] => Command::SetRelativeNumber(false),
-        ["set", combined] => equals_command(combined),
+fn edit_command(command: &str, name: Option<&str>) -> Command {
+    let (force, command) = match command.strip_suffix('!') {
+        Some(command) => (true, command),
+        None => (false, command),
+    };
+    if !matches!(command, "e" | "edit") {
+        return Command::Unknown;
+    }
+    Command::Edit {
+        name: name.map(str::to_string),
+        force,
+    }
+}
+
+fn parse_set_command(words: &[&str]) -> Command {
+    match words {
+        ["keymap", name] => name_command(name),
+        ["theme", name] => theme_command(name),
+        ["shiftwidth", value] => shiftwidth_command(value),
+        ["expandtab"] => Command::SetExpandTab(true),
+        ["noexpandtab"] => Command::SetExpandTab(false),
+        ["number"] => Command::SetNumber(true),
+        ["nonumber"] => Command::SetNumber(false),
+        ["relativenumber"] => Command::SetRelativeNumber(true),
+        ["norelativenumber"] => Command::SetRelativeNumber(false),
+        [combined] => equals_command(combined),
         _ => Command::Unknown,
     }
 }
@@ -158,6 +200,81 @@ mod tests {
     #[test]
     fn empty_is_unknown() {
         assert_eq!(parse(""), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_quit_variants() {
+        assert_eq!(parse("q!"), Command::ForceQuit);
+        assert_eq!(parse("qa"), Command::QuitAll);
+        assert_eq!(parse("qa!"), Command::ForceQuitAll);
+    }
+
+    #[test]
+    fn parses_write_all_variants() {
+        assert_eq!(parse("wall"), Command::WriteAll);
+        assert_eq!(parse("wqa"), Command::WriteQuitAll);
+        assert_eq!(parse("wqall"), Command::WriteQuitAll);
+    }
+
+    #[test]
+    fn parses_edit_commands() {
+        assert_eq!(
+            parse("e"),
+            Command::Edit {
+                name: None,
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("e!"),
+            Command::Edit {
+                name: None,
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("e src/main.rs"),
+            Command::Edit {
+                name: Some("src/main.rs".to_string()),
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("edit! src/main.rs"),
+            Command::Edit {
+                name: Some("src/main.rs".to_string()),
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("e #"),
+            Command::Edit {
+                name: Some("#".to_string()),
+                force: false
+            }
+        );
+    }
+
+    #[test]
+    fn parses_buffer_commands() {
+        assert_eq!(parse("ls"), Command::ListBuffers);
+        assert_eq!(parse("buffers"), Command::ListBuffers);
+        assert_eq!(parse("files"), Command::ListBuffers);
+        assert_eq!(parse("bn"), Command::NextBuffer);
+        assert_eq!(parse("bnext"), Command::NextBuffer);
+        assert_eq!(parse("bp"), Command::PreviousBuffer);
+        assert_eq!(parse("bprevious"), Command::PreviousBuffer);
+        assert_eq!(parse("b#"), Command::AlternateBuffer);
+        assert_eq!(parse("b 3"), Command::SelectBuffer("3".to_string()));
+        assert_eq!(parse("buffer 3"), Command::SelectBuffer("3".to_string()));
+        assert_eq!(parse("buffer #"), Command::AlternateBuffer);
+    }
+
+    #[test]
+    fn rejects_unknown_buffer_commands() {
+        assert_eq!(parse("b"), Command::Unknown);
+        assert_eq!(parse("bb"), Command::Unknown);
+        assert_eq!(parse("e x y"), Command::Unknown);
     }
 
     #[test]

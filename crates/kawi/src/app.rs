@@ -18,7 +18,6 @@ pub struct App {
     editor: Editor,
     keymap: ActiveKeymap,
     theme: Theme,
-    quit_armed: bool,
     message: Option<String>,
 }
 
@@ -30,7 +29,6 @@ impl App {
             editor,
             keymap: ActiveKeymap::for_flavor(flavor),
             theme: Theme::default(),
-            quit_armed: false,
             message: None,
         }
     }
@@ -156,7 +154,6 @@ impl App {
             line_empty: self.editor.mode() != kawi_editor::Mode::Insert
                 && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
-            quit_armed: self.quit_armed,
             mode: self.keymap.mode_label(self.editor.mode()),
         }
     }
@@ -186,7 +183,6 @@ impl App {
     }
 
     fn jump_to(&mut self, row: usize, col: usize) -> Result<bool> {
-        self.disarm_quit();
         self.exit_visual_if_active();
         self.editor.apply(Action::JumpTo(row, col));
         self.reveal_cursor();
@@ -200,7 +196,6 @@ impl App {
     }
 
     fn drag_to(&mut self, row: usize, col: usize) -> Result<bool> {
-        self.disarm_quit();
         self.ensure_visual();
         self.editor.apply(Action::JumpTo(row, col));
         self.reveal_cursor();
@@ -208,7 +203,6 @@ impl App {
     }
 
     fn scroll_by(&mut self, delta: isize) -> Result<bool> {
-        self.disarm_quit();
         self.editor.scroll_wheel(delta);
         Ok(false)
     }
@@ -251,7 +245,7 @@ impl App {
 
     fn dispatch_action(&mut self, action: Action) -> Result<bool> {
         match action {
-            Action::Quit => Ok(self.try_quit()),
+            Action::Quit => self.handle_quit(),
             Action::Save => self.handle_save(),
             Action::ExecuteCommand => self.handle_execute(),
             Action::Undo => self.handle_undo(),
@@ -259,13 +253,19 @@ impl App {
             Action::NextMatch => self.handle_next_match(),
             Action::PrevMatch => self.handle_prev_match(),
             Action::ConfirmSearch => self.handle_confirm_search(),
+            Action::JumpOlder => self.handle_jump(true),
+            Action::JumpNewer => self.handle_jump(false),
+            Action::EditAlternate => self.handle_alternate(),
             Action::Noop => self.handle_noop(),
             _ => self.handle_engine_action(action),
         }
     }
 
     fn handle_save(&mut self) -> Result<bool> {
-        self.disarm_quit();
+        if !self.editor.has_file() {
+            self.show_message("E32: No file name".to_string());
+            return Ok(false);
+        }
         self.save_and_report();
         Ok(false)
     }
@@ -293,7 +293,6 @@ impl App {
     }
 
     fn handle_undo(&mut self) -> Result<bool> {
-        self.disarm_quit();
         if !self.editor.try_undo() {
             self.show_message("Already at oldest change".to_string());
         }
@@ -302,7 +301,6 @@ impl App {
     }
 
     fn handle_redo(&mut self) -> Result<bool> {
-        self.disarm_quit();
         if !self.editor.try_redo() {
             self.show_message("Already at newest change".to_string());
         }
@@ -311,21 +309,18 @@ impl App {
     }
 
     fn handle_next_match(&mut self) -> Result<bool> {
-        self.disarm_quit();
         self.report_search_step(true);
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_prev_match(&mut self) -> Result<bool> {
-        self.disarm_quit();
         self.report_search_step(false);
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_confirm_search(&mut self) -> Result<bool> {
-        self.disarm_quit();
         let outcome = self.editor.confirm_search();
         self.report_outcome(outcome, true);
         self.reveal_cursor();
@@ -349,12 +344,10 @@ impl App {
     }
 
     fn handle_noop(&mut self) -> Result<bool> {
-        self.disarm_quit();
         Ok(false)
     }
 
     fn handle_engine_action(&mut self, action: Action) -> Result<bool> {
-        self.disarm_quit();
         self.editor.apply(action);
         self.exit_operator_for_flavor(action);
         self.reveal_cursor();
@@ -372,7 +365,6 @@ impl App {
     }
 
     fn handle_execute(&mut self) -> Result<bool> {
-        self.disarm_quit();
         let command = parse(self.editor.command_text());
         self.editor.apply(Action::CancelCommand);
         self.run_command(command)
@@ -381,8 +373,18 @@ impl App {
     fn run_command(&mut self, command: Command) -> Result<bool> {
         match command {
             Command::Write => self.handle_save(),
-            Command::Quit => Ok(self.try_quit()),
+            Command::Quit => self.handle_quit(),
             Command::WriteQuit => self.handle_write_quit(),
+            Command::ForceQuit | Command::ForceQuitAll => Ok(true),
+            Command::QuitAll => self.handle_quit_all(),
+            Command::WriteAll => self.handle_save_all(),
+            Command::WriteQuitAll => self.handle_write_quit_all(),
+            Command::Edit { name, force } => self.handle_edit(name, force),
+            Command::ListBuffers => self.handle_list_buffers(),
+            Command::NextBuffer => self.handle_buffer_step(true),
+            Command::PreviousBuffer => self.handle_buffer_step(false),
+            Command::AlternateBuffer => self.handle_alternate(),
+            Command::SelectBuffer(arg) => self.handle_select_buffer(&arg),
             Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::SetTheme(name) => self.switch_theme(&name),
             Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
@@ -464,33 +466,113 @@ impl App {
     }
 
     fn handle_write_quit(&mut self) -> Result<bool> {
+        if !self.editor.has_file() {
+            self.show_message("E32: No file name".to_string());
+            return Ok(false);
+        }
         if self.save_and_report() {
-            return Ok(self.try_quit());
+            return self.handle_quit();
         }
         Ok(false)
     }
 
-    fn try_quit(&mut self) -> bool {
+    fn handle_quit(&mut self) -> Result<bool> {
         if !self.editor.is_dirty() {
-            return true;
+            return Ok(true);
         }
-        self.confirm_dirty_quit()
+        self.show_message("E37: No write since last change".to_string());
+        Ok(false)
     }
 
-    fn confirm_dirty_quit(&mut self) -> bool {
-        if self.quit_armed {
-            return true;
+    fn handle_quit_all(&mut self) -> Result<bool> {
+        if !self.editor.has_unsaved() {
+            return Ok(true);
         }
-        self.arm_quit();
-        false
+        self.show_message("E37: No write since last change".to_string());
+        Ok(false)
     }
 
-    fn arm_quit(&mut self) {
-        self.quit_armed = true;
+    fn handle_save_all(&mut self) -> Result<bool> {
+        match self.editor.write_all() {
+            Ok(()) => Ok(false),
+            Err(error) => {
+                self.show_message(file_error_message(error));
+                Ok(false)
+            }
+        }
     }
 
-    fn disarm_quit(&mut self) {
-        self.quit_armed = false;
+    fn handle_write_quit_all(&mut self) -> Result<bool> {
+        match self.editor.write_all() {
+            Ok(()) => Ok(true),
+            Err(error) => {
+                self.show_message(file_error_message(error));
+                Ok(false)
+            }
+        }
+    }
+
+    fn handle_edit(&mut self, name: Option<String>, force: bool) -> Result<bool> {
+        if name.as_deref() == Some("#") {
+            return self.handle_alternate();
+        }
+        match self.editor.edit_file(name.as_deref(), force) {
+            Ok(()) => {
+                self.reveal_cursor();
+                Ok(false)
+            }
+            Err(error) => {
+                self.show_message(file_error_message(error));
+                Ok(false)
+            }
+        }
+    }
+
+    fn handle_list_buffers(&mut self) -> Result<bool> {
+        self.show_message(self.editor.buffer_list());
+        Ok(false)
+    }
+
+    fn handle_buffer_step(&mut self, forward: bool) -> Result<bool> {
+        if forward {
+            self.editor.buffer_next();
+        } else {
+            self.editor.buffer_previous();
+        }
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_alternate(&mut self) -> Result<bool> {
+        self.editor.buffer_alternate();
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_select_buffer(&mut self, arg: &str) -> Result<bool> {
+        match arg.parse::<usize>() {
+            Ok(number) => {
+                if !self.editor.buffer_select(number) {
+                    self.show_message(format!("E86: Buffer {number} does not exist"));
+                }
+            }
+            Err(_) => self.show_message(format!("E94: No matching buffer for {arg}")),
+        }
+        self.reveal_cursor();
+        Ok(false)
+    }
+
+    fn handle_jump(&mut self, older: bool) -> Result<bool> {
+        let outcome = if older {
+            self.editor.jump_older()
+        } else {
+            self.editor.jump_newer()
+        };
+        if let Err(error) = outcome {
+            self.show_message(file_error_message(error));
+        }
+        self.reveal_cursor();
+        Ok(false)
     }
 }
 
@@ -552,6 +634,20 @@ fn is_operator(action: Action) -> bool {
             | Action::Lowercase
             | Action::Uppercase
     )
+}
+
+fn file_error_message(error: kawi_editor::EditError) -> String {
+    match error {
+        kawi_editor::EditError::NoName => "E32: No file name".to_string(),
+        kawi_editor::EditError::NoWrite => {
+            "E37: No write since last change (add ! to override)".to_string()
+        }
+        kawi_editor::EditError::CannotOpen(name) => {
+            format!("E484: Can't open file {name}")
+        }
+        kawi_editor::EditError::Io(message) => message,
+        kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
+    }
 }
 
 fn content_size(cols: u16, rows: u16) -> (usize, usize) {
@@ -1240,6 +1336,105 @@ mod tests {
             app.handle_key(key(KeyCode::Char(ch))).expect("type");
         }
         app.handle_key(key(KeyCode::Enter)).expect("run");
+    }
+
+    fn temp_file(name: &str, text: &str) -> String {
+        let path = std::env::temp_dir().join(format!("kawi_app_{name}"));
+        std::fs::write(&path, text).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn edit_command_switches_files() {
+        let alpha = temp_file("edit_alpha.txt", "alpha\n");
+        let bravo = temp_file("edit_bravo.txt", "bravo\ncharlie\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, &format!("e {bravo}"));
+        assert_eq!(app.editor.filename(), bravo);
+        assert_eq!(app.editor.line_count(), 2);
+        type_command(&mut app, "e #");
+        assert_eq!(app.editor.filename(), alpha);
+    }
+
+    #[test]
+    fn edit_reload_reports_e37_when_dirty() {
+        let alpha = temp_file("edit_dirty.txt", "alpha\n");
+        let bravo = temp_file("edit_dirty_other.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, &format!("e {bravo}"));
+        assert_eq!(app.editor.filename(), bravo);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, &format!("e {bravo}"));
+        assert_eq!(
+            app.last_message(),
+            Some("E37: No write since last change (add ! to override)")
+        );
+        assert_eq!(app.editor.filename(), bravo);
+        type_command(&mut app, "e!");
+        assert_eq!(app.editor.filename(), bravo);
+        assert!(!app.editor.is_dirty());
+    }
+
+    #[test]
+    fn quit_dirty_buffer_reports_e37() {
+        let alpha = temp_file("quit_dirty.txt", "alpha\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, "q");
+        assert_eq!(app.last_message(), Some("E37: No write since last change"));
+        type_command(&mut app, "q!");
+        assert_eq!(app.last_message(), Some("E37: No write since last change"));
+    }
+
+    #[test]
+    fn quit_all_reports_hidden_changes() {
+        let alpha = temp_file("quit_all.txt", "alpha\n");
+        let bravo = temp_file("quit_all_other.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, &format!("e {bravo}"));
+        type_command(&mut app, "qa");
+        assert_eq!(app.last_message(), Some("E37: No write since last change"));
+    }
+
+    #[test]
+    fn write_unnamed_buffer_reports_e32() {
+        let mut app = App::new(kawi_buffer::Buffer::from_string("abc"), Flavor::Vim);
+        type_command(&mut app, "w");
+        assert_eq!(app.last_message(), Some("E32: No file name"));
+    }
+
+    #[test]
+    fn list_buffers_shows_flags() {
+        let alpha = temp_file("list_buffers.txt", "alpha\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, "ls");
+        let message = app.last_message().unwrap();
+        assert!(message.contains("  1 %a"));
+        assert!(message.contains(&format!("\"{alpha}\"")));
+        assert!(message.contains("line 1"));
+    }
+
+    #[test]
+    fn alternate_key_switches_buffers() {
+        let alpha = temp_file("alt_alpha.txt", "alpha\n");
+        let bravo = temp_file("alt_bravo.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, &format!("e {bravo}"));
+        app.handle_key(KeyEvent::new(KeyCode::Char('6'), KeyModifiers::CONTROL))
+            .expect("alternate");
+        assert_eq!(app.editor.filename(), alpha);
+    }
+
+    #[test]
+    fn select_buffer_missing_reports_e86() {
+        let alpha = temp_file("select_missing.txt", "alpha\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        type_command(&mut app, "b 9");
+        assert_eq!(app.last_message(), Some("E86: Buffer 9 does not exist"));
+        type_command(&mut app, "b nope");
+        assert_eq!(app.last_message(), Some("E94: No matching buffer for nope"));
     }
 
     #[test]

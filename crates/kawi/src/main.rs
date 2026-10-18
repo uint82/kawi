@@ -6,8 +6,10 @@ mod vim;
 use anyhow::Result;
 use app::App;
 use kawi_buffer::Buffer;
+use kawi_editor::paths;
 use kawi_tui::terminal;
 use keymap::Flavor;
+use std::path::Path;
 
 fn main() -> Result<()> {
     let (path, flavor) = parse_cli(std::env::args().skip(1).collect());
@@ -34,10 +36,16 @@ fn select_path(args: Vec<String>) -> Option<String> {
 }
 
 fn load_buffer(path: Option<String>) -> Result<Buffer> {
-    match path {
-        Some(p) => Buffer::from_file(p.as_str()),
-        None => Ok(Buffer::from_string("")),
-    }
+    let Some(path) = path else {
+        return Ok(Buffer::from_string(""));
+    };
+    let cwd = std::env::current_dir()?;
+    let display = if Path::new(&path).is_absolute() {
+        paths::shorten(&paths::absolute(&path, &cwd), &cwd)
+    } else {
+        path
+    };
+    Buffer::open(&display)
 }
 
 fn run_app(app: &mut App) -> Result<()> {
