@@ -5,14 +5,14 @@ pub fn press_position(event: &MouseEvent, view: (usize, usize)) -> Option<(usize
     if !is_left_press(event.kind) {
         return None;
     }
-    to_buffer_position(event.column, event.row, view)
+    screen_position(event.column, event.row, view)
 }
 
 pub fn drag_position(event: &MouseEvent, view: (usize, usize)) -> Option<(usize, usize)> {
     if !is_left_drag(event.kind) {
         return None;
     }
-    to_buffer_position(event.column, event.row, view)
+    screen_position(event.column, event.row, view)
 }
 
 pub fn wheel_delta(event: &MouseEvent) -> Option<isize> {
@@ -31,18 +31,14 @@ fn is_left_drag(kind: MouseEventKind) -> bool {
     matches!(kind, MouseEventKind::Drag(MouseButton::Left))
 }
 
-fn to_buffer_position(
-    column: u16,
-    screen_row: u16,
-    view: (usize, usize),
-) -> Option<(usize, usize)> {
+fn screen_position(column: u16, screen_row: u16, view: (usize, usize)) -> Option<(usize, usize)> {
     let (top, height) = view;
-    let row = usize::from(screen_row).saturating_add(top);
-    let col = usize::from(column);
     if usize::from(screen_row) >= height {
         return None;
     }
-    Some((row, col))
+    let row = usize::from(screen_row).saturating_add(top);
+    let screen_col = usize::from(column);
+    Some((row, screen_col))
 }
 
 #[cfg(test)]
