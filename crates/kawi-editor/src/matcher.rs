@@ -1,24 +1,29 @@
 use ropey::RopeSlice;
 
+use crate::words::is_word_char;
+
 pub struct Query {
     text: String,
     sensitive: bool,
     ascii_fold: bool,
+    whole_word: bool,
 }
 
 impl Query {
-    pub fn new(pattern: &str) -> Self {
-        if pattern_has_upper(pattern) {
+    pub fn new(pattern: &str, sensitive: bool, whole_word: bool) -> Self {
+        if sensitive {
             Self {
                 text: pattern.to_string(),
                 sensitive: true,
                 ascii_fold: false,
+                whole_word,
             }
         } else {
             Self {
                 text: pattern.to_lowercase(),
                 sensitive: false,
                 ascii_fold: pattern.is_ascii(),
+                whole_word,
             }
         }
     }
@@ -27,18 +32,22 @@ impl Query {
         self.text.is_empty()
     }
 
-    pub fn needs_folded_lines(&self) -> bool {
+    pub fn needs_line_scan(&self) -> bool {
+        self.needs_folded_lines() || self.whole_word
+    }
+
+    fn needs_folded_lines(&self) -> bool {
         !self.sensitive && !self.ascii_fold
     }
 
-    pub fn first_at_or_after(&self, line: &str, bound_col: usize) -> Option<usize> {
+    fn raw_first_at_or_after(&self, line: &str, bound_col: usize) -> Option<usize> {
         if self.needs_folded_lines() {
             return folded_first_at_or_after(&self.text, line, bound_col);
         }
         byte_first_at_or_after(self.needle(), self.fold_bytes(), line, bound_col)
     }
 
-    pub fn first_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+    fn raw_first_before(&self, line: &str, bound_col: usize) -> Option<usize> {
         if self.needs_folded_lines() {
             return folded_first_before(&self.text, line, bound_col);
         }
@@ -47,7 +56,7 @@ impl Query {
             .map(|byte| col_of_byte(line, byte))
     }
 
-    pub fn last_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+    fn raw_last_before(&self, line: &str, bound_col: usize) -> Option<usize> {
         if self.needs_folded_lines() {
             return folded_last_before(&self.text, line, bound_col);
         }
@@ -56,7 +65,7 @@ impl Query {
             .map(|byte| col_of_byte(line, byte))
     }
 
-    pub fn last_in_line(&self, line: &str) -> Option<usize> {
+    fn raw_last_in_line(&self, line: &str) -> Option<usize> {
         if self.needs_folded_lines() {
             return folded_last_in_line(&self.text, line);
         }
@@ -70,7 +79,7 @@ impl Query {
         .map(|byte| col_of_byte(line, byte))
     }
 
-    pub fn count_in_line(&self, line: &str) -> usize {
+    fn raw_count_in_line(&self, line: &str) -> usize {
         if self.needs_folded_lines() {
             return folded_count_in_line(&self.text, line);
         }
@@ -83,7 +92,7 @@ impl Query {
         )
     }
 
-    pub fn count_before(&self, line: &str, bound_col: usize) -> usize {
+    fn raw_count_before(&self, line: &str, bound_col: usize) -> usize {
         if self.needs_folded_lines() {
             return folded_count_before(&self.text, line, bound_col);
         }
@@ -91,7 +100,7 @@ impl Query {
         count_starts(line.as_bytes(), self.needle(), self.fold_bytes(), 0, bound)
     }
 
-    pub fn spans_in_line(&self, line: &str) -> Vec<(usize, usize)> {
+    fn raw_spans_in_line(&self, line: &str) -> Vec<(usize, usize)> {
         if self.needs_folded_lines() {
             return folded_spans_in_line(&self.text, line);
         }
@@ -111,6 +120,93 @@ impl Query {
             from = hit.saturating_add(1);
         }
         spans
+    }
+
+    pub fn first_at_or_after(&self, line: &str, bound_col: usize) -> Option<usize> {
+        if !self.whole_word {
+            return self.raw_first_at_or_after(line, bound_col);
+        }
+        let mut from = bound_col;
+        loop {
+            let col = self.raw_first_at_or_after(line, from)?;
+            if self.accepts(line, col) {
+                return Some(col);
+            }
+            from = col.saturating_add(1);
+        }
+    }
+
+    pub fn first_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+        if !self.whole_word {
+            return self.raw_first_before(line, bound_col);
+        }
+        let mut from = bound_col;
+        loop {
+            let col = self.raw_first_before(line, from)?;
+            if self.accepts(line, col) {
+                return Some(col);
+            }
+            from = col;
+        }
+    }
+
+    pub fn last_before(&self, line: &str, bound_col: usize) -> Option<usize> {
+        if !self.whole_word {
+            return self.raw_last_before(line, bound_col);
+        }
+        let mut from = bound_col;
+        loop {
+            let col = self.raw_last_before(line, from)?;
+            if self.accepts(line, col) {
+                return Some(col);
+            }
+            from = col;
+        }
+    }
+
+    pub fn last_in_line(&self, line: &str) -> Option<usize> {
+        if !self.whole_word {
+            return self.raw_last_in_line(line);
+        }
+        self.spans_in_line(line).last().map(|span| span.0)
+    }
+
+    pub fn count_in_line(&self, line: &str) -> usize {
+        if !self.whole_word {
+            return self.raw_count_in_line(line);
+        }
+        self.spans_in_line(line).len()
+    }
+
+    pub fn count_before(&self, line: &str, bound_col: usize) -> usize {
+        if !self.whole_word {
+            return self.raw_count_before(line, bound_col);
+        }
+        self.spans_in_line(line)
+            .into_iter()
+            .filter(|(start, _)| *start < bound_col)
+            .count()
+    }
+
+    pub fn spans_in_line(&self, line: &str) -> Vec<(usize, usize)> {
+        let spans = self.raw_spans_in_line(line);
+        if !self.whole_word {
+            return spans;
+        }
+        spans
+            .into_iter()
+            .filter(|(start, _)| self.accepts(line, *start))
+            .collect()
+    }
+
+    fn accepts(&self, line: &str, col: usize) -> bool {
+        if !self.whole_word {
+            return true;
+        }
+        let before = line.chars().nth(col.wrapping_sub(1));
+        let end = col.saturating_add(self.text.chars().count());
+        let after = line.chars().nth(end);
+        !before.is_some_and(is_word_char) && !after.is_some_and(is_word_char)
     }
 
     fn needle(&self) -> &[u8] {
@@ -507,10 +603,6 @@ fn col_of_byte(line: &str, byte: usize) -> usize {
     line[..byte.min(line.len())].chars().count()
 }
 
-fn pattern_has_upper(pattern: &str) -> bool {
-    pattern.chars().any(|ch| ch.is_uppercase())
-}
-
 fn fold_case(line: &str) -> std::borrow::Cow<'_, str> {
     if line.is_ascii() {
         return fold_ascii(line);
@@ -588,14 +680,14 @@ mod tests {
     fn range_searches_rope_slice() {
         let buffer = buffer_of("foo\nbar");
         let slice = buffer.rope_slice();
-        let query = Query::new("ba");
+        let query = Query::new("ba", false, false);
         assert_eq!(
             first_in_range(&slice, &query, 0, slice.len_bytes()),
             Some(4)
         );
-        let query = Query::new("BA");
+        let query = Query::new("BA", true, false);
         assert_eq!(first_in_range(&slice, &query, 0, slice.len_bytes()), None);
-        let query = Query::new("AR");
+        let query = Query::new("AR", true, false);
         assert_eq!(last_in_range(&slice, &query, 0, slice.len_bytes()), None);
     }
 
@@ -603,32 +695,32 @@ mod tests {
     fn range_folds_case() {
         let buffer = buffer_of("FOO bar");
         let slice = buffer.rope_slice();
-        let query = Query::new("foo");
+        let query = Query::new("foo", false, false);
         assert_eq!(
             first_in_range(&slice, &query, 0, slice.len_bytes()),
             Some(0)
         );
-        let query = Query::new("BAR");
+        let query = Query::new("BAR", true, false);
         assert_eq!(first_in_range(&slice, &query, 0, slice.len_bytes()), None);
     }
 
     #[test]
     fn unicode_pattern_uses_folded_lines() {
-        let query = Query::new("café");
-        assert!(query.needs_folded_lines());
+        let query = Query::new("café", false, false);
+        assert!(query.needs_line_scan());
         assert_eq!(query.first_at_or_after("CAFÉ x", 0), Some(0));
-        let ascii = Query::new("cafe");
-        assert!(!ascii.needs_folded_lines());
+        let ascii = Query::new("cafe", false, false);
+        assert!(!ascii.needs_line_scan());
     }
 
     #[test]
     fn range_counts_all_matches() {
         let buffer = buffer_of("ar ar\nar");
         let slice = buffer.rope_slice();
-        let query = Query::new("ar");
+        let query = Query::new("ar", false, false);
         assert_eq!(count_in_range(&slice, &query, 0, slice.len_bytes()), 3);
         assert_eq!(count_in_range(&slice, &query, 0, 0), 0);
-        let empty = Query::new("");
+        let empty = Query::new("", false, false);
         assert_eq!(count_in_range(&slice, &empty, 0, slice.len_bytes()), 0);
     }
 
@@ -642,7 +734,7 @@ mod tests {
     fn range_collects_spans() {
         let buffer = buffer_of("ar ar\nar");
         let slice = buffer.rope_slice();
-        let query = Query::new("ar");
+        let query = Query::new("ar", false, false);
         assert_eq!(
             spans_in_range(&slice, &query, 0, slice.len_bytes()),
             vec![(0, 2), (3, 5), (6, 8)]
@@ -665,14 +757,14 @@ mod tests {
 
     #[test]
     fn line_collects_spans() {
-        let query = Query::new("ar");
+        let query = Query::new("ar", false, false);
         assert_eq!(query.spans_in_line("ar ar"), vec![(0, 2), (3, 5)]);
         assert!(query.spans_in_line("foo").is_empty());
     }
 
     #[test]
     fn line_counts_matches() {
-        let query = Query::new("ar");
+        let query = Query::new("ar", false, false);
         assert_eq!(query.count_in_line("ar ar"), 2);
         assert_eq!(query.count_in_line("foo"), 0);
         assert_eq!(query.count_before("ar ar", 4), 2);
@@ -680,8 +772,31 @@ mod tests {
     }
 
     #[test]
+    fn whole_word_matches_only_bounded_words() {
+        let query = Query::new("foo", true, true);
+        assert_eq!(
+            query.spans_in_line("foo foobar foo"),
+            vec![(0, 3), (11, 14)]
+        );
+        assert_eq!(query.count_in_line("foo foobar foo"), 2);
+        assert_eq!(query.first_at_or_after("foobar foo", 0), Some(7));
+        assert_eq!(query.last_before("foo foobar foo", 11), Some(0));
+        assert_eq!(query.last_in_line("foo foobar foo"), Some(11));
+        assert_eq!(query.count_before("foo foobar foo", 11), 1);
+        assert_eq!(query.count_before("foo foobar foo", 12), 2);
+    }
+
+    #[test]
+    fn whole_word_respects_underscores_and_digits() {
+        let query = Query::new("foo", true, true);
+        assert!(query.spans_in_line("foo_bar").is_empty());
+        assert!(query.spans_in_line("foo1").is_empty());
+        assert_eq!(query.spans_in_line("(foo)"), vec![(1, 4)]);
+    }
+
+    #[test]
     fn line_primitives_match_columns() {
-        let query = Query::new("ar");
+        let query = Query::new("ar", false, false);
         assert_eq!(query.first_at_or_after("ar ar", 1), Some(3));
         assert_eq!(query.first_before("ar ar", 4), Some(0));
         assert_eq!(query.last_before("ar ar", 4), Some(3));

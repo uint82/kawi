@@ -113,6 +113,7 @@ impl Editor {
 
     pub(super) fn exit_insert(&mut self) {
         if self.mode == Mode::Insert {
+            self.clear_autoindent_line();
             self.last_insert = Some((self.cursor.row(), self.cursor.col()));
             self.replay_insert();
             self.buffer.end_change();

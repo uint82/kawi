@@ -241,6 +241,13 @@ impl Buffer {
     }
 
     pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
+        if row == self.len() && col == 0 && self.ends_with_newline() {
+            let last = self.rope.len_chars();
+            self.remove_text(last.saturating_sub(1), last);
+            self.touch();
+            let prev = row.saturating_sub(1);
+            return (prev, self.line_len(prev));
+        }
         if row >= self.len() {
             return (row, col);
         }

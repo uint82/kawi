@@ -284,6 +284,8 @@ impl App {
             Action::NextMatch => self.handle_next_match(),
             Action::PrevMatch => self.handle_prev_match(),
             Action::ConfirmSearch => self.handle_confirm_search(),
+            Action::SearchWordForward => self.handle_search_word(true),
+            Action::SearchWordBackward => self.handle_search_word(false),
             Action::JumpOlder => self.handle_jump(true),
             Action::JumpNewer => self.handle_jump(false),
             Action::EditAlternate => self.handle_alternate(),
@@ -432,6 +434,9 @@ impl App {
                 self.switch_relativenumber(relativenumber)
             }
             Command::SetNumberWidth(width) => self.switch_numberwidth(width),
+            Command::SetIgnoreCase(value) => self.switch_ignorecase(value),
+            Command::SetSmartCase(value) => self.switch_smartcase(value),
+            Command::SetAutoIndent(value) => self.switch_autoindent(value),
             Command::SetError(message) => {
                 self.show_message(message);
                 Ok(false)
@@ -474,6 +479,29 @@ impl App {
 
     fn switch_numberwidth(&mut self, width: usize) -> Result<bool> {
         self.editor.set_numberwidth(width);
+        Ok(false)
+    }
+
+    fn switch_ignorecase(&mut self, value: bool) -> Result<bool> {
+        self.editor.set_ignorecase(value);
+        Ok(false)
+    }
+
+    fn switch_smartcase(&mut self, value: bool) -> Result<bool> {
+        self.editor.set_smartcase(value);
+        Ok(false)
+    }
+
+    fn switch_autoindent(&mut self, value: bool) -> Result<bool> {
+        self.editor.set_autoindent(value);
+        Ok(false)
+    }
+
+    fn handle_search_word(&mut self, forward: bool) -> Result<bool> {
+        if let Err(error) = self.editor.search_word(forward) {
+            self.show_message(file_error_message(error));
+        }
+        self.reveal_cursor();
         Ok(false)
     }
 
@@ -754,6 +782,7 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         }
         kawi_editor::EditError::Io(message) => message,
         kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
+        kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
     }
 }
 
@@ -1477,6 +1506,65 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("run");
     }
 
+    fn search_forward(app: &mut App, pattern: &str) {
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        for ch in pattern.chars() {
+            app.handle_key(key(KeyCode::Char(ch))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+    }
+
+    #[test]
+    fn search_options_apply_to_prompt_searches() {
+        let mut app = App::new(
+            kawi_buffer::Buffer::from_string("foo FOO Foo foo"),
+            Flavor::Vim,
+        );
+        search_forward(&mut app, "foo");
+        assert_eq!(app.cursor_position(), (0, 12));
+        type_command(&mut app, "set ignorecase");
+        app.handle_key(key(KeyCode::Char('g'))).expect("goto");
+        app.handle_key(key(KeyCode::Char('g'))).expect("goto");
+        app.handle_key(key(KeyCode::Char('0'))).expect("start");
+        search_forward(&mut app, "foo");
+        assert_eq!(app.cursor_position(), (0, 4));
+        type_command(&mut app, "set smartcase");
+        app.handle_key(key(KeyCode::Char('g'))).expect("goto");
+        app.handle_key(key(KeyCode::Char('g'))).expect("goto");
+        app.handle_key(key(KeyCode::Char('0'))).expect("start");
+        search_forward(&mut app, "Foo");
+        assert_eq!(app.cursor_position(), (0, 8));
+    }
+
+    #[test]
+    fn star_searches_word_under_cursor() {
+        let mut app = App::new(
+            kawi_buffer::Buffer::from_string("foo FOO Foo foo"),
+            Flavor::Vim,
+        );
+        type_command(&mut app, "set ignorecase");
+        app.handle_key(key(KeyCode::Char('*'))).expect("star");
+        assert_eq!(app.cursor_position(), (0, 4));
+    }
+
+    #[test]
+    fn star_on_blank_line_reports_e348() {
+        let mut app = App::new(kawi_buffer::Buffer::from_string(""), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('*'))).expect("star");
+        assert_eq!(app.last_message(), Some("E348: No string under cursor"));
+    }
+
+    #[test]
+    fn autoindent_command_toggles() {
+        let mut app = App::new(kawi_buffer::Buffer::from_string("    abc"), Flavor::Vim);
+        type_command(&mut app, "set noautoindent");
+        app.handle_key(key(KeyCode::Char('A'))).expect("append");
+        app.handle_key(key(KeyCode::Enter)).expect("enter");
+        app.handle_key(key(KeyCode::Esc)).expect("esc");
+        let lines = app.editor.visible_lines(0, app.editor.line_count() + 1);
+        assert_eq!(lines, vec!["    abc".to_string(), "".to_string()]);
+    }
+
     fn temp_file(name: &str, text: &str) -> String {
         let path = temp_path(name);
         std::fs::write(&path, text).unwrap();
@@ -1748,10 +1836,10 @@ mod tests {
         app.handle_key(key(KeyCode::Char('a'))).expect("type");
         app.handle_key(key(KeyCode::Char('r'))).expect("type");
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
-        app.handle_key(key(KeyCode::Char('n'))).expect("next");
         assert_eq!(app.cursor_position(), (0, 3));
-        assert_eq!(app.last_message(), None);
         app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(app.cursor_position(), (0, 6));
+        assert_eq!(app.last_message(), None);
         app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
         assert_eq!(app.cursor_position(), (0, 0));
         assert_eq!(
@@ -1830,7 +1918,7 @@ mod tests {
         app.handle_key(key(KeyCode::Char('r'))).expect("type");
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         app.handle_key(key(KeyCode::Char('n'))).expect("next");
-        app.handle_key(key(KeyCode::Char('n'))).expect("next");
+        assert_eq!(app.cursor_position(), (0, 6));
         app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
         assert_eq!(
             app.last_message(),

@@ -24,6 +24,7 @@ pub enum EditError {
     CannotOpen(String),
     Io(String),
     InvalidMark,
+    NoString,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -684,6 +685,7 @@ impl Editor {
         self.force_numbered_register = false;
         self.clear_count();
         self.search_origin = None;
+        self.pending_autoindent = None;
         self.command.clear();
     }
 }

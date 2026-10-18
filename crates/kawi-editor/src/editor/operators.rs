@@ -213,6 +213,9 @@ impl Editor {
     pub(super) fn delete_backward(&mut self) {
         self.record_maybe();
         self.record_insert(InsertEdit::Backspace);
+        if self.backspace_indent() {
+            return;
+        }
         let (row, col) = self
             .buffer
             .delete_backward(self.cursor.row(), self.cursor.col());
@@ -581,20 +584,17 @@ impl Editor {
     pub(super) fn insert_newline(&mut self) {
         self.record_insert(InsertEdit::Newline);
         let row = self.cursor.row();
-        self.insert_newline_at(row, self.cursor.col());
+        let col = self.cursor.col();
+        let width = self.prefix_indent_width(row, col);
+        self.insert_newline_at(row, col);
+        self.clear_autoindent_line();
+        self.enter_autoindent(row.saturating_add(1), width);
     }
 
     fn insert_newline_at(&mut self, row: usize, col: usize) {
         self.record_maybe();
         self.buffer.insert_newline(row, col);
         self.cursor.move_to_line_start(row.saturating_add(1));
-    }
-
-    fn line_indent(&self, row: usize) -> String {
-        match self.buffer.line_cow(row) {
-            Some(line) => line.chars().take_while(|ch| ch.is_whitespace()).collect(),
-            None => String::new(),
-        }
     }
 
     fn line_is_empty_at_cursor(&self) -> bool {
@@ -639,16 +639,23 @@ impl Editor {
     }
 
     pub(super) fn open_line_before(&mut self, row: usize) {
-        let indent = self.line_indent(row);
+        let indent = self.open_indent(row);
         self.insert_newline_at(row, 0);
-        self.insert_indent(row, &indent);
+        if let Some(indent) = indent {
+            self.insert_indent(row, &indent);
+            self.pending_autoindent = Some((row, indent));
+        }
     }
 
     pub(super) fn open_line_after(&mut self, row: usize) {
         let width = self.line_width(row);
-        let indent = self.line_indent(row);
+        let indent = self.open_indent(row);
         self.insert_newline_at(row, width);
-        self.insert_indent(row.saturating_add(1), &indent);
+        if let Some(indent) = indent {
+            let new_row = row.saturating_add(1);
+            self.insert_indent(new_row, &indent);
+            self.pending_autoindent = Some((new_row, indent));
+        }
     }
 
     pub(super) fn operator_range(&self) -> ((usize, usize), (usize, usize)) {

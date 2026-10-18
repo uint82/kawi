@@ -19,6 +19,8 @@ pub enum Action {
     SelectRegister(char),
     InsertRegister(char),
     MoveToMatch,
+    SearchWordForward,
+    SearchWordBackward,
     DeleteToMatch,
     YankToMatch,
     ChangeToMatch,
