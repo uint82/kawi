@@ -28,7 +28,7 @@ pub use editor::{
     MAX_HISTORY_LIMIT,
 };
 pub use mode::Mode;
-pub use register::Register;
+pub use register::{Register, RegisterKind};
 pub use search::{MatchSpan, SearchOutcome};
 pub use selection::Selection;
 pub use viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};

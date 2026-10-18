@@ -18,6 +18,12 @@ pub trait Keymap {
     fn pending_text(&self) -> Option<&str> {
         None
     }
+
+    fn pending_keys(&self) -> Option<&str> {
+        None
+    }
+
+    fn reset_pending(&mut self) {}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +80,20 @@ impl Keymap for ActiveKeymap {
         match self {
             Self::Vim(inner) => inner.pending_text(),
             Self::Helix(inner) => inner.pending_text(),
+        }
+    }
+
+    fn pending_keys(&self) -> Option<&str> {
+        match self {
+            Self::Vim(inner) => inner.pending_keys(),
+            Self::Helix(inner) => inner.pending_keys(),
+        }
+    }
+
+    fn reset_pending(&mut self) {
+        match self {
+            Self::Vim(inner) => inner.reset_pending(),
+            Self::Helix(inner) => inner.reset_pending(),
         }
     }
 }

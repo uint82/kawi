@@ -375,7 +375,7 @@ fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
         frame.search,
         frame.message,
         frame.search_status,
-        frame.showcmd,
+        frame.showcmd.as_deref(),
         frame.viewport.width(),
     );
     move_to_message_row(out, frame.viewport)?;
@@ -478,7 +478,7 @@ fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
         frame.command,
         frame.search,
         frame.viewport.width(),
-        frame.showcmd,
+        frame.showcmd.as_deref(),
     ) {
         return place_prompt_cursor(out, col, frame.viewport);
     }
