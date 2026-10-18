@@ -405,6 +405,28 @@ impl Editor {
         self.cursor.col()
     }
 
+    pub fn virtcol(&self) -> usize {
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        let tabstop = self.effective_indent().tabstop;
+        let width = self.buffer.line_len(row);
+        if col < width {
+            self.buffer
+                .screen_col(row, col.saturating_add(1), tabstop)
+                .saturating_sub(1)
+        } else {
+            self.buffer.screen_col(row, width, tabstop)
+        }
+    }
+
+    pub fn cursor_line_empty(&self) -> bool {
+        self.buffer.line_len(self.cursor.row()) == 0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
     pub fn set_shiftwidth(&mut self, width: usize) {
         self.shiftwidth_override = Some(width);
     }
@@ -780,6 +802,60 @@ fn is_tracking(action: Action) -> bool {
             | Action::GotoFirstLine
             | Action::JumpTo(_, _)
     )
+}
+
+#[cfg(test)]
+mod ruler_tests {
+    use super::*;
+    use crate::actions::Action;
+
+    fn editor_with(text: &str) -> Editor {
+        Editor::new(Buffer::from_string(text))
+    }
+
+    #[test]
+    fn virtcol_on_tab_spans_to_tabstop() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        assert_eq!(e.col(), 0);
+        assert_eq!(e.virtcol(), 7);
+        e.apply(Action::JumpTo(0, 1));
+        assert_eq!(e.virtcol(), 8);
+    }
+
+    #[test]
+    fn virtcol_matches_column_for_ascii() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        assert_eq!(e.col(), 2);
+        assert_eq!(e.virtcol(), 2);
+    }
+
+    #[test]
+    fn virtcol_at_line_end_is_line_width() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::Append);
+        assert_eq!(e.col(), 3);
+        assert_eq!(e.virtcol(), 3);
+    }
+
+    #[test]
+    fn cursor_line_empty_detects_blank_line() {
+        let mut e = editor_with("ab\n\ncd");
+        e.apply(Action::JumpTo(1, 0));
+        assert!(e.cursor_line_empty());
+        e.apply(Action::JumpTo(0, 0));
+        assert!(!e.cursor_line_empty());
+    }
+
+    #[test]
+    fn is_empty_detects_empty_buffer() {
+        let e = editor_with("");
+        assert!(e.is_empty());
+        let e = editor_with("a");
+        assert!(!e.is_empty());
+    }
 }
 
 #[cfg(test)]

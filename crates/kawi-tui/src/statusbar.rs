@@ -10,6 +10,9 @@ pub struct StatusInfo<'a> {
     pub dirty: bool,
     pub row: usize,
     pub col: usize,
+    pub virtcol: usize,
+    pub line_empty: bool,
+    pub empty_buffer: bool,
     pub quit_armed: bool,
     pub mode: &'a str,
 }
@@ -48,11 +51,22 @@ fn file_part(info: &StatusInfo) -> String {
 }
 
 fn right_text(info: &StatusInfo) -> String {
-    format!(
-        "{}:{}",
-        info.row.saturating_add(1),
+    let line = if info.empty_buffer {
+        0
+    } else {
+        info.row.saturating_add(1)
+    };
+    let col = if info.line_empty {
+        0
+    } else {
         info.col.saturating_add(1)
-    )
+    };
+    let vcol = info.virtcol.saturating_add(1);
+    if col == vcol {
+        format!("{line},{col}")
+    } else {
+        format!("{line},{col}-{vcol}")
+    }
 }
 
 fn join_padded(left: &str, right: &str, width: usize) -> String {
@@ -86,70 +100,83 @@ fn saturate_u16(v: usize) -> u16 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn shows_dirty_mark() {
-        let info = StatusInfo {
-            filename: "a.txt",
-            dirty: true,
+    fn info<'a>(filename: &'a str, dirty: bool, mode: &'a str) -> StatusInfo<'a> {
+        StatusInfo {
+            filename,
+            dirty,
             row: 0,
             col: 0,
+            virtcol: 0,
+            line_empty: false,
+            empty_buffer: false,
             quit_armed: false,
-            mode: "NORMAL",
-        };
-        assert!(build_line(&info, 40).contains("[+]"));
+            mode,
+        }
+    }
+
+    #[test]
+    fn shows_dirty_mark() {
+        assert!(build_line(&info("a.txt", true, "NORMAL"), 40).contains("[+]"));
     }
 
     #[test]
     fn shows_quit_warning_when_armed() {
-        let info = StatusInfo {
-            filename: "a.txt",
-            dirty: true,
-            row: 0,
-            col: 0,
-            quit_armed: true,
-            mode: "NORMAL",
-        };
-        assert!(build_line(&info, 40).contains(":q again"));
+        let mut status = info("a.txt", true, "NORMAL");
+        status.quit_armed = true;
+        assert!(build_line(&status, 40).contains(":q again"));
     }
 
     #[test]
     fn pads_to_width() {
-        let info = StatusInfo {
-            filename: "a.txt",
-            dirty: false,
-            row: 0,
-            col: 0,
-            quit_armed: false,
-            mode: "INSERT",
-        };
-        assert_eq!(build_line(&info, 20).chars().count(), 20);
+        assert_eq!(
+            build_line(&info("a.txt", false, "INSERT"), 20)
+                .chars()
+                .count(),
+            20
+        );
     }
 
     #[test]
     fn shows_mode() {
-        let info = StatusInfo {
-            filename: "a.txt",
-            dirty: false,
-            row: 0,
-            col: 0,
-            quit_armed: false,
-            mode: "NORMAL",
-        };
-        assert!(build_line(&info, 40).contains("NORMAL"));
+        assert!(build_line(&info("a.txt", false, "NORMAL"), 40).contains("NORMAL"));
     }
 
     #[test]
     fn keeps_status_in_command_mode() {
-        let info = StatusInfo {
-            filename: "a.txt",
-            dirty: false,
-            row: 0,
-            col: 0,
-            quit_armed: false,
-            mode: "COMMAND",
-        };
-        let line = build_line(&info, 40);
+        let line = build_line(&info("a.txt", false, "COMMAND"), 40);
         assert!(line.contains("COMMAND"));
         assert!(line.contains("a.txt"));
+    }
+
+    #[test]
+    fn position_uses_ruler_format() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.row = 2;
+        status.col = 4;
+        status.virtcol = 4;
+        assert!(build_line(&status, 40).contains("3,5"));
+    }
+
+    #[test]
+    fn position_shows_virtual_column_range_on_tab() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.col = 0;
+        status.virtcol = 7;
+        assert!(build_line(&status, 40).contains("1,1-8"));
+    }
+
+    #[test]
+    fn position_on_empty_line_starts_at_zero() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.line_empty = true;
+        assert!(build_line(&status, 40).contains("1,0-1"));
+    }
+
+    #[test]
+    fn position_on_empty_buffer_starts_at_zero() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.empty_buffer = true;
+        status.line_empty = true;
+        assert!(build_line(&status, 40).contains("0,0-1"));
     }
 }
