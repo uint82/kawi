@@ -10,6 +10,7 @@ use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
+mod autoindent;
 mod buffers;
 mod case_ops;
 mod gutter;
@@ -31,6 +32,7 @@ mod sent_ops;
 mod session;
 mod shift_ops;
 mod tab;
+mod word_search;
 
 use session::InsertEdit;
 
@@ -71,11 +73,17 @@ pub struct Editor {
     number: bool,
     relativenumber: bool,
     numberwidth: usize,
+    ignorecase: bool,
+    smartcase: bool,
+    search_whole_word: bool,
+    autoindent: bool,
+    pending_autoindent: Option<(usize, String)>,
     buffers: buffers::Buffers,
 }
 
 struct SearchStatus {
     pattern: String,
+    whole_word: bool,
     index: usize,
     total: usize,
     revision: u64,
@@ -142,6 +150,12 @@ impl Editor {
             Action::InsertRegister(name) => self.insert_register(name),
             Action::SelectRegister(_) => self.noop(),
             Action::MoveToMatch => self.move_to_match(),
+            Action::SearchWordForward => {
+                let _ = self.search_word(true);
+            }
+            Action::SearchWordBackward => {
+                let _ = self.search_word(false);
+            }
             Action::DeleteToMatch => self.delete_match(),
             Action::YankToMatch => self.yank_match(),
             Action::ChangeToMatch => self.change_match(),
@@ -577,6 +591,11 @@ impl Editor {
             number: false,
             relativenumber: false,
             numberwidth: 4,
+            ignorecase: false,
+            smartcase: false,
+            search_whole_word: false,
+            autoindent: true,
+            pending_autoindent: None,
             buffers: buffers::Buffers::new(),
         }
     }

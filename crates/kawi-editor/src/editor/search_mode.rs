@@ -1,4 +1,5 @@
 use super::{Editor, SearchStatus};
+use crate::matcher::Query;
 use crate::mode::Mode;
 use crate::search::{self, SearchOutcome};
 
@@ -50,6 +51,7 @@ impl Editor {
     pub(super) fn enter_search(&mut self) {
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
+        self.search_whole_word = false;
         self.search_status = None;
         self.mode = Mode::Search;
     }
@@ -70,9 +72,11 @@ impl Editor {
         let origin = self
             .search_origin
             .unwrap_or((self.cursor.row(), self.cursor.col()));
-        if let Some((row, col)) =
-            search::find_first_from(&self.buffer, self.search.text(), origin.0, origin.1)
-        {
+        let query = self.search_query();
+        let from = (origin.0, origin.1.saturating_add(1));
+        let found = search::find_first_from(&self.buffer, &query, from.0, from.1)
+            .or_else(|| search::find_first_from(&self.buffer, &query, 0, 0));
+        if let Some((row, col)) = found {
             self.cursor.set_position(row, col);
             self.remember_wanted_column();
         }
@@ -123,11 +127,16 @@ impl Editor {
             return;
         }
         let revision = self.buffer.revision();
+        let query = self.search_query();
         let total = match &self.search_status {
-            Some(status) if status.pattern == pattern && status.revision == revision => {
+            Some(status)
+                if status.pattern == pattern
+                    && status.revision == revision
+                    && status.whole_word == self.search_whole_word =>
+            {
                 status.total
             }
-            _ => search::count_matches(&self.buffer, &pattern),
+            _ => search::count_matches(&self.buffer, &query),
         };
         if total == 0 {
             self.search_status = None;
@@ -135,13 +144,14 @@ impl Editor {
         }
         let index = search::match_rank(
             &self.buffer,
-            &pattern,
+            &query,
             self.cursor.row(),
             self.cursor.col(),
             total,
         );
         self.search_status = Some(SearchStatus {
             pattern,
+            whole_word: self.search_whole_word,
             index,
             total,
             revision,
@@ -157,12 +167,47 @@ impl Editor {
         self.step_search(false)
     }
 
+    pub fn set_ignorecase(&mut self, ignorecase: bool) {
+        self.ignorecase = ignorecase;
+        self.search_status = None;
+    }
+
+    pub fn set_smartcase(&mut self, smartcase: bool) {
+        self.smartcase = smartcase;
+        self.search_status = None;
+    }
+
+    fn search_sensitive(&self, pattern: &str) -> bool {
+        if !self.ignorecase {
+            return true;
+        }
+        let smartcase = self.smartcase && !self.search_whole_word;
+        if smartcase && pattern.chars().any(char::is_uppercase) {
+            return true;
+        }
+        false
+    }
+
+    fn search_query(&self) -> Query {
+        let pattern = self.search.text();
+        Query::new(
+            pattern,
+            self.search_sensitive(pattern),
+            self.search_whole_word,
+        )
+    }
+
     pub fn search_spans(&self, top: usize, height: usize) -> Vec<search::MatchSpan> {
         let (pattern, anchor) = match self.highlight_target() {
             Some(target) => target,
             None => return Vec::new(),
         };
-        search::collect_matches(&self.buffer, pattern, top, top.saturating_add(height))
+        let query = Query::new(
+            pattern,
+            self.search_sensitive(pattern),
+            self.search_whole_word,
+        );
+        search::collect_matches(&self.buffer, &query, top, top.saturating_add(height))
             .into_iter()
             .map(|span| self.mark_current(span, anchor))
             .collect()
@@ -172,20 +217,11 @@ impl Editor {
         if self.search.text().is_empty() {
             return SearchOutcome::Missing;
         }
+        let query = self.search_query();
         let found = if forward {
-            search::find_next(
-                &self.buffer,
-                self.search.text(),
-                self.cursor.row(),
-                self.cursor.col(),
-            )
+            search::find_next(&self.buffer, &query, self.cursor.row(), self.cursor.col())
         } else {
-            search::find_prev(
-                &self.buffer,
-                self.search.text(),
-                self.cursor.row(),
-                self.cursor.col(),
-            )
+            search::find_prev(&self.buffer, &query, self.cursor.row(), self.cursor.col())
         };
         match found {
             Some(((row, col), wrapped)) => self.place_search_result(row, col, wrapped),
@@ -292,11 +328,12 @@ mod tests {
         e.apply(Action::PushSearchChar('a'));
         e.apply(Action::PushSearchChar('r'));
         e.apply(Action::ConfirmSearch);
-        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
-        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!((e.row(), e.col()), (0, 3));
         assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [3/3]"));
         assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: false });
-        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/3]"));
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
     }
 
     #[test]
@@ -307,8 +344,7 @@ mod tests {
         e.apply(Action::PushSearchChar('r'));
         e.apply(Action::ConfirmSearch);
         assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
-        assert_eq!((e.row(), e.col()), (0, 3));
-        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
+        assert_eq!((e.row(), e.col()), (0, 6));
         assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: true });
         assert_eq!((e.row(), e.col()), (0, 0));
     }
@@ -320,8 +356,8 @@ mod tests {
         e.apply(Action::PushSearchChar('a'));
         e.apply(Action::PushSearchChar('r'));
         e.apply(Action::ConfirmSearch);
-        assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: true });
-        assert_eq!((e.row(), e.col()), (0, 6));
+        assert_eq!(e.search_prev(), SearchOutcome::Found { wrapped: false });
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]
@@ -350,7 +386,7 @@ mod tests {
         e.apply(Action::PushSearchChar('a'));
         let spans = e.search_spans(0, 2);
         assert_eq!(spans.len(), 3);
-        assert!(spans[0].current);
+        assert!(spans[1].current);
     }
 
     #[test]
@@ -364,13 +400,13 @@ mod tests {
         assert_eq!(spans.len(), 3);
         assert_eq!(
             spans.iter().map(|span| span.current).collect::<Vec<_>>(),
-            vec![true, false, false]
+            vec![false, true, false]
         );
         e.apply(Action::NextMatch);
         let spans = e.search_spans(0, 2);
         assert_eq!(
             spans.iter().map(|span| span.current).collect::<Vec<_>>(),
-            vec![false, true, false]
+            vec![false, false, true]
         );
     }
 
@@ -385,7 +421,7 @@ mod tests {
         e.apply(Action::InsertChar('x'));
         assert_eq!(e.search_status_text(), None);
         assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: false });
-        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/3]"));
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [3/3]"));
     }
 
     #[test]
@@ -395,7 +431,7 @@ mod tests {
         e.apply(Action::PushSearchChar('a'));
         e.apply(Action::PushSearchChar('r'));
         e.apply(Action::ConfirmSearch);
-        assert_eq!(e.search_status_text().as_deref(), Some("/ar [1/2]"));
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/2]"));
         e.apply(Action::EnterSearch);
         e.apply(Action::PushSearchChar('f'));
         e.apply(Action::PushSearchChar('o'));

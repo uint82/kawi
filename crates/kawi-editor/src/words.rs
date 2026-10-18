@@ -619,13 +619,17 @@ pub(crate) fn line_len(buffer: &Buffer, row: usize) -> usize {
 }
 
 pub(crate) fn class_of(ch: char) -> WordClass {
-    if ch.is_alphanumeric() || ch == '_' {
+    if is_word_char(ch) {
         WordClass::Word
     } else if ch.is_whitespace() {
         WordClass::Space
     } else {
         WordClass::Punct
     }
+}
+
+pub(crate) fn is_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
 }
 
 #[cfg(test)]

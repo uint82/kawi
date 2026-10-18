@@ -19,16 +19,15 @@ pub struct MatchSpan {
 
 pub fn collect_matches(
     buffer: &Buffer,
-    pattern: &str,
+    query: &Query,
     start_row: usize,
     end_row: usize,
 ) -> Vec<MatchSpan> {
-    let query = Query::new(pattern);
     if query.is_empty() {
         return Vec::new();
     }
-    if query.needs_folded_lines() {
-        return lines_collect_matches(buffer, &query, start_row, end_row);
+    if query.needs_line_scan() {
+        return lines_collect_matches(buffer, query, start_row, end_row);
     }
     if start_row >= end_row {
         return Vec::new();
@@ -36,7 +35,7 @@ pub fn collect_matches(
     let slice = buffer.rope_slice();
     let from = position_byte(&slice, buffer, start_row, 0);
     let end = end_row_byte(&slice, buffer, end_row);
-    matcher::spans_in_range(&slice, &query, from, end)
+    matcher::spans_in_range(&slice, query, from, end)
         .into_iter()
         .map(|(start_byte, end_byte)| span_of_bytes(&slice, buffer, start_byte, end_byte))
         .collect()
@@ -75,63 +74,60 @@ fn span_end_col(buffer: &Buffer, row: usize, end_row: usize, end: usize) -> usiz
 
 pub fn find_first_from(
     buffer: &Buffer,
-    pattern: &str,
+    query: &Query,
     row: usize,
     col: usize,
 ) -> Option<(usize, usize)> {
-    let query = Query::new(pattern);
     if query.is_empty() {
         return None;
     }
-    if query.needs_folded_lines() {
-        return lines_first_from(buffer, &query, row, col);
+    if query.needs_line_scan() {
+        return lines_first_from(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
     let from = position_byte(&slice, buffer, row, col);
-    matcher::first_in_range(&slice, &query, from, slice.len_bytes())
+    matcher::first_in_range(&slice, query, from, slice.len_bytes())
         .map(|byte| position_of_byte(&slice, buffer, byte))
 }
 
 pub fn find_next(
     buffer: &Buffer,
-    pattern: &str,
+    query: &Query,
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), bool)> {
-    let query = Query::new(pattern);
     if query.is_empty() {
         return None;
     }
-    if query.needs_folded_lines() {
-        return lines_find_next(buffer, &query, row, col);
+    if query.needs_line_scan() {
+        return lines_find_next(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
     let from = position_byte(&slice, buffer, row, col.saturating_add(1));
-    if let Some(byte) = matcher::first_in_range(&slice, &query, from, slice.len_bytes()) {
+    if let Some(byte) = matcher::first_in_range(&slice, query, from, slice.len_bytes()) {
         return Some((position_of_byte(&slice, buffer, byte), false));
     }
-    wrapped_first(&slice, buffer, &query, row, col).map(|found| (found, true))
+    wrapped_first(&slice, buffer, query, row, col).map(|found| (found, true))
 }
 
 pub fn find_prev(
     buffer: &Buffer,
-    pattern: &str,
+    query: &Query,
     row: usize,
     col: usize,
 ) -> Option<((usize, usize), bool)> {
-    let query = Query::new(pattern);
     if query.is_empty() {
         return None;
     }
-    if query.needs_folded_lines() {
-        return lines_find_prev(buffer, &query, row, col);
+    if query.needs_line_scan() {
+        return lines_find_prev(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
     let bound = position_byte(&slice, buffer, row, col);
-    if let Some(byte) = matcher::last_in_range(&slice, &query, 0, bound) {
+    if let Some(byte) = matcher::last_in_range(&slice, query, 0, bound) {
         return Some((position_of_byte(&slice, buffer, byte), false));
     }
-    wrapped_last(&slice, buffer, &query, row).map(|found| (found, true))
+    wrapped_last(&slice, buffer, query, row).map(|found| (found, true))
 }
 
 fn wrapped_first(
@@ -165,29 +161,27 @@ fn wrapped_last(
         .map(|byte| position_of_byte(slice, buffer, byte))
 }
 
-pub fn count_matches(buffer: &Buffer, pattern: &str) -> usize {
-    let query = Query::new(pattern);
+pub fn count_matches(buffer: &Buffer, query: &Query) -> usize {
     if query.is_empty() {
         return 0;
     }
-    if query.needs_folded_lines() {
-        return lines_count_matches(buffer, &query);
+    if query.needs_line_scan() {
+        return lines_count_matches(buffer, query);
     }
     let slice = buffer.rope_slice();
-    matcher::count_in_range(&slice, &query, 0, slice.len_bytes())
+    matcher::count_in_range(&slice, query, 0, slice.len_bytes())
 }
 
-pub fn match_rank(buffer: &Buffer, pattern: &str, row: usize, col: usize, total: usize) -> usize {
-    let query = Query::new(pattern);
+pub fn match_rank(buffer: &Buffer, query: &Query, row: usize, col: usize, total: usize) -> usize {
     if query.is_empty() || total == 0 {
         return 0;
     }
-    let before = matches_before(buffer, &query, row, col);
+    let before = matches_before(buffer, query, row, col);
     before.saturating_add(1).min(total)
 }
 
 fn matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
-    if query.needs_folded_lines() {
+    if query.needs_line_scan() {
         return lines_matches_before(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
@@ -419,6 +413,14 @@ fn lines_row_before(
 mod tests {
     use super::*;
 
+    fn folded(pattern: &str) -> Query {
+        Query::new(pattern, false, false)
+    }
+
+    fn exact(pattern: &str) -> Query {
+        Query::new(pattern, true, false)
+    }
+
     fn lines_of(text: &str) -> Buffer {
         Buffer::from_string(text)
     }
@@ -426,105 +428,120 @@ mod tests {
     #[test]
     fn finds_first_from_origin() {
         let lines = lines_of("foo bar foo");
-        assert_eq!(find_first_from(&lines, "ar", 0, 0), Some((0, 5)));
+        assert_eq!(find_first_from(&lines, &folded("ar"), 0, 0), Some((0, 5)));
     }
 
     #[test]
     fn empty_pattern_finds_nothing() {
         let lines = lines_of("foo");
-        assert_eq!(find_first_from(&lines, "", 0, 0), None);
-        assert_eq!(find_next(&lines, "", 0, 0), None);
-        assert_eq!(find_prev(&lines, "", 0, 0), None);
+        assert_eq!(find_first_from(&lines, &folded(""), 0, 0), None);
+        assert_eq!(find_next(&lines, &folded(""), 0, 0), None);
+        assert_eq!(find_prev(&lines, &folded(""), 0, 0), None);
     }
 
     #[test]
     fn next_steps_through_matches() {
         let lines = lines_of("ar ar ar");
-        assert_eq!(find_next(&lines, "ar", 0, 0), Some(((0, 3), false)));
-        assert_eq!(find_next(&lines, "ar", 0, 3), Some(((0, 6), false)));
+        assert_eq!(
+            find_next(&lines, &folded("ar"), 0, 0),
+            Some(((0, 3), false))
+        );
+        assert_eq!(
+            find_next(&lines, &folded("ar"), 0, 3),
+            Some(((0, 6), false))
+        );
     }
 
     #[test]
     fn next_wraps_to_first() {
         let lines = lines_of("ar ar ar");
-        assert_eq!(find_next(&lines, "ar", 0, 6), Some(((0, 0), true)));
+        assert_eq!(find_next(&lines, &folded("ar"), 0, 6), Some(((0, 0), true)));
     }
 
     #[test]
     fn prev_steps_back_and_wraps() {
         let lines = lines_of("ar ar ar");
-        assert_eq!(find_prev(&lines, "ar", 0, 6), Some(((0, 3), false)));
-        assert_eq!(find_prev(&lines, "ar", 0, 0), Some(((0, 6), true)));
+        assert_eq!(
+            find_prev(&lines, &folded("ar"), 0, 6),
+            Some(((0, 3), false))
+        );
+        assert_eq!(find_prev(&lines, &folded("ar"), 0, 0), Some(((0, 6), true)));
     }
 
     #[test]
     fn no_match_returns_none() {
         let lines = lines_of("foo");
-        assert_eq!(find_next(&lines, "zzz", 0, 0), None);
-        assert_eq!(find_first_from(&lines, "zzz", 0, 0), None);
+        assert_eq!(find_next(&lines, &folded("zzz"), 0, 0), None);
+        assert_eq!(find_first_from(&lines, &folded("zzz"), 0, 0), None);
     }
 
     #[test]
     fn uppercase_pattern_is_sensitive() {
         let lines = lines_of("AR ar");
-        assert_eq!(find_first_from(&lines, "AR", 0, 0), Some((0, 0)));
+        assert_eq!(find_first_from(&lines, &exact("AR"), 0, 0), Some((0, 0)));
     }
 
     #[test]
     fn lowercase_pattern_ignores_case() {
         let lines = lines_of("AR ar");
-        assert_eq!(find_first_from(&lines, "ar", 0, 0), Some((0, 0)));
-        assert_eq!(find_next(&lines, "ar", 0, 0), Some(((0, 3), false)));
+        assert_eq!(find_first_from(&lines, &folded("ar"), 0, 0), Some((0, 0)));
+        assert_eq!(
+            find_next(&lines, &folded("ar"), 0, 0),
+            Some(((0, 3), false))
+        );
     }
 
     #[test]
     fn folds_non_ascii_case() {
         let lines = lines_of("CAFÉ x");
-        assert_eq!(find_first_from(&lines, "café", 0, 0), Some((0, 0)));
+        assert_eq!(find_first_from(&lines, &folded("café"), 0, 0), Some((0, 0)));
     }
 
     #[test]
     fn finds_across_lines() {
         let lines = lines_of("foo\nbar");
-        assert_eq!(find_first_from(&lines, "ba", 0, 0), Some((1, 0)));
-        assert_eq!(find_prev(&lines, "fo", 1, 2), Some(((0, 0), false)));
+        assert_eq!(find_first_from(&lines, &folded("ba"), 0, 0), Some((1, 0)));
+        assert_eq!(
+            find_prev(&lines, &folded("fo"), 1, 2),
+            Some(((0, 0), false))
+        );
     }
 
     #[test]
     fn counts_all_matches() {
         let lines = lines_of("ar ar\nar");
-        assert_eq!(count_matches(&lines, "ar"), 3);
-        assert_eq!(count_matches(&lines, ""), 0);
-        assert_eq!(count_matches(&lines, "zzz"), 0);
+        assert_eq!(count_matches(&lines, &folded("ar")), 3);
+        assert_eq!(count_matches(&lines, &folded("")), 0);
+        assert_eq!(count_matches(&lines, &folded("zzz")), 0);
     }
 
     #[test]
     fn ranks_match_at_cursor() {
         let lines = lines_of("ar ar\nar");
-        assert_eq!(match_rank(&lines, "ar", 0, 0, 3), 1);
-        assert_eq!(match_rank(&lines, "ar", 0, 3, 3), 2);
-        assert_eq!(match_rank(&lines, "ar", 1, 0, 3), 3);
+        assert_eq!(match_rank(&lines, &folded("ar"), 0, 0, 3), 1);
+        assert_eq!(match_rank(&lines, &folded("ar"), 0, 3, 3), 2);
+        assert_eq!(match_rank(&lines, &folded("ar"), 1, 0, 3), 3);
     }
 
     #[test]
     fn rank_clamps_to_total() {
         let lines = lines_of("ar ar");
-        assert_eq!(match_rank(&lines, "ar", 0, 5, 2), 2);
-        assert_eq!(match_rank(&lines, "", 0, 0, 0), 0);
+        assert_eq!(match_rank(&lines, &folded("ar"), 0, 5, 2), 2);
+        assert_eq!(match_rank(&lines, &folded(""), 0, 0, 0), 0);
     }
 
     #[test]
     fn counts_unicode_pattern() {
         let lines = lines_of("CAFÉ café");
-        assert_eq!(count_matches(&lines, "café"), 2);
-        assert_eq!(match_rank(&lines, "café", 0, 5, 2), 2);
+        assert_eq!(count_matches(&lines, &folded("café")), 2);
+        assert_eq!(match_rank(&lines, &folded("café"), 0, 5, 2), 2);
     }
 
     #[test]
     fn collects_viewport_spans() {
         let lines = lines_of("ar ar\nar");
         assert_eq!(
-            collect_matches(&lines, "ar", 0, 2),
+            collect_matches(&lines, &folded("ar"), 0, 2),
             vec![
                 MatchSpan {
                     row: 0,
@@ -546,15 +563,15 @@ mod tests {
                 },
             ]
         );
-        assert!(collect_matches(&lines, "ar", 1, 1).is_empty());
-        assert!(collect_matches(&lines, "", 0, 2).is_empty());
+        assert!(collect_matches(&lines, &folded("ar"), 1, 1).is_empty());
+        assert!(collect_matches(&lines, &folded(""), 0, 2).is_empty());
     }
 
     #[test]
     fn collects_unicode_spans() {
         let lines = lines_of("CAFÉ x");
         assert_eq!(
-            collect_matches(&lines, "café", 0, 1),
+            collect_matches(&lines, &folded("café"), 0, 1),
             vec![MatchSpan {
                 row: 0,
                 start: 0,

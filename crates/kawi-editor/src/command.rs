@@ -23,6 +23,9 @@ pub enum Command {
     SetNumber(bool),
     SetRelativeNumber(bool),
     SetNumberWidth(usize),
+    SetIgnoreCase(bool),
+    SetSmartCase(bool),
+    SetAutoIndent(bool),
     SetError(String),
     Unknown,
 }
@@ -114,6 +117,12 @@ fn parse_set_command(words: &[&str]) -> Command {
         ["nonumber"] => Command::SetNumber(false),
         ["relativenumber"] => Command::SetRelativeNumber(true),
         ["norelativenumber"] => Command::SetRelativeNumber(false),
+        ["ignorecase"] => Command::SetIgnoreCase(true),
+        ["noignorecase"] => Command::SetIgnoreCase(false),
+        ["smartcase"] => Command::SetSmartCase(true),
+        ["nosmartcase"] => Command::SetSmartCase(false),
+        ["autoindent"] => Command::SetAutoIndent(true),
+        ["noautoindent"] => Command::SetAutoIndent(false),
         [combined] => equals_command(combined),
         _ => Command::Unknown,
     }
@@ -192,6 +201,11 @@ impl CommandLine {
 
     pub fn clear(&mut self) {
         self.text.clear();
+    }
+
+    pub fn replace(&mut self, text: &str) {
+        self.text.clear();
+        self.text.push_str(text);
     }
 
     pub fn text(&self) -> &str {
@@ -371,6 +385,16 @@ mod tests {
     fn parses_set_expandtab() {
         assert_eq!(parse("set expandtab"), Command::SetExpandTab(true));
         assert_eq!(parse("set noexpandtab"), Command::SetExpandTab(false));
+    }
+
+    #[test]
+    fn parses_search_and_indent_options() {
+        assert_eq!(parse("set ignorecase"), Command::SetIgnoreCase(true));
+        assert_eq!(parse("set noignorecase"), Command::SetIgnoreCase(false));
+        assert_eq!(parse("set smartcase"), Command::SetSmartCase(true));
+        assert_eq!(parse("set nosmartcase"), Command::SetSmartCase(false));
+        assert_eq!(parse("set autoindent"), Command::SetAutoIndent(true));
+        assert_eq!(parse("set noautoindent"), Command::SetAutoIndent(false));
     }
 
     #[test]

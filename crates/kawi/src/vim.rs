@@ -352,6 +352,8 @@ impl VimKeymap {
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
+            KeyCode::Char('*') => self.map_plain_or_noop(key, Action::SearchWordForward),
+            KeyCode::Char('#') => self.map_plain_or_noop(key, Action::SearchWordBackward),
             KeyCode::Char('(') => self.map_plain_or_noop(key, Action::MoveToPrevSentence),
             KeyCode::Char(')') => self.map_plain_or_noop(key, Action::MoveToNextSentence),
             KeyCode::Char('{') => self.map_plain_or_noop(key, Action::MoveToPrevParagraph),
@@ -1124,6 +1126,8 @@ impl VimKeymap {
             KeyCode::Char('0') => self.map_plain_or_noop(key, Action::MoveToLineStart),
             KeyCode::Char('^') => self.map_plain_or_noop(key, Action::MoveToFirstNonBlank),
             KeyCode::Char('%') => self.map_plain_or_noop(key, Action::MoveToMatch),
+            KeyCode::Char('*') => self.map_plain_or_noop(key, Action::SearchWordForward),
+            KeyCode::Char('#') => self.map_plain_or_noop(key, Action::SearchWordBackward),
             KeyCode::Char('(') => self.map_plain_or_noop(key, Action::MoveToPrevSentence),
             KeyCode::Char(')') => self.map_plain_or_noop(key, Action::MoveToNextSentence),
             KeyCode::Char('{') => self.map_plain_or_noop(key, Action::MoveToPrevParagraph),
@@ -1613,6 +1617,19 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('Z')), Mode::Normal),
             Action::ReplaceChar('Z')
+        );
+    }
+
+    #[test]
+    fn normal_star_and_hash_map_to_word_search() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('*')), Mode::Normal),
+            Action::SearchWordForward
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('#')), Mode::Normal),
+            Action::SearchWordBackward
         );
     }
 
