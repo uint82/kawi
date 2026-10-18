@@ -1,7 +1,7 @@
 use kawi_buffer::Buffer;
 
 use super::smartmatch::{find_block_open, find_close_forward, find_open_backward, MatchConfig};
-use crate::words::{char_at, dec_pos, inc_pos, resolve_exclusive, resolve_inclusive, WordSpan};
+use crate::words::{dec_pos, inc_pos, resolve_exclusive, resolve_inclusive, WordSpan};
 
 pub fn bracket_range(
     buffer: &Buffer,
@@ -13,7 +13,7 @@ pub fn bracket_range(
     count: usize,
 ) -> Option<WordSpan> {
     let (mut cursor_row, mut cursor_col) = (row, col);
-    if char_at(buffer, cursor_row, cursor_col) == Some(open) {
+    if buffer.char_at(cursor_row, cursor_col) == Some(open) {
         cursor_col += 1;
     }
     let mut start = None;

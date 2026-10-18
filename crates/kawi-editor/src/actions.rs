@@ -45,6 +45,10 @@ pub enum Action {
     MoveToPrevWordStart,
     MoveToNextWordEnd,
     MoveToPrevWordEnd,
+    MoveToNextBigWordStart,
+    MoveToPrevBigWordStart,
+    MoveToNextBigWordEnd,
+    MoveToPrevBigWordEnd,
     MoveToNextLineStart,
     MoveToPrevLineStart,
     InsertChar(char),
@@ -52,18 +56,42 @@ pub enum Action {
     InsertTab,
     InsertShiftRight,
     InsertShiftLeft,
+    InsertBackspaceWord,
+    InsertBackspaceLine,
     DeleteBackward,
     DeleteForward,
     DeleteLine,
     OpenLineBelow,
+    OpenLineAbove,
+    ReplaceChar(char),
+    DeleteBefore,
+    Substitute,
+    JoinLines,
+    JoinLinesNoSpace,
     DeleteWord,
     ChangeWord,
     DeleteWordBackward,
     DeleteWordEnd,
     DeleteWordEndBackward,
     ChangeWordEnd,
+    ChangeWordBackward,
     ChangeWordEndBackward,
+    DeleteBigWord,
+    DeleteBigWordBackward,
+    DeleteBigWordEnd,
+    ChangeBigWord,
+    ChangeBigWordBackward,
+    ChangeBigWordEnd,
+    YankWord,
+    YankWordBackward,
+    YankWordEnd,
+    YankBigWord,
+    YankBigWordBackward,
+    YankBigWordEnd,
     YankWordEndBackward,
+    YankBigWordEndBackward,
+    DeleteBigWordEndBackward,
+    ChangeBigWordEndBackward,
     DeleteInnerWord,
     DeleteAroundWord,
     ChangeInnerWord,
@@ -228,6 +256,54 @@ pub enum Action {
     NextMatch,
     PrevMatch,
     Noop,
+}
+
+impl Action {
+    pub fn resets_wanted_column(self) -> bool {
+        !matches!(
+            self,
+            Self::MoveUp
+                | Self::MoveDown
+                | Self::ScrollHalfUp
+                | Self::ScrollHalfDown
+                | Self::ScrollPageUp
+                | Self::ScrollPageDown
+                | Self::MoveToViewportTop
+                | Self::MoveToViewportMiddle
+                | Self::MoveToViewportBottom
+                | Self::PlaceCenter
+                | Self::PlaceTop
+                | Self::PlaceBottom
+                | Self::GotoLastLine
+                | Self::GotoFirstLine
+                | Self::MoveToLineEnd
+                | Self::Undo
+                | Self::Redo
+                | Self::EnterVisual
+                | Self::EnterVisualLine
+                | Self::ExitVisual
+                | Self::CancelVisual
+                | Self::ReselectVisual
+                | Self::SwapSelectionEnds
+                | Self::CollapseSelection
+                | Self::SelectRegister(_)
+                | Self::PushCount(_)
+                | Self::BeginSequence
+                | Self::CancelPending
+                | Self::EnterCommand
+                | Self::PushCommandChar(_)
+                | Self::DeleteCommandChar
+                | Self::ExecuteCommand
+                | Self::CancelCommand
+                | Self::EnterSearch
+                | Self::PushSearchChar(_)
+                | Self::DeleteSearchChar
+                | Self::CancelSearch
+                | Self::Save
+                | Self::Quit
+                | Self::Noop
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

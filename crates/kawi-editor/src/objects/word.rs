@@ -104,13 +104,14 @@ pub(crate) fn current_word(
         cursor = back_in_line(buffer, cursor);
         anchor = cursor;
         if is_space(buffer, cursor) == include {
-            let (pos, failed) = words::end_word_raw(buffer, cursor.0, cursor.1, true, true, 1);
+            let (pos, failed) =
+                words::end_word_raw(buffer, cursor.0, cursor.1, false, true, true, 1);
             if failed {
                 return None;
             }
             cursor = pos;
         } else {
-            cursor = words::fwd_word_raw(buffer, cursor.0, cursor.1, true, 1).0;
+            cursor = words::fwd_word_raw(buffer, cursor.0, cursor.1, false, true, 1).0;
             if cursor.1 == 0 {
                 cursor = decl_pos(buffer, cursor).0;
             } else if let Some(pos) = oneleft(cursor) {
@@ -132,13 +133,14 @@ pub(crate) fn current_word(
             }
             cursor = pos;
             if include != !is_space(buffer, cursor) {
-                let (pos, failed) = words::bck_word_raw(buffer, cursor.0, cursor.1, true, 1);
+                let (pos, failed) = words::bck_word_raw(buffer, cursor.0, cursor.1, false, true, 1);
                 if failed {
                     return None;
                 }
                 cursor = pos;
             } else {
-                let (pos, failed) = words::bckend_word_raw(buffer, cursor.0, cursor.1, true, 1);
+                let (pos, failed) =
+                    words::bckend_word_raw(buffer, cursor.0, cursor.1, false, true, 1);
                 if failed {
                     return None;
                 }
@@ -152,7 +154,7 @@ pub(crate) fn current_word(
             }
             cursor = pos;
             if include != is_space(buffer, cursor) {
-                let (pos, failed) = words::fwd_word_raw(buffer, cursor.0, cursor.1, true, 1);
+                let (pos, failed) = words::fwd_word_raw(buffer, cursor.0, cursor.1, false, true, 1);
                 cursor = pos;
                 if failed && remaining > 1 {
                     return None;
@@ -163,7 +165,8 @@ pub(crate) fn current_word(
                     inclusive = false;
                 }
             } else {
-                let (pos, failed) = words::end_word_raw(buffer, cursor.0, cursor.1, true, true, 1);
+                let (pos, failed) =
+                    words::end_word_raw(buffer, cursor.0, cursor.1, false, true, true, 1);
                 if failed {
                     return None;
                 }

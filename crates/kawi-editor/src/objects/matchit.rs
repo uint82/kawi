@@ -1,7 +1,6 @@
 use kawi_buffer::Buffer;
 
 use super::smartmatch::{find_close_forward, find_open_backward, starts_escaped, MatchConfig};
-use crate::words::char_at;
 
 pub enum MatchTarget {
     Bracket { pos: (usize, usize) },
@@ -157,8 +156,8 @@ fn comment_match(buffer: &Buffer, row: usize, col: usize, forward: bool) -> Opti
             }
             row = next.0;
             col = next.1;
-            if char_at(buffer, row, col) == Some('*')
-                && char_at(buffer, row, col.saturating_add(1)) == Some('/')
+            if buffer.char_at(row, col) == Some('*')
+                && buffer.char_at(row, col.saturating_add(1)) == Some('/')
             {
                 return Some((row, col.saturating_add(1)));
             }
@@ -169,8 +168,8 @@ fn comment_match(buffer: &Buffer, row: usize, col: usize, forward: bool) -> Opti
             }
             row = next.0;
             col = next.1;
-            if char_at(buffer, row, col) == Some('/')
-                && char_at(buffer, row, col.saturating_add(1)) == Some('*')
+            if buffer.char_at(row, col) == Some('/')
+                && buffer.char_at(row, col.saturating_add(1)) == Some('*')
             {
                 return Some((row, col));
             }

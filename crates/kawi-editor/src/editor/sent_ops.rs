@@ -733,8 +733,7 @@ mod tests {
             vec![
                 "one".to_string(),
                 ".PPx rest".to_string(),
-                "two".to_string(),
-                String::new()
+                "two".to_string()
             ]
         );
         assert_eq!((e.row(), e.col()), (2, 0));

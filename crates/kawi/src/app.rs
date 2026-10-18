@@ -111,7 +111,7 @@ impl App {
     ) -> Frame<'a> {
         Frame {
             lines: window,
-            col: self.editor.col(),
+            cursor_col: self.editor.cursor_screen_col(),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
             status,
@@ -141,6 +141,10 @@ impl App {
             dirty: self.editor.is_dirty(),
             row: self.editor.row(),
             col: self.editor.col(),
+            virtcol: self.editor.virtcol(),
+            line_empty: self.editor.mode() != kawi_editor::Mode::Insert
+                && self.editor.cursor_line_empty(),
+            empty_buffer: self.editor.is_empty(),
             quit_armed: self.quit_armed,
             mode: self.keymap.mode_label(self.editor.mode()),
         }
@@ -899,6 +903,26 @@ mod tests {
         app.handle_key(key(KeyCode::Char('.'))).expect("repeat");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn vim_replace_tab_keeps_cursor_on_tab() {
+        let mut app = App::new(Buffer::from_string("Hello world"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('r'))).expect("replace");
+        app.handle_key(key(KeyCode::Tab)).expect("tab");
+        let status = app.status_snapshot();
+        assert_eq!(status.col, 0);
+        assert_eq!(status.virtcol, 7);
+        assert!(!status.line_empty);
+    }
+
+    #[test]
+    fn status_reports_empty_line_position() {
+        let mut app = App::new(Buffer::from_string("ab\n\ncd"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('j'))).expect("down");
+        let status = app.status_snapshot();
+        assert!(status.line_empty);
+        assert_eq!(status.row, 1);
     }
 
     #[test]

@@ -100,15 +100,42 @@ impl Editor {
     }
 
     pub(super) fn change_word(&mut self) {
-        let count = self.take_count();
-        let span =
-            words::cw_change_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
-        self.apply_span(span, true);
+        self.change_word_motion(words::cw_change_range);
+    }
+
+    pub(super) fn change_big_word(&mut self) {
+        self.change_word_motion(words::cw_big_change_range);
     }
 
     pub(super) fn change_word_end(&mut self) {
+        self.change_word_motion(words::ce_range);
+    }
+
+    pub(super) fn change_word_backward(&mut self) {
+        self.change_backward_word_motion(words::db_range);
+    }
+
+    pub(super) fn change_big_word_end(&mut self) {
+        self.change_word_motion(words::ce_big_range);
+    }
+
+    pub(super) fn change_big_word_backward(&mut self) {
+        self.change_backward_word_motion(words::db_big_range);
+    }
+
+    fn change_backward_word_motion(&mut self, range: words::WordRange) {
         let count = self.take_count();
-        let span = words::ce_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let span = range(&self.buffer, row, col, count);
+        if (row, col) == (0, 0) && matches!(span, words::WordSpan::Empty { .. }) {
+            return;
+        }
+        self.apply_span(span, true);
+    }
+
+    fn change_word_motion(&mut self, range: words::WordRange) {
+        let count = self.take_count();
+        let span = range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, true);
     }
 
@@ -281,7 +308,6 @@ impl Editor {
     pub(super) fn delete_line(&mut self) {
         let count = self.take_count();
         let row = self.cursor.row();
-        let col = self.cursor.col();
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
@@ -289,15 +315,14 @@ impl Editor {
         self.write_delete(RegisterKind::LineWise, text, last - row + 1, true);
         self.drop_lines(row, last);
         let row = row.min(self.buffer.line_count().saturating_sub(1));
-        let max = self.buffer.line_len(row).saturating_sub(1);
-        self.cursor.set_position(row, col.min(max));
+        self.cursor.set_row(row);
+        self.apply_desired_column();
     }
 
     fn delete_word_object(&mut self, span: Option<objects::word::WordSpan>) {
         let Some(span) = span else {
             return;
         };
-        let old_col = self.cursor.col();
         match span {
             objects::word::WordSpan::Charwise { start, end } => {
                 if end.0 > start.0
@@ -309,8 +334,8 @@ impl Editor {
                     self.write_delete(RegisterKind::LineWise, text, end.0 - start.0 + 1, true);
                     self.drop_lines(start.0, end.0);
                     let row = start.0.min(self.buffer.line_count().saturating_sub(1));
-                    let max = self.buffer.line_len(row).saturating_sub(1);
-                    self.cursor.set_position(row, old_col.min(max));
+                    self.cursor.set_row(row);
+                    self.apply_desired_column();
                 } else {
                     self.delete_charwise_span(start, end);
                 }
@@ -364,7 +389,7 @@ impl Editor {
             return;
         };
         if tail.2 > tail.0 && tail.1 <= self.first_non_blank_of(tail.0) {
-            self.delete_line_range(tail.0, tail.2, tail.1);
+            self.delete_line_range(tail.0, tail.2);
             return;
         }
         self.record_boundary();
@@ -393,38 +418,86 @@ impl Editor {
     }
 
     pub(super) fn delete_word(&mut self) {
-        let count = self.take_count();
-        let span = words::dw_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
-        self.apply_span(span, false);
+        self.delete_word_motion(words::dw_range);
+    }
+
+    pub(super) fn delete_big_word(&mut self) {
+        self.delete_word_motion(words::dw_big_range);
     }
 
     pub(super) fn delete_word_backward(&mut self) {
-        let count = self.take_count();
-        let span = words::db_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
-        self.apply_span(span, false);
+        self.delete_word_motion(words::db_range);
+    }
+
+    pub(super) fn delete_big_word_backward(&mut self) {
+        self.delete_word_motion(words::db_big_range);
     }
 
     pub(super) fn delete_word_end(&mut self) {
+        self.delete_word_motion(words::cw_range);
+    }
+
+    pub(super) fn delete_big_word_end(&mut self) {
+        self.delete_word_motion(words::cw_big_range);
+    }
+
+    fn delete_word_motion(&mut self, range: words::WordRange) {
         let count = self.take_count();
-        let span = words::cw_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        let span = range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.apply_span(span, false);
     }
 
     pub(super) fn delete_word_end_backward(&mut self) {
-        let count = self.take_count();
-        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
-        self.apply_span(span, false);
+        self.delete_word_motion(words::ge_range);
+    }
+
+    pub(super) fn delete_big_word_end_backward(&mut self) {
+        self.delete_word_motion(words::ge_big_range);
     }
 
     pub(super) fn change_word_end_backward(&mut self) {
-        let count = self.take_count();
-        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
-        self.apply_span(span, true);
+        self.change_backward_word_motion(words::ge_range);
+    }
+
+    pub(super) fn change_big_word_end_backward(&mut self) {
+        self.change_backward_word_motion(words::ge_big_range);
     }
 
     pub(super) fn yank_word_end_backward(&mut self) {
+        self.yank_word_motion(words::ge_range);
+    }
+
+    pub(super) fn yank_big_word_end_backward(&mut self) {
+        self.yank_word_motion(words::ge_big_range);
+    }
+
+    pub(super) fn yank_word(&mut self) {
+        self.yank_word_motion(words::dw_range);
+    }
+
+    pub(super) fn yank_big_word(&mut self) {
+        self.yank_word_motion(words::dw_big_range);
+    }
+
+    pub(super) fn yank_word_backward(&mut self) {
+        self.yank_word_motion(words::db_range);
+    }
+
+    pub(super) fn yank_big_word_backward(&mut self) {
+        self.yank_word_motion(words::db_big_range);
+    }
+
+    pub(super) fn yank_word_end(&mut self) {
+        self.yank_word_motion(words::ce_range);
+    }
+
+    pub(super) fn yank_big_word_end(&mut self) {
+        self.yank_word_motion(words::ce_big_range);
+    }
+
+    fn yank_word_motion(&mut self, range: words::WordRange) {
         let count = self.take_count();
-        let span = words::ge_range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
+        let span = range(&self.buffer, self.cursor.row(), self.cursor.col(), count);
         self.yank_word_span(span);
     }
 
@@ -558,6 +631,19 @@ impl Editor {
         self.switch_to_insert();
     }
 
+    pub(super) fn open_line_above(&mut self) {
+        self.arm_insert_repeat(true);
+        self.buffer.begin_change();
+        self.open_line_before(self.cursor.row());
+        self.switch_to_insert();
+    }
+
+    pub(super) fn open_line_before(&mut self, row: usize) {
+        let indent = self.line_indent(row);
+        self.insert_newline_at(row, 0);
+        self.insert_indent(row, &indent);
+    }
+
     pub(super) fn open_line_after(&mut self, row: usize) {
         let width = self.line_width(row);
         let indent = self.line_indent(row);
@@ -685,6 +771,31 @@ impl Editor {
             self.buffer.paste_lines_below(self.cursor.row(), &lines)
         };
         self.cursor.set_position(row, self.first_non_blank_of(row));
+    }
+
+    pub(super) fn delete_before(&mut self) {
+        let count = self.take_count();
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        if col == 0 {
+            return;
+        }
+        let start = col.saturating_sub(count);
+        self.delete_charwise_span((row, start), (row, col));
+    }
+
+    pub(super) fn substitute(&mut self) {
+        let count = self.take_count();
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        let width = self.buffer.line_len(row);
+        if col >= width {
+            self.switch_to_insert();
+            return;
+        }
+        let end = col.saturating_add(count).min(width);
+        self.delete_charwise_span((row, col), (row, end));
+        self.switch_to_insert();
     }
 
     pub(super) fn remove_range(&mut self, start: (usize, usize), end: (usize, usize)) {
@@ -836,7 +947,7 @@ impl Editor {
         }
         let row = self.cursor.row();
         self.yank_range(row, 0, row, self.cursor.col().saturating_sub(1));
-        self.cursor.set_desired(0);
+        self.cursor.set_position(row, 0);
     }
 }
 
@@ -1060,8 +1171,8 @@ mod tests {
         let mut e = editor_with("foo\n   \nbar");
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteAroundWord);
-        assert_eq!(e.text_lines(), vec!["foo".to_string(), "".to_string()]);
-        assert_eq!(e.byte_count(), 4);
+        assert_eq!(e.text_lines(), vec!["foo".to_string()]);
+        assert_eq!(e.byte_count(), 3);
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1098,8 +1209,8 @@ mod tests {
         let mut e = editor_with("foo\n\nbar");
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteAroundWord);
-        assert_eq!(e.text_lines(), vec!["foo".to_string(), "".to_string()]);
-        assert_eq!(e.byte_count(), 4);
+        assert_eq!(e.text_lines(), vec!["foo".to_string()]);
+        assert_eq!(e.byte_count(), 3);
         assert_eq!((e.row(), e.col()), (0, 0));
     }
 
@@ -1141,7 +1252,7 @@ mod tests {
         e.apply(Action::MoveDown);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteAroundWord);
-        assert_eq!(e.text_lines(), vec!["xxxx".to_string(), "".to_string()]);
+        assert_eq!(e.text_lines(), vec!["xxxx".to_string()]);
         assert_eq!((e.row(), e.col()), (0, 1));
     }
 
@@ -1673,6 +1784,25 @@ mod tests {
         e.apply(Action::DeleteInnerWord);
         assert_eq!(e.text_lines()[0], " bar");
         assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn delete_line_lands_on_wanted_column() {
+        let mut e = editor_with("\tello world\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::DeleteLine);
+        assert_eq!((e.row(), e.col()), (0, 7));
+    }
+
+    #[test]
+    fn yank_line_refreshes_wanted_column() {
+        let mut e = editor_with("\tello world\nshort\n01234567890123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (1, 4));
+        e.apply(Action::YankLines);
+        e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (2, 4));
     }
 
     #[test]
@@ -2998,7 +3128,7 @@ mod tests {
         let mut e = editor_with("xxxx\n   \nbar");
         e.apply(Action::JumpTo(1, 1));
         e.apply(Action::DeleteAroundWord);
-        assert_eq!(e.text_lines(), vec!["xxxx".to_string(), String::new()]);
+        assert_eq!(e.text_lines(), vec!["xxxx".to_string()]);
         assert_eq!(e.register_text(), "   \nbar");
         assert_eq!(e.register_kind(), RegisterKind::LineWise);
         assert_eq!((e.row(), e.col()), (0, 1));

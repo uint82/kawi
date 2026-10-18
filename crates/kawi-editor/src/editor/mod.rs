@@ -13,7 +13,9 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod case_ops;
 mod indent;
+mod insert_erase;
 mod insert_shift;
+mod join;
 mod jumps;
 mod line_ops;
 mod match_ops;
@@ -21,6 +23,7 @@ mod motions;
 mod operators;
 mod registers;
 mod repeat;
+mod replace;
 mod scroll;
 mod search_mode;
 mod sent_ops;
@@ -55,6 +58,7 @@ pub struct Editor {
     operator_count: Option<usize>,
     insert_repeat: Option<usize>,
     insert_reopen: bool,
+    insert_start: Option<(usize, usize)>,
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     insert_last_char: Option<char>,
@@ -232,6 +236,34 @@ impl Editor {
             Action::DeleteWordEndBackward => self.delete_word_end_backward(),
             Action::ChangeWordEndBackward => self.change_word_end_backward(),
             Action::YankWordEndBackward => self.yank_word_end_backward(),
+            Action::YankBigWordEndBackward => self.yank_big_word_end_backward(),
+            Action::ReplaceChar(replacement) => self.replace_char(replacement),
+            Action::DeleteBefore => self.delete_before(),
+            Action::Substitute => self.substitute(),
+            Action::OpenLineAbove => self.open_line_above(),
+            Action::JoinLines => self.join_lines(false),
+            Action::JoinLinesNoSpace => self.join_lines(true),
+            Action::InsertBackspaceWord => self.insert_backspace_word(),
+            Action::InsertBackspaceLine => self.insert_backspace_line(),
+            Action::DeleteBigWordEndBackward => self.delete_big_word_end_backward(),
+            Action::ChangeBigWordEndBackward => self.change_big_word_end_backward(),
+            Action::YankWord => self.yank_word(),
+            Action::YankBigWord => self.yank_big_word(),
+            Action::YankWordBackward => self.yank_word_backward(),
+            Action::YankBigWordBackward => self.yank_big_word_backward(),
+            Action::YankWordEnd => self.yank_word_end(),
+            Action::YankBigWordEnd => self.yank_big_word_end(),
+            Action::DeleteBigWord => self.delete_big_word(),
+            Action::DeleteBigWordBackward => self.delete_big_word_backward(),
+            Action::DeleteBigWordEnd => self.delete_big_word_end(),
+            Action::ChangeBigWord => self.change_big_word(),
+            Action::ChangeBigWordBackward => self.change_big_word_backward(),
+            Action::ChangeWordBackward => self.change_word_backward(),
+            Action::ChangeBigWordEnd => self.change_big_word_end(),
+            Action::MoveToNextBigWordStart => self.move_to_next_big_word_start(),
+            Action::MoveToPrevBigWordStart => self.move_to_prev_big_word_start(),
+            Action::MoveToNextBigWordEnd => self.move_to_next_big_word_end(),
+            Action::MoveToPrevBigWordEnd => self.move_to_prev_big_word_end(),
             Action::LowercaseAt { motion } => self.lowercase_at(motion),
             Action::UppercaseAt { motion } => self.uppercase_at(motion),
             Action::GotoLastLine => self.goto_last_line(),
@@ -339,6 +371,7 @@ impl Editor {
             self.set_pcmark_at(jump_before);
         }
         self.apply_line_adjustments();
+        self.refresh_wanted_column(action);
         if was_normal
             && !matches!(
                 action,
@@ -371,6 +404,59 @@ impl Editor {
 
     pub fn col(&self) -> usize {
         self.cursor.col()
+    }
+
+    pub fn virtcol(&self) -> usize {
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        let tabstop = self.effective_indent().tabstop;
+        let width = self.buffer.line_len(row);
+        if col < width {
+            self.buffer
+                .screen_col(row, col.saturating_add(1), tabstop)
+                .saturating_sub(1)
+        } else {
+            self.buffer.screen_col(row, width, tabstop)
+        }
+    }
+
+    pub fn cursor_screen_col(&self) -> usize {
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        let tabstop = self.effective_indent().tabstop;
+        if self.cursor_shows_tab_end(row, col) {
+            return self
+                .buffer
+                .screen_col(row, col.saturating_add(1), tabstop)
+                .saturating_sub(1);
+        }
+        self.buffer.screen_col(row, col, tabstop)
+    }
+
+    fn refresh_wanted_column(&mut self, action: Action) {
+        if action.resets_wanted_column() {
+            self.cursor.set_desired(self.cursor_screen_col());
+        }
+    }
+
+    fn cursor_shows_tab_end(&self, row: usize, col: usize) -> bool {
+        self.mode.is_normal_state()
+            && self.buffer.char_at(row, col) == Some('\t')
+            && !self.cursor_at_selection_start(row, col)
+    }
+
+    fn cursor_at_selection_start(&self, row: usize, col: usize) -> bool {
+        self.selection
+            .as_ref()
+            .is_some_and(|selection| selection.start() == (row, col))
+    }
+
+    pub fn cursor_line_empty(&self) -> bool {
+        self.buffer.line_len(self.cursor.row()) == 0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
     }
 
     pub fn set_shiftwidth(&mut self, width: usize) {
@@ -465,6 +551,7 @@ impl Editor {
             operator_count: None,
             insert_repeat: None,
             insert_reopen: false,
+            insert_start: None,
             insert_record: Vec::new(),
             insert_moved: false,
             insert_last_char: None,
@@ -737,12 +824,118 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveToPrevWordStart
             | Action::MoveToNextWordEnd
             | Action::MoveToPrevWordEnd
+            | Action::MoveToNextBigWordStart
+            | Action::MoveToPrevBigWordStart
+            | Action::MoveToNextBigWordEnd
+            | Action::MoveToPrevBigWordEnd
             | Action::FindChar { .. }
             | Action::RepeatFind { .. }
             | Action::GotoLastLine
             | Action::GotoFirstLine
             | Action::JumpTo(_, _)
     )
+}
+
+#[cfg(test)]
+mod ruler_tests {
+    use super::*;
+    use crate::actions::Action;
+
+    fn editor_with(text: &str) -> Editor {
+        Editor::new(Buffer::from_string(text))
+    }
+
+    #[test]
+    fn virtcol_on_tab_spans_to_tabstop() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        assert_eq!(e.col(), 0);
+        assert_eq!(e.virtcol(), 7);
+        e.apply(Action::JumpTo(0, 1));
+        assert_eq!(e.virtcol(), 8);
+    }
+
+    #[test]
+    fn virtcol_matches_column_for_ascii() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        assert_eq!(e.col(), 2);
+        assert_eq!(e.virtcol(), 2);
+    }
+
+    #[test]
+    fn cursor_screen_col_matches_column_for_ascii() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        assert_eq!(e.cursor_screen_col(), 2);
+    }
+
+    #[test]
+    fn cursor_screen_col_shows_tab_end_in_normal_mode() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        assert_eq!(e.cursor_screen_col(), 7);
+    }
+
+    #[test]
+    fn cursor_screen_col_starts_tab_in_insert_mode() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::InsertAtColumnStart);
+        assert_eq!(e.col(), 0);
+        assert_eq!(e.cursor_screen_col(), 0);
+    }
+
+    #[test]
+    fn cursor_screen_col_at_selection_start_starts_tab() {
+        let mut e = editor_with("\tello world");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::EnterVisual);
+        assert_eq!(e.cursor_screen_col(), 0);
+    }
+
+    #[test]
+    fn cursor_screen_col_after_selection_start_shows_tab_end() {
+        let mut e = editor_with("a\tbc");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::EnterVisual);
+        e.apply(Action::MoveRight);
+        assert_eq!(e.col(), 1);
+        assert_eq!(e.cursor_screen_col(), 7);
+    }
+
+    #[test]
+    fn cursor_screen_col_at_insert_line_end_is_line_width() {
+        let mut e = editor_with("\tab");
+        e.apply(Action::JumpTo(0, 1));
+        e.apply(Action::AppendLineEnd);
+        assert_eq!(e.cursor_screen_col(), 10);
+    }
+
+    #[test]
+    fn virtcol_at_line_end_is_line_width() {
+        let mut e = editor_with("abc");
+        e.apply(Action::JumpTo(0, 2));
+        e.apply(Action::Append);
+        assert_eq!(e.col(), 3);
+        assert_eq!(e.virtcol(), 3);
+    }
+
+    #[test]
+    fn cursor_line_empty_detects_blank_line() {
+        let mut e = editor_with("ab\n\ncd");
+        e.apply(Action::JumpTo(1, 0));
+        assert!(e.cursor_line_empty());
+        e.apply(Action::JumpTo(0, 0));
+        assert!(!e.cursor_line_empty());
+    }
+
+    #[test]
+    fn is_empty_detects_empty_buffer() {
+        let e = editor_with("");
+        assert!(e.is_empty());
+        let e = editor_with("a");
+        assert!(!e.is_empty());
+    }
 }
 
 #[cfg(test)]

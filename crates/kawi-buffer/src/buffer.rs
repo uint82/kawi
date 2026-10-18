@@ -347,6 +347,10 @@ impl Buffer {
         screen
     }
 
+    pub fn char_at(&self, row: usize, col: usize) -> Option<char> {
+        self.line_cow(row)?.chars().nth(col)
+    }
+
     pub fn char_col(&self, row: usize, screen: usize, tabstop: usize) -> usize {
         let width = self.line_len(row);
         if width == 0 {
@@ -675,6 +679,16 @@ impl Buffer {
             return;
         };
         if start < end {
+            let start = if end == self.rope.len_chars()
+                && first > 0
+                && start > 0
+                && self.line_len(first - 1) > 0
+                && self.rope.get_char(start - 1) == Some('\n')
+            {
+                start - 1
+            } else {
+                start
+            };
             self.push_adjustment(Some(line_adjust::row_removal(first, last)));
             self.rope.remove(start..end);
             self.touch();
@@ -1113,6 +1127,17 @@ mod tests {
         assert_eq!(b.screen_col(0, 0, 8), 0);
         assert_eq!(b.screen_col(0, 1, 8), 8);
         assert_eq!(b.screen_col(0, 2, 8), 9);
+    }
+
+    #[test]
+    fn char_at_returns_char_by_column() {
+        let b = Buffer::from_string("a\tb\ncd");
+        assert_eq!(b.char_at(0, 0), Some('a'));
+        assert_eq!(b.char_at(0, 1), Some('\t'));
+        assert_eq!(b.char_at(0, 2), Some('b'));
+        assert_eq!(b.char_at(0, 3), None);
+        assert_eq!(b.char_at(1, 1), Some('d'));
+        assert_eq!(b.char_at(2, 0), None);
     }
 
     #[test]

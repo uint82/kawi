@@ -363,16 +363,16 @@ fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
     ) {
         return place_prompt_cursor(out, col, frame.viewport);
     }
-    place_cursor_relative(out, frame.col, frame.row, frame.viewport)
+    place_cursor_relative(out, frame.cursor_col, frame.row, frame.viewport)
 }
 
 fn place_cursor_relative(
     out: &mut Stdout,
-    col: usize,
+    cursor_col: usize,
     row: usize,
     viewport: &Viewport,
 ) -> Result<()> {
-    let (x, y) = screen_coords(col, row, viewport);
+    let (x, y) = screen_coords(cursor_col, row, viewport);
     execute!(out, MoveTo(x, y)).context("place cursor")?;
     Ok(())
 }

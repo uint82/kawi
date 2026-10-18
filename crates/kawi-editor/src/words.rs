@@ -8,23 +8,57 @@ pub(crate) enum WordClass {
 }
 
 pub fn next_word_start(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
-    fwd_word(buffer, row, col, false, count)
+    fwd_word(buffer, row, col, false, false, count)
+}
+
+pub fn next_big_word_start(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    count: usize,
+) -> (usize, usize) {
+    fwd_word(buffer, row, col, true, false, count)
 }
 
 pub fn prev_word_start(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
-    bck_word(buffer, row, col, false, count)
+    bck_word(buffer, row, col, false, false, count)
+}
+
+pub fn prev_big_word_start(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    count: usize,
+) -> (usize, usize) {
+    bck_word(buffer, row, col, true, false, count)
 }
 
 pub fn next_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
-    end_word(buffer, row, col, false, false, count)
+    end_word(buffer, row, col, false, false, false, count)
+}
+
+pub fn next_big_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    end_word(buffer, row, col, true, false, false, count)
 }
 
 pub fn prev_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
-    bckend_word(buffer, row, col, count)
+    bckend_word(buffer, row, col, false, count)
+}
+
+pub fn prev_big_word_end(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
+    bckend_word(buffer, row, col, true, count)
 }
 
 pub fn ge_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
-    let end = bckend_word(buffer, row, col, count);
+    ge_span(buffer, row, col, count, false)
+}
+
+pub fn ge_big_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    ge_span(buffer, row, col, count, true)
+}
+
+fn ge_span(buffer: &Buffer, row: usize, col: usize, count: usize, big: bool) -> WordSpan {
+    let end = bckend_word(buffer, row, col, big, count);
     if end == (row, col) {
         return WordSpan::Empty { at: (row, col) };
     }
@@ -36,19 +70,41 @@ pub fn dw_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSp
     resolve_exclusive(
         buffer,
         (row, col),
-        fwd_word_raw(buffer, row, col, true, count).0,
+        fwd_word_raw(buffer, row, col, false, true, count).0,
     )
 }
 
+pub fn dw_big_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_exclusive(
+        buffer,
+        (row, col),
+        fwd_word_raw(buffer, row, col, true, true, count).0,
+    )
+}
+
+pub type WordRange = fn(&Buffer, usize, usize, usize) -> WordSpan;
+
 pub fn db_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
-    resolve_exclusive(buffer, (row, col), bck_word(buffer, row, col, false, count))
+    resolve_exclusive(
+        buffer,
+        (row, col),
+        bck_word(buffer, row, col, false, false, count),
+    )
+}
+
+pub fn db_big_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_exclusive(
+        buffer,
+        (row, col),
+        bck_word(buffer, row, col, true, false, count),
+    )
 }
 
 pub fn cw_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
     resolve_inclusive(
         buffer,
         (row, col),
-        end_word_raw(buffer, row, col, false, false, count).0,
+        end_word_raw(buffer, row, col, false, false, false, count).0,
         true,
     )
 }
@@ -57,16 +113,48 @@ pub fn ce_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSp
     resolve_inclusive(
         buffer,
         (row, col),
-        end_word_raw(buffer, row, col, false, false, count).0,
+        end_word_raw(buffer, row, col, false, false, false, count).0,
+        false,
+    )
+}
+
+pub fn cw_big_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_inclusive(
+        buffer,
+        (row, col),
+        end_word_raw(buffer, row, col, true, false, false, count).0,
+        true,
+    )
+}
+
+pub fn ce_big_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    resolve_inclusive(
+        buffer,
+        (row, col),
+        end_word_raw(buffer, row, col, true, false, false, count).0,
         false,
     )
 }
 
 pub fn cw_change_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
-    match char_at(buffer, row, col).map(class_of) {
-        Some(WordClass::Space) | None => dw_range(buffer, row, col, count),
+    cw_change_span(buffer, row, col, count, false)
+}
+
+pub fn cw_big_change_range(buffer: &Buffer, row: usize, col: usize, count: usize) -> WordSpan {
+    cw_change_span(buffer, row, col, count, true)
+}
+
+fn cw_change_span(buffer: &Buffer, row: usize, col: usize, count: usize, big: bool) -> WordSpan {
+    match buffer.char_at(row, col).map(|ch| class_of_kind(ch, big)) {
+        Some(WordClass::Space) | None => {
+            if big {
+                dw_big_range(buffer, row, col, count)
+            } else {
+                dw_range(buffer, row, col, count)
+            }
+        }
         _ => {
-            let end = end_word_raw(buffer, row, col, true, false, count).0;
+            let end = end_word_raw(buffer, row, col, big, true, false, count).0;
             let (end, _) = adjust_end(buffer, (row, col), end, true);
             let (start, end) = ordered_span((row, col), end);
             WordSpan::Charwise { start, end }
@@ -163,12 +251,19 @@ fn adjust_end(
     (end, inclusive)
 }
 
-fn fwd_word(buffer: &Buffer, row: usize, col: usize, eol: bool, count: usize) -> (usize, usize) {
+fn fwd_word(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    big: bool,
+    eol: bool,
+    count: usize,
+) -> (usize, usize) {
     let start = (row, col);
     adjust_end(
         buffer,
         start,
-        fwd_word_raw(buffer, row, col, eol, count).0,
+        fwd_word_raw(buffer, row, col, big, eol, count).0,
         false,
     )
     .0
@@ -178,6 +273,7 @@ pub(crate) fn fwd_word_raw(
     buffer: &Buffer,
     row: usize,
     col: usize,
+    big: bool,
     eol: bool,
     count: usize,
 ) -> ((usize, usize), bool) {
@@ -185,7 +281,7 @@ pub(crate) fn fwd_word_raw(
     for remaining in (0..count).rev() {
         let last = remaining == 0;
         let last_line = pos.0.saturating_add(1) == buffer.line_count();
-        let sclass = class_at(buffer, pos.0, pos.1);
+        let sclass = class_at_kind(buffer, pos.0, pos.1, big);
         let (next, step) = inc_pos(buffer, pos.0, pos.1);
         pos = next;
         if step == -1 || (step >= 1 && last_line) {
@@ -195,7 +291,7 @@ pub(crate) fn fwd_word_raw(
             return (pos, false);
         }
         if sclass != WordClass::Space {
-            while class_at(buffer, pos.0, pos.1) == sclass {
+            while class_at_kind(buffer, pos.0, pos.1, big) == sclass {
                 let (next, step) = inc_pos(buffer, pos.0, pos.1);
                 pos = next;
                 if step == -1 || (step >= 1 && eol && last) {
@@ -203,7 +299,7 @@ pub(crate) fn fwd_word_raw(
                 }
             }
         }
-        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+        while class_at_kind(buffer, pos.0, pos.1, big) == WordClass::Space {
             if pos.1 == 0 && line_is_empty(buffer, pos.0) {
                 break;
             }
@@ -221,6 +317,7 @@ fn end_word(
     buffer: &Buffer,
     row: usize,
     col: usize,
+    big: bool,
     stop: bool,
     empty: bool,
     count: usize,
@@ -229,7 +326,7 @@ fn end_word(
     adjust_end(
         buffer,
         start,
-        end_word_raw(buffer, row, col, stop, empty, count).0,
+        end_word_raw(buffer, row, col, big, stop, empty, count).0,
         true,
     )
     .0
@@ -239,6 +336,7 @@ pub(crate) fn end_word_raw(
     buffer: &Buffer,
     row: usize,
     col: usize,
+    big: bool,
     stop: bool,
     empty: bool,
     count: usize,
@@ -246,19 +344,19 @@ pub(crate) fn end_word_raw(
     let mut pos = (row, col);
     let mut stop = stop;
     for _ in 0..count {
-        let sclass = class_at(buffer, pos.0, pos.1);
+        let sclass = class_at_kind(buffer, pos.0, pos.1, big);
         let (next, step) = inc_pos(buffer, pos.0, pos.1);
         pos = next;
         if step == -1 {
             return (pos, true);
         }
         let mut finished = false;
-        if class_at(buffer, pos.0, pos.1) == sclass && sclass != WordClass::Space {
-            if skip_same_class(buffer, &mut pos, true) {
+        if class_at_kind(buffer, pos.0, pos.1, big) == sclass && sclass != WordClass::Space {
+            if skip_same_class(buffer, &mut pos, true, big) {
                 return (pos, true);
             }
         } else if !stop || sclass == WordClass::Space {
-            while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+            while class_at_kind(buffer, pos.0, pos.1, big) == WordClass::Space {
                 if empty && pos.1 == 0 && line_is_empty(buffer, pos.0) {
                     finished = true;
                     break;
@@ -269,7 +367,7 @@ pub(crate) fn end_word_raw(
                     return (pos, true);
                 }
             }
-            if !finished && skip_same_class(buffer, &mut pos, true) {
+            if !finished && skip_same_class(buffer, &mut pos, true, big) {
                 return (pos, true);
             }
         }
@@ -282,29 +380,38 @@ pub(crate) fn end_word_raw(
     (pos, false)
 }
 
-fn bck_word(buffer: &Buffer, row: usize, col: usize, stop: bool, count: usize) -> (usize, usize) {
-    bck_word_raw(buffer, row, col, stop, count).0
+fn bck_word(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    big: bool,
+    stop: bool,
+    count: usize,
+) -> (usize, usize) {
+    bck_word_raw(buffer, row, col, big, stop, count).0
 }
 
 pub(crate) fn bck_word_raw(
     buffer: &Buffer,
     row: usize,
     col: usize,
+    big: bool,
     stop: bool,
     count: usize,
 ) -> ((usize, usize), bool) {
     let mut pos = (row, col);
     let mut stop = stop;
     for _ in 0..count {
-        let sclass = class_at(buffer, pos.0, pos.1);
+        let sclass = class_at_kind(buffer, pos.0, pos.1, big);
         let (next, step) = dec_pos(buffer, pos.0, pos.1);
         if step == -1 {
             return (pos, true);
         }
         pos = next;
         let mut finished = false;
-        if !stop || sclass == class_at(buffer, pos.0, pos.1) || sclass == WordClass::Space {
-            while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+        if !stop || sclass == class_at_kind(buffer, pos.0, pos.1, big) || sclass == WordClass::Space
+        {
+            while class_at_kind(buffer, pos.0, pos.1, big) == WordClass::Space {
                 if pos.1 == 0 && line_is_empty(buffer, pos.0) {
                     finished = true;
                     break;
@@ -315,7 +422,7 @@ pub(crate) fn bck_word_raw(
                     return (pos, false);
                 }
             }
-            if !finished && skip_same_class(buffer, &mut pos, false) {
+            if !finished && skip_same_class(buffer, &mut pos, false, big) {
                 return (pos, false);
             }
         }
@@ -328,20 +435,27 @@ pub(crate) fn bck_word_raw(
     (pos, false)
 }
 
-pub(crate) fn bckend_word(buffer: &Buffer, row: usize, col: usize, count: usize) -> (usize, usize) {
-    bckend_word_raw(buffer, row, col, true, count).0
+pub(crate) fn bckend_word(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    big: bool,
+    count: usize,
+) -> (usize, usize) {
+    bckend_word_raw(buffer, row, col, big, true, count).0
 }
 
 pub(crate) fn bckend_word_raw(
     buffer: &Buffer,
     row: usize,
     col: usize,
+    big: bool,
     eol: bool,
     count: usize,
 ) -> ((usize, usize), bool) {
     let mut pos = (row, col);
     for _ in 0..count {
-        let sclass = class_at(buffer, pos.0, pos.1);
+        let sclass = class_at_kind(buffer, pos.0, pos.1, big);
         let (next, step) = dec_pos(buffer, pos.0, pos.1);
         if step == -1 {
             return (pos, true);
@@ -351,7 +465,7 @@ pub(crate) fn bckend_word_raw(
             return (pos, false);
         }
         if sclass != WordClass::Space {
-            while class_at(buffer, pos.0, pos.1) == sclass {
+            while class_at_kind(buffer, pos.0, pos.1, big) == sclass {
                 let (next, step) = dec_pos(buffer, pos.0, pos.1);
                 pos = next;
                 if step == -1 || (eol && step == 1) {
@@ -359,7 +473,7 @@ pub(crate) fn bckend_word_raw(
                 }
             }
         }
-        while class_at(buffer, pos.0, pos.1) == WordClass::Space {
+        while class_at_kind(buffer, pos.0, pos.1, big) == WordClass::Space {
             if pos.1 == 0 && line_is_empty(buffer, pos.0) {
                 break;
             }
@@ -373,10 +487,10 @@ pub(crate) fn bckend_word_raw(
     (pos, false)
 }
 
-fn skip_same_class(buffer: &Buffer, pos: &mut (usize, usize), forward: bool) -> bool {
-    let class = class_at(buffer, pos.0, pos.1);
+fn skip_same_class(buffer: &Buffer, pos: &mut (usize, usize), forward: bool, big: bool) -> bool {
+    let class = class_at_kind(buffer, pos.0, pos.1, big);
     loop {
-        if class_at(buffer, pos.0, pos.1) != class {
+        if class_at_kind(buffer, pos.0, pos.1, big) != class {
             return false;
         }
         let (next, step) = if forward {
@@ -417,10 +531,25 @@ pub(crate) fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize
 }
 
 pub(crate) fn class_at(buffer: &Buffer, row: usize, col: usize) -> WordClass {
-    match char_at(buffer, row, col) {
+    match buffer.char_at(row, col) {
         Some(ch) => class_of(ch),
         None => WordClass::Space,
     }
+}
+
+fn class_at_kind(buffer: &Buffer, row: usize, col: usize, big: bool) -> WordClass {
+    match buffer.char_at(row, col) {
+        Some(ch) => class_of_kind(ch, big),
+        None => WordClass::Space,
+    }
+}
+
+fn class_of_kind(ch: char, big: bool) -> WordClass {
+    let class = class_of(ch);
+    if big && class != WordClass::Space {
+        return WordClass::Word;
+    }
+    class
 }
 
 pub(crate) fn line_is_empty(buffer: &Buffer, row: usize) -> bool {
@@ -461,7 +590,9 @@ pub(crate) fn start_blank(buffer: &Buffer, start: (usize, usize)) -> bool {
 
 pub(crate) fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
     if col > 0 {
-        return char_at(buffer, row, col.saturating_sub(1)).map(|_| (row, col.saturating_sub(1)));
+        return buffer
+            .char_at(row, col.saturating_sub(1))
+            .map(|_| (row, col.saturating_sub(1)));
     }
     if row == 0 {
         return None;
@@ -481,10 +612,6 @@ fn backward_char_pos(buffer: &Buffer, mut row: usize) -> Option<(usize, usize)> 
         }
         row = row.saturating_sub(1);
     }
-}
-
-pub(crate) fn char_at(buffer: &Buffer, row: usize, col: usize) -> Option<char> {
-    buffer.line_cow(row)?.chars().nth(col)
 }
 
 pub(crate) fn line_len(buffer: &Buffer, row: usize) -> usize {

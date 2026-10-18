@@ -221,7 +221,8 @@ impl Editor {
     }
 
     fn keep_column_to(&mut self, row: usize) {
-        self.cursor.set_position(row, self.cursor.col());
+        self.cursor.set_row(row);
+        self.apply_desired_column();
     }
 
     fn half_scroll_amount(&mut self) -> usize {

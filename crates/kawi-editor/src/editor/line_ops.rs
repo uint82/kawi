@@ -3,28 +3,24 @@ use super::Editor;
 impl Editor {
     pub(super) fn delete_touched_lines(&mut self) {
         let (first, last) = self.touched_rows();
-        let (row, col) = self.delete_line_range(first, last, self.cursor.col());
+        let (row, col) = self.delete_line_range(first, last);
         self.collapse_to(row, col);
     }
 
-    pub(super) fn delete_line_range(
-        &mut self,
-        first: usize,
-        last: usize,
-        col: usize,
-    ) -> (usize, usize) {
+    pub(super) fn delete_line_range(&mut self, first: usize, last: usize) -> (usize, usize) {
         self.remove_lines(first, last);
         let row = first.min(self.buffer.line_count().saturating_sub(1));
-        let max = self.buffer.line_len(row).saturating_sub(1);
-        let col = col.min(max);
-        self.cursor.set_position(row, col);
-        (row, col)
+        self.cursor.set_row(row);
+        self.apply_desired_column();
+        (row, self.cursor.col())
     }
 
     pub(super) fn yank_touched_lines(&mut self) {
         let (first, last) = self.touched_rows();
         self.yank_line_range(first, last);
-        self.cursor.set_position(first, 0);
+        if self.mode.is_visual() {
+            self.cursor.set_position(first, 0);
+        }
     }
 
     pub(super) fn change_touched_lines(&mut self) {
@@ -35,32 +31,32 @@ impl Editor {
 
     pub(super) fn delete_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
-        self.delete_line_range(first, last, self.cursor.col());
+        self.delete_line_range(first, last);
         self.reveal_jump();
     }
 
     pub(super) fn delete_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
-        self.delete_line_range(first, last, self.cursor.col());
+        self.delete_line_range(first, last);
         self.reveal_jump();
     }
 
     pub(super) fn delete_to_viewport_top(&mut self) {
         let target = self.viewport_top_target().min(self.last_row());
         let (first, last) = self.viewport_span(target);
-        self.delete_line_range(first, last, self.cursor.col());
+        self.delete_line_range(first, last);
     }
 
     pub(super) fn delete_to_viewport_middle(&mut self) {
         let target = self.viewport_middle_target().min(self.last_row());
         let (first, last) = self.viewport_span(target);
-        self.delete_line_range(first, last, self.cursor.col());
+        self.delete_line_range(first, last);
     }
 
     pub(super) fn delete_to_viewport_bottom(&mut self) {
         let target = self.viewport_bottom_target().max(self.view_top());
         let (first, last) = self.viewport_span(target);
-        self.delete_line_range(first, last, self.cursor.col());
+        self.delete_line_range(first, last);
     }
 
     pub(super) fn yank_to_viewport_top(&mut self) {
