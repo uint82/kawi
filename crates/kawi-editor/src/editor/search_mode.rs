@@ -25,10 +25,12 @@ impl Editor {
             if let Some(origin) = self.search_origin {
                 self.set_pcmark_at(origin);
             }
+            self.remember_wanted_column();
             return Some(SearchOutcome::Found { wrapped: false });
         }
         if let Some((row, col)) = self.search_origin {
             self.cursor.set_position(row, col);
+            self.remember_wanted_column();
         }
         Some(SearchOutcome::Missing)
     }
@@ -72,6 +74,7 @@ impl Editor {
             search::find_first_from(&self.buffer, self.search.text(), origin.0, origin.1)
         {
             self.cursor.set_position(row, col);
+            self.remember_wanted_column();
         }
     }
 
@@ -93,6 +96,7 @@ impl Editor {
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
         self.cursor.set_position(row, col);
+        self.remember_wanted_column();
         self.refresh_search_status();
         SearchOutcome::Found { wrapped }
     }

@@ -1319,6 +1319,20 @@ mod tests {
     }
 
     #[test]
+    fn search_refreshes_wanted_column_for_vertical_moves() {
+        let text = "\tello world\n01234567890123456789\nxabc tail";
+        let mut app = App::new(kawi_buffer::Buffer::from_string(text), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('/'))).expect("search");
+        for ch in "abc".chars() {
+            app.handle_key(key(KeyCode::Char(ch))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("confirm");
+        assert_eq!(app.cursor_position(), (2, 1));
+        app.handle_key(key(KeyCode::Char('k'))).expect("up");
+        assert_eq!(app.cursor_position(), (1, 1));
+    }
+
+    #[test]
     fn search_prompt_types_and_confirms() {
         let mut app = App::new(Buffer::from_string("foo bar foo"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('/'))).expect("search");
