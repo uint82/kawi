@@ -253,6 +253,8 @@ pub enum Action {
     DeleteCommandChar,
     ExecuteCommand,
     CancelCommand,
+    HistoryOlder,
+    HistoryNewer,
     EnterSearch,
     PushSearchChar(char),
     DeleteSearchChar,
@@ -303,6 +305,8 @@ impl Action {
                 | Self::DeleteCommandChar
                 | Self::ExecuteCommand
                 | Self::CancelCommand
+                | Self::HistoryOlder
+                | Self::HistoryNewer
                 | Self::EnterSearch
                 | Self::PushSearchChar(_)
                 | Self::DeleteSearchChar
