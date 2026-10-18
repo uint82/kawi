@@ -63,9 +63,9 @@ fn right_text(info: &StatusInfo) -> String {
     };
     let vcol = info.virtcol.saturating_add(1);
     if col == vcol {
-        format!("{line},{col}")
+        format!("{line}:{col}")
     } else {
-        format!("{line},{col}-{vcol}")
+        format!("{line}:{col}-{vcol}")
     }
 }
 
@@ -154,7 +154,7 @@ mod tests {
         status.row = 2;
         status.col = 4;
         status.virtcol = 4;
-        assert!(build_line(&status, 40).contains("3,5"));
+        assert!(build_line(&status, 40).contains("3:5"));
     }
 
     #[test]
@@ -162,14 +162,14 @@ mod tests {
         let mut status = info("a.txt", false, "NORMAL");
         status.col = 0;
         status.virtcol = 7;
-        assert!(build_line(&status, 40).contains("1,1-8"));
+        assert!(build_line(&status, 40).contains("1:1-8"));
     }
 
     #[test]
     fn position_on_empty_line_starts_at_zero() {
         let mut status = info("a.txt", false, "NORMAL");
         status.line_empty = true;
-        assert!(build_line(&status, 40).contains("1,0-1"));
+        assert!(build_line(&status, 40).contains("1:0-1"));
     }
 
     #[test]
@@ -177,6 +177,6 @@ mod tests {
         let mut status = info("a.txt", false, "NORMAL");
         status.empty_buffer = true;
         status.line_empty = true;
-        assert!(build_line(&status, 40).contains("0,0-1"));
+        assert!(build_line(&status, 40).contains("0:0-1"));
     }
 }
