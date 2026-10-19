@@ -4,6 +4,7 @@ use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
 use crate::jumps::Jumps;
+use crate::marks::Marks;
 use crate::mode::Mode;
 use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
@@ -20,6 +21,7 @@ mod insert_shift;
 mod join;
 mod jumps;
 mod line_ops;
+mod marks;
 mod match_ops;
 mod motions;
 mod operators;
@@ -75,6 +77,7 @@ pub struct Editor {
     block_insert: Option<visual_block::BlockInsertPlan>,
     viewport: Viewport,
     jumps: Jumps,
+    marks: Marks,
     scroll_amount: Option<usize>,
     number: bool,
     relativenumber: bool,
@@ -151,6 +154,22 @@ impl Editor {
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
+            Action::SetMark(name) => self.set_mark(name),
+            Action::JumpToMark { name, line_wise } => {
+                let _ = self.jump_to_mark(name, line_wise);
+            }
+            Action::JumpToPrevious { line_wise } => {
+                let _ = self.jump_to_previous(line_wise);
+            }
+            Action::DeleteToMark { name, line_wise } => {
+                let _ = self.delete_to_mark(name, line_wise);
+            }
+            Action::ChangeToMark { name, line_wise } => {
+                let _ = self.change_to_mark(name, line_wise);
+            }
+            Action::YankToMark { name, line_wise } => {
+                let _ = self.yank_to_mark(name, line_wise);
+            }
             Action::JumpOlder => {
                 let _ = self.jump_older();
             }
@@ -626,6 +645,7 @@ impl Editor {
             block_insert: None,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
+            marks: Marks::new(),
             scroll_amount: None,
             number: false,
             relativenumber: false,
@@ -816,7 +836,9 @@ enum JumpRecording {
 fn uses_numbered_register(action: Action) -> bool {
     matches!(
         action,
-        Action::DeleteToMatch
+        Action::DeleteToMark { .. }
+            | Action::ChangeToMark { .. }
+            | Action::DeleteToMatch
             | Action::ChangeToMatch
             | Action::DeleteToPrevSentence
             | Action::DeleteToNextSentence
@@ -884,7 +906,11 @@ fn jump_recording(action: Action) -> JumpRecording {
         | Action::YankToNextParagraph
         | Action::YankToPrevParagraph
         | Action::ChangeToNextParagraph
-        | Action::ChangeToPrevParagraph => JumpRecording::IfMovedOrSingle,
+        | Action::ChangeToPrevParagraph
+        | Action::DeleteToMark { .. }
+        | Action::YankToMark { .. }
+        | Action::ChangeToMark { .. } => JumpRecording::IfMovedOrSingle,
+        Action::JumpToMark { .. } => JumpRecording::Always,
         _ => JumpRecording::Never,
     }
 }

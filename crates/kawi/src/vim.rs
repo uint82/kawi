@@ -173,6 +173,9 @@ fn arms_pending(pushed: char) -> bool {
             | 'r'
             | '@'
             | 'q'
+            | 'm'
+            | '\''
+            | '`'
     )
 }
 
@@ -214,6 +217,28 @@ fn object_action(sequence: &str) -> Option<Action> {
         'd' => Action::DeleteObject { inner, object },
         'c' => Action::ChangeObject { inner, object },
         _ => Action::YankObject { inner, object },
+    })
+}
+
+fn mark_sequence_action(sequence: &str) -> Option<Action> {
+    let mut chars = sequence.chars();
+    let operator = chars.next()?;
+    let delimiter = chars.next()?;
+    let name = chars.next()?;
+    if chars.next().is_some() {
+        return None;
+    }
+    if !matches!(operator, 'd' | 'c' | 'y') || !matches!(delimiter, '\'' | '`') {
+        return None;
+    }
+    if !name.is_ascii_alphabetic() {
+        return None;
+    }
+    let line_wise = delimiter == '\'';
+    Some(match operator {
+        'd' => Action::DeleteToMark { name, line_wise },
+        'c' => Action::ChangeToMark { name, line_wise },
+        _ => Action::YankToMark { name, line_wise },
     })
 }
 
@@ -424,6 +449,9 @@ impl VimKeymap {
             KeyCode::Char('q') => self.arm_macro_record(key),
             KeyCode::Char('@') => self.arm_macro_run(key),
             KeyCode::Char('Q') => self.map_plain_or_noop(key, Action::RepeatRecordedMacro),
+            KeyCode::Char('m') => self.arm_mark(key, 'm'),
+            KeyCode::Char('\'') => self.arm_mark(key, '\''),
+            KeyCode::Char('`') => self.arm_mark(key, '`'),
             KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Action::EnterVisualBlock
@@ -987,6 +1015,46 @@ impl VimKeymap {
         action
     }
 
+    fn arm_mark(&mut self, key: KeyEvent, prefix: char) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push(prefix);
+        Action::BeginSequence
+    }
+
+    fn mark_prefix_armed(&self) -> bool {
+        matches!(self.stripped_pending().as_str(), "m" | "'" | "`")
+    }
+
+    fn resolve_mark_pending(&mut self, pushed: char) -> Action {
+        let prefix = self.stripped_pending();
+        let Some(delimiter) = prefix.chars().next() else {
+            return self.cancel_sequence();
+        };
+        if prefix == "m" {
+            self.clear_pending();
+            return if pushed.is_ascii_alphabetic() {
+                Action::SetMark(pushed)
+            } else {
+                Action::CancelPending
+            };
+        }
+        if !pushed.is_ascii_alphabetic() && pushed != delimiter {
+            return self.cancel_sequence();
+        }
+        self.clear_pending();
+        let line_wise = delimiter == '\'';
+        if pushed.is_ascii_alphabetic() {
+            Action::JumpToMark {
+                name: pushed,
+                line_wise,
+            }
+        } else {
+            Action::JumpToPrevious { line_wise }
+        }
+    }
+
     fn arm_command(&mut self, key: KeyEvent) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
@@ -1008,6 +1076,9 @@ impl VimKeymap {
                 }
                 if self.macro_run_prefix_armed() {
                     return self.complete_macro_run(c);
+                }
+                if self.mark_prefix_armed() {
+                    return self.resolve_mark_pending(c);
                 }
                 if self.case_prefix_armed() {
                     return self.resolve_case_pending(c);
@@ -1037,6 +1108,10 @@ impl VimKeymap {
             return self.push_digit(pushed);
         }
         if matches!(pushed, 'f' | 'F' | 't' | 'T') && self.operator_armed() {
+            self.pending.push(pushed);
+            return Action::BeginSequence;
+        }
+        if matches!(pushed, '\'' | '`') && self.operator_armed() {
             self.pending.push(pushed);
             return Action::BeginSequence;
         }
@@ -1155,6 +1230,9 @@ impl VimKeymap {
             return self.complete_sequence(action);
         }
         if let Some(action) = object_action(&stripped) {
+            return self.complete_sequence(action);
+        }
+        if let Some(action) = mark_sequence_action(&stripped) {
             return self.complete_sequence(action);
         }
         if is_sequence_prefix(&stripped) {
@@ -4497,6 +4575,144 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
             Action::DeleteLine
+        );
+    }
+
+    #[test]
+    fn mark_set_and_jump_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('m')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::SetMark('a')
+        );
+        assert_eq!(map.pending_text(), None);
+
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\'')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('A')), Mode::Normal),
+            Action::JumpToMark {
+                name: 'A',
+                line_wise: true
+            }
+        );
+
+        assert_eq!(
+            map.map(plain(KeyCode::Char('`')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('b')), Mode::Normal),
+            Action::JumpToMark {
+                name: 'b',
+                line_wise: false
+            }
+        );
+    }
+
+    #[test]
+    fn previous_mark_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\'')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\'')), Mode::Normal),
+            Action::JumpToPrevious { line_wise: true }
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('`')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('`')), Mode::Normal),
+            Action::JumpToPrevious { line_wise: false }
+        );
+    }
+
+    #[test]
+    fn operator_mark_sequences_resolve() {
+        for (operator, line_wise, delimiter) in [
+            ('d', true, '\''),
+            ('c', true, '\''),
+            ('y', true, '\''),
+            ('d', false, '`'),
+            ('c', false, '`'),
+            ('y', false, '`'),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(operator)), Mode::Normal),
+                Action::BeginSequence
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char(delimiter)), Mode::Normal),
+                Action::BeginSequence
+            );
+            let expected = match operator {
+                'd' => Action::DeleteToMark {
+                    name: 'a',
+                    line_wise,
+                },
+                'c' => Action::ChangeToMark {
+                    name: 'a',
+                    line_wise,
+                },
+                _ => Action::YankToMark {
+                    name: 'a',
+                    line_wise,
+                },
+            };
+            assert_eq!(map.map(plain(KeyCode::Char('a')), Mode::Normal), expected);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn counted_mark_jump_resolves() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\'')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::JumpToMark {
+                name: 'a',
+                line_wise: true
+            }
+        );
+    }
+
+    #[test]
+    fn invalid_mark_names_cancel() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('m')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('1')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\'')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('.')), Mode::Normal),
+            Action::CancelPending
         );
     }
 
