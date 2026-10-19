@@ -61,7 +61,7 @@ fn draw_one_line(
 }
 
 fn erase_row_tail(out: &mut Stdout) -> Result<()> {
-    execute!(out, Clear(ClearType::CurrentLine)).context("erase row tail")?;
+    execute!(out, Clear(ClearType::UntilNewLine)).context("erase row tail")?;
     Ok(())
 }
 
