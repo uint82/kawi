@@ -207,9 +207,14 @@ impl App {
                 ragged,
             });
         }
+        let linewise = self.editor.mode() == kawi_editor::Mode::VisualLine;
         self.editor
             .selection_range()
-            .map(|(start, end)| kawi_tui::Selection::Range { start, end })
+            .map(|(start, end)| kawi_tui::Selection::Range {
+                start,
+                end,
+                linewise,
+            })
     }
 
     fn showcmd_text(&self) -> Option<String> {
