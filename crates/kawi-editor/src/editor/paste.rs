@@ -15,6 +15,7 @@ impl Editor {
             Mode::Command | Mode::Search => self.paste_prompt(text),
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.paste_visual(text),
         }
+        self.apply_line_adjustments();
     }
 
     pub(super) fn paste_normal(&mut self, text: &str) {
@@ -35,11 +36,20 @@ impl Editor {
     }
 
     fn paste_visual(&mut self, text: &str) {
+        let line_wise = self.mode == Mode::VisualLine;
+        let ((start_row, start_col), _) = self.operator_range();
         self.delete_selection();
         if self.mode.is_visual() {
             self.exit_visual();
         }
-        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let (row, col) = if line_wise && self.cursor.row() < start_row {
+            let row = self
+                .buffer
+                .paste_lines_below(self.cursor.row(), &[String::new()]);
+            (row, 0)
+        } else {
+            (start_row, start_col)
+        };
         let end = pasted_end(row, col, text);
         self.buffer.paste_before(row, col, text);
         self.place_paste_cursor(end, text);
@@ -227,6 +237,27 @@ mod tests {
         e.apply(Action::MoveDown);
         e.paste("NEW\n");
         assert_eq!(e.text_lines(), vec!["NEW", "wo", "three"]);
+    }
+
+    #[test]
+    fn paste_clears_pending_count() {
+        let mut e = with_cursor("ab\n", 0, 0);
+        e.apply(Action::PushCount(3));
+        e.paste("x");
+        assert_eq!(e.text_lines(), vec!["axb"]);
+    }
+
+    #[test]
+    fn normal_paste_shifts_marks_below() {
+        let mut e = with_cursor("one\ntwo\nthree\nfour\n", 3, 0);
+        e.apply(Action::SetMark('a'));
+        e.cursor.set_position(0, 0);
+        e.paste("x\ny\n");
+        e.apply(Action::JumpToMark {
+            name: 'a',
+            line_wise: true,
+        });
+        assert_eq!(e.row(), 5);
     }
 
     #[test]
