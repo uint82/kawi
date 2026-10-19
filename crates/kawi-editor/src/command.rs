@@ -1,8 +1,8 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Write,
+    Write { force: bool },
     Quit,
-    WriteQuit,
+    WriteQuit { force: bool },
     ForceQuit,
     QuitAll,
     ForceQuitAll,
@@ -85,7 +85,7 @@ pub fn parse(text: &str) -> Command {
     };
     match (*command, rest) {
         ("q" | "quit", []) => Command::Quit,
-        ("wq" | "writequit", []) => Command::WriteQuit,
+        ("wq" | "writequit" | "wq!" | "writequit!", []) => write_quit_command(command),
         ("q!" | "quit!", []) => Command::ForceQuit,
         ("qa" | "quitall", []) => Command::QuitAll,
         ("qa!" | "quitall!", []) => Command::ForceQuitAll,
@@ -121,8 +121,16 @@ fn write_command(command: &str, name: Option<&str>) -> Command {
             name: name.to_string(),
             force,
         },
-        None => Command::Write,
+        None => Command::Write { force },
     }
+}
+
+fn write_quit_command(command: &str) -> Command {
+    let (force, command) = split_bang(command);
+    if !matches!(command, "wq" | "writequit") {
+        return Command::Unknown;
+    }
+    Command::WriteQuit { force }
 }
 
 fn delete_command(command: &str, spec: Option<&str>) -> Command {
@@ -286,7 +294,7 @@ mod tests {
 
     #[test]
     fn parses_write() {
-        assert_eq!(parse("w"), Command::Write);
+        assert_eq!(parse("w"), Command::Write { force: false });
     }
 
     #[test]
@@ -296,12 +304,13 @@ mod tests {
 
     #[test]
     fn parses_write_quit() {
-        assert_eq!(parse("wq"), Command::WriteQuit);
+        assert_eq!(parse("wq"), Command::WriteQuit { force: false });
+        assert_eq!(parse("wq!"), Command::WriteQuit { force: true });
     }
 
     #[test]
     fn trims_whitespace() {
-        assert_eq!(parse("  w  "), Command::Write);
+        assert_eq!(parse("  w  "), Command::Write { force: false });
     }
 
     #[test]
@@ -383,8 +392,8 @@ mod tests {
                 force: true
             }
         );
-        assert_eq!(parse("write"), Command::Write);
-        assert_eq!(parse("w!"), Command::Write);
+        assert_eq!(parse("write"), Command::Write { force: false });
+        assert_eq!(parse("w!"), Command::Write { force: true });
     }
 
     #[test]

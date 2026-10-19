@@ -2,9 +2,11 @@ use anyhow::{Context, Result};
 use ropey::Rope;
 use std::fs;
 use std::io::{BufWriter, Write};
+use std::path::Path;
 
 use crate::history::History;
 use crate::line_adjust::{self, LineAdjust};
+use crate::write;
 
 pub struct Buffer {
     rope: Rope,
@@ -632,25 +634,25 @@ impl Buffer {
         )
     }
 
-    pub fn save(&mut self) -> Result<()> {
+    pub fn save(&mut self, force: bool) -> Result<()> {
         let Some(path) = self.path.clone() else {
             anyhow::bail!("E32: No file name");
         };
-        self.write_to(&path)?;
+        self.write_to(&path, force)?;
         self.history.mark_clean();
         Ok(())
     }
 
-    pub fn write_to(&self, path: &str) -> Result<()> {
-        let failed = || format!("failed to save {path}");
-        let file = fs::File::create(path).with_context(failed)?;
-        let mut writer = BufWriter::new(file);
-        self.rope.write_to(&mut writer).with_context(failed)?;
-        if self.needs_final_newline() {
-            writer.write_all(b"\n").with_context(failed)?;
-        }
-        writer.flush().with_context(failed)?;
-        Ok(())
+    pub fn write_to(&self, path: &str, force: bool) -> Result<()> {
+        write::write(Path::new(path), force, |out| {
+            let mut writer = BufWriter::new(out);
+            self.rope.write_to(&mut writer)?;
+            if self.needs_final_newline() {
+                writer.write_all(b"\n")?;
+            }
+            writer.flush()
+        })
+        .map_err(anyhow::Error::from)
     }
 
     pub fn file_bytes(&self) -> usize {
@@ -1108,7 +1110,7 @@ mod tests {
     #[test]
     fn save_without_path_errors() {
         let mut b = Buffer::from_string("hi");
-        assert!(b.save().is_err());
+        assert!(b.save(false).is_err());
         assert!(!b.is_dirty());
     }
 
@@ -1117,14 +1119,14 @@ mod tests {
         let path = std::env::temp_dir().join("kawi_write_to_final_newline.txt");
         let path_str = path.to_string_lossy().to_string();
         Buffer::from_string("aa\nbb")
-            .write_to(&path_str)
+            .write_to(&path_str, false)
             .expect("write temp file");
         assert_eq!(
             std::fs::read_to_string(&path).expect("read temp file"),
             "aa\nbb\n"
         );
         Buffer::from_string("aa\nbb\n")
-            .write_to(&path_str)
+            .write_to(&path_str, false)
             .expect("rewrite temp file");
         assert_eq!(
             std::fs::read_to_string(&path).expect("read temp file"),
@@ -1154,7 +1156,7 @@ mod tests {
         b.checkpoint(0, 0);
         b.insert_char(0, 2, '!');
         assert!(b.is_dirty());
-        b.save().expect("save temp file");
+        b.save(false).expect("save temp file");
         assert!(!b.is_dirty());
         let _ = std::fs::remove_file(&path);
     }

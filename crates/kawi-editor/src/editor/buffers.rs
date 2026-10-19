@@ -181,12 +181,12 @@ impl Buffers {
 }
 
 impl Editor {
-    pub fn save(&mut self) -> Result<WriteOutcome, EditError> {
+    pub fn save(&mut self, force: bool) -> Result<WriteOutcome, EditError> {
         if !self.has_file() {
             return Err(EditError::NoName);
         }
         let path = self.buffer.path.clone().expect("file buffers carry a path");
-        self.write_current(&path)
+        self.write_current(&path, force)
     }
 
     pub fn write_as(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
@@ -197,14 +197,14 @@ impl Editor {
             .as_deref()
             .map(|path| paths::absolute(path, &current_dir()));
         if current.as_deref() == Some(target.as_path()) {
-            return self.write_current(name);
+            return self.write_current(name, force);
         }
         if target.exists() && !force {
             return Err(EditError::FileExists);
         }
         let created = !target.exists();
         self.buffer
-            .write_to(name)
+            .write_to(name, force)
             .map_err(|error| EditError::Io(error.to_string()))?;
         if current.is_none() {
             self.buffer.adopt_path(name);
@@ -212,10 +212,10 @@ impl Editor {
         Ok(self.write_outcome(created))
     }
 
-    fn write_current(&mut self, name: &str) -> Result<WriteOutcome, EditError> {
+    fn write_current(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
         let created = !current_dir().join(name).exists();
         self.buffer
-            .save()
+            .save(force)
             .map_err(|error| EditError::Io(error.to_string()))?;
         Ok(self.write_outcome(created))
     }
@@ -469,7 +469,7 @@ impl Editor {
             if !self.has_file() {
                 return Err(EditError::NoName);
             }
-            self.save()?;
+            self.save(false)?;
         }
         for entry in self.buffers.parked.iter_mut() {
             if !entry.state.buffer.is_dirty() {
@@ -481,7 +481,7 @@ impl Editor {
             entry
                 .state
                 .buffer
-                .save()
+                .save(false)
                 .map_err(|error| EditError::Io(error.to_string()))?;
         }
         Ok(())

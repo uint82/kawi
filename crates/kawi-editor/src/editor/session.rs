@@ -345,7 +345,7 @@ impl Editor {
     }
 
     pub(super) fn save_silent(&mut self) {
-        let _ = self.buffer.save();
+        let _ = self.buffer.save(false);
     }
 
     pub(super) fn select_around_word(&mut self) {
