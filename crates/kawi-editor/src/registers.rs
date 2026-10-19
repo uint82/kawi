@@ -181,7 +181,9 @@ fn merge(existing: &Register, register: &Register) -> Register {
         existing.kind()
     };
     let text = match kind {
-        RegisterKind::CharWise => format!("{}{}", existing.text(), register.text()),
+        RegisterKind::CharWise | RegisterKind::BlockWise => {
+            format!("{}{}", existing.text(), register.text())
+        }
         RegisterKind::LineWise => {
             if existing.text().is_empty() {
                 register.text().to_string()

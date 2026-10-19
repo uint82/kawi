@@ -7,7 +7,7 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::{Frame, SearchSpan};
+use crate::frame::{Frame, SearchSpan, Selection};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
@@ -104,9 +104,16 @@ pub enum Tint {
 pub fn highlight_spans(
     window: &[String],
     top: usize,
-    selection: Option<((usize, usize), (usize, usize))>,
+    selection: Option<Selection>,
     viewport: &Viewport,
 ) -> Vec<HighlightSpan> {
+    let selection = match selection {
+        Some(Selection::Range { start, end }) => Some((start, end)),
+        Some(selection @ Selection::Block { .. }) => {
+            return block_spans(window, top, viewport, selection);
+        }
+        None => None,
+    };
     let Some(((start_row, start_col), (end_row, end_col))) = selection else {
         return Vec::new();
     };
@@ -123,6 +130,55 @@ pub fn highlight_spans(
             screen_row,
             ((start_row, start_col), (end_row, end_col)),
         );
+    }
+    spans
+}
+
+fn block_spans(
+    window: &[String],
+    top: usize,
+    viewport: &Viewport,
+    selection: Selection,
+) -> Vec<HighlightSpan> {
+    let Selection::Block {
+        top: block_top,
+        left,
+        bottom: block_bottom,
+        right,
+        ragged,
+    } = selection
+    else {
+        return Vec::new();
+    };
+    let width = viewport.width();
+    let mut spans = Vec::new();
+    for screen_row in 0..window.len().min(viewport.height()) {
+        let buffer_row = top.saturating_add(screen_row);
+        if buffer_row < block_top || buffer_row > block_bottom {
+            continue;
+        }
+        let Some(text) = window.get(screen_row) else {
+            continue;
+        };
+        let to = if ragged {
+            char_len(text)
+        } else {
+            right.saturating_add(1)
+        };
+        let from = left.min(width);
+        let to = to.min(width);
+        if from >= to {
+            continue;
+        }
+        let mut segment = slice_cols(text, from, to);
+        let missing = to.saturating_sub(from).saturating_sub(char_len(&segment));
+        segment.push_str(&" ".repeat(missing));
+        spans.push(HighlightSpan {
+            screen_row,
+            from,
+            text: segment,
+            tint: Tint::Selection,
+        });
     }
     spans
 }
@@ -596,14 +652,30 @@ mod tests {
     #[test]
     fn point_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, 0, Some(((0, 2), (0, 2))), &viewport());
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 2),
+                end: (0, 2),
+            }),
+            &viewport(),
+        );
         assert!(spans.is_empty());
     }
 
     #[test]
     fn range_selection_spans_chars() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(&lines, 0, Some(((0, 1), (0, 3))), &viewport());
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 1),
+                end: (0, 3),
+            }),
+            &viewport(),
+        );
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].screen_row, 0);
         assert_eq!(spans[0].from, 1);
@@ -613,7 +685,15 @@ mod tests {
     #[test]
     fn multiline_selection_spans_rows() {
         let lines = lines_of("ab\ncd\nef");
-        let spans = highlight_spans(&lines, 0, Some(((0, 1), (2, 1))), &viewport());
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 1),
+                end: (2, 1),
+            }),
+            &viewport(),
+        );
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].text, "b");
         assert_eq!(spans[1].text, "cd");

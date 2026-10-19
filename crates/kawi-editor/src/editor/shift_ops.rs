@@ -30,6 +30,20 @@ impl Editor {
     }
 
     fn apply_shift(&mut self, shift: Shift) {
+        if self.mode == crate::mode::Mode::VisualBlock {
+            // TODO: match nvim block reindent behavior for the = operator.
+            match shift {
+                Shift::Right => {
+                    self.shift_block(true);
+                    return;
+                }
+                Shift::Left => {
+                    self.shift_block(false);
+                    return;
+                }
+                Shift::Reindent => {}
+            }
+        }
         let (first, last) = if self.mode.is_visual() {
             self.touched_rows()
         } else {

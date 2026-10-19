@@ -2,6 +2,7 @@
 pub enum RegisterKind {
     CharWise,
     LineWise,
+    BlockWise,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

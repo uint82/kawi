@@ -208,7 +208,10 @@ pub enum Action {
         motion: CaseMotion,
     },
     EnterVisualLine,
+    EnterVisualBlock,
     SwapSelectionEnds,
+    SwapBlockCorners,
+    ReplaceSelection(char),
     SelectInnerWord,
     SelectAroundWord,
     SelectObject {
@@ -295,6 +298,7 @@ impl Action {
                 | Self::Redo
                 | Self::EnterVisual
                 | Self::EnterVisualLine
+                | Self::EnterVisualBlock
                 | Self::ExitVisual
                 | Self::CancelVisual
                 | Self::ReselectVisual

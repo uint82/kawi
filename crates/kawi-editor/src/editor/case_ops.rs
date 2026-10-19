@@ -2,6 +2,7 @@ use super::Editor;
 use crate::actions::{Action, CaseMotion};
 use crate::case_map;
 use crate::find;
+use crate::mode::Mode;
 use crate::words;
 
 impl Editor {
@@ -60,6 +61,10 @@ impl Editor {
 
     fn shift_selection_case(&mut self, shift: fn(char) -> char) {
         self.snapshot_visual();
+        if self.mode == Mode::VisualBlock {
+            self.shift_block_case(shift);
+            return;
+        }
         let (start, end) = self.operator_range();
         self.record_boundary();
         self.buffer

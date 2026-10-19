@@ -11,7 +11,7 @@ impl Editor {
         let tabstop = self.effective_indent().tabstop;
         let width = self.line_width(row);
         let total = self.buffer.screen_col(row, width, tabstop);
-        let col = if self.mode.is_insert() && desired >= total {
+        let col = if (self.mode.is_insert() || self.mode.is_visual()) && desired >= total {
             width
         } else {
             self.buffer.char_col(row, desired, tabstop)

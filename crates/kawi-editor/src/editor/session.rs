@@ -114,6 +114,7 @@ impl Editor {
             self.clear_autoindent_line();
             self.last_insert = Some((self.cursor.row(), self.cursor.col()));
             self.replay_insert();
+            self.replicate_block_insert();
             self.buffer.end_change();
             self.retreat_after_insert();
             self.store_insert_session();
@@ -216,6 +217,10 @@ impl Editor {
     }
 
     pub(super) fn insert_after_selection(&mut self) {
+        if self.mode == Mode::VisualBlock {
+            self.append_block_after();
+            return;
+        }
         if let Some((_, (row, col))) = self.selection_range() {
             self.cursor.set_position(row, col);
             self.cursor.move_right();
@@ -225,6 +230,10 @@ impl Editor {
     }
 
     pub(super) fn insert_before_selection(&mut self) {
+        if self.mode == Mode::VisualBlock {
+            self.insert_block_before();
+            return;
+        }
         if let Some(((row, col), _)) = self.selection_range() {
             self.cursor.set_position(row, col);
         }
@@ -1259,6 +1268,7 @@ mod tests {
         e.apply(Action::MoveRight);
         e.apply(Action::MoveRight);
         e.apply(Action::DeleteSelection);
+        e.apply(Action::ExitVisual);
         assert_eq!(e.text_lines(), vec!["gh".to_string()]);
         assert_eq!((e.row(), e.col()), (0, 1));
     }
