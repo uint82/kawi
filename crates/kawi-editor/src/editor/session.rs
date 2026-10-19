@@ -265,11 +265,16 @@ impl Editor {
     }
 
     pub(super) fn delete_command_char(&mut self) {
-        if self.mode == Mode::Command {
-            self.completion = None;
-            self.command_history.mark_edited();
-            self.command.pop();
+        if self.mode != Mode::Command {
+            return;
         }
+        if self.command.text().is_empty() {
+            self.cancel_command();
+            return;
+        }
+        self.completion = None;
+        self.command_history.mark_edited();
+        self.command.pop();
     }
 
     pub(super) fn redo(&mut self) -> bool {
@@ -829,6 +834,28 @@ mod tests {
         e.apply(Action::PushCommandChar('w'));
         e.apply(Action::DeleteCommandChar);
         assert_eq!(e.command_prompt(), Some(""));
+    }
+
+    #[test]
+    fn command_backspace_aborts_empty_prompt() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterCommand);
+        e.apply(Action::DeleteCommandChar);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.command_prompt(), None);
+    }
+
+    #[test]
+    fn command_backspace_keeps_empty_prompt_open() {
+        let mut e = editor_with("ab");
+        e.apply(Action::EnterCommand);
+        e.apply(Action::PushCommandChar('w'));
+        e.apply(Action::DeleteCommandChar);
+        assert_eq!(e.mode(), Mode::Command);
+        assert_eq!(e.command_prompt(), Some(""));
+        e.apply(Action::DeleteCommandChar);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.command_prompt(), None);
     }
 
     #[test]
