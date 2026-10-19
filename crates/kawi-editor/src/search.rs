@@ -9,6 +9,18 @@ pub enum SearchOutcome {
     Missing,
 }
 
+pub fn strip_word_atoms(pattern: &str) -> (String, bool) {
+    if let Some(inner) = pattern
+        .strip_prefix("\\<")
+        .and_then(|rest| rest.strip_suffix("\\>"))
+    {
+        if !inner.is_empty() {
+            return (inner.to_string(), true);
+        }
+    }
+    (pattern.to_string(), false)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MatchSpan {
     pub row: usize,

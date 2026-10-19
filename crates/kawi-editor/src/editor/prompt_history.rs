@@ -142,7 +142,7 @@ impl Editor {
         let current = self.search.text().to_string();
         if let Some(entry) = recall(&mut self.search_history, &current, older) {
             self.search.replace(&entry);
-            self.search_whole_word = false;
+            self.search_no_smartcase = false;
             self.jump_to_first_result();
         }
     }
@@ -425,7 +425,7 @@ mod tests {
     fn searching_a_word_records_it() {
         let mut editor = editor_with("alpha beta");
         editor.search_word(true).unwrap();
-        assert_eq!(editor.history_entries().search, vec!["alpha"]);
+        assert_eq!(editor.history_entries().search, vec!["\\<alpha\\>"]);
     }
 
     #[test]

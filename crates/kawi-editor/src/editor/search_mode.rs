@@ -23,6 +23,7 @@ impl Editor {
             self.search_status = None;
             return None;
         }
+        self.search_forward = true;
         self.refresh_search_status();
         if self.search_status.is_some() {
             if let Some(origin) = self.search_origin {
@@ -55,7 +56,7 @@ impl Editor {
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
         self.search_history.reset_browse();
-        self.search_whole_word = false;
+        self.search_no_smartcase = false;
         self.search_status = None;
         self.mode = Mode::Search;
     }
@@ -96,10 +97,7 @@ impl Editor {
     }
 
     pub(super) fn next_match(&mut self) {
-        let before = (self.cursor.row(), self.cursor.col());
-        if matches!(self.search_next(), SearchOutcome::Found { .. }) {
-            self.set_pcmark_at(before);
-        }
+        self.match_step(true);
     }
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
@@ -110,8 +108,18 @@ impl Editor {
     }
 
     pub(super) fn prev_match(&mut self) {
+        self.match_step(false);
+    }
+
+    fn match_step(&mut self, same_direction: bool) {
         let before = (self.cursor.row(), self.cursor.col());
-        if matches!(self.search_prev(), SearchOutcome::Found { .. }) {
+        let forward = self.search_forward == same_direction;
+        let outcome = if forward {
+            self.search_next()
+        } else {
+            self.search_prev()
+        };
+        if matches!(outcome, SearchOutcome::Found { .. }) {
             self.set_pcmark_at(before);
         }
     }
@@ -137,7 +145,7 @@ impl Editor {
             Some(status)
                 if status.pattern == pattern
                     && status.revision == revision
-                    && status.whole_word == self.search_whole_word =>
+                    && status.no_smartcase == self.search_no_smartcase =>
             {
                 status.total
             }
@@ -156,7 +164,7 @@ impl Editor {
         );
         self.search_status = Some(SearchStatus {
             pattern,
-            whole_word: self.search_whole_word,
+            no_smartcase: self.search_no_smartcase,
             index,
             total,
             revision,
@@ -186,7 +194,7 @@ impl Editor {
         if !self.ignorecase {
             return true;
         }
-        let smartcase = self.smartcase && !self.search_whole_word;
+        let smartcase = self.smartcase && !self.search_no_smartcase;
         if smartcase && pattern.chars().any(char::is_uppercase) {
             return true;
         }
@@ -194,12 +202,12 @@ impl Editor {
     }
 
     fn search_query(&self) -> Query {
-        let pattern = self.search.text();
-        Query::new(
-            pattern,
-            self.search_sensitive(pattern),
-            self.search_whole_word,
-        )
+        self.query_for(self.search.text())
+    }
+
+    fn query_for(&self, pattern: &str) -> Query {
+        let (literal, whole_word) = search::strip_word_atoms(pattern);
+        Query::new(&literal, self.search_sensitive(pattern), whole_word)
     }
 
     pub fn search_spans(&self, top: usize, height: usize) -> Vec<search::MatchSpan> {
@@ -207,11 +215,7 @@ impl Editor {
             Some(target) => target,
             None => return Vec::new(),
         };
-        let query = Query::new(
-            pattern,
-            self.search_sensitive(pattern),
-            self.search_whole_word,
-        );
+        let query = self.query_for(pattern);
         search::collect_matches(&self.buffer, &query, top, top.saturating_add(height))
             .into_iter()
             .map(|span| self.mark_current(span, anchor))
@@ -235,8 +239,9 @@ impl Editor {
     }
 }
 
-pub(super) fn status_line(pattern: &str, index: usize, total: usize) -> String {
-    format!("/{pattern} [{index}/{total}]")
+pub(super) fn status_line(forward: bool, pattern: &str, index: usize, total: usize) -> String {
+    let delimiter = if forward { '/' } else { '?' };
+    format!("{delimiter}{pattern} [{index}/{total}]")
 }
 
 #[cfg(test)]
@@ -462,5 +467,29 @@ mod tests {
         let mut e = editor_with("foo");
         assert_eq!(e.search_next(), SearchOutcome::Missing);
         assert_eq!(e.search_prev(), SearchOutcome::Missing);
+    }
+
+    #[test]
+    fn typed_word_atoms_match_whole_words() {
+        let mut e = editor_with("foo foobar foo");
+        e.apply(Action::EnterSearch);
+        for c in "\\<foo\\>".chars() {
+            e.apply(Action::PushSearchChar(c));
+        }
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 11));
+        e.apply(Action::NextMatch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn typed_word_atoms_still_search_literally() {
+        let mut e = editor_with("a\\<b\\> a\\<b\\>");
+        e.apply(Action::EnterSearch);
+        for c in "a\\<b\\>".chars() {
+            e.apply(Action::PushSearchChar(c));
+        }
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/a\\<b\\> [2/2]"));
     }
 }

@@ -666,6 +666,14 @@ impl VimKeymap {
             self.clear_pending();
             return Action::MoveToPrevBigWordEnd;
         }
+        if body == "g" && pushed == '*' {
+            self.clear_pending();
+            return Action::SearchBareWordForward;
+        }
+        if body == "g" && pushed == '#' {
+            self.clear_pending();
+            return Action::SearchBareWordBackward;
+        }
         if body == "g" {
             if let Some(action) = display_motion_action(pushed) {
                 self.clear_pending();
@@ -2927,6 +2935,34 @@ mod tests {
     }
 
     #[test]
+    fn normal_g_star_searches_bare_word() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('*')), Mode::Normal),
+            Action::SearchBareWordForward
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn normal_g_hash_searches_bare_word_backward() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('#')), Mode::Normal),
+            Action::SearchBareWordBackward
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
     fn normal_g_arms_without_digits() {
         let mut map = VimKeymap::new();
         assert_eq!(
@@ -3205,7 +3241,7 @@ mod tests {
     #[test]
     fn normal_g_unimplemented_second_keys_cancel() {
         let implemented = [
-            '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J',
+            '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J', '*', '#',
         ];
         for code in 0..128u8 {
             let pushed = code as char;
