@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn block_delete_with_short_corner_extends_left() {
-        let mut e = editor_with("abc\na\n");
+        let mut e = editor_with("abc\na\n\n");
         enter_block(&mut e, 0, 2);
         e.apply(Action::MoveDown);
         e.apply(Action::MoveDown);
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn block_change_replicates_typed_text() {
-        let mut e = editor_with("abc\na\n");
+        let mut e = editor_with("abc\na\n\n");
         enter_block(&mut e, 0, 2);
         e.apply(Action::MoveDown);
         e.apply(Action::MoveDown);
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn block_append_pads_short_rows() {
-        let mut e = editor_with("abc\na\n");
+        let mut e = editor_with("abc\na\n\n");
         enter_block(&mut e, 0, 2);
         e.apply(Action::MoveDown);
         e.apply(Action::MoveDown);
