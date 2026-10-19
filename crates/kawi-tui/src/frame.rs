@@ -18,13 +18,28 @@ pub struct Frame<'a> {
     pub search_spans: &'a [SearchSpan],
     pub showcmd: Option<String>,
     pub insert_mode: bool,
-    pub selection: Option<((usize, usize), (usize, usize))>,
+    pub selection: Option<Selection>,
     pub theme: &'a Theme,
 }
 
 pub struct CompletionMenu<'a> {
     pub items: &'a [String],
     pub selected: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Selection {
+    Range {
+        start: (usize, usize),
+        end: (usize, usize),
+    },
+    Block {
+        top: usize,
+        left: usize,
+        bottom: usize,
+        right: usize,
+        ragged: bool,
+    },
 }
 
 pub struct SearchSpan {

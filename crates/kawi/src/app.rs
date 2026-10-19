@@ -167,9 +167,25 @@ impl App {
             search_spans,
             showcmd: self.showcmd_text(),
             insert_mode: self.editor.mode().is_insert(),
-            selection: self.editor.selection_range(),
+            selection: self.frame_selection(),
             theme: &self.theme,
         }
+    }
+
+    fn frame_selection(&self) -> Option<kawi_tui::Selection> {
+        if self.editor.mode() == kawi_editor::Mode::VisualBlock {
+            let (top, left, bottom, right, ragged) = self.editor.block_bounds()?;
+            return Some(kawi_tui::Selection::Block {
+                top,
+                left,
+                bottom,
+                right,
+                ragged,
+            });
+        }
+        self.editor
+            .selection_range()
+            .map(|(start, end)| kawi_tui::Selection::Range { start, end })
     }
 
     fn showcmd_text(&self) -> Option<String> {
@@ -782,6 +798,7 @@ fn is_operator(action: Action) -> bool {
             | Action::ToggleCase
             | Action::Lowercase
             | Action::Uppercase
+            | Action::ReplaceSelection(_)
     )
 }
 

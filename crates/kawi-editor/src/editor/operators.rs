@@ -359,6 +359,10 @@ impl Editor {
             self.delete_touched_lines();
             return;
         }
+        if self.mode == Mode::VisualBlock {
+            self.delete_block();
+            return;
+        }
         let (start, end) = self.operator_range();
         self.remove_range(start, end);
         self.collapse_to(start.0, start.1);
@@ -369,6 +373,10 @@ impl Editor {
         self.note_visual_repeat(Action::ChangeSelection);
         if self.mode == Mode::VisualLine {
             self.change_touched_lines();
+            return;
+        }
+        if self.mode == Mode::VisualBlock {
+            self.change_block();
             return;
         }
         let (start, end) = self.operator_range();
@@ -680,7 +688,11 @@ impl Editor {
         let Some(register) = self.read_register(self.pending_register) else {
             return;
         };
-        if register.kind() == RegisterKind::CharWise && register.is_empty() {
+        if matches!(
+            register.kind(),
+            RegisterKind::CharWise | RegisterKind::BlockWise
+        ) && register.is_empty()
+        {
             return;
         }
         let count = self.take_count();
@@ -688,6 +700,7 @@ impl Editor {
         match register.kind() {
             RegisterKind::CharWise => self.paste_inline(&register, count, before),
             RegisterKind::LineWise => self.paste_lines(&register, count, before),
+            RegisterKind::BlockWise => self.block_paste(&register, before),
         }
     }
 
@@ -705,6 +718,10 @@ impl Editor {
             self.paste_over_lines(&register);
             return;
         }
+        if self.mode == Mode::VisualBlock {
+            self.paste_over_block(&register);
+            return;
+        }
         let ((start_row, start_col), (end_row, end_col)) = self.operator_range();
         self.record_boundary();
         self.capture_delete_range((start_row, start_col), (end_row, end_col));
@@ -712,7 +729,7 @@ impl Editor {
             .delete_range(start_row, start_col, end_row, end_col);
         self.cursor.set_position(start_row, start_col);
         match register.kind() {
-            RegisterKind::CharWise => {
+            RegisterKind::CharWise | RegisterKind::BlockWise => {
                 let (_, _) = self
                     .buffer
                     .paste_before(start_row, start_col, register.text());
@@ -913,6 +930,10 @@ impl Editor {
         self.snapshot_visual();
         if self.mode == Mode::VisualLine {
             self.yank_touched_lines();
+            return;
+        }
+        if self.mode == Mode::VisualBlock {
+            self.yank_block();
             return;
         }
         let ((start_row, start_col), (end_row, end_col)) = self.operator_range();

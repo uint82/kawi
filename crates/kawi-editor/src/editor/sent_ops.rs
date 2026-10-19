@@ -281,7 +281,7 @@ impl Editor {
                 let text = text.strip_suffix('\n').map(str::to_string).unwrap_or(text);
                 (RegisterKind::LineWise, text)
             }
-            RegisterKind::CharWise => (RegisterKind::CharWise, text),
+            RegisterKind::CharWise | RegisterKind::BlockWise => (RegisterKind::CharWise, text),
         }
     }
 }

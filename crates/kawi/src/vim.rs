@@ -424,6 +424,9 @@ impl VimKeymap {
             KeyCode::Char('@') => self.arm_macro_run(key),
             KeyCode::Char('Q') => self.map_plain_or_noop(key, Action::RepeatRecordedMacro),
             KeyCode::Char(':') => self.arm_command(key),
+            KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::EnterVisualBlock
+            }
             KeyCode::Char('v') => self.map_plain_or_noop(key, Action::EnterVisual),
             KeyCode::Char('V') => self.map_plain_or_noop(key, Action::EnterVisualLine),
             _ => Action::Noop,
@@ -1232,7 +1235,14 @@ impl VimKeymap {
             KeyCode::Char('L') => self.map_plain_or_noop(key, Action::MoveToViewportBottom),
             KeyCode::Char('G') => self.map_plain_or_noop(key, Action::GotoLastLine),
             KeyCode::Char('o') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
-            KeyCode::Char('O') => self.map_plain_or_noop(key, Action::SwapSelectionEnds),
+            KeyCode::Char('O') => self.map_plain_or_noop(key, self.visual_big_o_action(mode)),
+            KeyCode::Char('I') => self.map_plain_or_noop(key, Action::InsertBeforeSelection),
+            KeyCode::Char('A') => self.map_plain_or_noop(key, Action::InsertAfterSelection),
+            KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteSelection),
+            KeyCode::Char('r') => self.arm_visual_replace(key),
+            KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Action::EnterVisualBlock
+            }
             KeyCode::Char('v') => self.map_plain_or_noop(key, self.visual_v_action(mode)),
             KeyCode::Char('V') => self.map_plain_or_noop(key, self.visual_big_v_action(mode)),
             KeyCode::Char('i') => self.arm_visual_object(key),
@@ -1251,16 +1261,31 @@ impl VimKeymap {
 
     fn visual_v_action(&self, mode: Mode) -> Action {
         match mode {
-            Mode::VisualLine => Action::EnterVisual,
+            Mode::VisualLine | Mode::VisualBlock => Action::EnterVisual,
             _ => Action::CancelVisual,
+        }
+    }
+
+    fn visual_big_o_action(&self, mode: Mode) -> Action {
+        match mode {
+            Mode::VisualBlock => Action::SwapBlockCorners,
+            _ => Action::SwapSelectionEnds,
         }
     }
 
     fn visual_big_v_action(&self, mode: Mode) -> Action {
         match mode {
-            Mode::Visual => Action::EnterVisualLine,
+            Mode::Visual | Mode::VisualBlock => Action::EnterVisualLine,
             _ => Action::CancelVisual,
         }
+    }
+
+    fn arm_visual_replace(&mut self, key: KeyEvent) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push('r');
+        Action::Noop
     }
 
     fn arm_visual_object(&mut self, key: KeyEvent) -> Action {
@@ -1334,6 +1359,10 @@ impl VimKeymap {
     fn visual_pending_key(&mut self, pushed: char, mode: Mode) -> Action {
         if self.register_prefix_armed() {
             return self.complete_register(pushed);
+        }
+        if self.stripped_pending() == "r" {
+            self.clear_pending();
+            return Action::ReplaceSelection(pushed);
         }
         if self.stripped_pending() == "g" {
             if pushed == 'g' {
@@ -1543,7 +1572,7 @@ impl Keymap for VimKeymap {
             Mode::Insert => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
-            Mode::Visual | Mode::VisualLine => self.map_visual_mode(key, mode),
+            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.map_visual_mode(key, mode),
             Mode::Search => crate::keymap::map_search_mode(key),
         };
         if mode != Mode::Insert {

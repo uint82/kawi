@@ -33,6 +33,7 @@ mod sent_ops;
 mod session;
 mod shift_ops;
 mod tab;
+mod visual_block;
 mod word_search;
 
 use session::InsertEdit;
@@ -71,6 +72,7 @@ pub struct Editor {
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     insert_last_char: Option<char>,
+    block_insert: Option<visual_block::BlockInsertPlan>,
     viewport: Viewport,
     jumps: Jumps,
     scroll_amount: Option<usize>,
@@ -324,6 +326,9 @@ impl Editor {
             Action::ReindentAt { motion } => self.reindent_at(motion),
             Action::EnterVisual => self.enter_visual(),
             Action::EnterVisualLine => self.enter_visual_line(),
+            Action::EnterVisualBlock => self.enter_visual_block(),
+            Action::SwapBlockCorners => self.swap_block_corners(),
+            Action::ReplaceSelection(replacement) => self.replace_selection(replacement),
             Action::ExitVisual => self.exit_visual(),
             Action::CancelVisual => self.cancel_visual(),
             Action::ReselectVisual => self.reselect_visual(),
@@ -602,6 +607,7 @@ impl Editor {
             insert_record: Vec::new(),
             insert_moved: false,
             insert_last_char: None,
+            block_insert: None,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
             scroll_amount: None,

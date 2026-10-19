@@ -60,7 +60,7 @@ impl Editor {
         Some(text)
     }
 
-    fn overwrite_chars(&mut self, row: usize, col: usize, count: usize, text: &str) {
+    pub(super) fn overwrite_chars(&mut self, row: usize, col: usize, count: usize, text: &str) {
         self.record_boundary();
         self.buffer.delete_range(row, col, row, col + count - 1);
         for (index, ch) in text.chars().enumerate() {

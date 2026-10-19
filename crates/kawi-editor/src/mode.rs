@@ -5,6 +5,7 @@ pub enum Mode {
     Command,
     Visual,
     VisualLine,
+    VisualBlock,
     Search,
 }
 
@@ -14,11 +15,14 @@ impl Mode {
     }
 
     pub fn is_visual(self) -> bool {
-        matches!(self, Self::Visual | Self::VisualLine)
+        matches!(self, Self::Visual | Self::VisualLine | Self::VisualBlock)
     }
 
     pub fn is_normal_state(self) -> bool {
-        matches!(self, Self::Normal | Self::Visual | Self::VisualLine)
+        matches!(
+            self,
+            Self::Normal | Self::Visual | Self::VisualLine | Self::VisualBlock
+        )
     }
 
     pub fn label(self) -> &'static str {
@@ -28,6 +32,7 @@ impl Mode {
             Self::Command => "COMMAND",
             Self::Visual => "VISUAL",
             Self::VisualLine => "VISUAL LINE",
+            Self::VisualBlock => "VISUAL BLOCK",
             Self::Search => "SEARCH",
         }
     }

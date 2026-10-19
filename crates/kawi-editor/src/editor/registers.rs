@@ -148,7 +148,7 @@ fn clipboard_register(text: String) -> Register {
 fn clipboard_text(register: &Register) -> String {
     match register.kind() {
         RegisterKind::LineWise => format!("{}\n", register.text()),
-        RegisterKind::CharWise => register.text().to_string(),
+        RegisterKind::CharWise | RegisterKind::BlockWise => register.text().to_string(),
     }
 }
 
