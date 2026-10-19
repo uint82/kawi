@@ -21,6 +21,8 @@ pub enum Action {
     MoveToMatch,
     SearchWordForward,
     SearchWordBackward,
+    SearchBareWordForward,
+    SearchBareWordBackward,
     DeleteToMatch,
     YankToMatch,
     ChangeToMatch,

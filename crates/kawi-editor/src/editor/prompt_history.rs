@@ -142,7 +142,7 @@ impl Editor {
         let current = self.search.text().to_string();
         if let Some(entry) = recall(&mut self.search_history, &current, older) {
             self.search.replace(&entry);
-            self.search_whole_word = false;
+            self.search_no_smartcase = false;
             self.jump_to_first_result();
         }
     }

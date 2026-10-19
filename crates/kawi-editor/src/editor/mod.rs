@@ -81,7 +81,8 @@ pub struct Editor {
     numberwidth: usize,
     ignorecase: bool,
     smartcase: bool,
-    search_whole_word: bool,
+    search_no_smartcase: bool,
+    search_forward: bool,
     completion: Option<cmd_complete::CompletionState>,
     autoindent: bool,
     pending_autoindent: Option<(usize, String)>,
@@ -90,7 +91,7 @@ pub struct Editor {
 
 struct SearchStatus {
     pattern: String,
-    whole_word: bool,
+    no_smartcase: bool,
     index: usize,
     total: usize,
     revision: u64,
@@ -162,6 +163,12 @@ impl Editor {
             }
             Action::SearchWordBackward => {
                 let _ = self.search_word(false);
+            }
+            Action::SearchBareWordForward => {
+                let _ = self.search_word_bare(true);
+            }
+            Action::SearchBareWordBackward => {
+                let _ = self.search_word_bare(false);
             }
             Action::CompleteCommand => self.complete_command(false),
             Action::CompleteCommandBackward => self.complete_command(true),
@@ -617,7 +624,8 @@ impl Editor {
             numberwidth: 4,
             ignorecase: false,
             smartcase: false,
-            search_whole_word: false,
+            search_no_smartcase: false,
+            search_forward: true,
             completion: None,
             autoindent: true,
             pending_autoindent: None,
@@ -742,6 +750,7 @@ impl Editor {
             return None;
         }
         Some(search_mode::status_line(
+            self.search_forward,
             self.search.text(),
             status.index,
             status.total,
