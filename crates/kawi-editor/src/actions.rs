@@ -15,6 +15,26 @@ pub enum Action {
     MoveToViewportBottom,
     JumpOlder,
     JumpNewer,
+    SetMark(char),
+    JumpToMark {
+        name: char,
+        line_wise: bool,
+    },
+    JumpToPrevious {
+        line_wise: bool,
+    },
+    DeleteToMark {
+        name: char,
+        line_wise: bool,
+    },
+    ChangeToMark {
+        name: char,
+        line_wise: bool,
+    },
+    YankToMark {
+        name: char,
+        line_wise: bool,
+    },
     EditAlternate,
     SelectRegister(char),
     InsertRegister(char),

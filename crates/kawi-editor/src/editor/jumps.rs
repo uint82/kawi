@@ -17,8 +17,10 @@ impl Editor {
 
     pub(super) fn apply_line_adjustments(&mut self) {
         let buffer = self.buffers.current();
+        let path = self.buffer.path.clone();
         for adjust in self.buffer.take_line_adjustments() {
             self.jumps.adjust(buffer, adjust);
+            self.marks.adjust(buffer, path.as_deref(), adjust);
         }
     }
 

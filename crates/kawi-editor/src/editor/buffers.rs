@@ -12,7 +12,7 @@ use crate::paths;
 
 use super::Editor;
 
-fn current_dir() -> PathBuf {
+pub(super) fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
@@ -24,6 +24,7 @@ pub enum EditError {
     CannotOpen(String),
     Io(String),
     InvalidMark,
+    MarkNotSet,
     NoString,
 }
 
@@ -562,9 +563,16 @@ impl Editor {
         self.store_current();
         let number = self.buffers.allocate_number();
         self.load_fresh(buffer);
+        self.place_open_cursor();
         self.buffers.set_current(number);
         self.buffers.set_alternate(Some(previous));
         Ok(())
+    }
+
+    fn place_open_cursor(&mut self) {
+        let col = self.first_non_blank_of(0);
+        self.cursor.set_position(0, col);
+        self.remember_wanted_column();
     }
 
     fn buffer_reusable(&self) -> bool {
@@ -576,6 +584,7 @@ impl Editor {
         let number = self.buffers.current();
         self.jumps.record(self.current_jump());
         self.load_fresh(buffer);
+        self.place_open_cursor();
         self.buffers.set_alternate(Some(number));
         Ok(())
     }
@@ -765,6 +774,16 @@ mod tests {
         assert_eq!((e.row(), e.col()), (0, 0));
         assert_eq!(e.buffers.current(), 2);
         assert_eq!(e.buffers.alternate(), Some(1));
+    }
+
+    #[test]
+    fn edit_file_places_cursor_on_first_non_blank() {
+        let dir = temp_dir("first_non_blank");
+        write_file(&dir, "a.txt", "  alpha\nbeta\n");
+        write_file(&dir, "b.txt", "gamma\n");
+        let mut e = editor_in(&dir, "b.txt");
+        open(&mut e, &dir, "a.txt");
+        assert_eq!((e.row(), e.col()), (0, 2));
     }
 
     #[test]

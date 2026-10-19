@@ -17,6 +17,7 @@ pub mod words;
 mod case_map;
 pub mod clipboard;
 mod jumps;
+mod marks;
 mod paragraphs;
 mod registers;
 mod sentences;

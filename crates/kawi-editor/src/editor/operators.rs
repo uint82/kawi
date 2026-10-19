@@ -829,6 +829,13 @@ impl Editor {
         self.cursor.set_position(start.0, start.1);
     }
 
+    pub(super) fn remove_span(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_boundary_at(start.0, start.1);
+        self.capture_delete_span(start, end);
+        self.buffer.delete_span(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1);
+    }
+
     pub(super) fn yank_around_word(&mut self) {
         let count = self.take_count();
         let span =

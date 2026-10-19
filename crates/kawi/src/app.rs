@@ -6,6 +6,13 @@ use std::io::{stdout, Stdout};
 mod macro_codec;
 mod macro_ops;
 
+#[derive(Clone, Copy)]
+enum MarkOperator {
+    Delete,
+    Change,
+    Yank,
+}
+
 enum Redraw {
     Quit,
     Redraw,
@@ -368,6 +375,17 @@ impl App {
             Action::SearchWordBackward => self.handle_search_word(false),
             Action::JumpOlder => self.handle_jump(true),
             Action::JumpNewer => self.handle_jump(false),
+            Action::JumpToMark { name, line_wise } => self.handle_mark_jump(name, line_wise),
+            Action::JumpToPrevious { line_wise } => self.handle_previous_jump(line_wise),
+            Action::DeleteToMark { name, line_wise } => {
+                self.handle_mark_operator(MarkOperator::Delete, name, line_wise)
+            }
+            Action::ChangeToMark { name, line_wise } => {
+                self.handle_mark_operator(MarkOperator::Change, name, line_wise)
+            }
+            Action::YankToMark { name, line_wise } => {
+                self.handle_mark_operator(MarkOperator::Yank, name, line_wise)
+            }
             Action::EditAlternate => self.handle_alternate(),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
@@ -508,6 +526,7 @@ impl App {
             Command::WriteAs { name, force } => self.handle_write_as(name, force),
             Command::DeleteBuffer { spec, force } => self.handle_delete_buffer(spec, force),
             Command::ListBuffers => self.handle_list_buffers(),
+            Command::Marks => self.handle_marks(),
             Command::NextBuffer => self.handle_buffer_step(true),
             Command::PreviousBuffer => self.handle_buffer_step(false),
             Command::AlternateBuffer => self.handle_alternate(),
@@ -683,6 +702,43 @@ impl App {
 
     fn handle_list_buffers(&mut self) -> Result<bool> {
         self.show_message(self.editor.buffer_list());
+        Ok(false)
+    }
+
+    fn handle_marks(&mut self) -> Result<bool> {
+        let listing = self.editor.marks_listing(self.editor.viewport().width());
+        self.show_message(listing);
+        Ok(false)
+    }
+
+    fn handle_mark_jump(&mut self, name: char, line_wise: bool) -> Result<bool> {
+        if let Err(error) = self.editor.jump_to_mark(name, line_wise) {
+            self.show_message(file_error_message(error));
+        }
+        Ok(false)
+    }
+
+    fn handle_previous_jump(&mut self, line_wise: bool) -> Result<bool> {
+        if let Err(error) = self.editor.jump_to_previous(line_wise) {
+            self.show_message(file_error_message(error));
+        }
+        Ok(false)
+    }
+
+    fn handle_mark_operator(
+        &mut self,
+        operator: MarkOperator,
+        name: char,
+        line_wise: bool,
+    ) -> Result<bool> {
+        let outcome = match operator {
+            MarkOperator::Delete => self.editor.delete_to_mark(name, line_wise),
+            MarkOperator::Change => self.editor.change_to_mark(name, line_wise),
+            MarkOperator::Yank => self.editor.yank_to_mark(name, line_wise),
+        };
+        if let Err(error) = outcome {
+            self.show_message(file_error_message(error));
+        }
         Ok(false)
     }
 
@@ -863,6 +919,7 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         }
         kawi_editor::EditError::Io(message) => message,
         kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
+        kawi_editor::EditError::MarkNotSet => "E20: Mark not set".to_string(),
         kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
     }
 }
@@ -1763,6 +1820,29 @@ mod tests {
         assert_eq!(app.editor.filename(), alpha);
         type_command(&mut app, "b zzz");
         assert_eq!(app.last_message(), Some("E94: No matching buffer for zzz"));
+    }
+
+    #[test]
+    fn marks_command_pages_listing() {
+        let path = temp_file("marks_listing.txt", "  alpha\n    beta\nthird\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        app.handle_resize(60, 10).expect("resize");
+        app.handle_key(key(KeyCode::Char('j'))).expect("move");
+        app.handle_key(key(KeyCode::Char('m'))).expect("mark");
+        app.handle_key(key(KeyCode::Char('a'))).expect("name");
+        type_command(&mut app, "marks");
+        let lines = app.pager_lines().expect("pager");
+        assert_eq!(lines[0], "");
+        assert_eq!(lines[1], "mark line  col file/text");
+        assert!(lines[2].starts_with(" a      2    0"), "{:?}", lines);
+    }
+
+    #[test]
+    fn unset_mark_reports_e20() {
+        let mut app = App::new(Buffer::from_string("abc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('`'))).expect("prefix");
+        app.handle_key(key(KeyCode::Char('z'))).expect("name");
+        assert_eq!(app.last_message(), Some("E20: Mark not set"));
     }
 
     #[test]
