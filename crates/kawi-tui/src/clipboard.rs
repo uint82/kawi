@@ -1,7 +1,10 @@
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::io::{Read, Write};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use kawi_editor::clipboard::{Clipboard, ClipboardKind};
+
+const HELPER_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct SystemClipboard;
 
@@ -84,16 +87,44 @@ fn write_macos(text: &str) -> bool {
 }
 
 fn run_output(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program)
+    let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .spawn()
         .ok()?;
-    if !output.status.success() {
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut text = Vec::new();
+        stdout.read_to_end(&mut text).ok().map(|_| text)
+    });
+    if wait_with_timeout(&mut child) != Some(true) {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = reader.join();
         return None;
     }
-    String::from_utf8(output.stdout).ok()
+    reader
+        .join()
+        .ok()
+        .flatten()
+        .and_then(|text| String::from_utf8(text).ok())
+}
+
+fn wait_with_timeout(child: &mut Child) -> Option<bool> {
+    let deadline = Instant::now() + HELPER_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status.success()),
+            Ok(None) => {}
+            Err(_) => return None,
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn run_input(program: &str, args: &[&str], text: &str) -> bool {
@@ -107,12 +138,16 @@ fn run_input(program: &str, args: &[&str], text: &str) -> bool {
         Ok(child) => child,
         Err(_) => return false,
     };
-    if let Some(mut stdin) = child.stdin.take() {
-        if stdin.write_all(text.as_bytes()).is_err() {
-            return false;
-        }
+    let written = match child.stdin.take() {
+        Some(mut stdin) => stdin.write_all(text.as_bytes()).is_ok(),
+        None => false,
+    };
+    if !written {
+        let _ = child.kill();
+        let _ = child.wait();
+        return false;
     }
-    child.wait().map(|status| status.success()).unwrap_or(false)
+    wait_with_timeout(&mut child) == Some(true)
 }
 
 fn write_osc52(text: &str) {
