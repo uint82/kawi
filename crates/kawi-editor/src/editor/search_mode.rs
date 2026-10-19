@@ -194,11 +194,15 @@ impl Editor {
     }
 
     fn search_query(&self) -> Query {
-        let pattern = self.search.text();
+        self.query_for(self.search.text())
+    }
+
+    fn query_for(&self, pattern: &str) -> Query {
+        let (literal, whole_word) = search::strip_word_atoms(pattern);
         Query::new(
-            pattern,
+            &literal,
             self.search_sensitive(pattern),
-            self.search_whole_word,
+            self.search_whole_word || whole_word,
         )
     }
 
@@ -207,11 +211,7 @@ impl Editor {
             Some(target) => target,
             None => return Vec::new(),
         };
-        let query = Query::new(
-            pattern,
-            self.search_sensitive(pattern),
-            self.search_whole_word,
-        );
+        let query = self.query_for(pattern);
         search::collect_matches(&self.buffer, &query, top, top.saturating_add(height))
             .into_iter()
             .map(|span| self.mark_current(span, anchor))
@@ -462,5 +462,29 @@ mod tests {
         let mut e = editor_with("foo");
         assert_eq!(e.search_next(), SearchOutcome::Missing);
         assert_eq!(e.search_prev(), SearchOutcome::Missing);
+    }
+
+    #[test]
+    fn typed_word_atoms_match_whole_words() {
+        let mut e = editor_with("foo foobar foo");
+        e.apply(Action::EnterSearch);
+        for c in "\\<foo\\>".chars() {
+            e.apply(Action::PushSearchChar(c));
+        }
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 11));
+        e.apply(Action::NextMatch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn typed_word_atoms_still_search_literally() {
+        let mut e = editor_with("a\\<b\\> a\\<b\\>");
+        e.apply(Action::EnterSearch);
+        for c in "a\\<b\\>".chars() {
+            e.apply(Action::PushSearchChar(c));
+        }
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/a\\<b\\> [2/2]"));
     }
 }

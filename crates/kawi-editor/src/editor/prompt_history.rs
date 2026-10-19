@@ -425,7 +425,7 @@ mod tests {
     fn searching_a_word_records_it() {
         let mut editor = editor_with("alpha beta");
         editor.search_word(true).unwrap();
-        assert_eq!(editor.history_entries().search, vec!["alpha"]);
+        assert_eq!(editor.history_entries().search, vec!["\\<alpha\\>"]);
     }
 
     #[test]
