@@ -1,12 +1,14 @@
 use anyhow::{Context, Result};
 use crossterm::{
     cursor::SetCursorStyle,
-    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    style::ResetColor,
+    style::{Print, ResetColor},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen},
 };
 use std::io::stdout;
+
+const MOUSE_ENABLE: &str = "\x1b[?1002h\x1b[?1006h";
+const MOUSE_DISABLE: &str = "\x1b[?1006l\x1b[?1002l";
 
 pub struct TerminalGuard;
 
@@ -24,7 +26,7 @@ pub fn size() -> Result<(u16, u16)> {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        let _ = execute!(stdout(), DisableMouseCapture);
+        let _ = execute!(stdout(), Print(MOUSE_DISABLE));
         let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
         let _ = execute!(stdout(), ResetColor);
         let _ = execute!(stdout(), crossterm::terminal::LeaveAlternateScreen);
@@ -48,6 +50,6 @@ fn apply_initial_style() -> Result<()> {
 }
 
 fn enable_mouse() -> Result<()> {
-    execute!(stdout(), EnableMouseCapture).context("enable mouse capture")?;
+    execute!(stdout(), Print(MOUSE_ENABLE)).context("enable mouse capture")?;
     Ok(())
 }
