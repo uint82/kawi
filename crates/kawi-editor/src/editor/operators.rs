@@ -677,14 +677,14 @@ impl Editor {
     }
 
     pub(super) fn paste_after(&mut self) {
-        self.paste(false);
+        self.paste_register(false);
     }
 
     pub(super) fn paste_before(&mut self) {
-        self.paste(true);
+        self.paste_register(true);
     }
 
-    fn paste(&mut self, before: bool) {
+    fn paste_register(&mut self, before: bool) {
         let Some(register) = self.read_register(self.pending_register) else {
             return;
         };

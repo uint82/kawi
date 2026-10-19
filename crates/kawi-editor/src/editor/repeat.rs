@@ -56,6 +56,9 @@ pub(super) enum RepeatChange {
         head: (usize, usize),
         record: Vec<InsertEdit>,
     },
+    Paste {
+        text: String,
+    },
 }
 
 impl Editor {
@@ -80,6 +83,7 @@ impl Editor {
                 head,
                 record,
             } => self.repeat_visual(action, register, anchor, head, &record),
+            RepeatChange::Paste { text } => self.repeat_paste(&text),
         }
     }
 
@@ -103,7 +107,7 @@ impl Editor {
         self.apply(action);
         let armed = self.insert_repeat.take();
         for edit in record {
-            self.replay_edit(*edit);
+            self.replay_edit(edit.clone());
         }
         self.insert_repeat = armed;
         if self.mode.is_insert() {
@@ -111,6 +115,17 @@ impl Editor {
         }
         self.last_change = saved_last;
         self.undone_change = saved_undone;
+    }
+
+    fn repeat_paste(&mut self, text: &str) {
+        let count = if self.has_count() {
+            self.take_count()
+        } else {
+            1
+        };
+        for _ in 0..count {
+            self.paste_normal(text);
+        }
     }
 
     fn repeat_visual(
@@ -139,7 +154,7 @@ impl Editor {
                 self.cursor.set_position(start.0, start.1);
                 self.switch_to_insert();
                 for edit in record {
-                    self.replay_edit(*edit);
+                    self.replay_edit(edit.clone());
                 }
                 self.retreat_after_insert();
                 self.mode = Mode::Normal;

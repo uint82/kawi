@@ -255,6 +255,7 @@ impl App {
             Event::Key(key) => self.handle_key(key),
             Event::Resize(cols, rows) => self.handle_resize(cols, rows),
             Event::Mouse(mouse) => self.handle_mouse(mouse),
+            Event::Paste(text) => self.handle_paste(text),
             _ => Ok(false),
         }
     }
@@ -485,6 +486,15 @@ impl App {
     }
 
     fn handle_noop(&mut self) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if self.pager.is_some() {
+            return Ok(false);
+        }
+        self.editor.paste(&text);
+        self.reveal_cursor();
         Ok(false)
     }
 
@@ -809,7 +819,7 @@ fn read_next_event() -> Result<Event> {
 
 fn event_needs_redraw(event: &Event) -> bool {
     match event {
-        Event::Key(_) | Event::Resize(_, _) => true,
+        Event::Key(_) | Event::Resize(_, _) | Event::Paste(_) => true,
         Event::Mouse(mouse) => !matches!(mouse.kind, MouseEventKind::Moved),
         _ => false,
     }
@@ -979,6 +989,23 @@ mod tests {
         app.handle_mouse(drag(4, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+    }
+
+    #[test]
+    fn paste_event_inserts_text_in_normal_mode() {
+        let mut app = App::new(Buffer::from_string("ab\ncd\n"), Flavor::Vim);
+        app.handle_paste("x".to_string()).expect("paste");
+        assert_eq!(app.editor.visible_lines(0, 2), vec!["axb", "cd"]);
+        assert!(event_needs_redraw(&Event::Paste("x".to_string())));
+    }
+
+    #[test]
+    fn paste_event_fills_command_line() {
+        let mut app = App::new(Buffer::from_string("ab\ncd\n"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char(':'))).expect("command");
+        app.handle_paste("e other\nignored".to_string())
+            .expect("paste");
+        assert_eq!(app.editor.command_text(), "e other");
     }
 
     #[test]

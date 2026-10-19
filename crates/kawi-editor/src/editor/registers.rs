@@ -24,6 +24,9 @@ impl Editor {
         let register = Register::from_parts(text, kind);
         let slot = self.registers.yank(self.pending_register, register);
         self.sync_clipboard(slot);
+        if named_register_is_unnamed(self.pending_register) {
+            self.mirror_unnamed_clipboard();
+        }
     }
 
     pub(super) fn write_delete(
@@ -43,6 +46,9 @@ impl Editor {
         );
         if let Some(slot) = slot {
             self.sync_clipboard(slot);
+        }
+        if named_register_is_unnamed(self.pending_register) {
+            self.mirror_unnamed_clipboard();
         }
     }
 
@@ -85,24 +91,31 @@ impl Editor {
         }
     }
 
-    fn unnamed_register(&self) -> Option<Register> {
+    fn unnamed_register(&mut self) -> Option<Register> {
+        if self.clipboard_unnamed {
+            return self.read_clipboard(RegisterSlot::Plus);
+        }
+        self.unnamed_register_internal()
+    }
+
+    fn unnamed_register_internal(&self) -> Option<Register> {
         self.registers
             .unnamed_slot()
             .and_then(|slot| self.registers.get(slot).cloned())
     }
 
     fn read_clipboard(&mut self, slot: RegisterSlot) -> Option<Register> {
-        let register = self.fetch_clipboard(slot);
-        match register {
-            Some(register) => {
+        let cached = self.registers.get(slot).cloned();
+        match self.fetch_clipboard(slot) {
+            Some(fetched) => {
+                let register = match cached {
+                    Some(cached) if same_clipboard_text(&cached, &fetched) => cached,
+                    _ => fetched,
+                };
                 self.registers.store_clipboard(slot, register.clone());
                 Some(register)
             }
-            None => self
-                .registers
-                .get(slot)
-                .cloned()
-                .or_else(|| self.unnamed_register()),
+            None => cached.or_else(|| self.unnamed_register_internal()),
         }
     }
 
@@ -113,6 +126,20 @@ impl Editor {
             return None;
         }
         Some(clipboard_register(text))
+    }
+
+    fn mirror_unnamed_clipboard(&mut self) {
+        if !self.clipboard_unnamed {
+            return;
+        }
+        let Some(slot) = self.registers.unnamed_slot() else {
+            return;
+        };
+        let Some(register) = self.registers.get(slot).cloned() else {
+            return;
+        };
+        self.registers.store_clipboard(RegisterSlot::Plus, register);
+        self.sync_clipboard(RegisterSlot::Plus);
     }
 
     fn sync_clipboard(&mut self, slot: RegisterSlot) {
@@ -129,6 +156,14 @@ impl Editor {
             clipboard.write(kind, &text);
         }
     }
+}
+
+fn same_clipboard_text(cached: &Register, fetched: &Register) -> bool {
+    clipboard_text(cached) == clipboard_text(fetched)
+}
+
+fn named_register_is_unnamed(name: Option<char>) -> bool {
+    matches!(name, None | Some('"'))
 }
 
 fn clipboard_kind(slot: RegisterSlot) -> ClipboardKind {
@@ -289,6 +324,45 @@ mod tests {
         let mut e = editor_with(text);
         e.set_clipboard(Box::new(FakeClipboard(state.clone())));
         (e, state)
+    }
+
+    #[test]
+    fn unnamed_yank_writes_system_clipboard() {
+        let (mut e, state) = editor_with_clipboard("one\ntwo");
+        e.apply(Action::YankLine);
+        assert_eq!(state.borrow().written, vec!["one\n".to_string()]);
+    }
+
+    #[test]
+    fn small_delete_writes_system_clipboard() {
+        let (mut e, state) = editor_with_clipboard("one\ntwo");
+        e.apply(Action::DeleteForward);
+        assert_eq!(state.borrow().written, vec!["o".to_string()]);
+    }
+
+    #[test]
+    fn named_yank_does_not_write_system_clipboard() {
+        let (mut e, state) = editor_with_clipboard("one\ntwo");
+        e.apply(Action::SelectRegister('a'));
+        e.apply(Action::YankLine);
+        assert!(state.borrow().written.is_empty());
+    }
+
+    #[test]
+    fn unnamed_put_reads_system_clipboard() {
+        let (mut e, state) = editor_with_clipboard("one\ntwo");
+        state.borrow_mut().text = Some("external text".to_string());
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines(), vec!["oexternal textne", "two"]);
+    }
+
+    #[test]
+    fn unnamed_put_refreshes_external_clipboard() {
+        let (mut e, state) = editor_with_clipboard("one\ntwo");
+        e.apply(Action::YankLine);
+        state.borrow_mut().text = Some("replaced\n".to_string());
+        e.apply(Action::PasteAfter);
+        assert_eq!(e.text_lines(), vec!["one", "replaced", "two"]);
     }
 
     #[test]

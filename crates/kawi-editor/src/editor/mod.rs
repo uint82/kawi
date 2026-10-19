@@ -25,6 +25,7 @@ mod marks;
 mod match_ops;
 mod motions;
 mod operators;
+mod paste;
 mod prompt_history;
 mod registers;
 mod repeat;
@@ -78,6 +79,7 @@ pub struct Editor {
     viewport: Viewport,
     jumps: Jumps,
     marks: Marks,
+    clipboard_unnamed: bool,
     scroll_amount: Option<usize>,
     number: bool,
     relativenumber: bool,
@@ -646,6 +648,7 @@ impl Editor {
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
             marks: Marks::new(),
+            clipboard_unnamed: true,
             scroll_amount: None,
             number: false,
             relativenumber: false,
