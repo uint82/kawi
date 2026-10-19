@@ -2100,11 +2100,19 @@ mod tests {
     }
 
     #[test]
-    fn delete_word_on_last_empty_is_noop() {
+    fn move_down_stops_at_final_newline_line() {
         let mut e = editor_with("a\n");
         e.apply(Action::MoveDown);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.line_count(), 1);
+    }
+
+    #[test]
+    fn delete_word_on_last_empty_is_noop() {
+        let mut e = editor_with("a\n\n");
+        e.apply(Action::MoveDown);
         e.apply(Action::DeleteWord);
-        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines(), vec!["a".to_string(), String::new()]);
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -2131,10 +2139,10 @@ mod tests {
 
     #[test]
     fn delete_word_end_on_last_empty_is_noop() {
-        let mut e = editor_with("a\n");
+        let mut e = editor_with("a\n\n");
         e.apply(Action::MoveDown);
         e.apply(Action::DeleteWordEnd);
-        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines(), vec!["a".to_string(), String::new()]);
         assert_eq!((e.row(), e.col()), (1, 0));
     }
 
@@ -2166,10 +2174,10 @@ mod tests {
 
     #[test]
     fn change_word_on_last_empty_enters_insert() {
-        let mut e = editor_with("a\n");
+        let mut e = editor_with("a\n\n");
         e.apply(Action::MoveDown);
         e.apply(Action::ChangeWord);
-        assert_eq!(e.text_lines().len(), 2);
+        assert_eq!(e.text_lines(), vec!["a".to_string(), String::new()]);
         assert_eq!((e.row(), e.col()), (1, 0));
         assert_eq!(e.mode(), Mode::Insert);
     }

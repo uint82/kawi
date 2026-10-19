@@ -102,9 +102,6 @@ impl Buffer {
                 None
             };
         }
-        if row == self.len() && self.ends_with_newline() {
-            return Some(std::borrow::Cow::Borrowed(""));
-        }
         if row >= self.len() {
             return None;
         }
@@ -125,9 +122,6 @@ impl Buffer {
     }
 
     pub fn max_cursor_row(&self) -> usize {
-        if self.ends_with_newline() {
-            return self.len();
-        }
         self.len().saturating_sub(1)
     }
 
@@ -234,20 +228,28 @@ impl Buffer {
     }
 
     pub fn insert_newline(&mut self, row: usize, col: usize) {
+        self.keep_final_newline(row);
         self.ensure_line_exists(row);
         let idx = self.position_to_char(row, col);
         self.insert_text(idx, "\n");
         self.touch();
     }
 
-    pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
-        if row == self.len() && col == 0 && self.ends_with_newline() {
-            let last = self.rope.len_chars();
-            self.remove_text(last.saturating_sub(1), last);
-            self.touch();
-            let prev = row.saturating_sub(1);
-            return (prev, self.line_len(prev));
+    fn ensure_trailing_newline(&mut self) {
+        if self.ends_with_newline() {
+            return;
         }
+        let end = self.rope.len_chars();
+        self.insert_text(end, "\n");
+    }
+
+    fn keep_final_newline(&mut self, end_row: usize) {
+        if end_row.saturating_add(1) >= self.len() {
+            self.ensure_trailing_newline();
+        }
+    }
+
+    pub fn delete_backward(&mut self, row: usize, col: usize) -> (usize, usize) {
         if row >= self.len() {
             return (row, col);
         }
@@ -292,6 +294,7 @@ impl Buffer {
         let start = self.line_start_char(row);
         let end = start.saturating_add(self.line_len(row));
         if start < end {
+            self.keep_final_newline(row);
             self.remove_text(start, end);
             self.touch();
         }
@@ -305,12 +308,7 @@ impl Buffer {
     }
 
     pub fn paste_lines_below(&mut self, row: usize, lines: &[String]) -> usize {
-        if self.rope.len_chars() == 0 {
-            let composed = lines.join("\n");
-            self.insert_text(0, &composed);
-            self.touch();
-            return 0;
-        }
+        self.ensure_trailing_newline();
         let row = row.min(self.len().saturating_sub(1));
         let at = self.line_end_char(row);
         let mut composed = String::new();
@@ -324,6 +322,7 @@ impl Buffer {
     }
 
     pub fn paste_lines_above(&mut self, row: usize, lines: &[String]) -> usize {
+        self.ensure_trailing_newline();
         let row = row.min(self.len().saturating_sub(1));
         let at = self.line_start_char(row);
         let mut composed = String::new();
@@ -498,11 +497,14 @@ impl Buffer {
         }
         let end_row = end_row.min(self.len().saturating_sub(1));
         let start = self.position_to_char(start_row, start_col);
-        let end = self
-            .position_to_char(end_row, end_col)
-            .saturating_add(1)
-            .min(self.rope.len_chars());
+        let end_pos = self.position_to_char(end_row, end_col);
+        let end = if end_row == self.len().saturating_sub(1) && end_col >= self.line_len(end_row) {
+            end_pos.min(self.rope.len_chars())
+        } else {
+            end_pos.saturating_add(1).min(self.rope.len_chars())
+        };
         if start < end {
+            self.keep_final_newline(end_row);
             self.remove_text(start, end);
             self.touch();
         }
@@ -522,6 +524,7 @@ impl Buffer {
         let start = self.position_to_char(start_row, start_col);
         let end = self.position_to_char(end_row, end_col);
         if start < end {
+            self.keep_final_newline(end_row);
             self.remove_text(start, end);
             self.touch();
         }
@@ -980,6 +983,79 @@ mod tests {
         let b = Buffer::from_string("ab\ncd\n");
         assert_eq!(b.len(), 2);
         assert_eq!(b.line(1).as_deref(), Some("cd"));
+    }
+
+    #[test]
+    fn trailing_newline_is_not_cursorable_or_visible() {
+        let b = Buffer::from_string("hello\n");
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.max_cursor_row(), 0);
+        assert_eq!(b.line(1), None);
+        assert_eq!(b.window_lines(0, 3), vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn max_cursor_row_stops_at_last_line() {
+        assert_eq!(Buffer::from_string("a\nb\n").max_cursor_row(), 1);
+        assert_eq!(Buffer::from_string("a\nb").max_cursor_row(), 1);
+        assert_eq!(Buffer::from_string("").max_cursor_row(), 0);
+    }
+
+    #[test]
+    fn insert_newline_on_last_line_materializes_empty_line() {
+        let mut b = Buffer::from_string("hello\n");
+        b.insert_newline(0, 5);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1).as_deref(), Some(""));
+        let mut b = Buffer::from_string("hello");
+        b.insert_newline(0, 5);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1).as_deref(), Some(""));
+        let mut b = Buffer::from_string("");
+        b.insert_newline(0, 0);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn delete_range_emptying_last_line_keeps_it() {
+        let mut b = Buffer::from_string("ab\ncd");
+        b.delete_range(1, 0, 1, 1);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn delete_range_one_past_last_line_keeps_it() {
+        let mut b = Buffer::from_string("ab\ncd");
+        b.delete_range(1, 0, 1, 2);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(1).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn delete_range_on_single_line_leaves_empty_line() {
+        let mut b = Buffer::from_string("ab");
+        b.delete_range(0, 0, 0, 1);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.line(0).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn delete_backward_at_line_end_removes_char() {
+        let mut b = Buffer::from_string("a\n");
+        let (row, col) = b.delete_backward(0, 1);
+        assert_eq!((row, col), (0, 0));
+        assert_eq!(b.line(0).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn paste_lines_below_empty_buffer_keeps_blank_first_line() {
+        let mut b = Buffer::from_string("");
+        b.paste_lines_below(0, &["x".to_string()]);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.line(0).as_deref(), Some(""));
+        assert_eq!(b.line(1).as_deref(), Some("x"));
     }
 
     #[test]

@@ -9,7 +9,10 @@ pub struct LineAdjust {
 }
 
 pub(crate) fn insertion(rope: &Rope, index: usize, text: &str) -> Option<LineAdjust> {
-    let count = text.matches('\n').count();
+    let mut count = text.matches('\n').count();
+    if index == rope.len_chars() && text.ends_with('\n') {
+        count = count.saturating_sub(1);
+    }
     if count == 0 {
         return None;
     }

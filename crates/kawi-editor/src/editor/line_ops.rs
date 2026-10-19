@@ -222,8 +222,10 @@ mod tests {
         assert_eq!(editor.line_count(), 1);
         assert_eq!(editor.register_text(), text);
         editor.apply(Action::PasteAfter);
-        assert_eq!(editor.line_count(), 500);
-        assert_eq!(editor.text_lines()[499], "line 499");
+        assert_eq!(editor.line_count(), 501);
+        assert_eq!(editor.text_lines()[0], "");
+        assert_eq!(editor.text_lines()[1], "line 0");
+        assert_eq!(editor.text_lines()[500], "line 499");
     }
 
     #[test]
