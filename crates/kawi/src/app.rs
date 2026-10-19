@@ -1,10 +1,15 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 
 mod macro_codec;
 mod macro_ops;
+
+enum Redraw {
+    Quit,
+    Redraw,
+}
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
@@ -108,12 +113,23 @@ impl App {
         let mut out = stdout();
         loop {
             self.draw_frame(&mut out)?;
-            let event = read_next_event()?;
-            if self.update(event)? {
-                break;
+            if matches!(self.wait_for_redraw()?, Redraw::Quit) {
+                return Ok(());
             }
         }
-        Ok(())
+    }
+
+    fn wait_for_redraw(&mut self) -> Result<Redraw> {
+        loop {
+            let event = read_next_event()?;
+            let redraw = event_needs_redraw(&event);
+            if self.update(event)? {
+                return Ok(Redraw::Quit);
+            }
+            if redraw {
+                return Ok(Redraw::Redraw);
+            }
+        }
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
@@ -733,6 +749,14 @@ impl App {
 
 fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
+}
+
+fn event_needs_redraw(event: &Event) -> bool {
+    match event {
+        Event::Key(_) | Event::Resize(_, _) => true,
+        Event::Mouse(mouse) => !matches!(mouse.kind, MouseEventKind::Moved),
+        _ => false,
+    }
 }
 
 fn frame_search_spans(spans: &[MatchSpan]) -> Vec<SearchSpan> {
@@ -1884,6 +1908,28 @@ mod tests {
         app.handle_key(key(KeyCode::Esc)).expect("cancel");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 4));
+    }
+
+    #[test]
+    fn event_needs_redraw_only_for_screen_events() {
+        assert!(event_needs_redraw(&Event::Key(key(KeyCode::Char('j')))));
+        assert!(event_needs_redraw(&Event::Resize(80, 24)));
+        assert!(!event_needs_redraw(&Event::FocusGained));
+        assert!(!event_needs_redraw(&Event::FocusLost));
+        let moved = MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 3,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(!event_needs_redraw(&Event::Mouse(moved)));
+        let press = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 3,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(event_needs_redraw(&Event::Mouse(press)));
     }
 
     #[test]

@@ -15,7 +15,6 @@ use kawi_editor::Viewport;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
-    clear_all(out)?;
     draw_visible_lines(out, frame)?;
     draw_filler_rows(out, frame)?;
     draw_highlight(out, frame, frame.theme)?;
@@ -30,11 +29,6 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     apply_cursor_style(out, frame.insert_mode)?;
     place_cursor(out, frame)?;
     flush(out)?;
-    Ok(())
-}
-
-fn clear_all(out: &mut Stdout) -> Result<()> {
-    execute!(out, Clear(ClearType::All)).context("clear screen")?;
     Ok(())
 }
 
@@ -62,6 +56,12 @@ fn draw_one_line(
     }
     let width = frame.viewport.width().saturating_sub(gutter_width);
     write!(out, "{}", truncate_to_width(text, width)).context("write line")?;
+    erase_row_tail(out)?;
+    Ok(())
+}
+
+fn erase_row_tail(out: &mut Stdout) -> Result<()> {
+    execute!(out, Clear(ClearType::UntilNewLine)).context("erase row tail")?;
     Ok(())
 }
 
@@ -75,6 +75,7 @@ fn draw_filler_rows(out: &mut Stdout, frame: &Frame) -> Result<()> {
         .context("move to filler row")?;
         write!(out, "~").context("write filler")?;
         paint::restore_base(out, frame.theme)?;
+        erase_row_tail(out)?;
     }
     Ok(())
 }
@@ -437,6 +438,7 @@ fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
     );
     move_to_message_row(out, frame.viewport)?;
     write!(out, "{}", layout.line).context("write message row")?;
+    erase_row_tail(out)?;
     if let Some(column) = layout.showcmd_col {
         move_to_showcmd(out, column, frame.viewport)?;
         write!(out, "{}", layout.showcmd).context("write showcmd")?;
