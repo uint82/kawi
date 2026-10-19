@@ -109,18 +109,19 @@ pub fn highlight_spans(
     viewport: &Viewport,
 ) -> Vec<HighlightSpan> {
     let selection = match selection {
-        Some(Selection::Range { start, end }) => Some((start, end)),
+        Some(Selection::Range {
+            start,
+            end,
+            linewise,
+        }) => Some((start, end, linewise)),
         Some(selection @ Selection::Block { .. }) => {
             return block_spans(window, top, viewport, selection);
         }
         None => None,
     };
-    let Some(((start_row, start_col), (end_row, end_col))) = selection else {
+    let Some(((start_row, start_col), (end_row, end_col), linewise)) = selection else {
         return Vec::new();
     };
-    if (start_row, start_col) == (end_row, end_col) {
-        return Vec::new();
-    }
     let mut spans = Vec::new();
     for screen_row in 0..window.len().min(viewport.height()) {
         collect_span(
@@ -130,6 +131,7 @@ pub fn highlight_spans(
             viewport,
             screen_row,
             ((start_row, start_col), (end_row, end_col)),
+            linewise,
         );
     }
     spans
@@ -191,8 +193,9 @@ fn collect_span(
     viewport: &Viewport,
     screen_row: usize,
     range: ((usize, usize), (usize, usize)),
+    linewise: bool,
 ) {
-    if let Some(span) = selected_segment(window, top, viewport, screen_row, range) {
+    if let Some(span) = selected_segment(window, top, viewport, screen_row, range, linewise) {
         spans.push(span);
     }
 }
@@ -203,6 +206,7 @@ fn selected_segment(
     viewport: &Viewport,
     screen_row: usize,
     range: ((usize, usize), (usize, usize)),
+    linewise: bool,
 ) -> Option<HighlightSpan> {
     let ((start_row, start_col), (end_row, end_col)) = range;
     let buffer_row = top.saturating_add(screen_row);
@@ -211,15 +215,24 @@ fn selected_segment(
     }
     let text = window.get(screen_row)?;
     let width = viewport.width();
+    let line_len = char_len(text);
     let from = segment_start(buffer_row, start_row, start_col).min(width);
-    let to = segment_end(buffer_row, text, end_row, end_col).min(width);
-    if from >= to {
+    let to = segment_end(buffer_row, text, end_row, end_col)
+        .min(width)
+        .min(line_len);
+    let break_included = linewise || buffer_row != end_row || end_col >= line_len;
+    let eol = break_included && from <= line_len && line_len < width;
+    let mut segment = slice_cols(text, from, to);
+    if eol {
+        segment.push(' ');
+    }
+    if segment.is_empty() {
         return None;
     }
     Some(HighlightSpan {
         screen_row,
         from,
-        text: slice_cols(text, from, to),
+        text: segment,
         tint: Tint::Selection,
     })
 }
@@ -655,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn point_selection_has_no_spans() {
+    fn point_selection_spans_one_char() {
         let lines = lines_of("abcdef");
         let spans = highlight_spans(
             &lines,
@@ -663,10 +676,101 @@ mod tests {
             Some(Selection::Range {
                 start: (0, 2),
                 end: (0, 2),
+                linewise: false,
             }),
             &viewport(),
         );
-        assert!(spans.is_empty());
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].from, 2);
+        assert_eq!(spans[0].text, "c");
+    }
+
+    #[test]
+    fn linewise_selection_highlights_eol_cells() {
+        let lines = lines_of("ab\ncd");
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 0),
+                end: (1, 2),
+                linewise: true,
+            }),
+            &viewport(),
+        );
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].text, "ab ");
+        assert_eq!(spans[1].text, "cd ");
+    }
+
+    #[test]
+    fn linewise_selection_highlights_empty_line() {
+        let lines = lines_of("ab\n\ncd");
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 0),
+                end: (2, 2),
+                linewise: true,
+            }),
+            &viewport(),
+        );
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].text, "ab ");
+        assert_eq!(spans[1].from, 0);
+        assert_eq!(spans[1].text, " ");
+        assert_eq!(spans[2].text, "cd ");
+    }
+
+    #[test]
+    fn charwise_selection_highlights_empty_inner_line() {
+        let lines = lines_of("ab\n\ncd");
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 1),
+                end: (2, 0),
+                linewise: false,
+            }),
+            &viewport(),
+        );
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].text, "b ");
+        assert_eq!(spans[1].text, " ");
+        assert_eq!(spans[2].text, "c");
+    }
+
+    #[test]
+    fn charwise_end_row_keeps_eol_unless_line_break_included() {
+        let lines = lines_of("abcdef\nghij");
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 0),
+                end: (0, 4),
+                linewise: false,
+            }),
+            &viewport(),
+        );
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].text, "abcde");
+        let lines = lines_of("ab\ncd");
+        let spans = highlight_spans(
+            &lines,
+            0,
+            Some(Selection::Range {
+                start: (0, 0),
+                end: (1, 2),
+                linewise: false,
+            }),
+            &viewport(),
+        );
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].text, "ab ");
+        assert_eq!(spans[1].text, "cd ");
     }
 
     #[test]
@@ -678,6 +782,7 @@ mod tests {
             Some(Selection::Range {
                 start: (0, 1),
                 end: (0, 3),
+                linewise: false,
             }),
             &viewport(),
         );
@@ -696,12 +801,13 @@ mod tests {
             Some(Selection::Range {
                 start: (0, 1),
                 end: (2, 1),
+                linewise: false,
             }),
             &viewport(),
         );
         assert_eq!(spans.len(), 3);
-        assert_eq!(spans[0].text, "b");
-        assert_eq!(spans[1].text, "cd");
+        assert_eq!(spans[0].text, "b ");
+        assert_eq!(spans[1].text, "cd ");
         assert_eq!(spans[2].text, "ef");
     }
 
