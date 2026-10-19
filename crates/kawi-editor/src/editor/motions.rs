@@ -141,13 +141,13 @@ impl Editor {
     pub(super) fn goto_last_line(&mut self) {
         let row = self.goto_target(true);
         self.place_goto(row);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn goto_first_line(&mut self) {
         let row = self.goto_target(false);
         self.place_goto(row);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn counted_line_span(

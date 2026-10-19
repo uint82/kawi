@@ -163,6 +163,7 @@ impl App {
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
+            search_delimiter: self.editor.search_prompt_delimiter(),
             search_status,
             search_spans,
             showcmd: self.showcmd_text(),
@@ -422,27 +423,27 @@ impl App {
     }
 
     fn handle_next_match(&mut self) -> Result<bool> {
-        self.report_search_step(true);
+        let forward = self.editor.search_forward();
+        let outcome = self.editor.next_match();
+        self.report_outcome(Some(outcome), forward);
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_prev_match(&mut self) -> Result<bool> {
-        self.report_search_step(false);
+        let forward = !self.editor.search_forward();
+        let outcome = self.editor.prev_match();
+        self.report_outcome(Some(outcome), forward);
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_confirm_search(&mut self) -> Result<bool> {
         let outcome = self.editor.confirm_search();
-        self.report_outcome(outcome, true);
+        let forward = self.editor.search_forward();
+        self.report_outcome(outcome, forward);
         self.reveal_cursor();
         Ok(false)
-    }
-
-    fn report_search_step(&mut self, forward: bool) {
-        let outcome = search_step(&mut self.editor, forward);
-        self.report_outcome(Some(outcome), forward);
     }
 
     fn report_outcome(&mut self, outcome: Option<SearchOutcome>, forward: bool) {
@@ -751,14 +752,6 @@ fn frame_search_span(span: &MatchSpan) -> SearchSpan {
         start: span.start,
         end: span.end,
         current: span.current,
-    }
-}
-
-fn search_step(editor: &mut Editor, forward: bool) -> SearchOutcome {
-    if forward {
-        editor.search_next()
-    } else {
-        editor.search_prev()
     }
 }
 

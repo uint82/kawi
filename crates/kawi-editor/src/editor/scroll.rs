@@ -22,10 +22,6 @@ impl Editor {
     }
 
     pub fn reveal_cursor(&mut self) {
-        self.viewport.ensure_visible(self.cursor.row());
-    }
-
-    pub(super) fn reveal_jump(&mut self) {
         let row = self.cursor.row();
         let top = self.viewport.top();
         let height = self.view_height();
@@ -663,11 +659,11 @@ mod tests {
     }
 
     #[test]
-    fn reveal_cursor_scrolls_into_view() {
+    fn reveal_cursor_centers_far_jumps() {
         let mut e = tall_editor();
         e.cursor.set_position(50, 0);
         e.reveal_cursor();
-        assert_eq!(e.view_top(), 31);
+        assert_eq!(e.view_top(), 41);
     }
 
     fn forty_line_editor() -> Editor {

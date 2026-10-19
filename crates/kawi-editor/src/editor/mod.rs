@@ -83,6 +83,9 @@ pub struct Editor {
     smartcase: bool,
     search_no_smartcase: bool,
     search_forward: bool,
+    search_prompt_forward: bool,
+    search_last: String,
+    search_view_top: usize,
     completion: Option<cmd_complete::CompletionState>,
     autoindent: bool,
     pending_autoindent: Option<(usize, String)>,
@@ -391,15 +394,20 @@ impl Editor {
             | Action::RepeatRecordedMacro
             | Action::ExecuteLastCommand
             | Action::MacroRegisterError(_) => self.noop(),
-            Action::EnterSearch => self.enter_search(),
+            Action::EnterSearch => self.enter_search(true),
+            Action::EnterSearchBackward => self.enter_search(false),
             Action::PushSearchChar(c) => self.push_search_char(c),
             Action::DeleteSearchChar => self.delete_search_char(),
             Action::ConfirmSearch => {
                 let _ = self.confirm_search();
             }
             Action::CancelSearch => self.cancel_search(),
-            Action::NextMatch => self.next_match(),
-            Action::PrevMatch => self.prev_match(),
+            Action::NextMatch => {
+                self.next_match();
+            }
+            Action::PrevMatch => {
+                self.prev_match();
+            }
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
@@ -425,7 +433,7 @@ impl Editor {
         }
         self.apply_line_adjustments();
         self.refresh_wanted_column(action);
-        self.reveal_jump();
+        self.reveal_cursor();
         if was_normal
             && !matches!(
                 action,
@@ -626,6 +634,9 @@ impl Editor {
             smartcase: false,
             search_no_smartcase: false,
             search_forward: true,
+            search_prompt_forward: true,
+            search_last: String::new(),
+            search_view_top: 0,
             completion: None,
             autoindent: true,
             pending_autoindent: None,
@@ -736,6 +747,18 @@ impl Editor {
             Some(self.search.text())
         } else {
             None
+        }
+    }
+
+    pub fn search_forward(&self) -> bool {
+        self.search_forward
+    }
+
+    pub fn search_prompt_delimiter(&self) -> char {
+        if self.search_prompt_forward {
+            '/'
+        } else {
+            '?'
         }
     }
 

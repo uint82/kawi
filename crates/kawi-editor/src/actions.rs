@@ -267,6 +267,7 @@ pub enum Action {
     ExecuteLastCommand,
     MacroRegisterError(char),
     EnterSearch,
+    EnterSearchBackward,
     PushSearchChar(char),
     DeleteSearchChar,
     ConfirmSearch,
@@ -326,6 +327,7 @@ impl Action {
                 | Self::ExecuteLastCommand
                 | Self::MacroRegisterError(_)
                 | Self::EnterSearch
+                | Self::EnterSearchBackward
                 | Self::PushSearchChar(_)
                 | Self::DeleteSearchChar
                 | Self::CancelSearch

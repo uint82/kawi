@@ -22,6 +22,7 @@ impl Editor {
         self.cursor.set_position(start.0, start.1);
         self.search.replace(&pattern);
         self.search_history.record(&pattern);
+        self.search_last = pattern;
         self.search_no_smartcase = true;
         self.search_forward = forward;
         self.search_origin = Some(origin);
@@ -105,6 +106,17 @@ mod tests {
 
     fn search_bare_word(editor: &mut Editor, forward: bool) {
         editor.search_word_bare(forward).expect("bare word search");
+    }
+
+    #[test]
+    fn empty_backward_search_repeats_word_search() {
+        let mut e = editor_with("foo x foo x foo");
+        e.apply(Action::SearchWordForward);
+        assert_eq!((e.row(), e.col()), (0, 6));
+        e.apply(Action::EnterSearchBackward);
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.search_status_text().as_deref(), Some("?\\<foo\\> [1/3]"));
     }
 
     #[test]

@@ -6,8 +6,13 @@ use crate::search::{self, SearchOutcome};
 impl Editor {
     pub(super) fn cancel_search(&mut self) {
         self.record_search_history();
+        if !self.search.text().is_empty() {
+            self.search_last = self.search.text().to_string();
+        }
         if let Some((row, col)) = self.search_origin {
             self.cursor.set_position(row, col);
+            self.viewport
+                .place_top(self.search_view_top, self.buffer.line_count());
         }
         self.search_origin = None;
         self.search_status = None;
@@ -15,25 +20,50 @@ impl Editor {
     }
 
     pub fn confirm_search(&mut self) -> Option<SearchOutcome> {
-        self.record_search_history();
         if self.mode == Mode::Search {
             self.mode = Mode::Normal;
         }
         if self.search.text().is_empty() {
-            self.search_status = None;
-            return None;
-        }
-        self.search_forward = true;
-        self.refresh_search_status();
-        if self.search_status.is_some() {
-            if let Some(origin) = self.search_origin {
-                self.set_pcmark_at(origin);
+            if self.search_last.is_empty() {
+                self.search_status = None;
+                return self.missing_search_outcome();
             }
-            self.remember_wanted_column();
-            return Some(SearchOutcome::Found { wrapped: false });
+            let last = self.search_last.clone();
+            self.search.replace(&last);
+        } else {
+            self.record_search_history();
+            self.search_last = self.search.text().to_string();
         }
+        self.search_forward = self.search_prompt_forward;
+        match self.execute_search() {
+            SearchOutcome::Found { wrapped } => {
+                if let Some(origin) = self.search_origin {
+                    self.set_pcmark_at(origin);
+                }
+                Some(SearchOutcome::Found { wrapped })
+            }
+            SearchOutcome::Missing => self.missing_search_outcome(),
+        }
+    }
+
+    fn execute_search(&mut self) -> SearchOutcome {
         if let Some((row, col)) = self.search_origin {
             self.cursor.set_position(row, col);
+        }
+        self.viewport
+            .place_top(self.search_view_top, self.buffer.line_count());
+        if self.search_forward {
+            self.search_next()
+        } else {
+            self.search_prev()
+        }
+    }
+
+    fn missing_search_outcome(&mut self) -> Option<SearchOutcome> {
+        if let Some((row, col)) = self.search_origin {
+            self.cursor.set_position(row, col);
+            self.viewport
+                .place_top(self.search_view_top, self.buffer.line_count());
             self.remember_wanted_column();
         }
         Some(SearchOutcome::Missing)
@@ -52,7 +82,9 @@ impl Editor {
         self.jump_to_first_result();
     }
 
-    pub(super) fn enter_search(&mut self) {
+    pub(super) fn enter_search(&mut self, forward: bool) {
+        self.search_prompt_forward = forward;
+        self.search_view_top = self.viewport.top();
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
         self.search_history.reset_browse();
@@ -78,13 +110,20 @@ impl Editor {
             .search_origin
             .unwrap_or((self.cursor.row(), self.cursor.col()));
         let query = self.search_query();
-        let from = (origin.0, origin.1.saturating_add(1));
-        let found = search::find_first_from(&self.buffer, &query, from.0, from.1)
-            .or_else(|| search::find_first_from(&self.buffer, &query, 0, 0));
-        if let Some((row, col)) = found {
-            self.cursor.set_position(row, col);
-            self.remember_wanted_column();
+        let found = if self.search_prompt_forward {
+            let from = (origin.0, origin.1.saturating_add(1));
+            search::find_first_from(&self.buffer, &query, from.0, from.1)
+                .or_else(|| search::find_first_from(&self.buffer, &query, 0, 0))
+        } else {
+            search::find_prev(&self.buffer, &query, origin.0, origin.1).map(|(pos, _)| pos)
+        };
+        self.viewport
+            .place_top(self.search_view_top, self.buffer.line_count());
+        match found {
+            Some((row, col)) => self.cursor.set_position(row, col),
+            None => self.cursor.set_position(origin.0, origin.1),
         }
+        self.remember_wanted_column();
     }
 
     fn mark_current(
@@ -96,8 +135,8 @@ impl Editor {
         span
     }
 
-    pub(super) fn next_match(&mut self) {
-        self.match_step(true);
+    pub fn next_match(&mut self) -> SearchOutcome {
+        self.match_step(true)
     }
 
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
@@ -107,11 +146,11 @@ impl Editor {
         SearchOutcome::Found { wrapped }
     }
 
-    pub(super) fn prev_match(&mut self) {
-        self.match_step(false);
+    pub fn prev_match(&mut self) -> SearchOutcome {
+        self.match_step(false)
     }
 
-    fn match_step(&mut self, same_direction: bool) {
+    fn match_step(&mut self, same_direction: bool) -> SearchOutcome {
         let before = (self.cursor.row(), self.cursor.col());
         let forward = self.search_forward == same_direction;
         let outcome = if forward {
@@ -122,6 +161,7 @@ impl Editor {
         if matches!(outcome, SearchOutcome::Found { .. }) {
             self.set_pcmark_at(before);
         }
+        outcome
     }
 
     pub(super) fn push_search_char(&mut self, c: char) {
@@ -288,14 +328,6 @@ mod tests {
         e.apply(Action::CancelSearch);
         assert_eq!(e.mode(), Mode::Normal);
         assert_eq!((e.row(), e.col()), (0, 4));
-    }
-
-    #[test]
-    fn search_confirm_empty_is_silent() {
-        let mut e = editor_with("foo");
-        e.apply(Action::EnterSearch);
-        assert_eq!(e.confirm_search(), None);
-        assert_eq!(e.search_status_text(), None);
     }
 
     #[test]
@@ -491,5 +523,102 @@ mod tests {
         }
         e.apply(Action::ConfirmSearch);
         assert_eq!(e.search_status_text().as_deref(), Some("/a\\<b\\> [2/2]"));
+    }
+
+    fn type_search(editor: &mut Editor, backward: bool, pattern: &str) {
+        if backward {
+            editor.apply(Action::EnterSearchBackward);
+        } else {
+            editor.apply(Action::EnterSearch);
+        }
+        for c in pattern.chars() {
+            editor.apply(Action::PushSearchChar(c));
+        }
+    }
+
+    #[test]
+    fn backward_prompt_uses_question_delimiter() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::EnterSearchBackward);
+        assert_eq!(e.search_prompt_delimiter(), '?');
+        e.apply(Action::CancelSearch);
+        e.apply(Action::EnterSearch);
+        assert_eq!(e.search_prompt_delimiter(), '/');
+    }
+
+    #[test]
+    fn backward_typing_jumps_to_previous_match() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        type_search(&mut e, true, "foo");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn backward_typing_wraps_to_last_match() {
+        let mut e = editor_with("foo x foo");
+        type_search(&mut e, true, "foo");
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn backward_confirm_sets_direction_and_delimiter() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        type_search(&mut e, true, "foo");
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.search_status_text().as_deref(), Some("?foo [1/2]"));
+        e.apply(Action::NextMatch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+        e.apply(Action::PrevMatch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn empty_backward_search_repeats_last_pattern() {
+        let mut e = editor_with("foo x foo");
+        type_search(&mut e, false, "foo");
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+        e.apply(Action::EnterSearchBackward);
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        assert_eq!(e.search_pattern(), "foo");
+        assert_eq!(e.search_status_text().as_deref(), Some("?foo [1/2]"));
+    }
+
+    #[test]
+    fn empty_search_without_pattern_is_missing() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        e.apply(Action::EnterSearchBackward);
+        assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
+        assert_eq!(e.search_pattern(), "");
+        assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    #[test]
+    fn cancelled_search_keeps_repeat_pattern() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        type_search(&mut e, true, "foo");
+        e.apply(Action::CancelSearch);
+        assert_eq!((e.row(), e.col()), (0, 6));
+        e.apply(Action::EnterSearchBackward);
+        e.apply(Action::ConfirmSearch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn failed_empty_search_restores_cursor() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        type_search(&mut e, false, "zzz");
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
+        e.apply(Action::EnterSearchBackward);
+        assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
+        assert_eq!((e.row(), e.col()), (0, 6));
     }
 }

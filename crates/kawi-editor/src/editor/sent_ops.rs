@@ -11,7 +11,7 @@ impl Editor {
         if let Some(found) = sentence_target(&self.buffer, row, col, true, count) {
             self.cursor.set_position(found.0, found.1);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn move_to_prev_sentence(&mut self) {
@@ -22,7 +22,7 @@ impl Editor {
         if let Some(found) = sentence_target(&self.buffer, row, col, false, count) {
             self.cursor.set_position(found.0, found.1);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn move_to_next_paragraph(&mut self) {
@@ -32,7 +32,7 @@ impl Editor {
         if let Some(found) = paragraph_target(&self.buffer, row, true, count) {
             self.cursor.set_position(found.line, found.col);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn move_to_prev_paragraph(&mut self) {
@@ -42,7 +42,7 @@ impl Editor {
         if let Some(found) = paragraph_target(&self.buffer, row, false, count) {
             self.cursor.set_position(found.line, found.col);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn delete_next_sentence(&mut self) {
@@ -124,7 +124,7 @@ impl Editor {
                 self.cursor.set_position(span.start.0, span.start.1);
             }
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn yank_statement_span(&mut self, forward: bool, paragraph: bool) {
@@ -137,7 +137,7 @@ impl Editor {
         let resolved = self.resolve_span(span, false);
         self.yank_resolved(&resolved);
         self.cursor.set_position(span.start.0, span.start.1);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn change_statement_span(&mut self, forward: bool, paragraph: bool) {
@@ -146,7 +146,7 @@ impl Editor {
         };
         if span.start == span.end && !span.eof {
             self.switch_to_insert();
-            self.reveal_jump();
+            self.reveal_cursor();
             return;
         }
         self.record_boundary_at(span.start.0, span.start.1);
@@ -165,7 +165,7 @@ impl Editor {
                 self.switch_to_insert();
             }
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn statement_span(&mut self, forward: bool, paragraph: bool) -> Option<Span> {
