@@ -74,12 +74,12 @@ impl Editor {
         if self.mode != Mode::Search {
             return;
         }
-        self.search_history.mark_edited();
-        self.search.pop();
         if self.search.text().is_empty() {
             self.cancel_search();
             return;
         }
+        self.search_history.mark_edited();
+        self.search.pop();
         self.jump_to_first_result();
     }
 
@@ -537,6 +537,23 @@ mod tests {
         for c in pattern.chars() {
             editor.apply(Action::PushSearchChar(c));
         }
+    }
+
+    #[test]
+    fn backspace_keeps_empty_search_prompt() {
+        let mut e = editor_with("foo x foo");
+        e.apply(Action::JumpTo(0, 6));
+        e.apply(Action::EnterSearch);
+        e.apply(Action::PushSearchChar('f'));
+        e.apply(Action::PushSearchChar('o'));
+        e.apply(Action::DeleteSearchChar);
+        e.apply(Action::DeleteSearchChar);
+        assert_eq!(e.mode(), Mode::Search);
+        assert_eq!(e.search_prompt(), Some(""));
+        assert_eq!((e.row(), e.col()), (0, 6));
+        e.apply(Action::DeleteSearchChar);
+        assert_eq!(e.mode(), Mode::Normal);
+        assert_eq!(e.search_prompt(), None);
     }
 
     #[test]
