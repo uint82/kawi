@@ -67,7 +67,7 @@ impl Editor {
         let col = target.col.min(self.max_col_for_row(target.row));
         self.cursor.set_position(target.row, col);
         self.remember_wanted_column();
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 }
 
@@ -129,7 +129,7 @@ mod tests {
         editor.apply(Action::JumpTo(2, 0));
         assert_eq!(
             search(&mut editor, "line 1"),
-            Some(SearchOutcome::Found { wrapped: false })
+            Some(SearchOutcome::Found { wrapped: true })
         );
         editor.apply(Action::MoveDown);
         editor.apply(Action::JumpOlder);

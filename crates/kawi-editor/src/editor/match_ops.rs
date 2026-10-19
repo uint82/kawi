@@ -17,7 +17,7 @@ impl Editor {
         } else {
             self.jump_to_match();
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn jump_to_match(&mut self) {
@@ -47,7 +47,7 @@ impl Editor {
             }
             self.remove_range(start, end);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn yank_match(&mut self) {
@@ -61,7 +61,7 @@ impl Editor {
             self.yank_range(start.0, start.1, end.0, end.1);
             self.cursor.set_position(start.0, start.1);
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn change_match(&mut self) {
@@ -75,7 +75,7 @@ impl Editor {
             self.remove_range(start, end);
             self.switch_to_insert();
         }
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn take_percent_count(&mut self) -> Option<usize> {

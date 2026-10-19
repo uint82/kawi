@@ -429,6 +429,7 @@ fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
     let layout = layout_message_row(
         frame.command,
         frame.search,
+        frame.search_delimiter,
         frame.message,
         frame.search_status,
         frame.showcmd.as_deref(),
@@ -452,13 +453,14 @@ struct MessageLayout {
 fn layout_message_row(
     command: Option<&str>,
     search: Option<&str>,
+    search_delimiter: char,
     message: Option<&str>,
     search_status: Option<&str>,
     showcmd: Option<&str>,
     width: usize,
 ) -> MessageLayout {
     let show = showcmd.unwrap_or("");
-    let left = message_left(command, search, message, search_status);
+    let left = message_left(command, search, search_delimiter, message, search_status);
     MessageLayout {
         line: truncate_to_width(&left, left_width(width, show)),
         showcmd: truncate_to_width(show, width),
@@ -469,6 +471,7 @@ fn layout_message_row(
 fn message_left(
     command: Option<&str>,
     search: Option<&str>,
+    search_delimiter: char,
     message: Option<&str>,
     search_status: Option<&str>,
 ) -> String {
@@ -476,7 +479,7 @@ fn message_left(
         return format!(":{text}");
     }
     if let Some(text) = search {
-        return format!("/{text}");
+        return format!("{search_delimiter}{text}");
     }
     message.or(search_status).unwrap_or("").to_string()
 }
@@ -702,17 +705,23 @@ mod tests {
 
     #[test]
     fn layout_prefers_command_over_message() {
-        let layout = layout_message_row(Some("w"), None, Some("saved"), None, None, 20);
+        let layout = layout_message_row(Some("w"), None, '/', Some("saved"), None, None, 20);
         assert_eq!(layout.line, ":w");
         assert_eq!(layout.showcmd_col, None);
     }
 
     #[test]
     fn layout_right_aligns_showcmd() {
-        let layout = layout_message_row(None, None, Some("saved"), None, Some("d"), 20);
+        let layout = layout_message_row(None, None, '/', Some("saved"), None, Some("d"), 20);
         assert_eq!(layout.line, "saved");
         assert_eq!(layout.showcmd, "d");
         assert_eq!(layout.showcmd_col, Some(19));
+    }
+
+    #[test]
+    fn layout_prefixes_backward_search_prompt() {
+        let layout = layout_message_row(None, Some("foo"), '?', None, None, None, 20);
+        assert_eq!(layout.line, "?foo");
     }
 
     #[test]
@@ -720,6 +729,7 @@ mod tests {
         let layout = layout_message_row(
             None,
             None,
+            '/',
             Some("12345678901234567890"),
             None,
             Some("dd"),
@@ -731,26 +741,27 @@ mod tests {
 
     #[test]
     fn layout_empty_row_has_no_column() {
-        let layout = layout_message_row(None, None, None, None, None, 20);
+        let layout = layout_message_row(None, None, '/', None, None, None, 20);
         assert_eq!(layout.line, "");
         assert_eq!(layout.showcmd_col, None);
     }
 
     #[test]
     fn layout_prefers_search_over_message() {
-        let layout = layout_message_row(None, Some("ar"), Some("saved"), None, None, 20);
+        let layout = layout_message_row(None, Some("ar"), '/', Some("saved"), None, None, 20);
         assert_eq!(layout.line, "/ar");
     }
 
     #[test]
     fn layout_shows_search_status_when_idle() {
-        let layout = layout_message_row(None, None, None, Some("/ar [1/3]"), None, 20);
+        let layout = layout_message_row(None, None, '/', None, Some("/ar [1/3]"), None, 20);
         assert_eq!(layout.line, "/ar [1/3]");
     }
 
     #[test]
     fn layout_prefers_message_over_search_status() {
-        let layout = layout_message_row(None, None, Some("saved"), Some("/ar [1/3]"), None, 20);
+        let layout =
+            layout_message_row(None, None, '/', Some("saved"), Some("/ar [1/3]"), None, 20);
         assert_eq!(layout.line, "saved");
     }
 

@@ -32,13 +32,13 @@ impl Editor {
     pub(super) fn delete_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.delete_line_range(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn delete_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.delete_line_range(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn delete_to_viewport_top(&mut self) {
@@ -108,25 +108,25 @@ impl Editor {
     pub(super) fn yank_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.yank_viewport_span(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn yank_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.yank_viewport_span(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn change_to_last_line(&mut self) {
         let (first, last) = self.goto_span(true);
         self.change_lines(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     pub(super) fn change_to_first_line(&mut self) {
         let (first, last) = self.goto_span(false);
         self.change_lines(first, last);
-        self.reveal_jump();
+        self.reveal_cursor();
     }
 
     fn goto_span(&mut self, last: bool) -> (usize, usize) {

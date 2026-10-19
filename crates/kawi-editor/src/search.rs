@@ -38,7 +38,7 @@ pub fn collect_matches(
     if query.is_empty() {
         return Vec::new();
     }
-    if query.needs_line_scan() {
+    if query.needs_folded_scan() {
         return lines_collect_matches(buffer, query, start_row, end_row);
     }
     if start_row >= end_row {
@@ -93,7 +93,7 @@ pub fn find_first_from(
     if query.is_empty() {
         return None;
     }
-    if query.needs_line_scan() {
+    if query.needs_folded_scan() {
         return lines_first_from(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
@@ -111,7 +111,7 @@ pub fn find_next(
     if query.is_empty() {
         return None;
     }
-    if query.needs_line_scan() {
+    if query.needs_folded_scan() {
         return lines_find_next(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
@@ -131,7 +131,7 @@ pub fn find_prev(
     if query.is_empty() {
         return None;
     }
-    if query.needs_line_scan() {
+    if query.needs_folded_scan() {
         return lines_find_prev(buffer, query, row, col);
     }
     let slice = buffer.rope_slice();
@@ -154,7 +154,7 @@ fn wrapped_first(
         return Some(position_of_byte(slice, buffer, byte));
     }
     let bound = position_byte(slice, buffer, row, col);
-    matcher::first_in_range(slice, query, start, bound)
+    matcher::first_in_range(slice, query, start, bound.saturating_add(1))
         .map(|byte| position_of_byte(slice, buffer, byte))
 }
 
@@ -173,34 +173,7 @@ fn wrapped_last(
         .map(|byte| position_of_byte(slice, buffer, byte))
 }
 
-pub fn count_matches(buffer: &Buffer, query: &Query) -> usize {
-    if query.is_empty() {
-        return 0;
-    }
-    if query.needs_line_scan() {
-        return lines_count_matches(buffer, query);
-    }
-    let slice = buffer.rope_slice();
-    matcher::count_in_range(&slice, query, 0, slice.len_bytes())
-}
-
-pub fn match_rank(buffer: &Buffer, query: &Query, row: usize, col: usize, total: usize) -> usize {
-    if query.is_empty() || total == 0 {
-        return 0;
-    }
-    let before = matches_before(buffer, query, row, col);
-    before.saturating_add(1).min(total)
-}
-
-fn matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
-    if query.needs_line_scan() {
-        return lines_matches_before(buffer, query, row, col);
-    }
-    let slice = buffer.rope_slice();
-    matcher::count_in_range(&slice, query, 0, position_byte(&slice, buffer, row, col))
-}
-
-fn position_byte(slice: &RopeSlice, buffer: &Buffer, row: usize, col: usize) -> usize {
+pub(crate) fn position_byte(slice: &RopeSlice, buffer: &Buffer, row: usize, col: usize) -> usize {
     let total = buffer.total_chars();
     slice.char_to_byte(buffer.char_index_of(row, col).min(total))
 }
@@ -307,7 +280,7 @@ fn lines_scan_forward_wrapped(
         .and_then(|line| query.first_before(&line, col).map(|c| (row, c)))
 }
 
-fn slice_text<'a>(slice: &'a ropey::RopeSlice<'a>) -> std::borrow::Cow<'a, str> {
+pub(crate) fn slice_text<'a>(slice: &'a ropey::RopeSlice<'a>) -> std::borrow::Cow<'a, str> {
     match slice.as_str() {
         Some(text) => std::borrow::Cow::Borrowed(text),
         None => std::borrow::Cow::Owned(slice.to_string()),
@@ -365,13 +338,6 @@ fn lines_scan_backward_wrapped(
         .and_then(|line| query.last_in_line(&line).map(|c| (row, c)))
 }
 
-fn lines_count_matches(buffer: &Buffer, query: &Query) -> usize {
-    buffer
-        .line_slices()
-        .map(|slice| query.count_in_line(&slice_text(&slice)))
-        .sum()
-}
-
 fn lines_collect_matches(
     buffer: &Buffer,
     query: &Query,
@@ -397,28 +363,6 @@ fn lines_collect_matches(
                 })
         })
         .collect()
-}
-
-fn lines_matches_before(buffer: &Buffer, query: &Query, row: usize, col: usize) -> usize {
-    let mut total: usize = 0;
-    for (r, slice) in buffer.line_slices().enumerate().take(row.saturating_add(1)) {
-        let text = slice_text(&slice);
-        total = total.saturating_add(lines_row_before(&text, query, r, row, col));
-    }
-    total
-}
-
-fn lines_row_before(
-    text: &str,
-    query: &Query,
-    line_row: usize,
-    origin_row: usize,
-    origin_col: usize,
-) -> usize {
-    if line_row == origin_row {
-        return query.count_before(text, origin_col);
-    }
-    query.count_in_line(text)
 }
 
 #[cfg(test)]
@@ -517,36 +461,6 @@ mod tests {
             find_prev(&lines, &folded("fo"), 1, 2),
             Some(((0, 0), false))
         );
-    }
-
-    #[test]
-    fn counts_all_matches() {
-        let lines = lines_of("ar ar\nar");
-        assert_eq!(count_matches(&lines, &folded("ar")), 3);
-        assert_eq!(count_matches(&lines, &folded("")), 0);
-        assert_eq!(count_matches(&lines, &folded("zzz")), 0);
-    }
-
-    #[test]
-    fn ranks_match_at_cursor() {
-        let lines = lines_of("ar ar\nar");
-        assert_eq!(match_rank(&lines, &folded("ar"), 0, 0, 3), 1);
-        assert_eq!(match_rank(&lines, &folded("ar"), 0, 3, 3), 2);
-        assert_eq!(match_rank(&lines, &folded("ar"), 1, 0, 3), 3);
-    }
-
-    #[test]
-    fn rank_clamps_to_total() {
-        let lines = lines_of("ar ar");
-        assert_eq!(match_rank(&lines, &folded("ar"), 0, 5, 2), 2);
-        assert_eq!(match_rank(&lines, &folded(""), 0, 0, 0), 0);
-    }
-
-    #[test]
-    fn counts_unicode_pattern() {
-        let lines = lines_of("CAFÉ café");
-        assert_eq!(count_matches(&lines, &folded("café")), 2);
-        assert_eq!(match_rank(&lines, &folded("café"), 0, 5, 2), 2);
     }
 
     #[test]

@@ -369,12 +369,12 @@ mod tests {
     #[test]
     fn confirming_and_cancelling_record_searches() {
         let mut editor = editor_with("alpha beta");
-        editor.enter_search();
+        editor.enter_search(true);
         for character in "alpha".chars() {
             editor.push_search_char(character);
         }
         editor.confirm_search();
-        editor.enter_search();
+        editor.enter_search(true);
         for character in "cancelled".chars() {
             editor.push_search_char(character);
         }
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn empty_search_prompt_is_not_recorded() {
         let mut editor = editor_with("alpha");
-        editor.enter_search();
+        editor.enter_search(true);
         editor.confirm_search();
         assert_eq!(editor.history_entries().search, Vec::<String>::new());
     }
@@ -393,13 +393,13 @@ mod tests {
     #[test]
     fn older_recalls_a_search_and_previews_it() {
         let mut editor = editor_with("alpha beta");
-        editor.enter_search();
+        editor.enter_search(true);
         for character in "beta".chars() {
             editor.push_search_char(character);
         }
         editor.confirm_search();
         editor.apply(Action::MoveToLineStart);
-        editor.enter_search();
+        editor.enter_search(true);
         editor.apply(Action::HistoryOlder);
         assert_eq!(editor.search_prompt(), Some("beta"));
         assert_eq!((editor.row(), editor.col()), (0, 6));
@@ -408,12 +408,12 @@ mod tests {
     #[test]
     fn search_browsing_without_prefix_match_keeps_the_line() {
         let mut editor = editor_with("alpha beta");
-        editor.enter_search();
+        editor.enter_search(true);
         for character in "beta".chars() {
             editor.push_search_char(character);
         }
         editor.confirm_search();
-        editor.enter_search();
+        editor.enter_search(true);
         for character in "zz".chars() {
             editor.push_search_char(character);
         }

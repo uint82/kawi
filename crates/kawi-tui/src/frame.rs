@@ -14,6 +14,7 @@ pub struct Frame<'a> {
     pub message: Option<&'a str>,
     pub command: Option<&'a str>,
     pub search: Option<&'a str>,
+    pub search_delimiter: char,
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
     pub showcmd: Option<String>,

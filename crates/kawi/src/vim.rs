@@ -397,6 +397,7 @@ impl VimKeymap {
             KeyCode::Char('n') => self.map_plain_or_noop(key, Action::NextMatch),
             KeyCode::Char('N') => self.map_plain_or_noop(key, Action::PrevMatch),
             KeyCode::Char('/') => self.map_plain_or_noop(key, Action::EnterSearch),
+            KeyCode::Char('?') => self.map_plain_or_noop(key, Action::EnterSearchBackward),
             KeyCode::Char('D') => self.map_plain_or_noop(key, Action::DeleteToEnd),
             KeyCode::Char('C') => self.map_plain_or_noop(key, Action::ChangeToEnd),
             KeyCode::Char('Y') => self.map_plain_or_noop(key, Action::YankLine),
@@ -4760,6 +4761,10 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('/')), Mode::Normal),
             Action::EnterSearch
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('?')), Mode::Normal),
+            Action::EnterSearchBackward
         );
         assert_eq!(
             map.map(plain(KeyCode::Char('n')), Mode::Normal),
