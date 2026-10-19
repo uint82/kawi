@@ -93,10 +93,10 @@ pub struct Editor {
 }
 
 struct SearchStatus {
-    pattern: String,
-    no_smartcase: bool,
     index: usize,
     total: usize,
+    kind: crate::search_stat::MatchStatKind,
+    wrapped: bool,
     revision: u64,
     current: (usize, usize),
 }
@@ -775,8 +775,7 @@ impl Editor {
         Some(search_mode::status_line(
             self.search_forward,
             self.search.text(),
-            status.index,
-            status.total,
+            status,
         ))
     }
 

@@ -2,6 +2,7 @@ use super::{Editor, SearchStatus};
 use crate::matcher::Query;
 use crate::mode::Mode;
 use crate::search::{self, SearchOutcome};
+use crate::search_stat;
 
 impl Editor {
     pub(super) fn cancel_search(&mut self) {
@@ -142,7 +143,7 @@ impl Editor {
     fn place_search_result(&mut self, row: usize, col: usize, wrapped: bool) -> SearchOutcome {
         self.cursor.set_position(row, col);
         self.remember_wanted_column();
-        self.refresh_search_status();
+        self.refresh_search_status(wrapped);
         SearchOutcome::Found { wrapped }
     }
 
@@ -173,7 +174,7 @@ impl Editor {
         self.jump_to_first_result();
     }
 
-    fn refresh_search_status(&mut self) {
+    fn refresh_search_status(&mut self, wrapped: bool) {
         let pattern = self.search.text().to_string();
         if pattern.is_empty() {
             self.search_status = None;
@@ -181,32 +182,23 @@ impl Editor {
         }
         let revision = self.buffer.revision();
         let query = self.search_query();
-        let total = match &self.search_status {
-            Some(status)
-                if status.pattern == pattern
-                    && status.revision == revision
-                    && status.no_smartcase == self.search_no_smartcase =>
-            {
-                status.total
-            }
-            _ => search::count_matches(&self.buffer, &query),
-        };
-        if total == 0 {
-            self.search_status = None;
-            return;
-        }
-        let index = search::match_rank(
+        let stat = search_stat::search_stat(
             &self.buffer,
             &query,
             self.cursor.row(),
             self.cursor.col(),
-            total,
+            search_stat::MATCH_STAT_MAX,
+            search_stat::MATCH_STAT_TIMEOUT,
         );
+        if stat.total == 0 {
+            self.search_status = None;
+            return;
+        }
         self.search_status = Some(SearchStatus {
-            pattern,
-            no_smartcase: self.search_no_smartcase,
-            index,
-            total,
+            index: stat.current,
+            total: stat.total,
+            kind: stat.kind,
+            wrapped,
             revision,
             current: (self.cursor.row(), self.cursor.col()),
         });
@@ -279,9 +271,20 @@ impl Editor {
     }
 }
 
-pub(super) fn status_line(forward: bool, pattern: &str, index: usize, total: usize) -> String {
+pub(super) fn status_line(forward: bool, pattern: &str, status: &SearchStatus) -> String {
     let delimiter = if forward { '/' } else { '?' };
-    format!("{delimiter}{pattern} [{index}/{total}]")
+    let counts = match status.kind {
+        search_stat::MatchStatKind::TimedOut => "[?/??]".to_string(),
+        search_stat::MatchStatKind::Capped if status.index > search_stat::MATCH_STAT_MAX => {
+            format!("[>{0}/>{0}]", search_stat::MATCH_STAT_MAX)
+        }
+        search_stat::MatchStatKind::Capped => {
+            format!("[{}/>{}]", status.index, search_stat::MATCH_STAT_MAX)
+        }
+        search_stat::MatchStatKind::Complete => format!("[{}/{}]", status.index, status.total),
+    };
+    let prefix = if status.wrapped { "W " } else { "" };
+    format!("{prefix}{delimiter}{pattern} {counts}")
 }
 
 #[cfg(test)]
@@ -479,9 +482,9 @@ mod tests {
         e.apply(Action::PushSearchChar('o'));
         e.apply(Action::PushSearchChar('o'));
         e.apply(Action::ConfirmSearch);
-        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
-        assert_eq!(e.search_next(), SearchOutcome::Missing);
-        assert_eq!(e.search_status_text().as_deref(), Some("/foo [1/1]"));
+        assert_eq!(e.search_status_text().as_deref(), Some("W /foo [1/1]"));
+        assert_eq!(e.search_next(), SearchOutcome::Found { wrapped: true });
+        assert_eq!(e.search_status_text().as_deref(), Some("W /foo [1/1]"));
     }
 
     #[test]
@@ -620,5 +623,57 @@ mod tests {
         e.apply(Action::EnterSearchBackward);
         assert_eq!(e.confirm_search(), Some(SearchOutcome::Missing));
         assert_eq!((e.row(), e.col()), (0, 6));
+    }
+
+    fn status_of(index: usize, total: usize, kind: search_stat::MatchStatKind) -> SearchStatus {
+        SearchStatus {
+            index,
+            total,
+            kind,
+            wrapped: false,
+            revision: 0,
+            current: (0, 0),
+        }
+    }
+
+    #[test]
+    fn status_line_reports_complete_count() {
+        let status = status_of(2, 16, search_stat::MatchStatKind::Complete);
+        assert_eq!(status_line(true, "foo", &status), "/foo [2/16]");
+    }
+
+    #[test]
+    fn status_line_caps_index_above_max() {
+        let status = status_of(2, 1000, search_stat::MatchStatKind::Capped);
+        assert_eq!(status_line(false, "foo", &status), "?foo [2/>999]");
+    }
+
+    #[test]
+    fn status_line_caps_both_sides() {
+        let status = status_of(1000, 1000, search_stat::MatchStatKind::Capped);
+        assert_eq!(status_line(true, "foo", &status), "/foo [>999/>999]");
+    }
+
+    #[test]
+    fn status_line_reports_timeout() {
+        let status = status_of(0, 0, search_stat::MatchStatKind::TimedOut);
+        assert_eq!(status_line(true, "foo", &status), "/foo [?/??]");
+    }
+
+    #[test]
+    fn status_line_prefixes_wrapped_steps() {
+        let mut status = status_of(1, 3, search_stat::MatchStatKind::Complete);
+        status.wrapped = true;
+        assert_eq!(status_line(true, "foo", &status), "W /foo [1/3]");
+    }
+
+    #[test]
+    fn status_line_reports_large_editor_counts() {
+        let mut e = editor_with("ar ar ar ar ar");
+        type_search(&mut e, false, "ar");
+        e.apply(Action::ConfirmSearch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [2/5]"));
+        e.apply(Action::NextMatch);
+        assert_eq!(e.search_status_text().as_deref(), Some("/ar [3/5]"));
     }
 }

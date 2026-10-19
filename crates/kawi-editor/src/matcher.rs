@@ -32,8 +32,8 @@ impl Query {
         self.text.is_empty()
     }
 
-    pub fn needs_line_scan(&self) -> bool {
-        self.needs_folded_lines() || self.whole_word
+    pub fn needs_folded_scan(&self) -> bool {
+        self.needs_folded_lines()
     }
 
     fn needs_folded_lines(&self) -> bool {
@@ -206,7 +206,7 @@ impl Query {
         let before = line.chars().nth(col.wrapping_sub(1));
         let end = col.saturating_add(self.text.chars().count());
         let after = line.chars().nth(end);
-        !before.is_some_and(is_word_char) && !after.is_some_and(is_word_char)
+        boundaries_ok(before, after)
     }
 
     fn needle(&self) -> &[u8] {
@@ -218,21 +218,53 @@ impl Query {
     }
 }
 
+pub fn scan_in_range(
+    slice: &RopeSlice,
+    query: &Query,
+    from_byte: usize,
+    end_byte: usize,
+    mut visit: impl FnMut(usize) -> bool,
+) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let total = slice.len_bytes();
+    let from = from_byte.min(total);
+    let limit = end_byte.min(total);
+    let needle = query.text.as_bytes();
+    let window_end = limit
+        .saturating_add(needle.len().saturating_sub(1))
+        .min(total);
+    let whole_word = query.whole_word;
+    scan_chunks(
+        window_chunks(slice, from, window_end),
+        needle,
+        !query.sensitive,
+        |hit| {
+            let absolute = from.saturating_add(hit);
+            if absolute >= limit {
+                return false;
+            }
+            if whole_word && !word_bounded(slice, absolute, needle.len()) {
+                return true;
+            }
+            visit(absolute)
+        },
+    )
+}
+
 pub fn first_in_range(
     slice: &RopeSlice,
     query: &Query,
     from_byte: usize,
     end_byte: usize,
 ) -> Option<usize> {
-    if query.is_empty() {
-        return None;
-    }
-    drive_first(
-        window_chunks(slice, from_byte, end_byte),
-        query.text.as_bytes(),
-        !query.sensitive,
-    )
-    .map(|hit| from_byte.min(slice.len_bytes()).saturating_add(hit))
+    let mut found = None;
+    scan_in_range(slice, query, from_byte, end_byte, |hit| {
+        found = Some(hit);
+        false
+    });
+    found
 }
 
 pub fn spans_in_range(
@@ -241,46 +273,13 @@ pub fn spans_in_range(
     from_byte: usize,
     end_byte: usize,
 ) -> Vec<(usize, usize)> {
-    if query.is_empty() {
-        return Vec::new();
-    }
-    let needle = query.text.as_bytes();
-    let base = from_byte.min(slice.len_bytes());
+    let needle_len = query.text.len();
     let mut spans = Vec::new();
-    let _ = scan_views(
-        window_chunks(slice, from_byte, end_byte),
-        needle.len(),
-        |view_base, view, carry_len| {
-            let fresh = spans.len();
-            collect_view_spans(view, needle, !query.sensitive, carry_len, &mut spans);
-            shift_spans(&mut spans[fresh..], base.saturating_add(view_base));
-            None
-        },
-    );
+    scan_in_range(slice, query, from_byte, end_byte, |hit| {
+        spans.push((hit, hit.saturating_add(needle_len)));
+        true
+    });
     spans
-}
-
-fn collect_view_spans(
-    view: &[u8],
-    needle: &[u8],
-    fold: bool,
-    carry_len: usize,
-    spans: &mut Vec<(usize, usize)>,
-) {
-    let mut from = 0;
-    while let Some(hit) = find_first_in(view, needle, fold, from, view.len()) {
-        if !starts_in_scanned_prefix(hit, carry_len, needle.len()) {
-            spans.push((hit, hit.saturating_add(needle.len())));
-        }
-        from = hit.saturating_add(1);
-    }
-}
-
-fn shift_spans(spans: &mut [(usize, usize)], base: usize) {
-    for span in spans.iter_mut() {
-        span.0 = span.0.saturating_add(base);
-        span.1 = span.1.saturating_add(base);
-    }
 }
 
 pub fn count_in_range(
@@ -289,14 +288,12 @@ pub fn count_in_range(
     from_byte: usize,
     end_byte: usize,
 ) -> usize {
-    if query.is_empty() {
-        return 0;
-    }
-    drive_count(
-        window_chunks(slice, from_byte, end_byte),
-        query.text.as_bytes(),
-        !query.sensitive,
-    )
+    let mut total = 0usize;
+    scan_in_range(slice, query, from_byte, end_byte, |_| {
+        total = total.saturating_add(1);
+        true
+    });
+    total
 }
 
 pub fn last_in_range(
@@ -308,12 +305,49 @@ pub fn last_in_range(
     if query.is_empty() {
         return None;
     }
-    drive_last(
-        window_chunks(slice, from_byte, end_byte),
-        query.text.as_bytes(),
-        !query.sensitive,
-    )
-    .map(|hit| from_byte.min(slice.len_bytes()).saturating_add(hit))
+    let total = slice.len_bytes();
+    let from = from_byte.min(total);
+    let limit = end_byte.min(total);
+    let needle = query.text.as_bytes();
+    let overlap = needle.len().saturating_sub(1);
+    let window_end = limit.saturating_add(overlap).min(total);
+    let chunks: Vec<(usize, &str)> = window_chunks(slice, from, window_end).collect();
+    let mut follow: Vec<u8> = Vec::new();
+    for (offset, text) in chunks.iter().rev() {
+        let mut view: Vec<u8> = Vec::with_capacity(text.len().saturating_add(overlap));
+        view.extend_from_slice(text.as_bytes());
+        view.extend_from_slice(&follow);
+        let base = from.saturating_add(*offset);
+        if let Some(absolute) = last_start_in_chunk(slice, query, &view, text.len(), base, limit) {
+            return Some(absolute);
+        }
+        follow.clear();
+        let keep = overlap.min(text.len());
+        follow.extend_from_slice(&text.as_bytes()[..keep]);
+    }
+    None
+}
+
+fn last_start_in_chunk(
+    slice: &RopeSlice,
+    query: &Query,
+    view: &[u8],
+    chunk_len: usize,
+    base: usize,
+    limit: usize,
+) -> Option<usize> {
+    let needle = query.text.as_bytes();
+    let whole_word = query.whole_word;
+    let mut found = None;
+    let mut from = 0;
+    while let Some(hit) = find_first_in(view, needle, !query.sensitive, from, chunk_len) {
+        let absolute = base.saturating_add(hit);
+        if absolute < limit && (!whole_word || word_bounded(slice, absolute, needle.len())) {
+            found = Some(absolute);
+        }
+        from = hit.saturating_add(1);
+    }
+    found
 }
 
 fn window_chunks<'a>(
@@ -332,66 +366,46 @@ fn window_chunks<'a>(
     })
 }
 
-fn drive_first<'a, I>(chunks: I, needle: &[u8], fold: bool) -> Option<usize>
+fn scan_chunks<'a, I>(
+    chunks: I,
+    needle: &[u8],
+    fold: bool,
+    mut visit: impl FnMut(usize) -> bool,
+) -> bool
 where
     I: Iterator<Item = (usize, &'a str)>,
 {
     if needle.is_empty() {
-        return None;
+        return true;
     }
-    scan_views(chunks, needle.len(), |base, view, carry_len| {
-        let mut from = 0;
-        while let Some(hit) = find_first_in(view, needle, fold, from, view.len()) {
-            if starts_in_scanned_prefix(hit, carry_len, needle.len()) {
-                from = hit.saturating_add(1);
-                continue;
-            }
-            return Some(base.saturating_add(hit));
-        }
-        None
-    })
-}
-
-fn drive_last<'a, I>(chunks: I, needle: &[u8], fold: bool) -> Option<usize>
-where
-    I: Iterator<Item = (usize, &'a str)>,
-{
-    if needle.is_empty() {
-        return None;
-    }
-    let mut found = None;
+    let mut stopped = false;
     let _ = scan_views(chunks, needle.len(), |base, view, carry_len| {
         let mut from = 0;
         while let Some(hit) = find_first_in(view, needle, fold, from, view.len()) {
-            if !starts_in_scanned_prefix(hit, carry_len, needle.len()) {
-                found = found.max(Some(base.saturating_add(hit)));
+            if !starts_in_scanned_prefix(hit, carry_len, needle.len())
+                && !visit(base.saturating_add(hit))
+            {
+                stopped = true;
+                return Some(0);
             }
             from = hit.saturating_add(1);
         }
         None
     });
-    found
+    !stopped
 }
 
-fn drive_count<'a, I>(chunks: I, needle: &[u8], fold: bool) -> usize
-where
-    I: Iterator<Item = (usize, &'a str)>,
-{
-    if needle.is_empty() {
-        return 0;
-    }
-    let mut total: usize = 0;
-    let _ = scan_views(chunks, needle.len(), |_, view, carry_len| {
-        let mut from = 0;
-        while let Some(hit) = find_first_in(view, needle, fold, from, view.len()) {
-            if !starts_in_scanned_prefix(hit, carry_len, needle.len()) {
-                total = total.saturating_add(1);
-            }
-            from = hit.saturating_add(1);
-        }
+fn word_bounded(slice: &RopeSlice, byte: usize, len: usize) -> bool {
+    let total = slice.len_bytes();
+    let start = slice.byte_to_char(byte.min(total));
+    let end = slice.byte_to_char(byte.saturating_add(len).min(total));
+    let before = if start > 0 {
+        slice.get_char(start - 1)
+    } else {
         None
-    });
-    total
+    };
+    let after = slice.get_char(end);
+    boundaries_ok(before, after)
 }
 
 fn scan_views<'a, I, F>(chunks: I, needle_len: usize, mut visit: F) -> Option<usize>
@@ -423,6 +437,10 @@ fn refresh_carry(carry: &mut Vec<u8>, view: &[u8], overlap: usize) {
     carry.clear();
     let keep = overlap.min(view.len());
     carry.extend_from_slice(&view[view.len().saturating_sub(keep)..]);
+}
+
+fn boundaries_ok(before: Option<char>, after: Option<char>) -> bool {
+    !before.is_some_and(is_word_char) && !after.is_some_and(is_word_char)
 }
 
 fn matches_at(window: &[u8], needle: &[u8], fold: bool) -> bool {
@@ -655,25 +673,42 @@ mod tests {
         );
     }
 
-    #[test]
-    fn drive_spans_chunk_boundary() {
-        let chunks = [(0, "ab"), (2, "cd")];
-        assert_eq!(drive_first(chunks.into_iter(), b"bc", false), Some(1));
-        assert_eq!(drive_last(chunks.into_iter(), b"bc", false), Some(1));
+    fn scan_hits(chunks: &[(usize, &str)], needle: &[u8]) -> Vec<usize> {
+        let mut hits = Vec::new();
+        scan_chunks(chunks.iter().copied(), needle, false, |hit| {
+            hits.push(hit);
+            true
+        });
+        hits
     }
 
     #[test]
-    fn drive_keeps_first_and_last() {
-        let chunks = [(0, "ar "), (3, "ar ar")];
-        assert_eq!(drive_first(chunks.into_iter(), b"ar", false), Some(0));
-        assert_eq!(drive_last(chunks.into_iter(), b"ar", false), Some(6));
+    fn scan_finds_matches_across_chunk_boundary() {
+        assert_eq!(scan_hits(&[(0, "ab"), (2, "cd")], b"bc"), vec![1]);
     }
 
     #[test]
-    fn drive_skips_verified_prefix() {
-        let chunks = [(0, "aaa"), (3, "aaa")];
-        assert_eq!(drive_first(chunks.into_iter(), b"aa", false), Some(0));
-        assert_eq!(drive_last(chunks.into_iter(), b"aa", false), Some(4));
+    fn scan_keeps_all_hits_in_order() {
+        assert_eq!(scan_hits(&[(0, "ar "), (3, "ar ar")], b"ar"), vec![0, 3, 6]);
+    }
+
+    #[test]
+    fn scan_finds_overlapping_matches_across_chunks() {
+        assert_eq!(
+            scan_hits(&[(0, "aaa"), (3, "aaa")], b"aa"),
+            vec![0, 1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn scan_stops_when_visitor_returns_false() {
+        let mut seen = Vec::new();
+        let completed = scan_chunks([(0, "aaa")].iter().copied(), b"a", false, |hit| {
+            seen.push(hit);
+            false
+        });
+        assert!(!completed);
+        assert_eq!(seen, vec![0]);
     }
 
     #[test]
@@ -707,10 +742,10 @@ mod tests {
     #[test]
     fn unicode_pattern_uses_folded_lines() {
         let query = Query::new("café", false, false);
-        assert!(query.needs_line_scan());
+        assert!(query.needs_folded_scan());
         assert_eq!(query.first_at_or_after("CAFÉ x", 0), Some(0));
         let ascii = Query::new("cafe", false, false);
-        assert!(!ascii.needs_line_scan());
+        assert!(!ascii.needs_folded_scan());
     }
 
     #[test]
@@ -726,8 +761,10 @@ mod tests {
 
     #[test]
     fn range_counts_across_chunk_edges() {
-        let chunks = [(0, "aaa"), (3, "aaa")];
-        assert_eq!(drive_count(chunks.into_iter(), b"aa", false), 5);
+        assert_eq!(
+            scan_hits(&[(0, "aaa"), (3, "aaa")], b"aa"),
+            vec![0, 1, 2, 3, 4]
+        );
     }
 
     #[test]
@@ -744,14 +781,8 @@ mod tests {
 
     #[test]
     fn spans_cover_chunk_edges_once() {
-        let chunks = [(0, "aaa"), (3, "aaa")];
-        let mut spans = Vec::new();
-        let _ = scan_views(chunks.into_iter(), 2, |view_base, view, carry_len| {
-            let fresh = spans.len();
-            collect_view_spans(view, b"aa", false, carry_len, &mut spans);
-            shift_spans(&mut spans[fresh..], view_base);
-            None
-        });
+        let hits = scan_hits(&[(0, "aaa"), (3, "aaa")], b"aa");
+        let spans: Vec<(usize, usize)> = hits.iter().map(|hit| (*hit, hit + 2)).collect();
         assert_eq!(spans, vec![(0, 2), (1, 3), (2, 4), (3, 5), (4, 6)]);
     }
 

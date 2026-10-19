@@ -423,36 +423,29 @@ impl App {
     }
 
     fn handle_next_match(&mut self) -> Result<bool> {
-        let forward = self.editor.search_forward();
         let outcome = self.editor.next_match();
-        self.report_outcome(Some(outcome), forward);
+        self.report_outcome(Some(outcome));
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_prev_match(&mut self) -> Result<bool> {
-        let forward = !self.editor.search_forward();
         let outcome = self.editor.prev_match();
-        self.report_outcome(Some(outcome), forward);
+        self.report_outcome(Some(outcome));
         self.reveal_cursor();
         Ok(false)
     }
 
     fn handle_confirm_search(&mut self) -> Result<bool> {
         let outcome = self.editor.confirm_search();
-        let forward = self.editor.search_forward();
-        self.report_outcome(outcome, forward);
+        self.report_outcome(outcome);
         self.reveal_cursor();
         Ok(false)
     }
 
-    fn report_outcome(&mut self, outcome: Option<SearchOutcome>, forward: bool) {
+    fn report_outcome(&mut self, outcome: Option<SearchOutcome>) {
         match outcome {
-            None => {}
-            Some(SearchOutcome::Found { wrapped: false }) => self.clear_message(),
-            Some(SearchOutcome::Found { wrapped: true }) => {
-                self.show_message(wrap_message(forward))
-            }
+            None | Some(SearchOutcome::Found { .. }) => self.clear_message(),
             Some(SearchOutcome::Missing) => self.show_message(missing_message(&self.editor)),
         }
     }
@@ -753,13 +746,6 @@ fn frame_search_span(span: &MatchSpan) -> SearchSpan {
         end: span.end,
         current: span.current,
     }
-}
-
-fn wrap_message(forward: bool) -> String {
-    if forward {
-        return "search hit BOTTOM, continuing at TOP".to_string();
-    }
-    "search hit TOP, continuing at BOTTOM".to_string()
 }
 
 fn missing_message(editor: &Editor) -> String {
@@ -1913,10 +1899,8 @@ mod tests {
         assert_eq!(app.last_message(), None);
         app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
         assert_eq!(app.cursor_position(), (0, 0));
-        assert_eq!(
-            app.last_message(),
-            Some("search hit BOTTOM, continuing at TOP")
-        );
+        assert_eq!(app.last_message(), None);
+        assert_eq!(app.search_status_line().as_deref(), Some("W /ar [1/3]"));
     }
 
     #[test]
@@ -1991,10 +1975,8 @@ mod tests {
         app.handle_key(key(KeyCode::Char('n'))).expect("next");
         assert_eq!(app.cursor_position(), (0, 6));
         app.handle_key(key(KeyCode::Char('n'))).expect("wrap");
-        assert_eq!(
-            app.last_message(),
-            Some("search hit BOTTOM, continuing at TOP")
-        );
+        assert_eq!(app.last_message(), None);
+        assert_eq!(app.search_status_line().as_deref(), Some("W /ar [1/3]"));
         app.handle_key(key(KeyCode::Char('n'))).expect("next");
         assert_eq!(app.last_message(), None);
         assert_eq!(app.cursor_position(), (0, 3));

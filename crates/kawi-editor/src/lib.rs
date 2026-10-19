@@ -9,6 +9,7 @@ pub mod objects;
 pub mod paths;
 pub mod register;
 pub mod search;
+pub mod search_stat;
 pub mod selection;
 pub mod viewport;
 pub mod words;
