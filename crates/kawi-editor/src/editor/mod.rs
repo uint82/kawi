@@ -418,6 +418,7 @@ impl Editor {
         }
         self.apply_line_adjustments();
         self.refresh_wanted_column(action);
+        self.reveal_jump();
         if was_normal
             && !matches!(
                 action,

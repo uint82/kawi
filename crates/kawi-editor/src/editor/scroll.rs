@@ -665,8 +665,40 @@ mod tests {
     #[test]
     fn reveal_cursor_scrolls_into_view() {
         let mut e = tall_editor();
-        e.apply(Action::JumpTo(50, 0));
+        e.cursor.set_position(50, 0);
         e.reveal_cursor();
         assert_eq!(e.view_top(), 31);
+    }
+
+    fn forty_line_editor() -> Editor {
+        let text = (0..40)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.set_view_size(80, 8);
+        e
+    }
+
+    #[test]
+    fn linewise_delete_centers_view_when_cursor_lands_far_above_top() {
+        let mut e = forty_line_editor();
+        e.apply(Action::JumpTo(8, 0));
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::JumpTo(12, 0));
+        place_top(&mut e, 12);
+        e.apply(Action::DeleteSelection);
+        assert_eq!((e.view_top(), e.row()), (5, 8));
+    }
+
+    #[test]
+    fn linewise_delete_places_view_top_when_cursor_lands_near_above_top() {
+        let mut e = forty_line_editor();
+        e.apply(Action::JumpTo(8, 0));
+        e.apply(Action::EnterVisualLine);
+        e.apply(Action::JumpTo(10, 0));
+        place_top(&mut e, 10);
+        e.apply(Action::DeleteSelection);
+        assert_eq!((e.view_top(), e.row()), (8, 8));
     }
 }
