@@ -545,6 +545,7 @@ impl Buffer {
     }
 
     fn paste_single(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
+        self.keep_final_newline(row);
         self.ensure_line_exists(row);
         let at = self.position_to_char(row, col.saturating_add(1));
         self.insert_text(at.min(self.rope.len_chars()), fragment);
@@ -564,6 +565,7 @@ impl Buffer {
     }
 
     fn paste_single_before(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
+        self.keep_final_newline(row);
         self.ensure_line_exists(row);
         let at = self.position_to_char(row, col);
         self.insert_text(at.min(self.rope.len_chars()), fragment);
@@ -577,6 +579,7 @@ impl Buffer {
         first: &str,
         rest: &[&str],
     ) -> (usize, usize) {
+        self.keep_final_newline(row);
         self.ensure_line_exists(row);
         let width = self.line_len(row);
         let insert_col = col.min(width);
@@ -609,6 +612,7 @@ impl Buffer {
         first: &str,
         rest: &[&str],
     ) -> (usize, usize) {
+        self.keep_final_newline(row);
         self.ensure_line_exists(row);
         let width = self.line_len(row);
         let insert_col = col.saturating_add(1).min(width.saturating_add(1));

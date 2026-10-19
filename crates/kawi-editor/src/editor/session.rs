@@ -7,7 +7,7 @@ use crate::objects;
 use crate::selection::{SavedVisual, Selection};
 use crate::words;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) enum InsertEdit {
     Char(char),
     Newline,
@@ -18,6 +18,7 @@ pub(super) enum InsertEdit {
     BackspaceWord,
     BackspaceLine,
     Delete,
+    Text(String),
 }
 
 impl Editor {
@@ -138,7 +139,7 @@ impl Editor {
                 self.open_line_after(self.cursor.row());
             }
             for edit in &record {
-                self.replay_edit(*edit);
+                self.replay_edit(edit.clone());
             }
         }
     }
@@ -154,6 +155,7 @@ impl Editor {
             InsertEdit::BackspaceWord => self.insert_backspace_word(),
             InsertEdit::BackspaceLine => self.insert_backspace_line(),
             InsertEdit::Delete => self.delete_forward(),
+            InsertEdit::Text(text) => self.insert_pasted_text(&text),
         }
     }
 
