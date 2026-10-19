@@ -357,7 +357,7 @@ impl App {
     fn dispatch_action(&mut self, action: Action) -> Result<bool> {
         match action {
             Action::Quit => self.handle_quit(),
-            Action::Save => self.handle_save(),
+            Action::Save => self.handle_save(false),
             Action::ExecuteCommand => self.handle_execute(),
             Action::Undo => self.handle_undo(),
             Action::Redo => self.handle_redo(),
@@ -386,17 +386,17 @@ impl App {
         }
     }
 
-    fn handle_save(&mut self) -> Result<bool> {
+    fn handle_save(&mut self, force: bool) -> Result<bool> {
         if !self.editor.has_file() {
             self.show_message("E32: No file name".to_string());
             return Ok(false);
         }
-        self.save_and_report();
+        self.save_and_report(force);
         Ok(false)
     }
 
-    fn save_and_report(&mut self) -> bool {
-        match self.editor.save() {
+    fn save_and_report(&mut self, force: bool) -> bool {
+        match self.editor.save(force) {
             Ok(outcome) => {
                 let report = written_report(self.editor.filename(), outcome);
                 self.show_message(report);
@@ -497,9 +497,9 @@ impl App {
 
     fn run_command(&mut self, command: Command) -> Result<bool> {
         match command {
-            Command::Write => self.handle_save(),
+            Command::Write { force } => self.handle_save(force),
             Command::Quit => self.handle_quit(),
-            Command::WriteQuit => self.handle_write_quit(),
+            Command::WriteQuit { force } => self.handle_write_quit(force),
             Command::ForceQuit | Command::ForceQuitAll => Ok(true),
             Command::QuitAll => self.handle_quit_all(),
             Command::WriteAll => self.handle_save_all(),
@@ -618,12 +618,12 @@ impl App {
         Ok(false)
     }
 
-    fn handle_write_quit(&mut self) -> Result<bool> {
+    fn handle_write_quit(&mut self, force: bool) -> Result<bool> {
         if !self.editor.has_file() {
             self.show_message("E32: No file name".to_string());
             return Ok(false);
         }
-        if self.save_and_report() {
+        if self.save_and_report(force) {
             return self.handle_quit();
         }
         Ok(false)
@@ -1493,10 +1493,10 @@ mod tests {
         let mut buffer = Buffer::from_string("aa\nbb");
         buffer.path = Some(path.to_string_lossy().to_string());
         let mut app = App::new(buffer, Flavor::Vim);
-        app.handle_save().expect("save");
+        app.handle_save(false).expect("save");
         let expected = format!("\"{}\" [New] 2L, 6B written", path.to_string_lossy());
         assert_eq!(app.last_message(), Some(expected.as_str()));
-        app.handle_save().expect("save again");
+        app.handle_save(false).expect("save again");
         let expected = format!("\"{}\" 2L, 6B written", path.to_string_lossy());
         assert_eq!(app.last_message(), Some(expected.as_str()));
         let _ = std::fs::remove_file(&path);
@@ -1505,8 +1505,37 @@ mod tests {
     #[test]
     fn save_without_path_reports_error() {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
-        app.handle_save().expect("stays");
+        app.handle_save(false).expect("stays");
         assert_eq!(app.last_message(), Some("E32: No file name"));
+    }
+
+    #[test]
+    fn save_readonly_file_reports_e45() {
+        let target = temp_file("readonly_save.txt", "old\n");
+        set_mode(&target, 0o444);
+        let mut buffer = Buffer::from_string("new");
+        buffer.path = Some(target.clone());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.handle_save(false).expect("stays");
+        assert_eq!(
+            app.last_message(),
+            Some("E45: 'readonly' option is set (add ! to override)")
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "old\n");
+        let _ = std::fs::remove_file(&target);
+    }
+
+    #[test]
+    fn forced_save_overwrites_readonly_file() {
+        let target = temp_file("readonly_force.txt", "old\n");
+        set_mode(&target, 0o444);
+        let mut buffer = Buffer::from_string("new");
+        buffer.path = Some(target.clone());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.handle_save(true).expect("forced save");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new\n");
+        assert_eq!(mode_of(&target), 0o444);
+        let _ = std::fs::remove_file(&target);
     }
 
     #[test]
@@ -1657,6 +1686,17 @@ mod tests {
             .join(format!("kawi_app_{name}"))
             .to_string_lossy()
             .into_owned()
+    }
+
+    fn set_mode(path: &str, bits: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(bits);
+        std::fs::set_permissions(path, permissions).unwrap();
+    }
+
+    fn mode_of(path: &str) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
     }
 
     #[test]
