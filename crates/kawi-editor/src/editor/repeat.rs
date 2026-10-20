@@ -8,6 +8,7 @@ pub(super) fn is_insert_entry(action: Action) -> bool {
     matches!(
         action,
         Action::EnterInsert
+            | Action::EnterReplace
             | Action::Append
             | Action::AppendLineEnd
             | Action::InsertLineStart

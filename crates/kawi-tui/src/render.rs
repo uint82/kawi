@@ -7,7 +7,7 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::{Frame, SearchSpan, Selection};
+use crate::frame::{CursorStyle, Frame, SearchSpan, Selection};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
@@ -26,7 +26,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
         }
     }
     draw_completion(out, frame)?;
-    apply_cursor_style(out, frame.insert_mode)?;
+    apply_cursor_style(out, frame.cursor_style)?;
     place_cursor(out, frame)?;
     flush(out)?;
     Ok(())
@@ -563,16 +563,16 @@ fn move_to_message_row(out: &mut Stdout, viewport: &Viewport) -> Result<()> {
     Ok(())
 }
 
-fn apply_cursor_style(out: &mut Stdout, insert_mode: bool) -> Result<()> {
-    execute!(out, cursor_style(insert_mode)).context("set cursor style")?;
+fn apply_cursor_style(out: &mut Stdout, style: CursorStyle) -> Result<()> {
+    execute!(out, cursor_style(style)).context("set cursor style")?;
     Ok(())
 }
 
-fn cursor_style(insert_mode: bool) -> SetCursorStyle {
-    if insert_mode {
-        SetCursorStyle::SteadyBar
-    } else {
-        SetCursorStyle::SteadyBlock
+fn cursor_style(style: CursorStyle) -> SetCursorStyle {
+    match style {
+        CursorStyle::Block => SetCursorStyle::SteadyBlock,
+        CursorStyle::Bar => SetCursorStyle::SteadyBar,
+        CursorStyle::Underline => SetCursorStyle::SteadyUnderScore,
     }
 }
 
@@ -691,6 +691,19 @@ mod tests {
 
     fn lines_of(text: &str) -> Vec<String> {
         text.lines().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn cursor_style_follows_frame_kind() {
+        assert_eq!(
+            cursor_style(CursorStyle::Block),
+            SetCursorStyle::SteadyBlock
+        );
+        assert_eq!(cursor_style(CursorStyle::Bar), SetCursorStyle::SteadyBar);
+        assert_eq!(
+            cursor_style(CursorStyle::Underline),
+            SetCursorStyle::SteadyUnderScore
+        );
     }
 
     #[test]

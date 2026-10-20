@@ -64,7 +64,7 @@ impl Editor {
     }
 
     pub(super) fn backspace_indent(&mut self) -> bool {
-        if !self.mode.is_insert() || !self.autoindent {
+        if self.mode != crate::mode::Mode::Insert || !self.autoindent {
             return false;
         }
         let (row, col) = (self.cursor.row(), self.cursor.col());

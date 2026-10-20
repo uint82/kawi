@@ -5,5 +5,5 @@ pub mod render;
 pub mod statusbar;
 pub mod terminal;
 
-pub use frame::Selection;
+pub use frame::{CursorStyle, Selection};
 pub mod theme;

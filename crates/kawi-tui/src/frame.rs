@@ -18,9 +18,16 @@ pub struct Frame<'a> {
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
     pub showcmd: Option<String>,
-    pub insert_mode: bool,
+    pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
     pub theme: &'a Theme,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorStyle {
+    Block,
+    Bar,
+    Underline,
 }
 
 pub struct CompletionMenu<'a> {

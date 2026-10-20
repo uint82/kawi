@@ -4,6 +4,10 @@ use crate::words::WordClass;
 
 impl Editor {
     pub(super) fn insert_backspace_word(&mut self) {
+        if self.mode == crate::mode::Mode::Replace {
+            self.replace_backspace_word();
+            return;
+        }
         let Some((row, col)) = self.insert_erase_start() else {
             return;
         };
@@ -13,6 +17,14 @@ impl Editor {
             self.join_insert_line(row);
             return;
         }
+        let start = self.word_erase_start(row, col);
+        if start < col {
+            self.buffer.delete_range(row, start, row, col - 1);
+        }
+        self.cursor.set_position(row, start);
+    }
+
+    pub(super) fn word_erase_start(&self, row: usize, col: usize) -> usize {
         let stop = self.insert_erase_stop(row, col, false);
         let mut col = col;
         let mut class = self.buffer_class(row, col);
@@ -34,15 +46,18 @@ impl Editor {
                 col = col.saturating_add(1);
                 break;
             }
-            self.buffer.delete_range(row, col, row, col);
             if col == 0 || col == stop {
                 break;
             }
         }
-        self.cursor.set_position(row, col);
+        col
     }
 
     pub(super) fn insert_backspace_line(&mut self) {
+        if self.mode == crate::mode::Mode::Replace {
+            self.replace_backspace_line();
+            return;
+        }
         let Some((row, col)) = self.insert_erase_start() else {
             return;
         };
@@ -72,7 +87,7 @@ impl Editor {
         Some((row, col))
     }
 
-    fn insert_erase_stop(&self, row: usize, col: usize, keep_indent: bool) -> usize {
+    pub(super) fn insert_erase_stop(&self, row: usize, col: usize, keep_indent: bool) -> usize {
         let floor = if keep_indent {
             self.first_non_blank_of(row).min(col)
         } else {

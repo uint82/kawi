@@ -2,6 +2,7 @@
 pub enum Mode {
     Normal,
     Insert,
+    Replace,
     Command,
     Visual,
     VisualLine,
@@ -11,7 +12,7 @@ pub enum Mode {
 
 impl Mode {
     pub fn is_insert(self) -> bool {
-        matches!(self, Self::Insert)
+        matches!(self, Self::Insert | Self::Replace)
     }
 
     pub fn is_visual(self) -> bool {
@@ -29,6 +30,7 @@ impl Mode {
         match self {
             Self::Normal => "NORMAL",
             Self::Insert => "INSERT",
+            Self::Replace => "REPLACE",
             Self::Command => "COMMAND",
             Self::Visual => "VISUAL",
             Self::VisualLine => "VISUAL LINE",
@@ -45,6 +47,18 @@ mod tests {
     #[test]
     fn insert_detects_insert() {
         assert!(Mode::Insert.is_insert());
+    }
+
+    #[test]
+    fn replace_detects_insert_family() {
+        assert!(Mode::Replace.is_insert());
+        assert!(!Mode::Replace.is_visual());
+        assert!(!Mode::Replace.is_normal_state());
+    }
+
+    #[test]
+    fn replace_labels_replace() {
+        assert_eq!(Mode::Replace.label(), "REPLACE");
     }
 
     #[test]

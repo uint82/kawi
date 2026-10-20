@@ -391,6 +391,7 @@ impl VimKeymap {
             KeyCode::Char('x') => self.map_plain_or_noop(key, Action::DeleteForward),
             KeyCode::Char('X') => self.map_plain_or_noop(key, Action::DeleteBefore),
             KeyCode::Char('r') => self.arm_replace(key),
+            KeyCode::Char('R') => self.map_plain_or_noop(key, Action::EnterReplace),
             KeyCode::Char('s') => self.map_plain_or_noop(key, Action::Substitute),
             KeyCode::Char('S') => self.map_plain_or_noop(key, Action::ChangeLine),
             KeyCode::Char('O') => self.map_plain_or_noop(key, Action::OpenLineAbove),
@@ -1659,13 +1660,13 @@ impl Keymap for VimKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         let key = normalize_interrupt(key);
         let action = match mode {
-            Mode::Insert => self.map_insert(key),
+            Mode::Insert | Mode::Replace => self.map_insert(key),
             Mode::Normal => self.map_normal(key),
             Mode::Command => self.map_command(key),
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.map_visual_mode(key, mode),
             Mode::Search => crate::keymap::map_search_mode(key),
         };
-        if mode != Mode::Insert {
+        if !mode.is_insert() {
             self.refresh_showcmd(action);
         }
         action
@@ -1776,6 +1777,28 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('J')), Mode::Normal),
             Action::JoinLinesNoSpace
+        );
+    }
+
+    #[test]
+    fn normal_shift_r_enters_replace() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('R')), Mode::Normal),
+            Action::EnterReplace
+        );
+    }
+
+    #[test]
+    fn replace_mode_maps_typing_and_escape() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Replace),
+            Action::InsertChar('a')
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Esc), Mode::Replace),
+            Action::ExitInsert
         );
     }
 
