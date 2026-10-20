@@ -13,6 +13,8 @@ use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
 
+use crate::display;
+
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     draw_visible_lines(out, frame)?;
@@ -55,7 +57,9 @@ fn draw_one_line(
         paint::restore_base(out, frame.theme)?;
     }
     let width = frame.viewport.width().saturating_sub(gutter_width);
-    write!(out, "{}", truncate_to_width(text, width)).context("write line")?;
+    let end = frame.leftcol.saturating_add(width);
+    let text = display::slice_screen(text, frame.leftcol, end, frame.tabstop);
+    write!(out, "{}", text).context("write line")?;
     erase_row_tail(out)?;
     Ok(())
 }
@@ -95,6 +99,21 @@ pub struct HighlightSpan {
     pub tint: Tint,
 }
 
+pub struct SpanView<'a> {
+    pub window: &'a [String],
+    pub top: usize,
+    pub viewport: &'a Viewport,
+    pub gutter: usize,
+    pub leftcol: usize,
+    pub tabstop: usize,
+}
+
+impl SpanView<'_> {
+    fn text_width(&self) -> usize {
+        self.viewport.width().saturating_sub(self.gutter)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
     Selection,
@@ -104,33 +123,27 @@ pub enum Tint {
 }
 
 pub fn highlight_spans(
-    window: &[String],
-    top: usize,
+    view: &SpanView,
     selection: Option<Selection>,
-    viewport: &Viewport,
     cursor: Option<(usize, usize)>,
 ) -> Vec<HighlightSpan> {
     let range = match selection {
         Some(Selection::Range { start, end }) => Some((start, end)),
-        Some(selection @ Selection::Block { .. }) => {
-            return block_spans(window, top, viewport, selection, cursor);
-        }
+        Some(selection @ Selection::Block { .. }) => return block_spans(view, selection, cursor),
         None => None,
     };
     let Some(range) = range else {
         return Vec::new();
     };
     let mut spans = Vec::new();
-    for screen_row in 0..window.len().min(viewport.height()) {
-        collect_row_spans(&mut spans, window, top, viewport, screen_row, range, cursor);
+    for screen_row in 0..view.window.len().min(view.viewport.height()) {
+        collect_row_spans(&mut spans, view, screen_row, range, cursor);
     }
     spans
 }
 
 fn block_spans(
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
+    view: &SpanView,
     selection: Selection,
     cursor: Option<(usize, usize)>,
 ) -> Vec<HighlightSpan> {
@@ -144,14 +157,14 @@ fn block_spans(
     else {
         return Vec::new();
     };
-    let width = viewport.width();
+    let right_edge = view.leftcol.saturating_add(view.text_width());
     let mut spans = Vec::new();
-    for screen_row in 0..window.len().min(viewport.height()) {
-        let buffer_row = top.saturating_add(screen_row);
+    for screen_row in 0..view.window.len().min(view.viewport.height()) {
+        let buffer_row = view.top.saturating_add(screen_row);
         if buffer_row < block_top || buffer_row > block_bottom {
             continue;
         }
-        let Some(text) = window.get(screen_row) else {
+        let Some(text) = view.window.get(screen_row) else {
             continue;
         };
         let to = if ragged {
@@ -159,20 +172,23 @@ fn block_spans(
         } else {
             right.saturating_add(1)
         };
-        let from = left.min(width);
-        let to = to.min(width);
-        let cell = cursor.and_then(|(row, col)| (row == buffer_row).then_some(col));
-        for (from, to) in cut_cell(from, to, cell) {
+        let cell = cursor
+            .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
+        for (from, to) in cut_cell(left, to, cell) {
+            let from = from.max(view.leftcol);
+            let to = to.min(right_edge);
             if from >= to {
                 continue;
             }
-            let mut segment = slice_cols(text, from, to);
-            let missing = to.saturating_sub(from).saturating_sub(char_len(&segment));
-            segment.push_str(&" ".repeat(missing));
+            let mut text = display::slice_screen(text, from, to, view.tabstop);
+            if !ragged {
+                let missing = to.saturating_sub(from).saturating_sub(text.chars().count());
+                text.push_str(&" ".repeat(missing));
+            }
             spans.push(HighlightSpan {
                 screen_row,
-                from,
-                text: segment,
+                from: from.saturating_sub(view.leftcol),
+                text,
                 tint: Tint::Selection,
             });
         }
@@ -182,30 +198,21 @@ fn block_spans(
 
 fn collect_row_spans(
     spans: &mut Vec<HighlightSpan>,
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
+    view: &SpanView,
     screen_row: usize,
     range: ((usize, usize), (usize, usize)),
     cursor: Option<(usize, usize)>,
 ) {
-    let Some(text) = window.get(screen_row) else {
+    let Some(text) = view.window.get(screen_row) else {
         return;
     };
-    let buffer_row = top.saturating_add(screen_row);
-    let width = viewport.width();
-    for (from, to) in selected_cells(buffer_row, text, range, cursor) {
-        let from = from.min(width);
-        let to = to.min(width);
-        if from >= to {
-            continue;
+    let buffer_row = view.top.saturating_add(screen_row);
+    let cell = cursor
+        .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
+    for (from, to) in selected_cells(buffer_row, text, range, cell, view.tabstop) {
+        if let Some(span) = clipped_span(view, screen_row, text, from, to, Tint::Selection) {
+            spans.push(span);
         }
-        spans.push(HighlightSpan {
-            screen_row,
-            from,
-            text: segment_text(text, from, to),
-            tint: Tint::Selection,
-        });
     }
 }
 
@@ -213,22 +220,24 @@ fn selected_cells(
     buffer_row: usize,
     text: &str,
     range: ((usize, usize), (usize, usize)),
-    cursor: Option<(usize, usize)>,
+    cursor: Option<usize>,
+    tabstop: usize,
 ) -> Vec<(usize, usize)> {
     let ((start_row, start_col), (end_row, end_col)) = range;
     if buffer_row < start_row || buffer_row > end_row {
         return Vec::new();
     }
-    let (from, to) = row_selection(
-        buffer_row,
-        char_len(text),
-        start_row,
-        start_col,
-        end_row,
-        end_col,
-    );
-    let cell = cursor.and_then(|(row, col)| (row == buffer_row).then_some(col));
-    cut_cell(from, to, cell)
+    let line_len = char_len(text);
+    let (from, to) = row_selection(buffer_row, line_len, start_row, start_col, end_row, end_col);
+    let (from, to) = if line_len == 0 {
+        (from, to)
+    } else {
+        (
+            display::screen_col(text, from, tabstop),
+            display::screen_col(text, to, tabstop),
+        )
+    };
+    cut_cell(from, to, cursor)
 }
 
 fn row_selection(
@@ -271,75 +280,64 @@ fn cut_cell(from: usize, to: usize, cell: Option<usize>) -> Vec<(usize, usize)> 
     }
 }
 
-fn segment_text(text: &str, from: usize, to: usize) -> String {
-    let segment = slice_cols(text, from, to);
-    if segment.is_empty() {
-        " ".to_string()
-    } else {
-        segment
+fn clipped_span(
+    view: &SpanView,
+    screen_row: usize,
+    text: &str,
+    from: usize,
+    to: usize,
+    tint: Tint,
+) -> Option<HighlightSpan> {
+    let left = view.leftcol;
+    let right = left.saturating_add(view.text_width());
+    let from = from.max(left);
+    let to = to.min(right);
+    if from >= to {
+        return None;
     }
-}
-
-pub fn search_highlight_spans(
-    spans: &[SearchSpan],
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
-) -> Vec<HighlightSpan> {
-    span_highlights(spans, window, top, viewport, |span| {
-        search_tint(span.current)
+    let mut text = display::slice_screen(text, from, to, view.tabstop);
+    if text.is_empty() {
+        text.push(' ');
+    }
+    Some(HighlightSpan {
+        screen_row,
+        from: from.saturating_sub(left),
+        text,
+        tint,
     })
 }
 
-fn preview_highlight_spans(
-    spans: &[SearchSpan],
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
-) -> Vec<HighlightSpan> {
-    span_highlights(spans, window, top, viewport, |_| Tint::Substitute)
+pub fn search_highlight_spans(spans: &[SearchSpan], view: &SpanView) -> Vec<HighlightSpan> {
+    span_highlights(spans, view, |span| search_tint(span.current))
+}
+
+fn preview_highlight_spans(spans: &[SearchSpan], view: &SpanView) -> Vec<HighlightSpan> {
+    span_highlights(spans, view, |_| Tint::Substitute)
 }
 
 fn span_highlights(
     spans: &[SearchSpan],
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
+    view: &SpanView,
     tint: impl Fn(&SearchSpan) -> Tint,
 ) -> Vec<HighlightSpan> {
     spans
         .iter()
-        .filter_map(|span| span_segment(span, window, top, viewport, tint(span)))
+        .filter_map(|span| span_segment(span, view, tint(span)))
         .collect()
 }
 
-fn span_segment(
-    span: &SearchSpan,
-    window: &[String],
-    top: usize,
-    viewport: &Viewport,
-    tint: Tint,
-) -> Option<HighlightSpan> {
-    if span.row < top {
+fn span_segment(span: &SearchSpan, view: &SpanView, tint: Tint) -> Option<HighlightSpan> {
+    if span.row < view.top {
         return None;
     }
-    let screen_row = span.row.saturating_sub(top);
-    let text = window.get(screen_row)?;
-    if screen_row >= viewport.height() {
+    let screen_row = span.row.saturating_sub(view.top);
+    let text = view.window.get(screen_row)?;
+    if screen_row >= view.viewport.height() {
         return None;
     }
-    let width = viewport.width();
-    let from = span.start.min(width);
-    let to = span.end.min(width);
-    if from >= to {
-        return None;
-    }
-    Some(HighlightSpan {
-        screen_row,
-        from,
-        text: slice_cols(text, from, to),
-        tint,
-    })
+    let from = display::screen_col(text, span.start, view.tabstop);
+    let to = display::screen_col(text, span.end, view.tabstop);
+    clipped_span(view, screen_row, text, from, to, tint)
 }
 
 fn search_tint(current: bool) -> Tint {
@@ -351,27 +349,23 @@ fn search_tint(current: bool) -> Tint {
 
 fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> {
     let gutter_width = gutter_width(frame);
-    for span in search_highlight_spans(
-        frame.search_spans,
-        frame.lines,
-        frame.viewport.top(),
-        frame.viewport,
-    ) {
+    let view = SpanView {
+        window: frame.lines,
+        top: frame.viewport.top(),
+        viewport: frame.viewport,
+        gutter: gutter_width,
+        leftcol: frame.leftcol,
+        tabstop: frame.tabstop,
+    };
+    for span in search_highlight_spans(frame.search_spans, &view) {
         paint_span(out, &span, gutter_width, theme)?;
     }
-    for span in preview_highlight_spans(
-        frame.preview_spans,
-        frame.lines,
-        frame.viewport.top(),
-        frame.viewport,
-    ) {
+    for span in preview_highlight_spans(frame.preview_spans, &view) {
         paint_span(out, &span, gutter_width, theme)?;
     }
     for span in highlight_spans(
-        frame.lines,
-        frame.viewport.top(),
+        &view,
         frame.selection,
-        frame.viewport,
         visual_cursor_cell(frame, gutter_width),
     ) {
         paint_span(out, &span, gutter_width, theme)?;
@@ -404,13 +398,6 @@ fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors, theme: &Them
     write_segment(out, text)?;
     paint::restore_base(out, theme)?;
     Ok(())
-}
-
-fn slice_cols(text: &str, from: usize, to: usize) -> String {
-    text.chars()
-        .skip(from)
-        .take(to.saturating_sub(from))
-        .collect()
 }
 
 fn move_to_segment(out: &mut Stdout, col: usize, screen_row: usize) -> Result<()> {
@@ -725,6 +712,35 @@ mod tests {
         text.lines().map(str::to_string).collect()
     }
 
+    fn span_view<'a>(lines: &'a [String], viewport: &'a Viewport) -> SpanView<'a> {
+        SpanView {
+            window: lines,
+            top: 0,
+            viewport,
+            gutter: 0,
+            leftcol: 0,
+            tabstop: 8,
+        }
+    }
+
+    fn spans_of(
+        lines: &[String],
+        top: usize,
+        selection: Option<Selection>,
+        viewport: &Viewport,
+        cursor: Option<(usize, usize)>,
+    ) -> Vec<HighlightSpan> {
+        let view = SpanView {
+            window: lines,
+            top,
+            viewport,
+            gutter: 0,
+            leftcol: 0,
+            tabstop: 8,
+        };
+        highlight_spans(&view, selection, cursor)
+    }
+
     #[test]
     fn cursor_style_follows_frame_kind() {
         assert_eq!(
@@ -741,13 +757,13 @@ mod tests {
     #[test]
     fn no_selection_has_no_spans() {
         let lines = lines_of("abcdef");
-        assert!(highlight_spans(&lines, 0, None, &viewport(), None).is_empty());
+        assert!(spans_of(&lines, 0, None, &viewport(), None).is_empty());
     }
 
     #[test]
     fn point_selection_paints_one_cell_without_cursor() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -765,7 +781,7 @@ mod tests {
     #[test]
     fn point_selection_skips_cursor_cell() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -781,7 +797,7 @@ mod tests {
     #[test]
     fn linewise_selection_skips_cursor_cell() {
         let lines = lines_of("ab\ncd");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -801,7 +817,7 @@ mod tests {
     #[test]
     fn linewise_selection_has_no_eol_cell() {
         let lines = lines_of("ab\ncd");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -819,7 +835,7 @@ mod tests {
     #[test]
     fn split_selection_around_cursor_cell() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -837,7 +853,7 @@ mod tests {
     #[test]
     fn empty_line_inside_selection_paints_one_cell() {
         let lines = lines_of("ab\n\ncd");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -856,7 +872,7 @@ mod tests {
     #[test]
     fn empty_cursor_line_paints_nothing() {
         let lines = lines_of("ab\n\ncd");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -874,7 +890,7 @@ mod tests {
     #[test]
     fn charwise_selection_has_no_eol_cell() {
         let lines = lines_of("abcdef\nghij");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -892,7 +908,7 @@ mod tests {
     #[test]
     fn cursor_past_line_end_adds_no_cell() {
         let lines = lines_of("abc");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -909,7 +925,7 @@ mod tests {
     #[test]
     fn range_selection_spans_chars() {
         let lines = lines_of("abcdef");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -928,7 +944,7 @@ mod tests {
     #[test]
     fn multiline_selection_spans_rows() {
         let lines = lines_of("ab\ncd\nef");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Range {
@@ -947,7 +963,7 @@ mod tests {
     #[test]
     fn block_selection_skips_cursor_cell() {
         let lines = lines_of("abcd\nefgh");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Block {
@@ -969,7 +985,7 @@ mod tests {
     #[test]
     fn block_selection_pads_short_rows() {
         let lines = lines_of("ab\nabcd");
-        let spans = highlight_spans(
+        let spans = spans_of(
             &lines,
             0,
             Some(Selection::Block {
@@ -1066,7 +1082,9 @@ mod tests {
                 current: false,
             },
         ];
-        let painted = search_highlight_spans(&spans, &lines, 0, &viewport());
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let painted = search_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 2);
         assert_eq!(painted[0].tint, Tint::SearchCurrent);
         assert_eq!(painted[0].text, "ar");
@@ -1097,7 +1115,9 @@ mod tests {
                 current: false,
             },
         ];
-        let painted = search_highlight_spans(&spans, &lines, 0, &viewport());
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let painted = search_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].screen_row, 0);
     }
@@ -1111,10 +1131,82 @@ mod tests {
             end: 6,
             current: true,
         }];
-        let painted = preview_highlight_spans(&spans, &lines, 0, &viewport());
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let painted = preview_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].tint, Tint::Substitute);
         assert_eq!(painted[0].text, "orange");
+    }
+
+    #[test]
+    fn spans_shift_by_leftcol() {
+        let lines = lines_of("0123456789");
+        let spans = vec![SearchSpan {
+            row: 0,
+            start: 0,
+            end: 10,
+            current: false,
+        }];
+        let viewport = viewport();
+        let mut view = span_view(&lines, &viewport);
+        view.leftcol = 3;
+        let painted = search_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].from, 0);
+        assert_eq!(painted[0].text, "3456789");
+    }
+
+    #[test]
+    fn spans_clip_to_text_width_with_gutter() {
+        let lines = lines_of("012345678901234567890123");
+        let spans = vec![SearchSpan {
+            row: 0,
+            start: 0,
+            end: 24,
+            current: false,
+        }];
+        let viewport = viewport();
+        let mut view = span_view(&lines, &viewport);
+        view.gutter = 4;
+        view.leftcol = 5;
+        let painted = search_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].from, 0);
+        assert_eq!(painted[0].text, "5678901234567890");
+    }
+
+    #[test]
+    fn spans_expand_tabs() {
+        let lines = lines_of("\tab");
+        let spans = vec![SearchSpan {
+            row: 0,
+            start: 0,
+            end: 2,
+            current: false,
+        }];
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let painted = search_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].text, "        a");
+    }
+
+    #[test]
+    fn selection_spans_expand_tabs() {
+        let lines = lines_of("a\tb");
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let painted = highlight_spans(
+            &view,
+            Some(Selection::Range {
+                start: (0, 0),
+                end: (0, 2),
+            }),
+            None,
+        );
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].text, "a       b");
     }
 
     #[test]

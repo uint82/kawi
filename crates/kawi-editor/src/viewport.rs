@@ -3,6 +3,7 @@ pub const FALLBACK_HEIGHT: usize = 24;
 
 pub struct Viewport {
     top: usize,
+    leftcol: usize,
     height: usize,
     width: usize,
 }
@@ -11,6 +12,7 @@ impl Viewport {
     pub fn new(height: usize, width: usize) -> Self {
         Self {
             top: 0,
+            leftcol: 0,
             height: normalize_size(height),
             width: normalize_size(width),
         }
@@ -32,6 +34,14 @@ impl Viewport {
 
     pub fn top(&self) -> usize {
         self.top
+    }
+
+    pub fn leftcol(&self) -> usize {
+        self.leftcol
+    }
+
+    pub fn set_leftcol(&mut self, leftcol: usize) {
+        self.leftcol = leftcol;
     }
 
     pub fn height(&self) -> usize {
@@ -67,6 +77,19 @@ mod tests {
     fn starts_at_top() {
         let v = Viewport::new(10, 80);
         assert_eq!(v.top(), 0);
+    }
+
+    #[test]
+    fn leftcol_starts_at_zero() {
+        let v = Viewport::new(10, 80);
+        assert_eq!(v.leftcol(), 0);
+    }
+
+    #[test]
+    fn leftcol_can_be_set() {
+        let mut v = Viewport::new(10, 80);
+        v.set_leftcol(12);
+        assert_eq!(v.leftcol(), 12);
     }
 
     #[test]

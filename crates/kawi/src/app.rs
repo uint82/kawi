@@ -27,7 +27,7 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
 }
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
-use crate::mouse::{drag_position, press_position, wheel_delta};
+use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
 use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
 use kawi_tui::{
@@ -203,7 +203,10 @@ impl App {
                 .editor
                 .completion_view()
                 .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
-            cursor_col: self.editor.cursor_wcol(),
+            cursor_col: self
+                .editor
+                .cursor_wcol()
+                .saturating_sub(self.editor.view_leftcol()),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
             status,
@@ -214,6 +217,8 @@ impl App {
             search_status,
             search_spans,
             preview_spans,
+            leftcol: self.editor.view_leftcol(),
+            tabstop: self.editor.view_tabstop(),
             showcmd: self.showcmd_text(),
             cursor_style: cursor_style_for(self.editor.mode()),
             selection: self.frame_selection(),
@@ -299,6 +304,12 @@ impl App {
         if let Some(delta) = wheel_delta(&mouse) {
             return self.scroll_by(delta);
         }
+        if let Some(delta) = horizontal_wheel_delta(&mouse) {
+            let page = mouse
+                .modifiers
+                .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+            return self.scroll_horizontally(delta, page);
+        }
         self.handle_noop()
     }
 
@@ -324,6 +335,11 @@ impl App {
 
     fn scroll_by(&mut self, delta: isize) -> Result<bool> {
         self.editor.scroll_wheel(delta);
+        Ok(false)
+    }
+
+    fn scroll_horizontally(&mut self, delta: isize, page: bool) -> Result<bool> {
+        self.editor.scroll_wheel_horizontal(delta, page);
         Ok(false)
     }
 
@@ -356,6 +372,7 @@ impl App {
 
     fn reveal_cursor(&mut self) {
         self.editor.reveal_cursor();
+        self.editor.reveal_cursor_horizontally();
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -548,6 +565,12 @@ impl App {
     }
 
     fn run_command(&mut self, command: Command) -> Result<bool> {
+        let result = self.dispatch_command(command);
+        self.editor.reveal_cursor_horizontally();
+        result
+    }
+
+    fn dispatch_command(&mut self, command: Command) -> Result<bool> {
         match command {
             Command::Write { force } => self.handle_save(force),
             Command::Quit => self.handle_quit(),
@@ -1016,6 +1039,24 @@ mod tests {
             column: 0,
             row: 0,
             modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn wheel_right() -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn wheel_right_page() -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::SHIFT,
         }
     }
 
@@ -1500,6 +1541,22 @@ mod tests {
         app.handle_mouse(wheel_down()).expect("wheel");
         assert_eq!(app.viewport_top(), 3);
         assert_eq!(app.cursor_position(), (3, 0));
+    }
+
+    #[test]
+    fn wheel_right_scrolls_horizontally() {
+        let mut app = App::new(Buffer::from_string(&"0123456789".repeat(8)), Flavor::Vim);
+        app.handle_mouse(wheel_right()).expect("wheel");
+        assert_eq!(app.editor.view_leftcol(), 6);
+        assert_eq!(app.cursor_position(), (0, 6));
+    }
+
+    #[test]
+    fn wheel_right_page_uses_window_width() {
+        let mut app = App::new(Buffer::from_string(&"0123456789".repeat(8)), Flavor::Vim);
+        app.handle_mouse(wheel_right_page()).expect("wheel");
+        assert!(app.editor.view_leftcol() > 6);
+        assert_eq!(app.cursor_position(), (0, app.editor.view_leftcol()));
     }
 
     #[test]

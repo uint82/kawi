@@ -18,6 +18,8 @@ pub struct Frame<'a> {
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
+    pub leftcol: usize,
+    pub tabstop: usize,
     pub showcmd: Option<String>,
     pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
