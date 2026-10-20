@@ -10,6 +10,7 @@ use crate::register::RegisterKind;
 use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
+mod addsub;
 mod autoindent;
 mod buffers;
 mod case_ops;
@@ -308,6 +309,10 @@ impl Editor {
             Action::YankWordEndBackward => self.yank_word_end_backward(),
             Action::YankBigWordEndBackward => self.yank_big_word_end_backward(),
             Action::ReplaceChar(replacement) => self.replace_char(replacement),
+            Action::Increment => self.add_to_number(false),
+            Action::Decrement => self.add_to_number(true),
+            Action::IncrementSequence => self.add_to_number_sequence(false),
+            Action::DecrementSequence => self.add_to_number_sequence(true),
             Action::DeleteBefore => self.delete_before(),
             Action::Substitute => self.substitute(),
             Action::OpenLineAbove => self.open_line_above(),

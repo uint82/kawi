@@ -367,6 +367,13 @@ impl VimKeymap {
         if is_alternate_key(key) {
             return Action::EditAlternate;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('a') => return Action::Increment,
+                KeyCode::Char('x') => return Action::Decrement,
+                _ => {}
+            }
+        }
         if let KeyCode::Char(c) = key.code {
             if matches!(c, '1'..='9') && !has_ctrl_or_alt(key) {
                 return self.push_digit(c);
@@ -1071,6 +1078,12 @@ impl VimKeymap {
             return self.complete_replace(key);
         }
         match key.code {
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.counted_control_action(Action::Increment)
+            }
+            KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.counted_control_action(Action::Decrement)
+            }
             KeyCode::Char(c) if !has_ctrl_or_alt(key) => {
                 if self.register_prefix_armed() {
                     return self.complete_register(c);
@@ -1271,6 +1284,13 @@ impl VimKeymap {
     }
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('a') => return Action::Increment,
+                KeyCode::Char('x') => return Action::Decrement,
+                _ => {}
+            }
+        }
         match key.code {
             KeyCode::Esc => Action::CancelVisual,
             KeyCode::Up => Action::MoveUp,
@@ -1428,6 +1448,12 @@ impl VimKeymap {
                 self.clear_pending();
                 Action::CancelVisual
             }
+            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.visual_control_action('a', Action::Increment)
+            }
+            KeyCode::Char('x') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.visual_control_action('x', Action::Decrement)
+            }
             KeyCode::Char(c) if !has_ctrl_or_alt(key) => self.visual_pending_key(c, mode),
             KeyCode::Up
             | KeyCode::Down
@@ -1437,6 +1463,34 @@ impl VimKeymap {
             | KeyCode::End => self.finish_visual_pending(key, mode),
             _ => self.cancel_sequence(),
         }
+    }
+
+    fn counted_control_action(&mut self, action: Action) -> Action {
+        if !self.only_digits_pending() {
+            return self.cancel_sequence();
+        }
+        self.clear_pending();
+        action
+    }
+
+    fn visual_g_sequence_action(&mut self, key: char) -> Action {
+        if self.stripped_pending() != "g" {
+            return self.cancel_sequence();
+        }
+        self.clear_pending();
+        if key == 'a' {
+            Action::IncrementSequence
+        } else {
+            Action::DecrementSequence
+        }
+    }
+
+    fn visual_control_action(&mut self, key: char, action: Action) -> Action {
+        if self.only_digits_pending() {
+            self.clear_pending();
+            return action;
+        }
+        self.visual_g_sequence_action(key)
     }
 
     fn finish_visual_pending(&mut self, key: KeyEvent, mode: Mode) -> Action {
@@ -1482,6 +1536,10 @@ impl VimKeymap {
                 self.clear_pending();
                 return action;
             }
+        }
+        if pushed == 'g' && self.only_digits_pending() {
+            self.pending.push(pushed);
+            return Action::BeginSequence;
         }
         if pushed == 'z' && self.only_digits_pending() {
             self.pending.push(pushed);
@@ -1777,6 +1835,83 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('J')), Mode::Normal),
             Action::JoinLinesNoSpace
+        );
+    }
+
+    #[test]
+    fn normal_ctrl_a_and_ctrl_x_adjust_numbers() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('a')), Mode::Normal),
+            Action::Increment
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('x')), Mode::Normal),
+            Action::Decrement
+        );
+    }
+
+    #[test]
+    fn visual_ctrl_a_and_ctrl_x_adjust_numbers() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('a')), Mode::Visual),
+            Action::Increment
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('x')), Mode::Visual),
+            Action::Decrement
+        );
+    }
+
+    #[test]
+    fn visual_g_ctrl_a_and_ctrl_x_adjust_sequence() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('a')), Mode::Visual),
+            Action::IncrementSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('x')), Mode::Visual),
+            Action::DecrementSequence
+        );
+    }
+
+    #[test]
+    fn count_survives_visual_g_prefix() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('3')), Mode::Visual),
+            Action::PushCount(3)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('a')), Mode::Visual),
+            Action::IncrementSequence
+        );
+    }
+
+    #[test]
+    fn count_before_ctrl_a_reaches_adjust() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('3')), Mode::Normal),
+            Action::PushCount(3)
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('a')), Mode::Normal),
+            Action::Increment
         );
     }
 

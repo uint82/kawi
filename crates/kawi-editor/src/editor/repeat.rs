@@ -52,6 +52,8 @@ pub(super) enum RepeatChange {
     },
     Visual {
         action: Action,
+        count: usize,
+        mode: Mode,
         register: Option<char>,
         anchor: (usize, usize),
         head: (usize, usize),
@@ -79,11 +81,13 @@ impl Editor {
             } => self.repeat_edit(action, count, register, &record),
             RepeatChange::Visual {
                 action,
+                count,
+                mode,
                 register,
                 anchor,
                 head,
                 record,
-            } => self.repeat_visual(action, register, anchor, head, &record),
+            } => self.repeat_visual(action, count, mode, register, (anchor, head), &record),
             RepeatChange::Paste { text } => self.repeat_paste(&text),
         }
     }
@@ -132,12 +136,13 @@ impl Editor {
     fn repeat_visual(
         &mut self,
         action: Action,
+        count: usize,
+        mode: Mode,
         register: Option<char>,
-        anchor: (usize, usize),
-        head: (usize, usize),
+        range: ((usize, usize), (usize, usize)),
         record: &[InsertEdit],
     ) {
-        let (start, end) = self.translated_range(anchor, head);
+        let (start, end) = self.translated_range(range.0, range.1);
         self.pending_register = register;
         match action {
             Action::DeleteSelection | Action::PasteOverSelection => {
@@ -169,6 +174,19 @@ impl Editor {
                 };
                 self.buffer
                     .shift_case_range(start.0, start.1, end.0, end.1, shift);
+                self.cursor.set_position(start.0, start.1);
+            }
+            Action::Increment
+            | Action::Decrement
+            | Action::IncrementSequence
+            | Action::DecrementSequence => {
+                let subtract = matches!(action, Action::Decrement | Action::DecrementSequence);
+                let sequence = matches!(
+                    action,
+                    Action::IncrementSequence | Action::DecrementSequence
+                );
+                self.record_boundary();
+                self.adjust_number_rows(start, end, mode, count, subtract, sequence);
                 self.cursor.set_position(start.0, start.1);
             }
             _ => {}
@@ -207,6 +225,8 @@ impl Editor {
         };
         self.record_change(RepeatChange::Visual {
             action,
+            count: self.peek_count(),
+            mode: self.mode,
             register: self.pending_register,
             anchor: selection.anchor(),
             head: selection.head(),
