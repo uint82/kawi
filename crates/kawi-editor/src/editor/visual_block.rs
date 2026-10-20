@@ -361,7 +361,7 @@ impl Editor {
         self.delete_block_chars(&rect);
         self.pad_row_to(rect.top, rect.left);
         match register.kind() {
-            RegisterKind::BlockWise => self.block_paste(register, true),
+            RegisterKind::BlockWise => self.block_paste(register, true, false),
             // TODO: match nvim for charwise and linewise registers pasted over a block
             RegisterKind::CharWise | RegisterKind::LineWise => {
                 self.buffer
@@ -372,7 +372,12 @@ impl Editor {
     }
 
     // TODO: repeat the pasted block for counts, like nvim
-    pub(super) fn block_paste(&mut self, register: &crate::register::Register, before: bool) {
+    pub(super) fn block_paste(
+        &mut self,
+        register: &crate::register::Register,
+        before: bool,
+        advance: bool,
+    ) {
         let lines = register.lines();
         let row = self.cursor.row();
         let col = if before {
@@ -380,6 +385,7 @@ impl Editor {
         } else {
             self.cursor.col().saturating_add(1)
         };
+        self.change_origin_override = Some((row, col));
         let mut last_appended_empty = false;
         for (offset, text) in lines.iter().enumerate() {
             let target = row.saturating_add(offset);
@@ -401,6 +407,20 @@ impl Editor {
                 .paste_before(self.buffer.len(), usize::MAX, "\n");
         }
         self.cursor.set_position(row, col);
+        if advance {
+            let width = lines
+                .iter()
+                .map(|line| line.chars().count())
+                .max()
+                .unwrap_or(0);
+            let last_row = self.buffer.line_count().saturating_sub(1);
+            let target_row = row
+                .saturating_add(lines.len().saturating_sub(1))
+                .min(last_row);
+            let len = self.buffer.line_len(target_row);
+            let target_col = col.saturating_add(width).min(len.saturating_sub(1));
+            self.cursor.set_position(target_row, target_col);
+        }
     }
 
     pub(super) fn shift_block_case(&mut self, shift: fn(char) -> char) {

@@ -1,3 +1,4 @@
+use super::repeat::{register_can_paste, RepeatChange};
 use super::session::InsertEdit;
 use super::Editor;
 use crate::actions::{Action, Object};
@@ -686,30 +687,49 @@ impl Editor {
     }
 
     pub(super) fn paste_after(&mut self) {
-        self.paste_register(false);
+        self.paste_register(false, false);
     }
 
     pub(super) fn paste_before(&mut self) {
-        self.paste_register(true);
+        self.paste_register(true, false);
     }
 
-    fn paste_register(&mut self, before: bool) {
+    pub(super) fn paste_after_advance(&mut self) {
+        self.paste_register(false, true);
+    }
+
+    pub(super) fn paste_before_advance(&mut self) {
+        self.paste_register(true, true);
+    }
+
+    fn paste_register(&mut self, before: bool, advance: bool) {
         let Some(register) = self.read_register(self.pending_register) else {
             return;
         };
-        if matches!(
-            register.kind(),
-            RegisterKind::CharWise | RegisterKind::BlockWise
-        ) && register.is_empty()
-        {
+        if !register_can_paste(&register) {
             return;
         }
         let count = self.take_count();
         self.record_boundary();
+        self.put_register(&register, count, before, advance);
+        self.record_change(RepeatChange::RegisterPaste {
+            register: self.pending_register,
+            before,
+            advance,
+        });
+    }
+
+    pub(super) fn put_register(
+        &mut self,
+        register: &crate::register::Register,
+        count: usize,
+        before: bool,
+        advance: bool,
+    ) {
         match register.kind() {
-            RegisterKind::CharWise => self.paste_inline(&register, count, before),
-            RegisterKind::LineWise => self.paste_lines(&register, count, before),
-            RegisterKind::BlockWise => self.block_paste(&register, before),
+            RegisterKind::CharWise => self.paste_inline(register, count, before, advance),
+            RegisterKind::LineWise => self.paste_lines(register, count, before, advance),
+            RegisterKind::BlockWise => self.block_paste(register, before, advance),
         }
     }
 
@@ -766,10 +786,22 @@ impl Editor {
         self.cursor.set_position(row, 0);
     }
 
-    fn paste_inline(&mut self, register: &crate::register::Register, count: usize, before: bool) {
+    fn paste_inline(
+        &mut self,
+        register: &crate::register::Register,
+        count: usize,
+        before: bool,
+        advance: bool,
+    ) {
         let text = register.text().repeat(count.max(1));
         let (row, col) = (self.cursor.row(), self.cursor.col());
         let at_line_end = col >= self.buffer.line_len(row);
+        let origin_col = if before {
+            col
+        } else {
+            col.saturating_add(1).min(self.buffer.line_len(row))
+        };
+        self.change_origin_override = Some((row, origin_col));
         let col = if before {
             self.buffer.paste_before(row, col, &text);
             if text.contains('\n') {
@@ -790,9 +822,20 @@ impl Editor {
             }
         };
         self.cursor.set_position(row, col);
+        if advance && !text.contains('\n') {
+            let len = self.buffer.line_len(row);
+            self.cursor
+                .set_position(row, col.saturating_add(1).min(len.saturating_sub(1)));
+        }
     }
 
-    fn paste_lines(&mut self, register: &crate::register::Register, count: usize, before: bool) {
+    fn paste_lines(
+        &mut self,
+        register: &crate::register::Register,
+        count: usize,
+        before: bool,
+        advance: bool,
+    ) {
         let yanked = register.lines();
         let mut lines = Vec::with_capacity(yanked.len().saturating_mul(count.max(1)));
         for _ in 0..count.max(1) {
@@ -803,7 +846,13 @@ impl Editor {
         } else {
             self.buffer.paste_lines_below(self.cursor.row(), &lines)
         };
+        self.change_origin_override = Some((row, 0));
         self.cursor.set_position(row, self.first_non_blank_of(row));
+        if advance {
+            let last_row = self.buffer.line_count().saturating_sub(1);
+            let target = row.saturating_add(lines.len()).min(last_row);
+            self.cursor.set_position(target, 0);
+        }
     }
 
     pub(super) fn delete_before(&mut self) {

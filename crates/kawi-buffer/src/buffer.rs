@@ -818,7 +818,7 @@ fn slice_from_col(line: &str, col: usize) -> String {
     line.chars().skip(col).collect()
 }
 
-fn tab_width(ch: char, screen: usize, tabstop: usize) -> usize {
+pub fn tab_width(ch: char, screen: usize, tabstop: usize) -> usize {
     if ch != '\t' {
         return 1;
     }
