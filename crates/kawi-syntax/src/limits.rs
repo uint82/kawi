@@ -1,6 +1,8 @@
 pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_LINE_BYTES: usize = 8 * 1024;
 pub const MAX_CAPTURES: usize = 20_000;
+pub const WINDOW_PARSE_BYTES: usize = 512 * 1024;
+pub const WINDOW_CONTEXT_LINES: usize = 1_000;
 
 pub fn file_size_supported(bytes: usize) -> bool {
     bytes <= MAX_FILE_BYTES

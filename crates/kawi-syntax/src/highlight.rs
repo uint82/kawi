@@ -1,10 +1,12 @@
-use tree_sitter::{Parser, QueryCursor, StreamingIterator, Tree};
+use std::ops::Range;
+
+use tree_sitter::{Parser, QueryCursor, Range as TreeRange, StreamingIterator, Tree};
 use tree_sitter_highlight::HighlightConfiguration;
 
 use crate::diff::{input_edit, LineIndex};
 use crate::group::SyntaxGroup;
 use crate::language::LanguageId;
-use crate::limits::MAX_CAPTURES;
+use crate::limits::{MAX_CAPTURES, WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
 use crate::rows::{self, RowWindow};
 use crate::span::{SyntaxRequest, SyntaxSpan};
 
@@ -38,6 +40,8 @@ pub(crate) struct Document {
     tree: Option<Tree>,
     revision: u64,
     index: LineIndex,
+    window_rows: Range<usize>,
+    large: bool,
 }
 
 impl Document {
@@ -50,21 +54,48 @@ impl Document {
             tree: None,
             revision: 0,
             index: LineIndex::new(""),
+            window_rows: 0..0,
+            large: false,
         }
     }
 
     pub(crate) fn update(&mut self, request: &SyntaxRequest, runtime: &Runtime) -> Vec<SyntaxSpan> {
-        if self.tree.is_none() || request.key.revision != self.revision {
-            self.reparse(request);
+        let large = request.text.len_bytes() > WINDOW_PARSE_BYTES;
+        let revision_changed = request.key.revision != self.revision;
+        if large {
+            if revision_changed || self.tree.is_none() || !self.large {
+                self.refresh_text(request);
+            }
+            if revision_changed
+                || !self.large
+                || self.tree.is_none()
+                || !self.window_covers(request)
+            {
+                self.parse_window(request);
+            }
+        } else if self.tree.is_none() || revision_changed || self.large {
+            self.reparse_full(request);
         }
         self.spans(request, runtime)
     }
 
-    fn reparse(&mut self, request: &SyntaxRequest) {
+    fn refresh_text(&mut self, request: &SyntaxRequest) {
+        self.text = request.text.to_string();
+        self.index = LineIndex::new(&self.text);
+        self.revision = request.key.revision;
+    }
+
+    fn reparse_full(&mut self, request: &SyntaxRequest) {
         let text = request.text.to_string();
         let index = LineIndex::new(&text);
-        let tree = self.tree.take();
-        let tree = match tree {
+        let _ = self.parser.set_included_ranges(&[]);
+        let old_tree = if self.large {
+            self.tree.take();
+            None
+        } else {
+            self.tree.take()
+        };
+        let tree = match old_tree {
             Some(mut tree) => match input_edit(&self.text, &text, &self.index, &index) {
                 Some(edit) => {
                     tree.edit(&edit);
@@ -78,6 +109,33 @@ impl Document {
         self.index = index;
         self.revision = request.key.revision;
         self.tree = tree;
+        self.large = false;
+        self.window_rows = 0..self.index.line_count();
+    }
+
+    fn parse_window(&mut self, request: &SyntaxRequest) {
+        let (start, end) = window_bounds(&self.index, request.key.top, request.key.end);
+        let start_byte = self.index.line_start(start);
+        let end_byte = if end < self.index.line_count() {
+            self.index.line_start(end)
+        } else {
+            self.text.len()
+        };
+        let range = TreeRange {
+            start_byte,
+            end_byte,
+            start_point: self.index.point(start_byte),
+            end_point: self.index.point(end_byte),
+        };
+        let _ = self.parser.set_included_ranges(&[range]);
+        self.tree = self.parser.parse(&self.text, None);
+        self.large = true;
+        self.window_rows = start..end;
+        self.revision = request.key.revision;
+    }
+
+    fn window_covers(&self, request: &SyntaxRequest) -> bool {
+        self.window_rows.start <= request.key.top && request.key.end <= self.window_rows.end
     }
 
     fn spans(&self, request: &SyntaxRequest, runtime: &Runtime) -> Vec<SyntaxSpan> {
@@ -130,6 +188,14 @@ impl Document {
         captures.sort_by_key(|capture| capture.start);
         Some(captures)
     }
+}
+
+fn window_bounds(index: &LineIndex, top: usize, end: usize) -> (usize, usize) {
+    let start = top.saturating_sub(WINDOW_CONTEXT_LINES);
+    let end = end
+        .saturating_add(WINDOW_CONTEXT_LINES)
+        .min(index.line_count());
+    (start, end)
 }
 
 fn refine_group(group: SyntaxGroup, kind: &str) -> SyntaxGroup {
@@ -217,7 +283,7 @@ mod tests {
     use ropey::Rope;
 
     use super::*;
-    use crate::limits::MAX_LINE_BYTES;
+    use crate::limits::{MAX_LINE_BYTES, WINDOW_PARSE_BYTES};
     use crate::span::SyntaxKey;
 
     fn request(text: &str, top: usize, end: usize, revision: u64) -> SyntaxRequest {
@@ -381,6 +447,110 @@ mod tests {
         let comment = text.find("//").expect("comment");
         let column = text[..comment].chars().count();
         assert_eq!(group_at(&spans, 0, column), Some(SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn large_files_use_bounded_windows() {
+        let text = "# marker\n".repeat(60_000);
+        assert!(text.len() > WINDOW_PARSE_BYTES);
+        let runtime = Runtime::new(LanguageId::Python).expect("runtime");
+        let mut document = Document::new(LanguageId::Python);
+        let key = SyntaxKey {
+            document: 1,
+            revision: 1,
+            top: 30_000,
+            end: 30_020,
+            language: LanguageId::Python,
+        };
+        let first = SyntaxRequest {
+            key,
+            text: Rope::from_str(&text),
+        };
+        let spans = document.update(&first, &runtime);
+        assert!(document.large);
+        assert_eq!(document.window_rows, 29_000..31_020);
+        assert_eq!(group_at(&spans, 30_000, 0), Some(SyntaxGroup::Comment));
+
+        let second = SyntaxRequest {
+            key: SyntaxKey {
+                top: 40_000,
+                end: 40_020,
+                ..key
+            },
+            text: Rope::from_str(&text),
+        };
+        let spans = document.update(&second, &runtime);
+        assert_eq!(document.window_rows, 39_000..41_020);
+        assert_eq!(group_at(&spans, 40_000, 0), Some(SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn large_file_edits_refresh_the_window() {
+        let text = "# marker\n".repeat(60_000);
+        let runtime = Runtime::new(LanguageId::Python).expect("runtime");
+        let mut document = Document::new(LanguageId::Python);
+        let key = SyntaxKey {
+            document: 1,
+            revision: 1,
+            top: 0,
+            end: 20,
+            language: LanguageId::Python,
+        };
+        document.update(
+            &SyntaxRequest {
+                key,
+                text: Rope::from_str(&text),
+            },
+            &runtime,
+        );
+        let edited = text.replacen("# marker", "# changed", 1);
+        let spans = document.update(
+            &SyntaxRequest {
+                key: SyntaxKey { revision: 2, ..key },
+                text: Rope::from_str(&edited),
+            },
+            &runtime,
+        );
+        assert!(document.large);
+        assert_eq!(document.window_rows, 0..1_020);
+        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn shrinking_a_large_document_restores_a_full_tree() {
+        let text = "# marker\n".repeat(60_000);
+        let runtime = Runtime::new(LanguageId::Python).expect("runtime");
+        let mut document = Document::new(LanguageId::Python);
+        let key = SyntaxKey {
+            document: 1,
+            revision: 1,
+            top: 30_000,
+            end: 30_020,
+            language: LanguageId::Python,
+        };
+        document.update(
+            &SyntaxRequest {
+                key,
+                text: Rope::from_str(&text),
+            },
+            &runtime,
+        );
+        let small = "def main():\n    return True\n";
+        let spans = document.update(
+            &SyntaxRequest {
+                key: SyntaxKey {
+                    revision: 2,
+                    top: 0,
+                    end: 2,
+                    ..key
+                },
+                text: Rope::from_str(small),
+            },
+            &runtime,
+        );
+        assert!(!document.large);
+        assert_eq!(document.window_rows, 0..document.index.line_count());
+        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
     }
 
     #[test]
