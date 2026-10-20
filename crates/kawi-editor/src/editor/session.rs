@@ -111,7 +111,7 @@ impl Editor {
     }
 
     pub(super) fn exit_insert(&mut self) {
-        if self.mode == Mode::Insert {
+        if self.mode.is_insert() {
             self.clear_autoindent_line();
             self.last_insert = Some((self.cursor.row(), self.cursor.col()));
             self.replay_insert();
@@ -125,6 +125,7 @@ impl Editor {
         self.insert_reopen = false;
         self.insert_record.clear();
         self.insert_moved = false;
+        self.replace_entries.clear();
     }
 
     fn replay_insert(&mut self) {

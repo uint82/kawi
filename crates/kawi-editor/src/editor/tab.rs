@@ -10,6 +10,10 @@ pub(super) enum TabExpansion {
 impl Editor {
     pub(super) fn insert_tab(&mut self) {
         self.record_insert(InsertEdit::Tab);
+        if self.mode == crate::mode::Mode::Replace {
+            self.insert_replace_tab();
+            return;
+        }
         let indent = self.effective_indent();
         let row = self.cursor.row();
         let col = self.cursor.col();

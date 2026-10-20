@@ -211,6 +211,10 @@ impl Editor {
     }
 
     pub(super) fn delete_backward(&mut self) {
+        if self.mode == crate::mode::Mode::Replace {
+            self.replace_backspace();
+            return;
+        }
         self.record_maybe();
         self.record_insert(InsertEdit::Backspace);
         if self.backspace_indent() {
@@ -575,6 +579,10 @@ impl Editor {
     }
 
     pub(super) fn insert_char(&mut self, c: char) {
+        if self.mode == crate::mode::Mode::Replace {
+            self.insert_replace_char(c);
+            return;
+        }
         self.record_maybe();
         self.record_insert(InsertEdit::Char(c));
         self.buffer
@@ -591,6 +599,7 @@ impl Editor {
 
     pub(super) fn insert_newline(&mut self) {
         self.record_insert(InsertEdit::Newline);
+        self.mark_replace_newline();
         let row = self.cursor.row();
         let col = self.cursor.col();
         let width = self.prefix_indent_width(row, col);

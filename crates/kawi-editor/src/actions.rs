@@ -263,6 +263,7 @@ pub enum Action {
     Save,
     Quit,
     EnterInsert,
+    EnterReplace,
     ExitInsert,
     Append,
     AppendLineEnd,

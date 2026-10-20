@@ -11,7 +11,7 @@ impl Editor {
         self.clear_count();
         match self.mode {
             Mode::Normal => self.paste_normal(text),
-            Mode::Insert => self.paste_insert(text),
+            Mode::Insert | Mode::Replace => self.paste_insert(text),
             Mode::Command | Mode::Search => self.paste_prompt(text),
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => self.paste_visual(text),
         }
@@ -63,6 +63,7 @@ impl Editor {
                 Mode::Search => self.push_search_char(ch),
                 Mode::Normal
                 | Mode::Insert
+                | Mode::Replace
                 | Mode::Visual
                 | Mode::VisualLine
                 | Mode::VisualBlock => {

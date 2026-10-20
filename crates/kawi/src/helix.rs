@@ -96,7 +96,7 @@ impl Keymap for HelixKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         let key = normalize_interrupt(key);
         match mode {
-            Mode::Insert => self.map_insert(key),
+            Mode::Insert | Mode::Replace => self.map_insert(key),
             Mode::Command => map_command_mode(key),
             Mode::Search => map_search_mode(key),
             Mode::Normal | Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {

@@ -30,6 +30,7 @@ mod prompt_history;
 mod registers;
 mod repeat;
 mod replace;
+mod replace_mode;
 mod scroll;
 mod search_mode;
 mod sent_ops;
@@ -75,6 +76,7 @@ pub struct Editor {
     insert_record: Vec<InsertEdit>,
     insert_moved: bool,
     insert_last_char: Option<char>,
+    replace_entries: Vec<replace_mode::ReplaceEntry>,
     block_insert: Option<visual_block::BlockInsertPlan>,
     viewport: Viewport,
     jumps: Jumps,
@@ -393,6 +395,10 @@ impl Editor {
                 self.arm_insert_repeat(false);
                 self.enter_insert();
             }
+            Action::EnterReplace => {
+                self.arm_insert_repeat(false);
+                self.enter_replace();
+            }
             Action::InsertAtLast => self.insert_at_last(),
             Action::InsertAtColumnStart => self.insert_at_column_start(),
             Action::ToggleChar => self.toggle_char(),
@@ -646,6 +652,7 @@ impl Editor {
             insert_record: Vec::new(),
             insert_moved: false,
             insert_last_char: None,
+            replace_entries: Vec::new(),
             block_insert: None,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),

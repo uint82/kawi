@@ -18,6 +18,14 @@ enum Redraw {
     Redraw,
 }
 
+fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
+    match mode {
+        kawi_editor::Mode::Insert => kawi_tui::CursorStyle::Bar,
+        kawi_editor::Mode::Replace => kawi_tui::CursorStyle::Underline,
+        _ => kawi_tui::CursorStyle::Block,
+    }
+}
+
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
@@ -190,7 +198,7 @@ impl App {
             search_status,
             search_spans,
             showcmd: self.showcmd_text(),
-            insert_mode: self.editor.mode().is_insert(),
+            cursor_style: cursor_style_for(self.editor.mode()),
             selection: self.frame_selection(),
             theme: &self.theme,
         }
@@ -243,8 +251,7 @@ impl App {
             row: self.editor.row(),
             col: self.editor.col(),
             virtcol: self.editor.virtcol(),
-            line_empty: self.editor.mode() != kawi_editor::Mode::Insert
-                && self.editor.cursor_line_empty(),
+            line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
         }
