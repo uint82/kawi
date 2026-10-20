@@ -156,17 +156,32 @@ impl App {
             .editor
             .gutter_lines(self.editor.view_top(), self.editor.view_height());
         let search_status = self.editor.search_status_text();
-        let search_spans = frame_search_spans(
-            &self
-                .editor
-                .search_spans(self.editor.view_top(), self.editor.view_height()),
-        );
+        let preview_active = self.editor.command_preview_active();
+        let search_spans = if preview_active {
+            Vec::new()
+        } else {
+            frame_search_spans(
+                &self
+                    .editor
+                    .search_spans(self.editor.view_top(), self.editor.view_height()),
+            )
+        };
+        let preview_spans = if preview_active {
+            frame_search_spans(
+                &self
+                    .editor
+                    .preview_spans(self.editor.view_top(), self.editor.view_height()),
+            )
+        } else {
+            Vec::new()
+        };
         let frame = self.build_frame(
             &status,
             &window,
             &gutter,
             search_status.as_deref(),
             &search_spans,
+            &preview_spans,
         );
         render::draw(out, &frame)
     }
@@ -178,6 +193,7 @@ impl App {
         gutter: &'a [String],
         search_status: Option<&'a str>,
         search_spans: &'a [SearchSpan],
+        preview_spans: &'a [SearchSpan],
     ) -> Frame<'a> {
         Frame {
             lines: window,
@@ -197,6 +213,7 @@ impl App {
             search_delimiter: self.editor.search_prompt_delimiter(),
             search_status,
             search_spans,
+            preview_spans,
             showcmd: self.showcmd_text(),
             cursor_style: cursor_style_for(self.editor.mode()),
             selection: self.frame_selection(),
@@ -560,6 +577,19 @@ impl App {
             Command::SetIgnoreCase(value) => self.switch_ignorecase(value),
             Command::SetSmartCase(value) => self.switch_smartcase(value),
             Command::SetAutoIndent(value) => self.switch_autoindent(value),
+            Command::Substitute(command) => match self.editor.substitute_command(&command) {
+                Ok(message) => {
+                    if let Some(message) = message {
+                        self.show_message(message);
+                    }
+                    self.reveal_cursor();
+                    Ok(false)
+                }
+                Err(message) => {
+                    self.show_message(message);
+                    Ok(false)
+                }
+            },
             Command::SetError(message) => {
                 self.show_message(message);
                 Ok(false)
@@ -1714,6 +1744,37 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 5));
+    }
+
+    #[test]
+    fn substitute_command_edits_and_reports() {
+        let mut app = App::new(Buffer::from_string("foo foo foo\n"), Flavor::Vim);
+        type_command(&mut app, "s/foo/X/g");
+        assert_eq!(app.last_message(), Some("3 substitutions on 1 line"));
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["X X X"]);
+        assert_eq!(app.editor_mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn substitute_command_reports_missing_pattern() {
+        let mut app = App::new(Buffer::from_string("abc\n"), Flavor::Vim);
+        type_command(&mut app, "s/zzz/X/");
+        assert_eq!(app.last_message(), Some("E486: Pattern not found: zzz"));
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["abc"]);
+    }
+
+    #[test]
+    fn substitute_command_uses_visual_range() {
+        let mut app = App::new(Buffer::from_string("foo\nfoo\nfoo\n"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('j'))).expect("extend");
+        app.handle_key(key(KeyCode::Char(':'))).expect("command");
+        assert_eq!(app.editor_mode(), Mode::Command);
+        for ch in "s/foo/X/g".chars() {
+            app.handle_key(key(KeyCode::Char(ch))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("run");
+        assert_eq!(app.editor.visible_lines(0, 3), vec!["X", "X", "foo"]);
     }
 
     fn type_command(app: &mut App, text: &str) {

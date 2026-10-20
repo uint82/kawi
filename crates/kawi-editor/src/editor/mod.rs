@@ -29,6 +29,7 @@ mod match_ops;
 mod motions;
 mod operators;
 mod paste;
+mod preview;
 mod prompt_history;
 mod registers;
 mod repeat;
@@ -39,6 +40,7 @@ mod search_mode;
 mod sent_ops;
 mod session;
 mod shift_ops;
+mod substitute;
 mod tab;
 mod visual_block;
 mod word_search;
@@ -65,6 +67,10 @@ pub struct Editor {
     last_change: Option<repeat::RepeatChange>,
     undone_change: Option<repeat::RepeatChange>,
     file_indent: indent::IndentConfig,
+    substitute_pattern: String,
+    substitute_replacement: String,
+    substitute_settings: substitute::SubstituteSettings,
+    command_preview: Option<preview::CommandPreview>,
     shiftwidth_override: Option<usize>,
     expandtab_override: Option<bool>,
     registers: crate::registers::Registers,
@@ -515,6 +521,11 @@ impl Editor {
                 self.insert_run_active = false;
             }
         }
+        if self.mode == Mode::Command {
+            self.refresh_command_preview();
+        } else {
+            self.clear_command_preview();
+        }
         self.change_origin_override = None;
     }
 
@@ -677,6 +688,10 @@ impl Editor {
             last_change: None,
             undone_change: None,
             file_indent,
+            substitute_pattern: String::new(),
+            substitute_replacement: String::new(),
+            substitute_settings: substitute::SubstituteSettings::default(),
+            command_preview: None,
             shiftwidth_override: None,
             expandtab_override: None,
             registers: crate::registers::Registers::new(),
@@ -880,7 +895,17 @@ impl Editor {
     }
 
     pub fn visible_lines(&self, top: usize, height: usize) -> Vec<String> {
-        self.buffer.window_lines(top, height)
+        let mut lines = self.buffer.window_lines(top, height);
+        if let Some(preview) = self.command_preview.as_ref() {
+            for (row, text) in &preview.lines {
+                if *row >= top && *row < top.saturating_add(height) {
+                    if let Some(line) = lines.get_mut(row - top) {
+                        *line = text.clone();
+                    }
+                }
+            }
+        }
+        lines
     }
 }
 

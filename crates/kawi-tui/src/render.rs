@@ -100,6 +100,7 @@ pub enum Tint {
     Selection,
     SearchMatch,
     SearchCurrent,
+    Substitute,
 }
 
 pub fn highlight_spans(
@@ -285,17 +286,39 @@ pub fn search_highlight_spans(
     top: usize,
     viewport: &Viewport,
 ) -> Vec<HighlightSpan> {
+    span_highlights(spans, window, top, viewport, |span| {
+        search_tint(span.current)
+    })
+}
+
+fn preview_highlight_spans(
+    spans: &[SearchSpan],
+    window: &[String],
+    top: usize,
+    viewport: &Viewport,
+) -> Vec<HighlightSpan> {
+    span_highlights(spans, window, top, viewport, |_| Tint::Substitute)
+}
+
+fn span_highlights(
+    spans: &[SearchSpan],
+    window: &[String],
+    top: usize,
+    viewport: &Viewport,
+    tint: impl Fn(&SearchSpan) -> Tint,
+) -> Vec<HighlightSpan> {
     spans
         .iter()
-        .filter_map(|span| search_segment(span, window, top, viewport))
+        .filter_map(|span| span_segment(span, window, top, viewport, tint(span)))
         .collect()
 }
 
-fn search_segment(
+fn span_segment(
     span: &SearchSpan,
     window: &[String],
     top: usize,
     viewport: &Viewport,
+    tint: Tint,
 ) -> Option<HighlightSpan> {
     if span.row < top {
         return None;
@@ -315,7 +338,7 @@ fn search_segment(
         screen_row,
         from,
         text: slice_cols(text, from, to),
-        tint: search_tint(span.current),
+        tint,
     })
 }
 
@@ -330,6 +353,14 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> 
     let gutter_width = gutter_width(frame);
     for span in search_highlight_spans(
         frame.search_spans,
+        frame.lines,
+        frame.viewport.top(),
+        frame.viewport,
+    ) {
+        paint_span(out, &span, gutter_width, theme)?;
+    }
+    for span in preview_highlight_spans(
+        frame.preview_spans,
         frame.lines,
         frame.viewport.top(),
         frame.viewport,
@@ -364,6 +395,7 @@ fn paint_span(
         Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
         Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
+        Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme),
     }
 }
 
@@ -1068,6 +1100,21 @@ mod tests {
         let painted = search_highlight_spans(&spans, &lines, 0, &viewport());
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].screen_row, 0);
+    }
+
+    #[test]
+    fn preview_spans_use_substitute_tint() {
+        let lines = lines_of("orange");
+        let spans = vec![SearchSpan {
+            row: 0,
+            start: 0,
+            end: 6,
+            current: true,
+        }];
+        let painted = preview_highlight_spans(&spans, &lines, 0, &viewport());
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].tint, Tint::Substitute);
+        assert_eq!(painted[0].text, "orange");
     }
 
     #[test]

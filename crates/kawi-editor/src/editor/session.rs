@@ -61,10 +61,25 @@ impl Editor {
     }
 
     pub(super) fn enter_command(&mut self) {
+        let visual = self.mode.is_visual();
+        if visual {
+            let start = self
+                .selection
+                .map(|selection| selection.start())
+                .unwrap_or((self.cursor.row(), self.cursor.col()));
+            self.snapshot_visual();
+            self.exit_visual();
+            self.cursor.set_position(start.0, start.1);
+        }
         self.mode = Mode::Command;
         self.command.clear();
         self.command_history.reset_browse();
         self.completion = None;
+        if visual {
+            for ch in "'<,'>".chars() {
+                self.command.push(ch);
+            }
+        }
     }
 
     pub(super) fn enter_insert(&mut self) {

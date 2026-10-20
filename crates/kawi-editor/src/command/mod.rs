@@ -28,6 +28,7 @@ pub enum Command {
     SetSmartCase(bool),
     SetAutoIndent(bool),
     SetError(String),
+    Substitute(SubstituteCommand),
     Unknown,
 }
 
@@ -54,7 +55,9 @@ pub const COMMAND_NAMES: &[&str] = &[
     "quit!",
     "quitall",
     "quitall!",
+    "s",
     "set",
+    "substitute",
     "w",
     "w!",
     "wall",
@@ -80,6 +83,21 @@ pub const SET_OPTION_NAMES: &[&str] = &[
 ];
 
 pub fn parse(text: &str) -> Command {
+    let named = parse_named(text);
+    if named != Command::Unknown {
+        return named;
+    }
+    if text.trim_start().starts_with("se") {
+        return Command::Unknown;
+    }
+    match substitute::parse(text) {
+        Some(Ok(command)) => Command::Substitute(command),
+        Some(Err(message)) => Command::SetError(message),
+        None => Command::Unknown,
+    }
+}
+
+fn parse_named(text: &str) -> Command {
     let words: Vec<&str> = text.split_whitespace().collect();
     let Some((command, rest)) = words.split_first() else {
         return Command::Unknown;
@@ -276,6 +294,14 @@ impl Default for CommandLine {
         Self::new()
     }
 }
+
+mod substitute;
+
+pub(crate) use substitute::parse_preview;
+pub use substitute::{
+    SubstituteAddress, SubstituteCommand, SubstituteFlag, SubstituteFlags, SubstituteForm,
+    SubstituteRange,
+};
 
 #[cfg(test)]
 mod tests {

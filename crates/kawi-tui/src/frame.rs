@@ -17,6 +17,7 @@ pub struct Frame<'a> {
     pub search_delimiter: char,
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
+    pub preview_spans: &'a [SearchSpan],
     pub showcmd: Option<String>,
     pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
