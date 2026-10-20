@@ -83,6 +83,40 @@ impl Editor {
         }
     }
 
+    pub(super) fn scroll_line_up(&mut self) {
+        self.scroll_line_by(-1);
+    }
+
+    pub(super) fn scroll_line_down(&mut self) {
+        self.scroll_line_by(1);
+    }
+
+    fn scroll_line_by(&mut self, direction: isize) {
+        self.track_insert_move();
+        let count = self.take_count() as isize;
+        let delta = direction.saturating_mul(count);
+        let top = self
+            .viewport
+            .top()
+            .saturating_add_signed(delta)
+            .min(self.last_row());
+        self.viewport.place_top(top, self.buffer.line_count());
+        self.clamp_row_to_view();
+    }
+
+    fn clamp_row_to_view(&mut self) {
+        let top = self.viewport.top();
+        let bottom = top
+            .saturating_add(self.view_height().saturating_sub(1))
+            .min(self.last_row());
+        let row = self.cursor.row();
+        if row < top {
+            self.keep_column_to(top);
+        } else if row > bottom {
+            self.keep_column_to(bottom);
+        }
+    }
+
     pub(super) fn scroll_half_up(&mut self) {
         self.scroll_half(false);
     }
@@ -293,6 +327,114 @@ mod tests {
         for digit in digits {
             e.apply(Action::PushCount(*digit));
         }
+    }
+
+    fn wide_lines() -> Editor {
+        let text = (0..40)
+            .map(|i| format!("{i:02} abcdefghijklmnopqrstuvwxyz"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.set_view_size(80, 20);
+        e
+    }
+
+    #[test]
+    fn line_down_moves_top_and_cursor_at_top() {
+        let mut e = wide_lines();
+        e.apply(Action::ScrollLineDown);
+        assert_eq!(e.view_top(), 1);
+        assert_eq!(e.cursor.row(), 1);
+    }
+
+    #[test]
+    fn line_down_keeps_visible_cursor() {
+        let mut e = wide_lines();
+        for _ in 0..10 {
+            e.apply(Action::MoveDown);
+        }
+        e.apply(Action::ScrollLineDown);
+        assert_eq!(e.view_top(), 1);
+        assert_eq!(e.cursor.row(), 10);
+    }
+
+    #[test]
+    fn line_down_honors_count() {
+        let mut e = wide_lines();
+        push_digits(&mut e, &[3]);
+        e.apply(Action::ScrollLineDown);
+        assert_eq!(e.view_top(), 3);
+        assert_eq!(e.cursor.row(), 3);
+    }
+
+    #[test]
+    fn line_down_over_scrolls_to_last_line() {
+        let mut e = wide_lines();
+        push_digits(&mut e, &[9, 9]);
+        e.apply(Action::ScrollLineDown);
+        assert_eq!(e.view_top(), 39);
+        assert_eq!(e.cursor.row(), 39);
+    }
+
+    #[test]
+    fn line_down_stops_at_last_line() {
+        let mut e = wide_lines();
+        e.apply(Action::GotoLastLine);
+        let top = e.view_top();
+        e.apply(Action::ScrollLineDown);
+        assert_eq!(e.view_top(), top.saturating_add(1));
+        assert_eq!(e.cursor.row(), 39);
+    }
+
+    #[test]
+    fn line_up_moves_top_and_keeps_visible_cursor() {
+        let mut e = wide_lines();
+        place_top(&mut e, 10);
+        e.apply(Action::JumpTo(15, 0));
+        place_top(&mut e, 10);
+        e.apply(Action::ScrollLineUp);
+        assert_eq!(e.view_top(), 9);
+        assert_eq!(e.cursor.row(), 15);
+    }
+
+    #[test]
+    fn line_up_pulls_cursor_into_view() {
+        let mut e = wide_lines();
+        place_top(&mut e, 5);
+        e.apply(Action::JumpTo(24, 0));
+        let top = e.view_top();
+        e.apply(Action::ScrollLineUp);
+        assert_eq!(e.view_top(), top.saturating_sub(1));
+        assert_eq!(e.cursor.row(), top.saturating_add(18));
+    }
+
+    #[test]
+    fn line_up_restores_desired_column() {
+        let text = (0..30)
+            .map(|i| {
+                if i == 23 {
+                    "ab".to_string()
+                } else {
+                    format!("{i:02} abcdefghijklmnopqrstuvwxyz")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut e = editor_with(&text);
+        e.set_view_size(80, 20);
+        e.apply(Action::JumpTo(25, 5));
+        place_top(&mut e, 5);
+        e.apply(Action::ScrollLineUp);
+        assert_eq!(e.cursor.row(), 23);
+        assert_eq!(e.cursor.col(), 1);
+    }
+
+    #[test]
+    fn line_up_stops_at_first_line() {
+        let mut e = wide_lines();
+        e.apply(Action::ScrollLineUp);
+        assert_eq!(e.view_top(), 0);
+        assert_eq!(e.cursor.row(), 0);
     }
 
     #[test]

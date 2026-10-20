@@ -47,6 +47,8 @@ fn scroll_action(key: KeyEvent) -> Option<Action> {
         return None;
     }
     match key.code {
+        KeyCode::Char('e') | KeyCode::Char('E') => Some(Action::ScrollLineDown),
+        KeyCode::Char('y') | KeyCode::Char('Y') => Some(Action::ScrollLineUp),
         KeyCode::Char('u') | KeyCode::Char('U') => Some(Action::ScrollHalfUp),
         KeyCode::Char('d') | KeyCode::Char('D') => Some(Action::ScrollHalfDown),
         KeyCode::Char('f') | KeyCode::Char('F') => Some(Action::ScrollPageDown),
@@ -348,8 +350,9 @@ impl VimKeymap {
             return action;
         }
         if let Some(action) = scroll_action(key) {
+            let cancelled = trailing_operator(&self.pending).is_some();
             self.clear_pending();
-            return action;
+            return if cancelled { Action::Noop } else { action };
         }
         if !self.pending.is_empty() {
             return self.resolve_pending(key);
@@ -4828,6 +4831,8 @@ mod tests {
     #[test]
     fn ctrl_scroll_keys_resolve() {
         for (key, action) in [
+            ('e', Action::ScrollLineDown),
+            ('y', Action::ScrollLineUp),
             ('u', Action::ScrollHalfUp),
             ('d', Action::ScrollHalfDown),
             ('f', Action::ScrollPageDown),
@@ -4840,6 +4845,34 @@ mod tests {
             assert_eq!(map.map(ctrl(KeyCode::Char(key)), Mode::Visual), action);
             assert_eq!(map.pending_text(), None);
         }
+    }
+
+    #[test]
+    fn ctrl_scroll_cancels_pending_operator() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('e')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('2')), Mode::Normal),
+            Action::PushCount(2)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('y')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]

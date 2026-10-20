@@ -149,6 +149,8 @@ impl Editor {
             Action::MoveRight => self.move_right(),
             Action::MoveToLineStart => self.move_to_line_start(),
             Action::MoveToFirstNonBlank => self.move_to_first_non_blank(),
+            Action::ScrollLineUp => self.scroll_line_up(),
+            Action::ScrollLineDown => self.scroll_line_down(),
             Action::ScrollHalfUp => self.scroll_half_up(),
             Action::ScrollHalfDown => self.scroll_half_down(),
             Action::ScrollPageUp => self.scroll_page_up(),
@@ -940,6 +942,8 @@ fn is_tracking(action: Action) -> bool {
             | Action::MoveRight
             | Action::MoveToLineStart
             | Action::MoveToFirstNonBlank
+            | Action::ScrollLineUp
+            | Action::ScrollLineDown
             | Action::ScrollHalfUp
             | Action::ScrollHalfDown
             | Action::ScrollPageUp

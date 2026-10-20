@@ -6,6 +6,8 @@ pub enum Action {
     MoveRight,
     MoveToLineStart,
     MoveToFirstNonBlank,
+    ScrollLineUp,
+    ScrollLineDown,
     ScrollHalfUp,
     ScrollHalfDown,
     ScrollPageUp,
@@ -303,6 +305,8 @@ impl Action {
             self,
             Self::MoveUp
                 | Self::MoveDown
+                | Self::ScrollLineUp
+                | Self::ScrollLineDown
                 | Self::ScrollHalfUp
                 | Self::ScrollHalfDown
                 | Self::ScrollPageUp
