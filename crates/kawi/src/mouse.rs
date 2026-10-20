@@ -1,5 +1,6 @@
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 pub const WHEEL_LINES: isize = 3;
+pub const WHEEL_COLUMNS: isize = 6;
 
 pub fn press_position(event: &MouseEvent, view: (usize, usize)) -> Option<(usize, usize)> {
     if !is_left_press(event.kind) {
@@ -19,6 +20,14 @@ pub fn wheel_delta(event: &MouseEvent) -> Option<isize> {
     match event.kind {
         MouseEventKind::ScrollUp => Some(-WHEEL_LINES),
         MouseEventKind::ScrollDown => Some(WHEEL_LINES),
+        _ => None,
+    }
+}
+
+pub fn horizontal_wheel_delta(event: &MouseEvent) -> Option<isize> {
+    match event.kind {
+        MouseEventKind::ScrollLeft => Some(-WHEEL_COLUMNS),
+        MouseEventKind::ScrollRight => Some(WHEEL_COLUMNS),
         _ => None,
     }
 }
@@ -145,6 +154,39 @@ mod tests {
             modifiers: crossterm::event::KeyModifiers::NONE,
         };
         assert_eq!(wheel_delta(&event), Some(WHEEL_LINES));
+    }
+
+    #[test]
+    fn wheel_left_is_negative() {
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollLeft,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(horizontal_wheel_delta(&event), Some(-WHEEL_COLUMNS));
+    }
+
+    #[test]
+    fn wheel_right_is_positive() {
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(horizontal_wheel_delta(&event), Some(WHEEL_COLUMNS));
+    }
+
+    #[test]
+    fn vertical_wheel_is_not_horizontal() {
+        let event = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(horizontal_wheel_delta(&event), None);
     }
 
     #[test]

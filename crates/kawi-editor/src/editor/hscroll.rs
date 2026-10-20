@@ -56,6 +56,69 @@ impl Editor {
         self.take_count().saturating_mul(self.viewport.width() / 2)
     }
 
+    pub fn scroll_wheel_horizontal(&mut self, delta: isize, page: bool) {
+        if delta == 0 {
+            return;
+        }
+        let columns = if page {
+            self.viewport.width()
+        } else {
+            delta.unsigned_abs()
+        };
+        let leftcol = if delta < 0 {
+            self.viewport.leftcol().saturating_sub(columns)
+        } else {
+            self.viewport.leftcol().saturating_add(columns)
+        };
+        self.move_cursor_to_longest_visible_line(leftcol);
+        self.set_view_leftcol(leftcol);
+    }
+
+    fn move_cursor_to_longest_visible_line(&mut self, leftcol: usize) {
+        let cursor_row = self.cursor.row();
+        if leftcol <= self.scroll_line_len(cursor_row) {
+            return;
+        }
+        let Some(row) = self.longest_visible_line() else {
+            return;
+        };
+        self.cursor.set_position(row, 0);
+    }
+
+    fn scroll_line_len(&self, row: usize) -> usize {
+        let len = self.buffer.line_len(row);
+        if len == 0 {
+            return 0;
+        }
+        let tabstop = self.effective_indent().tabstop;
+        self.buffer.screen_col(row, len - 1, tabstop)
+    }
+
+    fn longest_visible_line(&self) -> Option<usize> {
+        let cursor_row = self.cursor.row();
+        let top = self.viewport.top();
+        let end = self.viewport.visible_end().min(self.buffer.line_count());
+        if cursor_row < top || cursor_row >= end {
+            return None;
+        }
+        let mut best = None;
+        let mut width = 0;
+        for row in top..end {
+            let len = self.scroll_line_len(row);
+            if len > width {
+                width = len;
+                best = Some(row);
+            } else if len == width {
+                if let Some(current) = best {
+                    if row.abs_diff(cursor_row) < current.abs_diff(cursor_row) {
+                        best = Some(row);
+                    }
+                }
+            }
+        }
+        best
+    }
+
     pub(super) fn scroll_cursor_start(&mut self) {
         let (start, _, _) = self.cursor_horizontal_span();
         self.viewport.set_leftcol(start);
@@ -333,6 +396,49 @@ mod tests {
         editor.apply(Action::ScrollRight);
         assert_eq!(left(&editor), 1);
         assert_eq!(editor.col(), 1);
+    }
+
+    #[test]
+    fn wheel_right_scrolls_six_columns() {
+        let mut editor = view(LONG);
+        editor.scroll_wheel_horizontal(6, false);
+        assert_eq!(left(&editor), 6);
+        assert_eq!(editor.col(), 6);
+    }
+
+    #[test]
+    fn wheel_left_at_left_edge_stays() {
+        let mut editor = view(LONG);
+        editor.scroll_wheel_horizontal(-6, false);
+        assert_eq!(left(&editor), 0);
+        assert_eq!(editor.col(), 0);
+    }
+
+    #[test]
+    fn wheel_page_uses_window_width() {
+        let mut editor = view(LONG);
+        editor.set_number(true);
+        editor.scroll_wheel_horizontal(6, true);
+        assert_eq!(left(&editor), 20);
+        assert_eq!(editor.col(), 20);
+    }
+
+    #[test]
+    fn wheel_jumps_to_longest_visible_line() {
+        let mut editor =
+            view("abc\n012345678901234567890123456789012345678901234567890123456789\nxyz\n");
+        editor.scroll_wheel_horizontal(6, false);
+        assert_eq!(editor.row(), 1);
+        assert_eq!(left(&editor), 6);
+        assert_eq!(editor.col(), 6);
+    }
+
+    #[test]
+    fn wheel_treats_tab_at_line_end_as_short() {
+        let mut editor = view("\t\n012345678901234567890123456789012345678901234567890123456789\n");
+        editor.scroll_wheel_horizontal(6, false);
+        assert_eq!(editor.row(), 1);
+        assert_eq!(left(&editor), 6);
     }
 
     #[test]

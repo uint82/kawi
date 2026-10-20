@@ -27,7 +27,7 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
 }
 
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
-use crate::mouse::{drag_position, press_position, wheel_delta};
+use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
 use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
 use kawi_tui::{
@@ -304,6 +304,12 @@ impl App {
         if let Some(delta) = wheel_delta(&mouse) {
             return self.scroll_by(delta);
         }
+        if let Some(delta) = horizontal_wheel_delta(&mouse) {
+            let page = mouse
+                .modifiers
+                .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+            return self.scroll_horizontally(delta, page);
+        }
         self.handle_noop()
     }
 
@@ -329,6 +335,11 @@ impl App {
 
     fn scroll_by(&mut self, delta: isize) -> Result<bool> {
         self.editor.scroll_wheel(delta);
+        Ok(false)
+    }
+
+    fn scroll_horizontally(&mut self, delta: isize, page: bool) -> Result<bool> {
+        self.editor.scroll_wheel_horizontal(delta, page);
         Ok(false)
     }
 
@@ -1031,6 +1042,24 @@ mod tests {
         }
     }
 
+    fn wheel_right() -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn wheel_right_page() -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::SHIFT,
+        }
+    }
+
     #[test]
     fn drag_selects_from_press_point() {
         let mut app = App::new(Buffer::from_string("abcdef\nghijkl"), Flavor::Vim);
@@ -1512,6 +1541,22 @@ mod tests {
         app.handle_mouse(wheel_down()).expect("wheel");
         assert_eq!(app.viewport_top(), 3);
         assert_eq!(app.cursor_position(), (3, 0));
+    }
+
+    #[test]
+    fn wheel_right_scrolls_horizontally() {
+        let mut app = App::new(Buffer::from_string(&"0123456789".repeat(8)), Flavor::Vim);
+        app.handle_mouse(wheel_right()).expect("wheel");
+        assert_eq!(app.editor.view_leftcol(), 6);
+        assert_eq!(app.cursor_position(), (0, 6));
+    }
+
+    #[test]
+    fn wheel_right_page_uses_window_width() {
+        let mut app = App::new(Buffer::from_string(&"0123456789".repeat(8)), Flavor::Vim);
+        app.handle_mouse(wheel_right_page()).expect("wheel");
+        assert!(app.editor.view_leftcol() > 6);
+        assert_eq!(app.cursor_position(), (0, app.editor.view_leftcol()));
     }
 
     #[test]
