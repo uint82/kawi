@@ -1358,6 +1358,22 @@ mod tests {
     }
 
     #[test]
+    fn changelist_walk_moves_through_changes() {
+        let mut app = App::new(Buffer::from_string("aaa\nbbb\nccc\n"), Flavor::Vim);
+        for k in ["x", "j", "x", "j", "x"] {
+            app.handle_key(key(KeyCode::Char(k.chars().next().unwrap())))
+                .expect("edit");
+        }
+        let mut positions = Vec::new();
+        for _ in 0..3 {
+            app.handle_key(key(KeyCode::Char('g'))).expect("g");
+            app.handle_key(key(KeyCode::Char(';'))).expect("semicolon");
+            positions.push(app.cursor_position());
+        }
+        assert_eq!(positions, vec![(2, 0), (1, 0), (0, 0)]);
+    }
+
+    #[test]
     fn status_reports_empty_line_position() {
         let mut app = App::new(Buffer::from_string("ab\n\ncd"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('j'))).expect("down");

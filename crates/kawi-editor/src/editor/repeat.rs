@@ -4,6 +4,10 @@ use crate::actions::Action;
 use crate::editor::case_ops::{lower_case, swap_case, upper_case};
 use crate::mode::Mode;
 
+pub(super) fn register_can_paste(register: &crate::register::Register) -> bool {
+    register.kind() == crate::register::RegisterKind::LineWise || !register.is_empty()
+}
+
 pub(super) fn is_insert_entry(action: Action) -> bool {
     matches!(
         action,
@@ -62,6 +66,11 @@ pub(super) enum RepeatChange {
     Paste {
         text: String,
     },
+    RegisterPaste {
+        register: Option<char>,
+        before: bool,
+        advance: bool,
+    },
 }
 
 impl Editor {
@@ -89,7 +98,24 @@ impl Editor {
                 record,
             } => self.repeat_visual(action, count, mode, register, (anchor, head), &record),
             RepeatChange::Paste { text } => self.repeat_paste(&text),
+            RepeatChange::RegisterPaste {
+                register,
+                before,
+                advance,
+            } => self.repeat_register_paste(register, before, advance),
         }
+    }
+
+    fn repeat_register_paste(&mut self, register: Option<char>, before: bool, advance: bool) {
+        let Some(register) = self.read_register(register) else {
+            return;
+        };
+        if !register_can_paste(&register) {
+            return;
+        }
+        let count = self.take_count();
+        self.record_boundary();
+        self.put_register(&register, count, before, advance);
     }
 
     fn repeat_edit(

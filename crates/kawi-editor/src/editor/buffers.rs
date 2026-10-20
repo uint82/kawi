@@ -89,6 +89,8 @@ struct ParkedState {
     insert_moved: bool,
     insert_last_char: Option<char>,
     search_status: Option<SearchStatus>,
+    change_list: Vec<(usize, usize)>,
+    change_index: usize,
 }
 
 impl Buffers {
@@ -645,6 +647,8 @@ impl Editor {
             insert_moved: std::mem::take(&mut self.insert_moved),
             insert_last_char: self.insert_last_char.take(),
             search_status: self.search_status.take(),
+            change_list: std::mem::take(&mut self.change_list),
+            change_index: std::mem::take(&mut self.change_index),
         }
     }
 
@@ -663,6 +667,8 @@ impl Editor {
         self.insert_moved = state.insert_moved;
         self.insert_last_char = state.insert_last_char;
         self.search_status = state.search_status;
+        self.change_list = state.change_list;
+        self.change_index = state.change_index;
         self.reset_transient();
     }
 
@@ -679,6 +685,8 @@ impl Editor {
         self.insert_moved = false;
         self.insert_last_char = None;
         self.search_status = None;
+        self.change_list.clear();
+        self.change_index = 0;
         self.buffers.current_listed = true;
         self.reset_transient();
         self.remember_wanted_column();
@@ -695,6 +703,10 @@ impl Editor {
         self.clear_count();
         self.search_origin = None;
         self.pending_autoindent = None;
+        self.change_origin_override = None;
+        self.insert_session_origin = None;
+        self.insert_run_origin = None;
+        self.insert_run_active = false;
         self.command.clear();
     }
 }

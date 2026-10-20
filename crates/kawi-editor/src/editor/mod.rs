@@ -14,7 +14,9 @@ mod addsub;
 mod autoindent;
 mod buffers;
 mod case_ops;
+mod changes;
 mod cmd_complete;
+mod copy_char;
 mod gutter;
 mod indent;
 mod insert_erase;
@@ -82,6 +84,12 @@ pub struct Editor {
     viewport: Viewport,
     jumps: Jumps,
     marks: Marks,
+    change_list: Vec<(usize, usize)>,
+    change_index: usize,
+    insert_session_origin: Option<(usize, usize)>,
+    insert_run_origin: Option<(usize, usize)>,
+    insert_run_active: bool,
+    change_origin_override: Option<(usize, usize)>,
     clipboard_unnamed: bool,
     scroll_amount: Option<usize>,
     number: bool,
@@ -145,6 +153,8 @@ impl Editor {
         let was_normal = self.mode == Mode::Normal;
         let revision = self.buffer.revision();
         let change_count = self.peek_count();
+        self.change_origin_override = None;
+        let change_origin = self.change_origin();
         match action {
             Action::MoveUp => self.move_up(),
             Action::MoveDown => self.move_down(),
@@ -183,6 +193,8 @@ impl Editor {
             Action::JumpNewer => {
                 let _ = self.jump_newer();
             }
+            Action::OlderChange => self.older_change(),
+            Action::NewerChange => self.newer_change(),
             Action::EditAlternate => self.buffer_alternate(),
             Action::InsertRegister(name) => self.insert_register(name),
             Action::SelectRegister(_) => self.noop(),
@@ -234,6 +246,8 @@ impl Editor {
             Action::InsertTab => self.insert_tab(),
             Action::InsertShiftRight => self.insert_shift_right(),
             Action::InsertShiftLeft => self.insert_shift_left(),
+            Action::InsertCopyBelow => self.insert_copy_below(),
+            Action::InsertCopyAbove => self.insert_copy_above(),
             Action::DeleteBackward => self.delete_backward(),
             Action::DeleteForward => self.delete_forward(),
             Action::DeleteLine => self.delete_line(),
@@ -389,6 +403,8 @@ impl Editor {
             Action::ChangeToEnd => self.change_to_end(),
             Action::PasteAfter => self.paste_after(),
             Action::PasteBefore => self.paste_before(),
+            Action::PasteAfterAdvance => self.paste_after_advance(),
+            Action::PasteBeforeAdvance => self.paste_before_advance(),
             Action::Undo => {
                 self.undo();
             }
@@ -468,12 +484,16 @@ impl Editor {
         self.apply_line_adjustments();
         self.refresh_wanted_column(action);
         self.reveal_cursor();
+        let buffer_changed = self.buffer.revision() != revision;
+        if was_insert && Self::breaks_insert_run(action) {
+            self.insert_run_active = false;
+        }
         if was_normal
             && !matches!(
                 action,
                 Action::Undo | Action::Redo | Action::RepeatLastChange
             )
-            && self.buffer.revision() != revision
+            && buffer_changed
         {
             self.record_change(repeat::RepeatChange::Edit {
                 action,
@@ -482,6 +502,20 @@ impl Editor {
                 record: Vec::new(),
             });
         }
+        if buffer_changed && !matches!(action, Action::Undo | Action::Redo) {
+            let insert_entry =
+                !was_insert && repeat::is_insert_entry(action) && self.mode.is_insert();
+            let change_origin = if was_insert && action == Action::DeleteBackward {
+                (change_origin.0, change_origin.1.saturating_sub(1))
+            } else {
+                change_origin
+            };
+            self.note_buffer_change(change_origin, was_insert, insert_entry);
+            if action == Action::InsertNewline {
+                self.insert_run_active = false;
+            }
+        }
+        self.change_origin_override = None;
     }
 
     pub fn byte_count(&self) -> usize {
@@ -662,6 +696,12 @@ impl Editor {
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
             jumps: Jumps::new(),
             marks: Marks::new(),
+            change_list: Vec::new(),
+            change_index: 0,
+            insert_session_origin: None,
+            insert_run_origin: None,
+            insert_run_active: false,
+            change_origin_override: None,
             clipboard_unnamed: true,
             scroll_amount: None,
             number: false,

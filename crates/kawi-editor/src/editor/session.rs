@@ -490,6 +490,9 @@ impl Editor {
         self.mode = Mode::Insert;
         self.insert_last_char = None;
         self.insert_start = Some((self.cursor.row(), self.cursor.col()));
+        self.insert_session_origin = None;
+        self.insert_run_origin = None;
+        self.insert_run_active = false;
     }
 
     pub(super) fn sync_head(&mut self) {

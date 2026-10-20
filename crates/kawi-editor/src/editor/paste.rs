@@ -23,6 +23,7 @@ impl Editor {
         let (row, col) = (self.cursor.row(), self.cursor.col());
         let target = col.saturating_add(1).min(self.buffer.line_len(row));
         let end = pasted_end(row, target, text);
+        self.change_origin_override = Some((row, col));
         self.buffer.paste_after(row, col, text);
         self.place_paste_cursor(end, text);
         self.record_change(RepeatChange::Paste {
