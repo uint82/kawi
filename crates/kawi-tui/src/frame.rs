@@ -33,7 +33,6 @@ pub enum Selection {
     Range {
         start: (usize, usize),
         end: (usize, usize),
-        linewise: bool,
     },
     Block {
         top: usize,
