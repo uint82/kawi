@@ -35,7 +35,7 @@ impl Editor {
                 row: *row,
                 start: *start,
                 end: *end,
-                current: true,
+                current: false,
             })
             .collect()
     }

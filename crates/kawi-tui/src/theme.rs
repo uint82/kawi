@@ -15,6 +15,7 @@ pub struct Theme {
     pub base: BaseColors,
     pub search_match: MatchColors,
     pub search_current: MatchColors,
+    pub substitute: MatchColors,
     pub selection: MatchColors,
     pub status: MatchColors,
     pub line_number: Color,
@@ -68,6 +69,18 @@ impl Theme {
                     r: 252,
                     g: 224,
                     b: 148,
+                },
+            },
+            substitute: MatchColors {
+                foreground: Color::Rgb {
+                    r: 224,
+                    g: 226,
+                    b: 234,
+                },
+                background: Color::Rgb {
+                    r: 107,
+                    g: 83,
+                    b: 0,
                 },
             },
             selection: MatchColors {
@@ -136,6 +149,18 @@ impl Theme {
                     r: 254,
                     g: 128,
                     b: 25,
+                },
+            },
+            substitute: MatchColors {
+                foreground: Color::Rgb {
+                    r: 40,
+                    g: 40,
+                    b: 40,
+                },
+                background: Color::Rgb {
+                    r: 250,
+                    g: 189,
+                    b: 47,
                 },
             },
             selection: MatchColors {
@@ -212,6 +237,18 @@ impl Theme {
                     r: 175,
                     g: 58,
                     b: 3,
+                },
+            },
+            substitute: MatchColors {
+                foreground: Color::Rgb {
+                    r: 251,
+                    g: 241,
+                    b: 199,
+                },
+                background: Color::Rgb {
+                    r: 181,
+                    g: 118,
+                    b: 20,
                 },
             },
             selection: MatchColors {
@@ -329,6 +366,15 @@ mod tests {
             theme.search_match.background,
             theme.search_current.background
         );
+    }
+
+    #[test]
+    fn substitute_matches_search_by_default() {
+        for name in Theme::names() {
+            let theme = Theme::named(name).expect("theme");
+            assert_eq!(theme.substitute.foreground, theme.search_match.foreground);
+            assert_eq!(theme.substitute.background, theme.search_match.background);
+        }
     }
 
     #[test]

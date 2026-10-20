@@ -156,20 +156,32 @@ impl App {
             .editor
             .gutter_lines(self.editor.view_top(), self.editor.view_height());
         let search_status = self.editor.search_status_text();
-        let spans = if self.editor.command_preview_active() {
-            self.editor
-                .preview_spans(self.editor.view_top(), self.editor.view_height())
+        let preview_active = self.editor.command_preview_active();
+        let search_spans = if preview_active {
+            Vec::new()
         } else {
-            self.editor
-                .search_spans(self.editor.view_top(), self.editor.view_height())
+            frame_search_spans(
+                &self
+                    .editor
+                    .search_spans(self.editor.view_top(), self.editor.view_height()),
+            )
         };
-        let search_spans = frame_search_spans(&spans);
+        let preview_spans = if preview_active {
+            frame_search_spans(
+                &self
+                    .editor
+                    .preview_spans(self.editor.view_top(), self.editor.view_height()),
+            )
+        } else {
+            Vec::new()
+        };
         let frame = self.build_frame(
             &status,
             &window,
             &gutter,
             search_status.as_deref(),
             &search_spans,
+            &preview_spans,
         );
         render::draw(out, &frame)
     }
@@ -181,6 +193,7 @@ impl App {
         gutter: &'a [String],
         search_status: Option<&'a str>,
         search_spans: &'a [SearchSpan],
+        preview_spans: &'a [SearchSpan],
     ) -> Frame<'a> {
         Frame {
             lines: window,
@@ -200,6 +213,7 @@ impl App {
             search_delimiter: self.editor.search_prompt_delimiter(),
             search_status,
             search_spans,
+            preview_spans,
             showcmd: self.showcmd_text(),
             cursor_style: cursor_style_for(self.editor.mode()),
             selection: self.frame_selection(),
