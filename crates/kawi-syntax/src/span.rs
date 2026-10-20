@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use ropey::Rope;
 
 use crate::group::SyntaxGroup;
@@ -29,5 +31,6 @@ pub struct SyntaxRequest {
 pub struct SyntaxResult {
     pub key: SyntaxKey,
     pub generation: u64,
+    pub window: Range<usize>,
     pub spans: Vec<SyntaxSpan>,
 }

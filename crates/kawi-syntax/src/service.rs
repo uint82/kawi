@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
@@ -138,29 +139,34 @@ impl Worker {
 
     fn highlight(&mut self, queued: Queued) -> SyntaxResult {
         let key = queued.request.key;
-        let spans = if queued.request.text.len_bytes() > MAX_FILE_BYTES {
-            Vec::new()
+        let (window, spans) = if queued.request.text.len_bytes() > MAX_FILE_BYTES {
+            (key.top..key.end, Vec::new())
         } else {
             self.spans(key, &queued.request)
         };
         SyntaxResult {
             key,
             generation: queued.generation,
+            window,
             spans,
         }
     }
 
-    fn spans(&mut self, key: SyntaxKey, request: &SyntaxRequest) -> Vec<SyntaxSpan> {
+    fn spans(
+        &mut self,
+        key: SyntaxKey,
+        request: &SyntaxRequest,
+    ) -> (Range<usize>, Vec<SyntaxSpan>) {
         self.prepare(key);
         let runtime = self
             .runtimes
             .entry(key.language)
             .or_insert_with(|| Runtime::new(key.language));
         let Some(runtime) = runtime.as_ref() else {
-            return Vec::new();
+            return (key.top..key.end, Vec::new());
         };
         let Some(document) = self.document.as_mut() else {
-            return Vec::new();
+            return (key.top..key.end, Vec::new());
         };
         document.update(request, runtime)
     }

@@ -3,7 +3,7 @@ use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
     style::SetForegroundColor,
-    terminal::{Clear, ClearType},
+    terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{Stdout, Write};
 
@@ -17,6 +17,13 @@ use kawi_syntax::{SyntaxGroup, SyntaxSpan};
 use crate::display;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
+    let contents = draw_contents(out, frame);
+    let finished = execute!(out, EndSynchronizedUpdate).context("end synchronized update");
+    contents.and(finished)
+}
+
+fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     draw_visible_lines(out, frame)?;
     draw_filler_rows(out, frame)?;

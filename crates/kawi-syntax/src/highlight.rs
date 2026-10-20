@@ -59,7 +59,11 @@ impl Document {
         }
     }
 
-    pub(crate) fn update(&mut self, request: &SyntaxRequest, runtime: &Runtime) -> Vec<SyntaxSpan> {
+    pub(crate) fn update(
+        &mut self,
+        request: &SyntaxRequest,
+        runtime: &Runtime,
+    ) -> (Range<usize>, Vec<SyntaxSpan>) {
         let large = request.text.len_bytes() > WINDOW_PARSE_BYTES;
         let revision_changed = request.key.revision != self.revision;
         if large {
@@ -76,7 +80,13 @@ impl Document {
         } else if self.tree.is_none() || revision_changed || self.large {
             self.reparse_full(request);
         }
-        self.spans(request, runtime)
+        let window = if self.large {
+            self.window_rows.clone()
+        } else {
+            window_bounds(&self.index, request.key.top, request.key.end)
+        };
+        let spans = self.spans(runtime, window.clone());
+        (window, spans)
     }
 
     fn refresh_text(&mut self, request: &SyntaxRequest) {
@@ -114,7 +124,9 @@ impl Document {
     }
 
     fn parse_window(&mut self, request: &SyntaxRequest) {
-        let (start, end) = window_bounds(&self.index, request.key.top, request.key.end);
+        let window = window_bounds(&self.index, request.key.top, request.key.end);
+        let start = window.start;
+        let end = window.end;
         let start_byte = self.index.line_start(start);
         let end_byte = if end < self.index.line_count() {
             self.index.line_start(end)
@@ -130,7 +142,7 @@ impl Document {
         let _ = self.parser.set_included_ranges(&[range]);
         self.tree = self.parser.parse(&self.text, None);
         self.large = true;
-        self.window_rows = start..end;
+        self.window_rows = window;
         self.revision = request.key.revision;
     }
 
@@ -138,11 +150,11 @@ impl Document {
         self.window_rows.start <= request.key.top && request.key.end <= self.window_rows.end
     }
 
-    fn spans(&self, request: &SyntaxRequest, runtime: &Runtime) -> Vec<SyntaxSpan> {
+    fn spans(&self, runtime: &Runtime, window: Range<usize>) -> Vec<SyntaxSpan> {
         let Some(tree) = self.tree.as_ref() else {
             return Vec::new();
         };
-        let rows = rows::visible_rows(&self.text, &self.index, request.key.top, request.key.end);
+        let rows = rows::visible_rows(&self.text, &self.index, window.start, window.end);
         if rows.is_empty() {
             return Vec::new();
         }
@@ -190,12 +202,12 @@ impl Document {
     }
 }
 
-fn window_bounds(index: &LineIndex, top: usize, end: usize) -> (usize, usize) {
+fn window_bounds(index: &LineIndex, top: usize, end: usize) -> Range<usize> {
     let start = top.saturating_sub(WINDOW_CONTEXT_LINES);
     let end = end
         .saturating_add(WINDOW_CONTEXT_LINES)
         .min(index.line_count());
-    (start, end)
+    start..end
 }
 
 fn refine_group(group: SyntaxGroup, kind: &str) -> SyntaxGroup {
@@ -302,7 +314,7 @@ mod tests {
     fn highlight(language: LanguageId, text: &str, top: usize, end: usize) -> Vec<SyntaxSpan> {
         let runtime = Runtime::new(language).expect("runtime");
         let mut document = Document::new(language);
-        document.update(&request(text, top, end, 1), &runtime)
+        document.update(&request(text, top, end, 1), &runtime).1
     }
 
     fn group_at(spans: &[SyntaxSpan], row: usize, column: usize) -> Option<SyntaxGroup> {
@@ -424,7 +436,7 @@ mod tests {
         let text = "fn main() {\n    /* first\n    second\n    third */\n    let x = 1;\n}\n";
         let spans = highlight(LanguageId::Rust, text, 2, 3);
         assert_eq!(group_at(&spans, 2, 4), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 1, 4), None);
+        assert_eq!(group_at(&spans, 1, 4), Some(SyntaxGroup::Comment));
     }
 
     #[test]
@@ -432,10 +444,10 @@ mod tests {
         let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
         let mut document = Document::new(LanguageId::Rust);
         let first = "fn main() {\n    let x = 1;\n}\n";
-        let spans = document.update(&request(first, 0, 3, 1), &runtime);
+        let spans = document.update(&request(first, 0, 3, 1), &runtime).1;
         assert_eq!(group_at(&spans, 1, 4), Some(SyntaxGroup::Keyword));
         let second = "/*\nfn main() {\n    let x = 1;\n}\n";
-        let spans = document.update(&request(second, 0, 4, 2), &runtime);
+        let spans = document.update(&request(second, 0, 4, 2), &runtime).1;
         assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Comment));
         assert_eq!(group_at(&spans, 2, 4), Some(SyntaxGroup::Comment));
     }
@@ -466,8 +478,9 @@ mod tests {
             key,
             text: Rope::from_str(&text),
         };
-        let spans = document.update(&first, &runtime);
+        let (window, spans) = document.update(&first, &runtime);
         assert!(document.large);
+        assert_eq!(window, 29_000..31_020);
         assert_eq!(document.window_rows, 29_000..31_020);
         assert_eq!(group_at(&spans, 30_000, 0), Some(SyntaxGroup::Comment));
 
@@ -479,7 +492,8 @@ mod tests {
             },
             text: Rope::from_str(&text),
         };
-        let spans = document.update(&second, &runtime);
+        let (window, spans) = document.update(&second, &runtime);
+        assert_eq!(window, 39_000..41_020);
         assert_eq!(document.window_rows, 39_000..41_020);
         assert_eq!(group_at(&spans, 40_000, 0), Some(SyntaxGroup::Comment));
     }
@@ -504,7 +518,7 @@ mod tests {
             &runtime,
         );
         let edited = text.replacen("# marker", "# changed", 1);
-        let spans = document.update(
+        let (_, spans) = document.update(
             &SyntaxRequest {
                 key: SyntaxKey { revision: 2, ..key },
                 text: Rope::from_str(&edited),
@@ -536,7 +550,7 @@ mod tests {
             &runtime,
         );
         let small = "def main():\n    return True\n";
-        let spans = document.update(
+        let (_, spans) = document.update(
             &SyntaxRequest {
                 key: SyntaxKey {
                     revision: 2,
@@ -617,7 +631,7 @@ mod parity_tests {
             text: ropey::Rope::from_str(text),
         };
         let mut document = Document::new(language);
-        let spans = document.update(&request, &runtime);
+        let spans = document.update(&request, &runtime).1;
         let rows = visible_rows(text, &LineIndex::new(text), 0, row_end);
         let ours = our_cells(text, &rows, &spans);
         let reference = reference_cells(text, &rows, &runtime.config, &recognized);

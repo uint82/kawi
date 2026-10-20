@@ -52,6 +52,7 @@ pub struct App {
     last_command: Option<String>,
     syntax: Option<SyntaxService>,
     syntax_spans: Vec<SyntaxSpan>,
+    syntax_window: std::ops::Range<usize>,
     syntax_key: Option<SyntaxKey>,
     syntax_pending: bool,
     syntax_latest: u64,
@@ -72,6 +73,7 @@ impl App {
             last_command: None,
             syntax: None,
             syntax_spans: Vec::new(),
+            syntax_window: 0..0,
             syntax_key: None,
             syntax_pending: false,
             syntax_latest: 0,
@@ -175,25 +177,47 @@ impl App {
     }
 
     fn refresh_syntax(&mut self) {
-        let key = self.editor.syntax_key();
-        if key != self.syntax_key {
-            let document_changed = key.map(|key| (key.document, key.language))
-                != self.syntax_key.map(|key| (key.document, key.language));
-            if document_changed {
+        let Some(key) = self.editor.syntax_key() else {
+            if self.syntax_key.is_some() {
                 self.syntax_spans.clear();
+                self.syntax_window = 0..0;
             }
-            self.syntax_key = key;
-            if key.is_some() {
-                if let Some(request) = self.editor.syntax_request() {
-                    let service = self.syntax.get_or_insert_with(SyntaxService::new);
-                    self.syntax_latest = service.submit(request);
-                    self.syntax_pending = true;
-                } else {
-                    self.syntax_pending = false;
-                }
-            } else {
-                self.syntax_pending = false;
-            }
+            self.syntax_key = None;
+            self.syntax_pending = false;
+            self.apply_syntax_results();
+            return;
+        };
+        let same_request = self.syntax_key.is_some_and(|submitted| {
+            submitted.document == key.document
+                && submitted.revision == key.revision
+                && submitted.language == key.language
+                && submitted.top == key.top
+                && submitted.end == key.end
+        });
+        let same_document = self.syntax_key.is_some_and(|submitted| {
+            submitted.document == key.document
+                && submitted.revision == key.revision
+                && submitted.language == key.language
+        });
+        let covered = self.syntax_window.start <= key.top && key.end <= self.syntax_window.end;
+        if (self.syntax_pending && same_request) || (same_document && covered) {
+            self.apply_syntax_results();
+            return;
+        }
+        let document_changed = self.syntax_key.is_none_or(|submitted| {
+            submitted.document != key.document || submitted.language != key.language
+        });
+        if document_changed {
+            self.syntax_spans.clear();
+            self.syntax_window = 0..0;
+        }
+        if let Some(request) = self.editor.syntax_request() {
+            let service = self.syntax.get_or_insert_with(SyntaxService::new);
+            self.syntax_latest = service.submit(request);
+            self.syntax_pending = true;
+            self.syntax_key = Some(key);
+        } else {
+            self.syntax_pending = false;
         }
         self.apply_syntax_results();
     }
@@ -202,8 +226,7 @@ impl App {
         let Some(service) = self.syntax.as_ref() else {
             return false;
         };
-        let document = self.editor.buffer_number() as u64;
-        let revision = self.editor.buffer_revision();
+        let current = self.editor.syntax_key();
         let mut changed = false;
         while let Some(result) = service.try_recv() {
             let latest = result.generation == self.syntax_latest;
@@ -211,11 +234,18 @@ impl App {
                 self.syntax_pending = false;
                 changed = true;
             }
-            if result.key.document == document
-                && result.key.revision == revision
+            let Some(current) = current else {
+                continue;
+            };
+            if result.key.document == current.document
+                && result.key.revision == current.revision
+                && result.key.language == current.language
                 && result.generation >= self.syntax_applied
+                && result.window.start <= current.top
+                && current.end <= result.window.end
             {
                 self.syntax_spans = result.spans;
+                self.syntax_window = result.window;
                 self.syntax_applied = result.generation;
                 changed = true;
             }
@@ -2432,18 +2462,45 @@ mod tests {
         buffer.path = Some("test.rs".to_string());
         let mut app = App::new(buffer, Flavor::Vim);
         app.refresh_syntax();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while std::time::Instant::now() < deadline {
-            app.apply_syntax_results();
-            if !app.syntax_spans.is_empty() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        wait_for_syntax(&mut app);
         assert!(app
             .syntax_spans
             .iter()
             .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn syntax_coverage_avoids_scrolling_requests() {
+        let text = (0..3_000)
+            .map(|index| format!("fn function_{index}() {{}}\n"))
+            .collect::<String>();
+        let mut buffer = Buffer::from_string(&text);
+        buffer.path = Some("large.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.refresh_syntax();
+        wait_for_syntax(&mut app);
+        let generation = app.syntax_latest;
+        let window = app.syntax_window.clone();
+        let request = app.syntax_key.expect("request");
+        assert!(window.start <= request.top);
+        assert!(request.end <= window.end);
+        assert!(window.end > 100);
+        app.editor.apply(Action::ScrollHalfDown);
+        app.refresh_syntax();
+        assert_eq!(app.syntax_latest, generation);
+        assert_eq!(app.syntax_window, window);
+    }
+
+    fn wait_for_syntax(app: &mut App) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            app.apply_syntax_results();
+            if !app.syntax_spans.is_empty() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("syntax result timed out");
     }
 
     #[test]
