@@ -334,6 +334,8 @@ impl Editor {
         };
         self.record_change(RepeatChange::Visual {
             action: entry,
+            count: 1,
+            mode: saved.mode(),
             register,
             anchor: saved.selection().anchor(),
             head: saved.selection().head(),
