@@ -560,6 +560,19 @@ impl App {
             Command::SetIgnoreCase(value) => self.switch_ignorecase(value),
             Command::SetSmartCase(value) => self.switch_smartcase(value),
             Command::SetAutoIndent(value) => self.switch_autoindent(value),
+            Command::Substitute(command) => match self.editor.substitute_command(&command) {
+                Ok(message) => {
+                    if let Some(message) = message {
+                        self.show_message(message);
+                    }
+                    self.reveal_cursor();
+                    Ok(false)
+                }
+                Err(message) => {
+                    self.show_message(message);
+                    Ok(false)
+                }
+            },
             Command::SetError(message) => {
                 self.show_message(message);
                 Ok(false)
@@ -1714,6 +1727,37 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("confirm");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.cursor_position(), (0, 5));
+    }
+
+    #[test]
+    fn substitute_command_edits_and_reports() {
+        let mut app = App::new(Buffer::from_string("foo foo foo\n"), Flavor::Vim);
+        type_command(&mut app, "s/foo/X/g");
+        assert_eq!(app.last_message(), Some("3 substitutions on 1 line"));
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["X X X"]);
+        assert_eq!(app.editor_mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn substitute_command_reports_missing_pattern() {
+        let mut app = App::new(Buffer::from_string("abc\n"), Flavor::Vim);
+        type_command(&mut app, "s/zzz/X/");
+        assert_eq!(app.last_message(), Some("E486: Pattern not found: zzz"));
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["abc"]);
+    }
+
+    #[test]
+    fn substitute_command_uses_visual_range() {
+        let mut app = App::new(Buffer::from_string("foo\nfoo\nfoo\n"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('V'))).expect("visual");
+        app.handle_key(key(KeyCode::Char('j'))).expect("extend");
+        app.handle_key(key(KeyCode::Char(':'))).expect("command");
+        assert_eq!(app.editor_mode(), Mode::Command);
+        for ch in "s/foo/X/g".chars() {
+            app.handle_key(key(KeyCode::Char(ch))).expect("type");
+        }
+        app.handle_key(key(KeyCode::Enter)).expect("run");
+        assert_eq!(app.editor.visible_lines(0, 3), vec!["X", "X", "foo"]);
     }
 
     fn type_command(app: &mut App, text: &str) {

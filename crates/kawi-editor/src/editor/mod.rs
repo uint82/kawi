@@ -39,6 +39,7 @@ mod search_mode;
 mod sent_ops;
 mod session;
 mod shift_ops;
+mod substitute;
 mod tab;
 mod visual_block;
 mod word_search;
@@ -65,6 +66,9 @@ pub struct Editor {
     last_change: Option<repeat::RepeatChange>,
     undone_change: Option<repeat::RepeatChange>,
     file_indent: indent::IndentConfig,
+    substitute_pattern: String,
+    substitute_replacement: String,
+    substitute_settings: substitute::SubstituteSettings,
     shiftwidth_override: Option<usize>,
     expandtab_override: Option<bool>,
     registers: crate::registers::Registers,
@@ -677,6 +681,9 @@ impl Editor {
             last_change: None,
             undone_change: None,
             file_indent,
+            substitute_pattern: String::new(),
+            substitute_replacement: String::new(),
+            substitute_settings: substitute::SubstituteSettings::default(),
             shiftwidth_override: None,
             expandtab_override: None,
             registers: crate::registers::Registers::new(),

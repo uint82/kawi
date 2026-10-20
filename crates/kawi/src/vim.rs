@@ -1358,6 +1358,7 @@ impl VimKeymap {
             KeyCode::Char('~') => self.map_plain_or_noop(key, Action::ToggleCase),
             KeyCode::Char('u') => self.map_plain_or_noop(key, Action::Lowercase),
             KeyCode::Char('U') => self.map_plain_or_noop(key, Action::Uppercase),
+            KeyCode::Char(':') => self.arm_command(key),
             KeyCode::Char('g') => self.arm_visual_g(key),
             KeyCode::Char('z') => self.arm_visual_z(key),
             KeyCode::Char('H') => self.map_plain_or_noop(key, Action::MoveToViewportTop),
@@ -2646,6 +2647,23 @@ mod tests {
         let mut map = VimKeymap::new();
         assert_eq!(
             map.map(plain(KeyCode::Char(':')), Mode::Normal),
+            Action::EnterCommand
+        );
+    }
+
+    #[test]
+    fn visual_colon_enters_command() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(':')), Mode::Visual),
+            Action::EnterCommand
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char(':')), Mode::VisualLine),
+            Action::EnterCommand
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char(':')), Mode::VisualBlock),
             Action::EnterCommand
         );
     }

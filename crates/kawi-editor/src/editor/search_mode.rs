@@ -222,7 +222,7 @@ impl Editor {
         self.search_status = None;
     }
 
-    fn search_sensitive(&self, pattern: &str) -> bool {
+    pub(super) fn search_sensitive(&self, pattern: &str) -> bool {
         if !self.ignorecase {
             return true;
         }
