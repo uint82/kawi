@@ -1,4 +1,5 @@
 use crossterm::style::Color;
+use kawi_syntax::SyntaxGroup;
 
 pub struct BaseColors {
     pub foreground: Color,
@@ -8,6 +9,105 @@ pub struct BaseColors {
 pub struct MatchColors {
     pub foreground: Color,
     pub background: Color,
+}
+
+pub struct SyntaxColors {
+    comment: Color,
+    keyword: Color,
+    string: Color,
+    number: Color,
+    constant: Color,
+    function: Color,
+    type_name: Color,
+    variable: Color,
+    property: Color,
+    operator: Color,
+    punctuation: Color,
+    attribute: Color,
+    tag: Color,
+    invalid: Color,
+}
+
+impl SyntaxColors {
+    pub fn color(&self, group: SyntaxGroup) -> Color {
+        match group {
+            SyntaxGroup::Comment => self.comment,
+            SyntaxGroup::Keyword => self.keyword,
+            SyntaxGroup::String => self.string,
+            SyntaxGroup::Number => self.number,
+            SyntaxGroup::Constant => self.constant,
+            SyntaxGroup::Function => self.function,
+            SyntaxGroup::Type => self.type_name,
+            SyntaxGroup::Variable => self.variable,
+            SyntaxGroup::Property => self.property,
+            SyntaxGroup::Operator => self.operator,
+            SyntaxGroup::Punctuation => self.punctuation,
+            SyntaxGroup::Attribute => self.attribute,
+            SyntaxGroup::Tag => self.tag,
+            SyntaxGroup::Invalid => self.invalid,
+        }
+    }
+
+    fn default_palette() -> Self {
+        Self {
+            comment: rgb(92, 99, 112),
+            keyword: rgb(198, 120, 221),
+            string: rgb(152, 195, 121),
+            number: rgb(209, 154, 102),
+            constant: rgb(209, 154, 102),
+            function: rgb(97, 175, 239),
+            type_name: rgb(229, 192, 123),
+            variable: rgb(224, 226, 234),
+            property: rgb(86, 182, 194),
+            operator: rgb(86, 182, 194),
+            punctuation: rgb(171, 178, 191),
+            attribute: rgb(229, 192, 123),
+            tag: rgb(224, 108, 117),
+            invalid: rgb(224, 108, 117),
+        }
+    }
+
+    fn gruvbox_dark_palette() -> Self {
+        Self {
+            comment: rgb(146, 131, 116),
+            keyword: rgb(251, 73, 52),
+            string: rgb(184, 187, 38),
+            number: rgb(211, 134, 155),
+            constant: rgb(211, 134, 155),
+            function: rgb(250, 189, 47),
+            type_name: rgb(131, 165, 152),
+            variable: rgb(235, 219, 178),
+            property: rgb(142, 192, 124),
+            operator: rgb(142, 192, 124),
+            punctuation: rgb(168, 153, 132),
+            attribute: rgb(250, 189, 47),
+            tag: rgb(251, 73, 52),
+            invalid: rgb(251, 73, 52),
+        }
+    }
+
+    fn gruvbox_light_palette() -> Self {
+        Self {
+            comment: rgb(146, 131, 116),
+            keyword: rgb(157, 0, 6),
+            string: rgb(121, 116, 14),
+            number: rgb(143, 63, 113),
+            constant: rgb(143, 63, 113),
+            function: rgb(181, 118, 20),
+            type_name: rgb(7, 102, 120),
+            variable: rgb(60, 56, 54),
+            property: rgb(66, 123, 88),
+            operator: rgb(66, 123, 88),
+            punctuation: rgb(124, 111, 100),
+            attribute: rgb(181, 118, 20),
+            tag: rgb(157, 0, 6),
+            invalid: rgb(157, 0, 6),
+        }
+    }
+}
+
+fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color::Rgb { r, g, b }
 }
 
 pub struct Theme {
@@ -20,6 +120,7 @@ pub struct Theme {
     pub status: MatchColors,
     pub line_number: Color,
     pub non_text: Color,
+    pub syntax: SyntaxColors,
 }
 
 impl Theme {
@@ -109,6 +210,7 @@ impl Theme {
                 g: 82,
                 b: 88,
             },
+            syntax: SyntaxColors::default_palette(),
         }
     }
 
@@ -197,6 +299,7 @@ impl Theme {
                 g: 131,
                 b: 116,
             },
+            syntax: SyntaxColors::gruvbox_dark_palette(),
         }
     }
 
@@ -285,6 +388,7 @@ impl Theme {
                 g: 131,
                 b: 116,
             },
+            syntax: SyntaxColors::gruvbox_light_palette(),
         }
     }
 }
@@ -476,5 +580,28 @@ mod tests {
                 b: 3
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod syntax_tests {
+    use super::*;
+
+    #[test]
+    fn every_theme_colors_every_group() {
+        for name in Theme::names() {
+            let theme = Theme::named(name).expect("theme");
+            for group in SyntaxGroup::ALL {
+                assert_ne!(theme.syntax.color(group), theme.base.background);
+            }
+        }
+    }
+
+    #[test]
+    fn default_syntax_uses_one_dark_accents() {
+        let theme = Theme::default();
+        assert_eq!(theme.syntax.color(SyntaxGroup::Keyword), rgb(198, 120, 221));
+        assert_eq!(theme.syntax.color(SyntaxGroup::String), rgb(152, 195, 121));
+        assert_eq!(theme.syntax.color(SyntaxGroup::Comment), rgb(92, 99, 112));
     }
 }

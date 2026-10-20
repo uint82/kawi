@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    poll, read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
+use std::time::Duration;
 
 mod macro_codec;
 mod macro_ops;
@@ -30,6 +33,7 @@ use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
 use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
+use kawi_syntax::{SyntaxKey, SyntaxService, SyntaxSpan};
 use kawi_tui::{
     frame::{Frame, SearchSpan},
     render,
@@ -46,6 +50,12 @@ pub struct App {
     pager: Option<Vec<String>>,
     macros: macro_ops::MacroEngine,
     last_command: Option<String>,
+    syntax: Option<SyntaxService>,
+    syntax_spans: Vec<SyntaxSpan>,
+    syntax_key: Option<SyntaxKey>,
+    syntax_pending: bool,
+    syntax_latest: u64,
+    syntax_applied: u64,
 }
 
 impl App {
@@ -60,6 +70,12 @@ impl App {
             pager: None,
             macros: macro_ops::MacroEngine::new(),
             last_command: None,
+            syntax: None,
+            syntax_spans: Vec::new(),
+            syntax_key: None,
+            syntax_pending: false,
+            syntax_latest: 0,
+            syntax_applied: 0,
         }
     }
 
@@ -127,6 +143,7 @@ impl App {
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
+            self.refresh_syntax();
             self.draw_frame(&mut out)?;
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
@@ -136,7 +153,17 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
-            let event = read_next_event()?;
+            if self.apply_syntax_results() {
+                return Ok(Redraw::Redraw);
+            }
+            let event = if self.syntax_pending {
+                match poll_next_event(Duration::from_millis(10))? {
+                    Some(event) => event,
+                    None => continue,
+                }
+            } else {
+                read_next_event()?
+            };
             let redraw = event_needs_redraw(&event);
             if self.update(event)? {
                 return Ok(Redraw::Quit);
@@ -145,6 +172,55 @@ impl App {
                 return Ok(Redraw::Redraw);
             }
         }
+    }
+
+    fn refresh_syntax(&mut self) {
+        let key = self.editor.syntax_key();
+        if key != self.syntax_key {
+            let document_changed = key.map(|key| (key.document, key.language))
+                != self.syntax_key.map(|key| (key.document, key.language));
+            if document_changed {
+                self.syntax_spans.clear();
+            }
+            self.syntax_key = key;
+            if key.is_some() {
+                if let Some(request) = self.editor.syntax_request() {
+                    let service = self.syntax.get_or_insert_with(SyntaxService::new);
+                    self.syntax_latest = service.submit(request);
+                    self.syntax_pending = true;
+                } else {
+                    self.syntax_pending = false;
+                }
+            } else {
+                self.syntax_pending = false;
+            }
+        }
+        self.apply_syntax_results();
+    }
+
+    fn apply_syntax_results(&mut self) -> bool {
+        let Some(service) = self.syntax.as_ref() else {
+            return false;
+        };
+        let document = self.editor.buffer_number() as u64;
+        let revision = self.editor.buffer_revision();
+        let mut changed = false;
+        while let Some(result) = service.try_recv() {
+            let latest = result.generation == self.syntax_latest;
+            if latest {
+                self.syntax_pending = false;
+                changed = true;
+            }
+            if result.key.document == document
+                && result.key.revision == revision
+                && result.generation >= self.syntax_applied
+            {
+                self.syntax_spans = result.spans;
+                self.syntax_applied = result.generation;
+                changed = true;
+            }
+        }
+        changed
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
@@ -217,6 +293,7 @@ impl App {
             search_status,
             search_spans,
             preview_spans,
+            syntax_spans: &self.syntax_spans,
             leftcol: self.editor.view_leftcol(),
             tabstop: self.editor.view_tabstop(),
             showcmd: self.showcmd_text(),
@@ -875,6 +952,13 @@ impl App {
 
 fn read_next_event() -> Result<Event> {
     read().context("read terminal event")
+}
+
+fn poll_next_event(timeout: Duration) -> Result<Option<Event>> {
+    if poll(timeout).context("poll terminal event")? {
+        return read().context("read terminal event").map(Some);
+    }
+    Ok(None)
 }
 
 fn event_needs_redraw(event: &Event) -> bool {
@@ -2340,5 +2424,33 @@ mod tests {
         app.handle_key(key(KeyCode::Up)).expect("up");
         assert_eq!(app.editor.command_text(), "set nu");
         app.handle_key(key(KeyCode::Esc)).expect("cancel");
+    }
+
+    #[test]
+    fn syntax_results_reach_the_app() {
+        let mut buffer = Buffer::from_string("// hi\nfn main() {}\n");
+        buffer.path = Some("test.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.refresh_syntax();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            app.apply_syntax_results();
+            if !app.syntax_spans.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(app
+            .syntax_spans
+            .iter()
+            .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn unnamed_buffers_do_not_start_syntax() {
+        let mut app = App::new(Buffer::from_string("plain\n"), Flavor::Vim);
+        app.refresh_syntax();
+        assert!(app.syntax.is_none());
+        assert!(app.syntax_spans.is_empty());
     }
 }

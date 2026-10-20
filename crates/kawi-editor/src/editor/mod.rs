@@ -42,6 +42,7 @@ mod sent_ops;
 mod session;
 mod shift_ops;
 mod substitute;
+mod syntax;
 mod tab;
 mod visual_block;
 mod word_search;

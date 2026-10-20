@@ -1,6 +1,7 @@
 use crate::statusbar::StatusInfo;
 use crate::theme::Theme;
 use kawi_editor::Viewport;
+use kawi_syntax::SyntaxSpan;
 
 pub struct Frame<'a> {
     pub lines: &'a [String],
@@ -18,6 +19,7 @@ pub struct Frame<'a> {
     pub search_status: Option<&'a str>,
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
+    pub syntax_spans: &'a [SyntaxSpan],
     pub leftcol: usize,
     pub tabstop: usize,
     pub showcmd: Option<String>,
