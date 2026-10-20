@@ -156,11 +156,14 @@ impl App {
             .editor
             .gutter_lines(self.editor.view_top(), self.editor.view_height());
         let search_status = self.editor.search_status_text();
-        let search_spans = frame_search_spans(
-            &self
-                .editor
-                .search_spans(self.editor.view_top(), self.editor.view_height()),
-        );
+        let spans = if self.editor.command_preview_active() {
+            self.editor
+                .preview_spans(self.editor.view_top(), self.editor.view_height())
+        } else {
+            self.editor
+                .search_spans(self.editor.view_top(), self.editor.view_height())
+        };
+        let search_spans = frame_search_spans(&spans);
         let frame = self.build_frame(
             &status,
             &window,

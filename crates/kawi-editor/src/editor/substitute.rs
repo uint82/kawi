@@ -57,17 +57,18 @@ impl Editor {
         &mut self,
         command: &SubstituteCommand,
     ) -> Result<Option<String>, String> {
-        let (first, last) = self.resolve_substitute_span(command)?;
+        let (first, last) =
+            self.resolve_substitute_span(command.range.as_ref(), command.count, &command.raw)?;
         let settings = self.substitute_settings(&command.flags);
         if settings.ask {
             return Err("The c flag is not supported yet".to_string());
         }
-        let pattern = self.substitute_pattern(command, settings)?;
-        let (literal, whole_word) = strip_word_atoms(&pattern);
-        let literal = unescape_substitute_pattern(&literal);
-        if literal.is_empty() {
-            return Err(format!("E486: Pattern not found: {pattern}"));
-        }
+        let (typed, repeat) = match &command.form {
+            SubstituteForm::New { pattern, .. } => (Some(pattern.as_str()), false),
+            SubstituteForm::Repeat => (None, true),
+        };
+        let pattern = self.resolve_substitute_pattern(typed, repeat, settings)?;
+        let query = self.substitute_query(&pattern, settings)?;
         let replacement = match &command.form {
             SubstituteForm::New { replacement, .. } => replacement.clone(),
             SubstituteForm::Repeat => self.substitute_replacement.clone(),
@@ -80,12 +81,8 @@ impl Editor {
         self.substitute_pattern = pattern.clone();
         self.substitute_replacement = replacement.clone();
         self.substitute_settings = settings;
-        let sensitive = match settings.ignore_case {
-            Some(ignore_case) => !ignore_case,
-            None => self.search_sensitive(&pattern),
-        };
         let run = SubstituteRun {
-            query: Query::new(&literal, sensitive, whole_word),
+            query,
             pattern: &pattern,
             replacement: &replacement,
             previous_replacement: &previous_replacement,
@@ -94,7 +91,7 @@ impl Editor {
         self.run_substitute(first, last, &run)
     }
 
-    fn substitute_settings(&self, flags: &SubstituteFlags) -> SubstituteSettings {
+    pub(super) fn substitute_settings(&self, flags: &SubstituteFlags) -> SubstituteSettings {
         let mut settings = if flags.reuse {
             self.substitute_settings
         } else {
@@ -126,13 +123,15 @@ impl Editor {
         settings
     }
 
-    fn resolve_substitute_span(
+    pub(super) fn resolve_substitute_span(
         &self,
-        command: &SubstituteCommand,
+        range: Option<&SubstituteRange>,
+        count: Option<usize>,
+        raw: &str,
     ) -> Result<(usize, usize), String> {
         let last_line = self.buffer.line_count().saturating_sub(1);
         let cursor_row = self.cursor.row();
-        let (first, last) = match &command.range {
+        let (first, last) = match range {
             None => (cursor_row, cursor_row),
             Some(SubstituteRange::WholeFile) => (0, last_line),
             Some(SubstituteRange::Visual) => self
@@ -158,10 +157,10 @@ impl Editor {
                 "E493: Backwards range given: {},{}{}",
                 first + 1,
                 last + 1,
-                command.raw
+                raw
             ));
         }
-        let Some(count) = command.count else {
+        let Some(count) = count else {
             return Ok((first, last));
         };
         let first = last;
@@ -223,36 +222,51 @@ impl Editor {
         Some((first.min(last), first.max(last)))
     }
 
-    fn substitute_pattern(
+    pub(super) fn resolve_substitute_pattern(
         &self,
-        command: &SubstituteCommand,
+        typed: Option<&str>,
+        repeat: bool,
         settings: SubstituteSettings,
     ) -> Result<String, String> {
-        match &command.form {
-            SubstituteForm::New { pattern, .. } => {
-                if pattern.is_empty() {
-                    if self.search_last.is_empty() {
-                        Err("E35: No previous regular expression".to_string())
-                    } else {
-                        Ok(self.search_last.clone())
-                    }
-                } else {
-                    Ok(pattern.clone())
+        if let Some(pattern) = typed {
+            if pattern.is_empty() {
+                if self.search_last.is_empty() {
+                    return Err("E35: No previous regular expression".to_string());
                 }
+                return Ok(self.search_last.clone());
             }
-            SubstituteForm::Repeat => {
-                let pattern = if settings.use_last_search {
-                    &self.search_last
-                } else {
-                    &self.substitute_pattern
-                };
-                if pattern.is_empty() {
-                    Err("E33: No previous substitute regular expression".to_string())
-                } else {
-                    Ok(pattern.clone())
-                }
-            }
+            return Ok(pattern.to_string());
         }
+        if !repeat {
+            return Err("E33: No previous substitute regular expression".to_string());
+        }
+        let pattern = if settings.use_last_search {
+            &self.search_last
+        } else {
+            &self.substitute_pattern
+        };
+        if pattern.is_empty() {
+            Err("E33: No previous substitute regular expression".to_string())
+        } else {
+            Ok(pattern.clone())
+        }
+    }
+
+    pub(super) fn substitute_query(
+        &self,
+        pattern: &str,
+        settings: SubstituteSettings,
+    ) -> Result<Query, String> {
+        let (literal, whole_word) = strip_word_atoms(pattern);
+        let literal = unescape_substitute_pattern(&literal);
+        if literal.is_empty() {
+            return Err(format!("E486: Pattern not found: {pattern}"));
+        }
+        let sensitive = match settings.ignore_case {
+            Some(ignore_case) => !ignore_case,
+            None => self.search_sensitive(pattern),
+        };
+        Ok(Query::new(&literal, sensitive, whole_word))
     }
 
     fn run_substitute(
@@ -297,23 +311,12 @@ impl Editor {
                 checkpointed = true;
             }
             let chars: Vec<char> = line.chars().collect();
-            let mut result = String::new();
-            let mut position = 0usize;
-            for (start, end) in &chosen {
-                result.extend(chars[position..*start].iter());
-                let matched: String = chars[*start..*end].iter().collect();
-                result.push_str(&expand_replacement(
-                    run.replacement,
-                    &matched,
-                    run.previous_replacement,
-                ));
-                position = *end;
-            }
-            result.extend(chars[position..].iter());
-            let added = result.chars().filter(|ch| *ch == '\n').count();
+            let result =
+                substitute_line(&chars, &chosen, run.replacement, run.previous_replacement);
+            let added = result.text.chars().filter(|ch| *ch == '\n').count();
             offset = offset.saturating_add(added as isize);
             last_row = Some(row + added);
-            self.buffer.replace_lines(row, row, &result);
+            self.buffer.replace_lines(row, row, &result.text);
         }
         if substitutions == 0 {
             if settings.error {
@@ -363,6 +366,36 @@ impl Editor {
             text
         }
     }
+}
+
+pub(super) struct SubstitutedLine {
+    pub text: String,
+    pub inserted: Vec<(usize, usize)>,
+}
+
+pub(super) fn substitute_line(
+    chars: &[char],
+    spans: &[(usize, usize)],
+    replacement: &str,
+    previous_replacement: &str,
+) -> SubstitutedLine {
+    let mut text = String::new();
+    let mut inserted = Vec::new();
+    let mut position = 0usize;
+    for (start, end) in spans {
+        text.extend(chars[position..*start].iter());
+        let matched: String = chars[*start..*end].iter().collect();
+        let expansion = expand_replacement(replacement, &matched, previous_replacement);
+        let from = text.chars().count();
+        text.push_str(&expansion);
+        let to = text.chars().count();
+        if to > from {
+            inserted.push((from, to));
+        }
+        position = *end;
+    }
+    text.extend(chars[position..].iter());
+    SubstitutedLine { text, inserted }
 }
 
 fn substitute_report(substitutions: usize, lines: usize) -> String {

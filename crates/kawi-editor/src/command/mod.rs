@@ -297,6 +297,7 @@ impl Default for CommandLine {
 
 mod substitute;
 
+pub(crate) use substitute::parse_preview;
 pub use substitute::{
     SubstituteAddress, SubstituteCommand, SubstituteFlag, SubstituteFlags, SubstituteForm,
     SubstituteRange,

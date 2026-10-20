@@ -87,6 +87,85 @@ pub(super) fn parse(text: &str) -> Option<Result<SubstituteCommand, String>> {
     }))
 }
 
+pub(crate) struct SubstitutePreviewInput {
+    pub range: Option<SubstituteRange>,
+    pub pattern: Option<String>,
+    pub replacement: Option<String>,
+    pub flags: SubstituteFlags,
+    pub count: Option<usize>,
+}
+
+pub(crate) fn parse_preview(text: &str) -> Option<SubstitutePreviewInput> {
+    if text.trim_start().starts_with("se") {
+        return None;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut index = 0;
+    let range = parse_substitute_range(&chars, &mut index)?;
+    skip_spaces(&chars, &mut index);
+    let name_end = parse_substitute_name(&chars, index)?;
+    index = name_end;
+    skip_spaces(&chars, &mut index);
+    if index >= chars.len() || is_substitute_repeat_start(chars[index]) {
+        let (flags, index) = parse_substitute_flags(&chars, index);
+        let (count, index) = parse_substitute_count(&chars, index).ok()?;
+        if check_substitute_trailing(&chars, index).is_err() {
+            return None;
+        }
+        return Some(SubstitutePreviewInput {
+            range,
+            pattern: None,
+            replacement: None,
+            flags,
+            count,
+        });
+    }
+    if chars[index].is_ascii_alphabetic() {
+        return None;
+    }
+    let delimiter = chars[index];
+    let pattern_start = index + 1;
+    let pattern_end = scan_substitute_delimiter(&chars, pattern_start, delimiter);
+    let pattern: String = chars[pattern_start..pattern_end].iter().collect();
+    let flags = SubstituteFlags {
+        reuse: false,
+        ops: Vec::new(),
+    };
+    if pattern_end >= chars.len() {
+        return Some(SubstitutePreviewInput {
+            range,
+            pattern: Some(pattern),
+            replacement: None,
+            flags,
+            count: None,
+        });
+    }
+    let replacement_start = pattern_end + 1;
+    let replacement_end = scan_substitute_delimiter(&chars, replacement_start, delimiter);
+    let replacement: String = chars[replacement_start..replacement_end].iter().collect();
+    if replacement_end >= chars.len() {
+        return Some(SubstitutePreviewInput {
+            range,
+            pattern: Some(pattern),
+            replacement: Some(replacement),
+            flags,
+            count: None,
+        });
+    }
+    let (flags, index) = parse_substitute_flags(&chars, replacement_end + 1);
+    let (count, index) = parse_substitute_count(&chars, index).ok()?;
+    if check_substitute_trailing(&chars, index).is_err() {
+        return None;
+    }
+    Some(SubstitutePreviewInput {
+        range,
+        pattern: Some(pattern),
+        replacement: Some(replacement),
+        flags,
+        count,
+    })
+}
+
 fn parse_substitute_range(chars: &[char], index: &mut usize) -> Option<Option<SubstituteRange>> {
     if chars.get(*index) == Some(&'%') {
         *index += 1;
