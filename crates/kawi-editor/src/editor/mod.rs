@@ -18,6 +18,7 @@ mod changes;
 mod cmd_complete;
 mod copy_char;
 mod gutter;
+mod hscroll;
 mod indent;
 mod insert_erase;
 mod insert_shift;
@@ -174,6 +175,12 @@ impl Editor {
             Action::ScrollHalfDown => self.scroll_half_down(),
             Action::ScrollPageUp => self.scroll_page_up(),
             Action::ScrollPageDown => self.scroll_page_down(),
+            Action::ScrollLeft => self.scroll_left(),
+            Action::ScrollRight => self.scroll_right(),
+            Action::ScrollHalfLeft => self.scroll_half_left(),
+            Action::ScrollHalfRight => self.scroll_half_right(),
+            Action::ScrollCursorStart => self.scroll_cursor_start(),
+            Action::ScrollCursorEnd => self.scroll_cursor_end(),
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
@@ -490,6 +497,9 @@ impl Editor {
         self.apply_line_adjustments();
         self.refresh_wanted_column(action);
         self.reveal_cursor();
+        if !matches!(action, Action::ScrollCursorStart | Action::ScrollCursorEnd) {
+            self.reveal_cursor_horizontally();
+        }
         let buffer_changed = self.buffer.revision() != revision;
         if was_insert && Self::breaks_insert_run(action) {
             self.insert_run_active = false;

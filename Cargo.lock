@@ -156,6 +156,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "crossterm",
+ "kawi-buffer",
  "kawi-editor",
 ]
 

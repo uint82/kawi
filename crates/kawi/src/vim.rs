@@ -64,6 +64,12 @@ fn place_action(pushed: char) -> Option<Action> {
         'z' => Some(Action::PlaceCenter),
         't' => Some(Action::PlaceTop),
         'b' => Some(Action::PlaceBottom),
+        'h' => Some(Action::ScrollLeft),
+        'l' => Some(Action::ScrollRight),
+        'H' => Some(Action::ScrollHalfLeft),
+        'L' => Some(Action::ScrollHalfRight),
+        's' => Some(Action::ScrollCursorStart),
+        'e' => Some(Action::ScrollCursorEnd),
         _ => None,
     }
 }
@@ -5158,6 +5164,12 @@ mod tests {
             ('z', Action::PlaceCenter),
             ('t', Action::PlaceTop),
             ('b', Action::PlaceBottom),
+            ('h', Action::ScrollLeft),
+            ('l', Action::ScrollRight),
+            ('H', Action::ScrollHalfLeft),
+            ('L', Action::ScrollHalfRight),
+            ('s', Action::ScrollCursorStart),
+            ('e', Action::ScrollCursorEnd),
         ] {
             let mut map = VimKeymap::new();
             assert_eq!(

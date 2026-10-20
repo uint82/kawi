@@ -45,7 +45,9 @@ impl Editor {
 
     pub fn buffer_col_at_screen(&self, row: usize, screen: usize) -> usize {
         let tabstop = self.effective_indent().tabstop;
-        let col = screen.saturating_sub(self.gutter_width());
+        let col = screen
+            .saturating_sub(self.gutter_width())
+            .saturating_add(self.viewport.leftcol());
         self.buffer.char_col(row, col, tabstop)
     }
 

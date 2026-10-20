@@ -203,7 +203,10 @@ impl App {
                 .editor
                 .completion_view()
                 .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
-            cursor_col: self.editor.cursor_wcol(),
+            cursor_col: self
+                .editor
+                .cursor_wcol()
+                .saturating_sub(self.editor.view_leftcol()),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
             status,
@@ -214,6 +217,8 @@ impl App {
             search_status,
             search_spans,
             preview_spans,
+            leftcol: self.editor.view_leftcol(),
+            tabstop: self.editor.view_tabstop(),
             showcmd: self.showcmd_text(),
             cursor_style: cursor_style_for(self.editor.mode()),
             selection: self.frame_selection(),
@@ -356,6 +361,7 @@ impl App {
 
     fn reveal_cursor(&mut self) {
         self.editor.reveal_cursor();
+        self.editor.reveal_cursor_horizontally();
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -548,6 +554,12 @@ impl App {
     }
 
     fn run_command(&mut self, command: Command) -> Result<bool> {
+        let result = self.dispatch_command(command);
+        self.editor.reveal_cursor_horizontally();
+        result
+    }
+
+    fn dispatch_command(&mut self, command: Command) -> Result<bool> {
         match command {
             Command::Write { force } => self.handle_save(force),
             Command::Quit => self.handle_quit(),
