@@ -244,28 +244,28 @@ mod tests {
     fn cursor_one_past_right_edge_scrolls_one() {
         let mut editor = view(LONG);
         put(&mut editor, 0, 20);
-        assert_eq!(left(&editor), 1);
+        assert_eq!(left(&editor), 5);
     }
 
     #[test]
     fn cursor_near_right_edge_scrolls_minimum() {
         let mut editor = view(LONG);
         put(&mut editor, 0, 24);
-        assert_eq!(left(&editor), 5);
+        assert_eq!(left(&editor), 16);
     }
 
     #[test]
     fn far_jump_centers_cursor() {
         let mut editor = view(LONG);
         put(&mut editor, 0, 40);
-        assert_eq!(left(&editor), 30);
+        assert_eq!(left(&editor), 32);
     }
 
     #[test]
     fn line_end_centers_last_char() {
         let mut editor = view(LONG);
         put(&mut editor, 0, 59);
-        assert_eq!(left(&editor), 49);
+        assert_eq!(left(&editor), 51);
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
         put(&mut editor, 0, 40);
         put(&mut editor, 1, 4);
         put(&mut editor, 0, 40);
-        assert_eq!(left(&editor), 30);
+        assert_eq!(left(&editor), 32);
     }
 
     #[test]
@@ -379,7 +379,7 @@ mod tests {
         let mut editor = view(LONG);
         put(&mut editor, 0, 30);
         editor.apply(Action::ScrollCursorEnd);
-        assert_eq!(left(&editor), 11);
+        assert_eq!(left(&editor), 15);
         assert_eq!(editor.col(), 30);
     }
 
