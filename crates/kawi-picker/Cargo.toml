@@ -1,0 +1,16 @@
+[package]
+name = "kawi-picker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+crossterm.workspace = true
+ignore = "0.4"
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"

@@ -474,6 +474,10 @@ impl Editor {
             }
             Action::Save => self.save_silent(),
             Action::Quit | Action::Noop => self.noop(),
+            Action::OpenFilePicker
+            | Action::OpenGrepPicker
+            | Action::OpenGrepWordPicker
+            | Action::OpenBufferPicker => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

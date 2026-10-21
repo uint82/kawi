@@ -8,6 +8,7 @@ pub struct Frame<'a> {
     pub gutter: &'a [String],
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
+    pub picker: Option<PickerMenu<'a>>,
     pub cursor_col: usize,
     pub row: usize,
     pub viewport: &'a Viewport,
@@ -38,6 +39,16 @@ pub enum CursorStyle {
 pub struct CompletionMenu<'a> {
     pub items: &'a [String],
     pub selected: Option<usize>,
+}
+
+pub struct PickerMenu<'a> {
+    pub title: &'a str,
+    pub query: &'a str,
+    pub cursor: usize,
+    pub items: &'a [String],
+    pub selected: Option<usize>,
+    pub loading: bool,
+    pub status: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

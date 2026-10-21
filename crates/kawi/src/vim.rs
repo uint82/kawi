@@ -287,6 +287,7 @@ pub struct VimKeymap {
     insert_register: bool,
     register_display: Option<String>,
     showcmd: Option<String>,
+    leader_space: bool,
 }
 
 impl VimKeymap {
@@ -297,6 +298,7 @@ impl VimKeymap {
             insert_register: false,
             register_display: None,
             showcmd: None,
+            leader_space: false,
         }
     }
 
@@ -353,6 +355,14 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
+        if self.leader_space {
+            self.leader_space = false;
+            if key.code == KeyCode::Char('f') && !has_ctrl_or_alt(key) {
+                self.pending.push(' ');
+                self.pending.push('f');
+                return Action::Noop;
+            }
+        }
         if let Some(action) = jump_action(key) {
             self.clear_pending();
             return action;
@@ -369,6 +379,17 @@ impl VimKeymap {
     }
 
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
+        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+            self.leader_space = true;
+            return Action::Noop;
+        }
+        if key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key) {
+            self.pending.push('\\');
+            return Action::Noop;
+        }
+        if key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Action::OpenFilePicker;
+        }
         if is_redo_key(key) {
             return Action::Redo;
         }
@@ -490,6 +511,7 @@ impl VimKeymap {
 
     fn clear_pending(&mut self) {
         self.pending.clear();
+        self.leader_space = false;
     }
 
     fn pending_key(&self) -> Option<&str> {
@@ -1098,6 +1120,9 @@ impl VimKeymap {
     }
 
     fn resolve_pending(&mut self, key: KeyEvent) -> Action {
+        if self.leader_prefix_armed() {
+            return self.resolve_leader_pending(key);
+        }
         if self.replace_prefix_armed() {
             return self.complete_replace(key);
         }
@@ -1142,6 +1167,29 @@ impl VimKeymap {
             }
             _ => self.cancel_sequence(),
         }
+    }
+
+    fn leader_prefix_armed(&self) -> bool {
+        matches!(self.pending.as_str(), " f" | "\\" | "\\f")
+    }
+
+    fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
+        if self.pending == "\\" {
+            if key.code == KeyCode::Char('f') && !has_ctrl_or_alt(key) {
+                self.pending.push('f');
+                return Action::Noop;
+            }
+            return self.cancel_sequence();
+        }
+        let action = match key.code {
+            KeyCode::Char('f' | 'p') if !has_ctrl_or_alt(key) => Action::OpenFilePicker,
+            KeyCode::Char('s') if !has_ctrl_or_alt(key) => Action::OpenGrepPicker,
+            KeyCode::Char('w') if !has_ctrl_or_alt(key) => Action::OpenGrepWordPicker,
+            KeyCode::Char('k') if !has_ctrl_or_alt(key) => Action::OpenBufferPicker,
+            _ => return self.cancel_sequence(),
+        };
+        self.clear_pending();
+        action
     }
 
     fn sequence_key(&mut self, pushed: char) -> Action {
@@ -1772,6 +1820,7 @@ impl Keymap for VimKeymap {
         self.clear_pending();
         self.register_display = None;
         self.showcmd = None;
+        self.leader_space = false;
     }
 }
 
@@ -3829,6 +3878,107 @@ mod tests {
             map.map(plain(KeyCode::Char('e')), Mode::Normal),
             Action::DeleteWordEnd
         );
+    }
+
+    #[test]
+    fn leader_opens_pickers() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\\')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::OpenFilePicker
+        );
+        assert_eq!(map.pending_text(), None);
+        map.map(plain(KeyCode::Char('\\')), Mode::Normal);
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('s')), Mode::Normal),
+            Action::OpenGrepPicker
+        );
+        map.map(plain(KeyCode::Char('\\')), Mode::Normal);
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('w')), Mode::Normal),
+            Action::OpenGrepWordPicker
+        );
+        map.map(plain(KeyCode::Char('\\')), Mode::Normal);
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('k')), Mode::Normal),
+            Action::OpenBufferPicker
+        );
+    }
+
+    #[test]
+    fn leader_cancels_on_unknown_key() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char('\\')), Mode::Normal);
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('x')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn space_leader_opens_pickers() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::OpenFilePicker
+        );
+        map.map(plain(KeyCode::Char(' ')), Mode::Normal);
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('s')), Mode::Normal),
+            Action::OpenGrepPicker
+        );
+    }
+
+    #[test]
+    fn space_does_not_consume_an_unrelated_key() {
+        let mut map = VimKeymap::new();
+        map.map(plain(KeyCode::Char(' ')), Mode::Normal);
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), Some("g"));
+    }
+
+    #[test]
+    fn ctrl_p_opens_the_file_picker() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('p')), Mode::Normal),
+            Action::OpenFilePicker
+        );
+    }
+
+    #[test]
+    fn space_alone_does_not_arm_a_sequence() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]
