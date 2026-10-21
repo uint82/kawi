@@ -1,7 +1,10 @@
+use super::lsp_diagnostics::{DiagnosticState, Navigation};
 use kawi_editor::Editor;
 use kawi_lsp::{
-    Languages, LspEvent, LspService, MessageLevel, ProgressEvent, ServerState, StatusEvent,
+    DiagnosticSeverity, Languages, LspEvent, LspService, MessageLevel, ProgressEvent, ServerState,
+    StatusEvent,
 };
+use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -15,6 +18,7 @@ pub struct LspUi {
     statuses: BTreeMap<String, ServerState>,
     status_messages: BTreeMap<String, String>,
     progress: BTreeMap<(String, String), ProgressSnapshot>,
+    diagnostics: DiagnosticState,
     display: Option<String>,
     message: Option<String>,
 }
@@ -84,18 +88,40 @@ impl LspUi {
         self.display.as_deref()
     }
 
+    pub fn has_diagnostics(&self) -> bool {
+        self.diagnostics.has_diagnostics()
+    }
+
+    pub fn diagnostic_severity(&self, row: usize) -> Option<DiagnosticSeverity> {
+        self.diagnostics.severity_at(row)
+    }
+
+    pub fn diagnostic_spans(&self, window: &[String], top: usize) -> Vec<DiagnosticSpan> {
+        self.diagnostics.spans(window, top)
+    }
+
+    pub fn navigate_diagnostics(
+        &self,
+        row: usize,
+        column: usize,
+        forward: bool,
+    ) -> Option<Navigation> {
+        self.diagnostics.navigate(row, column, forward)
+    }
+
     pub fn take_message(&mut self) -> Option<String> {
         self.message.take()
     }
 
     fn sync_document(&mut self, editor: &Editor) -> bool {
-        let path = editor.has_file().then(|| PathBuf::from(editor.filename()));
+        let path = editor_path(editor);
         let revision = editor.buffer_revision();
         if path != self.path {
             self.close_current();
             self.statuses.clear();
             self.status_messages.clear();
             self.progress.clear();
+            self.diagnostics.reset();
             self.path = path;
             self.revision = Some(revision);
             if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
@@ -108,6 +134,7 @@ impl LspUi {
         }
         self.revision = Some(revision);
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
+            self.diagnostics.advance();
             service.change(path, &editor.document_text());
             return true;
         }
@@ -131,6 +158,10 @@ impl LspUi {
                 self.apply_progress(progress);
                 true
             }
+            LspEvent::Diagnostics(diagnostics) => self
+                .path
+                .as_deref()
+                .is_some_and(|path| self.diagnostics.apply(diagnostics, path)),
             LspEvent::Message {
                 server,
                 level,
@@ -144,13 +175,17 @@ impl LspUi {
     }
 
     fn apply_status(&mut self, status: StatusEvent) {
-        self.statuses.insert(status.server.clone(), status.state);
+        let server = status.server;
+        self.statuses.insert(server.clone(), status.state);
+        if matches!(status.state, ServerState::Failed | ServerState::Stopped) {
+            self.diagnostics.remove_server(&server);
+        }
         match status.message {
             Some(message) => {
-                self.status_messages.insert(status.server, message);
+                self.status_messages.insert(server, message);
             }
             None => {
-                self.status_messages.remove(&status.server);
+                self.status_messages.remove(&server);
             }
         }
     }
@@ -212,6 +247,13 @@ impl LspUi {
     }
 }
 
+fn editor_path(editor: &Editor) -> Option<PathBuf> {
+    let path = editor
+        .has_file()
+        .then(|| PathBuf::from(editor.filename()))?;
+    Some(std::path::absolute(&path).unwrap_or(path))
+}
+
 fn format_progress(server: &str, progress: &ProgressSnapshot) -> String {
     let mut text = format!("lsp: {server}");
     if let Some(title) = &progress.title {
@@ -252,7 +294,7 @@ fn format_message(server: &str, level: MessageLevel, message: &str) -> String {
     }
 }
 
-fn one_line(text: &str) -> String {
+pub(super) fn one_line(text: &str) -> String {
     text.chars()
         .map(|character| {
             if character.is_control() {

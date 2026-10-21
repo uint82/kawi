@@ -486,7 +486,9 @@ impl Editor {
             | Action::GitUndoStage
             | Action::GitStageBuffer
             | Action::GitPreviewHunk
-            | Action::GitDiff => self.noop(),
+            | Action::GitDiff
+            | Action::DiagnosticNext
+            | Action::DiagnosticPrev => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

@@ -11,12 +11,14 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+mod diagnostics;
 mod document;
 mod initialize;
 mod manager;
 mod request;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(12);
+pub const INITIAL_DOCUMENT_VERSION: i32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -57,6 +59,7 @@ pub enum MessageLevel {
 pub enum LspEvent {
     Status(StatusEvent),
     Progress(ProgressEvent),
+    Diagnostics(DiagnosticsEvent),
     Message {
         server: String,
         level: MessageLevel,
@@ -67,6 +70,10 @@ pub enum LspEvent {
         message: String,
     },
 }
+
+pub use diagnostics::{
+    Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity, DiagnosticsEvent,
+};
 
 pub struct LspService {
     commands: Sender<ServiceInput>,

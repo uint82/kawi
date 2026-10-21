@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 mod git;
 mod lsp;
+mod lsp_diagnostics;
 mod macro_codec;
 mod macro_ops;
 mod picker;
@@ -33,7 +34,8 @@ struct FrameInput<'a> {
     preview_spans: &'a [SearchSpan],
     picker: Option<kawi_tui::frame::PickerMenu<'a>>,
     replace: Option<kawi_tui::frame::ReplaceMenu<'a>>,
-    signs: Option<&'a [Option<kawi_tui::frame::GitSign>]>,
+    signs: Option<&'a [Option<kawi_tui::frame::Sign>]>,
+    diagnostic_spans: &'a [kawi_tui::frame::DiagnosticSpan],
 }
 
 fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
@@ -41,6 +43,35 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
         kawi_editor::Mode::Insert => kawi_tui::CursorStyle::Bar,
         kawi_editor::Mode::Replace => kawi_tui::CursorStyle::Underline,
         _ => kawi_tui::CursorStyle::Block,
+    }
+}
+
+fn preferred_sign(
+    git: Option<kawi_tui::frame::Sign>,
+    diagnostic: Option<kawi_tui::frame::DiagnosticSeverity>,
+) -> Option<kawi_tui::frame::Sign> {
+    diagnostic.map(kawi_tui::frame::Sign::Diagnostic).or(git)
+}
+
+fn diagnostic_label(severity: kawi_lsp::DiagnosticSeverity) -> &'static str {
+    match severity {
+        kawi_lsp::DiagnosticSeverity::Error => "Error",
+        kawi_lsp::DiagnosticSeverity::Warning => "Warning",
+        kawi_lsp::DiagnosticSeverity::Information => "Information",
+        kawi_lsp::DiagnosticSeverity::Hint => "Hint",
+    }
+}
+
+fn ui_diagnostic_severity(
+    severity: kawi_lsp::DiagnosticSeverity,
+) -> kawi_tui::frame::DiagnosticSeverity {
+    match severity {
+        kawi_lsp::DiagnosticSeverity::Error => kawi_tui::frame::DiagnosticSeverity::Error,
+        kawi_lsp::DiagnosticSeverity::Warning => kawi_tui::frame::DiagnosticSeverity::Warning,
+        kawi_lsp::DiagnosticSeverity::Information => {
+            kawi_tui::frame::DiagnosticSeverity::Information
+        }
+        kawi_lsp::DiagnosticSeverity::Hint => kawi_tui::frame::DiagnosticSeverity::Hint,
     }
 }
 
@@ -211,6 +242,7 @@ impl App {
                 redraw |= needs_redraw;
             }
             redraw |= self.lsp.poll_events();
+            self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             if self.picker.is_some() || self.replace.is_some() {
                 redraw |= self.refresh_picker() | self.refresh_replace();
@@ -383,14 +415,14 @@ impl App {
             matches: session.matches(),
             files: session.files(),
         });
-        let signs = self.git.as_ref().map(|session| {
-            session.visible_signs(self.editor.view_top(), self.editor.view_height())
-        });
+        let signs = self.view_signs();
+        let diagnostic_spans = self.lsp.diagnostic_spans(&window, self.editor.view_top());
         let frame = self.build_frame(FrameInput {
             status: &status,
             window: &window,
             gutter: &gutter,
             signs: signs.as_deref(),
+            diagnostic_spans: &diagnostic_spans,
             search_status: search_status.as_deref(),
             search_spans: &search_spans,
             preview_spans: &preview_spans,
@@ -400,11 +432,48 @@ impl App {
         render::draw(out, &frame)
     }
 
+    fn view_signs(&self) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
+        let top = self.editor.view_top();
+        let height = self.editor.view_height();
+        let git = self.git_view_signs(top, height);
+        if git.is_none() && !self.lsp.has_diagnostics() {
+            return None;
+        }
+        let mut signs = git.unwrap_or_else(|| vec![None; height]);
+        self.apply_diagnostic_signs(&mut signs, top);
+        Some(signs)
+    }
+
+    fn git_view_signs(
+        &self,
+        top: usize,
+        height: usize,
+    ) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
+        self.git.as_ref().map(|session| {
+            session
+                .visible_signs(top, height)
+                .into_iter()
+                .map(|sign| sign.map(kawi_tui::frame::Sign::Git))
+                .collect()
+        })
+    }
+
+    fn apply_diagnostic_signs(&self, signs: &mut [Option<kawi_tui::frame::Sign>], top: usize) {
+        for (offset, sign) in signs.iter_mut().enumerate() {
+            let diagnostic = self
+                .lsp
+                .diagnostic_severity(top.saturating_add(offset))
+                .map(ui_diagnostic_severity);
+            *sign = preferred_sign(*sign, diagnostic);
+        }
+    }
+
     fn build_frame<'a>(&'a self, input: FrameInput<'a>) -> Frame<'a> {
         Frame {
             lines: input.window,
             gutter: input.gutter,
             signs: input.signs,
+            diagnostic_spans: input.diagnostic_spans,
             pager: self.pager.as_deref(),
             completion: self
                 .editor
@@ -496,9 +565,15 @@ impl App {
 
     fn sync_lsp(&mut self) {
         self.lsp.refresh(&self.editor);
+        self.update_signcolumn_width();
         if let Some(message) = self.lsp.take_message() {
             self.show_message(message);
         }
+    }
+
+    fn update_signcolumn_width(&mut self) {
+        let width = usize::from(self.git.is_some() || self.lsp.has_diagnostics());
+        self.editor.set_signcolumn_width(width);
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -763,6 +838,8 @@ impl App {
             Action::OpenReplacePicker => self.open_replace_picker(),
             Action::GitNextHunk => self.handle_git_navigation(true),
             Action::GitPrevHunk => self.handle_git_navigation(false),
+            Action::DiagnosticNext => self.handle_diagnostic_navigation(true),
+            Action::DiagnosticPrev => self.handle_diagnostic_navigation(false),
             Action::GitStageHunk => self.handle_git_stage_hunk(),
             Action::GitUndoStage => self.handle_git_undo_stage(),
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
@@ -993,7 +1070,7 @@ impl App {
         if path.as_deref() != self.git_path.as_deref() {
             self.git = None;
             self.git_error = None;
-            self.editor.set_signcolumn_width(0);
+            self.update_signcolumn_width();
             self.git_path = path.clone();
             let Some(path) = path else {
                 return;
@@ -1007,7 +1084,7 @@ impl App {
                         !self.editor.text_has_final_newline(),
                     );
                     self.git = Some(session);
-                    self.editor.set_signcolumn_width(1);
+                    self.update_signcolumn_width();
                 }
                 Ok(None) => {}
                 Err(error) => self.git_error = Some(error.to_string()),
@@ -1057,6 +1134,27 @@ impl App {
         self.editor.apply(Action::MoveToFirstNonBlank);
         self.reveal_cursor();
         self.show_message(format!("Hunk {} of {}", nav.index, nav.total));
+        Ok(false)
+    }
+
+    fn handle_diagnostic_navigation(&mut self, forward: bool) -> Result<bool> {
+        let navigation =
+            self.lsp
+                .navigate_diagnostics(self.editor.row(), self.editor.col(), forward);
+        let Some(navigation) = navigation else {
+            self.show_message("No diagnostics".to_string());
+            return Ok(false);
+        };
+        self.editor
+            .apply(Action::JumpTo(navigation.row, navigation.column));
+        self.reveal_cursor();
+        self.show_message(format!(
+            "{} {} of {}: {}",
+            diagnostic_label(navigation.severity),
+            navigation.index,
+            navigation.total,
+            lsp::one_line(&navigation.message)
+        ));
         Ok(false)
     }
 
@@ -1127,7 +1225,7 @@ impl App {
         self.git = None;
         self.git_path = None;
         self.git_error = None;
-        self.editor.set_signcolumn_width(0);
+        self.update_signcolumn_width();
         self.sync_git();
         Ok(false)
     }
@@ -2600,6 +2698,19 @@ mod tests {
         assert_eq!(app.editor.filename(), alpha);
         type_command(&mut app, "b zzz");
         assert_eq!(app.last_message(), Some("E94: No matching buffer for zzz"));
+    }
+
+    #[test]
+    fn diagnostics_take_priority_over_git_signs() {
+        let git = Some(kawi_tui::frame::Sign::Git(kawi_tui::frame::GitSign::Change));
+        let diagnostic = Some(kawi_tui::frame::DiagnosticSeverity::Error);
+        assert_eq!(
+            preferred_sign(git, diagnostic),
+            Some(kawi_tui::frame::Sign::Diagnostic(
+                kawi_tui::frame::DiagnosticSeverity::Error
+            ))
+        );
+        assert_eq!(preferred_sign(git, None), git);
     }
 
     #[test]

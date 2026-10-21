@@ -8,7 +8,8 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, Frame, PickerMenu, ReplaceMenu, ReplaceStage, SearchSpan, Selection,
+    CursorStyle, DiagnosticSpan, Frame, PickerMenu, ReplaceMenu, ReplaceStage, SearchSpan,
+    Selection,
 };
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
@@ -338,11 +339,11 @@ fn draw_one_line(
     if let Some(signs) = frame.signs {
         match signs.get(screen_row).and_then(|sign| *sign) {
             Some(sign) => {
-                execute!(out, SetForegroundColor(frame.theme.git_sign_color(sign)))
-                    .context("apply git sign color")?;
-                write!(out, "{}", sign.text()).context("write git sign")?;
+                execute!(out, SetForegroundColor(frame.theme.sign_color(sign)))
+                    .context("apply sign color")?;
+                write!(out, "{}", sign.text()).context("write sign")?;
             }
-            None => write!(out, " ").context("write empty git sign")?,
+            None => write!(out, " ").context("write empty sign")?,
         }
         execute!(out, SetForegroundColor(frame.theme.line_number))
             .context("apply line number color")?;
@@ -424,6 +425,7 @@ pub enum Tint {
     SearchCurrent,
     Substitute,
     Syntax(SyntaxGroup),
+    Diagnostic(crate::frame::DiagnosticSeverity),
 }
 
 pub fn highlight_spans(
@@ -702,7 +704,25 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> 
     ) {
         paint_span(out, &span, gutter_width, theme)?;
     }
+    for span in diagnostic_highlight_spans(frame.diagnostic_spans, &view) {
+        paint_span(out, &span, gutter_width, theme)?;
+    }
     Ok(())
+}
+
+fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<HighlightSpan> {
+    spans
+        .iter()
+        .filter_map(|span| {
+            span_segment_at(
+                span.row,
+                span.start,
+                span.end,
+                view,
+                Tint::Diagnostic(span.severity),
+            )
+        })
+        .collect()
 }
 
 fn visual_cursor_cell(frame: &Frame, gutter_width: usize) -> Option<(usize, usize)> {
@@ -729,7 +749,19 @@ fn paint_span(
             };
             paint_tinted(out, &span.text, &colors, theme)
         }
+        Tint::Diagnostic(severity) => paint_underlined(out, &span.text, severity, theme),
     }
+}
+
+fn paint_underlined(
+    out: &mut Stdout,
+    text: &str,
+    severity: crate::frame::DiagnosticSeverity,
+    theme: &Theme,
+) -> Result<()> {
+    paint::apply_underline(out, theme.diagnostic_color(severity))?;
+    write_segment(out, text)?;
+    paint::clear_underline(out)
 }
 
 fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors, theme: &Theme) -> Result<()> {
@@ -1494,6 +1526,28 @@ mod tests {
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].from, 0);
         assert_eq!(painted[0].text, "3456789");
+    }
+
+    #[test]
+    fn diagnostic_spans_clip_to_visible_text() {
+        let lines = lines_of("abcdef");
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let diagnostic = DiagnosticSpan {
+            row: 0,
+            start: 2,
+            end: 4,
+            severity: crate::frame::DiagnosticSeverity::Error,
+        };
+        let spans = diagnostic_highlight_spans(&[diagnostic], &view);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].screen_row, 0);
+        assert_eq!(spans[0].from, 2);
+        assert_eq!(spans[0].text, "cd");
+        assert_eq!(
+            spans[0].tint,
+            Tint::Diagnostic(crate::frame::DiagnosticSeverity::Error)
+        );
     }
 
     #[test]

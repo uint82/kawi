@@ -96,6 +96,11 @@ impl Manager {
                     self.emit_progress(&key, params);
                 }
             }
+            "textDocument/publishDiagnostics" => {
+                if let Ok(params) = parse_params::<lsp_types::PublishDiagnosticsParams>(params) {
+                    self.publish_diagnostics(key, params);
+                }
+            }
             _ => {}
         }
     }

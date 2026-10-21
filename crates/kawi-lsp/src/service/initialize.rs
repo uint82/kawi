@@ -5,8 +5,9 @@ use crate::workspace::file_uri;
 use crate::ServerConfig;
 use lsp_types::{
     ClientCapabilities, GeneralClientCapabilities, InitializeParams, InitializeResult,
-    PositionEncodingKind, TextDocumentSyncCapability, TextDocumentSyncSaveOptions,
-    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceFolder,
+    PositionEncodingKind, PublishDiagnosticsClientCapabilities, TextDocumentClientCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncSaveOptions, WindowClientCapabilities,
+    WorkspaceClientCapabilities, WorkspaceFolder,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -191,8 +192,18 @@ fn initialize_capabilities() -> ClientCapabilities {
             work_done_progress: Some(true),
             ..WindowClientCapabilities::default()
         }),
+        text_document: Some(TextDocumentClientCapabilities {
+            publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                version_support: Some(true),
+                ..PublishDiagnosticsClientCapabilities::default()
+            }),
+            ..TextDocumentClientCapabilities::default()
+        }),
         general: Some(GeneralClientCapabilities {
-            position_encodings: Some(vec![PositionEncodingKind::UTF16]),
+            position_encodings: Some(vec![
+                PositionEncodingKind::UTF16,
+                PositionEncodingKind::UTF8,
+            ]),
             ..GeneralClientCapabilities::default()
         }),
         ..ClientCapabilities::default()
@@ -239,6 +250,16 @@ mod tests {
         )));
         assert!(sync.open_close);
         assert_eq!(sync.change, Some(TextDocumentSyncKind::INCREMENTAL));
+    }
+
+    #[test]
+    fn advertises_versioned_diagnostics() {
+        let capabilities = initialize_capabilities();
+        let diagnostics = capabilities
+            .text_document
+            .and_then(|text_document| text_document.publish_diagnostics)
+            .expect("diagnostics capability");
+        assert_eq!(diagnostics.version_support, Some(true));
     }
 
     #[test]

@@ -170,12 +170,15 @@ fn handle_open(writer: &mut impl io::Write, params: Option<Value>) -> Result<()>
     let document = &params["textDocument"];
     let version = document["version"].as_i64().unwrap_or(0);
     let text = document["text"].as_str().unwrap_or("");
-    send_log(writer, &format!("open:{version}:{text}"))
+    let uri = document["uri"].as_str().unwrap_or("");
+    send_log(writer, &format!("open:{version}:{text}"))?;
+    send_diagnostics(writer, uri, Some(version), "open-diagnostic")
 }
 
 fn handle_change(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {
     let params = params.context("didChange params")?;
     let version = params["textDocument"]["version"].as_i64().unwrap_or(0);
+    let uri = params["textDocument"]["uri"].as_str().unwrap_or("");
     let change = &params["contentChanges"][0];
     let text = change["text"].as_str().unwrap_or("");
     let kind = if change.get("range").is_some() {
@@ -183,7 +186,38 @@ fn handle_change(writer: &mut impl io::Write, params: Option<Value>) -> Result<(
     } else {
         "full"
     };
-    send_log(writer, &format!("change:{version}:{kind}:{text}"))
+    send_log(writer, &format!("change:{version}:{kind}:{text}"))?;
+    if version > 1 {
+        send_diagnostics(writer, uri, Some(version.saturating_sub(1)), "stale")?;
+    }
+    send_diagnostics(writer, uri, Some(version), "fresh")
+}
+
+fn send_diagnostics(
+    writer: &mut impl io::Write,
+    uri: &str,
+    version: Option<i64>,
+    message: &str,
+) -> Result<()> {
+    let mut params = json!({
+        "uri": uri,
+        "diagnostics": [{
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 1}
+            },
+            "severity": 1,
+            "source": "fake",
+            "message": message
+        }]
+    });
+    if let Some(version) = version {
+        params["version"] = json!(version);
+    }
+    send(
+        writer,
+        Message::notification("textDocument/publishDiagnostics", Some(params)),
+    )
 }
 
 fn handle_save(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {

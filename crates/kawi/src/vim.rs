@@ -1138,8 +1138,8 @@ impl VimKeymap {
         if self.replace_prefix_armed() {
             return self.complete_replace(key);
         }
-        if self.hunk_prefix_armed() {
-            return self.complete_hunk(key);
+        if self.bracket_prefix_armed() {
+            return self.complete_bracket(key);
         }
         match key.code {
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1221,14 +1221,14 @@ impl VimKeymap {
         action
     }
 
-    fn hunk_prefix_armed(&self) -> bool {
+    fn bracket_prefix_armed(&self) -> bool {
         let body = self
             .pending
             .trim_start_matches(|ch: char| ch.is_ascii_digit());
         matches!(body, "]" | "[")
     }
 
-    fn complete_hunk(&mut self, key: KeyEvent) -> Action {
+    fn complete_bracket(&mut self, key: KeyEvent) -> Action {
         let forward = self.pending.ends_with(']');
         match key.code {
             KeyCode::Char('c') if !has_ctrl_or_alt(key) => {
@@ -1237,6 +1237,14 @@ impl VimKeymap {
                     Action::GitNextHunk
                 } else {
                     Action::GitPrevHunk
+                }
+            }
+            KeyCode::Char('d') if !has_ctrl_or_alt(key) => {
+                self.clear_pending();
+                if forward {
+                    Action::DiagnosticNext
+                } else {
+                    Action::DiagnosticPrev
                 }
             }
             _ => self.cancel_sequence(),
@@ -4013,6 +4021,27 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
             Action::GitPrevHunk
+        );
+    }
+
+    #[test]
+    fn diagnostic_navigation_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(']')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::DiagnosticNext
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('[')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::DiagnosticPrev
         );
     }
 

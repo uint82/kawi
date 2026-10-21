@@ -47,7 +47,7 @@ impl Manager {
             uri,
             language_id: language.language_id,
             text,
-            version: 1,
+            version: INITIAL_DOCUMENT_VERSION,
             clients: keys.clone(),
         };
         self.documents.insert(path.clone(), document);

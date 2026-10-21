@@ -320,6 +320,8 @@ pub enum Action {
     OpenReplacePicker,
     GitNextHunk,
     GitPrevHunk,
+    DiagnosticNext,
+    DiagnosticPrev,
     GitStageHunk,
     GitUndoStage,
     GitStageBuffer,

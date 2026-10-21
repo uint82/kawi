@@ -27,6 +27,23 @@ pub(crate) fn absolute(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+pub(crate) fn path_from_uri(uri: &Uri) -> Option<PathBuf> {
+    let encoded = uri.as_str().strip_prefix("file://")?;
+    let decoded = decode_path(encoded);
+    Some(PathBuf::from(decoded))
+}
+
+pub(crate) fn char_index(text: &str, character: u32, encoding: &PositionEncodingKind) -> u32 {
+    let mut units = 0u32;
+    for (index, value) in text.chars().enumerate() {
+        if units >= character {
+            return u32::try_from(index).unwrap_or(u32::MAX);
+        }
+        units = units.saturating_add(encoded_char_len(value, encoding));
+    }
+    u32::try_from(text.chars().count()).unwrap_or(u32::MAX)
+}
+
 pub(crate) fn root_for(path: &Path, markers: &[String]) -> PathBuf {
     let path = absolute(path);
     let directory = path.parent().unwrap_or_else(|| Path::new(""));
@@ -39,12 +56,47 @@ pub(crate) fn root_for(path: &Path, markers: &[String]) -> PathBuf {
 }
 
 fn encoded_len(line: &str, encoding: &PositionEncodingKind) -> usize {
+    line.chars()
+        .map(|value| usize::try_from(encoded_char_len(value, encoding)).unwrap_or(usize::MAX))
+        .sum()
+}
+
+fn encoded_char_len(value: char, encoding: &PositionEncodingKind) -> u32 {
     if encoding == &PositionEncodingKind::UTF8 {
-        line.len()
+        u32::try_from(value.len_utf8()).unwrap_or(u32::MAX)
     } else if encoding == &PositionEncodingKind::UTF32 {
-        line.chars().count()
+        1
     } else {
-        line.encode_utf16().count()
+        u32::try_from(value.len_utf16()).unwrap_or(u32::MAX)
+    }
+}
+
+fn decode_path(encoded: &str) -> String {
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            if let (Some(high), Some(low)) =
+                (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
+            {
+                decoded.push((high << 4) | low);
+                index += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -118,5 +170,27 @@ mod tests {
     fn computes_empty_document_ranges() {
         let range = whole_document_range("", &PositionEncodingKind::UTF16);
         assert_eq!(range.end, Position::new(0, 0));
+    }
+
+    #[test]
+    fn converts_utf_units_to_character_indices() {
+        assert_eq!(char_index("a𝄞b", 0, &PositionEncodingKind::UTF16), 0);
+        assert_eq!(char_index("a𝄞b", 1, &PositionEncodingKind::UTF16), 1);
+        assert_eq!(char_index("a𝄞b", 3, &PositionEncodingKind::UTF16), 2);
+        assert_eq!(char_index("a𝄞b", 3, &PositionEncodingKind::UTF8), 2);
+        assert_eq!(char_index("a𝄞b", 2, &PositionEncodingKind::UTF32), 2);
+        assert_eq!(char_index("a𝄞b", 99, &PositionEncodingKind::UTF16), 3);
+    }
+
+    #[test]
+    fn decodes_file_uris() {
+        let uri = file_uri(Path::new("/tmp/a b#c.rs")).expect("uri");
+        assert_eq!(path_from_uri(&uri), Some(PathBuf::from("/tmp/a b#c.rs")));
+        let unicode = file_uri(Path::new("/tmp/naïve.rs")).expect("unicode uri");
+        assert_eq!(
+            path_from_uri(&unicode),
+            Some(PathBuf::from("/tmp/naïve.rs"))
+        );
+        assert!(path_from_uri(&Uri::from_str("https://example.com/x").unwrap()).is_none());
     }
 }

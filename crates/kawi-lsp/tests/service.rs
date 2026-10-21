@@ -1,4 +1,4 @@
-use kawi_lsp::{Languages, LspEvent, LspService, ProgressEvent, ServerState};
+use kawi_lsp::{DiagnosticSeverity, Languages, LspEvent, LspService, ProgressEvent, ServerState};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -89,6 +89,61 @@ fn performs_full_document_sync_and_answers_server_requests() {
     wait_for_log(&service, "change:2:full:fn main() { let x = 1; }\n");
     assert!(service.save(&file));
     wait_for_log(&service, "save:fn main() { let x = 1; }\n");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn publishes_current_diagnostics_and_drops_stale_versions() {
+    let root = temp_project("diagnostics");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "a\n"));
+    wait_for_ready(&service);
+    let open = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Diagnostics(diagnostics)
+                if diagnostics.version == Some(1)
+                    && diagnostics.diagnostics[0].message == "open-diagnostic"
+        )
+    });
+    let LspEvent::Diagnostics(open) = open else {
+        panic!("unexpected diagnostic event");
+    };
+    assert_eq!(open.server, "fake");
+    assert_eq!(open.path, file);
+    assert_eq!(open.diagnostics[0].severity, DiagnosticSeverity::Error);
+    assert!(service.change(&file, "ab\n"));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut found_change = false;
+    let mut found_fresh = false;
+    let mut found_stale = false;
+    while Instant::now() < deadline && !(found_change && found_fresh) {
+        while let Some(event) = service.try_recv() {
+            match event {
+                LspEvent::Log { message, .. } if message == "change:2:full:ab\n" => {
+                    found_change = true;
+                }
+                LspEvent::Diagnostics(diagnostics) => {
+                    found_stale |= diagnostics
+                        .diagnostics
+                        .iter()
+                        .any(|diagnostic| diagnostic.message == "stale");
+                    found_fresh |= diagnostics.version == Some(2)
+                        && diagnostics
+                            .diagnostics
+                            .iter()
+                            .any(|diagnostic| diagnostic.message == "fresh");
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(found_change);
+    assert!(found_fresh);
+    assert!(!found_stale);
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

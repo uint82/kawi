@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use crossterm::{
     execute,
-    style::{Color, SetBackgroundColor, SetForegroundColor},
+    style::{
+        Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor, SetUnderlineColor,
+    },
 };
 use std::io::Stdout;
 
@@ -18,6 +20,26 @@ pub fn apply_base(out: &mut Stdout, theme: &Theme) -> Result<()> {
 
 pub fn apply_match(out: &mut Stdout, colors: &MatchColors) -> Result<()> {
     apply_colors(out, colors.foreground, colors.background, "tint span")
+}
+
+pub fn apply_underline(out: &mut Stdout, color: Color) -> Result<()> {
+    execute!(
+        out,
+        SetAttribute(Attribute::Underlined),
+        SetUnderlineColor(color)
+    )
+    .context("apply diagnostic underline")?;
+    Ok(())
+}
+
+pub fn clear_underline(out: &mut Stdout) -> Result<()> {
+    execute!(
+        out,
+        SetAttribute(Attribute::NoUnderline),
+        SetUnderlineColor(Color::Reset)
+    )
+    .context("clear diagnostic underline")?;
+    Ok(())
 }
 
 pub fn restore_base(out: &mut Stdout, theme: &Theme) -> Result<()> {

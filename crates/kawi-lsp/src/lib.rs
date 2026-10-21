@@ -10,4 +10,8 @@ mod service;
 mod workspace;
 
 pub use config::{LanguageConfig, Languages, ServerConfig};
-pub use service::{LspEvent, LspService, MessageLevel, ProgressEvent, ServerState, StatusEvent};
+pub use service::{
+    Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity, DiagnosticsEvent,
+    LspEvent, LspService, MessageLevel, ProgressEvent, ServerState, StatusEvent,
+    INITIAL_DOCUMENT_VERSION,
+};
