@@ -296,6 +296,7 @@ dependencies = [
  "kawi-buffer",
  "kawi-editor",
  "kawi-git",
+ "kawi-lsp",
  "kawi-picker",
  "kawi-syntax",
  "kawi-tui",
@@ -328,6 +329,15 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "similar",
+]
+
+[[package]]
+name = "kawi-lsp"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml",
 ]
 
 [[package]]

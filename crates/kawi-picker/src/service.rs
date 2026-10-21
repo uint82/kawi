@@ -1,13 +1,11 @@
+use crate::files::{relative_path, walk_project};
+use crate::grep::{grep_project_while, GrepHit};
+use crate::replace::{replace_preview_while, ReplacePreview};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
-
-use crate::files::{relative_path, walk_project};
-use crate::grep::{grep_project_while, GrepHit};
-use crate::replace::{replace_preview_while, ReplacePreview};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectRequest {
@@ -65,6 +63,11 @@ struct Queued {
 
 impl ProjectService {
     pub fn new() -> Self {
+        let (wake, _) = mpsc::channel();
+        Self::with_wake(wake)
+    }
+
+    pub fn with_wake(wake: Sender<()>) -> Self {
         let (sender, results) = mpsc::channel();
         let shared = Arc::new(Shared {
             request: Mutex::new(None),
@@ -76,7 +79,7 @@ impl ProjectService {
             let shared = Arc::clone(&shared);
             thread::Builder::new()
                 .name("kawi-project".to_string())
-                .spawn(move || run(shared, sender))
+                .spawn(move || run(shared, sender, wake))
                 .ok()
         };
         Self {
@@ -105,10 +108,6 @@ impl ProjectService {
     pub fn try_recv(&self) -> Option<ProjectResult> {
         self.results.try_recv().ok()
     }
-
-    pub fn recv_timeout(&self, timeout: Duration) -> Option<ProjectResult> {
-        self.results.recv_timeout(timeout).ok()
-    }
 }
 
 impl Default for ProjectService {
@@ -128,7 +127,7 @@ impl Drop for ProjectService {
     }
 }
 
-fn run(shared: Arc<Shared>, sender: Sender<ProjectResult>) {
+fn run(shared: Arc<Shared>, sender: Sender<ProjectResult>, wake: Sender<()>) {
     while let Some(queued) = next_request(&shared) {
         let result = process(&shared, queued);
         if shared.generation.load(Ordering::SeqCst) != result.id() {
@@ -137,6 +136,7 @@ fn run(shared: Arc<Shared>, sender: Sender<ProjectResult>) {
         if sender.send(result).is_err() {
             return;
         }
+        let _ = wake.send(());
     }
 }
 
@@ -229,7 +229,7 @@ fn next_request(shared: &Shared) -> Option<Queued> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::*;
 
@@ -254,6 +254,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         panic!("project result timed out");
+    }
+
+    #[test]
+    fn service_notifies_the_wake_channel() {
+        let (wake, wakes) = mpsc::channel();
+        let service = ProjectService::with_wake(wake);
+        service.submit(ProjectRequest::Files {
+            root: project("wake"),
+        });
+        wakes
+            .recv_timeout(Duration::from_secs(5))
+            .expect("wake notification");
+        assert!(service.try_recv().is_some());
     }
 
     #[test]

@@ -1,11 +1,8 @@
-use anyhow::{Context, Result};
-use crossterm::event::{
-    poll, read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
-};
+use anyhow::{anyhow, Result};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 mod git;
 mod macro_codec;
@@ -38,8 +35,6 @@ struct FrameInput<'a> {
     signs: Option<&'a [Option<kawi_tui::frame::GitSign>]>,
 }
 
-const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
-
 fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
     match mode {
         kawi_editor::Mode::Insert => kawi_tui::CursorStyle::Bar,
@@ -48,6 +43,7 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
     }
 }
 
+use crate::event::EventQueue;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
@@ -87,6 +83,9 @@ pub struct App {
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
+    languages: Option<kawi_lsp::Languages>,
+    lsp_status: Option<String>,
+    events: EventQueue,
 }
 
 impl App {
@@ -113,11 +112,15 @@ impl App {
             git: None,
             git_path: None,
             git_error: None,
+            languages: None,
+            lsp_status: None,
+            events: EventQueue::new(),
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
         self.sync_viewport_size();
+        self.events.start_input_thread()?;
         self.run_loop()
     }
 
@@ -128,6 +131,12 @@ impl App {
         if let Some(warning) = state::load(&mut self.editor, &paths) {
             self.message = Some(warning);
         }
+        let languages = kawi_lsp::Languages::load(&paths.languages);
+        if let Some(warning) = languages.warning() {
+            self.message = Some(warning.to_string());
+        }
+        self.languages = Some(languages);
+        self.sync_lsp_status();
     }
 
     pub fn save_state(&self) {
@@ -181,9 +190,9 @@ impl App {
         let mut out = stdout();
         loop {
             self.sync_git();
+            self.sync_lsp_status();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
-                self.wait_for_syntax_ready();
             }
             self.refresh_picker();
             self.refresh_replace();
@@ -196,31 +205,26 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
-            if self.picker.is_some() || self.replace.is_some() {
-                if self.refresh_picker() | self.refresh_replace() {
-                    return Ok(Redraw::Redraw);
+            let mut redraw = false;
+            for event in self.events.take_input() {
+                let needs_redraw = event_needs_redraw(&event);
+                if self.update(event)? {
+                    return Ok(Redraw::Quit);
                 }
-            } else if self.apply_syntax_results() {
-                return Ok(Redraw::Redraw);
+                redraw |= needs_redraw;
             }
-            let pending = self.syntax_pending
-                || self.picker.as_ref().is_some_and(PickerSession::pending)
-                || self.replace.as_ref().is_some_and(ReplaceSession::pending);
-            let event = if pending {
-                match poll_next_event(Duration::from_millis(10))? {
-                    Some(event) => event,
-                    None => continue,
-                }
+            if self.picker.is_some() || self.replace.is_some() {
+                redraw |= self.refresh_picker() | self.refresh_replace();
             } else {
-                read_next_event()?
-            };
-            let redraw = event_needs_redraw(&event);
-            if self.update(event)? {
-                return Ok(Redraw::Quit);
+                redraw |= self.apply_syntax_results();
             }
             if redraw {
                 return Ok(Redraw::Redraw);
             }
+            if self.events.input_closed() {
+                return Err(anyhow!("terminal input closed"));
+            }
+            self.events.wait()?;
         }
     }
 
@@ -260,7 +264,10 @@ impl App {
             self.syntax_window = 0..0;
         }
         if let Some(request) = self.editor.syntax_request() {
-            let service = self.syntax.get_or_insert_with(SyntaxService::new);
+            let wake = self.events.wake();
+            let service = self
+                .syntax
+                .get_or_insert_with(|| SyntaxService::with_wake(wake));
             self.syntax_latest = service.submit(request);
             self.syntax_pending = true;
             self.syntax_key = Some(key);
@@ -306,36 +313,6 @@ impl App {
             changed = true;
         }
         changed
-    }
-
-    fn syntax_ready(&self) -> bool {
-        let Some(key) = self.editor.syntax_key() else {
-            return true;
-        };
-        self.syntax_window.start <= key.top && key.end <= self.syntax_window.end
-    }
-
-    fn wait_for_syntax_ready(&mut self) {
-        if self.syntax_ready() {
-            return;
-        }
-        let deadline = Instant::now() + SYNTAX_READY_TIMEOUT;
-        loop {
-            if self.syntax_ready() || !self.syntax_pending {
-                return;
-            }
-            let Some(service) = self.syntax.as_ref() else {
-                return;
-            };
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return;
-            }
-            let Some(result) = service.recv_timeout(remaining) else {
-                return;
-            };
-            self.apply_syntax_result(result);
-        }
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
@@ -514,7 +491,19 @@ impl App {
             line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
+            lsp: self.lsp_status.as_deref(),
         }
+    }
+
+    fn sync_lsp_status(&mut self) {
+        let status = self.languages.as_ref().and_then(|languages| {
+            let path = self
+                .editor
+                .has_file()
+                .then(|| Path::new(self.editor.filename()));
+            languages.missing_binary_status(path)
+        });
+        self.lsp_status = status;
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -643,6 +632,7 @@ impl App {
             self.replace = Some(ReplaceSession::from_query(
                 session.root().to_path_buf(),
                 &query,
+                self.events.wake(),
             ));
             return Ok(false);
         }
@@ -894,9 +884,10 @@ impl App {
 
     fn open_picker(&mut self, kind: PickerKind) -> Result<bool> {
         let root = self.picker_root();
+        let wake = self.events.wake();
         self.picker = Some(match kind {
-            PickerKind::Files => PickerSession::files(root),
-            PickerKind::Grep => PickerSession::grep(root, None),
+            PickerKind::Files => PickerSession::files(root, wake),
+            PickerKind::Grep => PickerSession::grep(root, None, wake),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
         });
         Ok(false)
@@ -904,7 +895,7 @@ impl App {
 
     fn open_replace_picker(&mut self) -> Result<bool> {
         let root = self.picker_root();
-        self.replace = Some(ReplaceSession::new(root));
+        self.replace = Some(ReplaceSession::new(root, self.events.wake()));
         Ok(false)
     }
 
@@ -914,7 +905,7 @@ impl App {
             return Ok(false);
         };
         let root = self.picker_root();
-        self.picker = Some(PickerSession::grep(root, Some(&word)));
+        self.picker = Some(PickerSession::grep(root, Some(&word), self.events.wake()));
         Ok(false)
     }
 
@@ -1495,17 +1486,6 @@ fn replace_stage(stage: ReplaceStage) -> kawi_tui::frame::ReplaceStage {
     }
 }
 
-fn read_next_event() -> Result<Event> {
-    read().context("read terminal event")
-}
-
-fn poll_next_event(timeout: Duration) -> Result<Option<Event>> {
-    if poll(timeout).context("poll terminal event")? {
-        return read().context("read terminal event").map(Some);
-    }
-    Ok(None)
-}
-
 fn event_needs_redraw(event: &Event) -> bool {
     match event {
         Event::Key(_) | Event::Resize(_, _) | Event::Paste(_) => true,
@@ -1639,6 +1619,7 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
     use kawi_editor::Mode;
+    use std::time::Duration;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -2986,6 +2967,33 @@ mod tests {
     }
 
     #[test]
+    fn missing_lsp_binary_reaches_the_status_line() {
+        let root = std::env::temp_dir().join(format!("kawi_lsp_status_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("languages.toml");
+        std::fs::write(
+            &path,
+            "[server.rust-analyzer]\ncommand = \"kawi-missing-rust-analyzer\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nservers = [\"rust-analyzer\"]\n",
+        )
+        .unwrap();
+        let mut buffer = Buffer::from_string("fn main() {}\n");
+        buffer.path = Some("main.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.languages = Some(kawi_lsp::Languages::load(&path));
+        app.sync_lsp_status();
+        assert_eq!(
+            app.lsp_status.as_deref(),
+            Some("lsp: rust-analyzer not found in PATH")
+        );
+        assert_eq!(
+            app.status_snapshot().lsp,
+            Some("lsp: rust-analyzer not found in PATH")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn syntax_results_reach_the_app() {
         let mut buffer = Buffer::from_string("// hi\nfn main() {}\n");
         buffer.path = Some("test.rs".to_string());
@@ -2996,20 +3004,6 @@ mod tests {
             .syntax_spans
             .iter()
             .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
-    }
-
-    #[test]
-    fn syntax_is_ready_before_an_uncovered_viewport_is_drawn() {
-        let text = (0..3_000)
-            .map(|index| format!("fn function_{index}() {{}}\n"))
-            .collect::<String>();
-        let mut buffer = Buffer::from_string(&text);
-        buffer.path = Some("large.rs".to_string());
-        let mut app = App::new(buffer, Flavor::Vim);
-        app.refresh_syntax();
-        assert!(!app.syntax_ready());
-        app.wait_for_syntax_ready();
-        assert!(app.syntax_ready());
     }
 
     #[test]

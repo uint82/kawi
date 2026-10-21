@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 
 use crossterm::event::KeyEvent;
 use kawi_picker::{
@@ -13,10 +14,10 @@ pub struct PickerSession {
 }
 
 impl PickerSession {
-    pub fn files(root: PathBuf) -> Self {
+    pub fn files(root: PathBuf, wake: Sender<()>) -> Self {
         let mut picker = Picker::files();
         picker.set_loading(true);
-        let service = ProjectService::new();
+        let service = ProjectService::with_wake(wake);
         let latest = service.submit(ProjectRequest::Files { root: root.clone() });
         Self {
             picker,
@@ -26,11 +27,11 @@ impl PickerSession {
         }
     }
 
-    pub fn grep(root: PathBuf, query: Option<&str>) -> Self {
+    pub fn grep(root: PathBuf, query: Option<&str>, wake: Sender<()>) -> Self {
         let picker = Picker::grep();
         let mut session = Self {
             picker,
-            service: Some(ProjectService::new()),
+            service: Some(ProjectService::with_wake(wake)),
             root,
             latest: 0,
         };
@@ -91,10 +92,6 @@ impl PickerSession {
             changed = true;
         }
         changed
-    }
-
-    pub fn pending(&self) -> bool {
-        self.service.is_some() && self.picker.loading()
     }
 
     fn apply(&mut self, result: ProjectResult) {
