@@ -7,4 +7,5 @@ pub mod statusbar;
 pub mod terminal;
 
 pub use frame::{CursorStyle, Selection};
+pub mod text;
 pub mod theme;

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use crate::files::{relative_path, walk_project};
 use crate::grep::{grep_project_while, GrepHit};
+use crate::replace::{replace_preview_while, ReplacePreview};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectRequest {
@@ -16,6 +17,12 @@ pub enum ProjectRequest {
     Grep {
         root: PathBuf,
         query: String,
+        limit: usize,
+    },
+    Replace {
+        root: PathBuf,
+        query: String,
+        replacement: String,
         limit: usize,
     },
 }
@@ -29,6 +36,11 @@ pub enum ProjectResult {
     Grep {
         id: u64,
         hits: Vec<GrepHit>,
+        error: Option<String>,
+    },
+    Replace {
+        id: u64,
+        preview: Option<ReplacePreview>,
         error: Option<String>,
     },
 }
@@ -150,6 +162,25 @@ fn process(shared: &Shared, queued: Queued) -> ProjectResult {
                 },
             }
         }
+        ProjectRequest::Replace {
+            root,
+            query,
+            replacement,
+            limit,
+        } => match replace_preview_while(&root, &query, &replacement, limit, || {
+            shared.generation.load(Ordering::SeqCst) == queued.id
+        }) {
+            Ok(preview) => ProjectResult::Replace {
+                id: queued.id,
+                preview: Some(preview),
+                error: None,
+            },
+            Err(error) => ProjectResult::Replace {
+                id: queued.id,
+                preview: None,
+                error: Some(error),
+            },
+        },
     }
 }
 
@@ -171,7 +202,7 @@ fn scan_files(shared: &Shared, id: u64, root: &std::path::Path) -> Vec<String> {
 impl ProjectResult {
     pub fn id(&self) -> u64 {
         match self {
-            Self::Files { id, .. } | Self::Grep { id, .. } => *id,
+            Self::Files { id, .. } | Self::Grep { id, .. } | Self::Replace { id, .. } => *id,
         }
     }
 }
@@ -234,6 +265,33 @@ mod tests {
             ProjectResult::Files { id: result, files } => {
                 assert_eq!(result, id);
                 assert_eq!(files, vec!["alpha.txt"]);
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn service_builds_replace_previews() {
+        let root = project("replace");
+        let service = ProjectService::new();
+        let id = service.submit(ProjectRequest::Replace {
+            root: root.clone(),
+            query: "needle".to_string(),
+            replacement: "thread".to_string(),
+            limit: 10,
+        });
+        match wait_for(&service) {
+            ProjectResult::Replace {
+                id: result,
+                preview,
+                error,
+            } => {
+                assert_eq!(result, id);
+                assert_eq!(error, None);
+                let preview = preview.expect("preview");
+                assert_eq!(preview.matches, 1);
+                assert_eq!(preview.files[0].content, "thread\n");
             }
             other => panic!("unexpected result: {other:?}"),
         }

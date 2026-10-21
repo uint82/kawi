@@ -1186,6 +1186,7 @@ impl VimKeymap {
             KeyCode::Char('s') if !has_ctrl_or_alt(key) => Action::OpenGrepPicker,
             KeyCode::Char('w') if !has_ctrl_or_alt(key) => Action::OpenGrepWordPicker,
             KeyCode::Char('k') if !has_ctrl_or_alt(key) => Action::OpenBufferPicker,
+            KeyCode::Char('r') if !has_ctrl_or_alt(key) => Action::OpenReplacePicker,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -3914,6 +3915,22 @@ mod tests {
             map.map(plain(KeyCode::Char('k')), Mode::Normal),
             Action::OpenBufferPicker
         );
+    }
+
+    #[test]
+    fn leader_opens_replace_picker() {
+        for leader in [KeyCode::Char('\\'), KeyCode::Char(' ')] {
+            let mut map = VimKeymap::new();
+            assert_eq!(map.map(plain(leader), Mode::Normal), Action::Noop);
+            assert_eq!(
+                map.map(plain(KeyCode::Char('f')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('r')), Mode::Normal),
+                Action::OpenReplacePicker
+            );
+        }
     }
 
     #[test]

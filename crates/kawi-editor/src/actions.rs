@@ -317,6 +317,7 @@ pub enum Action {
     OpenGrepPicker,
     OpenGrepWordPicker,
     OpenBufferPicker,
+    OpenReplacePicker,
     Noop,
 }
 
@@ -382,6 +383,7 @@ impl Action {
                 | Self::OpenGrepPicker
                 | Self::OpenGrepWordPicker
                 | Self::OpenBufferPicker
+                | Self::OpenReplacePicker
                 | Self::Noop
         )
     }

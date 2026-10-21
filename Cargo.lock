@@ -330,6 +330,8 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "regex",
+ "regex-syntax",
 ]
 
 [[package]]

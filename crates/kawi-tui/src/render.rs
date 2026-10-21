@@ -7,9 +7,12 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::{CursorStyle, Frame, PickerMenu, SearchSpan, Selection};
+use crate::frame::{
+    CursorStyle, Frame, PickerMenu, ReplaceMenu, ReplaceStage, SearchSpan, Selection,
+};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
+use crate::text::count_label;
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
 use kawi_syntax::{SyntaxGroup, SyntaxSpan};
@@ -18,9 +21,10 @@ use crate::display;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
-    let contents = match frame.picker.as_ref() {
-        Some(picker) => draw_picker(out, frame, picker),
-        None => draw_contents(out, frame),
+    let contents = match (frame.replace.as_ref(), frame.picker.as_ref()) {
+        (Some(replace), _) => draw_replace(out, frame, replace),
+        (None, Some(picker)) => draw_picker(out, frame, picker),
+        (None, None) => draw_contents(out, frame),
     };
     let finished = execute!(out, EndSynchronizedUpdate).context("end synchronized update");
     contents.and(finished)
@@ -138,6 +142,12 @@ fn picker_footer(picker: &PickerMenu<'_>) -> String {
     if picker.query.is_empty() && picker.items.is_empty() {
         return "Type to search  Esc cancel".to_string();
     }
+    if picker.replace_hint {
+        return format!(
+            "{} results  Enter open  Ctrl-R replace  Tab next  Esc cancel",
+            picker.items.len()
+        );
+    }
     format!(
         "{} results  Enter open  Tab next  Esc cancel",
         picker.items.len()
@@ -156,6 +166,156 @@ fn place_picker_cursor(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>)
     let prefix = picker.title.chars().count().saturating_add(2);
     let column = prefix.saturating_add(picker.cursor).min(width - 1);
     execute!(out, MoveTo(saturate_u16(column), 0)).context("place picker cursor")?;
+    Ok(())
+}
+
+fn draw_replace(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
+    paint::apply_base(out, frame.theme)?;
+    execute!(out, Clear(ClearType::All)).context("clear replace")?;
+    draw_replace_prompt(out, frame, replace)?;
+    draw_replace_rows(out, frame, replace)?;
+    draw_replace_footer(out, frame, replace)?;
+    apply_cursor_style(out, CursorStyle::Bar)?;
+    place_replace_cursor(out, frame, replace)?;
+    flush(out)?;
+    Ok(())
+}
+
+fn draw_replace_prompt(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(0, 0),
+        Clear(ClearType::CurrentLine),
+        SetForegroundColor(frame.theme.line_number)
+    )
+    .context("prepare replace prompt")?;
+    let prompt = format!("Replace  {}", replace.query);
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&prompt, frame.viewport.width())
+    )
+    .context("write replace prompt")?;
+    if replace.stage == ReplaceStage::Search {
+        paint::restore_base(out, frame.theme)?;
+        return Ok(());
+    }
+    execute!(
+        out,
+        MoveTo(0, 1),
+        Clear(ClearType::CurrentLine),
+        SetForegroundColor(frame.theme.line_number)
+    )
+    .context("prepare replacement prompt")?;
+    let prompt = format!("with: {}", replace.replacement);
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&prompt, frame.viewport.width())
+    )
+    .context("write replacement prompt")?;
+    paint::restore_base(out, frame.theme)?;
+    Ok(())
+}
+
+fn draw_replace_rows(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
+    let first_row = replace_rows_start(replace.stage);
+    let available = frame.viewport.height().saturating_sub(first_row + 1);
+    if available == 0 {
+        return Ok(());
+    }
+    let start = picker_start(available, replace.selected);
+    let width = frame.viewport.width();
+    for offset in 0..available {
+        let index = start + offset;
+        let row = first_row + offset;
+        execute!(
+            out,
+            MoveTo(0, saturate_u16(row)),
+            Clear(ClearType::CurrentLine)
+        )
+        .context("clear replace row")?;
+        let Some(item) = replace.items.get(index) else {
+            continue;
+        };
+        if replace.selected == Some(index) {
+            paint::apply_match(out, &frame.theme.selection)?;
+        }
+        write!(out, "{}", truncate_to_width(item, width)).context("write replace row")?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
+}
+
+fn draw_replace_footer(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
+    let height = frame.viewport.height();
+    if height == 0 {
+        return Ok(());
+    }
+    let row = height.saturating_sub(1);
+    execute!(
+        out,
+        MoveTo(0, saturate_u16(row)),
+        Clear(ClearType::CurrentLine)
+    )
+    .context("clear replace footer")?;
+    let footer = replace_footer(replace);
+    paint::apply_match(out, &frame.theme.status)?;
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&footer, frame.viewport.width())
+    )
+    .context("write replace footer")?;
+    paint::restore_base(out, frame.theme)?;
+    Ok(())
+}
+
+fn replace_footer(replace: &ReplaceMenu<'_>) -> String {
+    if let Some(status) = replace.status {
+        return status.to_string();
+    }
+    if replace.loading {
+        return match replace.stage {
+            ReplaceStage::Search => "Searching...".to_string(),
+            ReplaceStage::Replacement | ReplaceStage::Preview => "Building preview...".to_string(),
+        };
+    }
+    match replace.stage {
+        ReplaceStage::Search => {
+            if replace.items.is_empty() {
+                return "Type to search  Enter replace  Esc cancel".to_string();
+            }
+            format!(
+                "{} results  Enter replace  Tab next  Esc cancel",
+                replace.items.len()
+            )
+        }
+        ReplaceStage::Replacement => "Enter preview  Esc search  groups: & \\1 $1".to_string(),
+        ReplaceStage::Preview => {
+            let matches = count_label(replace.matches, "match", "matches");
+            let files = count_label(replace.files, "file", "files");
+            format!("{matches} in {files}  y apply  n/Esc back")
+        }
+    }
+}
+
+fn replace_rows_start(stage: ReplaceStage) -> usize {
+    match stage {
+        ReplaceStage::Search => 1,
+        ReplaceStage::Replacement | ReplaceStage::Preview => 2,
+    }
+}
+
+fn place_replace_cursor(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
+    let width = frame.viewport.width().max(1);
+    let (row, prefix) = match replace.stage {
+        ReplaceStage::Search => (0, "Replace  ".chars().count()),
+        ReplaceStage::Replacement | ReplaceStage::Preview => (1, "with: ".chars().count()),
+    };
+    let column = prefix.saturating_add(replace.cursor).min(width - 1);
+    execute!(out, MoveTo(saturate_u16(column), saturate_u16(row)))
+        .context("place replace cursor")?;
     Ok(())
 }
 

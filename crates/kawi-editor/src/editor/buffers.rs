@@ -244,6 +244,63 @@ impl Editor {
                 .any(|entry| entry.state.buffer.is_dirty())
     }
 
+    pub fn file_is_modified(&self, target: &Path) -> bool {
+        match self.find_buffer(target) {
+            Some(number) if number == self.buffers.current() => self.is_dirty(),
+            Some(number) => self
+                .buffers
+                .entry(number)
+                .is_some_and(|entry| entry.state.buffer.is_dirty()),
+            None => false,
+        }
+    }
+
+    pub fn reload_files(&mut self, targets: &[PathBuf]) {
+        let mut targets = targets.to_vec();
+        targets.sort();
+        targets.dedup();
+        for target in targets {
+            self.reload_open_file(&target);
+        }
+    }
+
+    fn reload_open_file(&mut self, target: &Path) {
+        let Some(number) = self.find_buffer(target) else {
+            return;
+        };
+        if self.file_is_modified(target) {
+            return;
+        }
+        if number == self.buffers.current() {
+            let _ = self.reload_current(true);
+            return;
+        }
+        self.reload_parked_file(number);
+    }
+
+    fn reload_parked_file(&mut self, number: usize) {
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return;
+        };
+        let state = &mut entry.state;
+        let row = state.cursor.row();
+        let col = state.cursor.col();
+        state.buffer.checkpoint(row, col);
+        if state.buffer.reload_from_disk().is_err() {
+            return;
+        }
+        state.buffer.mark_clean();
+        let row = row.min(state.buffer.line_count().saturating_sub(1));
+        let col = col.min(state.buffer.line_len(row).saturating_sub(1));
+        state.cursor.set_position(row, col);
+        state.cursor.set_desired(col);
+    }
+
     pub fn edit_file(&mut self, name: Option<&str>, force: bool) -> Result<(), EditError> {
         match name {
             None => self.reload_current(force),
@@ -522,13 +579,13 @@ impl Editor {
             .buffer
             .path
             .as_deref()
-            .is_some_and(|path| paths::absolute(path, &current_dir()) == target)
+            .is_some_and(|path| same_file_path(path, target))
         {
             return Some(self.buffers.current());
         }
         self.buffers.parked.iter().find_map(|entry| {
             let path = entry.state.buffer.path.as_deref()?;
-            (paths::absolute(path, &current_dir()) == target).then_some(entry.number)
+            same_file_path(path, target).then_some(entry.number)
         })
     }
 
@@ -715,6 +772,20 @@ impl Editor {
     }
 }
 
+fn same_file_path(path: &str, target: &Path) -> bool {
+    let absolute = paths::absolute(path, &current_dir());
+    if absolute == target {
+        return true;
+    }
+    match (
+        std::fs::canonicalize(&absolute),
+        std::fs::canonicalize(target),
+    ) {
+        (Ok(path), Ok(target)) => path == target,
+        _ => false,
+    }
+}
+
 fn home_path(path: &str) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     home_shortened(&home, path)
@@ -776,6 +847,69 @@ mod tests {
 
     fn lines(editor: &Editor) -> Vec<String> {
         editor.buffer.window_lines(0, editor.buffer.line_count())
+    }
+
+    #[test]
+    fn file_is_modified_tracks_current_and_parked_buffers() {
+        let dir = temp_dir("file_modified");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        assert!(!e.file_is_modified(Path::new(&file_path(&dir, "a.txt"))));
+        type_text(&mut e, "x");
+        assert!(e.file_is_modified(Path::new(&file_path(&dir, "b.txt"))));
+        open(&mut e, &dir, "a.txt");
+        assert!(!e.file_is_modified(Path::new(&file_path(&dir, "a.txt"))));
+        type_text(&mut e, "y");
+        assert!(e.file_is_modified(Path::new(&file_path(&dir, "a.txt"))));
+        assert!(e.file_is_modified(Path::new(&file_path(&dir, "b.txt"))));
+    }
+
+    #[test]
+    fn reload_files_updates_current_and_parked_buffers() {
+        let dir = temp_dir("reload_files");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        write_file(&dir, "a.txt", "changed alpha\n");
+        write_file(&dir, "b.txt", "changed bravo\n");
+        e.reload_files(&[
+            PathBuf::from(file_path(&dir, "a.txt")),
+            PathBuf::from(file_path(&dir, "b.txt")),
+        ]);
+        assert_eq!(lines(&e), vec!["changed bravo"]);
+        assert!(!e.is_dirty());
+        open(&mut e, &dir, "a.txt");
+        assert_eq!(lines(&e), vec!["changed alpha"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn reload_files_skips_modified_buffers() {
+        let dir = temp_dir("reload_dirty");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        write_file(&dir, "a.txt", "changed\n");
+        e.reload_files(&[PathBuf::from(file_path(&dir, "a.txt"))]);
+        assert_eq!(lines(&e), vec!["xalpha"]);
+        assert!(e.is_dirty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_identity_resolves_symlinks() {
+        let dir = temp_dir("symlink");
+        write_file(&dir, "a.txt", "alpha\n");
+        std::os::unix::fs::symlink(dir.join("a.txt"), dir.join("link.txt")).unwrap();
+        let mut e = editor_in(&dir, "a.txt");
+        e.edit_file(Some(&file_path(&dir, "link.txt")), false)
+            .unwrap();
+        assert_eq!(e.buffer_count(), 1);
+        type_text(&mut e, "x");
+        assert!(e.file_is_modified(Path::new(&file_path(&dir, "link.txt"))));
     }
 
     #[test]
