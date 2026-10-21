@@ -4,10 +4,12 @@ use crossterm::event::{
 };
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 mod macro_codec;
 mod macro_ops;
+mod picker;
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -19,6 +21,16 @@ enum MarkOperator {
 enum Redraw {
     Quit,
     Redraw,
+}
+
+struct FrameInput<'a> {
+    status: &'a StatusInfo<'a>,
+    window: &'a [String],
+    gutter: &'a [String],
+    search_status: Option<&'a str>,
+    search_spans: &'a [SearchSpan],
+    preview_spans: &'a [SearchSpan],
+    picker: Option<kawi_tui::frame::PickerMenu<'a>>,
 }
 
 const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
@@ -34,7 +46,8 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
-use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
+use kawi_editor::{parse, Action, Command, Editor, MatchSpan, PickerCommand, SearchOutcome};
+use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
 use kawi_tui::{
     frame::{Frame, SearchSpan},
@@ -43,6 +56,7 @@ use kawi_tui::{
     terminal,
     theme::Theme,
 };
+use picker::PickerSession;
 
 pub struct App {
     editor: Editor,
@@ -59,6 +73,7 @@ pub struct App {
     syntax_pending: bool,
     syntax_latest: u64,
     syntax_applied: u64,
+    picker: Option<PickerSession>,
 }
 
 impl App {
@@ -80,6 +95,7 @@ impl App {
             syntax_pending: false,
             syntax_latest: 0,
             syntax_applied: 0,
+            picker: None,
         }
     }
 
@@ -147,8 +163,11 @@ impl App {
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
-            self.refresh_syntax();
-            self.wait_for_syntax_ready();
+            if self.picker.is_none() {
+                self.refresh_syntax();
+                self.wait_for_syntax_ready();
+            }
+            self.refresh_picker();
             self.draw_frame(&mut out)?;
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
@@ -158,10 +177,16 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
-            if self.apply_syntax_results() {
+            if self.picker.is_some() {
+                if self.refresh_picker() {
+                    return Ok(Redraw::Redraw);
+                }
+            } else if self.apply_syntax_results() {
                 return Ok(Redraw::Redraw);
             }
-            let event = if self.syntax_pending {
+            let pending =
+                self.syntax_pending || self.picker.as_ref().is_some_and(PickerSession::pending);
+            let event = if pending {
                 match poll_next_event(Duration::from_millis(10))? {
                     Some(event) => event,
                     None => continue,
@@ -321,48 +346,66 @@ impl App {
         } else {
             Vec::new()
         };
-        let frame = self.build_frame(
-            &status,
-            &window,
-            &gutter,
-            search_status.as_deref(),
-            &search_spans,
-            &preview_spans,
-        );
+        let picker_items: Vec<String> = self
+            .picker
+            .as_ref()
+            .map(|session| {
+                session
+                    .picker()
+                    .rows()
+                    .iter()
+                    .map(|row| row.display.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let picker = self.picker.as_ref().map(|session| {
+            let state = session.picker();
+            kawi_tui::frame::PickerMenu {
+                title: state.title(),
+                query: state.query(),
+                cursor: state.cursor(),
+                items: &picker_items,
+                selected: state.selected(),
+                loading: state.loading(),
+                status: state.status(),
+            }
+        });
+        let frame = self.build_frame(FrameInput {
+            status: &status,
+            window: &window,
+            gutter: &gutter,
+            search_status: search_status.as_deref(),
+            search_spans: &search_spans,
+            preview_spans: &preview_spans,
+            picker,
+        });
         render::draw(out, &frame)
     }
 
-    fn build_frame<'a>(
-        &'a self,
-        status: &'a StatusInfo<'a>,
-        window: &'a [String],
-        gutter: &'a [String],
-        search_status: Option<&'a str>,
-        search_spans: &'a [SearchSpan],
-        preview_spans: &'a [SearchSpan],
-    ) -> Frame<'a> {
+    fn build_frame<'a>(&'a self, input: FrameInput<'a>) -> Frame<'a> {
         Frame {
-            lines: window,
-            gutter,
+            lines: input.window,
+            gutter: input.gutter,
             pager: self.pager.as_deref(),
             completion: self
                 .editor
                 .completion_view()
                 .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
+            picker: input.picker,
             cursor_col: self
                 .editor
                 .cursor_wcol()
                 .saturating_sub(self.editor.view_leftcol()),
             row: self.editor.row(),
             viewport: self.editor.viewport(),
-            status,
+            status: input.status,
             message: self.message.as_deref(),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),
-            search_status,
-            search_spans,
-            preview_spans,
+            search_status: input.search_status,
+            search_spans: input.search_spans,
+            preview_spans: input.preview_spans,
             syntax_spans: &self.syntax_spans,
             leftcol: self.editor.view_leftcol(),
             tabstop: self.editor.view_tabstop(),
@@ -437,6 +480,9 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        if self.picker.is_some() {
+            return self.handle_noop();
+        }
         if self.pager.is_some() {
             return self.handle_noop();
         }
@@ -523,10 +569,63 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.picker.is_some() {
+            return self.handle_picker_key(key);
+        }
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
         }
         self.process_key(key)
+    }
+
+    fn handle_picker_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let Some(mut session) = self.picker.take() else {
+            return Ok(false);
+        };
+        let outcome = session.handle_key(key);
+        match outcome {
+            kawi_picker::PickerOutcome::Cancel => Ok(false),
+            kawi_picker::PickerOutcome::Open(row) => {
+                match self.open_picker_row(&row, session.root()) {
+                    Ok(()) => Ok(false),
+                    Err(message) => {
+                        self.show_message(message);
+                        self.picker = Some(session);
+                        Ok(false)
+                    }
+                }
+            }
+            _ => {
+                self.picker = Some(session);
+                Ok(false)
+            }
+        }
+    }
+
+    fn open_picker_row(&mut self, row: &kawi_picker::PickerRow, root: &Path) -> Result<(), String> {
+        if let Some(number) = row.buffer {
+            if !self.editor.buffer_select(number) {
+                return Err(format!("E86: Buffer {number} does not exist"));
+            }
+            self.reveal_cursor();
+            return Ok(());
+        }
+        let path = root.join(&row.path);
+        let current = self.editor.has_file() && Path::new(self.editor.filename()) == path;
+        if !current {
+            let name = path.to_string_lossy().to_string();
+            self.editor
+                .edit_file(Some(&name), false)
+                .map_err(file_error_message)?;
+        }
+        if let (Some(line), Some(column)) = (row.line, row.column) {
+            self.editor.apply(Action::JumpTo(
+                line.saturating_sub(1),
+                column.saturating_sub(1),
+            ));
+        }
+        self.reveal_cursor();
+        Ok(())
     }
 
     fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -576,6 +675,10 @@ impl App {
                 self.handle_mark_operator(MarkOperator::Yank, name, line_wise)
             }
             Action::EditAlternate => self.handle_alternate(),
+            Action::OpenFilePicker => self.open_picker(PickerKind::Files),
+            Action::OpenGrepPicker => self.open_picker(PickerKind::Grep),
+            Action::OpenGrepWordPicker => self.open_grep_word_picker(),
+            Action::OpenBufferPicker => self.open_picker(PickerKind::Buffers),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -677,7 +780,68 @@ impl App {
         Ok(false)
     }
 
+    fn refresh_picker(&mut self) -> bool {
+        self.picker.as_mut().is_some_and(PickerSession::refresh)
+    }
+
+    fn open_picker(&mut self, kind: PickerKind) -> Result<bool> {
+        let root = self.picker_root();
+        self.picker = Some(match kind {
+            PickerKind::Files => PickerSession::files(root),
+            PickerKind::Grep => PickerSession::grep(root, None),
+            PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
+        });
+        Ok(false)
+    }
+
+    fn open_grep_word_picker(&mut self) -> Result<bool> {
+        let Some(word) = self.editor.word_under_cursor() else {
+            self.show_message("E348: No string under cursor".to_string());
+            return Ok(false);
+        };
+        let root = self.picker_root();
+        self.picker = Some(PickerSession::grep(root, Some(&word)));
+        Ok(false)
+    }
+
+    fn picker_root(&self) -> std::path::PathBuf {
+        let start = if self.editor.has_file() {
+            Path::new(self.editor.filename())
+                .parent()
+                .map(Path::to_path_buf)
+        } else {
+            None
+        };
+        let start = start.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        kawi_picker::project_root(&start)
+    }
+
+    fn buffer_picker_rows(&self) -> Vec<(usize, String)> {
+        self.editor
+            .buffer_numbers()
+            .into_iter()
+            .filter_map(|number| {
+                self.editor
+                    .buffer_name(number)
+                    .map(|name| (number, name.to_string()))
+            })
+            .collect()
+    }
+
+    fn handle_pick_command(&mut self, command: PickerCommand) -> Result<bool> {
+        let kind = match command {
+            PickerCommand::Files => PickerKind::Files,
+            PickerCommand::Grep => PickerKind::Grep,
+            PickerCommand::Buffers => PickerKind::Buffers,
+        };
+        self.open_picker(kind)
+    }
+
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if let Some(session) = self.picker.as_mut() {
+            session.paste(&text);
+            return Ok(false);
+        }
         if self.pager.is_some() {
             return Ok(false);
         }
@@ -747,6 +911,7 @@ impl App {
             Command::SetIgnoreCase(value) => self.switch_ignorecase(value),
             Command::SetSmartCase(value) => self.switch_smartcase(value),
             Command::SetAutoIndent(value) => self.switch_autoindent(value),
+            Command::Pick(command) => self.handle_pick_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {
@@ -2577,5 +2742,71 @@ mod tests {
         app.refresh_syntax();
         assert!(app.syntax.is_none());
         assert!(app.syntax_spans.is_empty());
+    }
+
+    fn wait_for_picker(app: &mut App) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            app.refresh_picker();
+            if app
+                .picker
+                .as_ref()
+                .is_some_and(|session| !session.picker().rows().is_empty())
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("picker result timed out");
+    }
+
+    fn picker_project(name: &str) -> String {
+        let root = std::env::temp_dir().join(format!("kawi_picker_app_{name}"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join("alpha.txt"), "needle one\n").unwrap();
+        std::fs::write(root.join("beta.txt"), "needle two\n").unwrap();
+        root.join("alpha.txt").to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn pick_files_command_opens_selected_file() {
+        let path = picker_project("files");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        type_command(&mut app, "pick files");
+        assert!(app.picker.is_some());
+        wait_for_picker(&mut app);
+        app.handle_key(key(KeyCode::Char('b'))).expect("filter");
+        app.handle_key(key(KeyCode::Char('e'))).expect("filter");
+        app.handle_key(key(KeyCode::Char('t'))).expect("filter");
+        app.handle_key(key(KeyCode::Enter)).expect("open");
+        assert!(app.editor.filename().ends_with("beta.txt"));
+    }
+
+    #[test]
+    fn pick_grep_command_opens_match_position() {
+        let path = picker_project("grep");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        type_command(&mut app, "pick grep");
+        for character in "needle".chars() {
+            app.handle_key(key(KeyCode::Char(character)))
+                .expect("query");
+        }
+        wait_for_picker(&mut app);
+        app.handle_key(key(KeyCode::Enter)).expect("open");
+        assert!(app.editor.filename().ends_with("alpha.txt"));
+        assert_eq!((app.editor.row(), app.editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn pick_buffers_command_selects_an_open_buffer() {
+        let path = picker_project("buffers");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        let beta = Path::new(&path).with_file_name("beta.txt");
+        type_command(&mut app, &format!("edit {}", beta.display()));
+        type_command(&mut app, "pick buffers");
+        assert!(app.picker.is_some());
+        app.handle_key(key(KeyCode::Enter)).expect("open");
+        assert!(app.editor.filename().ends_with("alpha.txt"));
     }
 }

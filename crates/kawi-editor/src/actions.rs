@@ -313,6 +313,10 @@ pub enum Action {
     CancelSearch,
     NextMatch,
     PrevMatch,
+    OpenFilePicker,
+    OpenGrepPicker,
+    OpenGrepWordPicker,
+    OpenBufferPicker,
     Noop,
 }
 
@@ -374,6 +378,10 @@ impl Action {
                 | Self::CancelSearch
                 | Self::Save
                 | Self::Quit
+                | Self::OpenFilePicker
+                | Self::OpenGrepPicker
+                | Self::OpenGrepWordPicker
+                | Self::OpenBufferPicker
                 | Self::Noop
         )
     }

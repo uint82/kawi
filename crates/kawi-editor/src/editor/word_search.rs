@@ -40,6 +40,10 @@ impl Editor {
         Ok(())
     }
 
+    pub fn word_under_cursor(&self) -> Option<String> {
+        self.word_near_cursor().map(|(_, word, _)| word)
+    }
+
     fn word_near_cursor(&self) -> Option<((usize, usize), String, bool)> {
         let row = self.cursor.row();
         let line = self.buffer.line(row)?;

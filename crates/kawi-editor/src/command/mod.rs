@@ -27,9 +27,17 @@ pub enum Command {
     SetIgnoreCase(bool),
     SetSmartCase(bool),
     SetAutoIndent(bool),
+    Pick(PickerCommand),
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PickerCommand {
+    Files,
+    Grep,
+    Buffers,
 }
 
 pub const COMMAND_NAMES: &[&str] = &[
@@ -47,6 +55,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "edit",
     "files",
     "ls",
+    "pick",
     "q",
     "q!",
     "qa",
@@ -126,6 +135,10 @@ fn parse_named(text: &str) -> Command {
         }
         ("b" | "buffer", ["#"]) => Command::AlternateBuffer,
         ("b" | "buffer", [arg]) => Command::SelectBuffer(arg.to_string()),
+        ("pick", []) => Command::Pick(PickerCommand::Files),
+        ("pick", ["file" | "files"]) => Command::Pick(PickerCommand::Files),
+        ("pick", ["grep" | "live_grep" | "grep_live"]) => Command::Pick(PickerCommand::Grep),
+        ("pick", ["buffer" | "buffers"]) => Command::Pick(PickerCommand::Buffers),
         ("set", rest) => parse_set_command(rest),
         _ => Command::Unknown,
     }
@@ -493,6 +506,17 @@ mod tests {
         assert_eq!(parse("set nosmartcase"), Command::SetSmartCase(false));
         assert_eq!(parse("set autoindent"), Command::SetAutoIndent(true));
         assert_eq!(parse("set noautoindent"), Command::SetAutoIndent(false));
+    }
+
+    #[test]
+    fn parses_picker_commands() {
+        assert_eq!(parse("pick files"), Command::Pick(PickerCommand::Files));
+        assert_eq!(parse("pick file"), Command::Pick(PickerCommand::Files));
+        assert_eq!(parse("pick grep"), Command::Pick(PickerCommand::Grep));
+        assert_eq!(parse("pick live_grep"), Command::Pick(PickerCommand::Grep));
+        assert_eq!(parse("pick buffers"), Command::Pick(PickerCommand::Buffers));
+        assert_eq!(parse("pick"), Command::Pick(PickerCommand::Files));
+        assert_eq!(parse("pick nope"), Command::Unknown);
     }
 
     #[test]

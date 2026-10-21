@@ -413,6 +413,10 @@ impl Editor {
         self.buffers.parked.len().saturating_add(1)
     }
 
+    pub fn buffer_numbers(&self) -> Vec<usize> {
+        self.buffers.listed_numbers()
+    }
+
     pub fn listed_buffer_count(&self) -> usize {
         self.buffers.listed_numbers().len()
     }

@@ -7,7 +7,7 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::{CursorStyle, Frame, SearchSpan, Selection};
+use crate::frame::{CursorStyle, Frame, PickerMenu, SearchSpan, Selection};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
@@ -18,7 +18,10 @@ use crate::display;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
-    let contents = draw_contents(out, frame);
+    let contents = match frame.picker.as_ref() {
+        Some(picker) => draw_picker(out, frame, picker),
+        None => draw_contents(out, frame),
+    };
     let finished = execute!(out, EndSynchronizedUpdate).context("end synchronized update");
     contents.and(finished)
 }
@@ -39,6 +42,117 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     apply_cursor_style(out, frame.cursor_style)?;
     place_cursor(out, frame)?;
     flush(out)?;
+    Ok(())
+}
+
+fn draw_picker(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    paint::apply_base(out, frame.theme)?;
+    execute!(out, Clear(ClearType::All)).context("clear picker")?;
+    draw_picker_prompt(out, frame, picker)?;
+    draw_picker_rows(out, frame, picker)?;
+    draw_picker_footer(out, frame, picker)?;
+    apply_cursor_style(out, CursorStyle::Bar)?;
+    place_picker_cursor(out, frame, picker)?;
+    flush(out)?;
+    Ok(())
+}
+
+fn draw_picker_prompt(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(0, 0),
+        Clear(ClearType::CurrentLine),
+        SetForegroundColor(frame.theme.line_number)
+    )
+    .context("prepare picker prompt")?;
+    let prompt = format!("{}  {}", picker.title, picker.query);
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&prompt, frame.viewport.width())
+    )
+    .context("write picker prompt")?;
+    paint::restore_base(out, frame.theme)?;
+    Ok(())
+}
+
+fn draw_picker_rows(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    let available = frame.viewport.height().saturating_sub(2);
+    if available == 0 {
+        return Ok(());
+    }
+    let start = picker_start(available, picker.selected);
+    let width = frame.viewport.width();
+    for offset in 0..available {
+        let index = start + offset;
+        let row = offset.saturating_add(1);
+        execute!(
+            out,
+            MoveTo(0, saturate_u16(row)),
+            Clear(ClearType::CurrentLine)
+        )
+        .context("clear picker row")?;
+        let Some(item) = picker.items.get(index) else {
+            continue;
+        };
+        if picker.selected == Some(index) {
+            paint::apply_match(out, &frame.theme.selection)?;
+        }
+        write!(out, "{}", truncate_to_width(item, width)).context("write picker row")?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
+}
+
+fn draw_picker_footer(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    let height = frame.viewport.height();
+    if height == 0 {
+        return Ok(());
+    }
+    let row = height.saturating_sub(1);
+    execute!(
+        out,
+        MoveTo(0, saturate_u16(row)),
+        Clear(ClearType::CurrentLine)
+    )
+    .context("clear picker footer")?;
+    let footer = picker_footer(picker);
+    paint::apply_match(out, &frame.theme.status)?;
+    write!(
+        out,
+        "{}",
+        truncate_to_width(&footer, frame.viewport.width())
+    )
+    .context("write picker footer")?;
+    paint::restore_base(out, frame.theme)?;
+    Ok(())
+}
+
+fn picker_footer(picker: &PickerMenu<'_>) -> String {
+    if let Some(status) = picker.status {
+        return status.to_string();
+    }
+    if picker.loading {
+        return "Searching...".to_string();
+    }
+    if picker.query.is_empty() && picker.items.is_empty() {
+        return "Type to search  Esc cancel".to_string();
+    }
+    format!("{} results  Enter open  Esc cancel", picker.items.len())
+}
+
+fn picker_start(available: usize, selected: Option<usize>) -> usize {
+    match selected {
+        Some(index) if index >= available => index.saturating_add(1).saturating_sub(available),
+        _ => 0,
+    }
+}
+
+fn place_picker_cursor(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    let width = frame.viewport.width().max(1);
+    let prefix = picker.title.chars().count().saturating_add(2);
+    let column = prefix.saturating_add(picker.cursor).min(width - 1);
+    execute!(out, MoveTo(saturate_u16(column), 0)).context("place picker cursor")?;
     Ok(())
 }
 
