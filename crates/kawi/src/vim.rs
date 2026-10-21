@@ -357,10 +357,12 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if key.code == KeyCode::Char('f') && !has_ctrl_or_alt(key) {
-                self.pending.push(' ');
-                self.pending.push('f');
-                return Action::Noop;
+            if let KeyCode::Char(prefix @ ('f' | 'v')) = key.code {
+                if !has_ctrl_or_alt(key) {
+                    self.pending.push(' ');
+                    self.pending.push(prefix);
+                    return Action::Noop;
+                }
             }
         }
         if let Some(action) = jump_action(key) {
@@ -493,6 +495,8 @@ impl VimKeymap {
             KeyCode::Char('\'') => self.arm_mark(key, '\''),
             KeyCode::Char('`') => self.arm_mark(key, '`'),
             KeyCode::Char(':') => self.arm_command(key),
+            KeyCode::Char(']') => self.arm_hunk(key, ']'),
+            KeyCode::Char('[') => self.arm_hunk(key, '['),
             KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Action::EnterVisualBlock
             }
@@ -1112,6 +1116,14 @@ impl VimKeymap {
         }
     }
 
+    fn arm_hunk(&mut self, key: KeyEvent, direction: char) -> Action {
+        if has_ctrl_or_alt(key) {
+            return Action::Noop;
+        }
+        self.pending.push(direction);
+        Action::BeginSequence
+    }
+
     fn arm_command(&mut self, key: KeyEvent) -> Action {
         if has_ctrl_or_alt(key) {
             return Action::Noop;
@@ -1125,6 +1137,9 @@ impl VimKeymap {
         }
         if self.replace_prefix_armed() {
             return self.complete_replace(key);
+        }
+        if self.hunk_prefix_armed() {
+            return self.complete_hunk(key);
         }
         match key.code {
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1170,27 +1185,62 @@ impl VimKeymap {
     }
 
     fn leader_prefix_armed(&self) -> bool {
-        matches!(self.pending.as_str(), " f" | "\\" | "\\f")
+        matches!(self.pending.as_str(), " f" | " v" | "\\" | "\\f" | "\\v")
     }
 
     fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
         if self.pending == "\\" {
-            if key.code == KeyCode::Char('f') && !has_ctrl_or_alt(key) {
-                self.pending.push('f');
-                return Action::Noop;
+            if let KeyCode::Char(prefix @ ('f' | 'v')) = key.code {
+                if !has_ctrl_or_alt(key) {
+                    self.pending.push(prefix);
+                    return Action::Noop;
+                }
             }
             return self.cancel_sequence();
         }
-        let action = match key.code {
-            KeyCode::Char('f' | 'p') if !has_ctrl_or_alt(key) => Action::OpenFilePicker,
-            KeyCode::Char('s') if !has_ctrl_or_alt(key) => Action::OpenGrepPicker,
-            KeyCode::Char('w') if !has_ctrl_or_alt(key) => Action::OpenGrepWordPicker,
-            KeyCode::Char('k') if !has_ctrl_or_alt(key) => Action::OpenBufferPicker,
-            KeyCode::Char('r') if !has_ctrl_or_alt(key) => Action::OpenReplacePicker,
+        let action = match (self.pending.as_str(), key.code) {
+            (" f" | "\\f", KeyCode::Char('f' | 'p')) if !has_ctrl_or_alt(key) => {
+                Action::OpenFilePicker
+            }
+            (" f" | "\\f", KeyCode::Char('s')) if !has_ctrl_or_alt(key) => Action::OpenGrepPicker,
+            (" f" | "\\f", KeyCode::Char('w')) if !has_ctrl_or_alt(key) => {
+                Action::OpenGrepWordPicker
+            }
+            (" f" | "\\f", KeyCode::Char('k')) if !has_ctrl_or_alt(key) => Action::OpenBufferPicker,
+            (" f" | "\\f", KeyCode::Char('r')) if !has_ctrl_or_alt(key) => {
+                Action::OpenReplacePicker
+            }
+            (" v" | "\\v", KeyCode::Char('s')) if !has_ctrl_or_alt(key) => Action::GitStageHunk,
+            (" v" | "\\v", KeyCode::Char('u')) if !has_ctrl_or_alt(key) => Action::GitUndoStage,
+            (" v" | "\\v", KeyCode::Char('S')) if !has_ctrl_or_alt(key) => Action::GitStageBuffer,
+            (" v" | "\\v", KeyCode::Char('p')) if !has_ctrl_or_alt(key) => Action::GitPreviewHunk,
+            (" v" | "\\v", KeyCode::Char('d')) if !has_ctrl_or_alt(key) => Action::GitDiff,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
         action
+    }
+
+    fn hunk_prefix_armed(&self) -> bool {
+        let body = self
+            .pending
+            .trim_start_matches(|ch: char| ch.is_ascii_digit());
+        matches!(body, "]" | "[")
+    }
+
+    fn complete_hunk(&mut self, key: KeyEvent) -> Action {
+        let forward = self.pending.ends_with(']');
+        match key.code {
+            KeyCode::Char('c') if !has_ctrl_or_alt(key) => {
+                self.clear_pending();
+                if forward {
+                    Action::GitNextHunk
+                } else {
+                    Action::GitPrevHunk
+                }
+            }
+            _ => self.cancel_sequence(),
+        }
     }
 
     fn sequence_key(&mut self, pushed: char) -> Action {
@@ -3943,6 +3993,66 @@ mod tests {
             Action::CancelPending
         );
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn hunk_navigation_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(']')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::GitNextHunk
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('[')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::GitPrevHunk
+        );
+    }
+
+    #[test]
+    fn space_leader_runs_git_actions() {
+        for (key, action) in [
+            ('s', Action::GitStageHunk),
+            ('u', Action::GitUndoStage),
+            ('S', Action::GitStageBuffer),
+            ('p', Action::GitPreviewHunk),
+            ('d', Action::GitDiff),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('v')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+        }
+    }
+
+    #[test]
+    fn backslash_leader_runs_git_actions() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('\\')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('v')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('s')), Mode::Normal),
+            Action::GitStageHunk
+        );
     }
 
     #[test]

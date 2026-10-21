@@ -4,9 +4,10 @@ use crossterm::event::{
 };
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+mod git;
 mod macro_codec;
 mod macro_ops;
 mod picker;
@@ -34,6 +35,7 @@ struct FrameInput<'a> {
     preview_spans: &'a [SearchSpan],
     picker: Option<kawi_tui::frame::PickerMenu<'a>>,
     replace: Option<kawi_tui::frame::ReplaceMenu<'a>>,
+    signs: Option<&'a [Option<kawi_tui::frame::GitSign>]>,
 }
 
 const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
@@ -49,7 +51,10 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
-use kawi_editor::{parse, Action, Command, Editor, MatchSpan, PickerCommand, SearchOutcome};
+use git::{GitSession, GitStage};
+use kawi_editor::{
+    parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, SearchOutcome,
+};
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
 use kawi_tui::{
@@ -79,6 +84,9 @@ pub struct App {
     syntax_applied: u64,
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
+    git: Option<GitSession>,
+    git_path: Option<PathBuf>,
+    git_error: Option<String>,
 }
 
 impl App {
@@ -102,6 +110,9 @@ impl App {
             syntax_applied: 0,
             picker: None,
             replace: None,
+            git: None,
+            git_path: None,
+            git_error: None,
         }
     }
 
@@ -169,6 +180,7 @@ impl App {
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
+            self.sync_git();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
                 self.wait_for_syntax_ready();
@@ -395,10 +407,14 @@ impl App {
             matches: session.matches(),
             files: session.files(),
         });
+        let signs = self.git.as_ref().map(|session| {
+            session.visible_signs(self.editor.view_top(), self.editor.view_height())
+        });
         let frame = self.build_frame(FrameInput {
             status: &status,
             window: &window,
             gutter: &gutter,
+            signs: signs.as_deref(),
             search_status: search_status.as_deref(),
             search_spans: &search_spans,
             preview_spans: &preview_spans,
@@ -412,6 +428,7 @@ impl App {
         Frame {
             lines: input.window,
             gutter: input.gutter,
+            signs: input.signs,
             pager: self.pager.as_deref(),
             completion: self
                 .editor
@@ -470,12 +487,16 @@ impl App {
     fn show_message(&mut self, text: String) {
         let lines = pager_lines(&text, self.editor.viewport().width());
         if lines.len() > 1 {
-            self.message = None;
-            self.pager = Some(lines);
+            self.show_pager(lines);
         } else {
             self.pager = None;
             self.message = Some(text);
         }
+    }
+
+    fn show_pager(&mut self, lines: Vec<String>) {
+        self.message = None;
+        self.pager = Some(lines);
     }
 
     fn clear_message(&mut self) {
@@ -755,6 +776,13 @@ impl App {
             Action::OpenGrepWordPicker => self.open_grep_word_picker(),
             Action::OpenBufferPicker => self.open_picker(PickerKind::Buffers),
             Action::OpenReplacePicker => self.open_replace_picker(),
+            Action::GitNextHunk => self.handle_git_navigation(true),
+            Action::GitPrevHunk => self.handle_git_navigation(false),
+            Action::GitStageHunk => self.handle_git_stage_hunk(),
+            Action::GitUndoStage => self.handle_git_undo_stage(),
+            Action::GitStageBuffer => self.handle_git_stage_buffer(),
+            Action::GitPreviewHunk => self.handle_git_preview_hunk(),
+            Action::GitDiff => self.handle_git_diff(),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -957,6 +985,185 @@ impl App {
         self.editor.apply(Action::ExitVisual);
     }
 
+    fn handle_git_command(&mut self, command: GitCommand) -> Result<bool> {
+        match command {
+            GitCommand::NextHunk => self.handle_git_navigation(true),
+            GitCommand::PrevHunk => self.handle_git_navigation(false),
+            GitCommand::StageHunk => self.handle_git_stage_hunk(),
+            GitCommand::UndoStage => self.handle_git_undo_stage(),
+            GitCommand::StageBuffer => self.handle_git_stage_buffer(),
+            GitCommand::PreviewHunk => self.handle_git_preview_hunk(),
+            GitCommand::Diff => self.handle_git_diff(),
+            GitCommand::Refresh => self.handle_git_refresh(),
+        }
+    }
+
+    fn sync_git(&mut self) {
+        let path = self
+            .editor
+            .has_file()
+            .then(|| PathBuf::from(self.editor.filename()));
+        if path.as_deref() != self.git_path.as_deref() {
+            self.git = None;
+            self.git_error = None;
+            self.editor.set_signcolumn_width(0);
+            self.git_path = path.clone();
+            let Some(path) = path else {
+                return;
+            };
+            match kawi_git::load(&path) {
+                Ok(Some(file)) => {
+                    let session = GitSession::new(
+                        file,
+                        &self.editor.text_lines(),
+                        self.editor.buffer_revision(),
+                        !self.editor.text_has_final_newline(),
+                    );
+                    self.git = Some(session);
+                    self.editor.set_signcolumn_width(1);
+                }
+                Ok(None) => {}
+                Err(error) => self.git_error = Some(error.to_string()),
+            }
+            return;
+        }
+        let revision = self.editor.buffer_revision();
+        let Some(session) = self.git.as_mut() else {
+            return;
+        };
+        let buffer_no_final_newline = !self.editor.text_has_final_newline();
+        if session.revision() != revision
+            || session.buffer_no_final_newline() != buffer_no_final_newline
+        {
+            session.update(&self.editor.text_lines(), revision, buffer_no_final_newline);
+        }
+    }
+
+    fn git_unavailable_message(&self) -> String {
+        if !self.editor.has_file() {
+            return "E32: No file name".to_string();
+        }
+        self.git_error
+            .clone()
+            .unwrap_or_else(|| "No git repository for this file".to_string())
+    }
+
+    fn handle_git_navigation(&mut self, forward: bool) -> Result<bool> {
+        let row = self.editor.row();
+        let nav = self.git.as_ref().and_then(|session| {
+            if forward {
+                session.next(row)
+            } else {
+                session.prev(row)
+            }
+        });
+        let Some(nav) = nav else {
+            let message = if self.git.is_some() {
+                "No hunks".to_string()
+            } else {
+                self.git_unavailable_message()
+            };
+            self.show_message(message);
+            return Ok(false);
+        };
+        self.editor.apply(Action::JumpTo(nav.row, 0));
+        self.editor.apply(Action::MoveToFirstNonBlank);
+        self.reveal_cursor();
+        self.show_message(format!("Hunk {} of {}", nav.index, nav.total));
+        Ok(false)
+    }
+
+    fn handle_git_stage_hunk(&mut self) -> Result<bool> {
+        self.sync_git();
+        let row = self.editor.row();
+        let lines = self.editor.text_lines();
+        let revision = self.editor.buffer_revision();
+        let Some(session) = self.git.as_mut() else {
+            let message = self.git_unavailable_message();
+            self.show_message(message);
+            return Ok(false);
+        };
+        match session.stage_hunk(row, &lines, revision) {
+            Ok(GitStage::Staged) => self.show_message("Staged hunk".to_string()),
+            Ok(GitStage::Unstaged) => self.show_message("Unstaged hunk".to_string()),
+            Err(error) => self.show_message(error),
+        }
+        Ok(false)
+    }
+
+    fn handle_git_undo_stage(&mut self) -> Result<bool> {
+        self.sync_git();
+        let lines = self.editor.text_lines();
+        let revision = self.editor.buffer_revision();
+        let Some(session) = self.git.as_mut() else {
+            let message = self.git_unavailable_message();
+            self.show_message(message);
+            return Ok(false);
+        };
+        match session.undo_stage(&lines, revision) {
+            Ok(()) => self.show_message("Undid staged hunk".to_string()),
+            Err(error) => self.show_message(error),
+        }
+        Ok(false)
+    }
+
+    fn handle_git_stage_buffer(&mut self) -> Result<bool> {
+        self.sync_git();
+        let lines = self.editor.text_lines();
+        let revision = self.editor.buffer_revision();
+        let Some(session) = self.git.as_mut() else {
+            let message = self.git_unavailable_message();
+            self.show_message(message);
+            return Ok(false);
+        };
+        match session.stage_buffer(&lines, revision) {
+            Ok(()) => self.show_message("Staged file".to_string()),
+            Err(error) => self.show_message(error),
+        }
+        Ok(false)
+    }
+
+    fn handle_git_preview_hunk(&mut self) -> Result<bool> {
+        let row = self.editor.row();
+        let preview = self.git.as_ref().map_or_else(
+            || Err(self.git_unavailable_message()),
+            |session| session.preview_hunk(row),
+        );
+        match preview {
+            Ok(lines) => self.show_pager(lines),
+            Err(error) => self.show_message(error),
+        }
+        Ok(false)
+    }
+
+    fn handle_git_refresh(&mut self) -> Result<bool> {
+        self.git = None;
+        self.git_path = None;
+        self.git_error = None;
+        self.editor.set_signcolumn_width(0);
+        self.sync_git();
+        Ok(false)
+    }
+
+    fn handle_git_diff(&mut self) -> Result<bool> {
+        let lines = self
+            .git
+            .as_ref()
+            .map(GitSession::diff_lines)
+            .unwrap_or_default();
+        if lines.is_empty() {
+            let message = if self.git.is_some() {
+                "No changes".to_string()
+            } else {
+                self.git_unavailable_message()
+            };
+            self.show_message(message);
+        } else {
+            self.show_pager(lines);
+        }
+        Ok(false)
+    }
+
     fn handle_execute(&mut self) -> Result<bool> {
         let text = self.editor.command_text().to_string();
         self.last_command = Some(text.clone());
@@ -1002,6 +1209,7 @@ impl App {
             Command::SetSmartCase(value) => self.switch_smartcase(value),
             Command::SetAutoIndent(value) => self.switch_autoindent(value),
             Command::Pick(command) => self.handle_pick_command(command),
+            Command::Git(command) => self.handle_git_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {

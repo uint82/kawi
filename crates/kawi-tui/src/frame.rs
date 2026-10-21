@@ -6,6 +6,7 @@ use kawi_syntax::SyntaxSpan;
 pub struct Frame<'a> {
     pub lines: &'a [String],
     pub gutter: &'a [String],
+    pub signs: Option<&'a [Option<GitSign>]>,
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
     pub picker: Option<PickerMenu<'a>>,
@@ -28,6 +29,33 @@ pub struct Frame<'a> {
     pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
     pub theme: &'a Theme,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitSign {
+    Add,
+    Change,
+    Delete,
+    TopDelete,
+    ChangeDelete,
+    Untracked,
+    StagedAdd,
+    StagedChange,
+    StagedDelete,
+    StagedTopDelete,
+    StagedChangeDelete,
+}
+
+impl GitSign {
+    pub fn text(self) -> &'static str {
+        match self {
+            Self::Add | Self::Change | Self::StagedAdd | Self::StagedChange => "┃",
+            Self::Delete | Self::StagedDelete => "▁",
+            Self::TopDelete | Self::StagedTopDelete => "▔",
+            Self::ChangeDelete | Self::StagedChangeDelete => "~",
+            Self::Untracked => "┆",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

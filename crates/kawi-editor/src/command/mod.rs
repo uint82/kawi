@@ -28,6 +28,7 @@ pub enum Command {
     SetSmartCase(bool),
     SetAutoIndent(bool),
     Pick(PickerCommand),
+    Git(GitCommand),
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
@@ -39,6 +40,18 @@ pub enum PickerCommand {
     Grep,
     Buffers,
     Replace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitCommand {
+    NextHunk,
+    PrevHunk,
+    StageHunk,
+    UndoStage,
+    StageBuffer,
+    PreviewHunk,
+    Diff,
+    Refresh,
 }
 
 pub const COMMAND_NAMES: &[&str] = &[
@@ -55,6 +68,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "e",
     "edit",
     "files",
+    "git",
     "ls",
     "pick",
     "q",
@@ -143,6 +157,7 @@ fn parse_named(text: &str) -> Command {
         ("pick", ["buffer" | "buffers"]) => Command::Pick(PickerCommand::Buffers),
         ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
         ("replace", []) => Command::Pick(PickerCommand::Replace),
+        ("git", rest) => parse_git_command(rest),
         ("set", rest) => parse_set_command(rest),
         _ => Command::Unknown,
     }
@@ -197,6 +212,22 @@ fn edit_command(command: &str, name: Option<&str>) -> Command {
         name: name.map(str::to_string),
         force,
     }
+}
+
+fn parse_git_command(words: &[&str]) -> Command {
+    let command = match words {
+        [] => GitCommand::Diff,
+        ["next_hunk"] => GitCommand::NextHunk,
+        ["prev_hunk"] => GitCommand::PrevHunk,
+        ["stage_hunk"] => GitCommand::StageHunk,
+        ["undo_stage_hunk"] => GitCommand::UndoStage,
+        ["stage_buffer"] => GitCommand::StageBuffer,
+        ["preview_hunk"] => GitCommand::PreviewHunk,
+        ["diff"] => GitCommand::Diff,
+        ["refresh"] => GitCommand::Refresh,
+        _ => return Command::Unknown,
+    };
+    Command::Git(command)
 }
 
 fn parse_set_command(words: &[&str]) -> Command {
@@ -439,6 +470,29 @@ mod tests {
         );
         assert_eq!(parse("write"), Command::Write { force: false });
         assert_eq!(parse("w!"), Command::Write { force: true });
+    }
+
+    #[test]
+    fn parses_git_commands() {
+        assert_eq!(parse("git"), Command::Git(GitCommand::Diff));
+        assert_eq!(parse("git diff"), Command::Git(GitCommand::Diff));
+        assert_eq!(parse("git next_hunk"), Command::Git(GitCommand::NextHunk));
+        assert_eq!(parse("git prev_hunk"), Command::Git(GitCommand::PrevHunk));
+        assert_eq!(parse("git stage_hunk"), Command::Git(GitCommand::StageHunk));
+        assert_eq!(
+            parse("git undo_stage_hunk"),
+            Command::Git(GitCommand::UndoStage)
+        );
+        assert_eq!(
+            parse("git stage_buffer"),
+            Command::Git(GitCommand::StageBuffer)
+        );
+        assert_eq!(
+            parse("git preview_hunk"),
+            Command::Git(GitCommand::PreviewHunk)
+        );
+        assert_eq!(parse("git refresh"), Command::Git(GitCommand::Refresh));
+        assert_eq!(parse("git nope"), Command::Unknown);
     }
 
     #[test]
