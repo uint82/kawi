@@ -145,6 +145,14 @@ impl Buffer {
         self.rope.len_chars()
     }
 
+    pub fn len_bytes(&self) -> usize {
+        self.rope.len_bytes()
+    }
+
+    pub fn snapshot(&self) -> Rope {
+        self.rope.clone()
+    }
+
     pub fn char_index_of(&self, row: usize, col: usize) -> usize {
         self.position_to_char(row, col)
     }
@@ -1460,6 +1468,15 @@ mod tests {
         let b = Buffer::from_string("ab\ncd\n");
         assert_eq!(b.position_of_char(b.total_chars()), (2, 0));
         assert_eq!(b.position_of_char(0), (0, 0));
+    }
+
+    #[test]
+    fn snapshot_is_isolated_from_later_edits() {
+        let mut b = Buffer::from_string("ab");
+        let snapshot = b.snapshot();
+        b.insert_char(0, 2, 'c');
+        assert_eq!(snapshot.to_string(), "ab");
+        assert_eq!(b.line_text(0), "abc");
     }
 
     #[test]

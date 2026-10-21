@@ -3,7 +3,7 @@ use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
     style::SetForegroundColor,
-    terminal::{Clear, ClearType},
+    terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{Stdout, Write};
 
@@ -12,10 +12,18 @@ use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
+use kawi_syntax::{SyntaxGroup, SyntaxSpan};
 
 use crate::display;
 
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
+    let contents = draw_contents(out, frame);
+    let finished = execute!(out, EndSynchronizedUpdate).context("end synchronized update");
+    contents.and(finished)
+}
+
+fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     draw_visible_lines(out, frame)?;
     draw_filler_rows(out, frame)?;
@@ -120,6 +128,7 @@ pub enum Tint {
     SearchMatch,
     SearchCurrent,
     Substitute,
+    Syntax(SyntaxGroup),
 }
 
 pub fn highlight_spans(
@@ -315,6 +324,21 @@ fn preview_highlight_spans(spans: &[SearchSpan], view: &SpanView) -> Vec<Highlig
     span_highlights(spans, view, |_| Tint::Substitute)
 }
 
+pub fn syntax_highlight_spans(spans: &[SyntaxSpan], view: &SpanView) -> Vec<HighlightSpan> {
+    spans
+        .iter()
+        .filter_map(|span| {
+            span_segment_at(
+                span.row,
+                span.start,
+                span.end,
+                view,
+                Tint::Syntax(span.group),
+            )
+        })
+        .collect()
+}
+
 fn span_highlights(
     spans: &[SearchSpan],
     view: &SpanView,
@@ -327,16 +351,26 @@ fn span_highlights(
 }
 
 fn span_segment(span: &SearchSpan, view: &SpanView, tint: Tint) -> Option<HighlightSpan> {
-    if span.row < view.top {
+    span_segment_at(span.row, span.start, span.end, view, tint)
+}
+
+fn span_segment_at(
+    row: usize,
+    start: usize,
+    end: usize,
+    view: &SpanView,
+    tint: Tint,
+) -> Option<HighlightSpan> {
+    if row < view.top {
         return None;
     }
-    let screen_row = span.row.saturating_sub(view.top);
+    let screen_row = row.saturating_sub(view.top);
     let text = view.window.get(screen_row)?;
     if screen_row >= view.viewport.height() {
         return None;
     }
-    let from = display::screen_col(text, span.start, view.tabstop);
-    let to = display::screen_col(text, span.end, view.tabstop);
+    let from = display::screen_col(text, start, view.tabstop);
+    let to = display::screen_col(text, end, view.tabstop);
     clipped_span(view, screen_row, text, from, to, tint)
 }
 
@@ -357,6 +391,9 @@ fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> 
         leftcol: frame.leftcol,
         tabstop: frame.tabstop,
     };
+    for span in syntax_highlight_spans(frame.syntax_spans, &view) {
+        paint_span(out, &span, gutter_width, theme)?;
+    }
     for span in search_highlight_spans(frame.search_spans, &view) {
         paint_span(out, &span, gutter_width, theme)?;
     }
@@ -390,6 +427,13 @@ fn paint_span(
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
         Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme),
+        Tint::Syntax(group) => {
+            let colors = MatchColors {
+                foreground: theme.syntax.color(group),
+                background: theme.base.background,
+            };
+            paint_tinted(out, &span.text, &colors, theme)
+        }
     }
 }
 
@@ -1240,5 +1284,66 @@ mod tests {
     fn prompt_cursor_clamps_to_visible_row() {
         assert_eq!(prompt_cursor_col(None, Some("abcdef"), 5, None), Some(4));
         assert_eq!(prompt_cursor_col(Some(""), None, 5, Some("dd")), Some(1));
+    }
+
+    #[test]
+    fn syntax_spans_use_group_tints() {
+        let lines = lines_of("fn main");
+        let viewport = Viewport::new(10, 20);
+        let view = span_view(&lines, &viewport);
+        let spans = vec![
+            SyntaxSpan {
+                row: 0,
+                start: 0,
+                end: 2,
+                group: SyntaxGroup::Keyword,
+            },
+            SyntaxSpan {
+                row: 0,
+                start: 3,
+                end: 7,
+                group: SyntaxGroup::Function,
+            },
+        ];
+        let painted = syntax_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 2);
+        assert_eq!(painted[0].tint, Tint::Syntax(SyntaxGroup::Keyword));
+        assert_eq!(painted[0].text, "fn");
+        assert_eq!(painted[1].tint, Tint::Syntax(SyntaxGroup::Function));
+        assert_eq!(painted[1].from, 3);
+    }
+
+    #[test]
+    fn syntax_spans_shift_by_leftcol() {
+        let lines = lines_of("0123456789");
+        let viewport = Viewport::new(10, 20);
+        let mut view = span_view(&lines, &viewport);
+        view.leftcol = 4;
+        let spans = vec![SyntaxSpan {
+            row: 0,
+            start: 0,
+            end: 10,
+            group: SyntaxGroup::String,
+        }];
+        let painted = syntax_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].from, 0);
+        assert_eq!(painted[0].text, "456789");
+    }
+
+    #[test]
+    fn syntax_spans_expand_tabs() {
+        let lines = lines_of("\tab");
+        let viewport = Viewport::new(10, 20);
+        let view = span_view(&lines, &viewport);
+        let spans = vec![SyntaxSpan {
+            row: 0,
+            start: 0,
+            end: 2,
+            group: SyntaxGroup::Variable,
+        }];
+        let painted = syntax_highlight_spans(&spans, &view);
+        assert_eq!(painted.len(), 1);
+        assert_eq!(painted[0].text, "        a");
     }
 }
