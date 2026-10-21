@@ -105,6 +105,7 @@ impl LanguageConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct Languages {
     servers: BTreeMap<String, ServerConfig>,
     languages: Vec<LanguageConfig>,
@@ -136,6 +137,10 @@ impl Languages {
         self.available.contains_key(name)
     }
 
+    pub fn server(&self, name: &str) -> Option<&ServerConfig> {
+        self.servers.get(name)
+    }
+
     pub fn missing_binary_status(&self, path: Option<&Path>) -> Option<String> {
         let path = path?;
         let language = self.language_for_path(path)?;
@@ -154,7 +159,7 @@ impl Languages {
         Some(format!("lsp: {} not found in PATH", missing.join(", ")))
     }
 
-    fn language_for_path(&self, path: &Path) -> Option<&LanguageConfig> {
+    pub fn language_for_path(&self, path: &Path) -> Option<&LanguageConfig> {
         self.languages
             .iter()
             .find(|language| language.matches(path))

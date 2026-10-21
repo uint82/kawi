@@ -5,6 +5,7 @@ use std::io::{stdout, Stdout};
 use std::path::{Path, PathBuf};
 
 mod git;
+mod lsp;
 mod macro_codec;
 mod macro_ops;
 mod picker;
@@ -60,6 +61,7 @@ use kawi_tui::{
     terminal,
     theme::Theme,
 };
+use lsp::LspUi;
 use picker::PickerSession;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
 
@@ -83,8 +85,7 @@ pub struct App {
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
-    languages: Option<kawi_lsp::Languages>,
-    lsp_status: Option<String>,
+    lsp: LspUi,
     events: EventQueue,
 }
 
@@ -112,8 +113,7 @@ impl App {
             git: None,
             git_path: None,
             git_error: None,
-            languages: None,
-            lsp_status: None,
+            lsp: LspUi::default(),
             events: EventQueue::new(),
         }
     }
@@ -131,12 +131,9 @@ impl App {
         if let Some(warning) = state::load(&mut self.editor, &paths) {
             self.message = Some(warning);
         }
-        let languages = kawi_lsp::Languages::load(&paths.languages);
-        if let Some(warning) = languages.warning() {
-            self.message = Some(warning.to_string());
+        if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
+            self.message = Some(warning);
         }
-        self.languages = Some(languages);
-        self.sync_lsp_status();
     }
 
     pub fn save_state(&self) {
@@ -190,7 +187,7 @@ impl App {
         let mut out = stdout();
         loop {
             self.sync_git();
-            self.sync_lsp_status();
+            self.sync_lsp();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
             }
@@ -213,6 +210,8 @@ impl App {
                 }
                 redraw |= needs_redraw;
             }
+            redraw |= self.lsp.poll_events();
+            redraw |= self.lsp.update_display();
             if self.picker.is_some() || self.replace.is_some() {
                 redraw |= self.refresh_picker() | self.refresh_replace();
             } else {
@@ -491,19 +490,15 @@ impl App {
             line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
-            lsp: self.lsp_status.as_deref(),
+            lsp: self.lsp.status(),
         }
     }
 
-    fn sync_lsp_status(&mut self) {
-        let status = self.languages.as_ref().and_then(|languages| {
-            let path = self
-                .editor
-                .has_file()
-                .then(|| Path::new(self.editor.filename()));
-            languages.missing_binary_status(path)
-        });
-        self.lsp_status = status;
+    fn sync_lsp(&mut self) {
+        self.lsp.refresh(&self.editor);
+        if let Some(message) = self.lsp.take_message() {
+            self.show_message(message);
+        }
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -803,6 +798,7 @@ impl App {
         match self.editor.save(force) {
             Ok(outcome) => {
                 let report = written_report(self.editor.filename(), outcome);
+                self.lsp.save();
                 self.show_message(report);
                 true
             }
@@ -1337,7 +1333,10 @@ impl App {
 
     fn handle_save_all(&mut self) -> Result<bool> {
         match self.editor.write_all() {
-            Ok(()) => Ok(false),
+            Ok(()) => {
+                self.lsp.save();
+                Ok(false)
+            }
             Err(error) => {
                 self.show_message(file_error_message(error));
                 Ok(false)
@@ -1347,7 +1346,10 @@ impl App {
 
     fn handle_write_quit_all(&mut self) -> Result<bool> {
         match self.editor.write_all() {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                self.lsp.save();
+                Ok(true)
+            }
             Err(error) => {
                 self.show_message(file_error_message(error));
                 Ok(false)
@@ -2980,10 +2982,10 @@ mod tests {
         let mut buffer = Buffer::from_string("fn main() {}\n");
         buffer.path = Some("main.rs".to_string());
         let mut app = App::new(buffer, Flavor::Vim);
-        app.languages = Some(kawi_lsp::Languages::load(&path));
-        app.sync_lsp_status();
+        app.lsp.load(&path, app.events.wake());
+        app.sync_lsp();
         assert_eq!(
-            app.lsp_status.as_deref(),
+            app.lsp.status(),
             Some("lsp: rust-analyzer not found in PATH")
         );
         assert_eq!(

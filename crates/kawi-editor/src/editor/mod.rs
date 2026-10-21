@@ -911,6 +911,10 @@ impl Editor {
             .window_lines(0, self.buffer.line_count().saturating_add(1))
     }
 
+    pub fn document_text(&self) -> String {
+        self.buffer.rope_slice().to_string()
+    }
+
     pub fn text_has_final_newline(&self) -> bool {
         self.buffer.has_final_newline()
     }

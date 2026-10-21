@@ -45,7 +45,9 @@ impl EventQueue {
     }
 
     pub fn wait(&self) -> Result<()> {
-        self.wake_rx.recv().context("wait for event")
+        self.wake_rx.recv().context("wait for event")?;
+        while self.wake_rx.try_recv().is_ok() {}
+        Ok(())
     }
 
     pub fn input_closed(&self) -> bool {
