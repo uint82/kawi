@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crate::highlight::{Document, Runtime};
 use crate::language::LanguageId;
@@ -79,6 +80,10 @@ impl SyntaxService {
 
     pub fn try_recv(&self) -> Option<SyntaxResult> {
         self.results.try_recv().ok()
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Option<SyntaxResult> {
+        self.results.recv_timeout(timeout).ok()
     }
 }
 

@@ -4,7 +4,7 @@ use crossterm::event::{
 };
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod macro_codec;
 mod macro_ops;
@@ -21,6 +21,8 @@ enum Redraw {
     Redraw,
 }
 
+const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
+
 fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
     match mode {
         kawi_editor::Mode::Insert => kawi_tui::CursorStyle::Bar,
@@ -33,7 +35,7 @@ use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
 use kawi_editor::{parse, Action, Command, Editor, MatchSpan, SearchOutcome};
-use kawi_syntax::{SyntaxKey, SyntaxService, SyntaxSpan};
+use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
 use kawi_tui::{
     frame::{Frame, SearchSpan},
     render,
@@ -146,6 +148,7 @@ impl App {
         let mut out = stdout();
         loop {
             self.refresh_syntax();
+            self.wait_for_syntax_ready();
             self.draw_frame(&mut out)?;
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
@@ -223,34 +226,71 @@ impl App {
     }
 
     fn apply_syntax_results(&mut self) -> bool {
-        let Some(service) = self.syntax.as_ref() else {
-            return false;
-        };
-        let current = self.editor.syntax_key();
-        let mut changed = false;
-        while let Some(result) = service.try_recv() {
-            let latest = result.generation == self.syntax_latest;
-            if latest {
-                self.syntax_pending = false;
-                changed = true;
-            }
-            let Some(current) = current else {
-                continue;
-            };
-            if result.key.document == current.document
-                && result.key.revision == current.revision
-                && result.key.language == current.language
-                && result.generation >= self.syntax_applied
-                && result.window.start <= current.top
-                && current.end <= result.window.end
-            {
-                self.syntax_spans = result.spans;
-                self.syntax_window = result.window;
-                self.syntax_applied = result.generation;
-                changed = true;
+        let mut results = Vec::new();
+        if let Some(service) = self.syntax.as_ref() {
+            while let Some(result) = service.try_recv() {
+                results.push(result);
             }
         }
+        let mut changed = false;
+        for result in results {
+            changed |= self.apply_syntax_result(result);
+        }
         changed
+    }
+
+    fn apply_syntax_result(&mut self, result: SyntaxResult) -> bool {
+        let latest = result.generation == self.syntax_latest;
+        let mut changed = latest;
+        if latest {
+            self.syntax_pending = false;
+        }
+        let Some(current) = self.editor.syntax_key() else {
+            return changed;
+        };
+        if result.key.document == current.document
+            && result.key.revision == current.revision
+            && result.key.language == current.language
+            && result.generation >= self.syntax_applied
+            && result.window.start <= current.top
+            && current.end <= result.window.end
+        {
+            self.syntax_spans = result.spans;
+            self.syntax_window = result.window;
+            self.syntax_applied = result.generation;
+            changed = true;
+        }
+        changed
+    }
+
+    fn syntax_ready(&self) -> bool {
+        let Some(key) = self.editor.syntax_key() else {
+            return true;
+        };
+        self.syntax_window.start <= key.top && key.end <= self.syntax_window.end
+    }
+
+    fn wait_for_syntax_ready(&mut self) {
+        if self.syntax_ready() {
+            return;
+        }
+        let deadline = Instant::now() + SYNTAX_READY_TIMEOUT;
+        loop {
+            if self.syntax_ready() || !self.syntax_pending {
+                return;
+            }
+            let Some(service) = self.syntax.as_ref() else {
+                return;
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return;
+            }
+            let Some(result) = service.recv_timeout(remaining) else {
+                return;
+            };
+            self.apply_syntax_result(result);
+        }
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
@@ -2467,6 +2507,20 @@ mod tests {
             .syntax_spans
             .iter()
             .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
+    }
+
+    #[test]
+    fn syntax_is_ready_before_an_uncovered_viewport_is_drawn() {
+        let text = (0..3_000)
+            .map(|index| format!("fn function_{index}() {{}}\n"))
+            .collect::<String>();
+        let mut buffer = Buffer::from_string(&text);
+        buffer.path = Some("large.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.refresh_syntax();
+        assert!(!app.syntax_ready());
+        app.wait_for_syntax_ready();
+        assert!(app.syntax_ready());
     }
 
     #[test]
