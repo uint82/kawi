@@ -335,10 +335,24 @@ fn draw_one_line(
     gutter_width: usize,
 ) -> Result<()> {
     execute!(out, MoveTo(0, saturate_u16(screen_row))).context("move to line start")?;
+    if let Some(signs) = frame.signs {
+        match signs.get(screen_row).and_then(|sign| *sign) {
+            Some(sign) => {
+                execute!(out, SetForegroundColor(frame.theme.git_sign_color(sign)))
+                    .context("apply git sign color")?;
+                write!(out, "{}", sign.text()).context("write git sign")?;
+            }
+            None => write!(out, " ").context("write empty git sign")?,
+        }
+        execute!(out, SetForegroundColor(frame.theme.line_number))
+            .context("apply line number color")?;
+    }
     if let Some(gutter) = frame.gutter.get(screen_row) {
         execute!(out, SetForegroundColor(frame.theme.line_number))
             .context("apply line number color")?;
         write!(out, "{gutter}").context("write gutter")?;
+    }
+    if frame.signs.is_some() || frame.gutter.get(screen_row).is_some() {
         paint::restore_base(out, frame.theme)?;
     }
     let width = frame.viewport.width().saturating_sub(gutter_width);
@@ -362,6 +376,9 @@ fn draw_filler_rows(out: &mut Stdout, frame: &Frame) -> Result<()> {
             SetForegroundColor(frame.theme.non_text)
         )
         .context("move to filler row")?;
+        if frame.signs.is_some() {
+            write!(out, " ").context("write empty git sign")?;
+        }
         write!(out, "~").context("write filler")?;
         paint::restore_base(out, frame.theme)?;
         erase_row_tail(out)?;
@@ -370,7 +387,8 @@ fn draw_filler_rows(out: &mut Stdout, frame: &Frame) -> Result<()> {
 }
 
 fn gutter_width(frame: &Frame) -> usize {
-    frame.gutter.first().map_or(0, |line| line.chars().count())
+    let numbers = frame.gutter.first().map_or(0, |line| line.chars().count());
+    numbers + usize::from(frame.signs.is_some())
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {

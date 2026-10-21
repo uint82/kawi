@@ -23,7 +23,7 @@ mod registers;
 mod sentences;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
-pub use command::{parse, Command, CommandLine, PickerCommand};
+pub use command::{parse, Command, CommandLine, GitCommand, PickerCommand};
 pub use cursor::Cursor;
 pub use editor::{
     BufferError, EditError, Editor, HistoryEntries, WriteOutcome, DEFAULT_HISTORY_LIMIT,

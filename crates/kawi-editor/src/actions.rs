@@ -318,6 +318,13 @@ pub enum Action {
     OpenGrepWordPicker,
     OpenBufferPicker,
     OpenReplacePicker,
+    GitNextHunk,
+    GitPrevHunk,
+    GitStageHunk,
+    GitUndoStage,
+    GitStageBuffer,
+    GitPreviewHunk,
+    GitDiff,
     Noop,
 }
 

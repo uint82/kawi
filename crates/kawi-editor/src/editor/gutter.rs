@@ -25,12 +25,21 @@ impl Editor {
         self.numberwidth
     }
 
+    pub fn set_signcolumn_width(&mut self, width: usize) {
+        self.signcolumn_width = width;
+    }
+
+    pub fn signcolumn_width(&self) -> usize {
+        self.signcolumn_width
+    }
+
     pub fn gutter_width(&self) -> usize {
-        if self.numbers_visible() {
+        let numbers = if self.numbers_visible() {
             self.number_column_width().saturating_add(1)
         } else {
             0
-        }
+        };
+        self.signcolumn_width.saturating_add(numbers)
     }
 
     pub fn gutter_lines(&self, first: usize, count: usize) -> Vec<String> {
@@ -147,6 +156,20 @@ mod tests {
         e.set_number(true);
         e.set_relativenumber(true);
         assert_eq!(e.gutter_lines(0, 3), vec!["  1 ", "2   ", "  1 "]);
+    }
+
+    #[test]
+    fn signcolumn_shifts_cursor_and_mouse_columns() {
+        let mut e = editor_with("abc\ndef");
+        e.apply(Action::JumpTo(0, 0));
+        e.set_signcolumn_width(1);
+        assert_eq!(e.gutter_width(), 5);
+        assert_eq!(e.cursor_wcol(), 5);
+        assert_eq!(e.buffer_col_at_screen(0, 5), 0);
+        e.set_number(false);
+        e.set_relativenumber(false);
+        assert_eq!(e.gutter_width(), 1);
+        assert_eq!(e.buffer_col_at_screen(0, 1), 0);
     }
 
     #[test]

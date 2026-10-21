@@ -103,6 +103,7 @@ pub struct Editor {
     number: bool,
     relativenumber: bool,
     numberwidth: usize,
+    signcolumn_width: usize,
     ignorecase: bool,
     smartcase: bool,
     search_no_smartcase: bool,
@@ -478,7 +479,14 @@ impl Editor {
             | Action::OpenGrepPicker
             | Action::OpenGrepWordPicker
             | Action::OpenBufferPicker
-            | Action::OpenReplacePicker => self.noop(),
+            | Action::OpenReplacePicker
+            | Action::GitNextHunk
+            | Action::GitPrevHunk
+            | Action::GitStageHunk
+            | Action::GitUndoStage
+            | Action::GitStageBuffer
+            | Action::GitPreviewHunk
+            | Action::GitDiff => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {
@@ -738,6 +746,7 @@ impl Editor {
             number: true,
             relativenumber: false,
             numberwidth: 4,
+            signcolumn_width: 0,
             ignorecase: false,
             smartcase: false,
             search_no_smartcase: false,
@@ -897,10 +906,13 @@ impl Editor {
         Some(((start_row, 0), (end_row, end_col)))
     }
 
-    #[cfg(test)]
     pub fn text_lines(&self) -> Vec<String> {
         self.buffer
             .window_lines(0, self.buffer.line_count().saturating_add(1))
+    }
+
+    pub fn text_has_final_newline(&self) -> bool {
+        self.buffer.has_final_newline()
     }
 
     fn track_head(&mut self, action: Action) {

@@ -120,6 +120,12 @@ pub struct Theme {
     pub status: MatchColors,
     pub line_number: Color,
     pub non_text: Color,
+    pub git_add: Color,
+    pub git_change: Color,
+    pub git_delete: Color,
+    pub git_staged_add: Color,
+    pub git_staged_change: Color,
+    pub git_staged_delete: Color,
     pub syntax: SyntaxColors,
 }
 
@@ -207,6 +213,36 @@ impl Theme {
             },
             non_text: Color::Rgb {
                 r: 79,
+                g: 82,
+                b: 88,
+            },
+            git_add: Color::Rgb {
+                r: 152,
+                g: 195,
+                b: 121,
+            },
+            git_change: Color::Rgb {
+                r: 229,
+                g: 192,
+                b: 123,
+            },
+            git_delete: Color::Rgb {
+                r: 224,
+                g: 108,
+                b: 117,
+            },
+            git_staged_add: Color::Rgb {
+                r: 89,
+                g: 123,
+                b: 96,
+            },
+            git_staged_change: Color::Rgb {
+                r: 70,
+                g: 124,
+                b: 123,
+            },
+            git_staged_delete: Color::Rgb {
+                r: 150,
                 g: 82,
                 b: 88,
             },
@@ -299,6 +335,36 @@ impl Theme {
                 g: 131,
                 b: 116,
             },
+            git_add: Color::Rgb {
+                r: 184,
+                g: 187,
+                b: 38,
+            },
+            git_change: Color::Rgb {
+                r: 250,
+                g: 189,
+                b: 47,
+            },
+            git_delete: Color::Rgb {
+                r: 251,
+                g: 73,
+                b: 52,
+            },
+            git_staged_add: Color::Rgb {
+                r: 126,
+                g: 135,
+                b: 70,
+            },
+            git_staged_change: Color::Rgb {
+                r: 110,
+                g: 140,
+                b: 100,
+            },
+            git_staged_delete: Color::Rgb {
+                r: 180,
+                g: 90,
+                b: 70,
+            },
             syntax: SyntaxColors::gruvbox_dark_palette(),
         }
     }
@@ -388,7 +454,50 @@ impl Theme {
                 g: 131,
                 b: 116,
             },
+            git_add: Color::Rgb {
+                r: 121,
+                g: 116,
+                b: 14,
+            },
+            git_change: Color::Rgb {
+                r: 181,
+                g: 118,
+                b: 20,
+            },
+            git_delete: Color::Rgb { r: 157, g: 0, b: 6 },
+            git_staged_add: Color::Rgb {
+                r: 100,
+                g: 110,
+                b: 50,
+            },
+            git_staged_change: Color::Rgb {
+                r: 70,
+                g: 110,
+                b: 105,
+            },
+            git_staged_delete: Color::Rgb {
+                r: 135,
+                g: 70,
+                b: 70,
+            },
             syntax: SyntaxColors::gruvbox_light_palette(),
+        }
+    }
+}
+
+impl Theme {
+    pub fn git_sign_color(&self, sign: crate::frame::GitSign) -> Color {
+        match sign {
+            crate::frame::GitSign::Add | crate::frame::GitSign::Untracked => self.git_add,
+            crate::frame::GitSign::Change | crate::frame::GitSign::ChangeDelete => self.git_change,
+            crate::frame::GitSign::Delete | crate::frame::GitSign::TopDelete => self.git_delete,
+            crate::frame::GitSign::StagedAdd => self.git_staged_add,
+            crate::frame::GitSign::StagedChange | crate::frame::GitSign::StagedChangeDelete => {
+                self.git_staged_change
+            }
+            crate::frame::GitSign::StagedDelete | crate::frame::GitSign::StagedTopDelete => {
+                self.git_staged_delete
+            }
         }
     }
 }

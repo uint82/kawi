@@ -671,6 +671,10 @@ impl Buffer {
         self.rope.len_bytes() + usize::from(self.needs_final_newline())
     }
 
+    pub fn has_final_newline(&self) -> bool {
+        self.rope.len_chars() == 0 || self.ends_with_newline()
+    }
+
     fn needs_final_newline(&self) -> bool {
         self.rope.len_chars() > 0 && !self.ends_with_newline()
     }
