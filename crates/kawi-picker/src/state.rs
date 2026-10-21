@@ -162,6 +162,9 @@ impl Picker {
             KeyCode::Down => self.navigate(true, 1),
             KeyCode::PageUp => self.navigate(false, PAGE_ROWS),
             KeyCode::PageDown => self.navigate(true, PAGE_ROWS),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => self.navigate(false, 1),
+            KeyCode::BackTab => self.navigate(false, 1),
+            KeyCode::Tab => self.navigate(true, 1),
             KeyCode::Home => self.set_selected(0),
             KeyCode::End => self.set_selected(self.rows.len().saturating_sub(1)),
             KeyCode::Left => self.move_cursor_left(),
@@ -483,5 +486,19 @@ mod tests {
     fn escape_cancels() {
         let mut picker = files();
         assert_eq!(picker.handle_key(key(KeyCode::Esc)), PickerOutcome::Cancel);
+    }
+
+    #[test]
+    fn tab_moves_forward_and_backtab_moves_backward() {
+        let mut picker = files();
+        assert_eq!(picker.selected(), Some(0));
+        picker.handle_key(key(KeyCode::Tab));
+        assert_eq!(picker.selected(), Some(1));
+        picker.handle_key(key(KeyCode::Tab));
+        assert_eq!(picker.selected(), Some(2));
+        picker.handle_key(key(KeyCode::BackTab));
+        assert_eq!(picker.selected(), Some(1));
+        picker.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT));
+        assert_eq!(picker.selected(), Some(0));
     }
 }

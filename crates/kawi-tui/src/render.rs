@@ -138,7 +138,10 @@ fn picker_footer(picker: &PickerMenu<'_>) -> String {
     if picker.query.is_empty() && picker.items.is_empty() {
         return "Type to search  Esc cancel".to_string();
     }
-    format!("{} results  Enter open  Esc cancel", picker.items.len())
+    format!(
+        "{} results  Enter open  Tab next  Esc cancel",
+        picker.items.len()
+    )
 }
 
 fn picker_start(available: usize, selected: Option<usize>) -> usize {
