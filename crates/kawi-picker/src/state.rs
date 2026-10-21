@@ -2,6 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::fuzzy::fuzzy_score;
 use crate::grep::GrepHit;
+use crate::input::TextInput;
+use crate::selection::{clamped_selection, selection_at};
 
 const MAX_ROWS: usize = 2_000;
 const PAGE_ROWS: usize = 10;
@@ -33,8 +35,7 @@ pub enum PickerOutcome {
 pub struct Picker {
     kind: PickerKind,
     title: &'static str,
-    query: String,
-    cursor: usize,
+    query: TextInput,
     files: Vec<String>,
     hits: Vec<GrepHit>,
     buffers: Vec<(usize, String)>,
@@ -64,8 +65,7 @@ impl Picker {
         Self {
             kind,
             title,
-            query: String::new(),
-            cursor: 0,
+            query: TextInput::new(),
             files: Vec::new(),
             hits: Vec::new(),
             buffers: Vec::new(),
@@ -85,11 +85,11 @@ impl Picker {
     }
 
     pub fn query(&self) -> &str {
-        &self.query
+        self.query.text()
     }
 
     pub fn cursor(&self) -> usize {
-        self.cursor
+        self.query.cursor()
     }
 
     pub fn rows(&self) -> &[PickerRow] {
@@ -127,15 +127,12 @@ impl Picker {
     }
 
     pub fn set_query(&mut self, query: &str) {
-        self.query = query.to_string();
-        self.cursor = self.query.chars().count();
+        self.query.set_text(query);
         self.after_query_change();
     }
 
     pub fn insert_text(&mut self, text: &str) {
-        for character in text.chars().filter(|character| !character.is_control()) {
-            self.insert(character);
-        }
+        self.query.insert_text(text);
         self.after_query_change();
     }
 
@@ -167,10 +164,10 @@ impl Picker {
             KeyCode::Tab => self.navigate(true, 1),
             KeyCode::Home => self.set_selected(0),
             KeyCode::End => self.set_selected(self.rows.len().saturating_sub(1)),
-            KeyCode::Left => self.move_cursor_left(),
-            KeyCode::Right => self.move_cursor_right(),
-            KeyCode::Backspace => self.delete_before(),
-            KeyCode::Delete => self.delete_at(),
+            KeyCode::Left => self.move_query(false),
+            KeyCode::Right => self.move_query(true),
+            KeyCode::Backspace => self.edit_query(TextInput::backspace),
+            KeyCode::Delete => self.edit_query(TextInput::delete),
             KeyCode::Char(character) => self.handle_character(key, character),
             _ => PickerOutcome::Consumed,
         }
@@ -182,15 +179,15 @@ impl Picker {
                 'c' => PickerOutcome::Cancel,
                 'n' | 'j' => self.navigate(true, 1),
                 'p' | 'k' => self.navigate(false, 1),
-                'u' => self.clear_query(),
-                'w' => self.delete_word(),
+                'u' => self.edit_query(TextInput::clear),
+                'w' => self.edit_query(TextInput::delete_word),
                 _ => PickerOutcome::Consumed,
             };
         }
         if key.modifiers.contains(KeyModifiers::ALT) {
             return PickerOutcome::Consumed;
         }
-        self.insert(character);
+        self.query.insert_char(character);
         self.after_query_change()
     }
 
@@ -202,93 +199,26 @@ impl Picker {
     }
 
     fn navigate(&mut self, forward: bool, amount: usize) -> PickerOutcome {
-        if self.rows.is_empty() {
-            self.selected = None;
-            return PickerOutcome::Consumed;
-        }
-        let length = self.rows.len();
-        let current = self.selected.unwrap_or(0);
-        let next = if forward {
-            current.saturating_add(amount).min(length - 1)
-        } else {
-            current.saturating_sub(amount)
-        };
-        self.selected = Some(next);
+        self.selected = clamped_selection(self.selected, self.rows.len(), forward, amount);
         PickerOutcome::Consumed
     }
 
     fn set_selected(&mut self, index: usize) -> PickerOutcome {
-        if self.rows.is_empty() {
-            self.selected = None;
+        self.selected = selection_at(index, self.rows.len());
+        PickerOutcome::Consumed
+    }
+
+    fn move_query(&mut self, forward: bool) -> PickerOutcome {
+        if forward {
+            self.query.move_right();
         } else {
-            self.selected = Some(index.min(self.rows.len() - 1));
+            self.query.move_left();
         }
         PickerOutcome::Consumed
     }
 
-    fn move_cursor_left(&mut self) -> PickerOutcome {
-        self.cursor = self.cursor.saturating_sub(1);
-        PickerOutcome::Consumed
-    }
-
-    fn move_cursor_right(&mut self) -> PickerOutcome {
-        self.cursor = self
-            .cursor
-            .saturating_add(1)
-            .min(self.query.chars().count());
-        PickerOutcome::Consumed
-    }
-
-    fn insert(&mut self, character: char) {
-        let byte = byte_index(&self.query, self.cursor);
-        self.query.insert(byte, character);
-        self.cursor = self.cursor.saturating_add(1);
-    }
-
-    fn delete_before(&mut self) -> PickerOutcome {
-        if self.cursor == 0 {
-            return PickerOutcome::Consumed;
-        }
-        let start = byte_index(&self.query, self.cursor - 1);
-        let end = byte_index(&self.query, self.cursor);
-        self.query.replace_range(start..end, "");
-        self.cursor = self.cursor.saturating_sub(1);
-        self.after_query_change()
-    }
-
-    fn delete_at(&mut self) -> PickerOutcome {
-        let characters = self.query.chars().count();
-        if self.cursor >= characters {
-            return PickerOutcome::Consumed;
-        }
-        let start = byte_index(&self.query, self.cursor);
-        let end = byte_index(&self.query, self.cursor + 1);
-        self.query.replace_range(start..end, "");
-        self.after_query_change()
-    }
-
-    fn clear_query(&mut self) -> PickerOutcome {
-        self.query.clear();
-        self.cursor = 0;
-        self.after_query_change()
-    }
-
-    fn delete_word(&mut self) -> PickerOutcome {
-        if self.cursor == 0 {
-            return PickerOutcome::Consumed;
-        }
-        let characters: Vec<char> = self.query.chars().collect();
-        let mut start = self.cursor;
-        while start > 0 && characters[start - 1].is_whitespace() {
-            start -= 1;
-        }
-        while start > 0 && !characters[start - 1].is_whitespace() {
-            start -= 1;
-        }
-        let start_byte = byte_index(&self.query, start);
-        let end_byte = byte_index(&self.query, self.cursor);
-        self.query.replace_range(start_byte..end_byte, "");
-        self.cursor = start;
+    fn edit_query(&mut self, edit: impl FnOnce(&mut TextInput)) -> PickerOutcome {
+        edit(&mut self.query);
         self.after_query_change()
     }
 
@@ -363,7 +293,7 @@ impl Picker {
 
     fn rank_fuzzy(&self, candidates: impl Iterator<Item = (String, PickerRow)>) -> Vec<PickerRow> {
         let mut ranked: Vec<(i32, PickerRow)> = candidates
-            .filter_map(|(text, row)| fuzzy_score(&self.query, &text).map(|score| (score, row)))
+            .filter_map(|(text, row)| fuzzy_score(self.query(), &text).map(|score| (score, row)))
             .collect();
         ranked.sort_by(|left, right| {
             right
@@ -377,13 +307,6 @@ impl Picker {
             .map(|(_, row)| row)
             .collect()
     }
-}
-
-fn byte_index(text: &str, character: usize) -> usize {
-    text.char_indices()
-        .nth(character)
-        .map(|(byte, _)| byte)
-        .unwrap_or(text.len())
 }
 
 #[cfg(test)]

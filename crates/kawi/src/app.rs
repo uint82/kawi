@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 mod macro_codec;
 mod macro_ops;
 mod picker;
+mod replace;
+mod replace_apply;
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -31,6 +33,7 @@ struct FrameInput<'a> {
     search_spans: &'a [SearchSpan],
     preview_spans: &'a [SearchSpan],
     picker: Option<kawi_tui::frame::PickerMenu<'a>>,
+    replace: Option<kawi_tui::frame::ReplaceMenu<'a>>,
 }
 
 const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
@@ -57,6 +60,7 @@ use kawi_tui::{
     theme::Theme,
 };
 use picker::PickerSession;
+use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
 
 pub struct App {
     editor: Editor,
@@ -74,6 +78,7 @@ pub struct App {
     syntax_latest: u64,
     syntax_applied: u64,
     picker: Option<PickerSession>,
+    replace: Option<ReplaceSession>,
 }
 
 impl App {
@@ -96,6 +101,7 @@ impl App {
             syntax_latest: 0,
             syntax_applied: 0,
             picker: None,
+            replace: None,
         }
     }
 
@@ -163,11 +169,12 @@ impl App {
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
-            if self.picker.is_none() {
+            if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
                 self.wait_for_syntax_ready();
             }
             self.refresh_picker();
+            self.refresh_replace();
             self.draw_frame(&mut out)?;
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
@@ -177,15 +184,16 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
-            if self.picker.is_some() {
-                if self.refresh_picker() {
+            if self.picker.is_some() || self.replace.is_some() {
+                if self.refresh_picker() | self.refresh_replace() {
                     return Ok(Redraw::Redraw);
                 }
             } else if self.apply_syntax_results() {
                 return Ok(Redraw::Redraw);
             }
-            let pending =
-                self.syntax_pending || self.picker.as_ref().is_some_and(PickerSession::pending);
+            let pending = self.syntax_pending
+                || self.picker.as_ref().is_some_and(PickerSession::pending)
+                || self.replace.as_ref().is_some_and(ReplaceSession::pending);
             let event = if pending {
                 match poll_next_event(Duration::from_millis(10))? {
                     Some(event) => event,
@@ -368,7 +376,24 @@ impl App {
                 selected: state.selected(),
                 loading: state.loading(),
                 status: state.status(),
+                replace_hint: state.kind() == PickerKind::Grep,
             }
+        });
+        let replace_state = self.replace.as_ref();
+        let replace_rows: Vec<String> = replace_state
+            .map(|session| session.rows().to_vec())
+            .unwrap_or_default();
+        let replace = replace_state.map(|session| kawi_tui::frame::ReplaceMenu {
+            stage: replace_stage(session.stage()),
+            query: session.query(),
+            replacement: session.replacement(),
+            cursor: session.cursor(),
+            items: &replace_rows,
+            selected: session.selected(),
+            loading: session.loading(),
+            status: session.status(),
+            matches: session.matches(),
+            files: session.files(),
         });
         let frame = self.build_frame(FrameInput {
             status: &status,
@@ -378,6 +403,7 @@ impl App {
             search_spans: &search_spans,
             preview_spans: &preview_spans,
             picker,
+            replace,
         });
         render::draw(out, &frame)
     }
@@ -392,6 +418,7 @@ impl App {
                 .completion_view()
                 .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
             picker: input.picker,
+            replace: input.replace,
             cursor_col: self
                 .editor
                 .cursor_wcol()
@@ -480,7 +507,7 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.picker.is_some() {
+        if self.picker.is_some() || self.replace.is_some() {
             return self.handle_noop();
         }
         if self.pager.is_some() {
@@ -569,6 +596,9 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.replace.is_some() {
+            return self.handle_replace_key(key);
+        }
         if self.picker.is_some() {
             return self.handle_picker_key(key);
         }
@@ -582,6 +612,19 @@ impl App {
         let Some(mut session) = self.picker.take() else {
             return Ok(false);
         };
+        if is_replace_key(key) && session.picker().kind() == PickerKind::Grep {
+            let query = session.picker().query().to_string();
+            if query.is_empty() {
+                self.show_message("Type a search pattern first".to_string());
+                self.picker = Some(session);
+                return Ok(false);
+            }
+            self.replace = Some(ReplaceSession::from_query(
+                session.root().to_path_buf(),
+                &query,
+            ));
+            return Ok(false);
+        }
         let outcome = session.handle_key(key);
         match outcome {
             kawi_picker::PickerOutcome::Cancel => Ok(false),
@@ -598,6 +641,38 @@ impl App {
             _ => {
                 self.picker = Some(session);
                 Ok(false)
+            }
+        }
+    }
+
+    fn handle_replace_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let Some(mut session) = self.replace.take() else {
+            return Ok(false);
+        };
+        match session.handle_key(key) {
+            ReplaceOutcome::Cancel => Ok(false),
+            ReplaceOutcome::Consumed => {
+                self.replace = Some(session);
+                Ok(false)
+            }
+            ReplaceOutcome::Apply(preview) => {
+                let root = session.root().clone();
+                match self.apply_replace_preview(&preview, &root) {
+                    Ok(()) => {
+                        self.show_message(format!(
+                            "Replaced {} in {}",
+                            kawi_tui::text::count_label(preview.matches, "match", "matches"),
+                            kawi_tui::text::count_label(preview.files.len(), "file", "files")
+                        ));
+                        self.reveal_cursor();
+                        Ok(false)
+                    }
+                    Err(message) => {
+                        session.set_status(message);
+                        self.replace = Some(session);
+                        Ok(false)
+                    }
+                }
             }
         }
     }
@@ -679,6 +754,7 @@ impl App {
             Action::OpenGrepPicker => self.open_picker(PickerKind::Grep),
             Action::OpenGrepWordPicker => self.open_grep_word_picker(),
             Action::OpenBufferPicker => self.open_picker(PickerKind::Buffers),
+            Action::OpenReplacePicker => self.open_replace_picker(),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -784,6 +860,10 @@ impl App {
         self.picker.as_mut().is_some_and(PickerSession::refresh)
     }
 
+    fn refresh_replace(&mut self) -> bool {
+        self.replace.as_mut().is_some_and(ReplaceSession::refresh)
+    }
+
     fn open_picker(&mut self, kind: PickerKind) -> Result<bool> {
         let root = self.picker_root();
         self.picker = Some(match kind {
@@ -791,6 +871,12 @@ impl App {
             PickerKind::Grep => PickerSession::grep(root, None),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
         });
+        Ok(false)
+    }
+
+    fn open_replace_picker(&mut self) -> Result<bool> {
+        let root = self.picker_root();
+        self.replace = Some(ReplaceSession::new(root));
         Ok(false)
     }
 
@@ -829,15 +915,19 @@ impl App {
     }
 
     fn handle_pick_command(&mut self, command: PickerCommand) -> Result<bool> {
-        let kind = match command {
-            PickerCommand::Files => PickerKind::Files,
-            PickerCommand::Grep => PickerKind::Grep,
-            PickerCommand::Buffers => PickerKind::Buffers,
-        };
-        self.open_picker(kind)
+        match command {
+            PickerCommand::Files => self.open_picker(PickerKind::Files),
+            PickerCommand::Grep => self.open_picker(PickerKind::Grep),
+            PickerCommand::Buffers => self.open_picker(PickerKind::Buffers),
+            PickerCommand::Replace => self.open_replace_picker(),
+        }
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if let Some(session) = self.replace.as_mut() {
+            session.paste(&text);
+            return Ok(false);
+        }
         if let Some(session) = self.picker.as_mut() {
             session.paste(&text);
             return Ok(false);
@@ -1182,6 +1272,18 @@ impl App {
         }
         self.reveal_cursor();
         Ok(false)
+    }
+}
+
+pub(super) fn compact_error(error: &str) -> String {
+    error.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn replace_stage(stage: ReplaceStage) -> kawi_tui::frame::ReplaceStage {
+    match stage {
+        ReplaceStage::Search => kawi_tui::frame::ReplaceStage::Search,
+        ReplaceStage::Replacement => kawi_tui::frame::ReplaceStage::Replacement,
+        ReplaceStage::Preview => kawi_tui::frame::ReplaceStage::Preview,
     }
 }
 
@@ -2796,6 +2898,34 @@ mod tests {
         app.handle_key(key(KeyCode::Enter)).expect("open");
         assert!(app.editor.filename().ends_with("alpha.txt"));
         assert_eq!((app.editor.row(), app.editor.col()), (0, 0));
+    }
+
+    #[test]
+    fn replace_command_opens_the_replace_session() {
+        let path = picker_project("replace_command");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        type_command(&mut app, "replace");
+        assert!(app.picker.is_none());
+        assert!(app.replace.is_some());
+    }
+
+    #[test]
+    fn ctrl_r_converts_a_grep_picker_into_a_replace_session() {
+        let path = picker_project("replace_ctrl_r");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
+        type_command(&mut app, "pick grep");
+        for character in "needle".chars() {
+            app.handle_key(key(KeyCode::Char(character)))
+                .expect("query");
+        }
+        wait_for_picker(&mut app);
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            .expect("replace");
+        assert!(app.picker.is_none());
+        let session = app.replace.as_ref().expect("replace session");
+        assert_eq!(session.query(), "needle");
+        assert_eq!(session.replacement(), "");
+        assert_eq!(session.stage(), ReplaceStage::Replacement);
     }
 
     #[test]

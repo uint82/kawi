@@ -9,6 +9,7 @@ pub struct Frame<'a> {
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
     pub picker: Option<PickerMenu<'a>>,
+    pub replace: Option<ReplaceMenu<'a>>,
     pub cursor_col: usize,
     pub row: usize,
     pub viewport: &'a Viewport,
@@ -49,6 +50,27 @@ pub struct PickerMenu<'a> {
     pub selected: Option<usize>,
     pub loading: bool,
     pub status: Option<&'a str>,
+    pub replace_hint: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplaceStage {
+    Search,
+    Replacement,
+    Preview,
+}
+
+pub struct ReplaceMenu<'a> {
+    pub stage: ReplaceStage,
+    pub query: &'a str,
+    pub replacement: &'a str,
+    pub cursor: usize,
+    pub items: &'a [String],
+    pub selected: Option<usize>,
+    pub loading: bool,
+    pub status: Option<&'a str>,
+    pub matches: usize,
+    pub files: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

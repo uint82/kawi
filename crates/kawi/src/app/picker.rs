@@ -101,11 +101,10 @@ impl PickerSession {
         match result {
             ProjectResult::Files { files, .. } => self.picker.set_files(files),
             ProjectResult::Grep { hits, error, .. } => match error {
-                Some(error) => self
-                    .picker
-                    .set_error(error.split_whitespace().collect::<Vec<_>>().join(" ")),
+                Some(error) => self.picker.set_error(super::compact_error(&error)),
                 None => self.picker.set_hits(hits),
             },
+            ProjectResult::Replace { .. } => {}
         }
     }
 

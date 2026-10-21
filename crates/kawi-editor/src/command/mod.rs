@@ -38,6 +38,7 @@ pub enum PickerCommand {
     Files,
     Grep,
     Buffers,
+    Replace,
 }
 
 pub const COMMAND_NAMES: &[&str] = &[
@@ -59,6 +60,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "q",
     "q!",
     "qa",
+    "replace",
     "qa!",
     "quit",
     "quit!",
@@ -139,6 +141,8 @@ fn parse_named(text: &str) -> Command {
         ("pick", ["file" | "files"]) => Command::Pick(PickerCommand::Files),
         ("pick", ["grep" | "live_grep" | "grep_live"]) => Command::Pick(PickerCommand::Grep),
         ("pick", ["buffer" | "buffers"]) => Command::Pick(PickerCommand::Buffers),
+        ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
+        ("replace", []) => Command::Pick(PickerCommand::Replace),
         ("set", rest) => parse_set_command(rest),
         _ => Command::Unknown,
     }
@@ -515,6 +519,8 @@ mod tests {
         assert_eq!(parse("pick grep"), Command::Pick(PickerCommand::Grep));
         assert_eq!(parse("pick live_grep"), Command::Pick(PickerCommand::Grep));
         assert_eq!(parse("pick buffers"), Command::Pick(PickerCommand::Buffers));
+        assert_eq!(parse("pick replace"), Command::Pick(PickerCommand::Replace));
+        assert_eq!(parse("replace"), Command::Pick(PickerCommand::Replace));
         assert_eq!(parse("pick"), Command::Pick(PickerCommand::Files));
         assert_eq!(parse("pick nope"), Command::Unknown);
     }

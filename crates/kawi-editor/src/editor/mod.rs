@@ -477,7 +477,8 @@ impl Editor {
             Action::OpenFilePicker
             | Action::OpenGrepPicker
             | Action::OpenGrepWordPicker
-            | Action::OpenBufferPicker => self.noop(),
+            | Action::OpenBufferPicker
+            | Action::OpenReplacePicker => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {
