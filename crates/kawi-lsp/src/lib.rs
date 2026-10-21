@@ -7,6 +7,7 @@ pub mod framing;
 mod process;
 pub mod protocol;
 mod service;
+mod text;
 mod workspace;
 
 pub use config::{LanguageConfig, Languages, ServerConfig};

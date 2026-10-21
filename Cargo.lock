@@ -351,8 +351,10 @@ name = "kawi-lsp"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "kawi-buffer",
  "libc",
  "lsp-types",
+ "ropey",
  "serde",
  "serde_json",
  "toml",

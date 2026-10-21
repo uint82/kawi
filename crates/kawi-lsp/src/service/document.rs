@@ -1,16 +1,28 @@
 use super::initialize::{include_save_text, save_enabled};
 use super::*;
 use crate::protocol::Message;
-use crate::workspace::{self, file_uri, whole_document_range};
+use crate::text;
+use crate::workspace::{self, file_uri};
+use kawi_buffer::{diff_ropes, RopeChange};
 use lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, TextDocumentContentChangeEvent, TextDocumentItem,
+    DidSaveTextDocumentParams, Range, TextDocumentContentChangeEvent, TextDocumentItem,
     TextDocumentSyncKind, VersionedTextDocumentIdentifier,
 };
+use ropey::Rope;
 use std::path::{Path, PathBuf};
 
+struct DocumentChange<'a> {
+    path: &'a Path,
+    uri: &'a lsp_types::Uri,
+    version: i32,
+    old: &'a Rope,
+    new: &'a Rope,
+    change: Option<RopeChange>,
+}
+
 impl Manager {
-    pub(super) fn open_document(&mut self, path: PathBuf, text: String) {
+    pub(super) fn open_document(&mut self, path: PathBuf, text: Rope) {
         let path = workspace::absolute(&path);
         let Some(language) = self.languages.language_for_path(&path).cloned() else {
             return;
@@ -67,58 +79,54 @@ impl Manager {
         }
     }
 
-    pub(super) fn change_document(&mut self, path: &Path, text: String) {
+    pub(super) fn change_document(&mut self, path: &Path, text: Rope) {
         let path = workspace::absolute(path);
         let Some(document) = self.documents.get_mut(&path) else {
             return;
         };
-        document.text = text;
+        let old = std::mem::replace(&mut document.text, text);
+        let change = diff_ropes(&old, &document.text);
         document.version = document.version.saturating_add(1);
         let version = document.version;
         let uri = document.uri.clone();
-        let text = document.text.clone();
+        let new = document.text.clone();
         let clients = document.clients.clone();
+        let change = DocumentChange {
+            path: &path,
+            uri: &uri,
+            version,
+            old: &old,
+            new: &new,
+            change,
+        };
         for key in clients {
-            self.send_change(&key, &path, &uri, version, &text);
+            self.send_change(&key, &change);
         }
     }
 
-    pub(super) fn send_change(
-        &mut self,
-        key: &ClientKey,
-        path: &Path,
-        uri: &lsp_types::Uri,
-        version: i32,
-        text: &str,
-    ) {
+    fn send_change(&mut self, key: &ClientKey, change: &DocumentChange<'_>) {
         let Some(client) = self.clients.get(key) else {
             return;
         };
         if client.status != ServerState::Ready
-            || !client.opened.contains(path)
+            || !client.opened.contains(change.path)
             || client.sync.change.is_none()
         {
             return;
         }
-        let change = match client.sync.change {
-            Some(TextDocumentSyncKind::FULL) => TextDocumentContentChangeEvent {
-                range: None,
-                range_length: None,
-                text: text.to_string(),
-            },
-            Some(TextDocumentSyncKind::INCREMENTAL) => TextDocumentContentChangeEvent {
-                range: Some(whole_document_range(text, &client.encoding)),
-                range_length: None,
-                text: text.to_string(),
-            },
+        let changes = match client.sync.change {
+            Some(TextDocumentSyncKind::FULL) => vec![full_change(change.new)],
+            Some(TextDocumentSyncKind::INCREMENTAL) => {
+                incremental_changes(change.change, change.old, change.new, &client.encoding)
+            }
             _ => return,
         };
         let params = DidChangeTextDocumentParams {
             text_document: VersionedTextDocumentIdentifier {
-                uri: uri.clone(),
-                version,
+                uri: change.uri.clone(),
+                version: change.version,
             },
-            content_changes: vec![change],
+            content_changes: changes,
         };
         if let Some(params) = to_params(params) {
             client.client.send(Message::notification(
@@ -147,7 +155,7 @@ impl Manager {
             if !save_enabled(save) {
                 continue;
             }
-            let text = include_save_text(save).then(|| document.text.clone());
+            let text = include_save_text(save).then(|| document.text.to_string());
             let params = DidSaveTextDocumentParams {
                 text_document: lsp_types::TextDocumentIdentifier {
                     uri: document.uri.clone(),
@@ -191,7 +199,7 @@ impl Manager {
         }
     }
 
-    pub(super) fn send_open(&mut self, key: &ClientKey, path: &Path, text: &str, version: i32) {
+    pub(super) fn send_open(&mut self, key: &ClientKey, path: &Path, text: &Rope, version: i32) {
         let Some(client) = self.clients.get_mut(key) else {
             return;
         };
@@ -217,5 +225,91 @@ impl Manager {
                 client.opened.insert(path.to_path_buf());
             }
         }
+    }
+}
+
+fn full_change(text: &Rope) -> TextDocumentContentChangeEvent {
+    TextDocumentContentChangeEvent {
+        range: None,
+        range_length: None,
+        text: text.to_string(),
+    }
+}
+
+fn incremental_changes(
+    change: Option<RopeChange>,
+    old: &Rope,
+    new: &Rope,
+    encoding: &lsp_types::PositionEncodingKind,
+) -> Vec<TextDocumentContentChangeEvent> {
+    let change = change.unwrap_or(RopeChange {
+        start: 0,
+        old_end: 0,
+        new_end: 0,
+    });
+    let range = Range::new(
+        text::position(old, change.start, encoding),
+        text::position(old, change.old_end, encoding),
+    );
+    let text = new.slice(change.start..change.new_end).to_string();
+    vec![TextDocumentContentChangeEvent {
+        range: Some(range),
+        range_length: None,
+        text,
+    }]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsp_types::{Position, PositionEncodingKind};
+
+    fn incremental(
+        old: &str,
+        new: &str,
+        encoding: &PositionEncodingKind,
+    ) -> TextDocumentContentChangeEvent {
+        let old = Rope::from_str(old);
+        let new = Rope::from_str(new);
+        let change = diff_ropes(&old, &new);
+        incremental_changes(change, &old, &new, encoding)
+            .into_iter()
+            .next()
+            .expect("change")
+    }
+
+    #[test]
+    fn reports_utf16_positions_for_insertions() {
+        let change = incremental("a\n", "a\n𝄞", &PositionEncodingKind::UTF16);
+        assert_eq!(
+            change.range,
+            Some(Range::new(Position::new(1, 0), Position::new(1, 0)))
+        );
+        assert_eq!(change.text, "𝄞");
+    }
+
+    #[test]
+    fn reports_utf8_and_utf32_positions_for_replacements() {
+        let utf8 = incremental("a𝄞b", "a𝄢b", &PositionEncodingKind::UTF8);
+        assert_eq!(
+            utf8.range,
+            Some(Range::new(Position::new(0, 1), Position::new(0, 5)))
+        );
+        assert_eq!(utf8.text, "𝄢");
+        let utf32 = incremental("a𝄞b", "a𝄢b", &PositionEncodingKind::UTF32);
+        assert_eq!(
+            utf32.range,
+            Some(Range::new(Position::new(0, 1), Position::new(0, 2)))
+        );
+    }
+
+    #[test]
+    fn unchanged_documents_produce_a_noop_change() {
+        let change = incremental("same", "same", &PositionEncodingKind::UTF16);
+        assert_eq!(
+            change.range,
+            Some(Range::new(Position::new(0, 0), Position::new(0, 0)))
+        );
+        assert!(change.text.is_empty());
     }
 }

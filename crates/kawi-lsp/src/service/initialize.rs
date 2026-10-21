@@ -62,7 +62,7 @@ impl Manager {
     }
 
     fn open_documents_for(&mut self, key: &ClientKey) {
-        let documents: Vec<(PathBuf, String, i32)> = self
+        let documents: Vec<(PathBuf, Rope, i32)> = self
             .documents
             .iter()
             .filter(|(_, document)| document.clients.contains(key))

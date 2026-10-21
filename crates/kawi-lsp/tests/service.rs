@@ -40,15 +40,17 @@ fn start(root: &Path, mode: &str, delay: u64, timeout: Duration) -> (LspService,
 
 fn wait_for(service: &LspService, predicate: impl Fn(&LspEvent) -> bool) -> LspEvent {
     let deadline = Instant::now() + Duration::from_secs(8);
+    let mut seen = Vec::new();
     while Instant::now() < deadline {
         while let Some(event) = service.try_recv() {
             if predicate(&event) {
                 return event;
             }
+            seen.push(format!("{event:?}"));
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    panic!("event timed out");
+    panic!("event timed out: {seen:?}");
 }
 
 fn wait_for_log(service: &LspService, expected: &str) -> LspEvent {
@@ -197,7 +199,7 @@ fn reports_progress_notifications() {
 }
 
 #[test]
-fn sends_incremental_sync_as_a_full_document_range() {
+fn sends_incremental_sync_as_minimal_ranges() {
     let root = temp_project("incremental");
     let (service, _pid_file) = start(&root, "incremental", 0, Duration::from_secs(5));
     let file = root.join("src/main.rs");
@@ -205,7 +207,11 @@ fn sends_incremental_sync_as_a_full_document_range() {
     wait_for_ready(&service);
     wait_for_log_prefix(&service, "open:1:");
     assert!(service.change(&file, "a\n𝄞"));
-    wait_for_log(&service, "change:2:incremental:a\n𝄞");
+    wait_for_log(&service, "change:2:incremental:1:0:1:0:𝄞");
+    assert!(service.change(&file, "aX\n𝄞"));
+    wait_for_log(&service, "change:3:incremental:0:1:0:1:X");
+    assert!(service.change(&file, "aX\n"));
+    wait_for_log(&service, "change:4:incremental:1:0:1:2:");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

@@ -1,9 +1,11 @@
 use super::*;
-use crate::workspace::{self, char_index, path_from_uri};
+use crate::text::{self, line_character};
+use crate::workspace::{self, path_from_uri};
 use lsp_types::{
     DiagnosticSeverity as LspSeverity, NumberOrString, Position, PositionEncodingKind,
     PublishDiagnosticsParams,
 };
+use ropey::Rope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DiagnosticPosition {
@@ -80,27 +82,19 @@ fn is_current_version(document_version: i32, published: Option<i32>) -> bool {
 }
 
 struct LineIndex<'a> {
-    lines: Vec<&'a str>,
+    rope: &'a Rope,
 }
 
 impl<'a> LineIndex<'a> {
-    fn new(text: &'a str) -> Self {
-        Self {
-            lines: text
-                .split('\n')
-                .map(|line| line.strip_suffix('\r').unwrap_or(line))
-                .collect(),
-        }
+    fn new(rope: &'a Rope) -> Self {
+        Self { rope }
     }
 
     fn position(&self, position: Position, encoding: &PositionEncodingKind) -> DiagnosticPosition {
-        let line = usize::try_from(position.line)
-            .unwrap_or(usize::MAX)
-            .min(self.lines.len().saturating_sub(1));
-        let text = self.lines.get(line).copied().unwrap_or("");
+        let line = text::clamped_line(self.rope, position.line);
         DiagnosticPosition {
             line: u32::try_from(line).unwrap_or(u32::MAX),
-            character: char_index(text, position.character, encoding),
+            character: line_character(self.rope, position.line, position.character, encoding),
         }
     }
 }
@@ -166,7 +160,8 @@ mod tests {
 
     #[test]
     fn converts_utf16_ranges_to_character_columns() {
-        let lines = LineIndex::new("a𝄞b\nsecond\r\n");
+        let text = Rope::from_str("a𝄞b\nsecond\r\n");
+        let lines = LineIndex::new(&text);
         let value = diagnostic(Range::new(Position::new(0, 1), Position::new(0, 3)));
         let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF16);
         assert_eq!(
@@ -189,7 +184,8 @@ mod tests {
 
     #[test]
     fn converts_utf8_ranges_to_character_columns() {
-        let lines = LineIndex::new("a𝄞b");
+        let text = Rope::from_str("a𝄞b");
+        let lines = LineIndex::new(&text);
         let value = diagnostic(Range::new(Position::new(0, 1), Position::new(0, 5)));
         let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF8);
         assert_eq!(
@@ -210,7 +206,8 @@ mod tests {
 
     #[test]
     fn clamps_positions_beyond_the_document() {
-        let lines = LineIndex::new("short");
+        let text = Rope::from_str("short");
+        let lines = LineIndex::new(&text);
         let value = diagnostic(Range::new(Position::new(9, 99), Position::new(9, 100)));
         let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF16);
         assert_eq!(

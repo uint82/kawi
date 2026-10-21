@@ -181,12 +181,22 @@ fn handle_change(writer: &mut impl io::Write, params: Option<Value>) -> Result<(
     let uri = params["textDocument"]["uri"].as_str().unwrap_or("");
     let change = &params["contentChanges"][0];
     let text = change["text"].as_str().unwrap_or("");
-    let kind = if change.get("range").is_some() {
-        "incremental"
+    if let Some(range) = change.get("range") {
+        let start = &range["start"];
+        let end = &range["end"];
+        send_log(
+            writer,
+            &format!(
+                "change:{version}:incremental:{}:{}:{}:{}:{text}",
+                start["line"].as_i64().unwrap_or(0),
+                start["character"].as_i64().unwrap_or(0),
+                end["line"].as_i64().unwrap_or(0),
+                end["character"].as_i64().unwrap_or(0)
+            ),
+        )?;
     } else {
-        "full"
-    };
-    send_log(writer, &format!("change:{version}:{kind}:{text}"))?;
+        send_log(writer, &format!("change:{version}:full:{text}"))?;
+    }
     if version > 1 {
         send_diagnostics(writer, uri, Some(version.saturating_sub(1)), "stale")?;
     }

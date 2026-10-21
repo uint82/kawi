@@ -1,4 +1,5 @@
 use kawi_buffer::Buffer;
+use ropey::Rope;
 
 use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
@@ -913,8 +914,8 @@ impl Editor {
             .window_lines(0, self.buffer.line_count().saturating_add(1))
     }
 
-    pub fn document_text(&self) -> String {
-        self.buffer.rope_slice().to_string()
+    pub fn document_snapshot(&self) -> Rope {
+        self.buffer.snapshot()
     }
 
     pub fn text_has_final_newline(&self) -> bool {

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use lsp_types::{Position, PositionEncodingKind, Range, Uri};
+use lsp_types::Uri;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -8,19 +8,6 @@ pub fn file_uri(path: &Path) -> Result<Uri> {
     let encoded = encode_path(&path.to_string_lossy());
     let uri = format!("file://{encoded}");
     Uri::from_str(&uri).with_context(|| format!("build file uri for {}", path.display()))
-}
-
-pub fn whole_document_range(text: &str, encoding: &PositionEncodingKind) -> Range {
-    let line = text.bytes().filter(|byte| *byte == b'\n').count();
-    let last_line = text.rsplit('\n').next().unwrap_or(text);
-    let character = encoded_len(last_line, encoding);
-    Range {
-        start: Position::new(0, 0),
-        end: Position::new(
-            u32::try_from(line).unwrap_or(u32::MAX),
-            u32::try_from(character).unwrap_or(u32::MAX),
-        ),
-    }
 }
 
 pub(crate) fn absolute(path: &Path) -> PathBuf {
@@ -33,17 +20,6 @@ pub(crate) fn path_from_uri(uri: &Uri) -> Option<PathBuf> {
     Some(PathBuf::from(decoded))
 }
 
-pub(crate) fn char_index(text: &str, character: u32, encoding: &PositionEncodingKind) -> u32 {
-    let mut units = 0u32;
-    for (index, value) in text.chars().enumerate() {
-        if units >= character {
-            return u32::try_from(index).unwrap_or(u32::MAX);
-        }
-        units = units.saturating_add(encoded_char_len(value, encoding));
-    }
-    u32::try_from(text.chars().count()).unwrap_or(u32::MAX)
-}
-
 pub(crate) fn root_for(path: &Path, markers: &[String]) -> PathBuf {
     let path = absolute(path);
     let directory = path.parent().unwrap_or_else(|| Path::new(""));
@@ -53,22 +29,6 @@ pub(crate) fn root_for(path: &Path, markers: &[String]) -> PathBuf {
         }
     }
     directory.to_path_buf()
-}
-
-fn encoded_len(line: &str, encoding: &PositionEncodingKind) -> usize {
-    line.chars()
-        .map(|value| usize::try_from(encoded_char_len(value, encoding)).unwrap_or(usize::MAX))
-        .sum()
-}
-
-fn encoded_char_len(value: char, encoding: &PositionEncodingKind) -> u32 {
-    if encoding == &PositionEncodingKind::UTF8 {
-        u32::try_from(value.len_utf8()).unwrap_or(u32::MAX)
-    } else if encoding == &PositionEncodingKind::UTF32 {
-        1
-    } else {
-        u32::try_from(value.len_utf16()).unwrap_or(u32::MAX)
-    }
 }
 
 fn decode_path(encoded: &str) -> String {
@@ -151,35 +111,6 @@ mod tests {
             root_for(path, &["definitely-not-present".to_string()]),
             Path::new("/tmp/kawi-lsp-no-marker/src")
         );
-    }
-
-    #[test]
-    fn computes_whole_document_ranges_in_utf16() {
-        let range = whole_document_range("a\n𝄞", &PositionEncodingKind::UTF16);
-        assert_eq!(range.start, Position::new(0, 0));
-        assert_eq!(range.end, Position::new(1, 2));
-    }
-
-    #[test]
-    fn computes_whole_document_ranges_with_trailing_newline() {
-        let range = whole_document_range("a\n", &PositionEncodingKind::UTF16);
-        assert_eq!(range.end, Position::new(1, 0));
-    }
-
-    #[test]
-    fn computes_empty_document_ranges() {
-        let range = whole_document_range("", &PositionEncodingKind::UTF16);
-        assert_eq!(range.end, Position::new(0, 0));
-    }
-
-    #[test]
-    fn converts_utf_units_to_character_indices() {
-        assert_eq!(char_index("a𝄞b", 0, &PositionEncodingKind::UTF16), 0);
-        assert_eq!(char_index("a𝄞b", 1, &PositionEncodingKind::UTF16), 1);
-        assert_eq!(char_index("a𝄞b", 3, &PositionEncodingKind::UTF16), 2);
-        assert_eq!(char_index("a𝄞b", 3, &PositionEncodingKind::UTF8), 2);
-        assert_eq!(char_index("a𝄞b", 2, &PositionEncodingKind::UTF32), 2);
-        assert_eq!(char_index("a𝄞b", 99, &PositionEncodingKind::UTF16), 3);
     }
 
     #[test]

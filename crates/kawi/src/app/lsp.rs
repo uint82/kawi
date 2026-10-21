@@ -125,7 +125,7 @@ impl LspUi {
             self.path = path;
             self.revision = Some(revision);
             if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
-                service.open(path, &editor.document_text());
+                service.open(path, editor.document_snapshot());
             }
             return true;
         }
@@ -135,7 +135,7 @@ impl LspUi {
         self.revision = Some(revision);
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
             self.diagnostics.advance();
-            service.change(path, &editor.document_text());
+            service.change(path, editor.document_snapshot());
             return true;
         }
         false

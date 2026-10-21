@@ -3,6 +3,7 @@ use crate::protocol::RequestId;
 use crate::Languages;
 use anyhow::{Context, Result};
 use lsp_types::{PositionEncodingKind, TextDocumentSyncKind, TextDocumentSyncSaveOptions};
+use ropey::Rope;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -115,17 +116,17 @@ impl LspService {
         })
     }
 
-    pub fn open(&self, path: &Path, text: &str) -> bool {
+    pub fn open(&self, path: &Path, text: impl Into<Rope>) -> bool {
         self.send(Command::Open {
             path: path.to_path_buf(),
-            text: text.to_string(),
+            text: text.into(),
         })
     }
 
-    pub fn change(&self, path: &Path, text: &str) -> bool {
+    pub fn change(&self, path: &Path, text: impl Into<Rope>) -> bool {
         self.send(Command::Change {
             path: path.to_path_buf(),
-            text: text.to_string(),
+            text: text.into(),
         })
     }
 
@@ -166,8 +167,8 @@ pub(crate) enum InputWait {
 }
 
 pub(crate) enum Command {
-    Open { path: PathBuf, text: String },
-    Change { path: PathBuf, text: String },
+    Open { path: PathBuf, text: Rope },
+    Change { path: PathBuf, text: Rope },
     Save { path: PathBuf },
     Close { path: PathBuf },
     Shutdown,
@@ -205,7 +206,7 @@ struct ClientState {
 struct Document {
     uri: lsp_types::Uri,
     language_id: String,
-    text: String,
+    text: Rope,
     version: i32,
     clients: Vec<ClientKey>,
 }
