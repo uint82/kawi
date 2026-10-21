@@ -730,7 +730,7 @@ impl Editor {
             change_origin_override: None,
             clipboard_unnamed: true,
             scroll_amount: None,
-            number: false,
+            number: true,
             relativenumber: false,
             numberwidth: 4,
             ignorecase: false,

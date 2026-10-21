@@ -1217,8 +1217,8 @@ mod tests {
     #[test]
     fn drag_selects_from_press_point() {
         let mut app = App::new(Buffer::from_string("abcdef\nghijkl"), Flavor::Vim);
-        app.handle_mouse(press(1, 0)).expect("press");
-        app.handle_mouse(drag(4, 1)).expect("drag");
+        app.handle_mouse(press(5, 0)).expect("press");
+        app.handle_mouse(drag(8, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
     }
@@ -1682,8 +1682,8 @@ mod tests {
     #[test]
     fn press_after_drag_leaves_visual() {
         let mut app = App::new(Buffer::from_string("abcdef\nghijkl"), Flavor::Vim);
-        app.handle_mouse(press(1, 0)).expect("press");
-        app.handle_mouse(drag(4, 1)).expect("drag");
+        app.handle_mouse(press(5, 0)).expect("press");
+        app.handle_mouse(drag(8, 1)).expect("drag");
         app.handle_mouse(press(0, 0)).expect("second press");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
@@ -2286,8 +2286,21 @@ mod tests {
     }
 
     #[test]
+    fn numbers_show_by_default() {
+        let app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
+        assert!(app.editor.number());
+        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(
+            app.editor.gutter_lines(0, 3),
+            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+        );
+    }
+
+    #[test]
     fn set_number_command_shows_gutter() {
         let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
+        type_command(&mut app, "set nonumber");
+        assert_eq!(app.editor.gutter_width(), 0);
         type_command(&mut app, "set number");
         assert_eq!(app.editor.gutter_width(), 4);
         assert_eq!(
@@ -2302,9 +2315,10 @@ mod tests {
         let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
         app.handle_key(key(KeyCode::Char('j'))).expect("down");
         type_command(&mut app, "set relativenumber");
+        assert!(app.editor.number());
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "  0 ".to_string(), "  1 ".to_string()]
+            vec!["  1 ".to_string(), "2   ".to_string(), "  1 ".to_string()]
         );
     }
 

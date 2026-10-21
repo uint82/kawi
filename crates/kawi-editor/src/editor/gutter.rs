@@ -116,10 +116,10 @@ mod tests {
     }
 
     #[test]
-    fn gutter_hidden_by_default() {
+    fn gutter_shown_by_default() {
         let e = three_lines();
-        assert_eq!(e.gutter_width(), 0);
-        assert_eq!(e.gutter_lines(0, 3), vec!["", "", ""]);
+        assert_eq!(e.gutter_width(), 4);
+        assert_eq!(e.gutter_lines(0, 3), vec!["  1 ", "  2 ", "  3 "]);
     }
 
     #[test]
@@ -135,6 +135,7 @@ mod tests {
     fn relative_number_shows_distance_from_cursor() {
         let mut e = three_lines();
         e.apply(Action::JumpTo(1, 0));
+        e.set_number(false);
         e.set_relativenumber(true);
         assert_eq!(e.gutter_lines(0, 3), vec!["  1 ", "  0 ", "  1 "]);
     }
@@ -184,9 +185,9 @@ mod tests {
         let mut e = editor_with("\tello world");
         e.apply(Action::JumpTo(0, 0));
         assert_eq!(e.cursor_screen_col(), 7);
-        assert_eq!(e.cursor_wcol(), 7);
-        e.set_number(true);
         assert_eq!(e.cursor_wcol(), 11);
+        e.set_number(false);
+        assert_eq!(e.cursor_wcol(), 7);
     }
 
     #[test]
