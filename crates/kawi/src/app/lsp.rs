@@ -1,4 +1,7 @@
 use super::lsp_diagnostics::{DiagnosticState, Navigation};
+use super::lsp_navigation::{
+    HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
+};
 use kawi_editor::Editor;
 use kawi_lsp::{
     DiagnosticSeverity, Languages, LspEvent, LspService, MessageLevel, ProgressEvent, ServerState,
@@ -19,6 +22,7 @@ pub struct LspUi {
     status_messages: BTreeMap<String, String>,
     progress: BTreeMap<(String, String), ProgressSnapshot>,
     diagnostics: DiagnosticState,
+    navigation: LspNavigation,
     display: Option<String>,
     message: Option<String>,
 }
@@ -50,13 +54,14 @@ impl LspUi {
     }
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {
-        let events = self.poll_events();
         let document = self.sync_document(editor);
+        let events = self.poll_events(editor);
         let display = self.update_display();
         events || document || display
     }
 
-    pub fn poll_events(&mut self) -> bool {
+    pub fn poll_events(&mut self, editor: &Editor) -> bool {
+        self.navigation.sync_editor(editor, self.service.as_ref());
         let Some(service) = self.service.as_ref() else {
             return false;
         };
@@ -66,6 +71,33 @@ impl LspUi {
             changed |= self.apply_event(event);
         }
         changed
+    }
+
+    pub fn definition(&mut self, editor: &Editor) -> Option<String> {
+        self.navigation
+            .request(NavigationRequest::Definition, editor, self.service.as_ref())
+    }
+
+    pub fn references(&mut self, editor: &Editor) -> Option<String> {
+        self.navigation
+            .request(NavigationRequest::References, editor, self.service.as_ref())
+    }
+
+    pub fn hover(&mut self, editor: &Editor) -> Option<String> {
+        self.navigation
+            .request(NavigationRequest::Hover, editor, self.service.as_ref())
+    }
+
+    pub fn take_location(&mut self) -> Option<LocationResult> {
+        self.navigation.take_location()
+    }
+
+    pub fn take_hover(&mut self) -> Option<HoverResult> {
+        self.navigation.take_hover()
+    }
+
+    pub fn cancel_pending(&mut self) -> bool {
+        self.navigation.cancel(self.service.as_ref())
     }
 
     pub fn update_display(&mut self) -> bool {
@@ -162,6 +194,21 @@ impl LspUi {
                 .path
                 .as_deref()
                 .is_some_and(|path| self.diagnostics.apply(diagnostics, path)),
+            LspEvent::Definition(location) => self
+                .navigation
+                .apply_location(&location, LocationKind::Definition),
+            LspEvent::References(location) => self
+                .navigation
+                .apply_location(&location, LocationKind::References),
+            LspEvent::Hover(hover) => self.navigation.apply_hover(&hover),
+            LspEvent::RequestError { request, message } => {
+                if self.navigation.apply_error(request) {
+                    self.message = Some(message);
+                    true
+                } else {
+                    false
+                }
+            }
             LspEvent::Message {
                 server,
                 level,
@@ -247,7 +294,7 @@ impl LspUi {
     }
 }
 
-fn editor_path(editor: &Editor) -> Option<PathBuf> {
+pub(super) fn editor_path(editor: &Editor) -> Option<PathBuf> {
     let path = editor
         .has_file()
         .then(|| PathBuf::from(editor.filename()))?;

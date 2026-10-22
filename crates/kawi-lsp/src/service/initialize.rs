@@ -24,6 +24,7 @@ impl Manager {
             return;
         };
         if client.pending_initialize.as_ref() != Some(&id) {
+            self.handle_navigation_response(key, id, result);
             return;
         }
         client.pending_initialize = None;
@@ -46,14 +47,18 @@ impl Manager {
     }
 
     fn finish_initialize(&mut self, key: ClientKey, result: InitializeResult) {
-        let Some(client) = self.clients.get_mut(&key) else {
-            return;
-        };
-        client.sync = sync_config(result.capabilities.text_document_sync);
-        client.encoding = result
+        let support = request_support(&result.capabilities);
+        let sync = sync_config(result.capabilities.text_document_sync);
+        let encoding = result
             .capabilities
             .position_encoding
             .unwrap_or(PositionEncodingKind::UTF16);
+        let Some(client) = self.clients.get_mut(&key) else {
+            return;
+        };
+        client.sync = sync;
+        client.encoding = encoding;
+        client.support = support;
         client.status = ServerState::Ready;
         let initialized = Message::notification("initialized", Some(serde_json::json!({})));
         client.client.send(initialized);
@@ -104,6 +109,7 @@ impl Manager {
                 pending_initialize: None,
                 initialize_deadline: None,
                 opened: HashSet::new(),
+                support: RequestSupport::default(),
             },
         );
         self.send_initialize(key, root);
@@ -151,6 +157,27 @@ impl Manager {
     }
 }
 
+fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSupport {
+    RequestSupport {
+        definition: provider_enabled(capabilities.definition_provider.as_ref()),
+        references: provider_enabled(capabilities.references_provider.as_ref()),
+        hover: capabilities
+            .hover_provider
+            .as_ref()
+            .is_some_and(|provider| match provider {
+                lsp_types::HoverProviderCapability::Simple(enabled) => *enabled,
+                lsp_types::HoverProviderCapability::Options(_) => true,
+            }),
+    }
+}
+
+fn provider_enabled<T>(provider: Option<&lsp_types::OneOf<bool, T>>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::OneOf::Left(enabled) => *enabled,
+        lsp_types::OneOf::Right(_) => true,
+    })
+}
+
 fn sync_config(capability: Option<TextDocumentSyncCapability>) -> SyncConfig {
     match capability {
         Some(TextDocumentSyncCapability::Kind(kind)) => SyncConfig {
@@ -196,6 +223,20 @@ fn initialize_capabilities() -> ClientCapabilities {
             publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
                 version_support: Some(true),
                 ..PublishDiagnosticsClientCapabilities::default()
+            }),
+            definition: Some(lsp_types::GotoCapability {
+                dynamic_registration: Some(false),
+                link_support: Some(true),
+            }),
+            references: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            hover: Some(lsp_types::HoverClientCapabilities {
+                dynamic_registration: Some(false),
+                content_format: Some(vec![
+                    lsp_types::MarkupKind::Markdown,
+                    lsp_types::MarkupKind::PlainText,
+                ]),
             }),
             ..TextDocumentClientCapabilities::default()
         }),
@@ -260,6 +301,37 @@ mod tests {
             .and_then(|text_document| text_document.publish_diagnostics)
             .expect("diagnostics capability");
         assert_eq!(diagnostics.version_support, Some(true));
+    }
+
+    #[test]
+    fn advertises_navigation_capabilities() {
+        let capabilities = initialize_capabilities();
+        let text_document = capabilities.text_document.expect("text document");
+        assert!(text_document.definition.is_some());
+        assert!(text_document.references.is_some());
+        assert_eq!(
+            text_document.hover.and_then(|hover| hover.content_format),
+            Some(vec![
+                lsp_types::MarkupKind::Markdown,
+                lsp_types::MarkupKind::PlainText
+            ])
+        );
+    }
+
+    #[test]
+    fn reads_navigation_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            definition_provider: Some(lsp_types::OneOf::Left(true)),
+            references_provider: Some(lsp_types::OneOf::Right(lsp_types::ReferencesOptions {
+                work_done_progress_options: Default::default(),
+            })),
+            hover_provider: Some(lsp_types::HoverProviderCapability::Simple(false)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.definition);
+        assert!(support.references);
+        assert!(!support.hover);
     }
 
     #[test]

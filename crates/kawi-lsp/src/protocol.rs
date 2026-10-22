@@ -13,7 +13,7 @@ impl RequestId {
         Self::Number(number)
     }
 
-    fn to_value(&self) -> Value {
+    pub(crate) fn to_value(&self) -> Value {
         match self {
             Self::Number(number) => Value::from(*number),
             Self::String(text) => Value::from(text.clone()),

@@ -24,6 +24,8 @@ impl Manager {
             wake,
             clients: HashMap::new(),
             documents: HashMap::new(),
+            pending_requests: HashMap::new(),
+            pending_replies: HashMap::new(),
             next_request: 0,
             initialize_timeout,
         }
@@ -97,6 +99,22 @@ impl Manager {
             Command::Change { path, text } => self.change_document(&path, text),
             Command::Save { path } => self.save_document(&path),
             Command::Close { path } => self.close_document(&path),
+            Command::Definition {
+                request,
+                path,
+                position,
+            } => self.start_definition(request, path, position),
+            Command::References {
+                request,
+                path,
+                position,
+            } => self.start_references(request, path, position),
+            Command::Hover {
+                request,
+                path,
+                position,
+            } => self.start_hover(request, path, position),
+            Command::Cancel { request } => self.cancel_navigation(request),
             Command::Shutdown => {}
         }
     }
@@ -144,6 +162,7 @@ impl Manager {
             ServerState::Failed
         };
         client.client.terminate();
+        self.fail_navigation_for_client(&key, &message);
         for document in self.documents.values_mut() {
             document.clients.retain(|candidate| candidate != &key);
         }

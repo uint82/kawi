@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -16,6 +17,8 @@ mod diagnostics;
 mod document;
 mod initialize;
 mod manager;
+mod navigation;
+mod navigation_results;
 mod request;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(12);
@@ -56,11 +59,47 @@ pub enum MessageLevel {
     Log,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorPosition {
+    pub line: u32,
+    pub column: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextLocation {
+    pub path: PathBuf,
+    pub line: u32,
+    pub column: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationEvent {
+    pub request: u64,
+    pub path: PathBuf,
+    pub position: CursorPosition,
+    pub locations: Vec<TextLocation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverEvent {
+    pub request: u64,
+    pub path: PathBuf,
+    pub position: CursorPosition,
+    pub contents: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LspEvent {
     Status(StatusEvent),
     Progress(ProgressEvent),
     Diagnostics(DiagnosticsEvent),
+    Definition(LocationEvent),
+    References(LocationEvent),
+    Hover(HoverEvent),
+    RequestError {
+        request: u64,
+        message: String,
+    },
     Message {
         server: String,
         level: MessageLevel,
@@ -79,6 +118,7 @@ pub use diagnostics::{
 pub struct LspService {
     commands: Sender<ServiceInput>,
     events: Receiver<LspEvent>,
+    next_request: AtomicU64,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -112,6 +152,7 @@ impl LspService {
         Ok(Self {
             commands,
             events,
+            next_request: AtomicU64::new(0),
             worker: Some(worker),
         })
     }
@@ -142,8 +183,48 @@ impl LspService {
         })
     }
 
+    pub fn definition(&self, path: &Path, position: CursorPosition) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::Definition {
+            request,
+            path: path.to_path_buf(),
+            position,
+        });
+        request
+    }
+
+    pub fn references(&self, path: &Path, position: CursorPosition) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::References {
+            request,
+            path: path.to_path_buf(),
+            position,
+        });
+        request
+    }
+
+    pub fn hover(&self, path: &Path, position: CursorPosition) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::Hover {
+            request,
+            path: path.to_path_buf(),
+            position,
+        });
+        request
+    }
+
+    pub fn cancel(&self, request: u64) {
+        let _ = self.send(Command::Cancel { request });
+    }
+
     pub fn try_recv(&self) -> Option<LspEvent> {
         self.events.try_recv().ok()
+    }
+
+    fn allocate_request(&self) -> u64 {
+        self.next_request
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1)
     }
 
     fn send(&self, command: Command) -> bool {
@@ -167,10 +248,38 @@ pub(crate) enum InputWait {
 }
 
 pub(crate) enum Command {
-    Open { path: PathBuf, text: Rope },
-    Change { path: PathBuf, text: Rope },
-    Save { path: PathBuf },
-    Close { path: PathBuf },
+    Open {
+        path: PathBuf,
+        text: Rope,
+    },
+    Change {
+        path: PathBuf,
+        text: Rope,
+    },
+    Save {
+        path: PathBuf,
+    },
+    Close {
+        path: PathBuf,
+    },
+    Definition {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+    },
+    References {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+    },
+    Hover {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+    },
+    Cancel {
+        request: u64,
+    },
     Shutdown,
 }
 
@@ -187,6 +296,8 @@ struct Manager {
     wake: Sender<()>,
     clients: HashMap<ClientKey, ClientState>,
     documents: HashMap<PathBuf, Document>,
+    pending_requests: HashMap<u64, navigation::PendingRequest>,
+    pending_replies: HashMap<RequestId, navigation::PendingReply>,
     next_request: i64,
     initialize_timeout: Duration,
 }
@@ -201,6 +312,14 @@ struct ClientState {
     pending_initialize: Option<RequestId>,
     initialize_deadline: Option<Instant>,
     opened: HashSet<PathBuf>,
+    support: RequestSupport,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RequestSupport {
+    definition: bool,
+    references: bool,
+    hover: bool,
 }
 
 struct Document {

@@ -402,6 +402,9 @@ impl VimKeymap {
             match key.code {
                 KeyCode::Char('a') => return Action::Increment,
                 KeyCode::Char('x') => return Action::Decrement,
+                KeyCode::Char(']') | KeyCode::Char('5') | KeyCode::Char('}') => {
+                    return Action::GotoDefinition
+                }
                 _ => {}
             }
         }
@@ -483,6 +486,7 @@ impl VimKeymap {
             KeyCode::Char('=') => self.arm_operator(key, '='),
             KeyCode::Char('g') => self.arm_case_operator(key),
             KeyCode::Char('z') => self.arm_place(key),
+            KeyCode::Char('K') => self.map_plain_or_noop(key, Action::Hover),
             KeyCode::Char('H') => self.map_plain_or_noop(key, Action::MoveToViewportTop),
             KeyCode::Char('M') => self.map_plain_or_noop(key, Action::MoveToViewportMiddle),
             KeyCode::Char('L') => self.map_plain_or_noop(key, Action::MoveToViewportBottom),
@@ -716,6 +720,10 @@ impl VimKeymap {
             self.clear_pending();
             return Action::GotoFirstLine;
         }
+        if body == "g" && pushed == 'd' {
+            self.clear_pending();
+            return Action::GotoDefinition;
+        }
         if body == "g" && pushed == 'v' {
             self.clear_pending();
             return Action::ReselectVisual;
@@ -751,6 +759,10 @@ impl VimKeymap {
         if body == "g" && pushed == 'e' {
             self.clear_pending();
             return Action::MoveToPrevWordEnd;
+        }
+        if body == "g" && pushed == 'r' {
+            self.clear_pending();
+            return Action::ShowReferences;
         }
         if body == "g" && pushed == 'E' {
             self.clear_pending();
@@ -3686,7 +3698,7 @@ mod tests {
     fn normal_g_unimplemented_second_keys_cancel() {
         let implemented = [
             '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J', '*', '#', 'p',
-            'P', ';', ',',
+            'P', ';', ',', 'r', 'd',
         ];
         for code in 0..128u8 {
             let pushed = code as char;
@@ -4021,6 +4033,49 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('c')), Mode::Normal),
             Action::GitPrevHunk
+        );
+    }
+
+    #[test]
+    fn lsp_navigation_keys_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('K')), Mode::Normal),
+            Action::Hover
+        );
+        for code in ['5', '}'] {
+            assert_eq!(
+                map.map(
+                    KeyEvent::new(KeyCode::Char(code), KeyModifiers::CONTROL),
+                    Mode::Normal
+                ),
+                Action::GotoDefinition
+            );
+        }
+        assert_eq!(
+            map.map(
+                KeyEvent::new(KeyCode::Char(']'), KeyModifiers::CONTROL),
+                Mode::Normal
+            ),
+            Action::GotoDefinition
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('d')), Mode::Normal),
+            Action::GotoDefinition
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('r')), Mode::Normal),
+            Action::ShowReferences
         );
     }
 

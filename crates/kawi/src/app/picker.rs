@@ -50,6 +50,19 @@ impl PickerSession {
         }
     }
 
+    pub fn locations(
+        root: PathBuf,
+        title: &'static str,
+        rows: Vec<kawi_picker::PickerRow>,
+    ) -> Self {
+        Self {
+            picker: Picker::locations(title, rows),
+            service: None,
+            root,
+            latest: 0,
+        }
+    }
+
     pub fn picker(&self) -> &Picker {
         &self.picker
     }

@@ -13,6 +13,21 @@ pub(crate) fn position(
     Position::new(u32::try_from(line).unwrap_or(u32::MAX), character)
 }
 
+pub(crate) fn position_from_column(
+    rope: &Rope,
+    line: u32,
+    column: u32,
+    encoding: &PositionEncodingKind,
+) -> Position {
+    let line = clamped_line(rope, line);
+    let start = rope.line_to_char(line);
+    let end = line_end(rope, line);
+    let column = usize::try_from(column)
+        .unwrap_or(usize::MAX)
+        .min(end.saturating_sub(start));
+    position(rope, start.saturating_add(column), encoding)
+}
+
 pub(crate) fn line_character(
     rope: &Rope,
     line: u32,
@@ -132,6 +147,23 @@ mod tests {
         );
         assert_eq!(line_character(&text, 1, 1, &PositionEncodingKind::UTF16), 1);
         assert_eq!(line_character(&text, 9, 1, &PositionEncodingKind::UTF16), 1);
+    }
+
+    #[test]
+    fn cursor_columns_convert_to_encoded_positions() {
+        let text = rope("a𝄞b\nsecond");
+        assert_eq!(
+            position_from_column(&text, 0, 2, &PositionEncodingKind::UTF16),
+            Position::new(0, 3)
+        );
+        assert_eq!(
+            position_from_column(&text, 0, 2, &PositionEncodingKind::UTF8),
+            Position::new(0, 5)
+        );
+        assert_eq!(
+            position_from_column(&text, 1, 3, &PositionEncodingKind::UTF16),
+            Position::new(1, 3)
+        );
     }
 
     #[test]

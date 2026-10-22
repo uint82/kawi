@@ -489,7 +489,10 @@ impl Editor {
             | Action::GitPreviewHunk
             | Action::GitDiff
             | Action::DiagnosticNext
-            | Action::DiagnosticPrev => self.noop(),
+            | Action::DiagnosticPrev
+            | Action::GotoDefinition
+            | Action::ShowReferences
+            | Action::Hover => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

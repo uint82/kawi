@@ -20,6 +20,14 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
+    let navigation_delay = std::env::var("FAKE_LSP_NAV_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let navigation_line_offset = std::env::var("FAKE_LSP_NAV_LINE_OFFSET")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
@@ -42,11 +50,24 @@ fn main() -> Result<()> {
                                 "openClose": true,
                                 "change": change,
                                 "save": {"includeText": true}
-                            }
+                            },
+                            "definitionProvider": true,
+                            "referencesProvider": true,
+                            "hoverProvider": true
                         },
                         "serverInfo": {"name": "fake-lsp", "version": "1"}
                     });
                     send(&mut writer, Message::response(id, result))?;
+                }
+                "textDocument/definition" | "textDocument/references" | "textDocument/hover" => {
+                    handle_navigation(
+                        &mut writer,
+                        id,
+                        &method,
+                        params,
+                        navigation_delay,
+                        navigation_line_offset,
+                    )?;
                 }
                 "shutdown" => {
                     send(&mut writer, Message::response(id, Value::Null))?;
@@ -70,6 +91,13 @@ fn main() -> Result<()> {
                 "textDocument/didChange" => handle_change(&mut writer, params)?,
                 "textDocument/didSave" => handle_save(&mut writer, params)?,
                 "textDocument/didClose" => send_log(&mut writer, "close")?,
+                "$/cancelRequest" => {
+                    let id = params
+                        .as_ref()
+                        .and_then(|params| params.get("id"))
+                        .map_or_else(String::new, Value::to_string);
+                    send_log(&mut writer, &format!("cancel:{id}"))?;
+                }
                 _ => {}
             },
             Message::Response { id, result } => {
@@ -228,6 +256,55 @@ fn send_diagnostics(
         writer,
         Message::notification("textDocument/publishDiagnostics", Some(params)),
     )
+}
+
+fn handle_navigation(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    method: &str,
+    params: Option<Value>,
+    delay: u64,
+    line_offset: i64,
+) -> Result<()> {
+    let params = params.context("navigation params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("navigation uri")?
+        .to_string();
+    let position = &params["position"];
+    let line = position["line"].as_i64().unwrap_or(0) + line_offset;
+    let character = position["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("nav:{method}:{line}:{character}"))?;
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+    let result = match method {
+        "textDocument/definition" => json!([
+            location(&uri, line, character),
+            location(&uri, line.saturating_add(1), 0)
+        ]),
+        "textDocument/references" => json!([
+            location(&uri, line, character),
+            location(&uri, line.saturating_add(1), 0)
+        ]),
+        _ => json!({
+            "contents": {
+                "kind": "markdown",
+                "value": "```rust\nfn fake()\n```\n---\nFake hover"
+            }
+        }),
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn location(uri: &str, line: i64, character: i64) -> Value {
+    json!({
+        "uri": uri,
+        "range": {
+            "start": {"line": line, "character": character},
+            "end": {"line": line, "character": character.saturating_add(1)}
+        }
+    })
 }
 
 fn handle_save(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {

@@ -1,4 +1,6 @@
-use kawi_lsp::{DiagnosticSeverity, Languages, LspEvent, LspService, ProgressEvent, ServerState};
+use kawi_lsp::{
+    CursorPosition, DiagnosticSeverity, Languages, LspEvent, LspService, ProgressEvent, ServerState,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -14,12 +16,12 @@ fn temp_project(name: &str) -> PathBuf {
     root
 }
 
-fn config_file(root: &Path, mode: &str, delay: u64, pid_file: &Path) -> PathBuf {
+fn config_file(root: &Path, mode: &str, delay: u64, nav_delay: u64, pid_file: &Path) -> PathBuf {
     let path = root.join("languages.toml");
     let command = escape_toml(FAKE_SERVER);
     let pid_file = escape_toml(&pid_file.to_string_lossy());
     let text = format!(
-        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"{mode}\"\nFAKE_LSP_INIT_DELAY_MS = \"{delay}\"\nFAKE_LSP_PID_FILE = \"{pid_file}\"\n\n[server.fake.settings]\nfake = \"yes\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"{mode}\"\nFAKE_LSP_INIT_DELAY_MS = \"{delay}\"\nFAKE_LSP_NAV_DELAY_MS = \"{nav_delay}\"\nFAKE_LSP_PID_FILE = \"{pid_file}\"\n\n[server.fake.settings]\nfake = \"yes\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
     );
     fs::write(&path, text).expect("config");
     path
@@ -29,9 +31,36 @@ fn escape_toml(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn two_server_config(root: &Path, mode: &str) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"{mode}\"\nFAKE_LSP_NAV_LINE_OFFSET = \"0\"\n\n[server.fake2]\ncommand = \"{command}\"\nargs = []\n\n[server.fake2.env]\nFAKE_LSP_SYNC = \"{mode}\"\nFAKE_LSP_NAV_LINE_OFFSET = \"10\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\", \"fake2\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_two_servers(root: &Path, mode: &str, timeout: Duration) -> LspService {
+    let config = two_server_config(root, mode);
+    let languages = Languages::load(&config);
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, timeout).expect("service")
+}
+
 fn start(root: &Path, mode: &str, delay: u64, timeout: Duration) -> (LspService, PathBuf) {
+    start_with_nav_delay(root, mode, delay, 0, timeout)
+}
+
+fn start_with_nav_delay(
+    root: &Path,
+    mode: &str,
+    delay: u64,
+    nav_delay: u64,
+    timeout: Duration,
+) -> (LspService, PathBuf) {
     let pid_file = root.join("server.pid");
-    let config = config_file(root, mode, delay, &pid_file);
+    let config = config_file(root, mode, delay, nav_delay, &pid_file);
     let languages = Languages::load(&config);
     let (wake, _wake_rx) = mpsc::channel();
     let service = LspService::with_initialize_timeout(languages, wake, timeout).expect("service");
@@ -212,6 +241,112 @@ fn sends_incremental_sync_as_minimal_ranges() {
     wait_for_log(&service, "change:3:incremental:0:1:0:1:X");
     assert!(service.change(&file, "aX\n"));
     wait_for_log(&service, "change:4:incremental:1:0:1:2:");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn resolves_definitions_references_and_hover() {
+    let root = temp_project("navigation");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let position = CursorPosition { line: 0, column: 3 };
+    let request = service.definition(&file, position);
+    let definition = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Definition(event) if event.request == request
+        )
+    });
+    let LspEvent::Definition(definition) = definition else {
+        panic!("unexpected definition event");
+    };
+    assert_eq!(definition.locations.len(), 2);
+    assert_eq!(definition.locations[0].path, file);
+    assert_eq!(definition.locations[0].line, 0);
+    assert_eq!(definition.locations[0].column, 3);
+    assert_eq!(definition.locations[1].line, 1);
+
+    let request = service.references(&file, position);
+    let references = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::References(event) if event.request == request
+        )
+    });
+    let LspEvent::References(references) = references else {
+        panic!("unexpected references event");
+    };
+    assert_eq!(references.locations.len(), 2);
+
+    let request = service.hover(&file, position);
+    let hover = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::Hover(event) if event.request == request),
+    );
+    let LspEvent::Hover(hover) = hover else {
+        panic!("unexpected hover event");
+    };
+    assert!(hover.contents.iter().any(|line| line == "fn fake()"));
+    assert!(hover.contents.iter().any(|line| line == "Fake hover"));
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn merges_navigation_results_from_multiple_servers() {
+    let root = temp_project("multi_navigation");
+    let service = start_two_servers(&root, "full", Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "line\n".repeat(12)));
+    wait_for_ready(&service);
+    wait_for_ready(&service);
+    let request = service.definition(&file, CursorPosition { line: 0, column: 0 });
+    let definition = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Definition(event) if event.request == request
+        )
+    });
+    let LspEvent::Definition(definition) = definition else {
+        panic!("unexpected definition event");
+    };
+    assert_eq!(definition.locations.len(), 4);
+    let mut lines: Vec<u32> = definition
+        .locations
+        .iter()
+        .map(|location| location.line)
+        .collect();
+    lines.sort_unstable();
+    assert_eq!(lines, vec![0, 1, 10, 11]);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn cancels_navigation_requests() {
+    let root = temp_project("cancel");
+    let (service, _pid_file) = start_with_nav_delay(&root, "full", 0, 500, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.definition(&file, CursorPosition { line: 0, column: 3 });
+    service.cancel(request);
+    wait_for_log_prefix(&service, "cancel:");
+    let deadline = Instant::now() + Duration::from_millis(800);
+    let mut delivered = false;
+    while Instant::now() < deadline {
+        while let Some(event) = service.try_recv() {
+            delivered |= matches!(
+                event,
+                LspEvent::Definition(event) if event.request == request
+            );
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!delivered);
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

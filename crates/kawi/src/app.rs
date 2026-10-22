@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 mod git;
 mod lsp;
 mod lsp_diagnostics;
+mod lsp_navigation;
 mod macro_codec;
 mod macro_ops;
 mod picker;
@@ -241,7 +242,7 @@ impl App {
                 }
                 redraw |= needs_redraw;
             }
-            redraw |= self.lsp.poll_events();
+            redraw |= self.lsp.poll_events(&self.editor);
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             if self.picker.is_some() || self.replace.is_some() {
@@ -569,6 +570,12 @@ impl App {
         if let Some(message) = self.lsp.take_message() {
             self.show_message(message);
         }
+        if let Some(result) = self.lsp.take_location() {
+            self.handle_location_result(result);
+        }
+        if let Some(hover) = self.lsp.take_hover() {
+            self.handle_hover_result(hover);
+        }
     }
 
     fn update_signcolumn_width(&mut self) {
@@ -767,26 +774,22 @@ impl App {
             return Ok(());
         }
         let path = root.join(&row.path);
-        let current = self.editor.has_file() && Path::new(self.editor.filename()) == path;
-        if !current {
-            let name = path.to_string_lossy().to_string();
-            self.editor
-                .edit_file(Some(&name), false)
-                .map_err(file_error_message)?;
-        }
-        if let (Some(line), Some(column)) = (row.line, row.column) {
-            self.editor.apply(Action::JumpTo(
-                line.saturating_sub(1),
-                column.saturating_sub(1),
-            ));
-        }
-        self.reveal_cursor();
-        Ok(())
+        self.open_file_location(
+            &path,
+            row.line.map(|line| line.saturating_sub(1)),
+            row.column.map(|column| column.saturating_sub(1)),
+        )
     }
 
     fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
         if self.pager.is_some() {
             return self.handle_pager_key(key);
+        }
+        if key.code == KeyCode::Esc
+            && self.editor.mode() == kawi_editor::Mode::Normal
+            && self.lsp.cancel_pending()
+        {
+            return Ok(false);
         }
         if self.stops_macro_recording(key) {
             self.consume_macro_stop();
@@ -840,6 +843,9 @@ impl App {
             Action::GitPrevHunk => self.handle_git_navigation(false),
             Action::DiagnosticNext => self.handle_diagnostic_navigation(true),
             Action::DiagnosticPrev => self.handle_diagnostic_navigation(false),
+            Action::GotoDefinition => self.request_definition(),
+            Action::ShowReferences => self.request_references(),
+            Action::Hover => self.request_hover(),
             Action::GitStageHunk => self.handle_git_stage_hunk(),
             Action::GitUndoStage => self.handle_git_undo_stage(),
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
@@ -962,6 +968,7 @@ impl App {
             PickerKind::Files => PickerSession::files(root, wake),
             PickerKind::Grep => PickerSession::grep(root, None, wake),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
+            PickerKind::Locations => PickerSession::locations(root, "Locations", Vec::new()),
         });
         Ok(false)
     }
