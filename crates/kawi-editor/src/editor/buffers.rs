@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use kawi_buffer::Buffer;
+use kawi_buffer::{apply_text_edits, content_hash, Buffer, TextEdit};
+use ropey::Rope;
 
 use super::indent::{self, IndentConfig};
 use super::repeat::RepeatChange;
@@ -26,6 +27,7 @@ pub enum EditError {
     InvalidMark,
     MarkNotSet,
     NoString,
+    InvalidEdit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -772,6 +774,99 @@ impl Editor {
     }
 }
 
+impl Editor {
+    pub fn file_is_open(&self, target: &Path) -> bool {
+        self.find_buffer(target).is_some()
+    }
+
+    pub fn file_is_current(&self, target: &Path) -> bool {
+        self.find_buffer(target) == Some(self.buffers.current())
+    }
+
+    pub fn file_snapshot(&self, target: &Path) -> Option<Rope> {
+        let number = self.find_buffer(target)?;
+        if number == self.buffers.current() {
+            return Some(self.buffer.snapshot());
+        }
+        self.buffers
+            .entry(number)
+            .map(|entry| entry.state.buffer.snapshot())
+    }
+
+    pub fn file_hash(&self, target: &Path) -> Option<u64> {
+        let snapshot = self.file_snapshot(target)?;
+        Some(content_hash(snapshot.to_string().as_bytes()))
+    }
+
+    pub fn file_char_len(&self, target: &Path) -> Option<usize> {
+        self.file_snapshot(target)
+            .map(|snapshot| snapshot.len_chars())
+    }
+
+    pub fn apply_text_edits(&mut self, target: &Path, edits: &[TextEdit]) -> Result<(), EditError> {
+        let Some(number) = self.find_buffer(target) else {
+            return Err(EditError::InvalidEdit);
+        };
+        if number == self.buffers.current() {
+            self.apply_current_text_edits(edits)
+        } else {
+            self.apply_parked_text_edits(number, edits)
+        }
+    }
+
+    fn apply_current_text_edits(&mut self, edits: &[TextEdit]) -> Result<(), EditError> {
+        let snapshot = self.buffer.snapshot();
+        let updated = apply_text_edits(&snapshot, edits).map_err(|_| EditError::InvalidEdit)?;
+        let cursor = super::workspace_edit::remap_cursor(
+            self.buffer
+                .char_index_of(self.cursor.row(), self.cursor.col()),
+            edits,
+            &updated,
+        );
+        self.record_boundary_at(self.cursor.row(), self.cursor.col());
+        self.buffer.replace_all(&updated.to_string());
+        self.cursor.set_position(cursor.0, cursor.1);
+        self.selection = None;
+        self.normalize_cursor();
+        self.remember_wanted_column();
+        self.reveal_cursor();
+        self.reveal_cursor_horizontally();
+        Ok(())
+    }
+
+    fn apply_parked_text_edits(
+        &mut self,
+        number: usize,
+        edits: &[TextEdit],
+    ) -> Result<(), EditError> {
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return Err(EditError::InvalidEdit);
+        };
+        let state = &mut entry.state;
+        let snapshot = state.buffer.snapshot();
+        let updated = apply_text_edits(&snapshot, edits).map_err(|_| EditError::InvalidEdit)?;
+        let cursor = super::workspace_edit::remap_cursor(
+            state
+                .buffer
+                .char_index_of(state.cursor.row(), state.cursor.col()),
+            edits,
+            &updated,
+        );
+        state
+            .buffer
+            .checkpoint(state.cursor.row(), state.cursor.col());
+        state.buffer.replace_all(&updated.to_string());
+        state.cursor.set_position(cursor.0, cursor.1);
+        state.cursor.set_desired(cursor.1);
+        Ok(())
+    }
+}
+
 fn same_file_path(path: &str, target: &Path) -> bool {
     let absolute = paths::absolute(path, &current_dir());
     if absolute == target {
@@ -1333,6 +1428,83 @@ mod tests {
         e.jump_older().unwrap();
         assert_eq!(e.filename(), file_path(&dir, "a.txt"));
         assert_eq!((e.row(), e.col()), (2, 1));
+    }
+
+    #[test]
+    fn applies_text_edits_to_the_current_buffer_as_one_change() {
+        let dir = temp_dir("workspace_edit_current");
+        write_file(&dir, "a.txt", "one two\n");
+        let mut e = editor_in(&dir, "a.txt");
+        e.apply(Action::JumpTo(0, 5));
+        let edits = vec![TextEdit {
+            start: 4,
+            end: 7,
+            text: "three".to_string(),
+        }];
+        e.apply_text_edits(&PathBuf::from(file_path(&dir, "a.txt")), &edits)
+            .unwrap();
+        assert_eq!(lines(&e), vec!["one three"]);
+        assert_eq!((e.row(), e.col()), (0, 5));
+        assert!(e.is_dirty());
+        e.apply(Action::Undo);
+        assert_eq!(lines(&e), vec!["one two"]);
+    }
+
+    #[test]
+    fn applies_text_edits_to_parked_buffers() {
+        let dir = temp_dir("workspace_edit_parked");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        let edits = vec![TextEdit {
+            start: 0,
+            end: 5,
+            text: "omega".to_string(),
+        }];
+        e.apply_text_edits(&PathBuf::from(file_path(&dir, "a.txt")), &edits)
+            .unwrap();
+        assert_eq!(lines(&e), vec!["bravo"]);
+        open(&mut e, &dir, "a.txt");
+        assert_eq!(lines(&e), vec!["omega"]);
+        assert!(e.is_dirty());
+    }
+
+    #[test]
+    fn reports_open_file_snapshots_and_hashes() {
+        let dir = temp_dir("workspace_edit_snapshot");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        open(&mut e, &dir, "b.txt");
+        let path = PathBuf::from(file_path(&dir, "a.txt"));
+        assert!(e.file_is_open(&path));
+        assert!(!e.file_is_current(&path));
+        assert!(e.file_is_current(&PathBuf::from(file_path(&dir, "b.txt"))));
+        assert_eq!(e.file_snapshot(&path).unwrap().to_string(), "alpha\n");
+        assert_eq!(e.file_char_len(&path), Some(6));
+        assert_eq!(
+            e.file_hash(&path),
+            Some(kawi_buffer::content_hash(b"alpha\n"))
+        );
+        assert!(!e.file_is_open(Path::new("/tmp/kawi_missing_file")));
+    }
+
+    #[test]
+    fn rejects_invalid_text_edits_without_changing_the_buffer() {
+        let dir = temp_dir("workspace_edit_invalid");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        let edits = vec![TextEdit {
+            start: 5,
+            end: 2,
+            text: "x".to_string(),
+        }];
+        assert_eq!(
+            e.apply_text_edits(&PathBuf::from(file_path(&dir, "a.txt")), &edits),
+            Err(EditError::InvalidEdit)
+        );
+        assert_eq!(lines(&e), vec!["alpha"]);
     }
 
     #[test]

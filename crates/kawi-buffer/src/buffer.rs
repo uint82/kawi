@@ -72,6 +72,11 @@ impl Buffer {
         self.history.mark_clean();
     }
 
+    pub fn replace_all(&mut self, text: &str) {
+        self.rope = Rope::from_str(text);
+        self.touch();
+    }
+
     pub fn has_path(&self) -> bool {
         self.path.is_some()
     }

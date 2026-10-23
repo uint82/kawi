@@ -14,6 +14,7 @@ pub struct StatusInfo<'a> {
     pub line_empty: bool,
     pub empty_buffer: bool,
     pub mode: &'a str,
+    pub lsp: Option<&'a str>,
 }
 
 pub fn draw_status(
@@ -35,7 +36,12 @@ fn build_line(info: &StatusInfo, width: usize) -> String {
 }
 
 fn left_text(info: &StatusInfo) -> String {
-    format!("-- {} -- {}", info.mode, file_part(info))
+    let mut text = format!("-- {} -- {}", info.mode, file_part(info));
+    if let Some(lsp) = info.lsp {
+        text.push_str("  ");
+        text.push_str(lsp);
+    }
+    text
 }
 
 fn file_part(info: &StatusInfo) -> String {
@@ -106,6 +112,7 @@ mod tests {
             line_empty: false,
             empty_buffer: false,
             mode,
+            lsp: None,
         }
     }
 
@@ -127,6 +134,13 @@ mod tests {
     #[test]
     fn shows_mode() {
         assert!(build_line(&info("a.txt", false, "NORMAL"), 40).contains("NORMAL"));
+    }
+
+    #[test]
+    fn shows_lsp_status() {
+        let mut status = info("a.rs", false, "NORMAL");
+        status.lsp = Some("lsp: rust-analyzer not found in PATH");
+        assert!(build_line(&status, 80).contains("lsp: rust-analyzer not found in PATH"));
     }
 
     #[test]

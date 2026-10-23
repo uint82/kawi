@@ -6,7 +6,8 @@ use kawi_syntax::SyntaxSpan;
 pub struct Frame<'a> {
     pub lines: &'a [String],
     pub gutter: &'a [String],
-    pub signs: Option<&'a [Option<GitSign>]>,
+    pub signs: Option<&'a [Option<Sign>]>,
+    pub diagnostic_spans: &'a [DiagnosticSpan],
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
     pub picker: Option<PickerMenu<'a>>,
@@ -16,6 +17,7 @@ pub struct Frame<'a> {
     pub viewport: &'a Viewport,
     pub status: &'a StatusInfo<'a>,
     pub message: Option<&'a str>,
+    pub prompt: Option<PromptMenu<'a>>,
     pub command: Option<&'a str>,
     pub search: Option<&'a str>,
     pub search_delimiter: char,
@@ -29,6 +31,48 @@ pub struct Frame<'a> {
     pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
     pub theme: &'a Theme,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sign {
+    Git(GitSign),
+    Diagnostic(DiagnosticSeverity),
+}
+
+impl Sign {
+    pub fn text(self) -> &'static str {
+        match self {
+            Self::Git(sign) => sign.text(),
+            Self::Diagnostic(severity) => severity.sign(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+    Information,
+    Hint,
+}
+
+impl DiagnosticSeverity {
+    pub fn sign(self) -> &'static str {
+        match self {
+            Self::Error => "E",
+            Self::Warning => "W",
+            Self::Information => "I",
+            Self::Hint => "H",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiagnosticSpan {
+    pub row: usize,
+    pub start: usize,
+    pub end: usize,
+    pub severity: DiagnosticSeverity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +107,12 @@ pub enum CursorStyle {
     Block,
     Bar,
     Underline,
+}
+
+pub struct PromptMenu<'a> {
+    pub label: &'a str,
+    pub value: &'a str,
+    pub cursor: usize,
 }
 
 pub struct CompletionMenu<'a> {

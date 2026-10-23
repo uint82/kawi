@@ -1,15 +1,13 @@
+use crate::highlight::{Document, Runtime};
+use crate::language::LanguageId;
+use crate::limits::MAX_FILE_BYTES;
+use crate::span::{SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxSpan};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
-
-use crate::highlight::{Document, Runtime};
-use crate::language::LanguageId;
-use crate::limits::MAX_FILE_BYTES;
-use crate::span::{SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxSpan};
 
 pub struct SyntaxService {
     shared: Arc<Shared>,
@@ -38,6 +36,11 @@ struct Worker {
 
 impl SyntaxService {
     pub fn new() -> Self {
+        let (wake, _) = mpsc::channel();
+        Self::with_wake(wake)
+    }
+
+    pub fn with_wake(wake: Sender<()>) -> Self {
         let (sender, results) = mpsc::channel();
         let shared = Arc::new(Shared {
             request: Mutex::new(None),
@@ -49,7 +52,7 @@ impl SyntaxService {
             let shared = Arc::clone(&shared);
             thread::Builder::new()
                 .name("kawi-syntax".to_string())
-                .spawn(move || run(shared, sender))
+                .spawn(move || run(shared, sender, wake))
                 .ok()
         };
         Self {
@@ -81,10 +84,6 @@ impl SyntaxService {
     pub fn try_recv(&self) -> Option<SyntaxResult> {
         self.results.try_recv().ok()
     }
-
-    pub fn recv_timeout(&self, timeout: Duration) -> Option<SyntaxResult> {
-        self.results.recv_timeout(timeout).ok()
-    }
 }
 
 impl Default for SyntaxService {
@@ -103,13 +102,14 @@ impl Drop for SyntaxService {
     }
 }
 
-fn run(shared: Arc<Shared>, sender: Sender<SyntaxResult>) {
+fn run(shared: Arc<Shared>, sender: Sender<SyntaxResult>, wake: Sender<()>) {
     let mut worker = Worker::new();
     while let Some(queued) = next_request(&shared) {
         let result = worker.highlight(queued);
         if sender.send(result).is_err() {
             return;
         }
+        let _ = wake.send(());
     }
 }
 
@@ -206,6 +206,17 @@ mod tests {
             },
             text: Rope::from_str(text),
         }
+    }
+
+    #[test]
+    fn service_notifies_the_wake_channel() {
+        let (wake, wakes) = mpsc::channel();
+        let service = SyntaxService::with_wake(wake);
+        service.submit(request("fn main() {}\n", 1));
+        wakes
+            .recv_timeout(Duration::from_secs(5))
+            .expect("wake notification");
+        assert!(service.try_recv().is_some());
     }
 
     #[test]

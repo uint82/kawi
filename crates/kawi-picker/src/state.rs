@@ -13,6 +13,7 @@ pub enum PickerKind {
     Files,
     Grep,
     Buffers,
+    Locations,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +40,7 @@ pub struct Picker {
     files: Vec<String>,
     hits: Vec<GrepHit>,
     buffers: Vec<(usize, String)>,
+    locations: Vec<PickerRow>,
     rows: Vec<PickerRow>,
     selected: Option<usize>,
     loading: bool,
@@ -61,6 +63,13 @@ impl Picker {
         picker
     }
 
+    pub fn locations(title: &'static str, rows: Vec<PickerRow>) -> Self {
+        let mut picker = Self::new(PickerKind::Locations, title);
+        picker.locations = rows;
+        picker.refresh();
+        picker
+    }
+
     fn new(kind: PickerKind, title: &'static str) -> Self {
         Self {
             kind,
@@ -69,6 +78,7 @@ impl Picker {
             files: Vec::new(),
             hits: Vec::new(),
             buffers: Vec::new(),
+            locations: Vec::new(),
             rows: Vec::new(),
             selected: None,
             loading: false,
@@ -240,6 +250,7 @@ impl Picker {
             PickerKind::Files => self.refresh_files(),
             PickerKind::Grep => self.refresh_grep(),
             PickerKind::Buffers => self.refresh_buffers(),
+            PickerKind::Locations => self.refresh_locations(),
         }
         self.selected = if self.rows.is_empty() { None } else { Some(0) };
     }
@@ -273,6 +284,18 @@ impl Picker {
                 buffer: None,
             })
             .collect();
+    }
+
+    fn refresh_locations(&mut self) {
+        if self.query().is_empty() {
+            self.rows = self.locations.iter().take(MAX_ROWS).cloned().collect();
+            return;
+        }
+        let candidates = self
+            .locations
+            .iter()
+            .map(|row| (row.display.clone(), row.clone()));
+        self.rows = self.rank_fuzzy(candidates);
     }
 
     fn refresh_buffers(&mut self) {
@@ -336,6 +359,36 @@ mod tests {
         }
         assert_eq!(picker.rows().len(), 1);
         assert_eq!(picker.rows()[0].path, "src/main.rs");
+    }
+
+    #[test]
+    fn locations_filter_and_open() {
+        let rows = vec![
+            PickerRow {
+                display: "src/main.rs:1:1".to_string(),
+                path: "src/main.rs".to_string(),
+                line: Some(1),
+                column: Some(1),
+                buffer: None,
+            },
+            PickerRow {
+                display: "src/lib.rs:4:2".to_string(),
+                path: "src/lib.rs".to_string(),
+                line: Some(4),
+                column: Some(2),
+                buffer: None,
+            },
+        ];
+        let mut picker = Picker::locations("References", rows);
+        assert_eq!(picker.kind(), PickerKind::Locations);
+        assert_eq!(picker.rows().len(), 2);
+        assert_eq!(picker.rows()[0].path, "src/main.rs");
+        for character in "lib".chars() {
+            picker.handle_key(key(KeyCode::Char(character)));
+        }
+        assert_eq!(picker.rows().len(), 1);
+        let outcome = picker.handle_key(key(KeyCode::Enter));
+        assert!(matches!(outcome, PickerOutcome::Open(row) if row.path == "src/lib.rs"));
     }
 
     #[test]

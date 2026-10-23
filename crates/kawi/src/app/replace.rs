@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_picker::{
@@ -36,12 +37,12 @@ pub struct ReplaceSession {
 }
 
 impl ReplaceSession {
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, wake: Sender<()>) -> Self {
         Self {
             picker: Picker::grep(),
             replacement: TextInput::new(),
             stage: ReplaceStage::Search,
-            service: ProjectService::new(),
+            service: ProjectService::with_wake(wake),
             root,
             latest: 0,
             preview: None,
@@ -53,8 +54,8 @@ impl ReplaceSession {
         }
     }
 
-    pub fn from_query(root: PathBuf, query: &str) -> Self {
-        let mut session = Self::new(root);
+    pub fn from_query(root: PathBuf, query: &str, wake: Sender<()>) -> Self {
+        let mut session = Self::new(root, wake);
         session.picker.set_query(query);
         session.picker.set_loading(false);
         session.stage = ReplaceStage::Replacement;
@@ -114,10 +115,6 @@ impl ReplaceSession {
         self.preview
             .as_ref()
             .map_or(0, |preview| preview.files.len())
-    }
-
-    pub fn pending(&self) -> bool {
-        self.loading
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> ReplaceOutcome {
@@ -408,6 +405,11 @@ mod tests {
 
     use super::*;
 
+    fn wake() -> Sender<()> {
+        let (sender, _) = std::sync::mpsc::channel();
+        sender
+    }
+
     fn project(name: &str) -> PathBuf {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -435,7 +437,7 @@ mod tests {
     fn replacement_flow_previews_and_applies() {
         let root = project("flow");
         fs::write(root.join("a.txt"), "foo foo\n").expect("file");
-        let mut session = ReplaceSession::from_query(root.clone(), "foo");
+        let mut session = ReplaceSession::from_query(root.clone(), "foo", wake());
         for character in "bar".chars() {
             session.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
         }
@@ -498,7 +500,7 @@ mod tests {
     fn cancelling_the_preview_does_not_write_files() {
         let root = project("cancel_preview");
         fs::write(root.join("a.txt"), "foo\n").expect("file");
-        let mut session = ReplaceSession::from_query(root.clone(), "foo");
+        let mut session = ReplaceSession::from_query(root.clone(), "foo", wake());
         session.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         session.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         wait_for_preview(&mut session);
@@ -514,7 +516,7 @@ mod tests {
     #[test]
     fn control_c_cancels_every_stage() {
         let root = project("cancel");
-        let mut session = ReplaceSession::from_query(root.clone(), "foo");
+        let mut session = ReplaceSession::from_query(root.clone(), "foo", wake());
         assert!(matches!(
             session.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
             ReplaceOutcome::Cancel

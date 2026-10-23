@@ -1,6 +1,12 @@
 pub mod buffer;
+pub mod diff;
+mod hash;
 pub mod history;
 mod line_adjust;
+mod text_edit;
 pub mod write;
 pub use buffer::{first_non_blank, indent_width_of, tab_width, Buffer};
+pub use diff::{diff_ropes, RopeChange};
+pub use hash::content_hash;
 pub use line_adjust::LineAdjust;
+pub use text_edit::{apply_text_edits, validate_text_edits, TextEdit, TextEditError};

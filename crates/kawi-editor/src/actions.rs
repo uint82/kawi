@@ -320,6 +320,14 @@ pub enum Action {
     OpenReplacePicker,
     GitNextHunk,
     GitPrevHunk,
+    DiagnosticNext,
+    DiagnosticPrev,
+    GotoDefinition,
+    ShowReferences,
+    Hover,
+    Rename,
+    CodeAction,
+    Format,
     GitStageHunk,
     GitUndoStage,
     GitStageBuffer,
@@ -391,6 +399,14 @@ impl Action {
                 | Self::OpenGrepWordPicker
                 | Self::OpenBufferPicker
                 | Self::OpenReplacePicker
+                | Self::DiagnosticNext
+                | Self::DiagnosticPrev
+                | Self::GotoDefinition
+                | Self::ShowReferences
+                | Self::Hover
+                | Self::Rename
+                | Self::CodeAction
+                | Self::Format
                 | Self::Noop
         )
     }

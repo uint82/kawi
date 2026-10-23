@@ -126,6 +126,10 @@ pub struct Theme {
     pub git_staged_add: Color,
     pub git_staged_change: Color,
     pub git_staged_delete: Color,
+    pub diagnostic_error: Color,
+    pub diagnostic_warning: Color,
+    pub diagnostic_information: Color,
+    pub diagnostic_hint: Color,
     pub syntax: SyntaxColors,
 }
 
@@ -246,6 +250,26 @@ impl Theme {
                 g: 82,
                 b: 88,
             },
+            diagnostic_error: Color::Rgb {
+                r: 224,
+                g: 108,
+                b: 117,
+            },
+            diagnostic_warning: Color::Rgb {
+                r: 229,
+                g: 192,
+                b: 123,
+            },
+            diagnostic_information: Color::Rgb {
+                r: 97,
+                g: 175,
+                b: 239,
+            },
+            diagnostic_hint: Color::Rgb {
+                r: 152,
+                g: 195,
+                b: 121,
+            },
             syntax: SyntaxColors::default_palette(),
         }
     }
@@ -365,6 +389,26 @@ impl Theme {
                 g: 90,
                 b: 70,
             },
+            diagnostic_error: Color::Rgb {
+                r: 251,
+                g: 73,
+                b: 52,
+            },
+            diagnostic_warning: Color::Rgb {
+                r: 250,
+                g: 189,
+                b: 47,
+            },
+            diagnostic_information: Color::Rgb {
+                r: 131,
+                g: 165,
+                b: 152,
+            },
+            diagnostic_hint: Color::Rgb {
+                r: 142,
+                g: 192,
+                b: 124,
+            },
             syntax: SyntaxColors::gruvbox_dark_palette(),
         }
     }
@@ -480,13 +524,45 @@ impl Theme {
                 g: 70,
                 b: 70,
             },
+            diagnostic_error: Color::Rgb { r: 157, g: 0, b: 6 },
+            diagnostic_warning: Color::Rgb {
+                r: 181,
+                g: 118,
+                b: 20,
+            },
+            diagnostic_information: Color::Rgb {
+                r: 7,
+                g: 102,
+                b: 120,
+            },
+            diagnostic_hint: Color::Rgb {
+                r: 121,
+                g: 116,
+                b: 14,
+            },
             syntax: SyntaxColors::gruvbox_light_palette(),
         }
     }
 }
 
 impl Theme {
-    pub fn git_sign_color(&self, sign: crate::frame::GitSign) -> Color {
+    pub fn sign_color(&self, sign: crate::frame::Sign) -> Color {
+        match sign {
+            crate::frame::Sign::Git(sign) => self.git_sign_color(sign),
+            crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(severity),
+        }
+    }
+
+    pub fn diagnostic_color(&self, severity: crate::frame::DiagnosticSeverity) -> Color {
+        match severity {
+            crate::frame::DiagnosticSeverity::Error => self.diagnostic_error,
+            crate::frame::DiagnosticSeverity::Warning => self.diagnostic_warning,
+            crate::frame::DiagnosticSeverity::Information => self.diagnostic_information,
+            crate::frame::DiagnosticSeverity::Hint => self.diagnostic_hint,
+        }
+    }
+
+    fn git_sign_color(&self, sign: crate::frame::GitSign) -> Color {
         match sign {
             crate::frame::GitSign::Add | crate::frame::GitSign::Untracked => self.git_add,
             crate::frame::GitSign::Change | crate::frame::GitSign::ChangeDelete => self.git_change,

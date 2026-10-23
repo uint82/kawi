@@ -1,0 +1,550 @@
+use super::pending::ReplyPurpose;
+use super::to_params;
+use super::*;
+use crate::protocol::{Message, RequestId, ResponseError};
+use crate::workspace::file_uri;
+use crate::ServerConfig;
+use lsp_types::{
+    ClientCapabilities, FailureHandlingKind, GeneralClientCapabilities, InitializeParams,
+    InitializeResult, PositionEncodingKind, PrepareSupportDefaultBehavior,
+    PublishDiagnosticsClientCapabilities, RenameClientCapabilities, RenameOptions,
+    TextDocumentClientCapabilities, TextDocumentSyncCapability, TextDocumentSyncSaveOptions,
+    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
+    WorkspaceFolder,
+};
+use serde_json::Value;
+use std::path::Path;
+use std::time::Instant;
+
+impl Manager {
+    pub(super) fn handle_response(
+        &mut self,
+        key: ClientKey,
+        id: RequestId,
+        result: std::result::Result<Value, ResponseError>,
+    ) {
+        let Some(client) = self.clients.get_mut(&key) else {
+            return;
+        };
+        if client.pending_initialize.as_ref() != Some(&id) {
+            if self.pending_commands.remove(&id).is_some() {
+                self.handle_command_response(key, result);
+                return;
+            }
+            if self.pull_diagnostics.is_pending(&id) {
+                self.handle_pull_diagnostic_response(key, id, result);
+                return;
+            }
+            match self.pending_replies.get(&id).map(|reply| reply.purpose) {
+                Some(ReplyPurpose::Navigation) => {
+                    self.handle_navigation_response(key, id, result);
+                }
+                Some(ReplyPurpose::Rename) => self.handle_rename_response(key, id, result),
+                Some(ReplyPurpose::Text) => self.handle_text_response(key, id, result),
+                None => {}
+            }
+            return;
+        }
+        client.pending_initialize = None;
+        client.initialize_deadline = None;
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                self.client_failed(key, format!("initialize failed: {}", error.message));
+                return;
+            }
+        };
+        let result = match serde_json::from_value::<InitializeResult>(result) {
+            Ok(result) => result,
+            Err(error) => {
+                self.client_failed(key, format!("invalid initialize result: {error}"));
+                return;
+            }
+        };
+        self.finish_initialize(key, result);
+    }
+
+    fn finish_initialize(&mut self, key: ClientKey, result: InitializeResult) {
+        let support = request_support(&result.capabilities);
+        let sync = sync_config(result.capabilities.text_document_sync);
+        let encoding = result
+            .capabilities
+            .position_encoding
+            .unwrap_or(PositionEncodingKind::UTF16);
+        let Some(client) = self.clients.get_mut(&key) else {
+            return;
+        };
+        client.sync = sync;
+        client.encoding = encoding;
+        client.support = support;
+        client.status = ServerState::Ready;
+        let initialized = Message::notification("initialized", Some(serde_json::json!({})));
+        client.client.send(initialized);
+        self.emit_status(&key.server, ServerState::Ready, None);
+        self.open_documents_for(&key);
+        self.schedule_all_diagnostics();
+    }
+
+    fn open_documents_for(&mut self, key: &ClientKey) {
+        let documents: Vec<(PathBuf, Rope, i32)> = self
+            .documents
+            .iter()
+            .filter(|(_, document)| document.clients.contains(key))
+            .map(|(path, document)| (path.clone(), document.text.clone(), document.version))
+            .collect();
+        for (path, text, version) in documents {
+            self.send_open(key, &path, &text, version);
+        }
+    }
+
+    pub(super) fn start_client(&mut self, key: ClientKey, config: &ServerConfig, root: &Path) {
+        self.emit_status(&key.server, ServerState::Starting, None);
+        let client = Client::spawn(key.clone(), config, self.input_tx.clone());
+        let client = match client {
+            Ok(client) => client,
+            Err(error) => {
+                self.emit_status(&key.server, ServerState::Failed, Some(error.to_string()));
+                return;
+            }
+        };
+        let settings = config
+            .settings
+            .as_ref()
+            .and_then(|settings| serde_json::to_value(settings).ok())
+            .unwrap_or(Value::Null);
+        let initialization_options = config
+            .initialization_options
+            .as_ref()
+            .and_then(|options| serde_json::to_value(options).ok());
+        self.clients.insert(
+            key.clone(),
+            ClientState {
+                client,
+                status: ServerState::Initializing,
+                sync: SyncConfig::default(),
+                encoding: PositionEncodingKind::UTF16,
+                initialization_options,
+                settings,
+                pending_initialize: None,
+                initialize_deadline: None,
+                opened: HashSet::new(),
+                support: RequestSupport::default(),
+            },
+        );
+        self.send_initialize(key, root);
+    }
+
+    fn send_initialize(&mut self, key: ClientKey, root: &Path) {
+        let id = self.request_id();
+        let initialization_options = self
+            .clients
+            .get(&key)
+            .and_then(|client| client.initialization_options.clone());
+        let params =
+            match initialize_params(root, initialization_options, initialize_capabilities()) {
+                Ok(params) => params,
+                Err(error) => {
+                    self.client_failed(key, format!("initialize params: {error}"));
+                    return;
+                }
+            };
+        let Some(params) = to_params(params) else {
+            self.client_failed(key, "initialize params could not be serialized".to_string());
+            return;
+        };
+        let Some(client) = self.clients.get_mut(&key) else {
+            return;
+        };
+        let request = Message::request(id.clone(), "initialize", Some(params));
+        if !client.client.send(request) {
+            let key_for_error = key;
+            self.client_failed(
+                key_for_error,
+                "server is not accepting messages".to_string(),
+            );
+            return;
+        }
+        client.pending_initialize = Some(id);
+        client.initialize_deadline = Some(Instant::now() + self.initialize_timeout);
+        client.status = ServerState::Initializing;
+        self.emit_status(&key.server, ServerState::Initializing, None);
+    }
+
+    pub(super) fn request_id(&mut self) -> RequestId {
+        self.next_request = self.next_request.wrapping_add(1);
+        RequestId::Number(self.next_request)
+    }
+}
+
+fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSupport {
+    RequestSupport {
+        definition: provider_enabled(capabilities.definition_provider.as_ref()),
+        references: provider_enabled(capabilities.references_provider.as_ref()),
+        hover: capabilities
+            .hover_provider
+            .as_ref()
+            .is_some_and(|provider| match provider {
+                lsp_types::HoverProviderCapability::Simple(enabled) => *enabled,
+                lsp_types::HoverProviderCapability::Options(_) => true,
+            }),
+        rename: provider_enabled(capabilities.rename_provider.as_ref()),
+        prepare_rename: prepare_enabled(capabilities.rename_provider.as_ref()),
+        completion: capabilities.completion_provider.is_some(),
+        code_actions: code_action_enabled(capabilities.code_action_provider.as_ref()),
+        formatting: provider_enabled(capabilities.document_formatting_provider.as_ref()),
+        range_formatting: provider_enabled(
+            capabilities.document_range_formatting_provider.as_ref(),
+        ),
+        pull_diagnostics: capabilities.diagnostic_provider.is_some(),
+    }
+}
+
+fn code_action_enabled(provider: Option<&lsp_types::CodeActionProviderCapability>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::CodeActionProviderCapability::Simple(enabled) => *enabled,
+        lsp_types::CodeActionProviderCapability::Options(_) => true,
+    })
+}
+
+fn prepare_enabled(provider: Option<&lsp_types::OneOf<bool, RenameOptions>>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::OneOf::Left(_) => false,
+        lsp_types::OneOf::Right(options) => options.prepare_provider.unwrap_or(false),
+    })
+}
+
+fn provider_enabled<T>(provider: Option<&lsp_types::OneOf<bool, T>>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::OneOf::Left(enabled) => *enabled,
+        lsp_types::OneOf::Right(_) => true,
+    })
+}
+
+fn sync_config(capability: Option<TextDocumentSyncCapability>) -> SyncConfig {
+    match capability {
+        Some(TextDocumentSyncCapability::Kind(kind)) => SyncConfig {
+            open_close: true,
+            change: Some(kind),
+            save: None,
+        },
+        Some(TextDocumentSyncCapability::Options(options)) => SyncConfig {
+            open_close: options.open_close.unwrap_or(false),
+            change: options.change,
+            save: options.save,
+        },
+        None => SyncConfig::default(),
+    }
+}
+
+pub(super) fn save_enabled(save: &TextDocumentSyncSaveOptions) -> bool {
+    match save {
+        TextDocumentSyncSaveOptions::Supported(supported) => *supported,
+        TextDocumentSyncSaveOptions::SaveOptions(_) => true,
+    }
+}
+
+pub(super) fn include_save_text(save: &TextDocumentSyncSaveOptions) -> bool {
+    match save {
+        TextDocumentSyncSaveOptions::Supported(_) => false,
+        TextDocumentSyncSaveOptions::SaveOptions(options) => options.include_text.unwrap_or(false),
+    }
+}
+
+fn initialize_capabilities() -> ClientCapabilities {
+    ClientCapabilities {
+        workspace: Some(WorkspaceClientCapabilities {
+            workspace_folders: Some(true),
+            configuration: Some(true),
+            workspace_edit: Some(WorkspaceEditClientCapabilities {
+                document_changes: Some(true),
+                failure_handling: Some(FailureHandlingKind::Abort),
+                ..WorkspaceEditClientCapabilities::default()
+            }),
+            diagnostic: Some(lsp_types::DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            }),
+            ..WorkspaceClientCapabilities::default()
+        }),
+        window: Some(WindowClientCapabilities {
+            work_done_progress: Some(true),
+            ..WindowClientCapabilities::default()
+        }),
+        text_document: Some(TextDocumentClientCapabilities {
+            publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                version_support: Some(true),
+                ..PublishDiagnosticsClientCapabilities::default()
+            }),
+            definition: Some(lsp_types::GotoCapability {
+                dynamic_registration: Some(false),
+                link_support: Some(true),
+            }),
+            references: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            hover: Some(lsp_types::HoverClientCapabilities {
+                dynamic_registration: Some(false),
+                content_format: Some(vec![
+                    lsp_types::MarkupKind::Markdown,
+                    lsp_types::MarkupKind::PlainText,
+                ]),
+            }),
+            rename: Some(RenameClientCapabilities {
+                dynamic_registration: Some(false),
+                prepare_support: Some(true),
+                prepare_support_default_behavior: Some(PrepareSupportDefaultBehavior::IDENTIFIER),
+                honors_change_annotations: Some(false),
+            }),
+            completion: Some(lsp_types::CompletionClientCapabilities {
+                dynamic_registration: Some(false),
+                completion_item: Some(lsp_types::CompletionItemCapability {
+                    snippet_support: Some(false),
+                    commit_characters_support: Some(false),
+                    documentation_format: Some(vec![
+                        lsp_types::MarkupKind::Markdown,
+                        lsp_types::MarkupKind::PlainText,
+                    ]),
+                    deprecated_support: Some(true),
+                    preselect_support: Some(true),
+                    insert_replace_support: Some(true),
+                    ..lsp_types::CompletionItemCapability::default()
+                }),
+                context_support: Some(true),
+                ..lsp_types::CompletionClientCapabilities::default()
+            }),
+            code_action: Some(lsp_types::CodeActionClientCapabilities {
+                dynamic_registration: Some(false),
+                code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
+                    code_action_kind: lsp_types::CodeActionKindLiteralSupport {
+                        value_set: vec![
+                            "quickfix".to_string(),
+                            "refactor".to_string(),
+                            "refactor.extract".to_string(),
+                            "refactor.inline".to_string(),
+                            "refactor.rewrite".to_string(),
+                            "source".to_string(),
+                            "source.organizeImports".to_string(),
+                            "source.fixAll".to_string(),
+                        ],
+                    },
+                }),
+                is_preferred_support: Some(true),
+                data_support: Some(false),
+                honors_change_annotations: Some(false),
+                ..lsp_types::CodeActionClientCapabilities::default()
+            }),
+            formatting: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            range_formatting: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            diagnostic: Some(lsp_types::DiagnosticClientCapabilities {
+                dynamic_registration: Some(false),
+                related_document_support: Some(false),
+            }),
+            ..TextDocumentClientCapabilities::default()
+        }),
+        general: Some(GeneralClientCapabilities {
+            position_encodings: Some(vec![
+                PositionEncodingKind::UTF16,
+                PositionEncodingKind::UTF8,
+            ]),
+            ..GeneralClientCapabilities::default()
+        }),
+        ..ClientCapabilities::default()
+    }
+}
+
+#[allow(deprecated)]
+fn initialize_params(
+    root: &Path,
+    initialization_options: Option<Value>,
+    capabilities: ClientCapabilities,
+) -> Result<InitializeParams> {
+    let root_uri = file_uri(root)?;
+    let name = root.file_name().map_or_else(
+        || root.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    Ok(InitializeParams {
+        process_id: Some(std::process::id()),
+        root_uri: Some(root_uri.clone()),
+        capabilities,
+        initialization_options,
+        workspace_folders: Some(vec![WorkspaceFolder {
+            uri: root_uri,
+            name,
+        }]),
+        client_info: Some(lsp_types::ClientInfo {
+            name: "kawi".to_string(),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        }),
+        ..InitializeParams::default()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsp_types::TextDocumentSyncKind;
+
+    #[test]
+    fn incremental_sync_is_supported() {
+        let sync = sync_config(Some(TextDocumentSyncCapability::Kind(
+            TextDocumentSyncKind::INCREMENTAL,
+        )));
+        assert!(sync.open_close);
+        assert_eq!(sync.change, Some(TextDocumentSyncKind::INCREMENTAL));
+    }
+
+    #[test]
+    fn advertises_versioned_diagnostics() {
+        let capabilities = initialize_capabilities();
+        let diagnostics = capabilities
+            .text_document
+            .and_then(|text_document| text_document.publish_diagnostics)
+            .expect("diagnostics capability");
+        assert_eq!(diagnostics.version_support, Some(true));
+    }
+
+    #[test]
+    fn advertises_navigation_capabilities() {
+        let capabilities = initialize_capabilities();
+        let text_document = capabilities.text_document.expect("text document");
+        assert!(text_document.definition.is_some());
+        assert!(text_document.references.is_some());
+        assert_eq!(
+            text_document.hover.and_then(|hover| hover.content_format),
+            Some(vec![
+                lsp_types::MarkupKind::Markdown,
+                lsp_types::MarkupKind::PlainText
+            ])
+        );
+    }
+
+    #[test]
+    fn advertises_rename_capabilities() {
+        let capabilities = initialize_capabilities();
+        let rename = capabilities
+            .text_document
+            .and_then(|text_document| text_document.rename)
+            .expect("rename capability");
+        assert_eq!(rename.prepare_support, Some(true));
+        assert_eq!(
+            rename.prepare_support_default_behavior,
+            Some(PrepareSupportDefaultBehavior::IDENTIFIER)
+        );
+        let workspace = capabilities
+            .workspace
+            .and_then(|workspace| workspace.workspace_edit)
+            .expect("workspace edit capability");
+        assert_eq!(workspace.document_changes, Some(true));
+        assert_eq!(workspace.failure_handling, Some(FailureHandlingKind::Abort));
+        assert_eq!(workspace.resource_operations, None);
+    }
+
+    #[test]
+    fn reads_rename_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            rename_provider: Some(lsp_types::OneOf::Right(RenameOptions {
+                prepare_provider: Some(true),
+                work_done_progress_options: Default::default(),
+            })),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.rename);
+        assert!(support.prepare_rename);
+        let simple = lsp_types::ServerCapabilities {
+            rename_provider: Some(lsp_types::OneOf::Left(true)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&simple);
+        assert!(support.rename);
+        assert!(!support.prepare_rename);
+    }
+
+    #[test]
+    fn reads_navigation_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            definition_provider: Some(lsp_types::OneOf::Left(true)),
+            references_provider: Some(lsp_types::OneOf::Right(lsp_types::ReferencesOptions {
+                work_done_progress_options: Default::default(),
+            })),
+            hover_provider: Some(lsp_types::HoverProviderCapability::Simple(false)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.definition);
+        assert!(support.references);
+        assert!(!support.hover);
+    }
+
+    #[test]
+    fn advertises_phase_seven_capabilities() {
+        let capabilities = initialize_capabilities();
+        let text_document = capabilities.text_document.expect("text document");
+        assert!(text_document.completion.is_some());
+        assert!(text_document.code_action.is_some());
+        assert!(text_document.formatting.is_some());
+        assert!(text_document.range_formatting.is_some());
+        assert_eq!(
+            text_document
+                .diagnostic
+                .and_then(|diagnostic| diagnostic.related_document_support),
+            Some(false)
+        );
+        let workspace = capabilities.workspace.expect("workspace");
+        assert_eq!(
+            workspace
+                .diagnostic
+                .and_then(|diagnostic| diagnostic.refresh_support),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn reads_phase_seven_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            completion_provider: Some(lsp_types::CompletionOptions::default()),
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(true)),
+            document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
+            document_range_formatting_provider: Some(lsp_types::OneOf::Right(
+                lsp_types::DocumentRangeFormattingOptions {
+                    work_done_progress_options: Default::default(),
+                },
+            )),
+            diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
+                lsp_types::DiagnosticOptions::default(),
+            )),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.completion);
+        assert!(support.code_actions);
+        assert!(support.formatting);
+        assert!(support.range_formatting);
+        assert!(support.pull_diagnostics);
+    }
+
+    #[test]
+    fn disabled_code_actions_are_not_supported() {
+        let capabilities = lsp_types::ServerCapabilities {
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(false)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        assert!(!request_support(&capabilities).code_actions);
+    }
+
+    #[test]
+    fn save_options_control_text_inclusion() {
+        let save = TextDocumentSyncSaveOptions::SaveOptions(lsp_types::SaveOptions {
+            include_text: Some(true),
+        });
+        assert!(save_enabled(&save));
+        assert!(include_save_text(&save));
+        let supported = TextDocumentSyncSaveOptions::Supported(true);
+        assert!(save_enabled(&supported));
+        assert!(!include_save_text(&supported));
+    }
+}

@@ -1,4 +1,5 @@
 use kawi_buffer::Buffer;
+use ropey::Rope;
 
 use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
@@ -46,6 +47,7 @@ mod syntax;
 mod tab;
 mod visual_block;
 mod word_search;
+mod workspace_edit;
 
 use session::InsertEdit;
 
@@ -486,7 +488,15 @@ impl Editor {
             | Action::GitUndoStage
             | Action::GitStageBuffer
             | Action::GitPreviewHunk
-            | Action::GitDiff => self.noop(),
+            | Action::GitDiff
+            | Action::DiagnosticNext
+            | Action::DiagnosticPrev
+            | Action::GotoDefinition
+            | Action::ShowReferences
+            | Action::Hover
+            | Action::Rename
+            | Action::CodeAction
+            | Action::Format => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {
@@ -634,6 +644,18 @@ impl Editor {
 
     pub fn set_expandtab(&mut self, expandtab: bool) {
         self.expandtab_override = Some(expandtab);
+    }
+
+    pub fn expandtab(&self) -> bool {
+        self.effective_indent().expandtab
+    }
+
+    pub fn tabstop(&self) -> usize {
+        self.effective_indent().tabstop
+    }
+
+    pub fn line_len(&self, row: usize) -> usize {
+        self.buffer.line_len(row)
     }
 
     pub(super) fn effective_indent(&self) -> indent::IndentConfig {
@@ -909,6 +931,10 @@ impl Editor {
     pub fn text_lines(&self) -> Vec<String> {
         self.buffer
             .window_lines(0, self.buffer.line_count().saturating_add(1))
+    }
+
+    pub fn document_snapshot(&self) -> Rope {
+        self.buffer.snapshot()
     }
 
     pub fn text_has_final_newline(&self) -> bool {

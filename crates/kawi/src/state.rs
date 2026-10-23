@@ -8,13 +8,16 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub struct StatePaths {
     pub config: PathBuf,
+    pub languages: PathBuf,
     pub history: PathBuf,
 }
 
 impl StatePaths {
     pub fn resolve() -> Option<Self> {
+        let config = xdg_dir("XDG_CONFIG_HOME", ".config")?;
         Some(Self {
-            config: xdg_dir("XDG_CONFIG_HOME", ".config")?.join("kawi/config.toml"),
+            config: config.join("kawi/config.toml"),
+            languages: config.join("kawi/languages.toml"),
             history: xdg_dir("XDG_STATE_HOME", ".local/state")?.join("kawi/history"),
         })
     }
@@ -222,6 +225,7 @@ mod tests {
         let dir = temp_dir("load_applies");
         let paths = StatePaths {
             config: dir.join("config.toml"),
+            languages: dir.join("languages.toml"),
             history: dir.join("history"),
         };
         fs::write(&paths.config, "history = 1\n").unwrap();
@@ -239,6 +243,7 @@ mod tests {
         let dir = temp_dir("save_editor");
         let paths = StatePaths {
             config: dir.join("config.toml"),
+            languages: dir.join("languages.toml"),
             history: dir.join("history"),
         };
         let mut editor = editor();

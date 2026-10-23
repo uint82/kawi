@@ -1,18 +1,25 @@
-use anyhow::{Context, Result};
-use crossterm::event::{
-    poll, read, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
-};
+use anyhow::{anyhow, Result};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
+mod code_action;
+mod completion;
+mod formatting;
 mod git;
+mod lsp;
+mod lsp_diagnostics;
+mod lsp_menu;
+mod lsp_navigation;
+mod lsp_text;
 mod macro_codec;
 mod macro_ops;
 mod picker;
+mod rename;
 mod replace;
 mod replace_apply;
+mod workspace_edit;
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -35,10 +42,9 @@ struct FrameInput<'a> {
     preview_spans: &'a [SearchSpan],
     picker: Option<kawi_tui::frame::PickerMenu<'a>>,
     replace: Option<kawi_tui::frame::ReplaceMenu<'a>>,
-    signs: Option<&'a [Option<kawi_tui::frame::GitSign>]>,
+    signs: Option<&'a [Option<kawi_tui::frame::Sign>]>,
+    diagnostic_spans: &'a [kawi_tui::frame::DiagnosticSpan],
 }
-
-const SYNTAX_READY_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
     match mode {
@@ -48,6 +54,36 @@ fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
     }
 }
 
+fn preferred_sign(
+    git: Option<kawi_tui::frame::Sign>,
+    diagnostic: Option<kawi_tui::frame::DiagnosticSeverity>,
+) -> Option<kawi_tui::frame::Sign> {
+    diagnostic.map(kawi_tui::frame::Sign::Diagnostic).or(git)
+}
+
+fn diagnostic_label(severity: kawi_lsp::DiagnosticSeverity) -> &'static str {
+    match severity {
+        kawi_lsp::DiagnosticSeverity::Error => "Error",
+        kawi_lsp::DiagnosticSeverity::Warning => "Warning",
+        kawi_lsp::DiagnosticSeverity::Information => "Information",
+        kawi_lsp::DiagnosticSeverity::Hint => "Hint",
+    }
+}
+
+fn ui_diagnostic_severity(
+    severity: kawi_lsp::DiagnosticSeverity,
+) -> kawi_tui::frame::DiagnosticSeverity {
+    match severity {
+        kawi_lsp::DiagnosticSeverity::Error => kawi_tui::frame::DiagnosticSeverity::Error,
+        kawi_lsp::DiagnosticSeverity::Warning => kawi_tui::frame::DiagnosticSeverity::Warning,
+        kawi_lsp::DiagnosticSeverity::Information => {
+            kawi_tui::frame::DiagnosticSeverity::Information
+        }
+        kawi_lsp::DiagnosticSeverity::Hint => kawi_tui::frame::DiagnosticSeverity::Hint,
+    }
+}
+
+use crate::event::EventQueue;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
 use crate::state::{self, StatePaths};
@@ -64,6 +100,7 @@ use kawi_tui::{
     terminal,
     theme::Theme,
 };
+use lsp::LspUi;
 use picker::PickerSession;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
 
@@ -84,9 +121,14 @@ pub struct App {
     syntax_applied: u64,
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
+    rename: Option<rename::RenameSession>,
+    completion: Option<completion::CompletionSession>,
+    code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
+    lsp: LspUi,
+    events: EventQueue,
 }
 
 impl App {
@@ -110,14 +152,20 @@ impl App {
             syntax_applied: 0,
             picker: None,
             replace: None,
+            rename: None,
+            completion: None,
+            code_actions: None,
             git: None,
             git_path: None,
             git_error: None,
+            lsp: LspUi::default(),
+            events: EventQueue::new(),
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
         self.sync_viewport_size();
+        self.events.start_input_thread()?;
         self.run_loop()
     }
 
@@ -126,6 +174,9 @@ impl App {
             return;
         };
         if let Some(warning) = state::load(&mut self.editor, &paths) {
+            self.message = Some(warning);
+        }
+        if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
             self.message = Some(warning);
         }
     }
@@ -181,9 +232,9 @@ impl App {
         let mut out = stdout();
         loop {
             self.sync_git();
+            self.sync_lsp();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
-                self.wait_for_syntax_ready();
             }
             self.refresh_picker();
             self.refresh_replace();
@@ -196,31 +247,29 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
-            if self.picker.is_some() || self.replace.is_some() {
-                if self.refresh_picker() | self.refresh_replace() {
-                    return Ok(Redraw::Redraw);
+            let mut redraw = false;
+            for event in self.events.take_input() {
+                let needs_redraw = event_needs_redraw(&event);
+                if self.update(event)? {
+                    return Ok(Redraw::Quit);
                 }
-            } else if self.apply_syntax_results() {
-                return Ok(Redraw::Redraw);
+                redraw |= needs_redraw;
             }
-            let pending = self.syntax_pending
-                || self.picker.as_ref().is_some_and(PickerSession::pending)
-                || self.replace.as_ref().is_some_and(ReplaceSession::pending);
-            let event = if pending {
-                match poll_next_event(Duration::from_millis(10))? {
-                    Some(event) => event,
-                    None => continue,
-                }
+            redraw |= self.lsp.poll_events(&self.editor);
+            self.update_signcolumn_width();
+            redraw |= self.lsp.update_display();
+            if self.picker.is_some() || self.replace.is_some() {
+                redraw |= self.refresh_picker() | self.refresh_replace();
             } else {
-                read_next_event()?
-            };
-            let redraw = event_needs_redraw(&event);
-            if self.update(event)? {
-                return Ok(Redraw::Quit);
+                redraw |= self.apply_syntax_results();
             }
             if redraw {
                 return Ok(Redraw::Redraw);
             }
+            if self.events.input_closed() {
+                return Err(anyhow!("terminal input closed"));
+            }
+            self.events.wait()?;
         }
     }
 
@@ -260,7 +309,10 @@ impl App {
             self.syntax_window = 0..0;
         }
         if let Some(request) = self.editor.syntax_request() {
-            let service = self.syntax.get_or_insert_with(SyntaxService::new);
+            let wake = self.events.wake();
+            let service = self
+                .syntax
+                .get_or_insert_with(|| SyntaxService::with_wake(wake));
             self.syntax_latest = service.submit(request);
             self.syntax_pending = true;
             self.syntax_key = Some(key);
@@ -306,36 +358,6 @@ impl App {
             changed = true;
         }
         changed
-    }
-
-    fn syntax_ready(&self) -> bool {
-        let Some(key) = self.editor.syntax_key() else {
-            return true;
-        };
-        self.syntax_window.start <= key.top && key.end <= self.syntax_window.end
-    }
-
-    fn wait_for_syntax_ready(&mut self) {
-        if self.syntax_ready() {
-            return;
-        }
-        let deadline = Instant::now() + SYNTAX_READY_TIMEOUT;
-        loop {
-            if self.syntax_ready() || !self.syntax_pending {
-                return;
-            }
-            let Some(service) = self.syntax.as_ref() else {
-                return;
-            };
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return;
-            }
-            let Some(result) = service.recv_timeout(remaining) else {
-                return;
-            };
-            self.apply_syntax_result(result);
-        }
     }
 
     fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
@@ -407,14 +429,14 @@ impl App {
             matches: session.matches(),
             files: session.files(),
         });
-        let signs = self.git.as_ref().map(|session| {
-            session.visible_signs(self.editor.view_top(), self.editor.view_height())
-        });
+        let signs = self.view_signs();
+        let diagnostic_spans = self.lsp.diagnostic_spans(&window, self.editor.view_top());
         let frame = self.build_frame(FrameInput {
             status: &status,
             window: &window,
             gutter: &gutter,
             signs: signs.as_deref(),
+            diagnostic_spans: &diagnostic_spans,
             search_status: search_status.as_deref(),
             search_spans: &search_spans,
             preview_spans: &preview_spans,
@@ -424,16 +446,70 @@ impl App {
         render::draw(out, &frame)
     }
 
+    fn view_signs(&self) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
+        let top = self.editor.view_top();
+        let height = self.editor.view_height();
+        let git = self.git_view_signs(top, height);
+        if git.is_none() && !self.lsp.has_diagnostics() {
+            return None;
+        }
+        let mut signs = git.unwrap_or_else(|| vec![None; height]);
+        self.apply_diagnostic_signs(&mut signs, top);
+        Some(signs)
+    }
+
+    fn git_view_signs(
+        &self,
+        top: usize,
+        height: usize,
+    ) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
+        self.git.as_ref().map(|session| {
+            session
+                .visible_signs(top, height)
+                .into_iter()
+                .map(|sign| sign.map(kawi_tui::frame::Sign::Git))
+                .collect()
+        })
+    }
+
+    fn apply_diagnostic_signs(&self, signs: &mut [Option<kawi_tui::frame::Sign>], top: usize) {
+        for (offset, sign) in signs.iter_mut().enumerate() {
+            let diagnostic = self
+                .lsp
+                .diagnostic_severity(top.saturating_add(offset))
+                .map(ui_diagnostic_severity);
+            *sign = preferred_sign(*sign, diagnostic);
+        }
+    }
+
     fn build_frame<'a>(&'a self, input: FrameInput<'a>) -> Frame<'a> {
+        let completion = self
+            .code_actions
+            .as_ref()
+            .map(|session| kawi_tui::frame::CompletionMenu {
+                items: session.items(),
+                selected: session.selected(),
+            })
+            .or_else(|| {
+                self.completion
+                    .as_ref()
+                    .map(|session| kawi_tui::frame::CompletionMenu {
+                        items: session.items(),
+                        selected: session.selected(),
+                    })
+            })
+            .or_else(|| {
+                self.editor
+                    .completion_view()
+                    .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected })
+            });
         Frame {
             lines: input.window,
             gutter: input.gutter,
             signs: input.signs,
+            diagnostic_spans: input.diagnostic_spans,
             pager: self.pager.as_deref(),
-            completion: self
-                .editor
-                .completion_view()
-                .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
+            completion,
             picker: input.picker,
             replace: input.replace,
             cursor_col: self
@@ -444,6 +520,7 @@ impl App {
             viewport: self.editor.viewport(),
             status: input.status,
             message: self.message.as_deref(),
+            prompt: self.rename.as_ref().and_then(rename::RenameSession::prompt),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),
@@ -514,7 +591,35 @@ impl App {
             line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
+            lsp: self.lsp.status(),
         }
+    }
+
+    fn sync_lsp(&mut self) {
+        self.lsp.refresh(&self.editor);
+        self.update_signcolumn_width();
+        if let Some(message) = self.lsp.take_message() {
+            self.show_message(message);
+        }
+        if let Some(result) = self.lsp.take_location() {
+            self.handle_location_result(result);
+        }
+        if let Some(hover) = self.lsp.take_hover() {
+            self.handle_hover_result(hover);
+        }
+        if let Some(event) = self.lsp.take_completion() {
+            self.handle_completion_event(event);
+        }
+        if let Some(event) = self.lsp.take_code_actions() {
+            self.handle_code_action_event(event);
+        }
+        self.handle_formatting_result();
+        self.sync_rename();
+    }
+
+    fn update_signcolumn_width(&mut self) {
+        let width = usize::from(self.git.is_some() || self.lsp.has_diagnostics());
+        self.editor.set_signcolumn_width(width);
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -528,7 +633,13 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.picker.is_some() || self.replace.is_some() {
+        if self.picker.is_some()
+            || self.replace.is_some()
+            || self.rename.is_some()
+            || self.completion.is_some()
+            || self.code_actions.is_some()
+        {
+            self.dismiss_lsp_menu();
             return self.handle_noop();
         }
         if self.pager.is_some() {
@@ -617,11 +728,25 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.rename.is_some() {
+            return self.handle_rename_key(key);
+        }
         if self.replace.is_some() {
             return self.handle_replace_key(key);
         }
         if self.picker.is_some() {
             return self.handle_picker_key(key);
+        }
+        if self.code_actions.is_some() {
+            return self.handle_code_action_key(key);
+        }
+        if self.completion.is_some() {
+            if let Some(result) = self.handle_completion_key(key)? {
+                return Ok(result);
+            }
+        }
+        if self.pager.is_none() && completion::is_completion_key(key) {
+            return self.request_completion();
         }
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
@@ -643,6 +768,7 @@ impl App {
             self.replace = Some(ReplaceSession::from_query(
                 session.root().to_path_buf(),
                 &query,
+                self.events.wake(),
             ));
             return Ok(false);
         }
@@ -707,26 +833,22 @@ impl App {
             return Ok(());
         }
         let path = root.join(&row.path);
-        let current = self.editor.has_file() && Path::new(self.editor.filename()) == path;
-        if !current {
-            let name = path.to_string_lossy().to_string();
-            self.editor
-                .edit_file(Some(&name), false)
-                .map_err(file_error_message)?;
-        }
-        if let (Some(line), Some(column)) = (row.line, row.column) {
-            self.editor.apply(Action::JumpTo(
-                line.saturating_sub(1),
-                column.saturating_sub(1),
-            ));
-        }
-        self.reveal_cursor();
-        Ok(())
+        self.open_file_location(
+            &path,
+            row.line.map(|line| line.saturating_sub(1)),
+            row.column.map(|column| column.saturating_sub(1)),
+        )
     }
 
     fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
         if self.pager.is_some() {
             return self.handle_pager_key(key);
+        }
+        if key.code == KeyCode::Esc
+            && self.editor.mode() == kawi_editor::Mode::Normal
+            && self.lsp.cancel_pending()
+        {
+            return Ok(false);
         }
         if self.stops_macro_recording(key) {
             self.consume_macro_stop();
@@ -778,6 +900,14 @@ impl App {
             Action::OpenReplacePicker => self.open_replace_picker(),
             Action::GitNextHunk => self.handle_git_navigation(true),
             Action::GitPrevHunk => self.handle_git_navigation(false),
+            Action::DiagnosticNext => self.handle_diagnostic_navigation(true),
+            Action::DiagnosticPrev => self.handle_diagnostic_navigation(false),
+            Action::GotoDefinition => self.request_definition(),
+            Action::ShowReferences => self.request_references(),
+            Action::Hover => self.request_hover(),
+            Action::Rename => self.request_rename(),
+            Action::CodeAction => self.request_code_actions(),
+            Action::Format => self.request_format(),
             Action::GitStageHunk => self.handle_git_stage_hunk(),
             Action::GitUndoStage => self.handle_git_undo_stage(),
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
@@ -813,6 +943,7 @@ impl App {
         match self.editor.save(force) {
             Ok(outcome) => {
                 let report = written_report(self.editor.filename(), outcome);
+                self.lsp.save();
                 self.show_message(report);
                 true
             }
@@ -884,6 +1015,15 @@ impl App {
         Ok(false)
     }
 
+    fn dismiss_lsp_menu(&mut self) {
+        if self.completion.take().is_some() {
+            self.lsp.cancel_completion();
+        }
+        if self.code_actions.take().is_some() {
+            self.lsp.cancel_code_actions();
+        }
+    }
+
     fn refresh_picker(&mut self) -> bool {
         self.picker.as_mut().is_some_and(PickerSession::refresh)
     }
@@ -894,17 +1034,19 @@ impl App {
 
     fn open_picker(&mut self, kind: PickerKind) -> Result<bool> {
         let root = self.picker_root();
+        let wake = self.events.wake();
         self.picker = Some(match kind {
-            PickerKind::Files => PickerSession::files(root),
-            PickerKind::Grep => PickerSession::grep(root, None),
+            PickerKind::Files => PickerSession::files(root, wake),
+            PickerKind::Grep => PickerSession::grep(root, None, wake),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
+            PickerKind::Locations => PickerSession::locations(root, "Locations", Vec::new()),
         });
         Ok(false)
     }
 
     fn open_replace_picker(&mut self) -> Result<bool> {
         let root = self.picker_root();
-        self.replace = Some(ReplaceSession::new(root));
+        self.replace = Some(ReplaceSession::new(root, self.events.wake()));
         Ok(false)
     }
 
@@ -914,7 +1056,7 @@ impl App {
             return Ok(false);
         };
         let root = self.picker_root();
-        self.picker = Some(PickerSession::grep(root, Some(&word)));
+        self.picker = Some(PickerSession::grep(root, Some(&word), self.events.wake()));
         Ok(false)
     }
 
@@ -952,6 +1094,9 @@ impl App {
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if self.paste_rename(&text) {
+            return Ok(false);
+        }
         if let Some(session) = self.replace.as_mut() {
             session.paste(&text);
             return Ok(false);
@@ -963,6 +1108,7 @@ impl App {
         if self.pager.is_some() {
             return Ok(false);
         }
+        self.dismiss_lsp_menu();
         self.editor.paste(&text);
         self.reveal_cursor();
         Ok(false)
@@ -1006,7 +1152,7 @@ impl App {
         if path.as_deref() != self.git_path.as_deref() {
             self.git = None;
             self.git_error = None;
-            self.editor.set_signcolumn_width(0);
+            self.update_signcolumn_width();
             self.git_path = path.clone();
             let Some(path) = path else {
                 return;
@@ -1020,7 +1166,7 @@ impl App {
                         !self.editor.text_has_final_newline(),
                     );
                     self.git = Some(session);
-                    self.editor.set_signcolumn_width(1);
+                    self.update_signcolumn_width();
                 }
                 Ok(None) => {}
                 Err(error) => self.git_error = Some(error.to_string()),
@@ -1070,6 +1216,27 @@ impl App {
         self.editor.apply(Action::MoveToFirstNonBlank);
         self.reveal_cursor();
         self.show_message(format!("Hunk {} of {}", nav.index, nav.total));
+        Ok(false)
+    }
+
+    fn handle_diagnostic_navigation(&mut self, forward: bool) -> Result<bool> {
+        let navigation =
+            self.lsp
+                .navigate_diagnostics(self.editor.row(), self.editor.col(), forward);
+        let Some(navigation) = navigation else {
+            self.show_message("No diagnostics".to_string());
+            return Ok(false);
+        };
+        self.editor
+            .apply(Action::JumpTo(navigation.row, navigation.column));
+        self.reveal_cursor();
+        self.show_message(format!(
+            "{} {} of {}: {}",
+            diagnostic_label(navigation.severity),
+            navigation.index,
+            navigation.total,
+            lsp::one_line(&navigation.message)
+        ));
         Ok(false)
     }
 
@@ -1140,7 +1307,7 @@ impl App {
         self.git = None;
         self.git_path = None;
         self.git_error = None;
-        self.editor.set_signcolumn_width(0);
+        self.update_signcolumn_width();
         self.sync_git();
         Ok(false)
     }
@@ -1346,7 +1513,10 @@ impl App {
 
     fn handle_save_all(&mut self) -> Result<bool> {
         match self.editor.write_all() {
-            Ok(()) => Ok(false),
+            Ok(()) => {
+                self.lsp.save();
+                Ok(false)
+            }
             Err(error) => {
                 self.show_message(file_error_message(error));
                 Ok(false)
@@ -1356,7 +1526,10 @@ impl App {
 
     fn handle_write_quit_all(&mut self) -> Result<bool> {
         match self.editor.write_all() {
-            Ok(()) => Ok(true),
+            Ok(()) => {
+                self.lsp.save();
+                Ok(true)
+            }
             Err(error) => {
                 self.show_message(file_error_message(error));
                 Ok(false)
@@ -1495,17 +1668,6 @@ fn replace_stage(stage: ReplaceStage) -> kawi_tui::frame::ReplaceStage {
     }
 }
 
-fn read_next_event() -> Result<Event> {
-    read().context("read terminal event")
-}
-
-fn poll_next_event(timeout: Duration) -> Result<Option<Event>> {
-    if poll(timeout).context("poll terminal event")? {
-        return read().context("read terminal event").map(Some);
-    }
-    Ok(None)
-}
-
 fn event_needs_redraw(event: &Event) -> bool {
     match event {
         Event::Key(_) | Event::Resize(_, _) | Event::Paste(_) => true,
@@ -1620,6 +1782,7 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
         kawi_editor::EditError::MarkNotSet => "E20: Mark not set".to_string(),
         kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
+        kawi_editor::EditError::InvalidEdit => "E474: Invalid text edit".to_string(),
     }
 }
 
@@ -1639,6 +1802,7 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
     use kawi_editor::Mode;
+    use std::time::Duration;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -2620,6 +2784,19 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_take_priority_over_git_signs() {
+        let git = Some(kawi_tui::frame::Sign::Git(kawi_tui::frame::GitSign::Change));
+        let diagnostic = Some(kawi_tui::frame::DiagnosticSeverity::Error);
+        assert_eq!(
+            preferred_sign(git, diagnostic),
+            Some(kawi_tui::frame::Sign::Diagnostic(
+                kawi_tui::frame::DiagnosticSeverity::Error
+            ))
+        );
+        assert_eq!(preferred_sign(git, None), git);
+    }
+
+    #[test]
     fn marks_command_pages_listing() {
         let path = temp_file("marks_listing.txt", "  alpha\n    beta\nthird\n");
         let mut app = App::new(kawi_buffer::Buffer::from_file(&path).unwrap(), Flavor::Vim);
@@ -2986,6 +3163,33 @@ mod tests {
     }
 
     #[test]
+    fn missing_lsp_binary_reaches_the_status_line() {
+        let root = std::env::temp_dir().join(format!("kawi_lsp_status_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("languages.toml");
+        std::fs::write(
+            &path,
+            "[server.rust-analyzer]\ncommand = \"kawi-missing-rust-analyzer\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nservers = [\"rust-analyzer\"]\n",
+        )
+        .unwrap();
+        let mut buffer = Buffer::from_string("fn main() {}\n");
+        buffer.path = Some("main.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.lsp.load(&path, app.events.wake());
+        app.sync_lsp();
+        assert_eq!(
+            app.lsp.status(),
+            Some("lsp: rust-analyzer not found in PATH")
+        );
+        assert_eq!(
+            app.status_snapshot().lsp,
+            Some("lsp: rust-analyzer not found in PATH")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn syntax_results_reach_the_app() {
         let mut buffer = Buffer::from_string("// hi\nfn main() {}\n");
         buffer.path = Some("test.rs".to_string());
@@ -2996,20 +3200,6 @@ mod tests {
             .syntax_spans
             .iter()
             .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
-    }
-
-    #[test]
-    fn syntax_is_ready_before_an_uncovered_viewport_is_drawn() {
-        let text = (0..3_000)
-            .map(|index| format!("fn function_{index}() {{}}\n"))
-            .collect::<String>();
-        let mut buffer = Buffer::from_string(&text);
-        buffer.path = Some("large.rs".to_string());
-        let mut app = App::new(buffer, Flavor::Vim);
-        app.refresh_syntax();
-        assert!(!app.syntax_ready());
-        app.wait_for_syntax_ready();
-        assert!(app.syntax_ready());
     }
 
     #[test]
