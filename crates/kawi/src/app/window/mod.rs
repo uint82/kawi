@@ -6,6 +6,7 @@ use kawi_tui::frame::Rect;
 
 mod app;
 mod layout;
+mod snapshot;
 
 pub use layout::WindowLayout;
 use layout::{
@@ -189,6 +190,15 @@ impl Windows {
     pub fn equalize(&mut self) -> bool {
         let root = self.root.as_mut().expect("the window tree exists");
         equalize_node(root)
+    }
+
+    pub(crate) fn clamp_views<F>(&mut self, mut clamp: F)
+    where
+        F: FnMut(usize, ViewState) -> ViewState,
+    {
+        for window in self.windows.values_mut() {
+            window.view = clamp(window.buffer, window.view);
+        }
     }
 
     pub fn count_buffer(&self, buffer: usize) -> usize {

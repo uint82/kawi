@@ -318,10 +318,22 @@ impl Editor {
                         self.switch_buffer(number);
                         Ok(())
                     }
-                    None => self.open_buffer(name),
+                    None => self.open_buffer(name, true),
                 }
             }
         }
+    }
+
+    pub fn open_file_buffer(&mut self, name: &str) -> Result<(), EditError> {
+        let target = paths::absolute(name, &current_dir());
+        if let Some(number) = self.find_buffer(&target) {
+            self.buffers.set_listed(number, true);
+            if number != self.buffers.current() {
+                self.switch_buffer(number);
+            }
+            return Ok(());
+        }
+        self.open_buffer(name, false)
     }
 
     pub fn buffer_next(&mut self) {
@@ -491,6 +503,11 @@ impl Editor {
         self.buffers
             .entry(number)
             .map(|entry| entry.state.buffer.path.as_deref().unwrap_or("[No Name]"))
+    }
+
+    pub fn buffer_path(&self, number: usize) -> Option<&str> {
+        self.buffer_at(number)
+            .and_then(|buffer| buffer.path.as_deref())
     }
 
     pub fn buffer_list(&self) -> String {
@@ -698,8 +715,8 @@ impl Editor {
         self.buffers.set_current(number);
     }
 
-    fn open_buffer(&mut self, name: &str) -> Result<(), EditError> {
-        if self.buffer_reusable() {
+    fn open_buffer(&mut self, name: &str, reuse: bool) -> Result<(), EditError> {
+        if reuse && self.buffer_reusable() {
             return self.reuse_buffer(name);
         }
         let buffer = Buffer::open(name).map_err(|_| EditError::CannotOpen(name.to_string()))?;
@@ -1155,6 +1172,22 @@ mod tests {
         assert_eq!(e.filename(), file_path(&dir, "a.txt"));
         assert_eq!(e.alternate_buffer(), Some(1));
         assert_eq!(lines(&e), vec!["alpha"]);
+    }
+
+    #[test]
+    fn open_file_buffer_keeps_an_empty_unnamed_buffer() {
+        let dir = temp_dir("open_file_buffer");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = Editor::new(Buffer::from_string(""));
+        let path = file_path(&dir, "a.txt");
+        e.open_file_buffer(&path).unwrap();
+        assert_eq!(e.buffer_number(), 2);
+        assert_eq!(e.buffer_count(), 2);
+        assert_eq!(e.buffer_path(1), None);
+        assert_eq!(e.buffer_path(2), Some(path.as_str()));
+        e.open_file_buffer(&path).unwrap();
+        assert_eq!(e.buffer_number(), 2);
+        assert_eq!(e.buffer_count(), 2);
     }
 
     #[test]

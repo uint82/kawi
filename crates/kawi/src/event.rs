@@ -6,11 +6,17 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+#[cfg(unix)]
+use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
+#[cfg(unix)]
+use signal_hook::iterator::Signals;
+
 pub struct EventQueue {
     wake: Sender<()>,
     wake_rx: Receiver<()>,
     input: Arc<Mutex<VecDeque<Event>>>,
     input_closed: Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl EventQueue {
@@ -21,6 +27,7 @@ impl EventQueue {
             wake_rx,
             input: Arc::new(Mutex::new(VecDeque::new())),
             input_closed: Arc::new(AtomicBool::new(false)),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -39,6 +46,28 @@ impl EventQueue {
         Ok(())
     }
 
+    pub fn start_signal_handlers(&self) -> Result<()> {
+        #[cfg(unix)]
+        {
+            let mut signals =
+                Signals::new([SIGHUP, SIGTERM, SIGINT]).context("register signal handlers")?;
+            let wake = self.wake.clone();
+            let shutdown = Arc::clone(&self.shutdown);
+            thread::Builder::new()
+                .name("kawi-signal".to_string())
+                .spawn(move || {
+                    for _ in signals.forever() {
+                        shutdown.store(true, Ordering::SeqCst);
+                        if wake.send(()).is_err() {
+                            return;
+                        }
+                    }
+                })
+                .context("spawn signal thread")?;
+        }
+        Ok(())
+    }
+
     pub fn take_input(&self) -> Vec<Event> {
         let mut input = self.input.lock().unwrap_or_else(|error| error.into_inner());
         input.drain(..).collect()
@@ -52,6 +81,10 @@ impl EventQueue {
 
     pub fn input_closed(&self) -> bool {
         self.input_closed.load(Ordering::SeqCst)
+    }
+
+    pub fn shutdown_requested(&self) -> bool {
+        self.shutdown.load(Ordering::SeqCst)
     }
 
     #[cfg(test)]
@@ -94,6 +127,14 @@ mod tests {
         let events = EventQueue::new();
         events.wake().send(()).unwrap();
         events.wait().unwrap();
+    }
+
+    #[test]
+    fn shutdown_starts_clear_and_can_be_requested() {
+        let events = EventQueue::new();
+        assert!(!events.shutdown_requested());
+        events.shutdown.store(true, Ordering::SeqCst);
+        assert!(events.shutdown_requested());
     }
 
     #[test]
