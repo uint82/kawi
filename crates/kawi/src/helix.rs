@@ -73,6 +73,7 @@ impl HelixKeymap {
             KeyCode::Char('N') => self.map_plain_or_noop(key, Action::PrevMatch),
             KeyCode::Char(';') => self.map_plain_or_noop(key, Action::CollapseSelection),
             KeyCode::Char(':') => self.map_plain_or_noop(key, Action::EnterCommand),
+            KeyCode::F(2) => Action::Rename,
             _ => Action::Noop,
         }
     }
@@ -130,6 +131,12 @@ mod tests {
 
     fn plain(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn f2_maps_to_rename() {
+        let mut map = HelixKeymap::new();
+        assert_eq!(map.map(plain(KeyCode::F(2)), Mode::Normal), Action::Rename);
     }
 
     #[test]

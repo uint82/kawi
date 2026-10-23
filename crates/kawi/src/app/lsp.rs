@@ -4,8 +4,8 @@ use super::lsp_navigation::{
 };
 use kawi_editor::Editor;
 use kawi_lsp::{
-    DiagnosticSeverity, Languages, LspEvent, LspService, MessageLevel, ProgressEvent, ServerState,
-    StatusEvent,
+    DiagnosticSeverity, Languages, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
+    RenameReady, ServerState, StatusEvent,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -23,6 +23,10 @@ pub struct LspUi {
     progress: BTreeMap<(String, String), ProgressSnapshot>,
     diagnostics: DiagnosticState,
     navigation: LspNavigation,
+    rename_request: Option<u64>,
+    rename_ready: Option<RenameReady>,
+    rename_edit: Option<RenameEvent>,
+    rename_error: Option<u64>,
     display: Option<String>,
     message: Option<String>,
 }
@@ -96,8 +100,66 @@ impl LspUi {
         self.navigation.take_hover()
     }
 
+    pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, String> {
+        let Some(service) = self.service.as_ref() else {
+            return Err("lsp unavailable".to_string());
+        };
+        let Some(path) = editor_path(editor) else {
+            return Err("E32: No file name".to_string());
+        };
+        if let Some(request) = self.rename_request.take() {
+            service.cancel(request);
+        }
+        self.rename_ready = None;
+        self.rename_edit = None;
+        self.rename_error = None;
+        let request = service.prepare_rename(&path, super::lsp_navigation::cursor_position(editor));
+        self.rename_request = Some(request);
+        Ok(request)
+    }
+
+    pub fn rename(&mut self, request: u64, name: &str) -> bool {
+        self.service
+            .as_ref()
+            .is_some_and(|service| service.rename(request, name))
+    }
+
+    pub fn cancel_rename(&mut self, request: u64) {
+        if let Some(service) = self.service.as_ref() {
+            service.cancel(request);
+        }
+        if self.rename_request == Some(request) {
+            self.rename_request = None;
+        }
+        self.rename_ready = None;
+        self.rename_edit = None;
+        self.rename_error = None;
+    }
+
+    pub fn take_rename_ready(&mut self) -> Option<RenameReady> {
+        self.rename_ready.take()
+    }
+
+    pub fn take_rename_edit(&mut self) -> Option<RenameEvent> {
+        self.rename_edit.take()
+    }
+
+    pub fn take_rename_error(&mut self) -> Option<u64> {
+        self.rename_error.take()
+    }
+
     pub fn cancel_pending(&mut self) -> bool {
-        self.navigation.cancel(self.service.as_ref())
+        let navigation = self.navigation.cancel(self.service.as_ref());
+        let Some(request) = self.rename_request.take() else {
+            return navigation;
+        };
+        if let Some(service) = self.service.as_ref() {
+            service.cancel(request);
+        }
+        self.rename_ready = None;
+        self.rename_edit = None;
+        self.rename_error = None;
+        true
     }
 
     pub fn update_display(&mut self) -> bool {
@@ -201,7 +263,29 @@ impl LspUi {
                 .navigation
                 .apply_location(&location, LocationKind::References),
             LspEvent::Hover(hover) => self.navigation.apply_hover(&hover),
+            LspEvent::RenameReady(ready) => {
+                if self.rename_request != Some(ready.request) {
+                    return false;
+                }
+                self.rename_ready = Some(ready);
+                true
+            }
+            LspEvent::Rename(event) => {
+                if self.rename_request != Some(event.request) {
+                    return false;
+                }
+                self.rename_request = None;
+                self.rename_edit = Some(event);
+                true
+            }
             LspEvent::RequestError { request, message } => {
+                if self.rename_request == Some(request) {
+                    self.rename_request = None;
+                    self.rename_ready = None;
+                    self.rename_error = Some(request);
+                    self.message = Some(message);
+                    return true;
+                }
                 if self.navigation.apply_error(request) {
                     self.message = Some(message);
                     true
@@ -356,6 +440,32 @@ pub(super) fn one_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rename_errors_are_reported_for_the_pending_request() {
+        let mut ui = LspUi {
+            rename_request: Some(5),
+            ..LspUi::default()
+        };
+        assert!(ui.apply_event(LspEvent::RequestError {
+            request: 5,
+            message: "failed".to_string(),
+        }));
+        assert_eq!(ui.take_rename_error(), Some(5));
+        assert_eq!(ui.take_message().as_deref(), Some("failed"));
+        assert!(ui.rename_request.is_none());
+    }
+
+    #[test]
+    fn cancel_pending_cancels_a_rename_request() {
+        let mut ui = LspUi {
+            rename_request: Some(7),
+            ..LspUi::default()
+        };
+        assert!(ui.cancel_pending());
+        assert!(ui.rename_request.is_none());
+        assert!(!ui.cancel_pending());
+    }
 
     #[test]
     fn progress_format_includes_percentage() {

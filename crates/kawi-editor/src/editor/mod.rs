@@ -47,6 +47,7 @@ mod syntax;
 mod tab;
 mod visual_block;
 mod word_search;
+mod workspace_edit;
 
 use session::InsertEdit;
 
@@ -492,7 +493,8 @@ impl Editor {
             | Action::DiagnosticPrev
             | Action::GotoDefinition
             | Action::ShowReferences
-            | Action::Hover => self.noop(),
+            | Action::Hover
+            | Action::Rename => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

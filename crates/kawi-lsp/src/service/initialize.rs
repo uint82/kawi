@@ -1,13 +1,16 @@
+use super::pending::ReplyPurpose;
 use super::to_params;
 use super::*;
 use crate::protocol::{Message, RequestId, ResponseError};
 use crate::workspace::file_uri;
 use crate::ServerConfig;
 use lsp_types::{
-    ClientCapabilities, GeneralClientCapabilities, InitializeParams, InitializeResult,
-    PositionEncodingKind, PublishDiagnosticsClientCapabilities, TextDocumentClientCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncSaveOptions, WindowClientCapabilities,
-    WorkspaceClientCapabilities, WorkspaceFolder,
+    ClientCapabilities, FailureHandlingKind, GeneralClientCapabilities, InitializeParams,
+    InitializeResult, PositionEncodingKind, PrepareSupportDefaultBehavior,
+    PublishDiagnosticsClientCapabilities, RenameClientCapabilities, RenameOptions,
+    TextDocumentClientCapabilities, TextDocumentSyncCapability, TextDocumentSyncSaveOptions,
+    WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
+    WorkspaceFolder,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -24,7 +27,13 @@ impl Manager {
             return;
         };
         if client.pending_initialize.as_ref() != Some(&id) {
-            self.handle_navigation_response(key, id, result);
+            match self.pending_replies.get(&id).map(|reply| reply.purpose) {
+                Some(ReplyPurpose::Navigation) => {
+                    self.handle_navigation_response(key, id, result);
+                }
+                Some(ReplyPurpose::Rename) => self.handle_rename_response(key, id, result),
+                None => {}
+            }
             return;
         }
         client.pending_initialize = None;
@@ -168,7 +177,16 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
                 lsp_types::HoverProviderCapability::Simple(enabled) => *enabled,
                 lsp_types::HoverProviderCapability::Options(_) => true,
             }),
+        rename: provider_enabled(capabilities.rename_provider.as_ref()),
+        prepare_rename: prepare_enabled(capabilities.rename_provider.as_ref()),
     }
+}
+
+fn prepare_enabled(provider: Option<&lsp_types::OneOf<bool, RenameOptions>>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::OneOf::Left(_) => false,
+        lsp_types::OneOf::Right(options) => options.prepare_provider.unwrap_or(false),
+    })
 }
 
 fn provider_enabled<T>(provider: Option<&lsp_types::OneOf<bool, T>>) -> bool {
@@ -213,6 +231,11 @@ fn initialize_capabilities() -> ClientCapabilities {
         workspace: Some(WorkspaceClientCapabilities {
             workspace_folders: Some(true),
             configuration: Some(true),
+            workspace_edit: Some(WorkspaceEditClientCapabilities {
+                document_changes: Some(true),
+                failure_handling: Some(FailureHandlingKind::Abort),
+                ..WorkspaceEditClientCapabilities::default()
+            }),
             ..WorkspaceClientCapabilities::default()
         }),
         window: Some(WindowClientCapabilities {
@@ -237,6 +260,12 @@ fn initialize_capabilities() -> ClientCapabilities {
                     lsp_types::MarkupKind::Markdown,
                     lsp_types::MarkupKind::PlainText,
                 ]),
+            }),
+            rename: Some(RenameClientCapabilities {
+                dynamic_registration: Some(false),
+                prepare_support: Some(true),
+                prepare_support_default_behavior: Some(PrepareSupportDefaultBehavior::IDENTIFIER),
+                honors_change_annotations: Some(false),
             }),
             ..TextDocumentClientCapabilities::default()
         }),
@@ -316,6 +345,48 @@ mod tests {
                 lsp_types::MarkupKind::PlainText
             ])
         );
+    }
+
+    #[test]
+    fn advertises_rename_capabilities() {
+        let capabilities = initialize_capabilities();
+        let rename = capabilities
+            .text_document
+            .and_then(|text_document| text_document.rename)
+            .expect("rename capability");
+        assert_eq!(rename.prepare_support, Some(true));
+        assert_eq!(
+            rename.prepare_support_default_behavior,
+            Some(PrepareSupportDefaultBehavior::IDENTIFIER)
+        );
+        let workspace = capabilities
+            .workspace
+            .and_then(|workspace| workspace.workspace_edit)
+            .expect("workspace edit capability");
+        assert_eq!(workspace.document_changes, Some(true));
+        assert_eq!(workspace.failure_handling, Some(FailureHandlingKind::Abort));
+        assert_eq!(workspace.resource_operations, None);
+    }
+
+    #[test]
+    fn reads_rename_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            rename_provider: Some(lsp_types::OneOf::Right(RenameOptions {
+                prepare_provider: Some(true),
+                work_done_progress_options: Default::default(),
+            })),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.rename);
+        assert!(support.prepare_rename);
+        let simple = lsp_types::ServerCapabilities {
+            rename_provider: Some(lsp_types::OneOf::Left(true)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&simple);
+        assert!(support.rename);
+        assert!(!support.prepare_rename);
     }
 
     #[test]

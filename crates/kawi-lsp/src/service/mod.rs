@@ -19,7 +19,10 @@ mod initialize;
 mod manager;
 mod navigation;
 mod navigation_results;
+mod pending;
+mod rename;
 mod request;
+mod workspace_edit;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(12);
 pub const INITIAL_DOCUMENT_VERSION: i32 = 1;
@@ -89,6 +92,32 @@ pub struct HoverEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentEdit {
+    pub path: PathBuf,
+    pub original_hash: u64,
+    pub edits: Vec<TextChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WorkspaceEdit {
+    pub documents: Vec<DocumentEdit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameReady {
+    pub request: u64,
+    pub placeholder: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameEvent {
+    pub request: u64,
+    pub edit: WorkspaceEdit,
+}
+
+pub use kawi_buffer::TextEdit as TextChange;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LspEvent {
     Status(StatusEvent),
     Progress(ProgressEvent),
@@ -96,6 +125,8 @@ pub enum LspEvent {
     Definition(LocationEvent),
     References(LocationEvent),
     Hover(HoverEvent),
+    RenameReady(RenameReady),
+    Rename(RenameEvent),
     RequestError {
         request: u64,
         message: String,
@@ -213,6 +244,23 @@ impl LspService {
         request
     }
 
+    pub fn prepare_rename(&self, path: &Path, position: CursorPosition) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::PrepareRename {
+            request,
+            path: path.to_path_buf(),
+            position,
+        });
+        request
+    }
+
+    pub fn rename(&self, request: u64, new_name: &str) -> bool {
+        self.send(Command::Rename {
+            request,
+            new_name: new_name.to_string(),
+        })
+    }
+
     pub fn cancel(&self, request: u64) {
         let _ = self.send(Command::Cancel { request });
     }
@@ -277,6 +325,15 @@ pub(crate) enum Command {
         path: PathBuf,
         position: CursorPosition,
     },
+    PrepareRename {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+    },
+    Rename {
+        request: u64,
+        new_name: String,
+    },
     Cancel {
         request: u64,
     },
@@ -297,7 +354,8 @@ struct Manager {
     clients: HashMap<ClientKey, ClientState>,
     documents: HashMap<PathBuf, Document>,
     pending_requests: HashMap<u64, navigation::PendingRequest>,
-    pending_replies: HashMap<RequestId, navigation::PendingReply>,
+    pending_replies: HashMap<RequestId, pending::PendingReply>,
+    pending_renames: HashMap<u64, rename::PendingRename>,
     next_request: i64,
     initialize_timeout: Duration,
 }
@@ -320,6 +378,8 @@ struct RequestSupport {
     definition: bool,
     references: bool,
     hover: bool,
+    rename: bool,
+    prepare_rename: bool,
 }
 
 struct Document {
@@ -339,4 +399,8 @@ struct SyncConfig {
 
 pub(super) fn to_params<T: Serialize>(params: T) -> Option<Value> {
     serde_json::to_value(params).ok()
+}
+
+pub(super) fn one_line_message(message: &str) -> String {
+    message.split_whitespace().collect::<Vec<_>>().join(" ")
 }

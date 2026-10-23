@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use kawi_picker::{content_hash, ReplacePreview};
+use kawi_buffer::content_hash;
+use kawi_picker::ReplacePreview;
 
 use super::App;
 

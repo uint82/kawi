@@ -13,6 +13,7 @@ mod workspace;
 pub use config::{LanguageConfig, Languages, ServerConfig};
 pub use service::{
     CursorPosition, Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity,
-    DiagnosticsEvent, HoverEvent, LocationEvent, LspEvent, LspService, MessageLevel, ProgressEvent,
-    ServerState, StatusEvent, TextLocation, INITIAL_DOCUMENT_VERSION,
+    DiagnosticsEvent, DocumentEdit, HoverEvent, LocationEvent, LspEvent, LspService, MessageLevel,
+    ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent, TextChange, TextLocation,
+    WorkspaceEdit, INITIAL_DOCUMENT_VERSION,
 };

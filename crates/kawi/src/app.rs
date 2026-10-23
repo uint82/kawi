@@ -11,8 +11,10 @@ mod lsp_navigation;
 mod macro_codec;
 mod macro_ops;
 mod picker;
+mod rename;
 mod replace;
 mod replace_apply;
+mod workspace_edit;
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -114,6 +116,7 @@ pub struct App {
     syntax_applied: u64,
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
+    rename: Option<rename::RenameSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
@@ -142,6 +145,7 @@ impl App {
             syntax_applied: 0,
             picker: None,
             replace: None,
+            rename: None,
             git: None,
             git_path: None,
             git_error: None,
@@ -490,6 +494,7 @@ impl App {
             viewport: self.editor.viewport(),
             status: input.status,
             message: self.message.as_deref(),
+            prompt: self.rename.as_ref().and_then(rename::RenameSession::prompt),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),
@@ -576,6 +581,7 @@ impl App {
         if let Some(hover) = self.lsp.take_hover() {
             self.handle_hover_result(hover);
         }
+        self.sync_rename();
     }
 
     fn update_signcolumn_width(&mut self) {
@@ -594,7 +600,7 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.picker.is_some() || self.replace.is_some() {
+        if self.picker.is_some() || self.replace.is_some() || self.rename.is_some() {
             return self.handle_noop();
         }
         if self.pager.is_some() {
@@ -683,6 +689,9 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.rename.is_some() {
+            return self.handle_rename_key(key);
+        }
         if self.replace.is_some() {
             return self.handle_replace_key(key);
         }
@@ -846,6 +855,7 @@ impl App {
             Action::GotoDefinition => self.request_definition(),
             Action::ShowReferences => self.request_references(),
             Action::Hover => self.request_hover(),
+            Action::Rename => self.request_rename(),
             Action::GitStageHunk => self.handle_git_stage_hunk(),
             Action::GitUndoStage => self.handle_git_undo_stage(),
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
@@ -1023,6 +1033,9 @@ impl App {
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if self.paste_rename(&text) {
+            return Ok(false);
+        }
         if let Some(session) = self.replace.as_mut() {
             session.paste(&text);
             return Ok(false);
@@ -1707,6 +1720,7 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
         kawi_editor::EditError::MarkNotSet => "E20: Mark not set".to_string(),
         kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
+        kawi_editor::EditError::InvalidEdit => "E474: Invalid text edit".to_string(),
     }
 }
 

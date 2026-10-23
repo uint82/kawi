@@ -369,6 +369,7 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "kawi-buffer",
  "regex",
  "regex-syntax",
 ]

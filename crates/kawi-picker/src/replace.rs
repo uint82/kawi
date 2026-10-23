@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
+use kawi_buffer::content_hash;
 use regex::{Captures, Regex, RegexBuilder};
 
 use crate::grep::grep_project_while;
@@ -198,15 +199,6 @@ fn split_line_ending(line: &str) -> (&str, &str) {
         return (body, "\n");
     }
     (line, "")
-}
-
-pub fn content_hash(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 fn expand_replacement(template: &str, captures: &Captures<'_>) -> String {
@@ -409,10 +401,5 @@ mod tests {
         );
         assert!(replace_preview(&root, "(", "x", 10).is_err());
         fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
-    fn hash_changes_with_content() {
-        assert_ne!(content_hash(b"a"), content_hash(b"b"));
     }
 }

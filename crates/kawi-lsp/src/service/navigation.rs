@@ -1,13 +1,14 @@
 use super::navigation_results::{
     definition_locations, hover_lines, join_hovers, reference_locations, sort_locations,
 };
+use super::pending::ReplyPurpose;
 use super::*;
-use crate::protocol::{Message, RequestId, ResponseError};
+use crate::protocol::{RequestId, ResponseError};
 use crate::text;
 use crate::workspace;
 use lsp_types::{
-    GotoDefinitionParams, HoverParams, Position, PositionEncodingKind, ReferenceContext,
-    ReferenceParams, TextDocumentIdentifier, TextDocumentPositionParams,
+    GotoDefinitionParams, HoverParams, Position, ReferenceContext, ReferenceParams,
+    TextDocumentIdentifier, TextDocumentPositionParams,
 };
 use ropey::Rope;
 use serde_json::Value;
@@ -29,12 +30,6 @@ pub(super) struct PendingRequest {
     locations: Vec<TextLocation>,
     hovers: Vec<Vec<String>>,
     error: Option<String>,
-}
-
-pub(super) struct PendingReply {
-    request: u64,
-    key: ClientKey,
-    encoding: PositionEncodingKind,
 }
 
 struct RequestTarget {
@@ -148,58 +143,13 @@ impl Manager {
     }
 
     fn send_navigation_request(&mut self, request: u64, kind: RequestKind, target: RequestTarget) {
-        let id = self.request_id();
-        let params = navigation_params(kind, target.uri, target.position);
-        let message =
-            params.map(|params| Message::request(id.clone(), kind.method(), Some(params)));
-        self.pending_replies.insert(
-            id.clone(),
-            PendingReply {
-                request,
-                key: target.key.clone(),
-                encoding: self
-                    .clients
-                    .get(&target.key)
-                    .map_or(PositionEncodingKind::UTF16, |client| {
-                        client.encoding.clone()
-                    }),
-            },
+        self.send_tracked_request(
+            request,
+            &target.key,
+            kind.method(),
+            navigation_params(kind, target.uri, target.position),
+            ReplyPurpose::Navigation,
         );
-        let Some(message) = message else {
-            self.fail_reply(&id, "request params could not be serialized".to_string());
-            return;
-        };
-        let sent = self
-            .clients
-            .get(&target.key)
-            .is_some_and(|client| client.client.send(message));
-        if !sent {
-            self.fail_reply(&id, "server is not accepting messages".to_string());
-        }
-    }
-
-    pub(super) fn cancel_navigation(&mut self, request: u64) {
-        if self.pending_requests.remove(&request).is_none() {
-            return;
-        }
-        let ids: Vec<RequestId> = self
-            .pending_replies
-            .iter()
-            .filter(|(_, reply)| reply.request == request)
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in ids {
-            let Some(reply) = self.pending_replies.remove(&id) else {
-                continue;
-            };
-            let Some(client) = self.clients.get(&reply.key) else {
-                continue;
-            };
-            client.client.send(Message::notification(
-                "$/cancelRequest",
-                Some(serde_json::json!({"id": id.to_value()})),
-            ));
-        }
     }
 
     pub(super) fn handle_navigation_response(
@@ -249,29 +199,14 @@ impl Manager {
         self.advance_navigation(reply.request);
     }
 
-    pub(super) fn fail_navigation_for_client(&mut self, key: &ClientKey, message: &str) {
-        let ids: Vec<RequestId> = self
-            .pending_replies
-            .iter()
-            .filter(|(_, reply)| &reply.key == key)
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in ids {
-            self.fail_reply(&id, message.to_string());
-        }
-    }
-
-    fn fail_reply(&mut self, id: &RequestId, message: String) {
-        let Some(reply) = self.pending_replies.remove(id) else {
-            return;
-        };
-        let Some(group) = self.pending_requests.get_mut(&reply.request) else {
+    pub(super) fn fail_navigation_reply(&mut self, request: u64, message: String) {
+        let Some(group) = self.pending_requests.get_mut(&request) else {
             return;
         };
         if group.error.is_none() {
             group.error = Some(message);
         }
-        self.advance_navigation(reply.request);
+        self.advance_navigation(request);
     }
 
     fn advance_navigation(&mut self, request: u64) {
@@ -399,8 +334,4 @@ fn navigation_params(kind: RequestKind, uri: lsp_types::Uri, position: Position)
             work_done_progress_params: Default::default(),
         }),
     }
-}
-
-fn one_line_message(message: &str) -> String {
-    message.split_whitespace().collect::<Vec<_>>().join(" ")
 }

@@ -26,6 +26,7 @@ impl Manager {
             documents: HashMap::new(),
             pending_requests: HashMap::new(),
             pending_replies: HashMap::new(),
+            pending_renames: HashMap::new(),
             next_request: 0,
             initialize_timeout,
         }
@@ -114,7 +115,13 @@ impl Manager {
                 path,
                 position,
             } => self.start_hover(request, path, position),
-            Command::Cancel { request } => self.cancel_navigation(request),
+            Command::PrepareRename {
+                request,
+                path,
+                position,
+            } => self.start_prepare_rename(request, path, position),
+            Command::Rename { request, new_name } => self.start_rename(request, new_name),
+            Command::Cancel { request } => self.cancel_request(request),
             Command::Shutdown => {}
         }
     }
@@ -162,7 +169,7 @@ impl Manager {
             ServerState::Failed
         };
         client.client.terminate();
-        self.fail_navigation_for_client(&key, &message);
+        self.fail_requests_for_client(&key, &message);
         for document in self.documents.values_mut() {
             document.clients.retain(|candidate| candidate != &key);
         }

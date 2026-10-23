@@ -57,6 +57,30 @@ pub(crate) fn char_index(
     index
 }
 
+pub(crate) fn char_offset(
+    rope: &Rope,
+    position: Position,
+    encoding: &PositionEncodingKind,
+) -> Option<usize> {
+    let line = usize::try_from(position.line).ok()?;
+    if line >= rope.len_lines() {
+        return None;
+    }
+    let start = rope.line_to_char(line);
+    let end = line_end(rope, line);
+    let mut units = 0u32;
+    for (index, value) in rope.slice(start..end).chars().enumerate() {
+        if units == position.character {
+            return Some(start.saturating_add(index));
+        }
+        if units > position.character {
+            return None;
+        }
+        units = units.saturating_add(encoded_char_len(value, encoding));
+    }
+    (units == position.character).then_some(end)
+}
+
 pub(crate) fn clamped_line(rope: &Rope, line: u32) -> usize {
     usize::try_from(line)
         .unwrap_or(usize::MAX)
@@ -163,6 +187,35 @@ mod tests {
         assert_eq!(
             position_from_column(&text, 1, 3, &PositionEncodingKind::UTF16),
             Position::new(1, 3)
+        );
+    }
+
+    #[test]
+    fn strict_offsets_reject_partial_and_out_of_bounds_positions() {
+        let text = rope("a𝄞b\ncd");
+        assert_eq!(
+            char_offset(&text, Position::new(0, 3), &PositionEncodingKind::UTF16),
+            Some(2)
+        );
+        assert_eq!(
+            char_offset(&text, Position::new(0, 2), &PositionEncodingKind::UTF16),
+            None
+        );
+        assert_eq!(
+            char_offset(&text, Position::new(0, 5), &PositionEncodingKind::UTF8),
+            Some(2)
+        );
+        assert_eq!(
+            char_offset(&text, Position::new(0, 4), &PositionEncodingKind::UTF16),
+            Some(3)
+        );
+        assert_eq!(
+            char_offset(&text, Position::new(2, 0), &PositionEncodingKind::UTF16),
+            None
+        );
+        assert_eq!(
+            char_offset(&text, Position::new(1, 3), &PositionEncodingKind::UTF16),
+            None
         );
     }
 

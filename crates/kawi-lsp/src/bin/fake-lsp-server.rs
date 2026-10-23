@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use kawi_lsp::framing;
 use kawi_lsp::protocol::{Message, RequestId, ResponseError};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, BufReader};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -28,11 +28,18 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
+    let rename_mode =
+        std::env::var("FAKE_LSP_RENAME_MODE").unwrap_or_else(|_| "prepare".to_string());
+    let rename_delay = std::env::var("FAKE_LSP_RENAME_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
     }
     let mut pending = HashSet::new();
+    let mut documents: HashMap<String, i64> = HashMap::new();
     let mut responses_valid = true;
     while let Some(value) = framing::read_message(&mut reader)? {
         let message = Message::parse(value)?;
@@ -43,6 +50,11 @@ fn main() -> Result<()> {
                         std::thread::sleep(Duration::from_millis(delay));
                     }
                     let change = if mode == "incremental" { 2 } else { 1 };
+                    let rename = if rename_mode == "simple" {
+                        json!(true)
+                    } else {
+                        json!({"prepareProvider": true})
+                    };
                     let result = json!({
                         "capabilities": {
                             "positionEncoding": "utf-16",
@@ -53,7 +65,8 @@ fn main() -> Result<()> {
                             },
                             "definitionProvider": true,
                             "referencesProvider": true,
-                            "hoverProvider": true
+                            "hoverProvider": true,
+                            "renameProvider": rename
                         },
                         "serverInfo": {"name": "fake-lsp", "version": "1"}
                     });
@@ -69,6 +82,17 @@ fn main() -> Result<()> {
                         navigation_line_offset,
                     )?;
                 }
+                "textDocument/prepareRename" => {
+                    handle_prepare_rename(&mut writer, id, params, rename_delay, &rename_mode)?
+                }
+                "textDocument/rename" => handle_rename(
+                    &mut writer,
+                    id,
+                    params,
+                    rename_delay,
+                    &rename_mode,
+                    &documents,
+                )?,
                 "shutdown" => {
                     send(&mut writer, Message::response(id, Value::Null))?;
                 }
@@ -87,7 +111,7 @@ fn main() -> Result<()> {
                     send_log(&mut writer, "ready")?;
                 }
                 "exit" => return Ok(()),
-                "textDocument/didOpen" => handle_open(&mut writer, params)?,
+                "textDocument/didOpen" => handle_open(&mut writer, params, &mut documents)?,
                 "textDocument/didChange" => handle_change(&mut writer, params)?,
                 "textDocument/didSave" => handle_save(&mut writer, params)?,
                 "textDocument/didClose" => send_log(&mut writer, "close")?,
@@ -193,14 +217,132 @@ fn send_progress(writer: &mut impl io::Write) -> Result<()> {
     Ok(())
 }
 
-fn handle_open(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {
+fn handle_open(
+    writer: &mut impl io::Write,
+    params: Option<Value>,
+    documents: &mut HashMap<String, i64>,
+) -> Result<()> {
     let params = params.context("didOpen params")?;
     let document = &params["textDocument"];
     let version = document["version"].as_i64().unwrap_or(0);
     let text = document["text"].as_str().unwrap_or("");
     let uri = document["uri"].as_str().unwrap_or("");
+    documents.insert(uri.to_string(), version);
     send_log(writer, &format!("open:{version}:{text}"))?;
     send_diagnostics(writer, uri, Some(version), "open-diagnostic")
+}
+
+fn handle_prepare_rename(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    delay: u64,
+    mode: &str,
+) -> Result<()> {
+    let params = params.context("prepare rename params")?;
+    let position = &params["position"];
+    let line = position["line"].as_i64().unwrap_or(0);
+    let character = position["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("prepare-rename:{line}:{character}"))?;
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+    let result = if mode == "empty" {
+        Value::Null
+    } else {
+        json!({
+            "range": range(line, character, character.saturating_add(3)),
+            "placeholder": "fake_symbol"
+        })
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn handle_rename(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    delay: u64,
+    mode: &str,
+    documents: &HashMap<String, i64>,
+) -> Result<()> {
+    let params = params.context("rename params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("rename uri")?
+        .to_string();
+    let new_name = params["newName"].as_str().unwrap_or("renamed").to_string();
+    let position = &params["position"];
+    let line = position["line"].as_i64().unwrap_or(0);
+    let character = position["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("rename:{new_name}:{line}:{character}"))?;
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+    let other = sibling_uri(&uri, "other.rs");
+    let result = match mode {
+        "resource" => json!({
+            "documentChanges": [{
+                "kind": "create",
+                "uri": other
+            }]
+        }),
+        "mismatch" => json!({
+            "documentChanges": [text_document_edit(
+                &uri,
+                Some(999),
+                line,
+                character,
+                character.saturating_add(4),
+                &new_name
+            )]
+        }),
+        _ => json!({
+            "documentChanges": [
+                text_document_edit(
+                    &uri,
+                    documents.get(&uri).copied(),
+                    line,
+                    character,
+                    character.saturating_add(4),
+                    &new_name
+                ),
+                text_document_edit(&other, None, 0, 3, 8, &new_name)
+            ]
+        }),
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn text_document_edit(
+    uri: &str,
+    version: Option<i64>,
+    line: i64,
+    start: i64,
+    end: i64,
+    new_name: &str,
+) -> Value {
+    json!({
+        "textDocument": {"uri": uri, "version": version},
+        "edits": [{
+            "range": range(line, start, end),
+            "newText": new_name
+        }]
+    })
+}
+
+fn range(line: i64, start: i64, end: i64) -> Value {
+    json!({
+        "start": {"line": line, "character": start},
+        "end": {"line": line, "character": end}
+    })
+}
+
+fn sibling_uri(uri: &str, name: &str) -> String {
+    match uri.rsplit_once('/') {
+        Some((prefix, _)) => format!("{prefix}/{name}"),
+        None => uri.to_string(),
+    }
 }
 
 fn handle_change(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {

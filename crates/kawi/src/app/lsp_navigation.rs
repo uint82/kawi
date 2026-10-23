@@ -159,7 +159,7 @@ fn location_request(kind: LocationKind) -> NavigationRequest {
     }
 }
 
-fn cursor_position(editor: &Editor) -> CursorPosition {
+pub(super) fn cursor_position(editor: &Editor) -> CursorPosition {
     CursorPosition {
         line: u32::try_from(editor.row()).unwrap_or(u32::MAX),
         column: u32::try_from(editor.col()).unwrap_or(u32::MAX),

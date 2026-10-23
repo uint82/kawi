@@ -41,6 +41,23 @@ fn two_server_config(root: &Path, mode: &str) -> PathBuf {
     path
 }
 
+fn rename_config(root: &Path, rename_mode: &str, rename_delay: u64) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_RENAME_MODE = \"{rename_mode}\"\nFAKE_LSP_RENAME_DELAY_MS = \"{rename_delay}\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_rename(root: &Path, rename_mode: &str, rename_delay: u64) -> LspService {
+    let config = rename_config(root, rename_mode, rename_delay);
+    let languages = Languages::load(&config);
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
+}
+
 fn start_two_servers(root: &Path, mode: &str, timeout: Duration) -> LspService {
     let config = two_server_config(root, mode);
     let languages = Languages::load(&config);
@@ -321,6 +338,163 @@ fn merges_navigation_results_from_multiple_servers() {
         .collect();
     lines.sort_unstable();
     assert_eq!(lines, vec![0, 1, 10, 11]);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn prepares_and_returns_multi_file_rename_edits() {
+    let root = temp_project("rename");
+    let file = root.join("src/main.rs");
+    let other = root.join("src/other.rs");
+    fs::write(&other, "fn other() {}\n").expect("other");
+    let service = start_rename(&root, "prepare", 0);
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.prepare_rename(&file, CursorPosition { line: 0, column: 3 });
+    let ready = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RenameReady(ready) if ready.request == request
+        )
+    });
+    let LspEvent::RenameReady(ready) = ready else {
+        panic!("unexpected rename ready event");
+    };
+    assert_eq!(ready.placeholder, "fake_symbol");
+    assert!(service.rename(request, "renamed"));
+    wait_for_log_prefix(&service, "rename:renamed:");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Rename(event) if event.request == request
+        )
+    });
+    let LspEvent::Rename(event) = event else {
+        panic!("unexpected rename event");
+    };
+    assert_eq!(event.edit.documents.len(), 2);
+    let current = event
+        .edit
+        .documents
+        .iter()
+        .find(|document| document.path == file)
+        .expect("current document");
+    assert_eq!(current.edits.len(), 1);
+    assert_eq!(current.edits[0].text, "renamed");
+    let second = event
+        .edit
+        .documents
+        .iter()
+        .find(|document| document.path == other)
+        .expect("other document");
+    assert_eq!(second.edits[0].text, "renamed");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn falls_back_to_the_local_word_without_prepare_support() {
+    let root = temp_project("rename_fallback");
+    let file = root.join("src/main.rs");
+    let service = start_rename(&root, "simple", 0);
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.prepare_rename(&file, CursorPosition { line: 0, column: 3 });
+    let ready = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RenameReady(ready) if ready.request == request
+        )
+    });
+    let LspEvent::RenameReady(ready) = ready else {
+        panic!("unexpected rename ready event");
+    };
+    assert_eq!(ready.placeholder, "main");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn cancels_prepare_rename_requests() {
+    let root = temp_project("rename_cancel");
+    let file = root.join("src/main.rs");
+    let service = start_rename(&root, "prepare", 500);
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.prepare_rename(&file, CursorPosition { line: 0, column: 3 });
+    service.cancel(request);
+    wait_for_log_prefix(&service, "cancel:");
+    let deadline = Instant::now() + Duration::from_millis(800);
+    let mut delivered = false;
+    while Instant::now() < deadline {
+        while let Some(event) = service.try_recv() {
+            delivered |= matches!(
+                event,
+                LspEvent::RenameReady(ready) if ready.request == request
+            );
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!delivered);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn rejects_workspace_edits_for_stale_open_versions() {
+    let root = temp_project("rename_version");
+    let file = root.join("src/main.rs");
+    let service = start_rename(&root, "mismatch", 0);
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.prepare_rename(&file, CursorPosition { line: 0, column: 3 });
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RenameReady(ready) if ready.request == request
+        )
+    });
+    assert!(service.rename(request, "renamed"));
+    let error = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RequestError { request: event_request, .. } if *event_request == request
+        )
+    });
+    let LspEvent::RequestError { message, .. } = error else {
+        panic!("unexpected error event");
+    };
+    assert!(message.contains("version"), "{message}");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn rejects_workspace_edit_resource_operations() {
+    let root = temp_project("rename_resource");
+    let file = root.join("src/main.rs");
+    let service = start_rename(&root, "resource", 0);
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.prepare_rename(&file, CursorPosition { line: 0, column: 3 });
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RenameReady(ready) if ready.request == request
+        )
+    });
+    assert!(service.rename(request, "renamed"));
+    let error = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::RequestError { request: event_request, .. } if *event_request == request
+        )
+    });
+    let LspEvent::RequestError { message, .. } = error else {
+        panic!("unexpected error event");
+    };
+    assert!(message.contains("resource operations"), "{message}");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

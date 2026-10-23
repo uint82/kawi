@@ -357,7 +357,7 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if let KeyCode::Char(prefix @ ('f' | 'v')) = key.code {
+            if let KeyCode::Char(prefix @ ('f' | 'v' | 'r')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(' ');
                     self.pending.push(prefix);
@@ -421,6 +421,7 @@ impl VimKeymap {
             KeyCode::Delete => Action::DeleteForward,
             KeyCode::Home => Action::MoveToLineStart,
             KeyCode::End => Action::MoveToLineEnd,
+            KeyCode::F(2) => Action::Rename,
             KeyCode::Up => Action::MoveUp,
             KeyCode::Down => Action::MoveDown,
             KeyCode::Left => Action::MoveLeft,
@@ -1197,12 +1198,15 @@ impl VimKeymap {
     }
 
     fn leader_prefix_armed(&self) -> bool {
-        matches!(self.pending.as_str(), " f" | " v" | "\\" | "\\f" | "\\v")
+        matches!(
+            self.pending.as_str(),
+            " f" | " v" | " r" | "\\" | "\\f" | "\\v" | "\\r"
+        )
     }
 
     fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
         if self.pending == "\\" {
-            if let KeyCode::Char(prefix @ ('f' | 'v')) = key.code {
+            if let KeyCode::Char(prefix @ ('f' | 'v' | 'r')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(prefix);
                     return Action::Noop;
@@ -1227,6 +1231,7 @@ impl VimKeymap {
             (" v" | "\\v", KeyCode::Char('S')) if !has_ctrl_or_alt(key) => Action::GitStageBuffer,
             (" v" | "\\v", KeyCode::Char('p')) if !has_ctrl_or_alt(key) => Action::GitPreviewHunk,
             (" v" | "\\v", KeyCode::Char('d')) if !has_ctrl_or_alt(key) => Action::GitDiff,
+            (" r" | "\\r", KeyCode::Char('n')) if !has_ctrl_or_alt(key) => Action::Rename,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -4098,6 +4103,27 @@ mod tests {
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
             Action::DiagnosticPrev
         );
+    }
+
+    #[test]
+    fn rename_keys_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(map.map(plain(KeyCode::F(2)), Mode::Normal), Action::Rename);
+        for leader in [' ', '\\'] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char(leader)), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('r')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(
+                map.map(plain(KeyCode::Char('n')), Mode::Normal),
+                Action::Rename
+            );
+        }
     }
 
     #[test]

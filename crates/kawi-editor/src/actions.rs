@@ -325,6 +325,7 @@ pub enum Action {
     GotoDefinition,
     ShowReferences,
     Hover,
+    Rename,
     GitStageHunk,
     GitUndoStage,
     GitStageBuffer,
@@ -401,6 +402,7 @@ impl Action {
                 | Self::GotoDefinition
                 | Self::ShowReferences
                 | Self::Hover
+                | Self::Rename
                 | Self::Noop
         )
     }

@@ -13,7 +13,7 @@ pub use fuzzy::fuzzy_score;
 pub use grep::{grep_project, GrepHit};
 pub use input::TextInput;
 pub use replace::{
-    content_hash, replace_preview, ReplaceEntry, ReplaceFile, ReplacePreview, MAX_REPLACE_MATCHES,
+    replace_preview, ReplaceEntry, ReplaceFile, ReplacePreview, MAX_REPLACE_MATCHES,
 };
 pub use selection::{clamped_selection, selection_at};
 pub use service::{ProjectRequest, ProjectResult, ProjectService};

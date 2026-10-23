@@ -17,6 +17,7 @@ pub struct Frame<'a> {
     pub viewport: &'a Viewport,
     pub status: &'a StatusInfo<'a>,
     pub message: Option<&'a str>,
+    pub prompt: Option<PromptMenu<'a>>,
     pub command: Option<&'a str>,
     pub search: Option<&'a str>,
     pub search_delimiter: char,
@@ -106,6 +107,12 @@ pub enum CursorStyle {
     Block,
     Bar,
     Underline,
+}
+
+pub struct PromptMenu<'a> {
+    pub label: &'a str,
+    pub value: &'a str,
+    pub cursor: usize,
 }
 
 pub struct CompletionMenu<'a> {

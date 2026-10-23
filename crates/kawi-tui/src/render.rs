@@ -8,8 +8,8 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DiagnosticSpan, Frame, PickerMenu, ReplaceMenu, ReplaceStage, SearchSpan,
-    Selection,
+    CursorStyle, DiagnosticSpan, Frame, PickerMenu, PromptMenu, ReplaceMenu, ReplaceStage,
+    SearchSpan, Selection,
 };
 use crate::paint;
 use crate::statusbar::{draw_status, StatusInfo};
@@ -862,12 +862,15 @@ fn draw_pager(out: &mut Stdout, frame: &Frame, lines: &[String]) -> Result<()> {
 }
 
 fn draw_message_row(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let layout = layout_message_row(
-        frame.command,
-        frame.search,
-        frame.search_delimiter,
-        frame.message,
-        frame.search_status,
+    let layout = layout_message_row_with_prompt(
+        frame.prompt.as_ref(),
+        MessageParts {
+            command: frame.command,
+            search: frame.search,
+            delimiter: frame.search_delimiter,
+            message: frame.message,
+            search_status: frame.search_status,
+        },
         frame.showcmd.as_deref(),
         frame.viewport.width(),
     );
@@ -887,6 +890,15 @@ struct MessageLayout {
     showcmd_col: Option<usize>,
 }
 
+struct MessageParts<'a> {
+    command: Option<&'a str>,
+    search: Option<&'a str>,
+    delimiter: char,
+    message: Option<&'a str>,
+    search_status: Option<&'a str>,
+}
+
+#[cfg(test)]
 fn layout_message_row(
     command: Option<&str>,
     search: Option<&str>,
@@ -896,8 +908,28 @@ fn layout_message_row(
     showcmd: Option<&str>,
     width: usize,
 ) -> MessageLayout {
+    layout_message_row_with_prompt(
+        None,
+        MessageParts {
+            command,
+            search,
+            delimiter: search_delimiter,
+            message,
+            search_status,
+        },
+        showcmd,
+        width,
+    )
+}
+
+fn layout_message_row_with_prompt(
+    prompt: Option<&PromptMenu<'_>>,
+    parts: MessageParts<'_>,
+    showcmd: Option<&str>,
+    width: usize,
+) -> MessageLayout {
     let show = showcmd.unwrap_or("");
-    let left = message_left(command, search, search_delimiter, message, search_status);
+    let left = message_left_with_prompt(prompt, &parts);
     MessageLayout {
         line: truncate_to_width(&left, left_width(width, show)),
         showcmd: truncate_to_width(show, width),
@@ -905,20 +937,21 @@ fn layout_message_row(
     }
 }
 
-fn message_left(
-    command: Option<&str>,
-    search: Option<&str>,
-    search_delimiter: char,
-    message: Option<&str>,
-    search_status: Option<&str>,
-) -> String {
-    if let Some(text) = command {
+fn message_left_with_prompt(prompt: Option<&PromptMenu<'_>>, parts: &MessageParts<'_>) -> String {
+    if let Some(prompt) = prompt {
+        return format!("{}: {}", prompt.label, prompt.value);
+    }
+    if let Some(text) = parts.command {
         return format!(":{text}");
     }
-    if let Some(text) = search {
-        return format!("{search_delimiter}{text}");
+    if let Some(text) = parts.search {
+        return format!("{}{text}", parts.delimiter);
     }
-    message.or(search_status).unwrap_or("").to_string()
+    parts
+        .message
+        .or(parts.search_status)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn left_width(width: usize, showcmd: &str) -> usize {
@@ -970,7 +1003,8 @@ fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
     if frame.pager.is_some() {
         return place_pager_cursor(out, frame);
     }
-    if let Some(col) = prompt_cursor_col(
+    if let Some(col) = prompt_cursor_col_with_prompt(
+        frame.prompt.as_ref(),
         frame.command,
         frame.search,
         frame.viewport.width(),
@@ -1024,6 +1058,24 @@ pub fn prompt_cursor_col(
     width: usize,
     showcmd: Option<&str>,
 ) -> Option<usize> {
+    prompt_cursor_col_with_prompt(None, command, search, width, showcmd)
+}
+
+fn prompt_cursor_col_with_prompt(
+    prompt: Option<&PromptMenu<'_>>,
+    command: Option<&str>,
+    search: Option<&str>,
+    width: usize,
+    showcmd: Option<&str>,
+) -> Option<usize> {
+    if let Some(prompt) = prompt {
+        let prefix = char_len(prompt.label).saturating_add(2);
+        return Some(
+            prefix
+                .saturating_add(prompt.cursor)
+                .min(prompt_edge(width, showcmd)),
+        );
+    }
     let text = prompt_text(command, search)?;
     Some(prompt_col(text, width, showcmd))
 }
@@ -1372,6 +1424,41 @@ mod tests {
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].text, "ab  ");
         assert_eq!(spans[1].text, "abcd");
+    }
+
+    #[test]
+    fn layout_prefers_prompt_over_command() {
+        let prompt = PromptMenu {
+            label: "rename",
+            value: "value",
+            cursor: 5,
+        };
+        let layout = layout_message_row_with_prompt(
+            Some(&prompt),
+            MessageParts {
+                command: Some("w"),
+                search: None,
+                delimiter: '/',
+                message: Some("saved"),
+                search_status: None,
+            },
+            None,
+            20,
+        );
+        assert_eq!(layout.line, "rename: value");
+    }
+
+    #[test]
+    fn prompt_cursor_follows_the_prompt_value() {
+        let prompt = PromptMenu {
+            label: "rename",
+            value: "value",
+            cursor: 5,
+        };
+        assert_eq!(
+            prompt_cursor_col_with_prompt(Some(&prompt), Some("w"), None, 30, None),
+            Some(13)
+        );
     }
 
     #[test]
