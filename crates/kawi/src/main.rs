@@ -29,6 +29,7 @@ fn main() -> Result<()> {
     let mut app = App::new(buffer, flavor);
     app.load_state();
     apply_startup_session(&mut app, session.as_ref(), warning);
+    apply_startup_recovery(&mut app, paths.as_ref(), &cwd, !restore_workspace);
     let outcome = run_app(&mut app);
     save_workspace_session(&mut app, restore_workspace, paths.as_ref(), &cwd);
     app.save_state();
@@ -63,6 +64,20 @@ fn apply_startup_session(
     }
     if !warnings.is_empty() {
         app.show_startup_warning(warnings.join("\n"));
+    }
+}
+
+fn apply_startup_recovery(
+    app: &mut App,
+    paths: Option<&StatePaths>,
+    cwd: &Path,
+    restrict_to_open: bool,
+) {
+    let Some(paths) = paths else {
+        return;
+    };
+    if let Some(warning) = app.start_recovery(&paths.recovery, cwd, restrict_to_open) {
+        app.show_startup_warning(warning);
     }
 }
 
@@ -148,6 +163,7 @@ mod tests {
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
+            recovery: dir.join("recovery"),
         };
         let mut app = App::new(
             Buffer::from_file(file.to_str().unwrap()).unwrap(),

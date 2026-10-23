@@ -208,6 +208,28 @@ impl Windows {
             .count()
     }
 
+    pub(crate) fn view_for_buffer(&self, buffer: usize) -> Option<ViewState> {
+        if self.active_view().buffer == buffer {
+            return Some(self.active_view().view);
+        }
+        self.windows
+            .values()
+            .find(|window| window.buffer == buffer)
+            .map(|window| window.view)
+    }
+
+    pub(crate) fn set_view_for_buffer(&mut self, buffer: usize, view: ViewState) -> usize {
+        let mut updated = 0;
+        for window in self.windows.values_mut() {
+            if window.buffer != buffer {
+                continue;
+            }
+            window.view = view;
+            updated += 1;
+        }
+        updated
+    }
+
     pub fn replace_unlisted_buffers(&mut self, listed: &[usize], fallback: usize) -> usize {
         let mut replaced = 0;
         for window in self.windows.values_mut() {

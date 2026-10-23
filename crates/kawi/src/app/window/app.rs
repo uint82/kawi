@@ -231,6 +231,7 @@ impl App {
         let remaining = self.windows.count_buffer(buffer).saturating_sub(1);
         if force && remaining == 0 && self.editor.is_dirty() {
             self.editor.discard_current_changes();
+            self.clear_recovery_buffer(buffer);
         }
         if self.windows.remove_active().is_none() {
             return Ok(false);
