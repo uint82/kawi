@@ -488,6 +488,68 @@ impl Editor {
         self.buffers.listed_numbers()
     }
 
+    pub fn all_buffer_numbers(&self) -> Vec<usize> {
+        self.buffers.numbers()
+    }
+
+    pub fn buffer_id(&self, number: usize) -> Option<&str> {
+        self.buffer_at(number).map(Buffer::id)
+    }
+
+    pub fn find_buffer_by_id(&self, id: &str) -> Option<usize> {
+        self.buffers
+            .numbers()
+            .into_iter()
+            .find(|number| self.buffer_id(*number) == Some(id))
+    }
+
+    pub fn set_buffer_id(&mut self, number: usize, id: String) -> bool {
+        if number == self.buffers.current() {
+            self.buffer.set_id(id);
+            return true;
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        entry.state.buffer.set_id(id);
+        true
+    }
+
+    pub fn buffer_text(&self, number: usize) -> Option<String> {
+        self.buffer_rope(number)
+            .map(|snapshot| snapshot.to_string())
+    }
+
+    pub fn buffer_rope(&self, number: usize) -> Option<Rope> {
+        self.buffer_at(number).map(Buffer::snapshot)
+    }
+
+    pub fn restore_buffer_text(&mut self, number: usize, text: &str) -> bool {
+        if number == self.buffers.current() {
+            self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
+            self.buffer.replace_all(text);
+            return true;
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        let row = entry.state.cursor.row();
+        let col = entry.state.cursor.col();
+        entry.state.buffer.checkpoint(row, col);
+        entry.state.buffer.replace_all(text);
+        true
+    }
+
     pub fn listed_buffer_count(&self) -> usize {
         self.buffers.listed_numbers().len()
     }

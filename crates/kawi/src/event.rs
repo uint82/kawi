@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 #[cfg(unix)]
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
@@ -75,8 +76,23 @@ impl EventQueue {
 
     pub fn wait(&self) -> Result<()> {
         self.wake_rx.recv().context("wait for event")?;
-        while self.wake_rx.try_recv().is_ok() {}
+        self.drain_wakes();
         Ok(())
+    }
+
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<()> {
+        match self.wake_rx.recv_timeout(timeout) {
+            Ok(()) => self.drain_wakes(),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("wait for event")
+            }
+        }
+        Ok(())
+    }
+
+    fn drain_wakes(&self) {
+        while self.wake_rx.try_recv().is_ok() {}
     }
 
     pub fn input_closed(&self) -> bool {
@@ -127,6 +143,12 @@ mod tests {
         let events = EventQueue::new();
         events.wake().send(()).unwrap();
         events.wait().unwrap();
+    }
+
+    #[test]
+    fn timeout_returns_without_a_wake() {
+        let events = EventQueue::new();
+        events.wait_timeout(Duration::from_millis(1)).unwrap();
     }
 
     #[test]

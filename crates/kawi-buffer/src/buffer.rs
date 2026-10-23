@@ -3,12 +3,15 @@ use ropey::Rope;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::history::History;
 use crate::line_adjust::{self, LineAdjust};
 use crate::write;
 
 pub struct Buffer {
+    id: String,
     rope: Rope,
     pub path: Option<String>,
     history: History,
@@ -19,7 +22,12 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn from_string(s: &str) -> Self {
+        Self::from_string_with_id(s, next_id())
+    }
+
+    pub fn from_string_with_id(s: &str, id: String) -> Self {
         Self {
+            id,
             rope: Rope::from_str(s),
             path: None,
             history: History::new(),
@@ -79,6 +87,14 @@ impl Buffer {
 
     pub fn has_path(&self) -> bool {
         self.path.is_some()
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn set_id(&mut self, id: String) {
+        self.id = id;
     }
 
     pub fn revision(&self) -> u64 {
@@ -843,6 +859,17 @@ pub fn tab_width(ch: char, screen: usize, tabstop: usize) -> usize {
     tabstop - screen % tabstop
 }
 
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let counter = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{:x}-{:x}", std::process::id(), nanos, counter)
+}
+
 fn read_file_text(path: &str) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("failed to open {path}"))
 }
@@ -1486,6 +1513,22 @@ mod tests {
         b.insert_char(0, 2, 'c');
         assert_eq!(snapshot.to_string(), "ab");
         assert_eq!(b.line_text(0), "abc");
+    }
+
+    #[test]
+    fn buffers_have_stable_distinct_ids() {
+        let first = Buffer::from_string("ab");
+        let second = Buffer::from_string("cd");
+        assert_ne!(first.id(), second.id());
+        assert_eq!(first.id(), first.id());
+    }
+
+    #[test]
+    fn ids_can_be_restored() {
+        let mut buffer = Buffer::from_string("ab");
+        buffer.set_id("custom".to_string());
+        assert_eq!(buffer.id(), "custom");
+        assert_eq!(buffer.revision(), 0);
     }
 
     #[test]

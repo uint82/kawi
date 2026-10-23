@@ -20,6 +20,7 @@ mod lsp_text;
 mod macro_codec;
 mod macro_ops;
 mod picker;
+mod recovery;
 mod rename;
 mod replace;
 mod replace_apply;
@@ -121,6 +122,8 @@ pub struct App {
     screen_height: usize,
     window_prefix: bool,
     events: EventQueue,
+    recovery: Option<crate::recovery::RecoveryManager>,
+    recovery_prompt: Option<recovery::RecoveryPrompt>,
 }
 
 impl App {
@@ -158,14 +161,31 @@ impl App {
             screen_height: FALLBACK_HEIGHT.saturating_add(2),
             window_prefix: false,
             events: EventQueue::new(),
+            recovery: None,
+            recovery_prompt: None,
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
+        crate::recovery::install_panic_hook();
         self.sync_viewport_size();
         self.events.start_input_thread()?;
         self.events.start_signal_handlers()?;
-        self.run_loop()
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
+        match outcome {
+            Ok(result) => {
+                if result.is_err() || self.events.shutdown_requested() {
+                    self.finish_recovery_abnormal();
+                } else {
+                    self.finish_recovery_normal();
+                }
+                result
+            }
+            Err(payload) => {
+                self.finish_recovery_abnormal();
+                std::panic::resume_unwind(payload);
+            }
+        }
     }
 
     pub fn load_state(&mut self) {
@@ -239,6 +259,7 @@ impl App {
         let mut out = stdout();
         loop {
             self.sync_active_window();
+            self.show_recovery_prompt_if_ready();
             self.sync_git();
             self.sync_lsp();
             if self.picker.is_none() && self.replace.is_none() {
@@ -274,13 +295,17 @@ impl App {
             } else {
                 redraw |= self.apply_syntax_results();
             }
+            redraw |= self.recovery_tick();
             if redraw {
                 return Ok(Redraw::Redraw);
             }
             if self.events.input_closed() {
                 return Err(anyhow!("terminal input closed"));
             }
-            self.events.wait()?;
+            match self.recovery_wait_timeout() {
+                Some(timeout) => self.events.wait_timeout(timeout)?,
+                None => self.events.wait()?,
+            }
         }
     }
 
@@ -644,6 +669,9 @@ impl App {
     }
 
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.recovery_prompt_visible() {
+            return self.handle_recovery_prompt_key(key);
+        }
         if self.rename.is_some() {
             return self.handle_rename_key(key);
         }
@@ -1280,7 +1308,7 @@ impl App {
             Command::Quit => self.handle_quit(),
             Command::WriteQuit { force } => self.handle_write_quit(force),
             Command::ForceQuit => self.handle_force_quit(),
-            Command::ForceQuitAll => Ok(true),
+            Command::ForceQuitAll => self.handle_force_quit_all(),
             Command::QuitAll => self.handle_quit_all(),
             Command::WriteAll => self.handle_save_all(),
             Command::WriteQuitAll => self.handle_write_quit_all(),
@@ -1441,11 +1469,20 @@ impl App {
         if self.windows.len() > 1 {
             return self.close_active_window(force);
         }
-        if force || !self.editor.has_unsaved() {
+        if force {
+            self.discard_recovery_buffers();
+            return Ok(true);
+        }
+        if !self.editor.has_unsaved() {
             return Ok(true);
         }
         self.show_message("E37: No write since last change".to_string());
         Ok(false)
+    }
+
+    fn handle_force_quit_all(&mut self) -> Result<bool> {
+        self.discard_recovery_buffers();
+        Ok(true)
     }
 
     fn handle_quit_all(&mut self) -> Result<bool> {

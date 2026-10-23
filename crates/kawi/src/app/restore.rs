@@ -21,6 +21,7 @@ impl App {
             indices.insert(number, buffers.len());
             buffers.push(SessionBuffer {
                 path: path.map(path_text),
+                id: self.editor.buffer_id(number).map(str::to_string),
             });
         }
         let windows = self.windows.snapshot(&indices)?;
@@ -85,7 +86,9 @@ impl App {
                     };
                     match opened {
                         Ok(()) => {
-                            numbers.push(Some(self.editor.buffer_number()));
+                            let number = self.editor.buffer_number();
+                            restore_buffer_id(&mut self.editor, number, buffer.id.as_deref());
+                            numbers.push(Some(number));
                             used_initial = true;
                         }
                         Err(_) => {
@@ -95,12 +98,14 @@ impl App {
                     }
                 }
                 None => {
-                    if !used_initial {
-                        numbers.push(Some(self.editor.buffer_number()));
-                    } else {
+                    let number = if used_initial {
                         self.editor.open_empty_buffer();
-                        numbers.push(Some(self.editor.buffer_number()));
-                    }
+                        self.editor.buffer_number()
+                    } else {
+                        self.editor.buffer_number()
+                    };
+                    restore_buffer_id(&mut self.editor, number, buffer.id.as_deref());
+                    numbers.push(Some(number));
                     used_initial = true;
                 }
             }
@@ -117,6 +122,12 @@ impl App {
         self.window_prefix = false;
         self.refresh_window_sizes();
         self.reveal_cursor();
+    }
+}
+
+fn restore_buffer_id(editor: &mut kawi_editor::Editor, number: usize, id: Option<&str>) {
+    if let Some(id) = id {
+        editor.set_buffer_id(number, id.to_string());
     }
 }
 
@@ -227,6 +238,7 @@ mod tests {
         assert_eq!(session.version, SESSION_VERSION);
         assert_eq!(session.cwd, cwd());
         assert_eq!(session.buffers.len(), 2);
+        assert!(session.buffers.iter().all(|buffer| buffer.id.is_some()));
         assert_eq!(
             session.buffers[0].path.as_deref(),
             Some(paths::absolute(&alpha, Path::new(&cwd())).to_str().unwrap())
@@ -254,9 +266,11 @@ mod tests {
             vec![
                 SessionBuffer {
                     path: Some(alpha.clone()),
+                    id: None,
                 },
                 SessionBuffer {
                     path: Some(bravo.clone()),
+                    id: None,
                 },
             ],
             split(leaf(1, 0, 2, 3), leaf(2, 1, 1, 2)),
@@ -283,9 +297,11 @@ mod tests {
             vec![
                 SessionBuffer {
                     path: Some(missing),
+                    id: None,
                 },
                 SessionBuffer {
                     path: Some(alpha.clone()),
+                    id: None,
                 },
             ],
             split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
@@ -318,9 +334,11 @@ mod tests {
             vec![
                 SessionBuffer {
                     path: Some(alpha.clone()),
+                    id: None,
                 },
                 SessionBuffer {
                     path: Some(bravo.clone()),
+                    id: None,
                 },
             ],
             split(
@@ -372,11 +390,16 @@ mod tests {
             vec![
                 SessionBuffer {
                     path: Some(alpha.clone()),
+                    id: None,
                 },
                 SessionBuffer {
                     path: Some(missing),
+                    id: None,
                 },
-                SessionBuffer { path: Some(bravo) },
+                SessionBuffer {
+                    path: Some(bravo),
+                    id: None,
+                },
             ],
             windows,
             2,
@@ -396,14 +419,39 @@ mod tests {
     }
 
     #[test]
+    fn restore_adopts_stored_buffer_ids() {
+        let dir = temp_dir("buffer_ids");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\n");
+        let session = session(
+            vec![SessionBuffer {
+                path: Some(alpha),
+                id: Some("stable-id".to_string()),
+            }],
+            leaf(1, 0, 0, 0),
+            1,
+        );
+        let mut app = empty_app();
+        assert_eq!(app.restore_session(&session), None);
+        assert_eq!(
+            app.editor.buffer_id(app.editor.buffer_number()),
+            Some("stable-id")
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn restore_keeps_an_empty_unnamed_buffer() {
         let dir = temp_dir("unnamed");
         let alpha = write_file(&dir, "alpha.txt", "alpha\n");
         let session = session(
             vec![
-                SessionBuffer { path: None },
+                SessionBuffer {
+                    path: None,
+                    id: None,
+                },
                 SessionBuffer {
                     path: Some(alpha.clone()),
+                    id: None,
                 },
             ],
             split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
@@ -467,6 +515,7 @@ mod tests {
         let session = session(
             vec![SessionBuffer {
                 path: Some(missing),
+                id: None,
             }],
             leaf(1, 0, 0, 0),
             1,

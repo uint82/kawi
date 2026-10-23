@@ -363,6 +363,8 @@ dependencies = [
  "kawi-picker",
  "kawi-syntax",
  "kawi-tui",
+ "libc",
+ "ropey",
  "serde",
  "serde_json",
  "sha2",
