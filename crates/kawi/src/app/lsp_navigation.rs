@@ -160,9 +160,13 @@ fn location_request(kind: LocationKind) -> NavigationRequest {
 }
 
 pub(super) fn cursor_position(editor: &Editor) -> CursorPosition {
+    cursor(editor.row(), editor.col())
+}
+
+pub(super) fn cursor(row: usize, column: usize) -> CursorPosition {
     CursorPosition {
-        line: u32::try_from(editor.row()).unwrap_or(u32::MAX),
-        column: u32::try_from(editor.col()).unwrap_or(u32::MAX),
+        line: u32::try_from(row).unwrap_or(u32::MAX),
+        column: u32::try_from(column).unwrap_or(u32::MAX),
     }
 }
 

@@ -27,6 +27,9 @@ impl Manager {
             pending_requests: HashMap::new(),
             pending_replies: HashMap::new(),
             pending_renames: HashMap::new(),
+            pending_text_requests: HashMap::new(),
+            pending_commands: HashMap::new(),
+            pull_diagnostics: pull_diagnostics::PullDiagnostics::default(),
             next_request: 0,
             initialize_timeout,
         }
@@ -41,13 +44,13 @@ impl Manager {
                 }
                 InputWait::Input(ServiceInput::Command(command)) => {
                     self.handle_command(command);
-                    self.expire_initializations();
+                    self.expire_deadlines();
                 }
                 InputWait::Input(ServiceInput::Client(event)) => {
                     self.handle_client_event(event);
-                    self.expire_initializations();
+                    self.expire_deadlines();
                 }
-                InputWait::Timeout => self.expire_initializations(),
+                InputWait::Timeout => self.expire_deadlines(),
                 InputWait::Closed => {
                     self.shutdown_all();
                     return;
@@ -57,7 +60,7 @@ impl Manager {
     }
 
     fn next_input(&self) -> InputWait {
-        let Some(timeout) = self.next_initialize_deadline() else {
+        let Some(timeout) = self.next_deadline() else {
             return self
                 .input
                 .recv()
@@ -70,12 +73,27 @@ impl Manager {
         }
     }
 
+    fn next_deadline(&self) -> Option<Duration> {
+        let initialize = self.next_initialize_deadline();
+        let diagnostics = self.pull_diagnostics.next_deadline();
+        match (initialize, diagnostics) {
+            (Some(initialize), Some(diagnostics)) => Some(initialize.min(diagnostics)),
+            (Some(deadline), None) | (None, Some(deadline)) => Some(deadline),
+            (None, None) => None,
+        }
+    }
+
     fn next_initialize_deadline(&self) -> Option<Duration> {
         self.clients
             .values()
             .filter_map(|client| client.initialize_deadline)
             .map(|deadline| deadline.saturating_duration_since(Instant::now()))
             .min()
+    }
+
+    fn expire_deadlines(&mut self) {
+        self.expire_initializations();
+        self.expire_pull_diagnostics();
     }
 
     fn expire_initializations(&mut self) {
@@ -121,6 +139,29 @@ impl Manager {
                 position,
             } => self.start_prepare_rename(request, path, position),
             Command::Rename { request, new_name } => self.start_rename(request, new_name),
+            Command::Completion {
+                request,
+                path,
+                position,
+            } => self.start_completion(request, path, position),
+            Command::CodeActions {
+                request,
+                path,
+                range,
+                diagnostics,
+            } => self.start_code_actions(request, path, range, diagnostics),
+            Command::Formatting {
+                request,
+                path,
+                range,
+                settings,
+            } => self.start_formatting(request, path, range, settings),
+            Command::Execute {
+                path,
+                server,
+                command,
+                arguments,
+            } => self.execute_command(path, server, command, arguments),
             Command::Cancel { request } => self.cancel_request(request),
             Command::Shutdown => {}
         }
@@ -170,6 +211,8 @@ impl Manager {
         };
         client.client.terminate();
         self.fail_requests_for_client(&key, &message);
+        self.pull_diagnostics.fail_client(&key);
+        self.pending_commands.retain(|_, client| client != &key);
         for document in self.documents.values_mut() {
             document.clients.retain(|candidate| candidate != &key);
         }

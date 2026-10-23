@@ -28,6 +28,10 @@ impl Manager {
                 ),
                 Err(error) => invalid_params(id.clone(), error),
             },
+            "workspace/diagnostic/refresh" => {
+                self.schedule_all_diagnostics();
+                Message::response(id.clone(), Value::Null)
+            }
             "workspace/workspaceFolders" => Message::response(
                 id.clone(),
                 serde_json::to_value(self.workspace_folders(&key)).unwrap_or(Value::Null),

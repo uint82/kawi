@@ -326,6 +326,8 @@ pub enum Action {
     ShowReferences,
     Hover,
     Rename,
+    CodeAction,
+    Format,
     GitStageHunk,
     GitUndoStage,
     GitStageBuffer,
@@ -403,6 +405,8 @@ impl Action {
                 | Self::ShowReferences
                 | Self::Hover
                 | Self::Rename
+                | Self::CodeAction
+                | Self::Format
                 | Self::Noop
         )
     }

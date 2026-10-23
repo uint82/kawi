@@ -1,5 +1,6 @@
 use kawi_lsp::{
-    Diagnostic, DiagnosticPosition, DiagnosticSeverity, DiagnosticsEvent, INITIAL_DOCUMENT_VERSION,
+    CursorPosition, Diagnostic, DiagnosticPosition, DiagnosticSeverity, DiagnosticsEvent,
+    INITIAL_DOCUMENT_VERSION,
 };
 use kawi_tui::frame::{DiagnosticSeverity as UiSeverity, DiagnosticSpan};
 use std::collections::BTreeMap;
@@ -83,6 +84,21 @@ impl DiagnosticState {
         spans
     }
 
+    pub(super) fn in_range(&self, start: CursorPosition, end: CursorPosition) -> Vec<Diagnostic> {
+        let start = position(start);
+        let end = position(end);
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        self.items
+            .iter()
+            .filter(|diagnostic| diagnostic.range.end >= start && diagnostic.range.start <= end)
+            .cloned()
+            .collect()
+    }
+
     pub(super) fn navigate(&self, row: usize, column: usize, forward: bool) -> Option<Navigation> {
         if self.items.is_empty() {
             return None;
@@ -111,6 +127,13 @@ impl DiagnosticState {
             severity: diagnostic.severity,
             message: diagnostic.message.clone(),
         })
+    }
+}
+
+fn position(value: CursorPosition) -> DiagnosticPosition {
+    DiagnosticPosition {
+        line: value.line,
+        character: value.column,
     }
 }
 

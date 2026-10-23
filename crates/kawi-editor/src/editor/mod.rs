@@ -494,7 +494,9 @@ impl Editor {
             | Action::GotoDefinition
             | Action::ShowReferences
             | Action::Hover
-            | Action::Rename => self.noop(),
+            | Action::Rename
+            | Action::CodeAction
+            | Action::Format => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {
@@ -642,6 +644,18 @@ impl Editor {
 
     pub fn set_expandtab(&mut self, expandtab: bool) {
         self.expandtab_override = Some(expandtab);
+    }
+
+    pub fn expandtab(&self) -> bool {
+        self.effective_indent().expandtab
+    }
+
+    pub fn tabstop(&self) -> usize {
+        self.effective_indent().tabstop
+    }
+
+    pub fn line_len(&self, row: usize) -> usize {
+        self.buffer.line_len(row)
     }
 
     pub(super) fn effective_indent(&self) -> indent::IndentConfig {

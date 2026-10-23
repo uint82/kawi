@@ -4,10 +4,15 @@ use kawi_buffer::Buffer;
 use std::io::{stdout, Stdout};
 use std::path::{Path, PathBuf};
 
+mod code_action;
+mod completion;
+mod formatting;
 mod git;
 mod lsp;
 mod lsp_diagnostics;
+mod lsp_menu;
 mod lsp_navigation;
+mod lsp_text;
 mod macro_codec;
 mod macro_ops;
 mod picker;
@@ -117,6 +122,8 @@ pub struct App {
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
+    completion: Option<completion::CompletionSession>,
+    code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
@@ -146,6 +153,8 @@ impl App {
             picker: None,
             replace: None,
             rename: None,
+            completion: None,
+            code_actions: None,
             git: None,
             git_path: None,
             git_error: None,
@@ -474,16 +483,33 @@ impl App {
     }
 
     fn build_frame<'a>(&'a self, input: FrameInput<'a>) -> Frame<'a> {
+        let completion = self
+            .code_actions
+            .as_ref()
+            .map(|session| kawi_tui::frame::CompletionMenu {
+                items: session.items(),
+                selected: session.selected(),
+            })
+            .or_else(|| {
+                self.completion
+                    .as_ref()
+                    .map(|session| kawi_tui::frame::CompletionMenu {
+                        items: session.items(),
+                        selected: session.selected(),
+                    })
+            })
+            .or_else(|| {
+                self.editor
+                    .completion_view()
+                    .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected })
+            });
         Frame {
             lines: input.window,
             gutter: input.gutter,
             signs: input.signs,
             diagnostic_spans: input.diagnostic_spans,
             pager: self.pager.as_deref(),
-            completion: self
-                .editor
-                .completion_view()
-                .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected }),
+            completion,
             picker: input.picker,
             replace: input.replace,
             cursor_col: self
@@ -581,6 +607,13 @@ impl App {
         if let Some(hover) = self.lsp.take_hover() {
             self.handle_hover_result(hover);
         }
+        if let Some(event) = self.lsp.take_completion() {
+            self.handle_completion_event(event);
+        }
+        if let Some(event) = self.lsp.take_code_actions() {
+            self.handle_code_action_event(event);
+        }
+        self.handle_formatting_result();
         self.sync_rename();
     }
 
@@ -600,7 +633,13 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.picker.is_some() || self.replace.is_some() || self.rename.is_some() {
+        if self.picker.is_some()
+            || self.replace.is_some()
+            || self.rename.is_some()
+            || self.completion.is_some()
+            || self.code_actions.is_some()
+        {
+            self.dismiss_lsp_menu();
             return self.handle_noop();
         }
         if self.pager.is_some() {
@@ -697,6 +736,17 @@ impl App {
         }
         if self.picker.is_some() {
             return self.handle_picker_key(key);
+        }
+        if self.code_actions.is_some() {
+            return self.handle_code_action_key(key);
+        }
+        if self.completion.is_some() {
+            if let Some(result) = self.handle_completion_key(key)? {
+                return Ok(result);
+            }
+        }
+        if self.pager.is_none() && completion::is_completion_key(key) {
+            return self.request_completion();
         }
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
@@ -856,6 +906,8 @@ impl App {
             Action::ShowReferences => self.request_references(),
             Action::Hover => self.request_hover(),
             Action::Rename => self.request_rename(),
+            Action::CodeAction => self.request_code_actions(),
+            Action::Format => self.request_format(),
             Action::GitStageHunk => self.handle_git_stage_hunk(),
             Action::GitUndoStage => self.handle_git_undo_stage(),
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
@@ -963,6 +1015,15 @@ impl App {
         Ok(false)
     }
 
+    fn dismiss_lsp_menu(&mut self) {
+        if self.completion.take().is_some() {
+            self.lsp.cancel_completion();
+        }
+        if self.code_actions.take().is_some() {
+            self.lsp.cancel_code_actions();
+        }
+    }
+
     fn refresh_picker(&mut self) -> bool {
         self.picker.as_mut().is_some_and(PickerSession::refresh)
     }
@@ -1047,6 +1108,7 @@ impl App {
         if self.pager.is_some() {
             return Ok(false);
         }
+        self.dismiss_lsp_menu();
         self.editor.paste(&text);
         self.reveal_cursor();
         Ok(false)

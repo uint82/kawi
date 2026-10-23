@@ -1,5 +1,6 @@
 use kawi_lsp::{
-    CursorPosition, DiagnosticSeverity, Languages, LspEvent, LspService, ProgressEvent, ServerState,
+    CursorPosition, DiagnosticSeverity, FormattingSettings, Languages, LspEvent, LspService,
+    ProgressEvent, ServerState,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,6 +50,40 @@ fn rename_config(root: &Path, rename_mode: &str, rename_delay: u64) -> PathBuf {
     );
     fs::write(&path, text).expect("config");
     path
+}
+
+fn phase_seven_config(root: &Path, pull_diagnostics: bool) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let pull = if pull_diagnostics {
+        "FAKE_LSP_PULL_DIAGNOSTICS = \"1\"\n"
+    } else {
+        ""
+    };
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\n{pull}\n[server.fake.settings]\nfake = \"yes\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_phase_seven(root: &Path, pull_diagnostics: bool) -> LspService {
+    let config = phase_seven_config(root, pull_diagnostics);
+    let languages = Languages::load(&config);
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
+}
+
+fn start_phase_seven_refresh(root: &Path) -> LspService {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_REFRESH_DIAGNOSTICS = \"1\"\n\n[server.fake.settings]\nfake = \"yes\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    let languages = Languages::load(&path);
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
 }
 
 fn start_rename(root: &Path, rename_mode: &str, rename_delay: u64) -> LspService {
@@ -560,5 +595,256 @@ fn stops_the_server_process_on_drop() {
     let pid: i32 = pid.trim().parse().expect("pid");
     drop(service);
     assert_ne!(unsafe { libc::kill(pid, 0) }, 0);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn returns_completion_items_with_edits_and_snippet_expansion() {
+    let root = temp_project("completion");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fak\n"));
+    wait_for_ready(&service);
+    let request = service.completion(&file, CursorPosition { line: 0, column: 3 });
+    wait_for_log(&service, "completion:0:3");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Completion(event) if event.request == request
+        )
+    });
+    let LspEvent::Completion(event) = event else {
+        panic!("unexpected completion event");
+    };
+    assert_eq!(event.server, "fake");
+    assert_eq!(event.path, file);
+    assert_eq!(event.items.len(), 3);
+    let edit = event
+        .items
+        .iter()
+        .find(|item| item.label == "fake_edit")
+        .expect("edit item");
+    assert_eq!(edit.primary.start, 0);
+    assert_eq!(edit.primary.end, 3);
+    assert_eq!(edit.primary.text, "edited");
+    assert_eq!(edit.additional.len(), 1);
+    assert_eq!(edit.additional[0].start, 4);
+    assert_eq!(edit.additional[0].text, "// extra\n");
+    let snippet = event
+        .items
+        .iter()
+        .find(|item| item.label == "fake_snippet")
+        .expect("snippet item");
+    assert_eq!(snippet.primary.text, "print(value)");
+    assert_eq!(snippet.primary.start, 0);
+    assert_eq!(snippet.primary.end, 3);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn merges_completion_and_code_actions_from_multiple_servers() {
+    let root = temp_project("multi_text");
+    let service = start_two_servers(&root, "full", Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fak\n"));
+    wait_for_ready(&service);
+    wait_for_ready(&service);
+    let request = service.completion(&file, CursorPosition { line: 0, column: 3 });
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Completion(event) if event.request == request
+        )
+    });
+    let LspEvent::Completion(event) = event else {
+        panic!("unexpected completion event");
+    };
+    assert_eq!(event.items.len(), 6);
+    assert!(event.items.iter().any(|item| item.server == "fake"));
+    assert!(event.items.iter().any(|item| item.server == "fake2"));
+    let range = (
+        CursorPosition { line: 0, column: 0 },
+        CursorPosition { line: 0, column: 3 },
+    );
+    let request = service.code_actions(&file, range, Vec::new());
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::CodeActions(event) if event.request == request
+        )
+    });
+    let LspEvent::CodeActions(event) = event else {
+        panic!("unexpected code action event");
+    };
+    assert!(event.actions.iter().any(|action| action.server == "fake"));
+    assert!(event.actions.iter().any(|action| action.server == "fake2"));
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn returns_code_actions_and_executes_commands() {
+    let root = temp_project("code_actions");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "old\n"));
+    wait_for_ready(&service);
+    let range = (
+        CursorPosition { line: 0, column: 0 },
+        CursorPosition { line: 0, column: 3 },
+    );
+    let request = service.code_actions(&file, range, Vec::new());
+    wait_for_log(&service, "code-action:0:0");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::CodeActions(event) if event.request == request
+        )
+    });
+    let LspEvent::CodeActions(event) = event else {
+        panic!("unexpected code action event");
+    };
+    assert_eq!(event.actions.len(), 2);
+    assert_eq!(event.actions[0].title, "Apply fake fix");
+    assert!(event.actions[0].preferred);
+    let edit = event.actions[0].edit.as_ref().expect("edit");
+    assert_eq!(edit.documents[0].edits[0].text, "fixed");
+    let command = event.actions[1].command.as_ref().expect("command");
+    assert_eq!(command.command, "fake.command");
+    assert!(service.execute_command(&file, "fake", command));
+    wait_for_log_prefix(&service, "execute:fake.command:");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn returns_document_and_range_formatting_edits() {
+    let root = temp_project("formatting");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "old\n"));
+    wait_for_ready(&service);
+    let settings = FormattingSettings {
+        tab_size: 4,
+        insert_spaces: true,
+    };
+    let request = service.formatting(&file, None, settings);
+    wait_for_log_prefix(&service, "format:textDocument/formatting:");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Formatting(event) if event.request == request
+        )
+    });
+    let LspEvent::Formatting(event) = event else {
+        panic!("unexpected formatting event");
+    };
+    assert_eq!(event.edit.documents[0].path, file);
+    assert_eq!(event.edit.documents[0].edits[0].text, "formatted");
+    let range = (
+        CursorPosition { line: 0, column: 0 },
+        CursorPosition { line: 0, column: 3 },
+    );
+    let request = service.formatting(&file, Some(range), settings);
+    wait_for_log_prefix(&service, "format:textDocument/rangeFormatting:");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Formatting(event) if event.request == request
+        )
+    });
+    assert!(matches!(event, LspEvent::Formatting(_)));
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn pulls_diagnostics_and_reuses_result_ids() {
+    let root = temp_project("pull_diagnostics");
+    let service = start_phase_seven(&root, true);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "a\n"));
+    wait_for_ready(&service);
+    wait_for_log_prefix(&service, "open:1:");
+    let first = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Diagnostics(diagnostics)
+                if diagnostics.version == Some(1)
+                    && diagnostics.diagnostics[0].message == "pull:1"
+        )
+    });
+    let LspEvent::Diagnostics(first) = first else {
+        panic!("unexpected diagnostic event");
+    };
+    assert_eq!(first.server, "fake");
+    assert_eq!(first.diagnostics[0].source.as_deref(), Some("pull"));
+    assert!(service.change(&file, "ab\n"));
+    wait_for_log(&service, "diagnostic:2:pull:1");
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Diagnostics(diagnostics)
+                if diagnostics.version == Some(2)
+                    && diagnostics.diagnostics[0].message == "pull:2"
+        )
+    });
+    assert!(service.save(&file));
+    wait_for_log(&service, "diagnostic:2:pull:2");
+    let deadline = Instant::now() + Duration::from_millis(500);
+    let mut delivered = false;
+    while Instant::now() < deadline {
+        while let Some(event) = service.try_recv() {
+            delivered |= matches!(
+                event,
+                LspEvent::Diagnostics(diagnostics) if diagnostics.version == Some(2)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!delivered);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn ignores_pushed_diagnostics_for_pull_servers() {
+    let root = temp_project("pull_filter");
+    let service = start_phase_seven(&root, true);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "a\n"));
+    wait_for_ready(&service);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut saw_pull = false;
+    let mut saw_push = false;
+    while Instant::now() < deadline && !saw_pull {
+        while let Some(event) = service.try_recv() {
+            if let LspEvent::Diagnostics(diagnostics) = event {
+                let message = diagnostics
+                    .diagnostics
+                    .first()
+                    .map(|diagnostic| diagnostic.message.as_str());
+                saw_pull |= message == Some("pull:1");
+                saw_push |= message == Some("open-diagnostic");
+            }
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(saw_pull);
+    assert!(!saw_push);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn answers_diagnostic_refresh_requests() {
+    let root = temp_project("diagnostic_refresh");
+    let service = start_phase_seven_refresh(&root);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "a\n"));
+    wait_for_ready(&service);
+    wait_for_log(&service, "requests:ok");
+    drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

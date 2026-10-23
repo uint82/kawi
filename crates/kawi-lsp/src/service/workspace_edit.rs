@@ -10,6 +10,21 @@ use std::fs;
 use std::path::PathBuf;
 
 impl Manager {
+    pub(super) fn text_edits_workspace(
+        &self,
+        path: &std::path::Path,
+        text: Rope,
+        edits: &[lsp_types::TextEdit],
+        encoding: &PositionEncodingKind,
+    ) -> Result<WorkspaceEdit, String> {
+        let edits = edits.iter().cloned().map(OneOf::Left).collect::<Vec<_>>();
+        let converted = convert_edits(&text, &edits, encoding)?;
+        let document = document_edit(path.to_path_buf(), text, converted)?;
+        Ok(WorkspaceEdit {
+            documents: vec![document],
+        })
+    }
+
     pub(super) fn parse_workspace_edit(
         &self,
         value: Value,

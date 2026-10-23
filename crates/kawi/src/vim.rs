@@ -357,7 +357,7 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if let KeyCode::Char(prefix @ ('f' | 'v' | 'r')) = key.code {
+            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(' ');
                     self.pending.push(prefix);
@@ -1200,13 +1200,13 @@ impl VimKeymap {
     fn leader_prefix_armed(&self) -> bool {
         matches!(
             self.pending.as_str(),
-            " f" | " v" | " r" | "\\" | "\\f" | "\\v" | "\\r"
+            " c" | " f" | " v" | " r" | "\\" | "\\c" | "\\f" | "\\v" | "\\r"
         )
     }
 
     fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
         if self.pending == "\\" {
-            if let KeyCode::Char(prefix @ ('f' | 'v' | 'r')) = key.code {
+            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(prefix);
                     return Action::Noop;
@@ -1231,6 +1231,8 @@ impl VimKeymap {
             (" v" | "\\v", KeyCode::Char('S')) if !has_ctrl_or_alt(key) => Action::GitStageBuffer,
             (" v" | "\\v", KeyCode::Char('p')) if !has_ctrl_or_alt(key) => Action::GitPreviewHunk,
             (" v" | "\\v", KeyCode::Char('d')) if !has_ctrl_or_alt(key) => Action::GitDiff,
+            (" c" | "\\c", KeyCode::Char('a')) if !has_ctrl_or_alt(key) => Action::CodeAction,
+            (" c" | "\\c", KeyCode::Char('f')) if !has_ctrl_or_alt(key) => Action::Format,
             (" r" | "\\r", KeyCode::Char('n')) if !has_ctrl_or_alt(key) => Action::Rename,
             _ => return self.cancel_sequence(),
         };
@@ -1421,6 +1423,16 @@ impl VimKeymap {
     }
 
     fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if self.leader_space {
+            self.leader_space = false;
+            if let KeyCode::Char(prefix @ ('c' | 'f')) = key.code {
+                if !has_ctrl_or_alt(key) {
+                    self.pending.push(' ');
+                    self.pending.push(prefix);
+                    return Action::Noop;
+                }
+            }
+        }
         if let Some(action) = scroll_action(key) {
             self.clear_pending();
             return action;
@@ -1432,6 +1444,14 @@ impl VimKeymap {
     }
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+            self.leader_space = true;
+            return Action::Noop;
+        }
+        if key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key) {
+            self.pending.push('\\');
+            return Action::Noop;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('a') => return Action::Increment,
@@ -1593,6 +1613,22 @@ impl VimKeymap {
     }
 
     fn resolve_visual_pending(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if self.pending == "\\" {
+            if key.code == KeyCode::Esc {
+                self.clear_pending();
+                return Action::CancelVisual;
+            }
+            if let KeyCode::Char(prefix @ ('c' | 'f')) = key.code {
+                if !has_ctrl_or_alt(key) {
+                    self.pending.push(prefix);
+                    return Action::Noop;
+                }
+            }
+            return self.cancel_sequence();
+        }
+        if self.leader_prefix_armed() {
+            return self.resolve_leader_pending(key);
+        }
         match key.code {
             KeyCode::Esc => {
                 self.clear_pending();
@@ -4123,6 +4159,42 @@ mod tests {
                 map.map(plain(KeyCode::Char('n')), Mode::Normal),
                 Action::Rename
             );
+        }
+    }
+
+    #[test]
+    fn code_action_and_format_keys_resolve() {
+        for leader in [' ', '\\'] {
+            for (key, action) in [('a', Action::CodeAction), ('f', Action::Format)] {
+                let mut map = VimKeymap::new();
+                assert_eq!(
+                    map.map(plain(KeyCode::Char(leader)), Mode::Normal),
+                    Action::Noop
+                );
+                assert_eq!(
+                    map.map(plain(KeyCode::Char('c')), Mode::Normal),
+                    Action::Noop
+                );
+                assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            }
+        }
+    }
+
+    #[test]
+    fn visual_code_action_and_format_keys_resolve() {
+        for leader in [' ', '\\'] {
+            for (key, action) in [('a', Action::CodeAction), ('f', Action::Format)] {
+                let mut map = VimKeymap::new();
+                assert_eq!(
+                    map.map(plain(KeyCode::Char(leader)), Mode::Visual),
+                    Action::Noop
+                );
+                assert_eq!(
+                    map.map(plain(KeyCode::Char('c')), Mode::Visual),
+                    Action::Noop
+                );
+                assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
+            }
         }
     }
 

@@ -11,6 +11,7 @@ const REQUEST_PROGRESS: i64 = 1001;
 const REQUEST_CONFIG: i64 = 1002;
 const REQUEST_REGISTER: i64 = 1003;
 const REQUEST_FOLDERS: i64 = 1004;
+const REQUEST_REFRESH: i64 = 1005;
 
 fn main() -> Result<()> {
     let mut reader = BufReader::new(io::stdin());
@@ -34,6 +35,10 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
+    let pull_diagnostics =
+        std::env::var("FAKE_LSP_PULL_DIAGNOSTICS").is_ok_and(|value| value == "1");
+    let refresh_diagnostics =
+        std::env::var("FAKE_LSP_REFRESH_DIAGNOSTICS").is_ok_and(|value| value == "1");
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
@@ -55,19 +60,30 @@ fn main() -> Result<()> {
                     } else {
                         json!({"prepareProvider": true})
                     };
-                    let result = json!({
-                        "capabilities": {
-                            "positionEncoding": "utf-16",
-                            "textDocumentSync": {
-                                "openClose": true,
-                                "change": change,
-                                "save": {"includeText": true}
-                            },
-                            "definitionProvider": true,
-                            "referencesProvider": true,
-                            "hoverProvider": true,
-                            "renameProvider": rename
+                    let mut capabilities = json!({
+                        "positionEncoding": "utf-16",
+                        "textDocumentSync": {
+                            "openClose": true,
+                            "change": change,
+                            "save": {"includeText": true}
                         },
+                        "definitionProvider": true,
+                        "referencesProvider": true,
+                        "hoverProvider": true,
+                        "renameProvider": rename,
+                        "completionProvider": {"triggerCharacters": ["."]},
+                        "codeActionProvider": {"codeActionKinds": ["quickfix"]},
+                        "documentFormattingProvider": true,
+                        "documentRangeFormattingProvider": true
+                    });
+                    if pull_diagnostics {
+                        capabilities["diagnosticProvider"] = json!({
+                            "interFileDependencies": false,
+                            "workspaceDiagnostics": false
+                        });
+                    }
+                    let result = json!({
+                        "capabilities": capabilities,
                         "serverInfo": {"name": "fake-lsp", "version": "1"}
                     });
                     send(&mut writer, Message::response(id, result))?;
@@ -93,6 +109,15 @@ fn main() -> Result<()> {
                     &rename_mode,
                     &documents,
                 )?,
+                "textDocument/completion" => handle_completion(&mut writer, id, params)?,
+                "textDocument/codeAction" => handle_code_actions(&mut writer, id, params)?,
+                "textDocument/formatting" | "textDocument/rangeFormatting" => {
+                    handle_formatting(&mut writer, id, &method, params)?
+                }
+                "workspace/executeCommand" => handle_execute_command(&mut writer, id, params)?,
+                "textDocument/diagnostic" => {
+                    handle_pull_diagnostic(&mut writer, id, params, &documents)?
+                }
                 "shutdown" => {
                     send(&mut writer, Message::response(id, Value::Null))?;
                 }
@@ -106,13 +131,13 @@ fn main() -> Result<()> {
             },
             Message::Notification { method, params } => match method.as_str() {
                 "initialized" => {
-                    send_requests(&mut writer, &mut pending)?;
+                    send_requests(&mut writer, &mut pending, refresh_diagnostics)?;
                     send_progress(&mut writer)?;
                     send_log(&mut writer, "ready")?;
                 }
                 "exit" => return Ok(()),
                 "textDocument/didOpen" => handle_open(&mut writer, params, &mut documents)?,
-                "textDocument/didChange" => handle_change(&mut writer, params)?,
+                "textDocument/didChange" => handle_change(&mut writer, params, &mut documents)?,
                 "textDocument/didSave" => handle_save(&mut writer, params)?,
                 "textDocument/didClose" => send_log(&mut writer, "close")?,
                 "$/cancelRequest" => {
@@ -158,17 +183,26 @@ fn valid_response(number: i64, text: &str) -> bool {
         REQUEST_CONFIG => text.ends_with(":[\"yes\",null]"),
         REQUEST_REGISTER => text.ends_with(":null"),
         REQUEST_FOLDERS => text.contains("file://") && text.ends_with(']'),
+        REQUEST_REFRESH => text.ends_with(":null"),
         _ => true,
     }
 }
 
-fn send_requests(writer: &mut impl io::Write, pending: &mut HashSet<i64>) -> Result<()> {
-    for id in [
+fn send_requests(
+    writer: &mut impl io::Write,
+    pending: &mut HashSet<i64>,
+    refresh_diagnostics: bool,
+) -> Result<()> {
+    let mut requests = vec![
         REQUEST_PROGRESS,
         REQUEST_CONFIG,
         REQUEST_REGISTER,
         REQUEST_FOLDERS,
-    ] {
+    ];
+    if refresh_diagnostics {
+        requests.push(REQUEST_REFRESH);
+    }
+    for id in requests {
         pending.insert(id);
     }
     send(
@@ -203,6 +237,16 @@ fn send_requests(writer: &mut impl io::Write, pending: &mut HashSet<i64>) -> Res
             None,
         ),
     )?;
+    if refresh_diagnostics {
+        send(
+            writer,
+            Message::request(
+                RequestId::Number(REQUEST_REFRESH),
+                "workspace/diagnostic/refresh",
+                None,
+            ),
+        )?;
+    }
     Ok(())
 }
 
@@ -345,10 +389,15 @@ fn sibling_uri(uri: &str, name: &str) -> String {
     }
 }
 
-fn handle_change(writer: &mut impl io::Write, params: Option<Value>) -> Result<()> {
+fn handle_change(
+    writer: &mut impl io::Write,
+    params: Option<Value>,
+    documents: &mut HashMap<String, i64>,
+) -> Result<()> {
     let params = params.context("didChange params")?;
     let version = params["textDocument"]["version"].as_i64().unwrap_or(0);
     let uri = params["textDocument"]["uri"].as_str().unwrap_or("");
+    documents.insert(uri.to_string(), version);
     let change = &params["contentChanges"][0];
     let text = change["text"].as_str().unwrap_or("");
     if let Some(range) = change.get("range") {
@@ -467,4 +516,177 @@ fn send_log(writer: &mut impl io::Write, message: &str) -> Result<()> {
 
 fn send(writer: &mut impl io::Write, message: Message) -> Result<()> {
     framing::write_message(writer, &message.to_value())
+}
+
+fn handle_completion(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let params = params.context("completion params")?;
+    let position = &params["position"];
+    let line = position["line"].as_i64().unwrap_or(0);
+    let character = position["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("completion:{line}:{character}"))?;
+    let result = json!({
+        "isIncomplete": false,
+        "items": [
+            {
+                "label": "fake_edit",
+                "detail": "edit",
+                "sortText": "1",
+                "textEdit": {
+                    "range": range(line, character.saturating_sub(3), character),
+                    "newText": "edited"
+                },
+                "additionalTextEdits": [{
+                    "range": range(1, 0, 0),
+                    "newText": "// extra\n"
+                }]
+            },
+            {
+                "label": "fake_snippet",
+                "detail": "snippet",
+                "sortText": "2",
+                "insertText": "print(${1:value})",
+                "insertTextFormat": 2
+            },
+            {
+                "label": "fake_value",
+                "detail": "value",
+                "sortText": "3",
+                "insertText": "fake_value"
+            }
+        ]
+    });
+    send(writer, Message::response(id, result))
+}
+
+fn handle_code_actions(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let params = params.context("code action params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("code action uri")?;
+    let action_range = &params["range"];
+    let line = action_range["start"]["line"].as_i64().unwrap_or(0);
+    let character = action_range["start"]["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("code-action:{line}:{character}"))?;
+    let result = json!([
+        {
+            "title": "Apply fake fix",
+            "kind": "quickfix",
+            "isPreferred": true,
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": range(0, 0, 3),
+                        "newText": "fixed"
+                    }]
+                }
+            }
+        },
+        {
+            "title": "Disabled fake fix",
+            "disabled": {"reason": "not available"},
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": range(0, 0, 3),
+                        "newText": "disabled"
+                    }]
+                }
+            }
+        },
+        {
+            "title": "Resolve fake fix",
+            "data": {"value": 1}
+        },
+        {
+            "title": "Run fake command",
+            "command": {
+                "title": "Run fake command",
+                "command": "fake.command",
+                "arguments": [{"value": 1}]
+            }
+        }
+    ]);
+    send(writer, Message::response(id, result))
+}
+
+fn handle_formatting(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    method: &str,
+    params: Option<Value>,
+) -> Result<()> {
+    let params = params.context("formatting params")?;
+    let request_range = params
+        .get("range")
+        .map_or_else(|| "document".to_string(), Value::to_string);
+    send_log(writer, &format!("format:{method}:{request_range}"))?;
+    send(
+        writer,
+        Message::response(
+            id,
+            json!([{
+                "range": range(0, 0, 3),
+                "newText": "formatted"
+            }]),
+        ),
+    )
+}
+
+fn handle_execute_command(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let params = params.context("execute command params")?;
+    let command = params["command"].as_str().unwrap_or("");
+    let arguments = params["arguments"].to_string();
+    send_log(writer, &format!("execute:{command}:{arguments}"))?;
+    send(writer, Message::response(id, Value::Null))
+}
+
+fn handle_pull_diagnostic(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    documents: &HashMap<String, i64>,
+) -> Result<()> {
+    let params = params.context("diagnostic params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("diagnostic uri")?;
+    let previous = params.get("previousResultId").and_then(Value::as_str);
+    let version = documents.get(uri).copied().unwrap_or(0);
+    let result_id = format!("pull:{version}");
+    send_log(
+        writer,
+        &format!("diagnostic:{version}:{}", previous.unwrap_or("none")),
+    )?;
+    if previous == Some(result_id.as_str()) {
+        return send(
+            writer,
+            Message::response(id, json!({"kind": "unchanged", "resultId": result_id})),
+        );
+    }
+    let result = json!({
+        "kind": "full",
+        "resultId": result_id,
+        "items": [{
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 1}
+            },
+            "severity": 1,
+            "source": "pull",
+            "message": format!("pull:{version}")
+        }]
+    });
+    send(writer, Message::response(id, result))
 }

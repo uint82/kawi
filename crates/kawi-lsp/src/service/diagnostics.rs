@@ -53,6 +53,13 @@ impl Manager {
         let Some(document) = self.documents.get(&path) else {
             return;
         };
+        if self
+            .clients
+            .get(&key)
+            .is_some_and(|client| client.support.pull_diagnostics)
+        {
+            return;
+        }
         if !is_current_version(document.version, params.version) {
             return;
         }
@@ -62,12 +69,7 @@ impl Manager {
             .map_or(PositionEncodingKind::UTF16, |client| {
                 client.encoding.clone()
             });
-        let lines = LineIndex::new(&document.text);
-        let diagnostics = params
-            .diagnostics
-            .iter()
-            .map(|diagnostic| convert_diagnostic(diagnostic, &lines, &encoding))
-            .collect();
+        let diagnostics = convert_diagnostics(&params.diagnostics, &document.text, &encoding);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server,
             path,
@@ -79,6 +81,18 @@ impl Manager {
 
 fn is_current_version(document_version: i32, published: Option<i32>) -> bool {
     published.is_none_or(|version| version == document_version)
+}
+
+pub(super) fn convert_diagnostics(
+    diagnostics: &[lsp_types::Diagnostic],
+    text: &Rope,
+    encoding: &PositionEncodingKind,
+) -> Vec<Diagnostic> {
+    let lines = LineIndex::new(text);
+    diagnostics
+        .iter()
+        .map(|diagnostic| convert_diagnostic(diagnostic, &lines, encoding))
+        .collect()
 }
 
 struct LineIndex<'a> {

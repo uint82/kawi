@@ -27,11 +27,20 @@ impl Manager {
             return;
         };
         if client.pending_initialize.as_ref() != Some(&id) {
+            if self.pending_commands.remove(&id).is_some() {
+                self.handle_command_response(key, result);
+                return;
+            }
+            if self.pull_diagnostics.is_pending(&id) {
+                self.handle_pull_diagnostic_response(key, id, result);
+                return;
+            }
             match self.pending_replies.get(&id).map(|reply| reply.purpose) {
                 Some(ReplyPurpose::Navigation) => {
                     self.handle_navigation_response(key, id, result);
                 }
                 Some(ReplyPurpose::Rename) => self.handle_rename_response(key, id, result),
+                Some(ReplyPurpose::Text) => self.handle_text_response(key, id, result),
                 None => {}
             }
             return;
@@ -73,6 +82,7 @@ impl Manager {
         client.client.send(initialized);
         self.emit_status(&key.server, ServerState::Ready, None);
         self.open_documents_for(&key);
+        self.schedule_all_diagnostics();
     }
 
     fn open_documents_for(&mut self, key: &ClientKey) {
@@ -179,7 +189,21 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
             }),
         rename: provider_enabled(capabilities.rename_provider.as_ref()),
         prepare_rename: prepare_enabled(capabilities.rename_provider.as_ref()),
+        completion: capabilities.completion_provider.is_some(),
+        code_actions: code_action_enabled(capabilities.code_action_provider.as_ref()),
+        formatting: provider_enabled(capabilities.document_formatting_provider.as_ref()),
+        range_formatting: provider_enabled(
+            capabilities.document_range_formatting_provider.as_ref(),
+        ),
+        pull_diagnostics: capabilities.diagnostic_provider.is_some(),
     }
+}
+
+fn code_action_enabled(provider: Option<&lsp_types::CodeActionProviderCapability>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::CodeActionProviderCapability::Simple(enabled) => *enabled,
+        lsp_types::CodeActionProviderCapability::Options(_) => true,
+    })
 }
 
 fn prepare_enabled(provider: Option<&lsp_types::OneOf<bool, RenameOptions>>) -> bool {
@@ -236,6 +260,9 @@ fn initialize_capabilities() -> ClientCapabilities {
                 failure_handling: Some(FailureHandlingKind::Abort),
                 ..WorkspaceEditClientCapabilities::default()
             }),
+            diagnostic: Some(lsp_types::DiagnosticWorkspaceClientCapabilities {
+                refresh_support: Some(true),
+            }),
             ..WorkspaceClientCapabilities::default()
         }),
         window: Some(WindowClientCapabilities {
@@ -266,6 +293,54 @@ fn initialize_capabilities() -> ClientCapabilities {
                 prepare_support: Some(true),
                 prepare_support_default_behavior: Some(PrepareSupportDefaultBehavior::IDENTIFIER),
                 honors_change_annotations: Some(false),
+            }),
+            completion: Some(lsp_types::CompletionClientCapabilities {
+                dynamic_registration: Some(false),
+                completion_item: Some(lsp_types::CompletionItemCapability {
+                    snippet_support: Some(false),
+                    commit_characters_support: Some(false),
+                    documentation_format: Some(vec![
+                        lsp_types::MarkupKind::Markdown,
+                        lsp_types::MarkupKind::PlainText,
+                    ]),
+                    deprecated_support: Some(true),
+                    preselect_support: Some(true),
+                    insert_replace_support: Some(true),
+                    ..lsp_types::CompletionItemCapability::default()
+                }),
+                context_support: Some(true),
+                ..lsp_types::CompletionClientCapabilities::default()
+            }),
+            code_action: Some(lsp_types::CodeActionClientCapabilities {
+                dynamic_registration: Some(false),
+                code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
+                    code_action_kind: lsp_types::CodeActionKindLiteralSupport {
+                        value_set: vec![
+                            "quickfix".to_string(),
+                            "refactor".to_string(),
+                            "refactor.extract".to_string(),
+                            "refactor.inline".to_string(),
+                            "refactor.rewrite".to_string(),
+                            "source".to_string(),
+                            "source.organizeImports".to_string(),
+                            "source.fixAll".to_string(),
+                        ],
+                    },
+                }),
+                is_preferred_support: Some(true),
+                data_support: Some(false),
+                honors_change_annotations: Some(false),
+                ..lsp_types::CodeActionClientCapabilities::default()
+            }),
+            formatting: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            range_formatting: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
+            diagnostic: Some(lsp_types::DiagnosticClientCapabilities {
+                dynamic_registration: Some(false),
+                related_document_support: Some(false),
             }),
             ..TextDocumentClientCapabilities::default()
         }),
@@ -403,6 +478,62 @@ mod tests {
         assert!(support.definition);
         assert!(support.references);
         assert!(!support.hover);
+    }
+
+    #[test]
+    fn advertises_phase_seven_capabilities() {
+        let capabilities = initialize_capabilities();
+        let text_document = capabilities.text_document.expect("text document");
+        assert!(text_document.completion.is_some());
+        assert!(text_document.code_action.is_some());
+        assert!(text_document.formatting.is_some());
+        assert!(text_document.range_formatting.is_some());
+        assert_eq!(
+            text_document
+                .diagnostic
+                .and_then(|diagnostic| diagnostic.related_document_support),
+            Some(false)
+        );
+        let workspace = capabilities.workspace.expect("workspace");
+        assert_eq!(
+            workspace
+                .diagnostic
+                .and_then(|diagnostic| diagnostic.refresh_support),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn reads_phase_seven_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            completion_provider: Some(lsp_types::CompletionOptions::default()),
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(true)),
+            document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
+            document_range_formatting_provider: Some(lsp_types::OneOf::Right(
+                lsp_types::DocumentRangeFormattingOptions {
+                    work_done_progress_options: Default::default(),
+                },
+            )),
+            diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
+                lsp_types::DiagnosticOptions::default(),
+            )),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.completion);
+        assert!(support.code_actions);
+        assert!(support.formatting);
+        assert!(support.range_formatting);
+        assert!(support.pull_diagnostics);
+    }
+
+    #[test]
+    fn disabled_code_actions_are_not_supported() {
+        let capabilities = lsp_types::ServerCapabilities {
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(false)),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        assert!(!request_support(&capabilities).code_actions);
     }
 
     #[test]

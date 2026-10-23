@@ -32,6 +32,7 @@ impl App {
         let prepared = self.prepare_documents(edit)?;
         self.write_closed_documents(&prepared)?;
         self.apply_open_documents(&prepared)?;
+        self.exit_visual_if_active();
         Ok(prepared.len())
     }
 

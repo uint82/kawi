@@ -2,10 +2,12 @@ use super::lsp_diagnostics::{DiagnosticState, Navigation};
 use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
+use super::lsp_text::LspText;
 use kawi_editor::Editor;
 use kawi_lsp::{
-    DiagnosticSeverity, Languages, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
-    RenameReady, ServerState, StatusEvent,
+    CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticSeverity,
+    FormattingEvent, FormattingSettings, Languages, LspCommand, LspEvent, LspService, MessageLevel,
+    ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -23,6 +25,7 @@ pub struct LspUi {
     progress: BTreeMap<(String, String), ProgressSnapshot>,
     diagnostics: DiagnosticState,
     navigation: LspNavigation,
+    text: LspText,
     rename_request: Option<u64>,
     rename_ready: Option<RenameReady>,
     rename_edit: Option<RenameEvent>,
@@ -100,6 +103,85 @@ impl LspUi {
         self.navigation.take_hover()
     }
 
+    pub fn completion(&mut self, editor: &Editor) -> Result<u64, String> {
+        let Some(path) = editor_path(editor) else {
+            return Err("E32: No file name".to_string());
+        };
+        self.text.completion(
+            self.service.as_ref(),
+            &path,
+            super::lsp_navigation::cursor_position(editor),
+        )
+    }
+
+    pub fn code_actions(
+        &mut self,
+        editor: &Editor,
+        range: (CursorPosition, CursorPosition),
+        diagnostics: Vec<Diagnostic>,
+    ) -> Result<u64, String> {
+        let Some(path) = editor_path(editor) else {
+            return Err("E32: No file name".to_string());
+        };
+        self.text
+            .code_actions(self.service.as_ref(), &path, range, diagnostics)
+    }
+
+    pub fn formatting(
+        &mut self,
+        editor: &Editor,
+        range: Option<(CursorPosition, CursorPosition)>,
+    ) -> Result<u64, String> {
+        let Some(path) = editor_path(editor) else {
+            return Err("E32: No file name".to_string());
+        };
+        let settings = FormattingSettings {
+            tab_size: u32::try_from(editor.tabstop()).unwrap_or(u32::MAX),
+            insert_spaces: editor.expandtab(),
+        };
+        self.text
+            .formatting(self.service.as_ref(), &path, range, settings)
+    }
+
+    pub fn execute_command(
+        &mut self,
+        path: &std::path::Path,
+        server: &str,
+        command: &LspCommand,
+    ) -> bool {
+        self.service
+            .as_ref()
+            .is_some_and(|service| service.execute_command(path, server, command))
+    }
+
+    pub fn take_completion(&mut self) -> Option<CompletionEvent> {
+        self.text.take_completion()
+    }
+
+    pub fn take_code_actions(&mut self) -> Option<CodeActionEvent> {
+        self.text.take_code_actions()
+    }
+
+    pub fn take_formatting(&mut self) -> Option<FormattingEvent> {
+        self.text.take_formatting()
+    }
+
+    pub fn cancel_completion(&mut self) -> bool {
+        self.text.cancel_completion(self.service.as_ref())
+    }
+
+    pub fn cancel_code_actions(&mut self) -> bool {
+        self.text.cancel_code_actions(self.service.as_ref())
+    }
+
+    pub fn diagnostics_in_range(
+        &self,
+        start: CursorPosition,
+        end: CursorPosition,
+    ) -> Vec<Diagnostic> {
+        self.diagnostics.in_range(start, end)
+    }
+
     pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, String> {
         let Some(service) = self.service.as_ref() else {
             return Err("lsp unavailable".to_string());
@@ -150,8 +232,9 @@ impl LspUi {
 
     pub fn cancel_pending(&mut self) -> bool {
         let navigation = self.navigation.cancel(self.service.as_ref());
+        let text = self.text.cancel_all(self.service.as_ref());
         let Some(request) = self.rename_request.take() else {
-            return navigation;
+            return navigation || text;
         };
         if let Some(service) = self.service.as_ref() {
             service.cancel(request);
@@ -211,6 +294,7 @@ impl LspUi {
         let path = editor_path(editor);
         let revision = editor.buffer_revision();
         if path != self.path {
+            self.text.cancel_all(self.service.as_ref());
             self.close_current();
             self.statuses.clear();
             self.status_messages.clear();
@@ -227,6 +311,7 @@ impl LspUi {
             return false;
         }
         self.revision = Some(revision);
+        self.text.cancel_all(self.service.as_ref());
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
             self.diagnostics.advance();
             service.change(path, editor.document_snapshot());
@@ -263,6 +348,9 @@ impl LspUi {
                 .navigation
                 .apply_location(&location, LocationKind::References),
             LspEvent::Hover(hover) => self.navigation.apply_hover(&hover),
+            LspEvent::Completion(event) => self.text.apply_completion(event),
+            LspEvent::CodeActions(event) => self.text.apply_code_actions(event),
+            LspEvent::Formatting(event) => self.text.apply_formatting(event),
             LspEvent::RenameReady(ready) => {
                 if self.rename_request != Some(ready.request) {
                     return false;
@@ -288,10 +376,13 @@ impl LspUi {
                 }
                 if self.navigation.apply_error(request) {
                     self.message = Some(message);
-                    true
-                } else {
-                    false
+                    return true;
                 }
+                if self.text.fail(request) {
+                    self.message = Some(message);
+                    return true;
+                }
+                false
             }
             LspEvent::Message {
                 server,

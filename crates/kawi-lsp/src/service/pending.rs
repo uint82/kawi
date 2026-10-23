@@ -5,6 +5,7 @@ use crate::protocol::Message;
 pub(super) enum ReplyPurpose {
     Navigation,
     Rename,
+    Text,
 }
 
 pub(super) struct PendingReply {
@@ -56,7 +57,8 @@ impl Manager {
     pub(super) fn cancel_request(&mut self, request: u64) {
         let navigation = self.pending_requests.remove(&request).is_some();
         let rename = self.pending_renames.remove(&request).is_some();
-        if !navigation && !rename {
+        let text = self.pending_text_requests.remove(&request).is_some();
+        if !navigation && !rename && !text {
             return;
         }
         let ids: Vec<RequestId> = self
@@ -86,6 +88,7 @@ impl Manager {
         match reply.purpose {
             ReplyPurpose::Navigation => self.fail_navigation_reply(reply.request, message),
             ReplyPurpose::Rename => self.fail_rename_request(reply.request, message),
+            ReplyPurpose::Text => self.fail_text_request(reply.request, message),
         }
     }
 

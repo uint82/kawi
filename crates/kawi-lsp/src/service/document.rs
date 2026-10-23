@@ -11,6 +11,7 @@ use lsp_types::{
 };
 use ropey::Rope;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 struct DocumentChange<'a> {
     path: &'a Path,
@@ -77,6 +78,7 @@ impl Manager {
                 self.send_open(&key, &path, &text, version);
             }
         }
+        self.schedule_pull_diagnostics(&path, Duration::ZERO);
     }
 
     pub(super) fn change_document(&mut self, path: &Path, text: Rope) {
@@ -102,6 +104,7 @@ impl Manager {
         for key in clients {
             self.send_change(&key, &change);
         }
+        self.schedule_pull_diagnostics(&path, super::pull_diagnostics::DIAGNOSTIC_DEBOUNCE);
     }
 
     fn send_change(&mut self, key: &ClientKey, change: &DocumentChange<'_>) {
@@ -174,6 +177,7 @@ impl Manager {
                 client.client.send(message);
             }
         }
+        self.schedule_pull_diagnostics(&path, super::pull_diagnostics::DIAGNOSTIC_DEBOUNCE);
     }
 
     pub(super) fn close_document(&mut self, path: &Path) {
@@ -181,6 +185,7 @@ impl Manager {
         let Some(document) = self.documents.remove(&path) else {
             return;
         };
+        self.forget_pull_diagnostics(&path);
         for key in document.clients {
             if let Some(client) = self.clients.get_mut(&key) {
                 if client.opened.remove(&path) && client.sync.open_close {

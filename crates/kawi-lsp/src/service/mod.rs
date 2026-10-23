@@ -13,15 +13,21 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+mod code_actions;
+mod commands;
+mod completion;
 mod diagnostics;
 mod document;
+mod formatting;
 mod initialize;
 mod manager;
 mod navigation;
 mod navigation_results;
 mod pending;
+mod pull_diagnostics;
 mod rename;
 mod request;
+mod text_requests;
 mod workspace_edit;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(12);
@@ -115,6 +121,65 @@ pub struct RenameEvent {
     pub edit: WorkspaceEdit,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LspCommand {
+    pub title: String,
+    pub command: String,
+    pub arguments: Option<Vec<Value>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionEntry {
+    pub server: String,
+    pub label: String,
+    pub detail: Option<String>,
+    pub documentation: Option<String>,
+    pub primary: TextChange,
+    pub additional: Vec<TextChange>,
+    pub deprecated: bool,
+    pub preselect: bool,
+    pub command: Option<LspCommand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionEvent {
+    pub request: u64,
+    pub server: String,
+    pub path: PathBuf,
+    pub version: i32,
+    pub original_hash: u64,
+    pub items: Vec<CompletionEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeActionEntry {
+    pub server: String,
+    pub title: String,
+    pub kind: Option<String>,
+    pub preferred: bool,
+    pub edit: Option<WorkspaceEdit>,
+    pub command: Option<LspCommand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeActionEvent {
+    pub request: u64,
+    pub path: PathBuf,
+    pub actions: Vec<CodeActionEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormattingEvent {
+    pub request: u64,
+    pub edit: WorkspaceEdit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormattingSettings {
+    pub tab_size: u32,
+    pub insert_spaces: bool,
+}
+
 pub use kawi_buffer::TextEdit as TextChange;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +192,9 @@ pub enum LspEvent {
     Hover(HoverEvent),
     RenameReady(RenameReady),
     Rename(RenameEvent),
+    Completion(CompletionEvent),
+    CodeActions(CodeActionEvent),
+    Formatting(FormattingEvent),
     RequestError {
         request: u64,
         message: String,
@@ -261,6 +329,57 @@ impl LspService {
         })
     }
 
+    pub fn completion(&self, path: &Path, position: CursorPosition) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::Completion {
+            request,
+            path: path.to_path_buf(),
+            position,
+        });
+        request
+    }
+
+    pub fn code_actions(
+        &self,
+        path: &Path,
+        range: (CursorPosition, CursorPosition),
+        diagnostics: Vec<Diagnostic>,
+    ) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::CodeActions {
+            request,
+            path: path.to_path_buf(),
+            range,
+            diagnostics,
+        });
+        request
+    }
+
+    pub fn formatting(
+        &self,
+        path: &Path,
+        range: Option<(CursorPosition, CursorPosition)>,
+        settings: FormattingSettings,
+    ) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::Formatting {
+            request,
+            path: path.to_path_buf(),
+            range,
+            settings,
+        });
+        request
+    }
+
+    pub fn execute_command(&self, path: &Path, server: &str, command: &LspCommand) -> bool {
+        self.send(Command::Execute {
+            path: path.to_path_buf(),
+            server: server.to_string(),
+            command: command.command.clone(),
+            arguments: command.arguments.clone(),
+        })
+    }
+
     pub fn cancel(&self, request: u64) {
         let _ = self.send(Command::Cancel { request });
     }
@@ -334,6 +453,29 @@ pub(crate) enum Command {
         request: u64,
         new_name: String,
     },
+    Completion {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+    },
+    CodeActions {
+        request: u64,
+        path: PathBuf,
+        range: (CursorPosition, CursorPosition),
+        diagnostics: Vec<Diagnostic>,
+    },
+    Formatting {
+        request: u64,
+        path: PathBuf,
+        range: Option<(CursorPosition, CursorPosition)>,
+        settings: FormattingSettings,
+    },
+    Execute {
+        path: PathBuf,
+        server: String,
+        command: String,
+        arguments: Option<Vec<Value>>,
+    },
     Cancel {
         request: u64,
     },
@@ -356,6 +498,9 @@ struct Manager {
     pending_requests: HashMap<u64, navigation::PendingRequest>,
     pending_replies: HashMap<RequestId, pending::PendingReply>,
     pending_renames: HashMap<u64, rename::PendingRename>,
+    pending_text_requests: HashMap<u64, text_requests::PendingTextRequest>,
+    pending_commands: HashMap<RequestId, ClientKey>,
+    pull_diagnostics: pull_diagnostics::PullDiagnostics,
     next_request: i64,
     initialize_timeout: Duration,
 }
@@ -380,6 +525,11 @@ struct RequestSupport {
     hover: bool,
     rename: bool,
     prepare_rename: bool,
+    completion: bool,
+    code_actions: bool,
+    formatting: bool,
+    range_formatting: bool,
+    pull_diagnostics: bool,
 }
 
 struct Document {
@@ -402,5 +552,23 @@ pub(super) fn to_params<T: Serialize>(params: T) -> Option<Value> {
 }
 
 pub(super) fn one_line_message(message: &str) -> String {
-    message.split_whitespace().collect::<Vec<_>>().join(" ")
+    let sanitized: String = message
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    sanitized.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(super) fn convert_command(command: lsp_types::Command) -> LspCommand {
+    LspCommand {
+        title: one_line_message(&command.title),
+        command: command.command,
+        arguments: command.arguments,
+    }
 }
