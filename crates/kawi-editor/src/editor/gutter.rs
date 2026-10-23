@@ -43,8 +43,37 @@ impl Editor {
     }
 
     pub fn gutter_lines(&self, first: usize, count: usize) -> Vec<String> {
+        self.gutter_lines_for(
+            self.buffer.line_count(),
+            self.cursor.row(),
+            first,
+            count,
+            self.view_height(),
+        )
+    }
+
+    pub fn buffer_gutter_lines(
+        &self,
+        number: usize,
+        first: usize,
+        count: usize,
+        cursor_row: usize,
+        height: usize,
+    ) -> Option<Vec<String>> {
+        let line_count = self.buffer_line_count(number)?;
+        Some(self.gutter_lines_for(line_count, cursor_row, first, count, height))
+    }
+
+    fn gutter_lines_for(
+        &self,
+        line_count: usize,
+        cursor_row: usize,
+        first: usize,
+        count: usize,
+        height: usize,
+    ) -> Vec<String> {
         (first..first.saturating_add(count))
-            .map(|row| self.gutter_line(row))
+            .map(|row| self.gutter_line_for(row, line_count, cursor_row, height))
             .collect()
     }
 
@@ -60,26 +89,37 @@ impl Editor {
         self.buffer.char_col(row, col, tabstop)
     }
 
-    fn gutter_line(&self, row: usize) -> String {
+    fn gutter_line_for(
+        &self,
+        row: usize,
+        line_count: usize,
+        cursor_row: usize,
+        height: usize,
+    ) -> String {
         if !self.numbers_visible() {
             return String::new();
         }
-        let width = self.number_column_width();
-        match self.display_number(row) {
+        let width = self.number_column_width_for(line_count, height);
+        match self.display_number(row, line_count, cursor_row) {
             Some((number, false)) => format!("{number:>width$} "),
             Some((number, true)) => format!("{number:<width$} "),
             None => " ".repeat(width.saturating_add(1)),
         }
     }
 
-    fn display_number(&self, row: usize) -> Option<(usize, bool)> {
-        if row >= self.buffer.line_count() {
+    fn display_number(
+        &self,
+        row: usize,
+        line_count: usize,
+        cursor_row: usize,
+    ) -> Option<(usize, bool)> {
+        if row >= line_count {
             return None;
         }
         if self.number && !self.relativenumber {
             return Some((row.saturating_add(1), false));
         }
-        let distance = row.abs_diff(self.cursor.row());
+        let distance = row.abs_diff(cursor_row);
         if distance == 0 && self.number {
             return Some((row.saturating_add(1), true));
         }
@@ -91,10 +131,14 @@ impl Editor {
     }
 
     fn number_column_width(&self) -> usize {
+        self.number_column_width_for(self.buffer.line_count(), self.view_height())
+    }
+
+    fn number_column_width_for(&self, line_count: usize, height: usize) -> usize {
         let reference = if self.relativenumber && !self.number {
-            self.view_height()
+            height
         } else {
-            self.buffer.line_count()
+            line_count
         };
         digit_count(reference).max(self.numberwidth.saturating_sub(1))
     }

@@ -3,34 +3,72 @@ use crate::theme::Theme;
 use kawi_editor::Viewport;
 use kawi_syntax::SyntaxSpan;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
+}
+
+impl Rect {
+    pub fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub fn right(&self) -> usize {
+        self.x.saturating_add(self.width)
+    }
+
+    pub fn bottom(&self) -> usize {
+        self.y.saturating_add(self.height)
+    }
+
+    pub fn contains(&self, column: usize, row: usize) -> bool {
+        column >= self.x && column < self.right() && row >= self.y && row < self.bottom()
+    }
+}
+
 pub struct Frame<'a> {
-    pub lines: &'a [String],
-    pub gutter: &'a [String],
-    pub signs: Option<&'a [Option<Sign>]>,
-    pub diagnostic_spans: &'a [DiagnosticSpan],
+    pub panes: &'a [PaneFrame<'a>],
+    pub separators: &'a [Rect],
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
     pub picker: Option<PickerMenu<'a>>,
     pub replace: Option<ReplaceMenu<'a>>,
-    pub cursor_col: usize,
-    pub row: usize,
     pub viewport: &'a Viewport,
-    pub status: &'a StatusInfo<'a>,
     pub message: Option<&'a str>,
     pub prompt: Option<PromptMenu<'a>>,
     pub command: Option<&'a str>,
     pub search: Option<&'a str>,
     pub search_delimiter: char,
     pub search_status: Option<&'a str>,
+    pub showcmd: Option<String>,
+    pub cursor_style: CursorStyle,
+    pub theme: &'a Theme,
+}
+
+pub struct PaneFrame<'a> {
+    pub rect: Rect,
+    pub active: bool,
+    pub lines: &'a [String],
+    pub gutter: &'a [String],
+    pub signs: Option<&'a [Option<Sign>]>,
+    pub diagnostic_spans: &'a [DiagnosticSpan],
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
     pub syntax_spans: &'a [SyntaxSpan],
-    pub leftcol: usize,
-    pub tabstop: usize,
-    pub showcmd: Option<String>,
-    pub cursor_style: CursorStyle,
     pub selection: Option<Selection>,
-    pub theme: &'a Theme,
+    pub viewport: Viewport,
+    pub cursor_col: usize,
+    pub row: usize,
+    pub tabstop: usize,
+    pub status: &'a StatusInfo<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

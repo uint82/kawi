@@ -1,6 +1,7 @@
 pub const FALLBACK_WIDTH: usize = 80;
 pub const FALLBACK_HEIGHT: usize = 24;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Viewport {
     top: usize,
     leftcol: usize,

@@ -1,22 +1,45 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Write { force: bool },
+    Write {
+        force: bool,
+    },
     Quit,
-    WriteQuit { force: bool },
+    WriteQuit {
+        force: bool,
+    },
     ForceQuit,
     QuitAll,
     ForceQuitAll,
     WriteAll,
     WriteQuitAll,
-    Edit { name: Option<String>, force: bool },
-    WriteAs { name: String, force: bool },
-    DeleteBuffer { spec: Option<String>, force: bool },
+    Edit {
+        name: Option<String>,
+        force: bool,
+    },
+    WriteAs {
+        name: String,
+        force: bool,
+    },
+    DeleteBuffer {
+        spec: Option<String>,
+        force: bool,
+    },
     ListBuffers,
     Marks,
     NextBuffer,
     PreviousBuffer,
     AlternateBuffer,
     SelectBuffer(String),
+    Split {
+        vertical: bool,
+        name: Option<String>,
+    },
+    NewWindow {
+        vertical: bool,
+        name: Option<String>,
+    },
+    CloseWindow,
+    OnlyWindow,
     SetKeymap(String),
     SetTheme(String),
     SetShiftWidth(usize),
@@ -65,11 +88,16 @@ pub const COMMAND_NAMES: &[&str] = &[
     "bprevious",
     "buffer",
     "buffers",
+    "clo",
+    "close",
     "e",
     "edit",
     "files",
     "git",
     "ls",
+    "new",
+    "on",
+    "only",
     "pick",
     "q",
     "q!",
@@ -82,7 +110,10 @@ pub const COMMAND_NAMES: &[&str] = &[
     "quitall!",
     "s",
     "set",
+    "sp",
+    "split",
     "substitute",
+    "vnew",
     "w",
     "w!",
     "wall",
@@ -92,6 +123,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "wq",
     "wqa",
     "wqall",
+    "vs",
+    "vsplit",
 ];
 
 pub const SET_OPTION_NAMES: &[&str] = &[
@@ -151,6 +184,24 @@ fn parse_named(text: &str) -> Command {
         }
         ("b" | "buffer", ["#"]) => Command::AlternateBuffer,
         ("b" | "buffer", [arg]) => Command::SelectBuffer(arg.to_string()),
+        ("sp" | "split", rest) if rest.len() <= 1 => Command::Split {
+            vertical: false,
+            name: rest.first().map(|name| (*name).to_string()),
+        },
+        ("vs" | "vsplit", rest) if rest.len() <= 1 => Command::Split {
+            vertical: true,
+            name: rest.first().map(|name| (*name).to_string()),
+        },
+        ("new", rest) if rest.len() <= 1 => Command::NewWindow {
+            vertical: false,
+            name: rest.first().map(|name| (*name).to_string()),
+        },
+        ("vnew", rest) if rest.len() <= 1 => Command::NewWindow {
+            vertical: true,
+            name: rest.first().map(|name| (*name).to_string()),
+        },
+        ("clo" | "close", []) => Command::CloseWindow,
+        ("on" | "only", []) => Command::OnlyWindow,
         ("pick", []) => Command::Pick(PickerCommand::Files),
         ("pick", ["file" | "files"]) => Command::Pick(PickerCommand::Files),
         ("pick", ["grep" | "live_grep" | "grep_live"]) => Command::Pick(PickerCommand::Grep),
@@ -564,6 +615,57 @@ mod tests {
         assert_eq!(parse("set nosmartcase"), Command::SetSmartCase(false));
         assert_eq!(parse("set autoindent"), Command::SetAutoIndent(true));
         assert_eq!(parse("set noautoindent"), Command::SetAutoIndent(false));
+    }
+
+    #[test]
+    fn parses_window_commands() {
+        assert_eq!(
+            parse("sp"),
+            Command::Split {
+                vertical: false,
+                name: None
+            }
+        );
+        assert_eq!(
+            parse("split src/main.rs"),
+            Command::Split {
+                vertical: false,
+                name: Some("src/main.rs".to_string())
+            }
+        );
+        assert_eq!(
+            parse("vsplit"),
+            Command::Split {
+                vertical: true,
+                name: None
+            }
+        );
+        assert_eq!(
+            parse("vs src/main.rs"),
+            Command::Split {
+                vertical: true,
+                name: Some("src/main.rs".to_string())
+            }
+        );
+        assert_eq!(
+            parse("new"),
+            Command::NewWindow {
+                vertical: false,
+                name: None
+            }
+        );
+        assert_eq!(
+            parse("vnew src/main.rs"),
+            Command::NewWindow {
+                vertical: true,
+                name: Some("src/main.rs".to_string())
+            }
+        );
+        assert_eq!(parse("close"), Command::CloseWindow);
+        assert_eq!(parse("clo"), Command::CloseWindow);
+        assert_eq!(parse("only"), Command::OnlyWindow);
+        assert_eq!(parse("on"), Command::OnlyWindow);
+        assert_eq!(parse("close now"), Command::Unknown);
     }
 
     #[test]
