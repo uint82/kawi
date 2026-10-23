@@ -4,6 +4,7 @@ mod helix;
 mod keymap;
 mod mouse;
 mod persist;
+mod recovery;
 mod session;
 mod state;
 mod text;
