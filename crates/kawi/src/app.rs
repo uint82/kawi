@@ -23,6 +23,7 @@ mod picker;
 mod rename;
 mod replace;
 mod replace_apply;
+mod restore;
 mod window;
 mod workspace_edit;
 
@@ -163,6 +164,7 @@ impl App {
     pub fn run(&mut self) -> Result<()> {
         self.sync_viewport_size();
         self.events.start_input_thread()?;
+        self.events.start_signal_handlers()?;
         self.run_loop()
     }
 
@@ -183,6 +185,14 @@ impl App {
             return;
         };
         let _ = state::save(&self.editor, &paths);
+    }
+
+    pub(crate) fn show_startup_warning(&mut self, warning: String) {
+        let warning = match self.message.take() {
+            Some(existing) if !existing.is_empty() => format!("{existing}\n{warning}"),
+            _ => warning,
+        };
+        self.show_message(warning);
     }
 
     #[cfg(test)]
@@ -245,6 +255,9 @@ impl App {
 
     fn wait_for_redraw(&mut self) -> Result<Redraw> {
         loop {
+            if self.events.shutdown_requested() {
+                return Ok(Redraw::Quit);
+            }
             let mut redraw = false;
             for event in self.events.take_input() {
                 let needs_redraw = event_needs_redraw(&event);
@@ -1428,7 +1441,7 @@ impl App {
         if self.windows.len() > 1 {
             return self.close_active_window(force);
         }
-        if force || !self.editor.is_dirty() {
+        if force || !self.editor.has_unsaved() {
             return Ok(true);
         }
         self.show_message("E37: No write since last change".to_string());
@@ -2824,6 +2837,17 @@ mod tests {
         type_command(&mut app, "q");
         assert_eq!(app.last_message(), Some("E37: No write since last change"));
         type_command(&mut app, "q!");
+        assert_eq!(app.last_message(), Some("E37: No write since last change"));
+    }
+
+    #[test]
+    fn quit_reports_hidden_changes() {
+        let alpha = temp_file("quit_hidden.txt", "alpha\n");
+        let bravo = temp_file("quit_hidden_other.txt", "bravo\n");
+        let mut app = App::new(kawi_buffer::Buffer::from_file(&alpha).unwrap(), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('x'))).expect("delete");
+        type_command(&mut app, &format!("e {bravo}"));
+        type_command(&mut app, "q");
         assert_eq!(app.last_message(), Some("E37: No write since last change"));
     }
 

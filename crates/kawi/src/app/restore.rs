@@ -1,0 +1,491 @@
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use kawi_editor::paths;
+
+use super::window::Windows;
+use super::App;
+use crate::session::{Session, SessionBuffer, SESSION_VERSION};
+
+impl App {
+    pub(crate) fn session_snapshot(&mut self) -> Option<Session> {
+        self.sync_active_window();
+        let cwd = std::fs::canonicalize(std::env::current_dir().ok()?).ok()?;
+        let mut indices = BTreeMap::new();
+        let mut buffers = Vec::new();
+        for number in self.editor.buffer_numbers() {
+            let path = self
+                .editor
+                .buffer_path(number)
+                .map(|path| paths::absolute(path, &cwd));
+            indices.insert(number, buffers.len());
+            buffers.push(SessionBuffer {
+                path: path.map(path_text),
+            });
+        }
+        let windows = self.windows.snapshot(&indices)?;
+        Some(Session {
+            version: SESSION_VERSION,
+            cwd: path_text(cwd),
+            buffers,
+            windows,
+            active_window: self.windows.active(),
+        })
+    }
+
+    pub(crate) fn restore_session(&mut self, session: &Session) -> Option<String> {
+        let mut warnings = Vec::new();
+        let buffers = self.load_session_buffers(&session.buffers, &mut warnings);
+        let Some(mut windows) =
+            Windows::from_session(&session.windows, session.active_window, &buffers)
+        else {
+            warnings.push("session: no windows could be restored".to_string());
+            self.reset_windows();
+            return session_warnings(warnings);
+        };
+        let editor = &self.editor;
+        windows.clamp_views(|buffer, view| editor.clamp_view_state(buffer, view));
+        let buffer = windows.active_view().buffer;
+        let view = windows.active_view().view;
+        if self.editor.buffer_number() != buffer && !self.editor.buffer_select(buffer) {
+            warnings.push("session: active buffer could not be restored".to_string());
+            self.reset_windows();
+            return session_warnings(warnings);
+        }
+        self.windows = windows;
+        self.window_syntax.clear();
+        self.window_prefix = false;
+        self.refresh_window_sizes();
+        self.editor.restore_view_state(view);
+        self.reveal_cursor();
+        self.sync_active_window();
+        session_warnings(warnings)
+    }
+
+    fn load_session_buffers(
+        &mut self,
+        buffers: &[SessionBuffer],
+        warnings: &mut Vec<String>,
+    ) -> Vec<Option<usize>> {
+        let mut numbers = Vec::with_capacity(buffers.len());
+        let mut used_initial = false;
+        let mut skipped = 0;
+        for buffer in buffers {
+            match buffer.path.as_deref() {
+                Some(path) => {
+                    if !Path::new(path).is_file() {
+                        skipped += 1;
+                        numbers.push(None);
+                        continue;
+                    }
+                    let opened = if used_initial {
+                        self.editor.open_file_buffer(path)
+                    } else {
+                        self.editor.edit_file(Some(path), false)
+                    };
+                    match opened {
+                        Ok(()) => {
+                            numbers.push(Some(self.editor.buffer_number()));
+                            used_initial = true;
+                        }
+                        Err(_) => {
+                            skipped += 1;
+                            numbers.push(None);
+                        }
+                    }
+                }
+                None => {
+                    if !used_initial {
+                        numbers.push(Some(self.editor.buffer_number()));
+                    } else {
+                        self.editor.open_empty_buffer();
+                        numbers.push(Some(self.editor.buffer_number()));
+                    }
+                    used_initial = true;
+                }
+            }
+        }
+        if skipped > 0 {
+            warnings.push(skipped_buffers_warning(skipped));
+        }
+        numbers
+    }
+
+    fn reset_windows(&mut self) {
+        self.windows = Windows::new(self.editor.buffer_number(), self.editor.view_state());
+        self.window_syntax.clear();
+        self.window_prefix = false;
+        self.refresh_window_sizes();
+        self.reveal_cursor();
+    }
+}
+
+fn path_text(path: PathBuf) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn skipped_buffers_warning(count: usize) -> String {
+    let noun = if count == 1 { "buffer" } else { "buffers" };
+    format!("session: skipped {count} unavailable {noun}")
+}
+
+fn session_warnings(warnings: Vec<String>) -> Option<String> {
+    (!warnings.is_empty()).then(|| warnings.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use kawi_buffer::Buffer;
+    use kawi_editor::{paths, Action};
+    use std::fs;
+    use std::path::Path;
+
+    use crate::keymap::Flavor;
+    use crate::session::{SessionDirection, SessionView, SessionWindow};
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("kawi_restore_{}_{}", std::process::id(), name));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_file(dir: &Path, name: &str, text: &str) -> String {
+        let path = dir.join(name);
+        fs::write(&path, text).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    fn empty_app() -> App {
+        App::new(Buffer::from_string(""), Flavor::Vim)
+    }
+
+    fn view(row: usize, col: usize, top: usize) -> SessionView {
+        SessionView {
+            row,
+            col,
+            desired: col,
+            top,
+            leftcol: 0,
+        }
+    }
+
+    fn leaf(id: u64, buffer: usize, row: usize, col: usize) -> SessionWindow {
+        SessionWindow::Leaf {
+            id,
+            buffer,
+            view: view(row, col, 0),
+        }
+    }
+
+    fn split(first: SessionWindow, second: SessionWindow) -> SessionWindow {
+        SessionWindow::Split {
+            direction: SessionDirection::Vertical,
+            ratio: 40,
+            first: Box::new(first),
+            second: Box::new(second),
+        }
+    }
+
+    fn canonical_cwd() -> PathBuf {
+        std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap()
+    }
+
+    fn cwd() -> String {
+        canonical_cwd().to_string_lossy().into_owned()
+    }
+
+    fn session(buffers: Vec<SessionBuffer>, windows: SessionWindow, active: u64) -> Session {
+        Session {
+            version: SESSION_VERSION,
+            cwd: cwd(),
+            buffers,
+            windows,
+            active_window: active,
+        }
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+            .expect("key");
+    }
+
+    #[test]
+    fn snapshot_captures_buffers_windows_and_views() {
+        let dir = temp_dir("snapshot");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\nbeta\ngamma\n");
+        let bravo = write_file(&dir, "bravo.txt", "bravo\ncharlie\n");
+        let mut app = empty_app();
+        app.editor.edit_file(Some(&alpha), false).unwrap();
+        app.editor.apply(Action::JumpTo(2, 1));
+        app.split_window(true, Some(bravo.clone())).unwrap();
+        let active = app.windows.active();
+        let session = app.session_snapshot().expect("snapshot");
+        assert_eq!(session.version, SESSION_VERSION);
+        assert_eq!(session.cwd, cwd());
+        assert_eq!(session.buffers.len(), 2);
+        assert_eq!(
+            session.buffers[0].path.as_deref(),
+            Some(paths::absolute(&alpha, Path::new(&cwd())).to_str().unwrap())
+        );
+        assert_eq!(
+            session.buffers[1].path.as_deref(),
+            Some(paths::absolute(&bravo, Path::new(&cwd())).to_str().unwrap())
+        );
+        assert_eq!(session.active_window, active);
+        match &session.windows {
+            SessionWindow::Split { direction, .. } => {
+                assert_eq!(*direction, SessionDirection::Vertical);
+            }
+            SessionWindow::Leaf { .. } => panic!("expected split"),
+        }
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_rebuilds_windows_and_per_window_views() {
+        let dir = temp_dir("restore");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\nbeta\ngamma\n");
+        let bravo = write_file(&dir, "bravo.txt", "bravo\ncharlie\n");
+        let session = session(
+            vec![
+                SessionBuffer {
+                    path: Some(alpha.clone()),
+                },
+                SessionBuffer {
+                    path: Some(bravo.clone()),
+                },
+            ],
+            split(leaf(1, 0, 2, 3), leaf(2, 1, 1, 2)),
+            2,
+        );
+        let mut app = empty_app();
+        assert_eq!(app.restore_session(&session), None);
+        assert_eq!(app.windows.len(), 2);
+        assert_eq!(app.editor.filename(), bravo);
+        assert_eq!(app.cursor_position(), (1, 2));
+        assert_eq!(app.editor.buffer_numbers().len(), 2);
+        assert!(app.focus_window_direction(super::super::window::FocusDirection::Left));
+        assert_eq!(app.editor.filename(), alpha);
+        assert_eq!(app.cursor_position(), (2, 3));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_skips_missing_buffers_and_repairs_focus() {
+        let dir = temp_dir("missing");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\n");
+        let missing = dir.join("missing.txt").to_string_lossy().into_owned();
+        let session = session(
+            vec![
+                SessionBuffer {
+                    path: Some(missing),
+                },
+                SessionBuffer {
+                    path: Some(alpha.clone()),
+                },
+            ],
+            split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
+            1,
+        );
+        let mut app = empty_app();
+        assert_eq!(
+            app.restore_session(&session),
+            Some("session: skipped 1 unavailable buffer".to_string())
+        );
+        assert_eq!(app.windows.len(), 1);
+        assert_eq!(app.editor.filename(), alpha);
+        assert_eq!(app.windows.active(), 2);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_clamps_out_of_range_views() {
+        let dir = temp_dir("clamp_views");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\nbeta\n");
+        let bravo = write_file(&dir, "bravo.txt", "one\n");
+        let wild = SessionView {
+            row: 20,
+            col: 20,
+            desired: 20,
+            top: 20,
+            leftcol: 20,
+        };
+        let session = session(
+            vec![
+                SessionBuffer {
+                    path: Some(alpha.clone()),
+                },
+                SessionBuffer {
+                    path: Some(bravo.clone()),
+                },
+            ],
+            split(
+                SessionWindow::Leaf {
+                    id: 1,
+                    buffer: 0,
+                    view: wild,
+                },
+                SessionWindow::Leaf {
+                    id: 2,
+                    buffer: 1,
+                    view: wild,
+                },
+            ),
+            1,
+        );
+        let mut app = empty_app();
+        assert_eq!(app.restore_session(&session), None);
+        assert_eq!(app.cursor_position(), (1, 3));
+        assert_eq!(app.editor.view_top(), 1);
+        assert_eq!(app.editor.view_leftcol(), 3);
+        assert!(app.focus_window_direction(super::super::window::FocusDirection::Right));
+        assert_eq!(app.editor.filename(), bravo);
+        assert_eq!(app.cursor_position(), (0, 2));
+        assert_eq!(app.editor.view_top(), 0);
+        assert_eq!(app.editor.view_leftcol(), 2);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_collapses_nested_missing_leaves() {
+        let dir = temp_dir("nested_missing");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\n");
+        let bravo = write_file(&dir, "bravo.txt", "bravo\n");
+        let missing = dir.join("missing.txt").to_string_lossy().into_owned();
+        let nested = SessionWindow::Split {
+            direction: SessionDirection::Horizontal,
+            ratio: 50,
+            first: Box::new(leaf(2, 1, 0, 0)),
+            second: Box::new(leaf(3, 2, 0, 0)),
+        };
+        let windows = SessionWindow::Split {
+            direction: SessionDirection::Vertical,
+            ratio: 50,
+            first: Box::new(leaf(1, 0, 0, 0)),
+            second: Box::new(nested),
+        };
+        let session = session(
+            vec![
+                SessionBuffer {
+                    path: Some(alpha.clone()),
+                },
+                SessionBuffer {
+                    path: Some(missing),
+                },
+                SessionBuffer { path: Some(bravo) },
+            ],
+            windows,
+            2,
+        );
+        let mut app = empty_app();
+        assert_eq!(
+            app.restore_session(&session),
+            Some("session: skipped 1 unavailable buffer".to_string())
+        );
+        assert_eq!(app.windows.len(), 2);
+        assert_eq!(app.windows.active(), 1);
+        assert_eq!(app.editor.filename(), alpha);
+        let layout = app.window_layout();
+        assert_eq!(layout.panes.len(), 2);
+        assert_eq!(layout.separators.len(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_keeps_an_empty_unnamed_buffer() {
+        let dir = temp_dir("unnamed");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\n");
+        let session = session(
+            vec![
+                SessionBuffer { path: None },
+                SessionBuffer {
+                    path: Some(alpha.clone()),
+                },
+            ],
+            split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
+            1,
+        );
+        let mut app = empty_app();
+        assert_eq!(app.restore_session(&session), None);
+        assert_eq!(app.windows.len(), 2);
+        assert_eq!(app.editor.filename(), "[No Name]");
+        assert_eq!(app.editor.buffer_numbers().len(), 2);
+        assert_eq!(app.windows.count_buffer(app.editor.buffer_number()), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn snapshot_saves_dirty_workspaces() {
+        let dir = temp_dir("dirty");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\n");
+        let mut app = empty_app();
+        app.editor.edit_file(Some(&alpha), false).unwrap();
+        press(&mut app, KeyCode::Char('x'));
+        let session = app.session_snapshot().expect("snapshot");
+        assert_eq!(session.buffers.len(), 1);
+        assert_eq!(
+            session.buffers[0].path.as_deref(),
+            Some(paths::absolute(&alpha, &canonical_cwd()).to_str().unwrap())
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn session_file_round_trips_through_restore() {
+        let dir = temp_dir("roundtrip");
+        let alpha = write_file(&dir, "alpha.txt", "alpha\nbeta\n");
+        let bravo = write_file(&dir, "bravo.txt", "bravo\n");
+        let mut app = empty_app();
+        app.editor.edit_file(Some(&alpha), false).unwrap();
+        app.editor.apply(Action::JumpTo(1, 2));
+        app.split_window(true, Some(bravo.clone())).unwrap();
+        let session = app.session_snapshot().expect("snapshot");
+        let sessions = dir.join("sessions");
+        let cwd = canonical_cwd();
+        crate::session::save_for_cwd(&sessions, &cwd, &session).unwrap();
+        let loaded = crate::session::load_for_cwd(&sessions, &cwd)
+            .unwrap()
+            .expect("session");
+        let mut restored = empty_app();
+        assert_eq!(restored.restore_session(&loaded), None);
+        assert_eq!(restored.windows.len(), 2);
+        assert_eq!(restored.editor.filename(), bravo);
+        assert!(restored.focus_window_direction(super::super::window::FocusDirection::Left));
+        assert_eq!(restored.editor.filename(), alpha);
+        assert_eq!(restored.cursor_position(), (1, 2));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_with_only_missing_buffers_falls_back_to_one_window() {
+        let dir = temp_dir("all_missing");
+        let missing = dir.join("missing.txt").to_string_lossy().into_owned();
+        let session = session(
+            vec![SessionBuffer {
+                path: Some(missing),
+            }],
+            leaf(1, 0, 0, 0),
+            1,
+        );
+        let mut app = empty_app();
+        let warning = app.restore_session(&session).expect("warning");
+        assert!(warning.contains("skipped 1 unavailable buffer"));
+        assert!(warning.contains("no windows could be restored"));
+        assert_eq!(app.windows.len(), 1);
+        assert_eq!(app.editor.filename(), "[No Name]");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn snapshot_saves_an_empty_workspace() {
+        let mut app = empty_app();
+        let session = app.session_snapshot().expect("snapshot");
+        assert_eq!(session.buffers.len(), 1);
+        assert_eq!(session.buffers[0].path, None);
+        assert!(matches!(session.windows, SessionWindow::Leaf { .. }));
+    }
+}

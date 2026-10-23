@@ -1,24 +1,30 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use kawi_editor::paths::home_dir;
 use kawi_editor::{Editor, HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::persist::write_atomically;
+use crate::text::one_line;
+
 #[derive(Debug)]
 pub struct StatePaths {
     pub config: PathBuf,
     pub languages: PathBuf,
     pub history: PathBuf,
+    pub sessions: PathBuf,
 }
 
 impl StatePaths {
     pub fn resolve() -> Option<Self> {
         let config = xdg_dir("XDG_CONFIG_HOME", ".config")?;
+        let state = xdg_dir("XDG_STATE_HOME", ".local/state")?;
         Some(Self {
             config: config.join("kawi/config.toml"),
             languages: config.join("kawi/languages.toml"),
-            history: xdg_dir("XDG_STATE_HOME", ".local/state")?.join("kawi/history"),
+            history: state.join("kawi/history"),
+            sessions: state.join("kawi/sessions"),
         })
     }
 }
@@ -74,10 +80,6 @@ fn config_error(details: &str) -> String {
     format!("config.toml: {}", one_line(details))
 }
 
-fn one_line(details: &str) -> String {
-    details.split_whitespace().collect::<Vec<&str>>().join(" ")
-}
-
 fn load_history(path: &Path) -> HistoryEntries {
     let Ok(text) = fs::read_to_string(path) else {
         return HistoryEntries::default();
@@ -107,17 +109,6 @@ fn append_entries(text: &mut String, marker: char, entries: &[String]) {
         text.push_str(entry);
         text.push('\n');
     }
-}
-
-fn write_atomically(path: &Path, text: &str) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
-    }
-    let temp = path.with_extension("tmp");
-    fs::write(&temp, text).with_context(|| format!("failed to write {}", temp.display()))?;
-    fs::rename(&temp, path).with_context(|| format!("failed to replace {}", path.display()))?;
-    Ok(())
 }
 
 fn xdg_dir(variable: &str, fallback: &str) -> Option<PathBuf> {
@@ -227,6 +218,7 @@ mod tests {
             config: dir.join("config.toml"),
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
+            sessions: dir.join("sessions"),
         };
         fs::write(&paths.config, "history = 1\n").unwrap();
         fs::write(&paths.history, ":first\n:second\n/search\n").unwrap();
@@ -245,6 +237,7 @@ mod tests {
             config: dir.join("config.toml"),
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
+            sessions: dir.join("sessions"),
         };
         let mut editor = editor();
         editor.load_history(HistoryEntries {

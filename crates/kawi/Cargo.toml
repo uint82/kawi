@@ -17,6 +17,11 @@ kawi-picker = { path = "../kawi-picker" }
 kawi-syntax = { path = "../kawi-syntax" }
 kawi-tui = { path = "../kawi-tui" }
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 toml.workspace = true
 anyhow.workspace = true
 crossterm.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+signal-hook.workspace = true

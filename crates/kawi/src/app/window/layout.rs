@@ -191,6 +191,10 @@ fn split_size(total: usize, ratio: u16, minimum: usize) -> usize {
     }
 }
 
+pub(super) fn normalized_ratio(ratio: u16) -> u16 {
+    ratio.clamp(MIN_RATIO, MAX_RATIO)
+}
+
 pub(super) fn pane_rect(panes: &[(WindowId, Rect)], id: WindowId) -> Option<Rect> {
     panes
         .iter()
