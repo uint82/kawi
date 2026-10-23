@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use kawi_editor::ViewState;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
@@ -9,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::persist::write_atomically;
 use crate::text::one_line;
+use crate::workspace;
 
 pub(crate) const SESSION_VERSION: u32 = 2;
 pub(crate) const MIN_SESSION_VERSION: u32 = 1;
@@ -97,18 +97,7 @@ pub fn save_for_cwd(sessions: &Path, cwd: &Path, session: &Session) -> Result<()
 
 fn session_path(sessions: &Path, cwd: &Path) -> Result<PathBuf, String> {
     let cwd = fs::canonicalize(cwd).map_err(|error| format!("session: {error}"))?;
-    Ok(sessions.join(format!("{}.json", workspace_key(&cwd))))
-}
-
-fn workspace_key(cwd: &Path) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let digest = Sha256::digest(cwd.as_os_str().as_encoded_bytes());
-    let mut key = String::with_capacity(64);
-    for byte in digest {
-        key.push(HEX[(byte >> 4) as usize] as char);
-        key.push(HEX[(byte & 15) as usize] as char);
-    }
-    key
+    Ok(sessions.join(format!("{}.json", workspace::key(&cwd))))
 }
 
 fn load(path: &Path) -> Result<Option<Session>, String> {

@@ -14,6 +14,7 @@ pub struct StatePaths {
     pub languages: PathBuf,
     pub history: PathBuf,
     pub sessions: PathBuf,
+    pub recovery: PathBuf,
 }
 
 impl StatePaths {
@@ -25,6 +26,7 @@ impl StatePaths {
             languages: config.join("kawi/languages.toml"),
             history: state.join("kawi/history"),
             sessions: state.join("kawi/sessions"),
+            recovery: state.join("kawi/recovery"),
         })
     }
 }
@@ -219,6 +221,7 @@ mod tests {
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
+            recovery: dir.join("recovery"),
         };
         fs::write(&paths.config, "history = 1\n").unwrap();
         fs::write(&paths.history, ":first\n:second\n/search\n").unwrap();
@@ -238,6 +241,7 @@ mod tests {
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
+            recovery: dir.join("recovery"),
         };
         let mut editor = editor();
         editor.load_history(HistoryEntries {

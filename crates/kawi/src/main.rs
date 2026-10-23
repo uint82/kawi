@@ -8,6 +8,7 @@ mod session;
 mod state;
 mod text;
 mod vim;
+mod workspace;
 use anyhow::Result;
 use app::App;
 use kawi_buffer::Buffer;
