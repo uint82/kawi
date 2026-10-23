@@ -26,7 +26,7 @@ pub use actions::{Action, CaseMotion, Object, ShiftMotion};
 pub use command::{parse, Command, CommandLine, GitCommand, PickerCommand};
 pub use cursor::Cursor;
 pub use editor::{
-    BufferError, EditError, Editor, HistoryEntries, WriteOutcome, DEFAULT_HISTORY_LIMIT,
+    BufferError, EditError, Editor, HistoryEntries, ViewState, WriteOutcome, DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
 };
 pub use mode::Mode;

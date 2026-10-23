@@ -530,6 +530,87 @@ impl Editor {
             .join("\n")
     }
 
+    pub fn buffer_line_count(&self, number: usize) -> Option<usize> {
+        self.buffer_line_count_at(number)
+    }
+
+    pub fn buffer_is_dirty(&self, number: usize) -> Option<bool> {
+        self.buffer_is_dirty_at(number)
+    }
+
+    pub fn buffer_is_empty(&self, number: usize) -> Option<bool> {
+        self.buffer_is_empty_at(number)
+    }
+
+    pub fn buffer_line_len(&self, number: usize, row: usize) -> Option<usize> {
+        self.buffer_line_len_at(number, row)
+    }
+
+    pub fn buffer_virtcol(&self, number: usize, row: usize, col: usize) -> Option<usize> {
+        let buffer = self.buffer_at(number)?;
+        let tabstop = self.effective_indent().tabstop;
+        let width = buffer.line_len(row);
+        if col < width {
+            Some(
+                buffer
+                    .screen_col(row, col.saturating_add(1), tabstop)
+                    .saturating_sub(1),
+            )
+        } else {
+            Some(buffer.screen_col(row, width, tabstop))
+        }
+    }
+
+    pub fn buffer_window_lines(
+        &self,
+        number: usize,
+        top: usize,
+        height: usize,
+    ) -> Option<Vec<String>> {
+        self.buffer_at(number)
+            .map(|buffer| buffer.window_lines(top, height))
+    }
+
+    pub fn buffer_revision_at(&self, number: usize) -> Option<u64> {
+        self.buffer_at(number).map(Buffer::revision)
+    }
+
+    fn buffer_at(&self, number: usize) -> Option<&Buffer> {
+        if number == self.buffers.current() {
+            return Some(&self.buffer);
+        }
+        self.buffers.entry(number).map(|entry| &entry.state.buffer)
+    }
+
+    fn buffer_line_count_at(&self, number: usize) -> Option<usize> {
+        self.buffer_at(number).map(Buffer::line_count)
+    }
+
+    fn buffer_is_dirty_at(&self, number: usize) -> Option<bool> {
+        self.buffer_at(number).map(Buffer::is_dirty)
+    }
+
+    fn buffer_is_empty_at(&self, number: usize) -> Option<bool> {
+        self.buffer_at(number).map(Buffer::is_empty)
+    }
+
+    fn buffer_line_len_at(&self, number: usize, row: usize) -> Option<usize> {
+        self.buffer_at(number).map(|buffer| buffer.line_len(row))
+    }
+
+    pub fn discard_current_changes(&mut self) {
+        if self.buffer.path.is_some() {
+            let _ = self.buffer.reload_from_disk();
+        } else {
+            self.buffer.replace_all("");
+        }
+        self.buffer.mark_clean();
+        self.clamp_row();
+        self.clamp_col();
+        self.remember_wanted_column();
+        self.reveal_cursor();
+    }
+
     pub fn write_all(&mut self) -> Result<(), EditError> {
         if self.is_dirty() {
             if !self.has_file() {
@@ -610,7 +691,7 @@ impl Editor {
         Ok(())
     }
 
-    fn open_empty_buffer(&mut self) {
+    pub fn open_empty_buffer(&mut self) {
         self.store_current();
         let number = self.buffers.allocate_number();
         self.load_fresh(Buffer::from_string(""));

@@ -3,7 +3,7 @@ use crossterm::{cursor::MoveTo, execute};
 use std::io::{Stdout, Write};
 
 use crate::paint;
-use crate::theme::Theme;
+use crate::theme::{MatchColors, Theme};
 
 pub struct StatusInfo<'a> {
     pub filename: &'a str,
@@ -20,15 +20,31 @@ pub struct StatusInfo<'a> {
 pub fn draw_status(
     out: &mut Stdout,
     info: &StatusInfo,
-    width: usize,
+    x: usize,
     y: usize,
+    width: usize,
+    active: bool,
     theme: &Theme,
 ) -> Result<()> {
     let line = build_line(info, width);
-    paint::apply_match(out, &theme.status)?;
-    write_status_line(out, &line, y)?;
+    let colors = status_colors(theme, active);
+    paint::apply_match(out, &colors)?;
+    write_status_line(out, &line, x, y)?;
     paint::restore_base(out, theme)?;
     Ok(())
+}
+
+fn status_colors(theme: &Theme, active: bool) -> MatchColors {
+    if active {
+        return MatchColors {
+            foreground: theme.status.foreground,
+            background: theme.status.background,
+        };
+    }
+    MatchColors {
+        foreground: theme.line_number,
+        background: theme.base.background,
+    }
 }
 
 fn build_line(info: &StatusInfo, width: usize) -> String {
@@ -80,8 +96,8 @@ fn join_padded(left: &str, right: &str, width: usize) -> String {
     truncate_to_width(&line, width)
 }
 
-fn write_status_line(out: &mut Stdout, text: &str, y: usize) -> Result<()> {
-    execute!(out, MoveTo(0, saturate_u16(y))).context("move to status row")?;
+fn write_status_line(out: &mut Stdout, text: &str, x: usize, y: usize) -> Result<()> {
+    execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to status row")?;
     write!(out, "{text}").context("write status")?;
     Ok(())
 }

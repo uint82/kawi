@@ -1,12 +1,16 @@
 use anyhow::{anyhow, Result};
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use kawi_buffer::Buffer;
-use std::io::{stdout, Stdout};
+use std::collections::BTreeMap;
+use std::io::stdout;
 use std::path::{Path, PathBuf};
 
 mod code_action;
 mod completion;
 mod formatting;
+mod frame;
 mod git;
 mod lsp;
 mod lsp_diagnostics;
@@ -19,6 +23,7 @@ mod picker;
 mod rename;
 mod replace;
 mod replace_apply;
+mod window;
 mod workspace_edit;
 
 #[derive(Clone, Copy)]
@@ -33,25 +38,10 @@ enum Redraw {
     Redraw,
 }
 
-struct FrameInput<'a> {
-    status: &'a StatusInfo<'a>,
-    window: &'a [String],
-    gutter: &'a [String],
-    search_status: Option<&'a str>,
-    search_spans: &'a [SearchSpan],
-    preview_spans: &'a [SearchSpan],
-    picker: Option<kawi_tui::frame::PickerMenu<'a>>,
-    replace: Option<kawi_tui::frame::ReplaceMenu<'a>>,
-    signs: Option<&'a [Option<kawi_tui::frame::Sign>]>,
-    diagnostic_spans: &'a [kawi_tui::frame::DiagnosticSpan],
-}
-
-fn cursor_style_for(mode: kawi_editor::Mode) -> kawi_tui::CursorStyle {
-    match mode {
-        kawi_editor::Mode::Insert => kawi_tui::CursorStyle::Bar,
-        kawi_editor::Mode::Replace => kawi_tui::CursorStyle::Underline,
-        _ => kawi_tui::CursorStyle::Block,
-    }
+struct SyntaxCache {
+    spans: Vec<SyntaxSpan>,
+    window: std::ops::Range<usize>,
+    key: SyntaxKey,
 }
 
 fn preferred_sign(
@@ -85,24 +75,20 @@ fn ui_diagnostic_severity(
 
 use crate::event::EventQueue;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
-use crate::mouse::{drag_position, horizontal_wheel_delta, press_position, wheel_delta};
+use crate::mouse::{horizontal_wheel_delta, wheel_delta};
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
     parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, SearchOutcome,
+    FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
-use kawi_tui::{
-    frame::{Frame, SearchSpan},
-    render,
-    statusbar::StatusInfo,
-    terminal,
-    theme::Theme,
-};
+use kawi_tui::{frame::SearchSpan, terminal, theme::Theme};
 use lsp::LspUi;
 use picker::PickerSession;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
+use window::Windows;
 
 pub struct App {
     editor: Editor,
@@ -119,6 +105,7 @@ pub struct App {
     syntax_pending: bool,
     syntax_latest: u64,
     syntax_applied: u64,
+    window_syntax: BTreeMap<window::WindowId, SyntaxCache>,
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
@@ -128,6 +115,10 @@ pub struct App {
     git_path: Option<PathBuf>,
     git_error: Option<String>,
     lsp: LspUi,
+    windows: Windows,
+    screen_width: usize,
+    screen_height: usize,
+    window_prefix: bool,
     events: EventQueue,
 }
 
@@ -135,6 +126,7 @@ impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
         let mut editor = Editor::new(buffer);
         editor.set_clipboard(Box::new(kawi_tui::clipboard::SystemClipboard::new()));
+        let windows = Windows::new(editor.buffer_number(), editor.view_state());
         Self {
             editor,
             keymap: ActiveKeymap::for_flavor(flavor),
@@ -150,6 +142,7 @@ impl App {
             syntax_pending: false,
             syntax_latest: 0,
             syntax_applied: 0,
+            window_syntax: BTreeMap::new(),
             picker: None,
             replace: None,
             rename: None,
@@ -159,6 +152,10 @@ impl App {
             git_path: None,
             git_error: None,
             lsp: LspUi::default(),
+            windows,
+            screen_width: FALLBACK_WIDTH,
+            screen_height: FALLBACK_HEIGHT.saturating_add(2),
+            window_prefix: false,
             events: EventQueue::new(),
         }
     }
@@ -231,6 +228,7 @@ impl App {
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
         loop {
+            self.sync_active_window();
             self.sync_git();
             self.sync_lsp();
             if self.picker.is_none() && self.replace.is_none() {
@@ -360,92 +358,6 @@ impl App {
         changed
     }
 
-    fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
-        let status = self.status_snapshot();
-        let window = self
-            .editor
-            .visible_lines(self.editor.view_top(), self.editor.view_height());
-        let gutter = self
-            .editor
-            .gutter_lines(self.editor.view_top(), self.editor.view_height());
-        let search_status = self.editor.search_status_text();
-        let preview_active = self.editor.command_preview_active();
-        let search_spans = if preview_active {
-            Vec::new()
-        } else {
-            frame_search_spans(
-                &self
-                    .editor
-                    .search_spans(self.editor.view_top(), self.editor.view_height()),
-            )
-        };
-        let preview_spans = if preview_active {
-            frame_search_spans(
-                &self
-                    .editor
-                    .preview_spans(self.editor.view_top(), self.editor.view_height()),
-            )
-        } else {
-            Vec::new()
-        };
-        let picker_items: Vec<String> = self
-            .picker
-            .as_ref()
-            .map(|session| {
-                session
-                    .picker()
-                    .rows()
-                    .iter()
-                    .map(|row| row.display.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let picker = self.picker.as_ref().map(|session| {
-            let state = session.picker();
-            kawi_tui::frame::PickerMenu {
-                title: state.title(),
-                query: state.query(),
-                cursor: state.cursor(),
-                items: &picker_items,
-                selected: state.selected(),
-                loading: state.loading(),
-                status: state.status(),
-                replace_hint: state.kind() == PickerKind::Grep,
-            }
-        });
-        let replace_state = self.replace.as_ref();
-        let replace_rows: Vec<String> = replace_state
-            .map(|session| session.rows().to_vec())
-            .unwrap_or_default();
-        let replace = replace_state.map(|session| kawi_tui::frame::ReplaceMenu {
-            stage: replace_stage(session.stage()),
-            query: session.query(),
-            replacement: session.replacement(),
-            cursor: session.cursor(),
-            items: &replace_rows,
-            selected: session.selected(),
-            loading: session.loading(),
-            status: session.status(),
-            matches: session.matches(),
-            files: session.files(),
-        });
-        let signs = self.view_signs();
-        let diagnostic_spans = self.lsp.diagnostic_spans(&window, self.editor.view_top());
-        let frame = self.build_frame(FrameInput {
-            status: &status,
-            window: &window,
-            gutter: &gutter,
-            signs: signs.as_deref(),
-            diagnostic_spans: &diagnostic_spans,
-            search_status: search_status.as_deref(),
-            search_spans: &search_spans,
-            preview_spans: &preview_spans,
-            picker,
-            replace,
-        });
-        render::draw(out, &frame)
-    }
-
     fn view_signs(&self) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
         let top = self.editor.view_top();
         let height = self.editor.view_height();
@@ -482,79 +394,13 @@ impl App {
         }
     }
 
-    fn build_frame<'a>(&'a self, input: FrameInput<'a>) -> Frame<'a> {
-        let completion = self
-            .code_actions
-            .as_ref()
-            .map(|session| kawi_tui::frame::CompletionMenu {
-                items: session.items(),
-                selected: session.selected(),
-            })
-            .or_else(|| {
-                self.completion
-                    .as_ref()
-                    .map(|session| kawi_tui::frame::CompletionMenu {
-                        items: session.items(),
-                        selected: session.selected(),
-                    })
-            })
-            .or_else(|| {
-                self.editor
-                    .completion_view()
-                    .map(|(items, selected)| kawi_tui::frame::CompletionMenu { items, selected })
-            });
-        Frame {
-            lines: input.window,
-            gutter: input.gutter,
-            signs: input.signs,
-            diagnostic_spans: input.diagnostic_spans,
-            pager: self.pager.as_deref(),
-            completion,
-            picker: input.picker,
-            replace: input.replace,
-            cursor_col: self
-                .editor
-                .cursor_wcol()
-                .saturating_sub(self.editor.view_leftcol()),
-            row: self.editor.row(),
-            viewport: self.editor.viewport(),
-            status: input.status,
-            message: self.message.as_deref(),
-            prompt: self.rename.as_ref().and_then(rename::RenameSession::prompt),
-            command: self.editor.command_prompt(),
-            search: self.editor.search_prompt(),
-            search_delimiter: self.editor.search_prompt_delimiter(),
-            search_status: input.search_status,
-            search_spans: input.search_spans,
-            preview_spans: input.preview_spans,
-            syntax_spans: &self.syntax_spans,
-            leftcol: self.editor.view_leftcol(),
-            tabstop: self.editor.view_tabstop(),
-            showcmd: self.showcmd_text(),
-            cursor_style: cursor_style_for(self.editor.mode()),
-            selection: self.frame_selection(),
-            theme: &self.theme,
-        }
-    }
-
-    fn frame_selection(&self) -> Option<kawi_tui::Selection> {
-        if self.editor.mode() == kawi_editor::Mode::VisualBlock {
-            let (top, left, bottom, right, ragged) = self.editor.block_bounds()?;
-            return Some(kawi_tui::Selection::Block {
-                top,
-                left,
-                bottom,
-                right,
-                ragged,
-            });
-        }
-        self.editor
-            .selection_range()
-            .map(|(start, end)| kawi_tui::Selection::Range { start, end })
-    }
-
     fn showcmd_text(&self) -> Option<String> {
-        match (self.macros.recording_register(), self.keymap.pending_text()) {
+        let pending = if self.window_prefix {
+            Some("^W")
+        } else {
+            self.keymap.pending_text()
+        };
+        match (self.macros.recording_register(), pending) {
             (Some(register), Some(pending)) => Some(format!("recording @{register} {pending}")),
             (Some(register), None) => Some(format!("recording @{register}")),
             (None, pending) => pending.map(str::to_string),
@@ -562,7 +408,7 @@ impl App {
     }
 
     fn show_message(&mut self, text: String) {
-        let lines = pager_lines(&text, self.editor.viewport().width());
+        let lines = pager_lines(&text, self.screen_width);
         if lines.len() > 1 {
             self.show_pager(lines);
         } else {
@@ -581,8 +427,9 @@ impl App {
         self.pager = None;
     }
 
-    fn status_snapshot(&self) -> StatusInfo<'_> {
-        StatusInfo {
+    #[cfg(test)]
+    fn status_snapshot(&self) -> kawi_tui::statusbar::StatusInfo<'_> {
+        kawi_tui::statusbar::StatusInfo {
             filename: self.editor.filename(),
             dirty: self.editor.is_dirty(),
             row: self.editor.row(),
@@ -623,16 +470,19 @@ impl App {
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
-        match event {
+        let result = match event {
             Event::Key(key) => self.handle_key(key),
             Event::Resize(cols, rows) => self.handle_resize(cols, rows),
             Event::Mouse(mouse) => self.handle_mouse(mouse),
             Event::Paste(text) => self.handle_paste(text),
             _ => Ok(false),
-        }
+        };
+        self.sync_active_window();
+        result
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        self.window_prefix = false;
         if self.picker.is_some()
             || self.replace.is_some()
             || self.rename.is_some()
@@ -645,24 +495,76 @@ impl App {
         if self.pager.is_some() {
             return self.handle_noop();
         }
-        if let Some((row, screen_col)) = press_position(&mouse, self.view_geometry()) {
-            let col = self.editor.buffer_col_at_screen(row, screen_col);
-            return self.jump_to(row, col);
+        let column = usize::from(mouse.column);
+        let screen_row = usize::from(mouse.row);
+        let Some((id, rect)) = self.pane_at(column, screen_row) else {
+            return self.handle_noop();
+        };
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if !self.focus_mouse_pane(id) {
+                    return self.handle_noop();
+                }
+                if screen_row >= rect.y.saturating_add(rect.height.saturating_sub(1)) {
+                    return self.handle_noop();
+                }
+                let (row, col) = self.mouse_position(rect, column, screen_row);
+                self.jump_to(row, col)
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if id != self.windows.active()
+                    || screen_row >= rect.y.saturating_add(rect.height.saturating_sub(1))
+                {
+                    return self.handle_noop();
+                }
+                let (row, col) = self.mouse_position(rect, column, screen_row);
+                self.drag_to(row, col)
+            }
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                if !self.focus_mouse_pane(id) {
+                    return self.handle_noop();
+                }
+                match wheel_delta(&mouse) {
+                    Some(delta) => self.scroll_by(delta),
+                    None => self.handle_noop(),
+                }
+            }
+            MouseEventKind::ScrollLeft | MouseEventKind::ScrollRight => {
+                if !self.focus_mouse_pane(id) {
+                    return self.handle_noop();
+                }
+                let page = mouse
+                    .modifiers
+                    .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL);
+                match horizontal_wheel_delta(&mouse) {
+                    Some(delta) => self.scroll_horizontally(delta, page),
+                    None => self.handle_noop(),
+                }
+            }
+            _ => self.handle_noop(),
         }
-        if let Some((row, screen_col)) = drag_position(&mouse, self.view_geometry()) {
-            let col = self.editor.buffer_col_at_screen(row, screen_col);
-            return self.drag_to(row, col);
+    }
+
+    fn focus_mouse_pane(&mut self, id: window::WindowId) -> bool {
+        if id == self.windows.active() {
+            return true;
         }
-        if let Some(delta) = wheel_delta(&mouse) {
-            return self.scroll_by(delta);
-        }
-        if let Some(delta) = horizontal_wheel_delta(&mouse) {
-            let page = mouse
-                .modifiers
-                .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL);
-            return self.scroll_horizontally(delta, page);
-        }
-        self.handle_noop()
+        self.focus_window(id)
+    }
+
+    fn mouse_position(
+        &self,
+        rect: kawi_tui::frame::Rect,
+        column: usize,
+        screen_row: usize,
+    ) -> (usize, usize) {
+        let local_row = screen_row
+            .saturating_sub(rect.y)
+            .min(rect.height.saturating_sub(2));
+        let row = self.editor.view_top().saturating_add(local_row);
+        let screen_col = column.saturating_sub(rect.x);
+        let col = self.editor.buffer_col_at_screen(row, screen_col);
+        (row, col)
     }
 
     fn jump_to(&mut self, row: usize, col: usize) -> Result<bool> {
@@ -708,8 +610,7 @@ impl App {
     }
 
     fn set_viewport_size(&mut self, cols: u16, rows: u16) {
-        let (width, height) = content_size(cols, rows);
-        self.editor.set_view_size(width, height);
+        self.set_screen_size(cols, rows);
     }
 
     fn sync_viewport_size(&mut self) {
@@ -718,16 +619,18 @@ impl App {
         }
     }
 
-    fn view_geometry(&self) -> (usize, usize) {
-        (self.editor.view_top(), self.editor.view_height())
-    }
-
     fn reveal_cursor(&mut self) {
         self.editor.reveal_cursor();
         self.editor.reveal_cursor_horizontally();
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let result = self.handle_key_inner(key);
+        self.sync_active_window();
+        result
+    }
+
+    fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
         if self.rename.is_some() {
             return self.handle_rename_key(key);
         }
@@ -747,6 +650,18 @@ impl App {
         }
         if self.pager.is_none() && completion::is_completion_key(key) {
             return self.request_completion();
+        }
+        if self.window_prefix {
+            self.window_prefix = false;
+            self.macros.record_key(key);
+            return self.handle_window_key(key);
+        }
+        if self.pager.is_none() && window::is_window_prefix(key, self.editor.mode()) {
+            self.window_prefix = true;
+            self.keymap.reset_pending();
+            self.editor.apply(Action::CancelPending);
+            self.macros.record_key(key);
+            return Ok(false);
         }
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
@@ -1094,6 +1009,7 @@ impl App {
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        self.window_prefix = false;
         if self.paste_rename(&text) {
             return Ok(false);
         }
@@ -1350,7 +1266,8 @@ impl App {
             Command::Write { force } => self.handle_save(force),
             Command::Quit => self.handle_quit(),
             Command::WriteQuit { force } => self.handle_write_quit(force),
-            Command::ForceQuit | Command::ForceQuitAll => Ok(true),
+            Command::ForceQuit => self.handle_force_quit(),
+            Command::ForceQuitAll => Ok(true),
             Command::QuitAll => self.handle_quit_all(),
             Command::WriteAll => self.handle_save_all(),
             Command::WriteQuitAll => self.handle_write_quit_all(),
@@ -1363,6 +1280,10 @@ impl App {
             Command::PreviousBuffer => self.handle_buffer_step(false),
             Command::AlternateBuffer => self.handle_alternate(),
             Command::SelectBuffer(arg) => self.handle_select_buffer(&arg),
+            Command::Split { vertical, name } => self.split_window(vertical, name),
+            Command::NewWindow { vertical, name } => self.new_window(vertical, name),
+            Command::CloseWindow => self.close_active_window(false),
+            Command::OnlyWindow => self.only_window(),
             Command::SetKeymap(name) => self.switch_keymap(&name),
             Command::SetTheme(name) => self.switch_theme(&name),
             Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
@@ -1496,7 +1417,18 @@ impl App {
     }
 
     fn handle_quit(&mut self) -> Result<bool> {
-        if !self.editor.is_dirty() {
+        self.quit_or_close(false)
+    }
+
+    fn handle_force_quit(&mut self) -> Result<bool> {
+        self.quit_or_close(true)
+    }
+
+    fn quit_or_close(&mut self, force: bool) -> Result<bool> {
+        if self.windows.len() > 1 {
+            return self.close_active_window(force);
+        }
+        if force || !self.editor.is_dirty() {
             return Ok(true);
         }
         self.show_message("E37: No write since last change".to_string());
@@ -1636,10 +1568,24 @@ impl App {
 
     fn handle_delete_buffer(&mut self, spec: Option<String>, force: bool) -> Result<bool> {
         match self.editor.buffer_delete(spec.as_deref(), force) {
-            Ok(()) => self.reveal_cursor(),
+            Ok(()) => {
+                self.reconcile_unlisted_buffers();
+                self.reveal_cursor();
+            }
             Err(error) => self.show_message(buffer_error_message(error)),
         }
         Ok(false)
+    }
+
+    fn reconcile_unlisted_buffers(&mut self) {
+        let listed = self.editor.buffer_numbers();
+        let fallback = self.editor.buffer_number();
+        if self.windows.replace_unlisted_buffers(&listed, fallback) == 0 {
+            return;
+        }
+        self.sync_active_window();
+        self.refresh_window_sizes();
+        self.reveal_cursor();
     }
 
     fn handle_jump(&mut self, older: bool) -> Result<bool> {
@@ -1784,12 +1730,6 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
         kawi_editor::EditError::InvalidEdit => "E474: Invalid text edit".to_string(),
     }
-}
-
-fn content_size(cols: u16, rows: u16) -> (usize, usize) {
-    let width = usize::from(cols).max(1);
-    let height = usize::from(rows).saturating_sub(2).max(1);
-    (width, height)
 }
 
 #[cfg(test)]

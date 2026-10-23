@@ -169,7 +169,7 @@ impl App {
         let mut quit = false;
         'replay: for _ in 0..count {
             for key in &keys {
-                if self.process_key(*key)? {
+                if self.process_replayed_key(*key)? {
                     quit = true;
                     break 'replay;
                 }

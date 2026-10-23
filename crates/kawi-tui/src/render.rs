@@ -8,11 +8,11 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DiagnosticSpan, Frame, PickerMenu, PromptMenu, ReplaceMenu, ReplaceStage,
-    SearchSpan, Selection,
+    CursorStyle, DiagnosticSpan, Frame, PaneFrame, PickerMenu, PromptMenu, ReplaceMenu,
+    ReplaceStage, SearchSpan, Selection,
 };
 use crate::paint;
-use crate::statusbar::{draw_status, StatusInfo};
+use crate::statusbar::draw_status;
 use crate::text::count_label;
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
@@ -33,21 +33,62 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
 
 fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
-    draw_visible_lines(out, frame)?;
-    draw_filler_rows(out, frame)?;
-    draw_highlight(out, frame, frame.theme)?;
+    for pane in frame.panes {
+        draw_pane(out, frame, pane)?;
+    }
+    draw_separators(out, frame)?;
     match frame.pager {
         Some(lines) => draw_pager(out, frame, lines)?,
-        None => {
-            draw_status_row(out, frame.status, frame.viewport, frame.theme)?;
-            draw_message_row(out, frame)?;
-        }
+        None => draw_message_row(out, frame)?,
     }
     draw_completion(out, frame)?;
     apply_cursor_style(out, frame.cursor_style)?;
     place_cursor(out, frame)?;
     flush(out)?;
     Ok(())
+}
+
+fn draw_pane(out: &mut Stdout, frame: &Frame, pane: &PaneFrame<'_>) -> Result<()> {
+    draw_visible_lines(out, pane, frame.theme)?;
+    draw_filler_rows(out, pane, frame.theme)?;
+    draw_highlight(out, pane, frame.theme)?;
+    if pane.rect.height == 0 {
+        return Ok(());
+    }
+    let row = pane
+        .rect
+        .y
+        .saturating_add(pane.rect.height.saturating_sub(1));
+    draw_status(
+        out,
+        pane.status,
+        pane.rect.x,
+        row,
+        pane.rect.width,
+        pane.active,
+        frame.theme,
+    )
+}
+
+fn draw_separators(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    if frame.separators.is_empty() {
+        return Ok(());
+    }
+    execute!(out, SetForegroundColor(frame.theme.non_text)).context("apply separator color")?;
+    for separator in frame.separators {
+        for offset in 0..separator.height {
+            execute!(
+                out,
+                MoveTo(
+                    saturate_u16(separator.x),
+                    saturate_u16(separator.y.saturating_add(offset))
+                )
+            )
+            .context("move to separator")?;
+            write!(out, "│").context("write separator")?;
+        }
+    }
+    paint::restore_base(out, frame.theme)
 }
 
 fn draw_picker(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
@@ -320,45 +361,52 @@ fn place_replace_cursor(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'
     Ok(())
 }
 
-fn draw_visible_lines(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let gutter_width = gutter_width(frame);
-    for (screen_row, line) in frame.lines.iter().enumerate().take(frame.viewport.height()) {
-        draw_one_line(out, frame, screen_row, line, gutter_width)?;
+fn draw_visible_lines(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Result<()> {
+    let gutter_width = gutter_width(pane);
+    let height = pane.rect.height.saturating_sub(1);
+    for (screen_row, line) in pane.lines.iter().enumerate().take(height) {
+        draw_one_line(out, pane, theme, screen_row, line, gutter_width)?;
     }
     Ok(())
 }
 
 fn draw_one_line(
     out: &mut Stdout,
-    frame: &Frame,
+    pane: &PaneFrame<'_>,
+    theme: &Theme,
     screen_row: usize,
     text: &str,
     gutter_width: usize,
 ) -> Result<()> {
-    execute!(out, MoveTo(0, saturate_u16(screen_row))).context("move to line start")?;
-    if let Some(signs) = frame.signs {
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(pane.rect.x),
+            saturate_u16(pane.rect.y.saturating_add(screen_row))
+        )
+    )
+    .context("move to line start")?;
+    if let Some(signs) = pane.signs {
         match signs.get(screen_row).and_then(|sign| *sign) {
             Some(sign) => {
-                execute!(out, SetForegroundColor(frame.theme.sign_color(sign)))
+                execute!(out, SetForegroundColor(theme.sign_color(sign)))
                     .context("apply sign color")?;
                 write!(out, "{}", sign.text()).context("write sign")?;
             }
             None => write!(out, " ").context("write empty sign")?,
         }
-        execute!(out, SetForegroundColor(frame.theme.line_number))
-            .context("apply line number color")?;
+        execute!(out, SetForegroundColor(theme.line_number)).context("apply line number color")?;
     }
-    if let Some(gutter) = frame.gutter.get(screen_row) {
-        execute!(out, SetForegroundColor(frame.theme.line_number))
-            .context("apply line number color")?;
+    if let Some(gutter) = pane.gutter.get(screen_row) {
+        execute!(out, SetForegroundColor(theme.line_number)).context("apply line number color")?;
         write!(out, "{gutter}").context("write gutter")?;
     }
-    if frame.signs.is_some() || frame.gutter.get(screen_row).is_some() {
-        paint::restore_base(out, frame.theme)?;
+    if pane.signs.is_some() || pane.gutter.get(screen_row).is_some() {
+        paint::restore_base(out, theme)?;
     }
-    let width = frame.viewport.width().saturating_sub(gutter_width);
-    let end = frame.leftcol.saturating_add(width);
-    let text = display::slice_screen(text, frame.leftcol, end, frame.tabstop);
+    let width = pane.rect.width.saturating_sub(gutter_width);
+    let end = pane.viewport.leftcol().saturating_add(width);
+    let text = display::slice_screen(text, pane.viewport.leftcol(), end, pane.tabstop);
     write!(out, "{}", text).context("write line")?;
     erase_row_tail(out)?;
     Ok(())
@@ -369,31 +417,42 @@ fn erase_row_tail(out: &mut Stdout) -> Result<()> {
     Ok(())
 }
 
-fn draw_filler_rows(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    for screen_row in frame.lines.len()..frame.viewport.height() {
+fn draw_filler_rows(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Result<()> {
+    let height = pane.rect.height.saturating_sub(1);
+    for screen_row in pane.lines.len()..height {
         execute!(
             out,
-            MoveTo(0, saturate_u16(screen_row)),
-            SetForegroundColor(frame.theme.non_text)
+            MoveTo(
+                saturate_u16(pane.rect.x),
+                saturate_u16(pane.rect.y.saturating_add(screen_row))
+            ),
+            SetForegroundColor(theme.non_text)
         )
         .context("move to filler row")?;
-        if frame.signs.is_some() {
+        if pane.signs.is_some() {
             write!(out, " ").context("write empty git sign")?;
         }
         write!(out, "~").context("write filler")?;
-        paint::restore_base(out, frame.theme)?;
+        paint::restore_base(out, theme)?;
         erase_row_tail(out)?;
     }
     Ok(())
 }
 
-fn gutter_width(frame: &Frame) -> usize {
-    let numbers = frame.gutter.first().map_or(0, |line| line.chars().count());
-    numbers + usize::from(frame.signs.is_some())
+fn gutter_width(pane: &PaneFrame<'_>) -> usize {
+    let numbers = pane.gutter.first().map_or(0, |line| line.chars().count());
+    numbers + usize::from(pane.signs.is_some())
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {
     text.chars().take(width).collect()
+}
+
+fn write_padded(out: &mut Stdout, text: &str, width: usize) -> Result<()> {
+    let text = truncate_to_width(text, width);
+    let padding = width.saturating_sub(text.chars().count());
+    write!(out, "{text}{}", " ".repeat(padding)).context("write padded row")?;
+    Ok(())
 }
 
 pub struct HighlightSpan {
@@ -678,34 +737,34 @@ fn search_tint(current: bool) -> Tint {
     Tint::SearchMatch
 }
 
-fn draw_highlight(out: &mut Stdout, frame: &Frame, theme: &Theme) -> Result<()> {
-    let gutter_width = gutter_width(frame);
+fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Result<()> {
+    let gutter_width = gutter_width(pane);
     let view = SpanView {
-        window: frame.lines,
-        top: frame.viewport.top(),
-        viewport: frame.viewport,
+        window: pane.lines,
+        top: pane.viewport.top(),
+        viewport: &pane.viewport,
         gutter: gutter_width,
-        leftcol: frame.leftcol,
-        tabstop: frame.tabstop,
+        leftcol: pane.viewport.leftcol(),
+        tabstop: pane.tabstop,
     };
-    for span in syntax_highlight_spans(frame.syntax_spans, &view) {
-        paint_span(out, &span, gutter_width, theme)?;
+    for span in syntax_highlight_spans(pane.syntax_spans, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    for span in search_highlight_spans(frame.search_spans, &view) {
-        paint_span(out, &span, gutter_width, theme)?;
+    for span in search_highlight_spans(pane.search_spans, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    for span in preview_highlight_spans(frame.preview_spans, &view) {
-        paint_span(out, &span, gutter_width, theme)?;
+    for span in preview_highlight_spans(pane.preview_spans, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
     }
     for span in highlight_spans(
         &view,
-        frame.selection,
-        visual_cursor_cell(frame, gutter_width),
+        pane.selection,
+        visual_cursor_cell(pane, gutter_width),
     ) {
-        paint_span(out, &span, gutter_width, theme)?;
+        paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    for span in diagnostic_highlight_spans(frame.diagnostic_spans, &view) {
-        paint_span(out, &span, gutter_width, theme)?;
+    for span in diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
     }
     Ok(())
 }
@@ -725,18 +784,26 @@ fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<
         .collect()
 }
 
-fn visual_cursor_cell(frame: &Frame, gutter_width: usize) -> Option<(usize, usize)> {
-    frame.selection.as_ref()?;
-    Some((frame.row, frame.cursor_col.saturating_sub(gutter_width)))
+fn visual_cursor_cell(pane: &PaneFrame<'_>, gutter_width: usize) -> Option<(usize, usize)> {
+    pane.selection.as_ref()?;
+    Some((pane.row, pane.cursor_col.saturating_sub(gutter_width)))
 }
 
 fn paint_span(
     out: &mut Stdout,
+    pane: &PaneFrame<'_>,
     span: &HighlightSpan,
     gutter_width: usize,
     theme: &Theme,
 ) -> Result<()> {
-    move_to_segment(out, span.from.saturating_add(gutter_width), span.screen_row)?;
+    move_to_segment(
+        out,
+        pane.rect
+            .x
+            .saturating_add(span.from)
+            .saturating_add(gutter_width),
+        pane.rect.y.saturating_add(span.screen_row),
+    )?;
     match span.tint {
         Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
@@ -782,15 +849,6 @@ fn write_segment(out: &mut Stdout, text: &str) -> Result<()> {
     Ok(())
 }
 
-fn draw_status_row(
-    out: &mut Stdout,
-    status: &StatusInfo,
-    viewport: &Viewport,
-    theme: &Theme,
-) -> Result<()> {
-    draw_status(out, status, viewport.width(), viewport.height(), theme)
-}
-
 fn draw_completion(out: &mut Stdout, frame: &Frame) -> Result<()> {
     let Some(menu) = frame.completion.as_ref() else {
         return Ok(());
@@ -798,27 +856,28 @@ fn draw_completion(out: &mut Stdout, frame: &Frame) -> Result<()> {
     if menu.items.is_empty() {
         return Ok(());
     }
-    let available = frame.viewport.height().saturating_add(1);
-    let shown = menu.items.len().min(available);
+    let Some(pane) = frame.panes.iter().find(|pane| pane.active) else {
+        return Ok(());
+    };
+    let height = pane.rect.height.saturating_sub(1);
+    let shown = menu.items.len().min(height);
+    if shown == 0 {
+        return Ok(());
+    }
     let start = menu_start(shown, menu.selected);
-    let width = frame.viewport.width();
     for offset in 0..shown {
         let index = start + offset;
-        let row = frame
-            .viewport
-            .height()
-            .saturating_sub(shown.saturating_sub(1).saturating_sub(offset));
-        execute!(
-            out,
-            MoveTo(0, saturate_u16(row)),
-            Clear(ClearType::CurrentLine)
-        )
-        .context("clear completion row")?;
+        let row = pane
+            .rect
+            .y
+            .saturating_add(height.saturating_sub(shown))
+            .saturating_add(offset);
+        execute!(out, MoveTo(saturate_u16(pane.rect.x), saturate_u16(row)))
+            .context("move to completion row")?;
         if menu.selected == Some(index) {
             paint::apply_match(out, &frame.theme.selection)?;
         }
-        write!(out, "{}", truncate_to_width(&menu.items[index], width))
-            .context("write completion row")?;
+        write_padded(out, &menu.items[index], pane.rect.width)?;
         paint::restore_base(out, frame.theme)?;
     }
     Ok(())
@@ -1012,17 +1071,22 @@ fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
     ) {
         return place_prompt_cursor(out, col, frame.viewport);
     }
-    place_cursor_relative(out, frame.cursor_col, frame.row, frame.viewport)
-}
-
-fn place_cursor_relative(
-    out: &mut Stdout,
-    cursor_col: usize,
-    row: usize,
-    viewport: &Viewport,
-) -> Result<()> {
-    let (x, y) = screen_coords(cursor_col, row, viewport);
-    execute!(out, MoveTo(x, y)).context("place cursor")?;
+    let Some(pane) = frame.panes.iter().find(|pane| pane.active) else {
+        return Ok(());
+    };
+    let height = pane.rect.height.saturating_sub(1);
+    if pane.row < pane.viewport.top() || pane.row >= pane.viewport.top().saturating_add(height) {
+        return Ok(());
+    }
+    let x = pane
+        .rect
+        .x
+        .saturating_add(pane.cursor_col.min(pane.rect.width.saturating_sub(1)));
+    let y = pane
+        .rect
+        .y
+        .saturating_add(pane.row.saturating_sub(pane.viewport.top()));
+    execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("place cursor")?;
     Ok(())
 }
 
@@ -1102,12 +1166,6 @@ fn prompt_edge(width: usize, showcmd: Option<&str>) -> usize {
     width
         .saturating_sub(char_len(showcmd.unwrap_or("")))
         .saturating_sub(1)
-}
-
-fn screen_coords(col: usize, row: usize, viewport: &Viewport) -> (u16, u16) {
-    let x = saturate_u16(col.min(viewport.width().saturating_sub(1)));
-    let y = saturate_u16(viewport.screen_row(row));
-    (x, y)
 }
 
 fn flush(out: &mut Stdout) -> Result<()> {

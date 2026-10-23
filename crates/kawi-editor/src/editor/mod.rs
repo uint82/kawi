@@ -45,6 +45,7 @@ mod shift_ops;
 mod substitute;
 mod syntax;
 mod tab;
+mod view;
 mod visual_block;
 mod word_search;
 mod workspace_edit;
@@ -53,6 +54,7 @@ use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
+pub use view::ViewState;
 
 pub struct Editor {
     buffer: Buffer,
