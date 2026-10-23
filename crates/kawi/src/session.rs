@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use crate::persist::write_atomically;
 use crate::text::one_line;
 
-pub(crate) const SESSION_VERSION: u32 = 1;
+pub(crate) const SESSION_VERSION: u32 = 2;
+pub(crate) const MIN_SESSION_VERSION: u32 = 1;
 pub(crate) const MAX_WINDOW_DEPTH: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +26,8 @@ pub struct Session {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionBuffer {
     pub path: Option<String>,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,16 +129,33 @@ fn save(path: &Path, session: &Session) -> Result<()> {
 }
 
 fn validate(session: &Session) -> Result<(), String> {
-    if session.version != SESSION_VERSION {
+    if !(MIN_SESSION_VERSION..=SESSION_VERSION).contains(&session.version) {
         return Err(format!("unsupported version {}", session.version));
     }
     if session.buffers.is_empty() {
         return Err("session has no buffers".to_string());
     }
+    validate_buffer_ids(&session.buffers)?;
     let mut ids = BTreeSet::new();
     validate_window(&session.windows, session.buffers.len(), 1, &mut ids)?;
     if !ids.contains(&session.active_window) {
         return Err("active window does not exist".to_string());
+    }
+    Ok(())
+}
+
+fn validate_buffer_ids(buffers: &[SessionBuffer]) -> Result<(), String> {
+    let mut ids = BTreeSet::new();
+    for buffer in buffers {
+        let Some(id) = buffer.id.as_deref() else {
+            continue;
+        };
+        if id.is_empty() {
+            return Err("buffer id is empty".to_string());
+        }
+        if !ids.insert(id) {
+            return Err(format!("duplicate buffer id {id}"));
+        }
     }
     Ok(())
 }
@@ -197,8 +217,12 @@ mod tests {
             buffers: vec![
                 SessionBuffer {
                     path: Some("/tmp/kawi/a.txt".to_string()),
+                    id: Some("first".to_string()),
                 },
-                SessionBuffer { path: None },
+                SessionBuffer {
+                    path: None,
+                    id: Some("second".to_string()),
+                },
             ],
             windows: SessionWindow::Split {
                 direction: SessionDirection::Vertical,
@@ -236,6 +260,22 @@ mod tests {
     }
 
     #[test]
+    fn version_one_sessions_load_without_buffer_ids() {
+        let dir = temp_dir("version_one");
+        let path = dir.join("session.json");
+        let mut value = serde_json::to_value(sample()).unwrap();
+        value["version"] = serde_json::json!(1);
+        for buffer in value["buffers"].as_array_mut().unwrap() {
+            buffer.as_object_mut().unwrap().remove("id");
+        }
+        fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+        let loaded = load(&path).unwrap().expect("session");
+        assert_eq!(loaded.version, 1);
+        assert!(loaded.buffers.iter().all(|buffer| buffer.id.is_none()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn corrupt_session_is_rejected() {
         let dir = temp_dir("corrupt");
         let path = dir.join("session.json");
@@ -250,7 +290,27 @@ mod tests {
     fn unsupported_versions_are_rejected() {
         let mut session = sample();
         session.version = SESSION_VERSION + 1;
-        assert_eq!(validate(&session), Err("unsupported version 2".to_string()));
+        assert_eq!(validate(&session), Err("unsupported version 3".to_string()));
+    }
+
+    #[test]
+    fn legacy_sessions_are_accepted() {
+        let mut session = sample();
+        session.version = MIN_SESSION_VERSION;
+        for buffer in &mut session.buffers {
+            buffer.id = None;
+        }
+        assert_eq!(validate(&session), Ok(()));
+    }
+
+    #[test]
+    fn duplicate_buffer_ids_are_rejected() {
+        let mut session = sample();
+        session.buffers[1].id = session.buffers[0].id.clone();
+        assert_eq!(
+            validate(&session),
+            Err("duplicate buffer id first".to_string())
+        );
     }
 
     #[test]
