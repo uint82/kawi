@@ -1,0 +1,115 @@
+use crossterm::event::KeyEvent;
+
+use kawi_lsp::MarkupDocument;
+
+use super::lsp_navigation::HoverResult;
+use super::App;
+
+pub(super) struct HoverSession {
+    documents: Vec<MarkupDocument>,
+    scroll: usize,
+}
+
+impl HoverSession {
+    pub(super) fn new(documents: Vec<MarkupDocument>) -> Self {
+        Self {
+            documents,
+            scroll: 0,
+        }
+    }
+
+    pub(super) fn documents(&self) -> &[MarkupDocument] {
+        &self.documents
+    }
+
+    pub(super) fn scroll(&self) -> usize {
+        self.scroll
+    }
+
+    fn scroll_by(&mut self, delta: isize, limit: usize) {
+        self.scroll = self.scroll.saturating_add_signed(delta).min(limit);
+    }
+}
+
+impl App {
+    pub(super) fn handle_hover_result(&mut self, result: HoverResult) {
+        if self.picker.is_some() || self.replace.is_some() {
+            return;
+        }
+        if result.documents.is_empty() {
+            self.show_message("No hover information".to_string());
+            return;
+        }
+        self.pager = None;
+        self.hover = Some(HoverSession::new(result.documents));
+    }
+
+    pub(super) fn handle_hover_key(&mut self, key: KeyEvent) -> anyhow::Result<Option<bool>> {
+        if self.hover.is_none() {
+            return Ok(None);
+        }
+        let up = self.completion_options.keys.up.event();
+        let down = self.completion_options.keys.down.event();
+        if key != up && key != down {
+            let dismiss = super::is_pager_dismiss(key);
+            self.hover = None;
+            return Ok(dismiss.then_some(false));
+        }
+        let Some((limit, page)) = self.hover_scroll() else {
+            self.hover = None;
+            return Ok(None);
+        };
+        let Some(mut session) = self.hover.take() else {
+            return Ok(None);
+        };
+        let page = isize::try_from(page).unwrap_or(isize::MAX);
+        if key == up {
+            session.scroll_by(-page, limit);
+        } else {
+            session.scroll_by(page, limit);
+        }
+        self.hover = Some(session);
+        Ok(Some(false))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keymap::Flavor;
+    use crossterm::event::{KeyCode, KeyModifiers};
+    use kawi_buffer::Buffer;
+
+    fn hover_app() -> App {
+        let mut app = App::new(Buffer::from_string("value\n"), Flavor::Vim);
+        app.hover = Some(HoverSession::new(vec![MarkupDocument {
+            text: "documentation".to_string(),
+            markdown: false,
+        }]));
+        app
+    }
+
+    #[test]
+    fn scroll_keys_keep_the_hover_open() {
+        let mut app = hover_app();
+        let key = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+        assert_eq!(app.handle_hover_key(key).expect("hover"), Some(false));
+        assert!(app.hover.is_some());
+    }
+
+    #[test]
+    fn other_keys_close_the_hover_and_fall_through() {
+        let mut app = hover_app();
+        let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        assert_eq!(app.handle_hover_key(key).expect("hover"), None);
+        assert!(app.hover.is_none());
+    }
+
+    #[test]
+    fn dismiss_keys_close_the_hover() {
+        let mut app = hover_app();
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(app.handle_hover_key(key).expect("hover"), Some(false));
+        assert!(app.hover.is_none());
+    }
+}

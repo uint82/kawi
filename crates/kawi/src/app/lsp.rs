@@ -2,15 +2,17 @@ use super::lsp_diagnostics::{DiagnosticState, Navigation};
 use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
-use super::lsp_text::LspText;
+use super::lsp_text::{LspText, TextFailure};
+use kawi_completion::Capabilities;
 use kawi_editor::{
     default_pairs, BlockComment, CommentTokens, Editor, LanguageEditing, LanguageIndent, Pair,
 };
 use kawi_lsp::{
-    CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticMode,
-    DiagnosticSeverity, DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning,
-    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
-    RenameReady, ServerState, StatusEvent, WorkspaceDiagnosticState,
+    CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
+    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
+    DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand,
+    LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState,
+    SignatureHelpEvent, StatusEvent, WorkspaceDiagnosticState,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -41,6 +43,7 @@ pub struct LspUi {
     message: Option<String>,
     formatting_failure: Option<(u64, String)>,
     diagnostic_updates: Vec<DiagnosticUpdate>,
+    completion_capabilities: BTreeMap<String, CompletionCapabilitiesEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,10 +79,14 @@ impl LspUi {
     }
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {
-        let document = self.sync_document(editor);
+        let document = self.sync_editor(editor);
         let events = self.poll_events(editor);
         let display = self.update_display();
         events || document || display
+    }
+
+    pub fn sync_editor(&mut self, editor: &Editor) -> bool {
+        self.sync_document(editor)
     }
 
     pub fn poll_events(&mut self, editor: &Editor) -> bool {
@@ -118,15 +125,70 @@ impl LspUi {
         self.navigation.take_hover()
     }
 
-    pub fn completion(&mut self, editor: &Editor) -> Result<u64, String> {
+    pub fn completion_at(
+        &mut self,
+        path: &Path,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
+    ) -> Result<u64, String> {
+        self.text
+            .completion(self.service.as_ref(), path, position, trigger)
+    }
+
+    pub fn resolve_completion(&mut self, item_id: u64) -> Result<u64, String> {
+        self.text.resolve_completion(self.service.as_ref(), item_id)
+    }
+
+    pub fn set_completion_report_errors(&mut self, request: u64, report: bool) {
+        self.text.set_completion_report_errors(request, report);
+    }
+
+    pub fn signature_help(
+        &mut self,
+        editor: &Editor,
+        trigger: CompletionTrigger,
+    ) -> Result<u64, String> {
         let Some(path) = editor_path(editor) else {
             return Err("E32: No file name".to_string());
         };
-        self.text.completion(
+        self.text.signature_help(
             self.service.as_ref(),
             &path,
             super::lsp_navigation::cursor_position(editor),
+            trigger,
         )
+    }
+
+    pub fn completion_capabilities(&self) -> Capabilities {
+        let servers: Vec<&CompletionCapabilitiesEvent> = self
+            .path
+            .as_deref()
+            .and_then(|path| self.languages.as_ref()?.language_for_path(path))
+            .map(|language| {
+                language
+                    .servers
+                    .iter()
+                    .filter_map(|server| self.completion_capabilities.get(server))
+                    .collect()
+            })
+            .unwrap_or_else(|| self.completion_capabilities.values().collect());
+        let mut capabilities = Capabilities::default();
+        for server in servers {
+            capabilities.completion |= server.completion;
+            capabilities.resolve |= server.completion_resolve;
+            capabilities.signature_help |= server.signature_help;
+            capabilities
+                .completion_triggers
+                .extend(server.completion_triggers.iter().cloned());
+            capabilities
+                .signature_triggers
+                .extend(server.signature_triggers.iter().cloned());
+        }
+        capabilities.completion_triggers.sort();
+        capabilities.completion_triggers.dedup();
+        capabilities.signature_triggers.sort();
+        capabilities.signature_triggers.dedup();
+        capabilities
     }
 
     pub fn code_actions(
@@ -174,6 +236,18 @@ impl LspUi {
         self.text.take_completion()
     }
 
+    pub fn take_completion_resolved(&mut self) -> Option<CompletionResolveEvent> {
+        self.text.take_completion_resolved()
+    }
+
+    pub fn take_completion_resolve_failed(&mut self) -> Option<u64> {
+        self.text.take_completion_resolve_failed()
+    }
+
+    pub fn take_signature(&mut self) -> Option<SignatureHelpEvent> {
+        self.text.take_signature()
+    }
+
     pub fn take_code_actions(&mut self) -> Option<CodeActionEvent> {
         self.text.take_code_actions()
     }
@@ -192,6 +266,20 @@ impl LspUi {
 
     pub fn cancel_completion(&mut self) -> bool {
         self.text.cancel_completion(self.service.as_ref())
+    }
+
+    pub fn cancel_request(&mut self, request: u64) {
+        if let Some(service) = self.service.as_ref() {
+            service.cancel(request);
+        }
+    }
+
+    pub fn cancel_completion_resolve(&mut self) -> bool {
+        self.text.cancel_completion_resolve(self.service.as_ref())
+    }
+
+    pub fn cancel_signature(&mut self) -> bool {
+        self.text.cancel_signature(self.service.as_ref())
     }
 
     pub fn cancel_code_actions(&mut self) -> bool {
@@ -412,7 +500,7 @@ impl LspUi {
             return false;
         }
         self.revision = Some(revision);
-        self.text.cancel_all(self.service.as_ref());
+        self.text.cancel_document_requests(self.service.as_ref());
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
             self.diagnostics.advance();
             service.change(path, editor.document_snapshot());
@@ -481,6 +569,13 @@ impl LspUi {
                 .apply_location(&location, LocationKind::References),
             LspEvent::Hover(hover) => self.navigation.apply_hover(&hover),
             LspEvent::Completion(event) => self.text.apply_completion(event),
+            LspEvent::CompletionResolved(event) => self.text.apply_completion_resolved(event),
+            LspEvent::CompletionCapabilities(event) => {
+                self.completion_capabilities
+                    .insert(event.server.clone(), event);
+                true
+            }
+            LspEvent::SignatureHelp(event) => self.text.apply_signature(event),
             LspEvent::CodeActions(event) => self.text.apply_code_actions(event),
             LspEvent::Formatting(event) => self.text.apply_formatting(event),
             LspEvent::RenameReady(ready) => {
@@ -511,14 +606,17 @@ impl LspUi {
                     return true;
                 }
                 let formatting = self.text.formatting_pending(request);
-                if self.text.fail(request) {
-                    if formatting {
-                        self.formatting_failure = Some((request, message.clone()));
+                match self.text.fail(request) {
+                    Some(TextFailure::Report) => {
+                        if formatting {
+                            self.formatting_failure = Some((request, message.clone()));
+                        }
+                        self.message = Some(message);
+                        true
                     }
-                    self.message = Some(message);
-                    return true;
+                    Some(TextFailure::Silent) => true,
+                    None => false,
                 }
-                false
             }
             LspEvent::Message {
                 server,

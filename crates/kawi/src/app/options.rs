@@ -122,12 +122,54 @@ impl App {
             "autosave_delay" => self
                 .autosave
                 .set_delay_millis(value.as_int().unwrap_or_default()),
+            "auto_completion" => {
+                self.completion_options.auto = value.as_bool().unwrap_or_default();
+                if !self.completion_options.auto {
+                    self.completion_auto.cancel();
+                }
+            }
+            "signature_help" => {
+                self.completion_options.signature = value.as_bool().unwrap_or(true);
+                if !self.completion_options.signature {
+                    self.signature = None;
+                    self.lsp.cancel_signature();
+                }
+            }
+            "completion_docs_up" => {
+                self.apply_completion_key(&value, true);
+            }
+            "completion_docs_down" => {
+                self.apply_completion_key(&value, false);
+            }
             _ => {}
         }
         if spec.scope == options::OptionScope::Window {
             self.sync_active_window_options();
         }
         Ok(())
+    }
+
+    fn apply_completion_key(&mut self, value: &OptionValue, up: bool) {
+        let Some(binding) = value
+            .as_text()
+            .and_then(super::completion::KeyBinding::parse)
+        else {
+            let name = if up {
+                "completion_docs_up"
+            } else {
+                "completion_docs_down"
+            };
+            self.show_message(format!(
+                "E474: Invalid key binding: {name}={}",
+                value.display()
+            ));
+            return;
+        };
+        if up {
+            self.completion_options.keys.up = binding;
+        } else {
+            self.completion_options.keys.down = binding;
+        }
     }
 
     fn apply_keymap_value(&mut self, value: &OptionValue) -> Result<()> {
@@ -215,6 +257,14 @@ impl App {
             "autosave_delay" => OptionValue::Int(
                 usize::try_from(self.autosave.delay_millis()).unwrap_or(usize::MAX),
             ),
+            "auto_completion" => OptionValue::Bool(self.completion_options.auto),
+            "signature_help" => OptionValue::Bool(self.completion_options.signature),
+            "completion_docs_up" => {
+                OptionValue::Text(self.completion_options.keys.up.name().to_string())
+            }
+            "completion_docs_down" => {
+                OptionValue::Text(self.completion_options.keys.down.name().to_string())
+            }
             _ => spec.default_value(),
         }
     }
@@ -325,6 +375,24 @@ mod tests {
         assert!(!app.editor.expandtab());
         execute(&mut app, "set notheme");
         assert_eq!(app.last_message(), Some("E474: Invalid argument: notheme"));
+    }
+
+    #[test]
+    fn completion_options_are_configurable() {
+        let mut app = app();
+        assert!(!app.completion_options.auto);
+        execute(&mut app, "set auto_completion");
+        assert!(app.completion_options.auto);
+        execute(&mut app, "set auto_completion?");
+        assert_eq!(app.last_message(), Some("auto_completion"));
+        execute(&mut app, "set completion_docs_up=ctrl-u");
+        assert_eq!(app.completion_options.keys.up.name(), "ctrl-u");
+        execute(&mut app, "set completion_docs_up?");
+        assert_eq!(app.last_message(), Some("completion_docs_up=ctrl-u"));
+        execute(&mut app, "set completion_docs_up=wat");
+        assert!(app
+            .last_message()
+            .is_some_and(|message| message.starts_with("E474: Invalid key binding")));
     }
 
     #[test]

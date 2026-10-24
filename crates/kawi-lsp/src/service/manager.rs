@@ -28,10 +28,13 @@ impl Manager {
             pending_replies: HashMap::new(),
             pending_renames: HashMap::new(),
             pending_text_requests: HashMap::new(),
+            pending_completion_resolves: HashMap::new(),
+            completion_resolve: HashMap::new(),
             pending_commands: HashMap::new(),
             pull_diagnostics: pull_diagnostics::PullDiagnostics::default(),
             workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics::default(),
             next_request: 0,
+            next_completion_item: 0,
             initialize_timeout,
         }
     }
@@ -144,7 +147,17 @@ impl Manager {
                 request,
                 path,
                 position,
-            } => self.start_completion(request, path, position),
+                trigger,
+            } => self.start_completion(request, path, position, trigger),
+            Command::ResolveCompletion { request, item_id } => {
+                self.start_completion_resolve(request, item_id);
+            }
+            Command::SignatureHelp {
+                request,
+                path,
+                position,
+                trigger,
+            } => self.start_signature_help(request, path, position, trigger),
             Command::CodeActions {
                 request,
                 path,

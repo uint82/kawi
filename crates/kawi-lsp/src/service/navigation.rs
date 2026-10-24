@@ -1,5 +1,6 @@
 use super::navigation_results::{
-    definition_locations, hover_lines, join_hovers, reference_locations, sort_locations,
+    definition_locations, hover_documents, join_hover_documents, reference_locations,
+    sort_locations,
 };
 use super::pending::ReplyPurpose;
 use super::*;
@@ -28,7 +29,7 @@ pub(super) struct PendingRequest {
     position: CursorPosition,
     remaining: usize,
     locations: Vec<TextLocation>,
-    hovers: Vec<Vec<String>>,
+    hovers: Vec<Vec<MarkupDocument>>,
     error: Option<String>,
 }
 
@@ -186,8 +187,8 @@ impl Manager {
                 ));
             }
             (RequestKind::Hover, Ok(value)) => {
-                if let Some(lines) = hover_lines(value) {
-                    group.hovers.push(lines);
+                if let Some(documents) = hover_documents(value) {
+                    group.hovers.push(documents);
                 }
             }
             (_, Err(error)) => {
@@ -256,7 +257,7 @@ impl Manager {
                 }
             }
             RequestKind::Hover => {
-                let contents = join_hovers(hovers);
+                let contents = join_hover_documents(hovers);
                 if contents.is_empty() {
                     self.emit(LspEvent::RequestError {
                         request,

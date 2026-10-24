@@ -16,6 +16,7 @@ mod disk;
 mod formatting;
 mod frame;
 mod git;
+mod hover;
 mod language;
 mod lsp;
 mod lsp_diagnostics;
@@ -25,6 +26,7 @@ mod lsp_text;
 mod macro_codec;
 mod macro_ops;
 mod options;
+mod overlay;
 mod picker;
 mod problems;
 mod quickfix;
@@ -34,6 +36,7 @@ mod replace;
 mod replace_apply;
 mod restore;
 mod save;
+mod signature;
 mod task;
 mod window;
 mod workspace_edit;
@@ -127,6 +130,10 @@ pub struct App {
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
     completion: Option<completion::CompletionSession>,
+    completion_auto: completion::AutoTrigger,
+    completion_options: completion::CompletionOptions,
+    signature: Option<signature::SignatureSession>,
+    hover: Option<hover::HoverSession>,
     code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
@@ -181,6 +188,10 @@ impl App {
             replace: None,
             rename: None,
             completion: None,
+            completion_auto: completion::AutoTrigger::new(),
+            completion_options: completion::CompletionOptions::default(),
+            signature: None,
+            hover: None,
             code_actions: None,
             git: None,
             git_path: None,
@@ -328,7 +339,9 @@ impl App {
                 }
                 redraw |= needs_redraw;
             }
+            redraw |= self.lsp.sync_editor(&self.editor);
             redraw |= self.lsp.poll_events(&self.editor);
+            redraw |= self.completion_tick();
             redraw |= self.poll_file_watch();
             self.sync_watched_files();
             self.maybe_open_conflict();
@@ -360,6 +373,7 @@ impl App {
                     self.problem_pane_wait_timeout(),
                 ),
             );
+            let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
             match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,
                 None => self.events.wait()?,
@@ -504,6 +518,7 @@ impl App {
     }
 
     fn show_message(&mut self, text: String) {
+        self.hover = None;
         let lines = pager_lines(&text, self.screen_width);
         if lines.len() > 1 {
             self.show_pager(lines);
@@ -514,6 +529,7 @@ impl App {
     }
 
     fn show_pager(&mut self, lines: Vec<String>) {
+        self.hover = None;
         self.message = None;
         self.pager = Some(lines);
     }
@@ -561,6 +577,15 @@ impl App {
         if let Some(event) = self.lsp.take_completion() {
             self.handle_completion_event(event);
         }
+        if let Some(event) = self.lsp.take_completion_resolved() {
+            self.handle_completion_resolved(event);
+        }
+        if let Some(request) = self.lsp.take_completion_resolve_failed() {
+            self.handle_completion_resolve_failed(request);
+        }
+        if let Some(event) = self.lsp.take_signature() {
+            self.signature = Some(signature::SignatureSession::new(event));
+        }
         if let Some(event) = self.lsp.take_code_actions() {
             self.handle_code_action_event(event);
         }
@@ -595,6 +620,10 @@ impl App {
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
         self.window_prefix = false;
+        if self.hover.is_some() {
+            self.hover = None;
+            return self.handle_noop();
+        }
         if self.picker.is_some()
             || self.replace.is_some()
             || self.rename.is_some()
@@ -747,6 +776,11 @@ impl App {
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
         }
+        if self.hover.is_some() {
+            if let Some(result) = self.handle_hover_key(key)? {
+                return Ok(result);
+            }
+        }
         if self.pager.is_none() && self.conflict.is_some() {
             return self.handle_conflict_key(key);
         }
@@ -785,7 +819,14 @@ impl App {
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
         }
-        self.process_key(key)
+        let revision = self.editor.buffer_revision();
+        let result = self.process_key(key);
+        if result.is_ok() && self.editor.buffer_revision() != revision {
+            self.lsp.sync_editor(&self.editor);
+            self.after_buffer_key(key);
+        }
+        self.close_completion_on_mode_change();
+        result
     }
 
     fn handle_picker_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -1048,11 +1089,17 @@ impl App {
     }
 
     fn dismiss_lsp_menu(&mut self) {
+        self.completion_auto.cancel();
         if self.completion.take().is_some() {
             self.lsp.cancel_completion();
+            self.lsp.cancel_completion_resolve();
         }
         if self.code_actions.take().is_some() {
             self.lsp.cancel_code_actions();
+        }
+        self.hover = None;
+        if self.signature.take().is_some() {
+            self.lsp.cancel_signature();
         }
     }
 

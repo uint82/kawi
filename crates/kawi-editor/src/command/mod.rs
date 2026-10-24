@@ -160,10 +160,13 @@ pub const COMMAND_NAMES: &[&str] = &[
 ];
 
 pub const SET_OPTION_NAMES: &[&str] = &[
-    "autoindent",
+    "auto_completion",
     "auto_pairs",
+    "autoindent",
     "autosave",
     "autosave_delay",
+    "completion_docs_down",
+    "completion_docs_up",
     "expandtab",
     "format_on_save",
     "history",
@@ -173,6 +176,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "numberwidth",
     "relativenumber",
     "shiftwidth",
+    "signature_help",
     "smartcase",
     "theme",
 ];

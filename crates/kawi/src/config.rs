@@ -255,6 +255,7 @@ fn expected_type(spec: &OptionSpec) -> &'static str {
         options::OptionKind::Bool => "a boolean",
         options::OptionKind::Int { .. } => "an integer",
         options::OptionKind::Enum(_) => "a name",
+        options::OptionKind::Text => "text",
     }
 }
 
