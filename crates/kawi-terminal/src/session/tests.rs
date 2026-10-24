@@ -101,7 +101,7 @@ fn detects_exit_without_output() {
     let (wake, _wake_rx) = channel();
     let mut session = TerminalSession::start(&options("exit 3"), wake).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline && session.is_running() {
+    while Instant::now() < deadline && (session.is_running() || !session.is_closed()) {
         session.drain();
         thread::sleep(Duration::from_millis(10));
     }
