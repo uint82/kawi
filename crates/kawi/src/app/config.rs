@@ -28,10 +28,14 @@ impl App {
         if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
             self.show_startup_warning(warning);
         }
+        self.sync_language_indent();
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {
         for (name, value) in config.values() {
+            if matches!(*name, "shiftwidth" | "expandtab") {
+                continue;
+            }
             let Some(spec) = crate::options::lookup(name) else {
                 continue;
             };

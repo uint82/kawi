@@ -13,6 +13,7 @@ mod config;
 mod formatting;
 mod frame;
 mod git;
+mod language;
 mod lsp;
 mod lsp_diagnostics;
 mod lsp_menu;

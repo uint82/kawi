@@ -3,7 +3,7 @@ use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
 use super::lsp_text::LspText;
-use kawi_editor::Editor;
+use kawi_editor::{Editor, LanguageIndent};
 use kawi_lsp::{
     CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticSeverity,
     FormattingEvent, FormattingSettings, Languages, LspCommand, LspEvent, LspService, MessageLevel,
@@ -224,6 +224,19 @@ impl LspUi {
 
     pub fn take_rename_edit(&mut self) -> Option<RenameEvent> {
         self.rename_edit.take()
+    }
+
+    pub fn language_indent(&self, path: Option<&Path>) -> LanguageIndent {
+        let Some(languages) = self.languages.as_ref() else {
+            return LanguageIndent::default();
+        };
+        let Some(language) = path.and_then(|path| languages.language_for_path(path)) else {
+            return LanguageIndent::default();
+        };
+        LanguageIndent {
+            shiftwidth: language.shiftwidth,
+            expandtab: language.expandtab,
+        }
     }
 
     pub fn take_rename_error(&mut self) -> Option<u64> {
