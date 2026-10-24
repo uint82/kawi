@@ -14,22 +14,42 @@ impl App {
         self.theme_dir = Some(paths.themes.clone());
         let loaded = crate::config::load(&paths.config);
         let language_warnings = self.lsp.load(&paths.languages, self.events.wake());
-        let warnings = startup_warning_lines(
+        let task_load = kawi_task::load(&paths.tasks);
+        let mut tasks = task_load.tasks;
+        let mut warnings = startup_warning_lines(
             &loaded.warnings,
             &paths.config,
             &language_warnings,
             &paths.languages,
+            &task_load.warnings,
+            &paths.tasks,
         );
+        let project_tasks = self.project_tasks_path();
+        if project_tasks != paths.tasks {
+            let project_load = kawi_task::load(&project_tasks);
+            warnings.extend(
+                project_load
+                    .warnings
+                    .iter()
+                    .map(|warning| warning.format(&project_tasks)),
+            );
+            tasks.merge(project_load.tasks);
+        }
         let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
         if !warnings.is_empty() {
             self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));
         }
+        self.set_tasks(tasks);
         self.apply_config(&loaded.config);
         if let Some(flavor) = cli_flavor {
             let _ = self.apply_cli_flavor(flavor);
         }
         state::load(&mut self.editor, &paths);
         self.sync_language_indent();
+    }
+
+    fn project_tasks_path(&self) -> std::path::PathBuf {
+        self.task_root().join(super::task::PROJECT_TASKS)
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {
@@ -86,6 +106,8 @@ fn startup_warning_lines(
     config_path: &std::path::Path,
     language_warnings: &[LanguageWarning],
     language_path: &std::path::Path,
+    task_warnings: &[kawi_task::TaskWarning],
+    task_path: &std::path::Path,
 ) -> Vec<String> {
     let mut lines = config_warnings
         .iter()
@@ -95,6 +117,11 @@ fn startup_warning_lines(
         language_warnings
             .iter()
             .map(|warning| warning.format(language_path)),
+    );
+    lines.extend(
+        task_warnings
+            .iter()
+            .map(|warning| warning.format(task_path)),
     );
     lines
 }
@@ -203,25 +230,31 @@ limit = 25
     }
 
     #[test]
-    fn startup_warnings_include_config_and_language_details() {
+    fn startup_warnings_include_every_configuration_source() {
         let dir = temp_dir("warning_lines");
         let config_path = dir.join("config.toml");
         let languages_path = dir.join("languages.toml");
+        let tasks_path = dir.join("tasks.toml");
         fs::write(&config_path, "[editor]\nshiftwidth = \"wide\"\n").unwrap();
+        fs::write(&tasks_path, "[task.bad]\nargs = [\"x\"]\n").unwrap();
         let loaded = config::load(&config_path);
         let language_warnings =
             vec![
                 LanguageWarning::new("language rust: expandtab must be a boolean").at_line(Some(3)),
             ];
+        let task_load = kawi_task::load(&tasks_path);
         let lines = startup_warning_lines(
             &loaded.warnings,
             &config_path,
             &language_warnings,
             &languages_path,
+            &task_load.warnings,
+            &tasks_path,
         );
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with(&config_path.display().to_string()));
         assert!(lines[1].starts_with(&format!("{}:3:", languages_path.display())));
+        assert!(lines[2].contains("rejected missing command"));
         let _ = fs::remove_dir_all(dir);
     }
 

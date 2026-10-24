@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+kawi-process = { path = "../kawi-process" }
 anyhow.workspace = true
 kawi-buffer = { path = "../kawi-buffer" }
 libc.workspace = true

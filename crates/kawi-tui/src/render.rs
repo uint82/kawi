@@ -9,7 +9,7 @@ use std::io::{Stdout, Write};
 
 use crate::frame::{
     CursorStyle, DiagnosticSpan, Frame, PaneFrame, PickerMenu, PromptMenu, ReplaceMenu,
-    ReplaceStage, SearchSpan, Selection,
+    ReplaceStage, SearchSpan, Selection, TaskPanel,
 };
 use crate::paint;
 use crate::statusbar::draw_status;
@@ -37,6 +37,7 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
         draw_pane(out, frame, pane)?;
     }
     draw_separators(out, frame)?;
+    draw_task_panel(out, frame)?;
     match frame.pager {
         Some(lines) => draw_pager(out, frame, lines)?,
         None => draw_message_row(out, frame)?,
@@ -68,6 +69,52 @@ fn draw_pane(out: &mut Stdout, frame: &Frame, pane: &PaneFrame<'_>) -> Result<()
         pane.active,
         frame.theme,
     )
+}
+
+fn draw_task_panel(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let Some(panel) = frame.task.as_ref() else {
+        return Ok(());
+    };
+    draw_task_header(out, frame, panel)?;
+    draw_task_lines(out, frame, panel)?;
+    Ok(())
+}
+
+fn draw_task_header(out: &mut Stdout, frame: &Frame, panel: &TaskPanel<'_>) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(saturate_u16(panel.rect.x), saturate_u16(panel.rect.y)),
+        Clear(ClearType::CurrentLine)
+    )
+    .context("prepare task header")?;
+    paint::apply_match(out, &frame.theme.status)?;
+    let header = format!("{}  {}", panel.title, panel.status);
+    write_padded(out, &header, panel.rect.width)?;
+    paint::restore_base(out, frame.theme)?;
+    Ok(())
+}
+
+fn draw_task_lines(out: &mut Stdout, frame: &Frame, panel: &TaskPanel<'_>) -> Result<()> {
+    for offset in 0..panel.rect.height.saturating_sub(1) {
+        let row = panel.rect.y.saturating_add(offset).saturating_add(1);
+        execute!(
+            out,
+            MoveTo(saturate_u16(panel.rect.x), saturate_u16(row)),
+            Clear(ClearType::CurrentLine)
+        )
+        .context("clear task line")?;
+        let Some(line) = panel.lines.get(offset) else {
+            continue;
+        };
+        if line.stderr {
+            execute!(out, SetForegroundColor(frame.theme.diagnostic_warning))
+                .context("apply task stderr color")?;
+        }
+        write!(out, "{}", truncate_to_width(line.text, panel.rect.width))
+            .context("write task line")?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
 }
 
 fn draw_separators(out: &mut Stdout, frame: &Frame) -> Result<()> {

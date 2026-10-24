@@ -273,6 +273,8 @@ mod tests {
         let mut e = editor_with("x");
         type_command(&mut e, "qu");
         complete(&mut e, false);
+        assert_eq!(e.command_text(), "quickfix");
+        complete(&mut e, false);
         assert_eq!(e.command_text(), "quit");
         complete(&mut e, false);
         assert_eq!(e.command_text(), "quit!");
@@ -283,7 +285,7 @@ mod tests {
         complete(&mut e, false);
         assert_eq!(e.command_text(), "qu");
         complete(&mut e, false);
-        assert_eq!(e.command_text(), "quit");
+        assert_eq!(e.command_text(), "quickfix");
     }
 
     #[test]
@@ -301,7 +303,7 @@ mod tests {
         let mut e = editor_with("x");
         type_command(&mut e, "qu");
         complete(&mut e, false);
-        assert_eq!(e.command_text(), "quit");
+        assert_eq!(e.command_text(), "quickfix");
         complete(&mut e, true);
         assert_eq!(e.command_text(), "qu");
     }

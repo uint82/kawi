@@ -362,6 +362,7 @@ dependencies = [
  "kawi-lsp",
  "kawi-picker",
  "kawi-syntax",
+ "kawi-task",
  "kawi-tui",
  "libc",
  "ropey",
@@ -405,6 +406,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "kawi-buffer",
+ "kawi-process",
  "libc",
  "lsp-types",
  "ropey",
@@ -428,6 +430,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kawi-process"
+version = "0.0.1"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "kawi-syntax"
 version = "0.0.1"
 dependencies = [
@@ -441,6 +450,18 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-toml-ng",
  "tree-sitter-typescript",
+]
+
+[[package]]
+name = "kawi-task"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kawi-process",
+ "regex",
+ "serde",
+ "serde_json",
+ "toml_edit",
 ]
 
 [[package]]
