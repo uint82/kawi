@@ -191,6 +191,9 @@ impl Editor {
                 self.retreat_after_insert();
                 self.mode = Mode::Normal;
             }
+            Action::CommentLines => {
+                self.comment_rows(start.0, end.0);
+            }
             Action::ToggleCase | Action::Lowercase | Action::Uppercase => {
                 self.record_boundary();
                 let shift = match action {

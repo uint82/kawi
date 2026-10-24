@@ -18,6 +18,7 @@ mod buffers;
 mod case_ops;
 mod changes;
 mod cmd_complete;
+mod comment;
 mod copy_char;
 mod gutter;
 mod hscroll;
@@ -340,6 +341,8 @@ impl Editor {
             Action::YankLines => self.yank_touched_lines(),
             Action::ChangeLines => self.change_touched_lines(),
             Action::ToggleCase => self.toggle_case(),
+            Action::CommentLines => self.comment_lines(),
+            Action::CommentAt { motion } => self.comment_at(motion),
             Action::Lowercase => self.lowercase(),
             Action::Uppercase => self.uppercase(),
             Action::ToggleCaseAt { motion } => self.toggle_case_at(motion),
@@ -1040,6 +1043,9 @@ fn jump_recording(action: Action) -> JumpRecording {
             motion: ShiftMotion::GotoLine { .. },
         }
         | Action::ReindentAt {
+            motion: ShiftMotion::GotoLine { .. },
+        }
+        | Action::CommentAt {
             motion: ShiftMotion::GotoLine { .. },
         }
         | Action::ToggleCaseAt {
