@@ -3,6 +3,7 @@ mod event;
 mod helix;
 mod keymap;
 mod mouse;
+mod options;
 mod persist;
 mod recovery;
 mod session;

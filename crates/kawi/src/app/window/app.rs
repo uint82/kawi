@@ -43,9 +43,15 @@ impl App {
     pub(crate) fn sync_active_window(&mut self) {
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
+        let options = self.editor.window_options();
         let window = self.windows.active_view_mut();
         window.buffer = buffer;
         window.view = view;
+        window.options = options;
+    }
+
+    pub(crate) fn sync_active_window_options(&mut self) {
+        self.windows.active_view_mut().options = self.editor.window_options();
     }
 
     fn stash_active_syntax(&mut self, id: WindowId) {
@@ -152,8 +158,9 @@ impl App {
         } else {
             SplitDirection::Horizontal
         };
+        let options = self.editor.window_options();
         self.windows
-            .split_active(direction, WindowView::new(buffer, view));
+            .split_active(direction, WindowView::with_options(buffer, view, options));
         self.refresh_window_sizes();
         self.reveal_cursor();
         Ok(false)
@@ -183,6 +190,7 @@ impl App {
         self.restore_window_syntax(id);
         self.refresh_window_sizes();
         self.editor.restore_view_state(target.view);
+        self.editor.set_window_options(target.options);
         self.reveal_cursor();
         true
     }
@@ -196,6 +204,7 @@ impl App {
         }
         self.refresh_window_sizes();
         self.editor.restore_view_state(target.view);
+        self.editor.set_window_options(target.options);
         self.reveal_cursor();
     }
 
@@ -485,7 +494,7 @@ impl App {
             .unwrap_or_default();
         let gutter = self
             .editor
-            .buffer_gutter_lines(window.buffer, top, height, row, height)
+            .buffer_gutter_lines(window.buffer, top, height, row, height, window.options)
             .unwrap_or_default();
         let shared_document = window.buffer == self.editor.buffer_number();
         let diagnostic_spans = if shared_document {
@@ -508,7 +517,10 @@ impl App {
             viewport: pane_viewport(rect, top, window.view.leftcol, line_count),
             cursor_col: 0,
             row,
-            tabstop: self.editor.tabstop(),
+            tabstop: self
+                .editor
+                .buffer_tabstop(window.buffer)
+                .unwrap_or_else(|| self.editor.tabstop()),
             filename: self
                 .editor
                 .buffer_name(window.buffer)

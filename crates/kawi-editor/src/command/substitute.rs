@@ -692,7 +692,13 @@ mod substitute_tests {
 
     #[test]
     fn leaves_other_commands_alone() {
-        assert_eq!(parse("set number"), Command::SetNumber(true));
+        assert_eq!(
+            parse("set number"),
+            Command::Set {
+                name: "number".to_string(),
+                value: crate::command::SetValue::Assign(None),
+            }
+        );
         assert_eq!(parse("w"), Command::Write { force: false });
         assert_eq!(parse("zzz"), Command::Unknown);
     }

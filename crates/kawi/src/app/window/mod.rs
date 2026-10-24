@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_editor::{Mode, ViewState};
+use kawi_editor::{Mode, ViewState, WindowOptions};
 use kawi_tui::frame::Rect;
 
 mod app;
@@ -40,11 +40,20 @@ pub enum ResizeAxis {
 pub struct WindowView {
     pub buffer: usize,
     pub view: ViewState,
+    pub options: WindowOptions,
 }
 
 impl WindowView {
     pub fn new(buffer: usize, view: ViewState) -> Self {
-        Self { buffer, view }
+        Self::with_options(buffer, view, WindowOptions::default())
+    }
+
+    pub fn with_options(buffer: usize, view: ViewState, options: WindowOptions) -> Self {
+        Self {
+            buffer,
+            view,
+            options,
+        }
     }
 }
 
@@ -190,6 +199,12 @@ impl Windows {
     pub fn equalize(&mut self) -> bool {
         let root = self.root.as_mut().expect("the window tree exists");
         equalize_node(root)
+    }
+
+    pub(crate) fn set_all_options(&mut self, options: WindowOptions) {
+        for window in self.windows.values_mut() {
+            window.options = options;
+        }
     }
 
     pub(crate) fn clamp_views<F>(&mut self, mut clamp: F)

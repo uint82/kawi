@@ -35,6 +35,10 @@ impl PromptHistory {
         self.trim();
     }
 
+    pub(super) fn limit(&self) -> usize {
+        self.limit
+    }
+
     pub(super) fn record(&mut self, text: &str) {
         self.reset_browse();
         if text.is_empty() || self.limit == 0 {
@@ -160,6 +164,10 @@ impl Editor {
     pub fn set_history_limit(&mut self, limit: usize) {
         self.command_history.set_limit(limit);
         self.search_history.set_limit(limit);
+    }
+
+    pub fn history_limit(&self) -> usize {
+        self.command_history.limit()
     }
 
     pub fn history_entries(&self) -> HistoryEntries {

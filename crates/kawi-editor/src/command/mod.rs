@@ -40,21 +40,24 @@ pub enum Command {
     },
     CloseWindow,
     OnlyWindow,
-    SetKeymap(String),
-    SetTheme(String),
-    SetShiftWidth(usize),
-    SetExpandTab(bool),
-    SetNumber(bool),
-    SetRelativeNumber(bool),
-    SetNumberWidth(usize),
-    SetIgnoreCase(bool),
-    SetSmartCase(bool),
-    SetAutoIndent(bool),
+    Set {
+        name: String,
+        value: SetValue,
+    },
     Pick(PickerCommand),
     Git(GitCommand),
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetValue {
+    Assign(Option<String>),
+    Toggle,
+    Query,
+    Reset,
+    Negate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,6 +133,7 @@ pub const COMMAND_NAMES: &[&str] = &[
 pub const SET_OPTION_NAMES: &[&str] = &[
     "autoindent",
     "expandtab",
+    "history",
     "ignorecase",
     "keymap",
     "number",
@@ -209,7 +213,7 @@ fn parse_named(text: &str) -> Command {
         ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
         ("replace", []) => Command::Pick(PickerCommand::Replace),
         ("git", rest) => parse_git_command(rest),
-        ("set", rest) => parse_set_command(rest),
+        ("set", rest) => set::parse(rest),
         _ => Command::Unknown,
     }
 }
@@ -247,6 +251,10 @@ fn delete_command(command: &str, spec: Option<&str>) -> Command {
     }
 }
 
+fn trailing_characters(word: &str) -> Command {
+    Command::SetError(format!("E488: Trailing characters: {word}"))
+}
+
 fn split_bang(command: &str) -> (bool, &str) {
     match command.strip_suffix('!') {
         Some(command) => (true, command),
@@ -279,80 +287,6 @@ fn parse_git_command(words: &[&str]) -> Command {
         _ => return Command::Unknown,
     };
     Command::Git(command)
-}
-
-fn parse_set_command(words: &[&str]) -> Command {
-    match words {
-        ["keymap", name] => name_command(name),
-        ["theme", name] => theme_command(name),
-        ["shiftwidth", value] => shiftwidth_command(value),
-        ["expandtab"] => Command::SetExpandTab(true),
-        ["noexpandtab"] => Command::SetExpandTab(false),
-        ["number"] => Command::SetNumber(true),
-        ["nonumber"] => Command::SetNumber(false),
-        ["relativenumber"] => Command::SetRelativeNumber(true),
-        ["norelativenumber"] => Command::SetRelativeNumber(false),
-        ["ignorecase"] => Command::SetIgnoreCase(true),
-        ["noignorecase"] => Command::SetIgnoreCase(false),
-        ["smartcase"] => Command::SetSmartCase(true),
-        ["nosmartcase"] => Command::SetSmartCase(false),
-        ["autoindent"] => Command::SetAutoIndent(true),
-        ["noautoindent"] => Command::SetAutoIndent(false),
-        [combined] => equals_command(combined),
-        _ => Command::Unknown,
-    }
-}
-
-fn name_command(name: &str) -> Command {
-    if name.is_empty() {
-        return Command::Unknown;
-    }
-    Command::SetKeymap(name.to_string())
-}
-
-fn theme_command(name: &str) -> Command {
-    if name.is_empty() {
-        return Command::Unknown;
-    }
-    Command::SetTheme(name.to_string())
-}
-
-fn equals_command(combined: &str) -> Command {
-    if let Some(name) = combined.strip_prefix("keymap=") {
-        return name_command(name);
-    }
-    if let Some(name) = combined.strip_prefix("theme=") {
-        return theme_command(name);
-    }
-    if let Some(value) = combined.strip_prefix("shiftwidth=") {
-        return shiftwidth_command(value);
-    }
-    if let Some(value) = combined.strip_prefix("numberwidth=") {
-        return numberwidth_command(value);
-    }
-    Command::Unknown
-}
-
-fn shiftwidth_command(value: &str) -> Command {
-    match value.parse::<usize>() {
-        Ok(width) => Command::SetShiftWidth(width),
-        Err(_) => Command::Unknown,
-    }
-}
-
-fn numberwidth_command(value: &str) -> Command {
-    match value.parse::<i64>() {
-        Ok(width) if width < 1 => Command::SetError(format!(
-            "E487: Argument must be positive: numberwidth={value}"
-        )),
-        Ok(width) if width > 20 => {
-            Command::SetError(format!("E474: Invalid argument: numberwidth={value}"))
-        }
-        Ok(width) => Command::SetNumberWidth(width as usize),
-        Err(_) => Command::SetError(format!(
-            "E521: Number required after =: numberwidth={value}"
-        )),
-    }
 }
 
 pub struct CommandLine {
@@ -394,6 +328,7 @@ impl Default for CommandLine {
     }
 }
 
+mod set;
 mod substitute;
 
 pub(crate) use substitute::parse_preview;
@@ -594,27 +529,67 @@ mod tests {
         assert_eq!(parse("e x y"), Command::Unknown);
     }
 
+    fn set(name: &str, value: SetValue) -> Command {
+        Command::Set {
+            name: name.to_string(),
+            value,
+        }
+    }
+
+    fn assign(name: &str, value: &str) -> Command {
+        set(name, SetValue::Assign(Some(value.to_string())))
+    }
+
     #[test]
     fn parses_set_shiftwidth() {
-        assert_eq!(parse("set shiftwidth 4"), Command::SetShiftWidth(4));
-        assert_eq!(parse("set shiftwidth=4"), Command::SetShiftWidth(4));
-        assert_eq!(parse("set shiftwidth 0"), Command::SetShiftWidth(0));
+        assert_eq!(parse("set shiftwidth 4"), assign("shiftwidth", "4"));
+        assert_eq!(parse("set shiftwidth=4"), assign("shiftwidth", "4"));
+        assert_eq!(parse("set shiftwidth 0"), assign("shiftwidth", "0"));
+        assert_eq!(parse("set sw=2"), assign("sw", "2"));
     }
 
     #[test]
     fn parses_set_expandtab() {
-        assert_eq!(parse("set expandtab"), Command::SetExpandTab(true));
-        assert_eq!(parse("set noexpandtab"), Command::SetExpandTab(false));
+        assert_eq!(
+            parse("set expandtab"),
+            set("expandtab", SetValue::Assign(None))
+        );
+        assert_eq!(parse("set noexpandtab"), set("expandtab", SetValue::Negate));
     }
 
     #[test]
     fn parses_search_and_indent_options() {
-        assert_eq!(parse("set ignorecase"), Command::SetIgnoreCase(true));
-        assert_eq!(parse("set noignorecase"), Command::SetIgnoreCase(false));
-        assert_eq!(parse("set smartcase"), Command::SetSmartCase(true));
-        assert_eq!(parse("set nosmartcase"), Command::SetSmartCase(false));
-        assert_eq!(parse("set autoindent"), Command::SetAutoIndent(true));
-        assert_eq!(parse("set noautoindent"), Command::SetAutoIndent(false));
+        assert_eq!(
+            parse("set ignorecase"),
+            set("ignorecase", SetValue::Assign(None))
+        );
+        assert_eq!(
+            parse("set noignorecase"),
+            set("ignorecase", SetValue::Negate)
+        );
+        assert_eq!(
+            parse("set smartcase"),
+            set("smartcase", SetValue::Assign(None))
+        );
+        assert_eq!(parse("set nosmartcase"), set("smartcase", SetValue::Negate));
+        assert_eq!(
+            parse("set autoindent"),
+            set("autoindent", SetValue::Assign(None))
+        );
+        assert_eq!(
+            parse("set noautoindent"),
+            set("autoindent", SetValue::Negate)
+        );
+    }
+
+    #[test]
+    fn parses_set_modifiers() {
+        assert_eq!(parse("set number!"), set("number", SetValue::Toggle));
+        assert_eq!(parse("set number?"), set("number", SetValue::Query));
+        assert_eq!(parse("set number&"), set("number", SetValue::Reset));
+        assert_eq!(parse("set rnu!"), set("rnu", SetValue::Toggle));
+        assert_eq!(parse("set et?"), set("et", SetValue::Query));
+        assert_eq!(parse("set sw&"), set("sw", SetValue::Reset));
     }
 
     #[test]
@@ -683,86 +658,64 @@ mod tests {
 
     #[test]
     fn parses_set_number_options() {
-        assert_eq!(parse("set number"), Command::SetNumber(true));
-        assert_eq!(parse("set nonumber"), Command::SetNumber(false));
+        assert_eq!(parse("set number"), set("number", SetValue::Assign(None)));
+        assert_eq!(parse("set nonumber"), set("number", SetValue::Negate));
         assert_eq!(
             parse("set relativenumber"),
-            Command::SetRelativeNumber(true)
+            set("relativenumber", SetValue::Assign(None))
         );
         assert_eq!(
             parse("set norelativenumber"),
-            Command::SetRelativeNumber(false)
+            set("relativenumber", SetValue::Negate)
         );
-        assert_eq!(parse("set numberwidth=4"), Command::SetNumberWidth(4));
-        assert_eq!(parse("set numberwidth=1"), Command::SetNumberWidth(1));
-        assert_eq!(parse("set numberwidth=20"), Command::SetNumberWidth(20));
+        assert_eq!(parse("set numberwidth=4"), assign("numberwidth", "4"));
+        assert_eq!(parse("set numberwidth=1"), assign("numberwidth", "1"));
+        assert_eq!(parse("set numberwidth=20"), assign("numberwidth", "20"));
     }
 
     #[test]
-    fn rejects_bad_numberwidth() {
-        assert_eq!(
-            parse("set numberwidth=0"),
-            Command::SetError("E487: Argument must be positive: numberwidth=0".to_string())
-        );
-        assert_eq!(
-            parse("set numberwidth=21"),
-            Command::SetError("E474: Invalid argument: numberwidth=21".to_string())
-        );
-        assert_eq!(
-            parse("set numberwidth=abc"),
-            Command::SetError("E521: Number required after =: numberwidth=abc".to_string())
-        );
+    fn leaves_invalid_values_for_the_registry() {
+        assert_eq!(parse("set numberwidth=0"), assign("numberwidth", "0"));
+        assert_eq!(parse("set numberwidth=abc"), assign("numberwidth", "abc"));
+        assert_eq!(parse("set shiftwidth four"), assign("shiftwidth", "four"));
     }
 
     #[test]
-    fn rejects_bad_shiftwidth() {
-        assert_eq!(parse("set shiftwidth"), Command::Unknown);
-        assert_eq!(parse("set shiftwidth four"), Command::Unknown);
-        assert_eq!(parse("set shiftwidth 4 extra"), Command::Unknown);
+    fn rejects_missing_or_trailing_set_arguments() {
+        assert_eq!(parse("set"), Command::Unknown);
+        assert_eq!(
+            parse("set shiftwidth 4 extra"),
+            Command::SetError("E488: Trailing characters: shiftwidth".to_string())
+        );
     }
 
     #[test]
     fn parses_set_keymap() {
-        assert_eq!(
-            parse("set keymap helix"),
-            Command::SetKeymap("helix".to_string())
-        );
+        assert_eq!(parse("set keymap helix"), assign("keymap", "helix"));
     }
 
     #[test]
     fn parses_set_keymap_equals() {
-        assert_eq!(
-            parse("set keymap=vim"),
-            Command::SetKeymap("vim".to_string())
-        );
+        assert_eq!(parse("set keymap=vim"), assign("keymap", "vim"));
     }
 
     #[test]
     fn parses_set_theme() {
         assert_eq!(
             parse("set theme gruvbox-dark"),
-            Command::SetTheme("gruvbox-dark".to_string())
+            assign("theme", "gruvbox-dark")
         );
     }
 
     #[test]
     fn parses_set_theme_equals() {
-        assert_eq!(
-            parse("set theme=default"),
-            Command::SetTheme("default".to_string())
-        );
+        assert_eq!(parse("set theme=default"), assign("theme", "default"));
     }
 
     #[test]
-    fn set_theme_without_name_is_unknown() {
-        assert_eq!(parse("set theme"), Command::Unknown);
-        assert_eq!(parse("set theme="), Command::Unknown);
-    }
-
-    #[test]
-    fn set_without_name_is_unknown() {
-        assert_eq!(parse("set keymap"), Command::Unknown);
-        assert_eq!(parse("set"), Command::Unknown);
+    fn set_without_value_is_passed_to_the_registry() {
+        assert_eq!(parse("set theme"), set("theme", SetValue::Assign(None)));
+        assert_eq!(parse("set keymap"), set("keymap", SetValue::Assign(None)));
     }
 
     #[test]

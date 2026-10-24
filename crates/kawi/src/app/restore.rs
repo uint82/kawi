@@ -54,10 +54,12 @@ impl App {
             return session_warnings(warnings);
         }
         self.windows = windows;
+        self.windows.set_all_options(self.window_defaults);
         self.window_syntax.clear();
         self.window_prefix = false;
         self.refresh_window_sizes();
         self.editor.restore_view_state(view);
+        self.editor.set_window_options(self.window_defaults);
         self.reveal_cursor();
         self.sync_active_window();
         session_warnings(warnings)
@@ -117,7 +119,9 @@ impl App {
     }
 
     fn reset_windows(&mut self) {
+        let options = self.editor.window_options();
         self.windows = Windows::new(self.editor.buffer_number(), self.editor.view_state());
+        self.windows.set_all_options(options);
         self.window_syntax.clear();
         self.window_prefix = false;
         self.refresh_window_sizes();

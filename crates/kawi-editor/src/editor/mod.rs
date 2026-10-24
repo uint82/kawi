@@ -30,6 +30,7 @@ mod marks;
 mod match_ops;
 mod motions;
 mod operators;
+mod options;
 mod paste;
 mod preview;
 mod prompt_history;
@@ -53,6 +54,7 @@ mod workspace_edit;
 use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
+pub use options::{BufferOptionDefaults, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;
 
@@ -73,6 +75,7 @@ pub struct Editor {
     last_change: Option<repeat::RepeatChange>,
     undone_change: Option<repeat::RepeatChange>,
     file_indent: indent::IndentConfig,
+    buffer_defaults: BufferOptionDefaults,
     substitute_pattern: String,
     substitute_replacement: String,
     substitute_settings: substitute::SubstituteSettings,
@@ -736,6 +739,7 @@ impl Editor {
             last_change: None,
             undone_change: None,
             file_indent,
+            buffer_defaults: BufferOptionDefaults::default(),
             substitute_pattern: String::new(),
             substitute_replacement: String::new(),
             substitute_settings: substitute::SubstituteSettings::default(),

@@ -82,6 +82,9 @@ struct ParkedState {
     listed: bool,
     cursor: Cursor,
     file_indent: IndentConfig,
+    shiftwidth_override: Option<usize>,
+    expandtab_override: Option<bool>,
+    autoindent: bool,
     viewport_top: usize,
     last_change: Option<RepeatChange>,
     undone_change: Option<RepeatChange>,
@@ -665,6 +668,15 @@ impl Editor {
         self.buffer_at(number).map(Buffer::line_count)
     }
 
+    pub fn buffer_tabstop(&self, number: usize) -> Option<usize> {
+        if number == self.buffers.current() {
+            return Some(self.effective_indent().tabstop);
+        }
+        self.buffers
+            .entry(number)
+            .map(|entry| entry.state.file_indent.tabstop)
+    }
+
     fn buffer_is_dirty_at(&self, number: usize) -> Option<bool> {
         self.buffer_at(number).map(Buffer::is_dirty)
     }
@@ -774,6 +786,7 @@ impl Editor {
         self.store_current();
         let number = self.buffers.allocate_number();
         self.load_fresh(Buffer::from_string(""));
+        self.reset_buffer_options();
         self.buffers.set_current(number);
     }
 
@@ -788,6 +801,7 @@ impl Editor {
         self.store_current();
         let number = self.buffers.allocate_number();
         self.load_fresh(buffer);
+        self.reset_buffer_options();
         self.place_open_cursor();
         self.buffers.set_current(number);
         self.buffers.set_alternate(Some(previous));
@@ -861,6 +875,9 @@ impl Editor {
             listed: self.buffers.current_listed,
             cursor: std::mem::take(&mut self.cursor),
             file_indent: std::mem::replace(&mut self.file_indent, indent::detect(None)),
+            shiftwidth_override: self.shiftwidth_override.take(),
+            expandtab_override: self.expandtab_override.take(),
+            autoindent: std::mem::replace(&mut self.autoindent, self.buffer_defaults.autoindent),
             viewport_top: self.viewport.top(),
             last_change: self.last_change.take(),
             undone_change: self.undone_change.take(),
@@ -880,6 +897,9 @@ impl Editor {
         self.buffers.current_listed = state.listed;
         self.cursor = state.cursor;
         self.file_indent = state.file_indent;
+        self.shiftwidth_override = state.shiftwidth_override;
+        self.expandtab_override = state.expandtab_override;
+        self.autoindent = state.autoindent;
         self.viewport
             .place_top(state.viewport_top, self.buffer.line_count());
         self.last_change = state.last_change;
