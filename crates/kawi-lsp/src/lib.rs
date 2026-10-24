@@ -2,6 +2,7 @@ mod binary;
 mod client;
 mod config;
 mod defaults;
+mod editing;
 mod file;
 pub mod framing;
 mod process;
@@ -12,6 +13,7 @@ mod warning;
 mod workspace;
 
 pub use config::{LanguageConfig, Languages, ServerConfig, MAX_SHIFTWIDTH};
+pub use editing::{BlockCommentConfig, PairConfig};
 pub use service::{
     CodeActionEntry, CodeActionEvent, CompletionEntry, CompletionEvent, CursorPosition, Diagnostic,
     DiagnosticMode, DiagnosticModeEvent, DiagnosticPosition, DiagnosticRange,

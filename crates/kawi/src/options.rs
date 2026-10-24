@@ -167,7 +167,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 14] = [
+pub(crate) const OPTIONS: [OptionSpec; 15] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -262,6 +262,15 @@ pub(crate) const OPTIONS: [OptionSpec; 14] = [
         scope: OptionScope::Buffer,
         section: ConfigSection::Editor,
         config_key: "autoindent",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "auto_pairs",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "auto_pairs",
         default: OptionDefault::Bool(true),
     },
     OptionSpec {
@@ -518,6 +527,7 @@ mod tests {
         assert_eq!(scope("expandtab"), OptionScope::Buffer);
         assert_eq!(scope("shiftwidth"), OptionScope::Buffer);
         assert_eq!(scope("autoindent"), OptionScope::Buffer);
+        assert_eq!(scope("auto_pairs"), OptionScope::Global);
         assert_eq!(scope("number"), OptionScope::Window);
         assert_eq!(scope("relativenumber"), OptionScope::Window);
         assert_eq!(scope("numberwidth"), OptionScope::Window);

@@ -39,6 +39,7 @@ impl Default for WindowOptions {
 }
 
 use super::Editor;
+use crate::editing::LanguageEditing;
 
 impl Editor {
     pub fn set_buffer_defaults(&mut self, defaults: BufferOptionDefaults) {
@@ -55,10 +56,29 @@ impl Editor {
         }
     }
 
+    pub fn set_language_editing(&mut self, editing: LanguageEditing) {
+        if self.language_editing != editing {
+            self.language_editing = editing;
+        }
+    }
+
+    pub fn language_editing(&self) -> &LanguageEditing {
+        &self.language_editing
+    }
+
+    pub fn set_auto_pairs(&mut self, enabled: bool) {
+        self.auto_pairs = enabled;
+    }
+
+    pub fn auto_pairs(&self) -> bool {
+        self.auto_pairs
+    }
+
     pub(super) fn reset_buffer_options(&mut self) {
         self.runtime_shiftwidth = None;
         self.runtime_expandtab = None;
         self.language_indent = LanguageIndent::default();
+        self.language_editing = LanguageEditing::default();
         self.autoindent = self.buffer_defaults.autoindent;
     }
 

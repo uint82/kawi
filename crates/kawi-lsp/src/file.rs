@@ -1,3 +1,4 @@
+use crate::editing;
 use crate::{LanguageConfig, LanguageWarning, ServerConfig, MAX_SHIFTWIDTH};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -59,6 +60,9 @@ pub(crate) struct LanguageOverride {
     servers: Option<Vec<String>>,
     shiftwidth: Option<Value>,
     expandtab: Option<Value>,
+    line_comment: Option<Value>,
+    block_comment: Option<Value>,
+    auto_pairs: Option<Value>,
     enabled: Option<bool>,
 }
 
@@ -111,6 +115,15 @@ impl LanguageOverride {
         }
         if let Some(value) = self.expandtab {
             apply_expandtab(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.line_comment {
+            editing::apply_line_comment(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.block_comment {
+            editing::apply_block_comment(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.auto_pairs {
+            editing::apply_auto_pairs(&mut language, value, &mut warnings);
         }
         if let Some(language_id) = self.language_id {
             language.language_id = language_id;

@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod command;
 pub mod cursor;
+pub mod editing;
 pub mod editor;
 pub mod find;
 pub mod matcher;
@@ -27,6 +28,7 @@ pub use command::{
     parse, Command, CommandLine, GitCommand, PickerCommand, QuickfixCommand, SetValue, TaskCommand,
 };
 pub use cursor::Cursor;
+pub use editing::{default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair};
 pub use editor::{
     BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, LanguageIndent,
     ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT,

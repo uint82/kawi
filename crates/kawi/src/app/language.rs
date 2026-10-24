@@ -12,6 +12,21 @@ impl App {
         };
         self.editor.set_language_indent(indent);
     }
+
+    pub(crate) fn sync_language_editing(&mut self) {
+        let editing = if self.editor.has_file() {
+            self.lsp
+                .language_editing(Some(Path::new(self.editor.filename())))
+        } else {
+            Default::default()
+        };
+        self.editor.set_language_editing(editing);
+    }
+
+    pub(crate) fn sync_language_settings(&mut self) {
+        self.sync_language_indent();
+        self.sync_language_editing();
+    }
 }
 
 #[cfg(test)]
@@ -48,6 +63,36 @@ mod tests {
         fs::write(&path, text).unwrap();
         app.lsp.load(&path, app.events.wake());
         app.sync_language_indent();
+    }
+
+    #[test]
+    fn language_editing_uses_configured_tokens_and_pairs() {
+        let dir = temp_dir("editing");
+        let mut app = app("main.rs");
+        load_languages(
+            &mut app,
+            &dir,
+            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = []\nauto_pairs = [[\"<\", \">\"]]\n",
+        );
+        app.sync_language_editing();
+        let editing = app.editor.language_editing();
+        assert_eq!(editing.comments.line.as_deref(), Some("#"));
+        assert_eq!(editing.comments.block, None);
+        assert_eq!(editing.pairs, vec![kawi_editor::Pair::new('<', '>')]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn built_in_language_editing_is_available() {
+        let dir = temp_dir("editing_builtin");
+        let mut app = app("main.rs");
+        load_languages(&mut app, &dir, "");
+        app.sync_language_editing();
+        let editing = app.editor.language_editing();
+        assert_eq!(editing.comments.line.as_deref(), Some("//"));
+        assert!(editing.pairs.contains(&kawi_editor::Pair::new('(', ')')));
+        assert!(!editing.pairs.contains(&kawi_editor::Pair::new('\'', '\'')));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

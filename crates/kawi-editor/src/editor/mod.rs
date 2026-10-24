@@ -4,6 +4,7 @@ use ropey::Rope;
 use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
+use crate::editing::LanguageEditing;
 use crate::jumps::Jumps;
 use crate::marks::Marks;
 use crate::mode::Mode;
@@ -83,6 +84,8 @@ pub struct Editor {
     runtime_shiftwidth: Option<usize>,
     runtime_expandtab: Option<bool>,
     language_indent: LanguageIndent,
+    language_editing: LanguageEditing,
+    auto_pairs: bool,
     registers: crate::registers::Registers,
     pending_register: Option<char>,
     force_numbered_register: bool,
@@ -759,6 +762,8 @@ impl Editor {
             runtime_shiftwidth: None,
             runtime_expandtab: None,
             language_indent: LanguageIndent::default(),
+            language_editing: LanguageEditing::default(),
+            auto_pairs: true,
             registers: crate::registers::Registers::new(),
             pending_register: None,
             force_numbered_register: false,

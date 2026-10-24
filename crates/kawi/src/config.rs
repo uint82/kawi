@@ -322,6 +322,7 @@ format_on_save = true
 number = false
 ignorecase = true
 autoindent = false
+auto_pairs = false
 autosave = "focus"
 autosave_delay = 250
 
@@ -350,6 +351,10 @@ limit = 25
         );
         assert_eq!(
             loaded.config.get("autoindent"),
+            Some(&OptionValue::Bool(false))
+        );
+        assert_eq!(
+            loaded.config.get("auto_pairs"),
             Some(&OptionValue::Bool(false))
         );
         assert_eq!(
