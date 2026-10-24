@@ -103,7 +103,7 @@ fn exit_switches_to_normal_and_reports_status() {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(terminal.mode, TerminalMode::Normal);
-    assert_eq!(terminal.status(), "process exited: 7 (q closes)");
+    assert_eq!(terminal.status(), "process exited: 7");
     terminal.close();
 }
 
@@ -146,7 +146,7 @@ fn panel_height_respects_task_panel() {
 fn opens_terminal_pane_in_app() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
-    app.open_terminal(Some("printf app-terminal-ok".to_string()))
+    app.open_terminal(Some("printf app-terminal-ok; sleep 5".to_string()))
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut text = String::new();
@@ -172,4 +172,20 @@ fn opens_terminal_pane_in_app() {
     assert!(app.terminal_panel_rect().is_some());
     assert!(text.contains("app-terminal-ok"));
     app.close_terminal();
+}
+
+#[test]
+#[cfg(unix)]
+fn app_closes_terminal_after_exit() {
+    let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
+    app.set_screen_size(100, 30);
+    app.open_terminal(Some("exit 7".to_string())).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && app.terminal.is_open() {
+        app.sync_terminal();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!app.terminal.is_open());
+    assert!(app.terminal_panel_rect().is_none());
+    assert_eq!(app.last_message(), Some("Terminal: process exited: 7"));
 }

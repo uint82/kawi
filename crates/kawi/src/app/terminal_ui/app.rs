@@ -23,7 +23,13 @@ impl App {
     }
 
     pub(crate) fn sync_terminal(&mut self) -> bool {
-        self.terminal.drain()
+        let changed = self.terminal.drain();
+        if let Some(status) = self.terminal.take_exit() {
+            self.close_terminal();
+            self.show_message(format!("Terminal: {status}"));
+            return true;
+        }
+        changed
     }
 
     pub(crate) fn sync_terminal_panel_size(&mut self) {

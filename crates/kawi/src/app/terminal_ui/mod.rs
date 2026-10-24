@@ -37,6 +37,7 @@ pub struct TerminalUi {
     one_shot: bool,
     normal_cursor: (u16, u16),
     exit_reported: bool,
+    exit_notice: Option<String>,
 }
 
 impl Default for TerminalUi {
@@ -51,6 +52,7 @@ impl Default for TerminalUi {
             one_shot: false,
             normal_cursor: (0, 0),
             exit_reported: false,
+            exit_notice: None,
         }
     }
 }
@@ -70,6 +72,10 @@ impl TerminalUi {
         self.session
             .as_ref()
             .is_some_and(|session| session.is_closed() && session.is_running())
+    }
+
+    pub fn take_exit(&mut self) -> Option<String> {
+        self.exit_notice.take()
     }
 
     pub fn status(&self) -> &str {
@@ -97,6 +103,7 @@ impl TerminalUi {
         self.one_shot = false;
         self.normal_cursor = (0, 0);
         self.exit_reported = false;
+        self.exit_notice = None;
         Ok(())
     }
 
@@ -112,6 +119,7 @@ impl TerminalUi {
         self.escape_pending = false;
         self.one_shot = false;
         self.exit_reported = false;
+        self.exit_notice = None;
         self.session.take();
     }
 
@@ -124,7 +132,8 @@ impl TerminalUi {
             if let Some(status) = session.exit_description() {
                 let cursor = session.screen().cursor();
                 self.normal_cursor = (cursor.row, cursor.col);
-                self.status = format!("{status} (q closes)");
+                self.status = status.clone();
+                self.exit_notice = Some(status);
                 self.exit_reported = true;
                 self.mode = TerminalMode::Normal;
                 self.escape_pending = false;
