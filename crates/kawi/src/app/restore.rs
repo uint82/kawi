@@ -62,6 +62,7 @@ impl App {
         self.editor.set_window_options(self.window_defaults);
         self.reveal_cursor();
         self.sync_active_window();
+        self.sync_language_indent();
         session_warnings(warnings)
     }
 

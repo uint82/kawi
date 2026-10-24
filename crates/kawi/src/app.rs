@@ -513,6 +513,7 @@ impl App {
             _ => Ok(false),
         };
         self.sync_active_window();
+        self.sync_language_indent();
         result
     }
 

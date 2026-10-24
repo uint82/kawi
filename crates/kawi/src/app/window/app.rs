@@ -41,7 +41,6 @@ pub(crate) struct PaneData<'a> {
 
 impl App {
     pub(crate) fn sync_active_window(&mut self) {
-        self.sync_language_indent();
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
         let options = self.editor.window_options();
