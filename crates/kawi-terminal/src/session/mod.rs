@@ -9,9 +9,11 @@ use anyhow::{Context, Result};
 use kawi_process::{signal_group, ProcessSignal};
 use portable_pty::{native_pty_system, Child, ExitStatus, MasterPty};
 
+use crate::responder::TerminalResponder;
 use crate::screen::TerminalScreen;
 
 mod config;
+mod response;
 
 pub use config::SpawnOptions;
 use config::{build_command, exit_description, pty_size, SCROLLBACK_LINES};
@@ -148,6 +150,7 @@ impl Drop for PtySession {
 pub struct TerminalSession {
     pty: PtySession,
     screen: TerminalScreen,
+    responder: TerminalResponder,
     exit: Option<ExitStatus>,
     closed: bool,
 }
@@ -158,6 +161,7 @@ impl TerminalSession {
         Ok(Self {
             pty,
             screen: TerminalScreen::new(options.rows, options.cols, SCROLLBACK_LINES),
+            responder: TerminalResponder::default(),
             exit: None,
             closed: false,
         })
@@ -168,7 +172,9 @@ impl TerminalSession {
         for event in self.pty.drain_events() {
             match event {
                 PtyEvent::Data(bytes) => {
+                    let queries = self.responder.process(&bytes);
                     self.screen.process(&bytes);
+                    self.respond_to(queries);
                     changed = true;
                 }
                 PtyEvent::Closed => {

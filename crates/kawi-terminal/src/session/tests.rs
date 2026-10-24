@@ -131,3 +131,16 @@ fn runs_in_the_requested_directory() {
     wait_for_text(&mut session, "/tmp");
     session.terminate();
 }
+
+#[test]
+#[cfg(unix)]
+fn answers_terminal_queries() {
+    let (wake, _wake_rx) = channel();
+    let mut session = TerminalSession::start(
+        &options("stty raw -echo; printf '\\033[6n'; dd bs=1 count=6 2>/dev/null | od -An -tx1"),
+        wake,
+    )
+    .unwrap();
+    wait_for_text(&mut session, "1b 5b 31 3b 31 52");
+    session.terminate();
+}
