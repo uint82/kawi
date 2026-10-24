@@ -1,6 +1,5 @@
 use crate::ServerConfig;
 use anyhow::{Context, Result};
-use std::io;
 use std::path::Path;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::thread;
@@ -26,7 +25,7 @@ impl ServerProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        configure_command(&mut command);
+        kawi_process::configure(&mut command);
         let mut child = command
             .spawn()
             .with_context(|| format!("start {}", config.command))?;
@@ -65,9 +64,7 @@ impl ServerProcess {
         if self.child.try_wait().ok().flatten().is_some() {
             return;
         }
-        kill_process_group(self.child.id());
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        kawi_process::terminate(&mut self.child);
     }
 }
 
@@ -76,38 +73,6 @@ impl Drop for ServerProcess {
         self.terminate();
     }
 }
-
-#[cfg(unix)]
-fn configure_command(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    unsafe {
-        command.pre_exec(|| {
-            if libc::setpgid(0, 0) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            #[cfg(target_os = "linux")]
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
-}
-
-#[cfg(not(unix))]
-fn configure_command(_command: &mut Command) {}
-
-#[cfg(unix)]
-fn kill_process_group(pid: u32) {
-    if let Ok(pid) = i32::try_from(pid) {
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn kill_process_group(_pid: u32) {}
 
 #[cfg(test)]
 mod tests {

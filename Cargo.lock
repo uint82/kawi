@@ -405,6 +405,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "kawi-buffer",
+ "kawi-process",
  "libc",
  "lsp-types",
  "ropey",
@@ -425,6 +426,13 @@ dependencies = [
  "kawi-buffer",
  "regex",
  "regex-syntax",
+]
+
+[[package]]
+name = "kawi-process"
+version = "0.0.1"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
