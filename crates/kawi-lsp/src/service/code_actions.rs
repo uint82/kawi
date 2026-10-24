@@ -192,6 +192,8 @@ mod tests {
             message: "message".to_string(),
             source: Some("fake".to_string()),
             code: Some("W1".to_string()),
+            tags: Vec::new(),
+            related: Vec::new(),
         }];
         let converted = protocol_diagnostics(&diagnostics, &text, &PositionEncodingKind::UTF16);
         assert_eq!(

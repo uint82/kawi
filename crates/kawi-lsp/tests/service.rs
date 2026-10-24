@@ -1,6 +1,6 @@
 use kawi_lsp::{
-    CursorPosition, DiagnosticSeverity, FormattingSettings, Languages, LspEvent, LspService,
-    ProgressEvent, ServerState,
+    CursorPosition, DiagnosticMode, DiagnosticSeverity, FormattingSettings, Languages, LspEvent,
+    LspService, ProgressEvent, ServerState, WorkspaceDiagnosticState,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,6 +65,22 @@ fn phase_seven_config(root: &Path, pull_diagnostics: bool) -> PathBuf {
     );
     fs::write(&path, text).expect("config");
     path
+}
+
+fn workspace_config(root: &Path) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_WORKSPACE_DIAGNOSTICS = \"1\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_workspace_diagnostics(root: &Path) -> LspService {
+    let languages = Languages::load(&workspace_config(root));
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
 }
 
 fn start_phase_seven(root: &Path, pull_diagnostics: bool) -> LspService {
@@ -804,6 +820,62 @@ fn pulls_diagnostics_and_reuses_result_ids() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(!delivered);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn pulls_workspace_diagnostics_and_reuses_result_ids() {
+    let root = temp_project("workspace_diagnostics");
+    let service = start_workspace_diagnostics(&root);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "a\n"));
+    wait_for_ready(&service);
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::DiagnosticMode(event) if event.mode == DiagnosticMode::Workspace
+        )
+    });
+    assert!(service.workspace_diagnostics());
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::WorkspaceDiagnostics(event)
+                if event.state == WorkspaceDiagnosticState::Started
+        )
+    });
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Diagnostics(diagnostics)
+                if diagnostics.diagnostics.first().is_some_and(|diagnostic| {
+                    diagnostic.message == "workspace:1"
+                })
+        )
+    });
+    let LspEvent::Diagnostics(event) = event else {
+        panic!("unexpected workspace diagnostic event");
+    };
+    assert_eq!(event.path, file);
+    assert_eq!(event.version, None);
+    assert_eq!(event.diagnostics[0].source.as_deref(), Some("workspace"));
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::WorkspaceDiagnostics(event)
+                if event.state == WorkspaceDiagnosticState::Finished
+        )
+    });
+    assert!(service.workspace_diagnostics());
+    wait_for_log(&service, "workspace-diagnostic:1");
+    wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::WorkspaceDiagnostics(event)
+                if event.state == WorkspaceDiagnosticState::Finished
+        )
+    });
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

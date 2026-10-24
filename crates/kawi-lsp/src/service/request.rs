@@ -30,6 +30,7 @@ impl Manager {
             },
             "workspace/diagnostic/refresh" => {
                 self.schedule_all_diagnostics();
+                self.request_workspace_diagnostics();
                 Message::response(id.clone(), Value::Null)
             }
             "workspace/workspaceFolders" => Message::response(

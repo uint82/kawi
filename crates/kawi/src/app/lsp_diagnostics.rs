@@ -225,6 +225,8 @@ mod tests {
             message: message.to_string(),
             source: None,
             code: None,
+            tags: Vec::new(),
+            related: Vec::new(),
         }
     }
 
