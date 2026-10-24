@@ -1,3 +1,4 @@
+use crate::markdown::MarkdownLine;
 use crate::statusbar::StatusInfo;
 use crate::theme::Theme;
 use kawi_editor::Viewport;
@@ -39,6 +40,7 @@ pub struct Frame<'a> {
     pub separators: &'a [Rect],
     pub pager: Option<&'a [String]>,
     pub completion: Option<CompletionMenu<'a>>,
+    pub overlay: Option<Overlay<'a>>,
     pub picker: Option<PickerMenu<'a>>,
     pub replace: Option<ReplaceMenu<'a>>,
     pub task: Option<TaskPanel<'a>>,
@@ -169,6 +171,23 @@ pub struct PromptMenu<'a> {
 pub struct CompletionMenu<'a> {
     pub items: &'a [String],
     pub selected: Option<usize>,
+}
+
+pub struct Overlay<'a> {
+    pub list: Option<OverlayList<'a>>,
+    pub panel: Option<OverlayPanel<'a>>,
+}
+
+pub struct OverlayList<'a> {
+    pub rect: Rect,
+    pub items: &'a [String],
+    pub selected: Option<usize>,
+}
+
+pub struct OverlayPanel<'a> {
+    pub rect: Rect,
+    pub lines: &'a [MarkdownLine],
+    pub scroll: usize,
 }
 
 pub struct PickerMenu<'a> {

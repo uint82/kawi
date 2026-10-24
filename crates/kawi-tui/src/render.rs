@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle},
     execute,
-    style::SetForegroundColor,
+    style::{Attribute, SetAttribute, SetForegroundColor},
     terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{Stdout, Write};
@@ -43,6 +43,7 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
         None => draw_message_row(out, frame)?,
     }
     draw_completion(out, frame)?;
+    draw_overlay(out, frame)?;
     apply_cursor_style(out, frame.cursor_style)?;
     place_cursor(out, frame)?;
     flush(out)?;
@@ -935,6 +936,210 @@ fn menu_start(shown: usize, selected: Option<usize>) -> usize {
         Some(index) if index >= shown => index.saturating_add(1).saturating_sub(shown),
         _ => 0,
     }
+}
+
+fn draw_overlay(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    let Some(overlay) = frame.overlay.as_ref() else {
+        return Ok(());
+    };
+    if let Some(list) = overlay.list.as_ref() {
+        draw_overlay_list(out, frame, list)?;
+    }
+    if let Some(panel) = overlay.panel.as_ref() {
+        draw_overlay_panel(out, frame, panel)?;
+    }
+    Ok(())
+}
+
+fn draw_overlay_list(
+    out: &mut Stdout,
+    frame: &Frame,
+    list: &crate::frame::OverlayList<'_>,
+) -> Result<()> {
+    clear_rect(out, list.rect, frame.theme)?;
+    draw_box(out, list.rect, frame.theme)?;
+    let width = list.rect.width.saturating_sub(2);
+    let height = list.rect.height.saturating_sub(2);
+    if width == 0 || height == 0 {
+        return Ok(());
+    }
+    let start = menu_start(height, list.selected);
+    for offset in 0..height {
+        let index = start.saturating_add(offset);
+        let row = list.rect.y.saturating_add(offset).saturating_add(1);
+        execute!(
+            out,
+            MoveTo(
+                saturate_u16(list.rect.x.saturating_add(1)),
+                saturate_u16(row)
+            )
+        )
+        .context("move to overlay item")?;
+        if list.selected == Some(index) {
+            paint::apply_match(out, &frame.theme.selection)?;
+        } else {
+            paint::apply_base(out, frame.theme)?;
+        }
+        let item = list.items.get(index).map_or("", String::as_str);
+        write_padded(out, item, width)?;
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
+}
+
+fn draw_overlay_panel(
+    out: &mut Stdout,
+    frame: &Frame,
+    panel: &crate::frame::OverlayPanel<'_>,
+) -> Result<()> {
+    clear_rect(out, panel.rect, frame.theme)?;
+    draw_box(out, panel.rect, frame.theme)?;
+    let width = panel.rect.width.saturating_sub(2);
+    let height = panel.rect.height.saturating_sub(2);
+    if width == 0 || height == 0 {
+        return Ok(());
+    }
+    for offset in 0..height {
+        let index = panel.scroll.saturating_add(offset);
+        let row = panel.rect.y.saturating_add(offset).saturating_add(1);
+        execute!(
+            out,
+            MoveTo(
+                saturate_u16(panel.rect.x.saturating_add(1)),
+                saturate_u16(row)
+            )
+        )
+        .context("move to overlay panel row")?;
+        paint::apply_base(out, frame.theme)?;
+        let used = match panel.lines.get(index) {
+            Some(line) => draw_markdown_line(out, line, width, frame.theme)?,
+            None => 0,
+        };
+        if used < width {
+            write!(out, "{}", " ".repeat(width.saturating_sub(used)))
+                .context("pad overlay panel row")?;
+        }
+        paint::restore_base(out, frame.theme)?;
+    }
+    Ok(())
+}
+
+fn draw_markdown_line(
+    out: &mut Stdout,
+    line: &crate::markdown::MarkdownLine,
+    width: usize,
+    theme: &Theme,
+) -> Result<usize> {
+    let mut used = 0;
+    for span in &line.spans {
+        if used >= width {
+            break;
+        }
+        let text = truncate_to_width(&span.text, width.saturating_sub(used));
+        if text.is_empty() {
+            continue;
+        }
+        apply_markdown_style(out, span.style, theme)?;
+        write!(out, "{text}").context("write overlay span")?;
+        used = used.saturating_add(text.chars().count());
+    }
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
+    paint::apply_base(out, theme)?;
+    Ok(used)
+}
+
+fn apply_markdown_style(
+    out: &mut Stdout,
+    style: crate::markdown::MarkdownStyle,
+    theme: &Theme,
+) -> Result<()> {
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
+    paint::apply_base(out, theme)?;
+    match style {
+        crate::markdown::MarkdownStyle::Normal => {}
+        crate::markdown::MarkdownStyle::Strong | crate::markdown::MarkdownStyle::Heading => {
+            execute!(
+                out,
+                SetAttribute(Attribute::Bold),
+                SetForegroundColor(theme.syntax.color(SyntaxGroup::Keyword))
+            )
+            .context("apply overlay heading style")?;
+        }
+        crate::markdown::MarkdownStyle::Emphasis => {
+            execute!(
+                out,
+                SetAttribute(Attribute::Italic),
+                SetForegroundColor(theme.syntax.color(SyntaxGroup::Function))
+            )
+            .context("apply overlay emphasis style")?;
+        }
+        crate::markdown::MarkdownStyle::Code => {
+            execute!(
+                out,
+                SetForegroundColor(theme.syntax.color(SyntaxGroup::String))
+            )
+            .context("apply overlay code style")?;
+        }
+        crate::markdown::MarkdownStyle::Quote => {
+            execute!(
+                out,
+                SetForegroundColor(theme.syntax.color(SyntaxGroup::Comment))
+            )
+            .context("apply overlay quote style")?;
+        }
+    }
+    Ok(())
+}
+
+fn clear_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
+    if rect.width == 0 || rect.height == 0 {
+        return Ok(());
+    }
+    paint::apply_base(out, theme)?;
+    for row in rect.y..rect.bottom() {
+        execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(row)))
+            .context("move to overlay row")?;
+        write_padded(out, "", rect.width)?;
+    }
+    Ok(())
+}
+
+fn draw_box(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
+    if rect.width < 2 || rect.height < 2 {
+        return Ok(());
+    }
+    execute!(out, SetForegroundColor(theme.non_text)).context("apply overlay border color")?;
+    let inner = rect.width.saturating_sub(2);
+    let top = format!("┌{}┐", "─".repeat(inner));
+    let bottom = format!("└{}┘", "─".repeat(inner));
+    execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(rect.y)))
+        .context("move to overlay border")?;
+    write!(out, "{top}").context("write overlay top border")?;
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(rect.x),
+            saturate_u16(rect.bottom().saturating_sub(1))
+        )
+    )
+    .context("move to overlay bottom border")?;
+    write!(out, "{bottom}").context("write overlay bottom border")?;
+    for row in rect.y.saturating_add(1)..rect.bottom().saturating_sub(1) {
+        execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(row)))
+            .context("move to overlay left border")?;
+        write!(out, "│").context("write overlay left border")?;
+        execute!(
+            out,
+            MoveTo(
+                saturate_u16(rect.right().saturating_sub(1)),
+                saturate_u16(row)
+            )
+        )
+        .context("move to overlay right border")?;
+        write!(out, "│").context("write overlay right border")?;
+    }
+    paint::restore_base(out, theme)?;
+    Ok(())
 }
 
 const PAGER_PROMPT: &str = "Press ENTER or type command to continue";
