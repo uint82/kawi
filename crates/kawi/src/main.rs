@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod event;
 mod helix;
 mod keymap;
@@ -21,14 +22,14 @@ use state::StatePaths;
 use std::path::Path;
 
 fn main() -> Result<()> {
-    let (path, flavor) = parse_cli(std::env::args().skip(1).collect());
+    let (path, cli_flavor) = parse_cli(std::env::args().skip(1).collect());
     let restore_workspace = path.is_none();
     let cwd = std::env::current_dir()?;
     let paths = StatePaths::resolve();
     let (session, warning) = load_startup_session(restore_workspace, paths.as_ref(), &cwd);
     let buffer = load_buffer(path)?;
-    let mut app = App::new(buffer, flavor);
-    app.load_state();
+    let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
+    app.load_state(cli_flavor);
     apply_startup_session(&mut app, session.as_ref(), warning);
     apply_startup_recovery(&mut app, paths.as_ref(), &cwd, !restore_workspace);
     let outcome = run_app(&mut app);
@@ -95,17 +96,16 @@ fn save_workspace_session(app: &mut App, enabled: bool, paths: Option<&StatePath
     let _ = session::save_for_cwd(&paths.sessions, cwd, &session);
 }
 
-fn parse_cli(args: Vec<String>) -> (Option<String>, Flavor) {
+fn parse_cli(args: Vec<String>) -> (Option<String>, Option<Flavor>) {
     let flavor = select_flavor(&args);
     let path = select_path(args);
     (path, flavor)
 }
 
-fn select_flavor(args: &[String]) -> Flavor {
-    if args.iter().any(|arg| arg == "--helix") {
-        return Flavor::Helix;
-    }
-    Flavor::Vim
+fn select_flavor(args: &[String]) -> Option<Flavor> {
+    args.iter()
+        .any(|arg| arg == "--helix")
+        .then_some(Flavor::Helix)
 }
 
 fn select_path(args: Vec<String>) -> Option<String> {
@@ -136,14 +136,14 @@ mod tests {
 
     #[test]
     fn defaults_to_vim_without_file() {
-        assert_eq!(parse_cli(vec![]), (None, Flavor::Vim));
+        assert_eq!(parse_cli(vec![]), (None, None));
     }
 
     #[test]
     fn helix_flag_selects_helix() {
         assert_eq!(
             parse_cli(vec!["--helix".to_string()]),
-            (None, Flavor::Helix)
+            (None, Some(Flavor::Helix))
         );
     }
 
@@ -161,6 +161,7 @@ mod tests {
         let cwd = std::env::current_dir().unwrap();
         let paths = StatePaths {
             config: dir.join("config.toml"),
+            config_log: dir.join("config.log"),
             languages: dir.join("languages.toml"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
@@ -183,7 +184,7 @@ mod tests {
     fn file_and_flag_combine() {
         assert_eq!(
             parse_cli(vec!["notes.txt".to_string(), "--helix".to_string()]),
-            (Some("notes.txt".to_string()), Flavor::Helix)
+            (Some("notes.txt".to_string()), Some(Flavor::Helix))
         );
     }
 }

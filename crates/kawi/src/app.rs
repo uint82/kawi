@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 mod code_action;
 mod completion;
+mod config;
 mod formatting;
 mod frame;
 mod git;
@@ -190,18 +191,6 @@ impl App {
                 self.finish_recovery_abnormal();
                 std::panic::resume_unwind(payload);
             }
-        }
-    }
-
-    pub fn load_state(&mut self) {
-        let Some(paths) = StatePaths::resolve() else {
-            return;
-        };
-        if let Some(warning) = state::load(&mut self.editor, &paths) {
-            self.message = Some(warning);
-        }
-        if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
-            self.message = Some(warning);
         }
     }
 

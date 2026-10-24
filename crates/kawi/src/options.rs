@@ -13,6 +13,13 @@ pub(crate) enum OptionScope {
     Window,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigSection {
+    Ui,
+    Editor,
+    History,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OptionKind {
     Bool,
@@ -66,6 +73,14 @@ impl OptionValue {
         }
     }
 
+    pub(crate) fn display(&self) -> String {
+        match self {
+            Self::Bool(true) => "true".to_string(),
+            Self::Bool(false) => "false".to_string(),
+            Self::Int(value) => value.to_string(),
+            Self::Text(value) => value.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,6 +89,8 @@ pub(crate) struct OptionSpec {
     pub(crate) aliases: &'static [&'static str],
     pub(crate) kind: OptionKind,
     pub(crate) scope: OptionScope,
+    pub(crate) section: ConfigSection,
+    pub(crate) config_key: &'static str,
     pub(crate) default: OptionDefault,
 }
 
@@ -112,6 +129,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["kmp"],
         kind: OptionKind::Enum(valid_keymap),
         scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "keymap",
         default: OptionDefault::Text("vim"),
     },
     OptionSpec {
@@ -119,6 +138,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &[],
         kind: OptionKind::Enum(valid_theme),
         scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "theme",
         default: OptionDefault::Text("default"),
     },
     OptionSpec {
@@ -129,6 +150,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
             max: MAX_SHIFTWIDTH,
         },
         scope: OptionScope::Buffer,
+        section: ConfigSection::Editor,
+        config_key: "shiftwidth",
         default: OptionDefault::Int(8),
     },
     OptionSpec {
@@ -136,6 +159,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["et"],
         kind: OptionKind::Bool,
         scope: OptionScope::Buffer,
+        section: ConfigSection::Editor,
+        config_key: "expandtab",
         default: OptionDefault::Bool(false),
     },
     OptionSpec {
@@ -143,6 +168,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["nu"],
         kind: OptionKind::Bool,
         scope: OptionScope::Window,
+        section: ConfigSection::Editor,
+        config_key: "number",
         default: OptionDefault::Bool(true),
     },
     OptionSpec {
@@ -150,6 +177,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["rnu"],
         kind: OptionKind::Bool,
         scope: OptionScope::Window,
+        section: ConfigSection::Editor,
+        config_key: "relativenumber",
         default: OptionDefault::Bool(false),
     },
     OptionSpec {
@@ -160,6 +189,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
             max: MAX_NUMBERWIDTH,
         },
         scope: OptionScope::Window,
+        section: ConfigSection::Editor,
+        config_key: "numberwidth",
         default: OptionDefault::Int(4),
     },
     OptionSpec {
@@ -167,6 +198,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["ic"],
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "ignorecase",
         default: OptionDefault::Bool(false),
     },
     OptionSpec {
@@ -174,6 +207,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["scs"],
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "smartcase",
         default: OptionDefault::Bool(false),
     },
     OptionSpec {
@@ -181,6 +216,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         aliases: &["ai"],
         kind: OptionKind::Bool,
         scope: OptionScope::Buffer,
+        section: ConfigSection::Editor,
+        config_key: "autoindent",
         default: OptionDefault::Bool(true),
     },
     OptionSpec {
@@ -191,6 +228,8 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
             max: MAX_HISTORY_LIMIT,
         },
         scope: OptionScope::Global,
+        section: ConfigSection::History,
+        config_key: "limit",
         default: OptionDefault::Int(DEFAULT_HISTORY_LIMIT),
     },
 ];
@@ -201,6 +240,9 @@ pub(crate) fn lookup(name: &str) -> Option<&'static OptionSpec> {
         .find(|spec| spec.name == name || spec.aliases.contains(&name))
 }
 
+pub(crate) fn canonical_name(name: &str) -> Option<&'static str> {
+    lookup(name).map(|spec| spec.name)
+}
 
 pub(crate) fn validate_spec(
     spec: &'static OptionSpec,
@@ -299,11 +341,11 @@ mod tests {
 
     #[test]
     fn resolves_canonical_names_and_aliases() {
-        assert_eq!(lookup("shiftwidth").map(|spec| spec.name), Some("shiftwidth"));
-        assert_eq!(lookup("sw").map(|spec| spec.name), Some("shiftwidth"));
-        assert_eq!(lookup("number").map(|spec| spec.name), Some("number"));
-        assert_eq!(lookup("nu").map(|spec| spec.name), Some("number"));
-        assert!(lookup("nope").is_none());
+        assert_eq!(canonical_name("shiftwidth"), Some("shiftwidth"));
+        assert_eq!(canonical_name("sw"), Some("shiftwidth"));
+        assert_eq!(canonical_name("number"), Some("number"));
+        assert_eq!(canonical_name("nu"), Some("number"));
+        assert_eq!(canonical_name("nope"), None);
     }
 
     #[test]
