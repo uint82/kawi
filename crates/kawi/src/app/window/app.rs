@@ -97,10 +97,13 @@ impl App {
     }
 
     pub(crate) fn window_area(&self) -> Rect {
+        let task_height = self.task.panel_height(self.screen_height);
+        let terminal_height = self.terminal.panel_height(self.screen_height, task_height);
         let height = self
             .screen_height
             .saturating_sub(1)
-            .saturating_sub(self.task.panel_height(self.screen_height))
+            .saturating_sub(task_height)
+            .saturating_sub(terminal_height)
             .max(1);
         Rect::new(0, 0, self.screen_width.max(1), height)
     }

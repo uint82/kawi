@@ -4,7 +4,7 @@ use anyhow::Result;
 use kawi_editor::Mode;
 use kawi_picker::PickerKind;
 use kawi_tui::{
-    frame::{CompletionMenu, Frame, PaneFrame, TaskPanel},
+    frame::{CompletionMenu, Frame, PaneFrame, TaskPanel, TerminalPanel},
     render,
     statusbar::StatusInfo,
     CursorStyle, Selection,
@@ -116,6 +116,30 @@ impl App {
             status: self.task_panel_status().unwrap_or_default(),
             lines: &task_lines,
         });
+        let terminal_lines = if self.pager.is_some() {
+            Vec::new()
+        } else {
+            self.terminal_panel_rect()
+                .map(|rect| {
+                    self.terminal
+                        .lines(rect.width, rect.height.saturating_sub(1))
+                })
+                .unwrap_or_default()
+        };
+        let terminal_title = self.terminal.title();
+        let terminal_status = self.terminal.status();
+        let terminal = if self.pager.is_some() {
+            None
+        } else {
+            self.terminal_panel_rect().map(|rect| TerminalPanel {
+                rect,
+                title: terminal_title,
+                status: terminal_status,
+                lines: &terminal_lines,
+                cursor: self.terminal.cursor(),
+                focused: self.terminal_focus,
+            })
+        };
         let viewport = kawi_editor::Viewport::new(
             self.screen_height.saturating_sub(2).max(1),
             self.screen_width.max(1),
@@ -129,6 +153,7 @@ impl App {
             picker,
             replace,
             task,
+            terminal,
             viewport: &viewport,
             message: self.message.as_deref(),
             prompt: self.rename.as_ref().and_then(rename::RenameSession::prompt),
