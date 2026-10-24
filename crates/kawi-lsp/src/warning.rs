@@ -11,7 +11,7 @@ impl LanguageWarning {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             line: None,
-            message: message.into(),
+            message: one_line(&message.into()),
         }
     }
 
@@ -45,9 +45,18 @@ impl fmt::Display for LanguageWarning {
     }
 }
 
+fn one_line(message: &str) -> String {
+    message.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collapses_whitespace_in_messages() {
+        assert_eq!(LanguageWarning::new("bad\n value").message(), "bad value");
+    }
 
     #[test]
     fn formats_with_and_without_a_line() {

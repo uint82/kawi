@@ -152,7 +152,7 @@ pub(crate) fn load(path: &Path) -> (LanguagesFile, Vec<LanguageWarning>) {
         Err(error) => {
             return (
                 LanguagesFile::default(),
-                vec![LanguageWarning::new(one_line(&error.to_string()))],
+                vec![LanguageWarning::new(error.to_string())],
             )
         }
     };
@@ -162,7 +162,7 @@ pub(crate) fn load(path: &Path) -> (LanguagesFile, Vec<LanguageWarning>) {
             let line = error.span().map(|span| line_at(&text, span.start));
             (
                 LanguagesFile::default(),
-                vec![LanguageWarning::new(one_line(error.message())).at_line(line)],
+                vec![LanguageWarning::new(error.message()).at_line(line)],
             )
         }
     }
@@ -172,8 +172,4 @@ fn line_at(text: &str, offset: usize) -> usize {
     text.get(..offset)
         .map(|before| before.bytes().filter(|byte| *byte == b'\n').count() + 1)
         .unwrap_or(1)
-}
-
-fn one_line(details: &str) -> String {
-    details.split_whitespace().collect::<Vec<_>>().join(" ")
 }
