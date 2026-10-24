@@ -191,6 +191,14 @@ impl Editor {
                 self.retreat_after_insert();
                 self.mode = Mode::Normal;
             }
+            Action::CommentLines => {
+                self.comment_rows(start.0, end.0);
+            }
+            Action::SurroundSelection { open } => {
+                if let Some(pair) = self.opening_pair(open) {
+                    self.surround_range(start, end, pair, mode == Mode::VisualLine);
+                }
+            }
             Action::ToggleCase | Action::Lowercase | Action::Uppercase => {
                 self.record_boundary();
                 let shift = match action {

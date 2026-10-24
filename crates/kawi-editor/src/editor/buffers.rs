@@ -85,6 +85,7 @@ struct ParkedState {
     runtime_shiftwidth: Option<usize>,
     runtime_expandtab: Option<bool>,
     language_indent: super::options::LanguageIndent,
+    language_editing: crate::editing::LanguageEditing,
     autoindent: bool,
     viewport_top: usize,
     last_change: Option<RepeatChange>,
@@ -894,6 +895,7 @@ impl Editor {
             runtime_shiftwidth: self.runtime_shiftwidth.take(),
             runtime_expandtab: self.runtime_expandtab.take(),
             language_indent: std::mem::take(&mut self.language_indent),
+            language_editing: std::mem::take(&mut self.language_editing),
             autoindent: std::mem::replace(&mut self.autoindent, self.buffer_defaults.autoindent),
             viewport_top: self.viewport.top(),
             last_change: self.last_change.take(),
@@ -917,6 +919,7 @@ impl Editor {
         self.runtime_shiftwidth = state.runtime_shiftwidth;
         self.runtime_expandtab = state.runtime_expandtab;
         self.language_indent = state.language_indent;
+        self.language_editing = state.language_editing;
         self.autoindent = state.autoindent;
         self.viewport
             .place_top(state.viewport_top, self.buffer.line_count());

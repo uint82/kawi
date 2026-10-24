@@ -58,7 +58,7 @@ impl Editor {
     }
 
     fn apply_shift_motion(&mut self, motion: ShiftMotion, shift: Shift) {
-        let Some((first, last)) = self.shift_motion_rows(motion) else {
+        let Some((first, last)) = self.line_motion_rows(motion) else {
             return;
         };
         self.apply_shift_rows(first, last, shift);
@@ -97,7 +97,7 @@ impl Editor {
         self.place_shift_cursor(first, screen, indent.tabstop);
     }
 
-    fn shift_motion_rows(&mut self, motion: ShiftMotion) -> Option<(usize, usize)> {
+    pub(super) fn line_motion_rows(&mut self, motion: ShiftMotion) -> Option<(usize, usize)> {
         let (row, col) = (self.cursor.row(), self.cursor.col());
         match motion {
             ShiftMotion::WordForward => {
@@ -165,6 +165,14 @@ impl Editor {
             ShiftMotion::GotoLine { last } => {
                 let target = self.goto_target(last);
                 Some((row.min(target), row.max(target)))
+            }
+            ShiftMotion::OperatorLines => {
+                let count = self.take_count();
+                let first = self.cursor.row();
+                let last = first
+                    .saturating_add(count.saturating_sub(1))
+                    .min(self.buffer.line_count().saturating_sub(1));
+                Some((first, last))
             }
             ShiftMotion::Lines { upward } => {
                 let count = self.take_count();

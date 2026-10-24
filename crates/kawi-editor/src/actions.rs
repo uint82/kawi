@@ -228,6 +228,13 @@ pub enum Action {
         motion: ShiftMotion,
     },
     ToggleCase,
+    CommentLines,
+    CommentAt {
+        motion: ShiftMotion,
+    },
+    SurroundSelection {
+        open: char,
+    },
     Lowercase,
     Uppercase,
     ReselectVisual,
@@ -421,6 +428,9 @@ impl Action {
                 | Self::QuickfixNext
                 | Self::QuickfixPrev
                 | Self::QuickfixOpen
+                | Self::CommentLines
+                | Self::CommentAt { .. }
+                | Self::SurroundSelection { .. }
                 | Self::Noop
         )
     }
@@ -497,6 +507,7 @@ pub enum ShiftMotion {
     Lines {
         upward: bool,
     },
+    OperatorLines,
 }
 
 // TODO(helix): shared SelectLine action for helix x line select.

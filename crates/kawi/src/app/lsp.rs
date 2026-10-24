@@ -3,7 +3,9 @@ use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
 use super::lsp_text::LspText;
-use kawi_editor::{Editor, LanguageIndent};
+use kawi_editor::{
+    default_pairs, BlockComment, CommentTokens, Editor, LanguageEditing, LanguageIndent, Pair,
+};
 use kawi_lsp::{
     CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticMode,
     DiagnosticSeverity, DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning,
@@ -281,16 +283,41 @@ impl LspUi {
     }
 
     pub fn language_indent(&self, path: Option<&Path>) -> LanguageIndent {
-        let Some(languages) = self.languages.as_ref() else {
-            return LanguageIndent::default();
-        };
-        let Some(language) = path.and_then(|path| languages.language_for_path(path)) else {
+        let Some(language) = self.language_config(path) else {
             return LanguageIndent::default();
         };
         LanguageIndent {
             shiftwidth: language.shiftwidth,
             expandtab: language.expandtab,
         }
+    }
+
+    pub fn language_editing(&self, path: Option<&Path>) -> LanguageEditing {
+        let Some(language) = self.language_config(path) else {
+            return LanguageEditing::default();
+        };
+        let comments = CommentTokens {
+            line: language.line_comment.clone(),
+            block: language
+                .block_comment
+                .as_ref()
+                .map(|block| BlockComment::new(block.open.clone(), block.close.clone())),
+        };
+        let pairs = language
+            .auto_pairs
+            .as_ref()
+            .map(|pairs| {
+                pairs
+                    .iter()
+                    .map(|pair| Pair::new(pair.open, pair.close))
+                    .collect()
+            })
+            .unwrap_or_else(default_pairs);
+        LanguageEditing { comments, pairs }
+    }
+
+    fn language_config(&self, path: Option<&Path>) -> Option<&kawi_lsp::LanguageConfig> {
+        self.languages.as_ref()?.language_for_path(path?)
     }
 
     pub fn take_rename_error(&mut self) -> Option<u64> {

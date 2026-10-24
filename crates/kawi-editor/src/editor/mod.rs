@@ -4,6 +4,7 @@ use ropey::Rope;
 use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::CommandLine;
 use crate::cursor::Cursor;
+use crate::editing::LanguageEditing;
 use crate::jumps::Jumps;
 use crate::marks::Marks;
 use crate::mode::Mode;
@@ -12,11 +13,13 @@ use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod addsub;
+mod auto_pairs;
 mod autoindent;
 mod buffers;
 mod case_ops;
 mod changes;
 mod cmd_complete;
+mod comment;
 mod copy_char;
 mod gutter;
 mod hscroll;
@@ -83,6 +86,8 @@ pub struct Editor {
     runtime_shiftwidth: Option<usize>,
     runtime_expandtab: Option<bool>,
     language_indent: LanguageIndent,
+    language_editing: LanguageEditing,
+    auto_pairs: bool,
     registers: crate::registers::Registers,
     pending_register: Option<char>,
     force_numbered_register: bool,
@@ -337,6 +342,9 @@ impl Editor {
             Action::YankLines => self.yank_touched_lines(),
             Action::ChangeLines => self.change_touched_lines(),
             Action::ToggleCase => self.toggle_case(),
+            Action::CommentLines => self.comment_lines(),
+            Action::CommentAt { motion } => self.comment_at(motion),
+            Action::SurroundSelection { open } => self.surround_selection(open),
             Action::Lowercase => self.lowercase(),
             Action::Uppercase => self.uppercase(),
             Action::ToggleCaseAt { motion } => self.toggle_case_at(motion),
@@ -759,6 +767,8 @@ impl Editor {
             runtime_shiftwidth: None,
             runtime_expandtab: None,
             language_indent: LanguageIndent::default(),
+            language_editing: LanguageEditing::default(),
+            auto_pairs: true,
             registers: crate::registers::Registers::new(),
             pending_register: None,
             force_numbered_register: false,
@@ -1035,6 +1045,9 @@ fn jump_recording(action: Action) -> JumpRecording {
             motion: ShiftMotion::GotoLine { .. },
         }
         | Action::ReindentAt {
+            motion: ShiftMotion::GotoLine { .. },
+        }
+        | Action::CommentAt {
             motion: ShiftMotion::GotoLine { .. },
         }
         | Action::ToggleCaseAt {

@@ -216,6 +216,13 @@ impl Editor {
             self.replace_backspace();
             return;
         }
+        if self.try_pair_backspace() {
+            return;
+        }
+        self.delete_backward_literal();
+    }
+
+    pub(super) fn delete_backward_literal(&mut self) {
         self.record_maybe();
         self.record_insert(InsertEdit::Backspace);
         if self.backspace_indent() {
@@ -584,6 +591,13 @@ impl Editor {
             self.insert_replace_char(c);
             return;
         }
+        if self.try_auto_pair(c) {
+            return;
+        }
+        self.insert_literal_char(c);
+    }
+
+    pub(super) fn insert_literal_char(&mut self, c: char) {
         self.record_maybe();
         self.record_insert(InsertEdit::Char(c));
         self.buffer
@@ -599,6 +613,9 @@ impl Editor {
     }
 
     pub(super) fn insert_newline(&mut self) {
+        if self.try_pair_newline() {
+            return;
+        }
         self.record_insert(InsertEdit::Newline);
         self.mark_replace_newline();
         let row = self.cursor.row();

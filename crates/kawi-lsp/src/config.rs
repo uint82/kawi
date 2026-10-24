@@ -1,3 +1,4 @@
+use crate::editing::{BlockCommentConfig, PairConfig};
 use crate::{binary, defaults, file, LanguageWarning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -53,6 +54,9 @@ pub struct LanguageConfig {
     pub servers: Vec<String>,
     pub shiftwidth: Option<usize>,
     pub expandtab: Option<bool>,
+    pub line_comment: Option<String>,
+    pub block_comment: Option<BlockCommentConfig>,
+    pub auto_pairs: Option<Vec<PairConfig>>,
     pub enabled: bool,
 }
 
@@ -68,8 +72,31 @@ impl LanguageConfig {
             servers: Vec::new(),
             shiftwidth: None,
             expandtab: None,
+            line_comment: None,
+            block_comment: None,
+            auto_pairs: None,
             enabled: true,
         }
+    }
+
+    pub fn with_line_comment(mut self, token: impl Into<String>) -> Self {
+        self.line_comment = Some(token.into());
+        self
+    }
+
+    pub fn with_block_comment(mut self, open: impl Into<String>, close: impl Into<String>) -> Self {
+        self.block_comment = Some(BlockCommentConfig::new(open, close));
+        self
+    }
+
+    pub fn with_auto_pairs<const N: usize>(mut self, pairs: [(char, char); N]) -> Self {
+        self.auto_pairs = Some(
+            pairs
+                .into_iter()
+                .map(|(open, close)| PairConfig::new(open, close))
+                .collect(),
+        );
+        self
     }
 
     pub fn with_grammar(mut self, grammar: impl Into<String>) -> Self {
@@ -84,6 +111,11 @@ impl LanguageConfig {
 
     pub fn with_root_markers<const N: usize>(mut self, markers: [&str; N]) -> Self {
         self.root_markers = markers.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_filenames<const N: usize>(mut self, filenames: [&str; N]) -> Self {
+        self.filenames = filenames.into_iter().map(str::to_string).collect();
         self
     }
 
@@ -438,6 +470,74 @@ mod tests {
         assert_eq!(languages.warnings().len(), 1);
         assert!(languages.warnings()[0].line().is_some());
         assert!(languages.language("rust").is_some());
+    }
+
+    #[test]
+    fn built_in_languages_define_editing_tokens() {
+        let languages = Languages::load(Path::new("/nonexistent/languages.toml"));
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.line_comment.as_deref(), Some("//"));
+        assert_eq!(
+            rust.block_comment.as_ref().map(|block| block.open.as_str()),
+            Some("/*")
+        );
+        assert!(rust
+            .auto_pairs
+            .as_ref()
+            .is_some_and(|pairs| pairs.contains(&crate::PairConfig::new('(', ')'))));
+        let markdown = languages.language("markdown").expect("markdown");
+        assert_eq!(
+            markdown
+                .block_comment
+                .as_ref()
+                .map(|block| block.close.as_str()),
+            Some("-->")
+        );
+    }
+
+    #[test]
+    fn user_languages_override_editing_tokens() {
+        let path = temp_file(
+            "editing_tokens",
+            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = [\"<!--\", \"-->\"]\nauto_pairs = [[\"<\", \">\"]]\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.line_comment.as_deref(), Some("#"));
+        assert_eq!(
+            rust.block_comment.as_ref().map(|block| block.open.as_str()),
+            Some("<!--")
+        );
+        assert_eq!(
+            rust.auto_pairs,
+            Some(vec![crate::PairConfig::new('<', '>')])
+        );
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn empty_editing_configuration_disables_defaults() {
+        let path = temp_file(
+            "editing_empty",
+            "[[language]]\nname = \"rust\"\nline_comment = \"\"\nblock_comment = []\nauto_pairs = []\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.line_comment, None);
+        assert_eq!(rust.block_comment, None);
+        assert_eq!(rust.auto_pairs, Some(Vec::new()));
+    }
+
+    #[test]
+    fn invalid_editing_configuration_warns_and_keeps_defaults() {
+        let path = temp_file(
+            "editing_invalid",
+            "[[language]]\nname = \"rust\"\nline_comment = \"//\\n\"\nblock_comment = [\"/*\"]\nauto_pairs = [[\"ab\", \")\"]]\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.line_comment.as_deref(), Some("//"));
+        assert_eq!(languages.warnings().len(), 3);
     }
 
     #[test]

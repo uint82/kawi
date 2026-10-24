@@ -589,7 +589,7 @@ impl App {
             }
         };
         self.sync_active_window();
-        self.sync_language_indent();
+        self.sync_language_settings();
         result
     }
 

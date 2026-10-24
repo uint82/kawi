@@ -16,6 +16,10 @@ pub(super) enum InsertEdit {
     ShiftLeft { collapse: bool },
     Backspace,
     BackspaceWord,
+    Pair { open: char, close: char },
+    Overtype(char),
+    PairBackspace { open: char, close: char },
+    PairNewline { base: String, inner: String },
     BackspaceLine,
     Delete,
     Text(String),
@@ -163,6 +167,12 @@ impl Editor {
     pub(super) fn replay_edit(&mut self, edit: InsertEdit) {
         match edit {
             InsertEdit::Char(c) => self.insert_char(c),
+            InsertEdit::Pair { open, close } => {
+                self.replay_insert_pair(crate::editing::Pair::new(open, close))
+            }
+            InsertEdit::Overtype(ch) => self.replay_overtype(ch),
+            InsertEdit::PairBackspace { open, close } => self.replay_pair_backspace(open, close),
+            InsertEdit::PairNewline { base, inner } => self.replay_pair_newline(&base, &inner),
             InsertEdit::Newline => self.insert_newline(),
             InsertEdit::Tab => self.insert_tab(),
             InsertEdit::ShiftRight => self.insert_shift_right(),

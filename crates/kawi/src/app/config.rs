@@ -45,7 +45,7 @@ impl App {
             let _ = self.apply_cli_flavor(flavor);
         }
         state::load(&mut self.editor, &paths);
-        self.sync_language_indent();
+        self.sync_language_settings();
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
@@ -170,6 +170,7 @@ theme = "gruvbox-dark"
 shiftwidth = 2
 expandtab = true
 autoindent = false
+auto_pairs = false
 number = false
 ignorecase = true
 format_on_save = true
@@ -189,6 +190,7 @@ limit = 25
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());
+        assert!(!app.editor.auto_pairs());
         assert!(!app.editor.number());
         assert!(app.editor.ignorecase());
         assert!(app.format_on_save);

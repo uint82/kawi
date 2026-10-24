@@ -266,6 +266,11 @@ fn object_target(target: char) -> Option<Object> {
     }
 }
 
+enum LineMotionProgress {
+    Pending(Action),
+    Motion(ShiftMotion),
+}
+
 fn trailing_operator(pending: &str) -> Option<char> {
     let operator = pending.trim_start_matches(|ch: char| ch.is_ascii_digit());
     if operator.len() == 1 && matches!(operator, "d" | "c" | "y") {
@@ -709,11 +714,18 @@ impl VimKeymap {
         if let Some(rest) = body.strip_prefix("gU") {
             return self.complete_case_operator("gU", rest, pushed);
         }
+        if let Some(rest) = body.strip_prefix("gc") {
+            return self.complete_comment_operator(rest, pushed);
+        }
         self.complete_g_prefix(pushed, &body)
     }
 
     fn complete_g_prefix(&mut self, pushed: char, body: &str) -> Action {
         if body == "g" && matches!(pushed, '~' | 'u' | 'U') {
+            self.pending.push(pushed);
+            return Action::BeginSequence;
+        }
+        if body == "g" && pushed == 'c' {
             self.pending.push(pushed);
             return Action::BeginSequence;
         }
@@ -834,23 +846,74 @@ impl VimKeymap {
     }
 
     fn complete_shift_operator(&mut self, operator: char, rest: &str, pushed: char) -> Action {
-        if rest.is_empty() || rest.chars().all(|ch| ch.is_ascii_digit()) {
-            if (pushed == '0' && rest.is_empty()) || !pushed.is_ascii_digit() {
-                return self.complete_shift_motion(operator, pushed);
+        match self.line_motion_progress(rest, pushed, operator) {
+            Some(LineMotionProgress::Pending(action)) => action,
+            Some(LineMotionProgress::Motion(motion)) => {
+                self.clear_pending();
+                self.shift_motion_action(operator, motion)
             }
-            return self.push_digit(pushed);
-        }
-        match rest {
-            "f" | "F" | "t" | "T" => self.complete_shift_find(operator, rest, pushed),
-            "i" | "a" => self.complete_shift_object(operator, rest, pushed),
-            "g" => self.complete_shift_g_motion(operator, pushed),
-            _ => self.cancel_sequence(),
+            None => self.cancel_sequence(),
         }
     }
 
-    fn complete_shift_motion(&mut self, operator: char, pushed: char) -> Action {
+    fn shift_motion_action(&self, operator: char, motion: ShiftMotion) -> Action {
+        match operator {
+            '>' => Action::ShiftRightAt { motion },
+            '<' => Action::ShiftLeftAt { motion },
+            _ => Action::ReindentAt { motion },
+        }
+    }
+
+    fn complete_comment_operator(&mut self, rest: &str, pushed: char) -> Action {
+        match self.line_motion_progress(rest, pushed, 'c') {
+            Some(LineMotionProgress::Pending(action)) => action,
+            Some(LineMotionProgress::Motion(ShiftMotion::OperatorLines)) => {
+                self.clear_pending();
+                Action::CommentLines
+            }
+            Some(LineMotionProgress::Motion(motion)) => {
+                self.clear_pending();
+                Action::CommentAt { motion }
+            }
+            None => self.cancel_sequence(),
+        }
+    }
+
+    fn line_motion_progress(
+        &mut self,
+        rest: &str,
+        pushed: char,
+        line_key: char,
+    ) -> Option<LineMotionProgress> {
+        if rest.chars().all(|ch| ch.is_ascii_digit()) {
+            if rest.is_empty() && pushed == '0' {
+                return Some(LineMotionProgress::Motion(ShiftMotion::LineStart));
+            }
+            if pushed.is_ascii_digit() {
+                let action = self.push_digit(pushed);
+                return Some(LineMotionProgress::Pending(action));
+            }
+            if rest.is_empty() && pushed == line_key {
+                return Some(LineMotionProgress::Motion(ShiftMotion::OperatorLines));
+            }
+            return self.line_motion_key(pushed);
+        }
+        match rest {
+            "f" | "F" | "t" | "T" => self.complete_line_find(rest, pushed),
+            "i" | "a" => self.complete_line_object(rest, pushed),
+            "g" => self.complete_line_g_motion(pushed),
+            _ => None,
+        }
+    }
+
+    fn line_motion_key(&mut self, pushed: char) -> Option<LineMotionProgress> {
         if matches!(pushed, ';' | ',') {
-            return self.repeat_shift_motion(operator, pushed == ',');
+            let found = self.last_find?;
+            return Some(LineMotionProgress::Motion(ShiftMotion::RepeatFind {
+                target: found.target,
+                forward: found.forward != (pushed == ','),
+                till: found.till,
+            }));
         }
         let motion = match pushed {
             'w' => ShiftMotion::WordForward,
@@ -863,76 +926,47 @@ impl VimKeymap {
             'G' => ShiftMotion::GotoLine { last: true },
             'g' => {
                 self.pending.push(pushed);
-                return Action::Noop;
+                return Some(LineMotionProgress::Pending(Action::Noop));
             }
-            'f' | 'F' | 't' | 'T' | 'i' | 'a' => {
+            'f' | 'F' | 't' | 'T' => {
                 self.pending.push(pushed);
-                return if matches!(pushed, 'i' | 'a') {
-                    Action::Noop
-                } else {
-                    Action::BeginSequence
-                };
+                return Some(LineMotionProgress::Pending(Action::BeginSequence));
             }
-            _ => return self.cancel_sequence(),
+            'i' | 'a' => {
+                self.pending.push(pushed);
+                return Some(LineMotionProgress::Pending(Action::Noop));
+            }
+            _ => return None,
         };
-        self.clear_pending();
-        self.shift_motion_action(operator, motion)
+        Some(LineMotionProgress::Motion(motion))
     }
 
-    fn shift_motion_action(&self, operator: char, motion: ShiftMotion) -> Action {
-        match operator {
-            '>' => Action::ShiftRightAt { motion },
-            '<' => Action::ShiftLeftAt { motion },
-            _ => Action::ReindentAt { motion },
-        }
-    }
-
-    fn repeat_shift_motion(&mut self, operator: char, reverse: bool) -> Action {
-        let Some(found) = self.last_find else {
-            return self.cancel_sequence();
-        };
-        let motion = ShiftMotion::RepeatFind {
-            target: found.target,
-            forward: found.forward != reverse,
-            till: found.till,
-        };
-        self.clear_pending();
-        self.shift_motion_action(operator, motion)
-    }
-
-    fn complete_shift_find(&mut self, operator: char, find: &str, target: char) -> Action {
+    fn complete_line_find(&mut self, find: &str, target: char) -> Option<LineMotionProgress> {
         let forward = matches!(find, "f" | "t");
         let till = matches!(find, "t" | "T");
         self.store_find(target, forward, till);
-        let motion = ShiftMotion::Find {
+        Some(LineMotionProgress::Motion(ShiftMotion::Find {
             target,
             forward,
             till,
-        };
-        self.clear_pending();
-        self.shift_motion_action(operator, motion)
+        }))
     }
 
-    fn complete_shift_object(&mut self, operator: char, scope: &str, pushed: char) -> Action {
-        let Some(object) = object_target(pushed) else {
-            return self.cancel_sequence();
-        };
-        let motion = ShiftMotion::Object {
+    fn complete_line_object(&mut self, scope: &str, pushed: char) -> Option<LineMotionProgress> {
+        let object = object_target(pushed)?;
+        Some(LineMotionProgress::Motion(ShiftMotion::Object {
             inner: scope == "i",
             object,
-        };
-        self.clear_pending();
-        self.shift_motion_action(operator, motion)
+        }))
     }
 
-    fn complete_shift_g_motion(&mut self, operator: char, pushed: char) -> Action {
+    fn complete_line_g_motion(&mut self, pushed: char) -> Option<LineMotionProgress> {
         let motion = match pushed {
             'g' => ShiftMotion::GotoLine { last: false },
             'e' => ShiftMotion::WordEndBackward,
-            _ => return self.cancel_sequence(),
+            _ => return None,
         };
-        self.clear_pending();
-        self.shift_motion_action(operator, motion)
+        Some(LineMotionProgress::Motion(motion))
     }
 
     fn complete_case_motion(&mut self, operator: &str, pushed: char) -> Action {
@@ -1720,6 +1754,10 @@ impl VimKeymap {
             if pushed == 'e' {
                 self.clear_pending();
                 return Action::MoveToPrevWordEnd;
+            }
+            if pushed == 'c' {
+                self.clear_pending();
+                return Action::CommentLines;
             }
             if pushed == 'E' {
                 self.clear_pending();
@@ -3752,7 +3790,7 @@ mod tests {
     fn normal_g_unimplemented_second_keys_cancel() {
         let implemented = [
             '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J', '*', '#', 'p',
-            'P', ';', ',', 'r', 'd',
+            'P', ';', ',', 'r', 'd', 'c',
         ];
         for code in 0..128u8 {
             let pushed = code as char;
@@ -5800,6 +5838,100 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('N')), Mode::Normal),
             Action::PrevMatch
+        );
+    }
+
+    #[test]
+    fn gcc_maps_to_comment_lines() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::CommentLines
+        );
+        assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn counted_gcc_keeps_the_count() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('3')), Mode::Normal),
+            Action::PushCount(3)
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::CommentLines
+        );
+    }
+
+    #[test]
+    fn gc_motion_and_object_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('j')), Mode::Normal),
+            Action::CommentAt {
+                motion: ShiftMotion::Lines { upward: false }
+            }
+        );
+
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('a')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('p')), Mode::Normal),
+            Action::CommentAt {
+                motion: ShiftMotion::Object {
+                    inner: false,
+                    object: Object::Paragraph
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn visual_gc_maps_to_comment_lines() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('c')), Mode::Visual),
+            Action::CommentLines
         );
     }
 

@@ -109,6 +109,9 @@ impl App {
             "autoindent" => self
                 .editor
                 .set_autoindent(value.as_bool().unwrap_or_default()),
+            "auto_pairs" => self
+                .editor
+                .set_auto_pairs(value.as_bool().unwrap_or_default()),
             "format_on_save" => self.format_on_save = value.as_bool().unwrap_or_default(),
             "autosave" => self.autosave.set_mode(
                 value
@@ -206,6 +209,7 @@ impl App {
             "ignorecase" => OptionValue::Bool(self.editor.ignorecase()),
             "smartcase" => OptionValue::Bool(self.editor.smartcase()),
             "autoindent" => OptionValue::Bool(self.editor.autoindent()),
+            "auto_pairs" => OptionValue::Bool(self.editor.auto_pairs()),
             "format_on_save" => OptionValue::Bool(self.format_on_save),
             "autosave" => OptionValue::Text(self.autosave.mode().name().to_string()),
             "autosave_delay" => OptionValue::Int(
@@ -321,6 +325,18 @@ mod tests {
         assert!(!app.editor.expandtab());
         execute(&mut app, "set notheme");
         assert_eq!(app.last_message(), Some("E474: Invalid argument: notheme"));
+    }
+
+    #[test]
+    fn auto_pairs_can_be_disabled_globally() {
+        let mut app = app();
+        assert!(app.editor.auto_pairs());
+        execute(&mut app, "set noauto_pairs");
+        assert!(!app.editor.auto_pairs());
+        execute(&mut app, "set auto_pairs?");
+        assert_eq!(app.last_message(), Some("noauto_pairs"));
+        execute(&mut app, "set auto_pairs");
+        assert!(app.editor.auto_pairs());
     }
 
     #[test]

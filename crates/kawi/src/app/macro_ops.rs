@@ -268,6 +268,28 @@ mod tests {
     }
 
     #[test]
+    fn autopair_keys_replay_through_macros() {
+        let mut app = app_with("ab");
+        feed(
+            &mut app,
+            &[
+                key(KeyCode::Char('q')),
+                key(KeyCode::Char('a')),
+                key(KeyCode::Char('A')),
+                key(KeyCode::Char('(')),
+                key(KeyCode::Esc),
+                key(KeyCode::Char('q')),
+            ],
+        );
+        assert_eq!(lines(&app), vec!["ab()"]);
+        feed(
+            &mut app,
+            &[key(KeyCode::Char('@')), key(KeyCode::Char('a'))],
+        );
+        assert_eq!(lines(&app), vec!["ab()()"]);
+    }
+
+    #[test]
     fn counted_replay_repeats_the_macro() {
         let mut app = app_with("alpha");
         record_append(&mut app, 'a', "X");

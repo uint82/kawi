@@ -325,9 +325,9 @@ mod tests {
         let mut e = editor_with("x");
         type_command(&mut e, "set no");
         complete(&mut e, false);
-        assert_eq!(e.command_text(), "set noautoindent");
+        assert_eq!(e.command_text(), "set noauto_pairs");
         complete(&mut e, false);
-        assert_eq!(e.command_text(), "set noautosave");
+        assert_eq!(e.command_text(), "set noautoindent");
     }
 
     #[test]
