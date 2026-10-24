@@ -1,4 +1,4 @@
-use crate::{binary, defaults, file};
+use crate::{binary, defaults, file, LanguageWarning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -110,7 +110,7 @@ pub struct Languages {
     servers: BTreeMap<String, ServerConfig>,
     languages: Vec<LanguageConfig>,
     available: BTreeMap<String, PathBuf>,
-    warning: Option<String>,
+    warnings: Vec<LanguageWarning>,
 }
 
 impl Languages {
@@ -125,12 +125,22 @@ impl Languages {
             servers,
             languages,
             available,
-            warning: (!warnings.is_empty()).then(|| warnings.join("; ")),
+            warnings,
         }
     }
 
-    pub fn warning(&self) -> Option<&str> {
-        self.warning.as_deref()
+    pub fn warnings(&self) -> &[LanguageWarning] {
+        &self.warnings
+    }
+
+    pub fn warning(&self) -> Option<String> {
+        (!self.warnings.is_empty()).then(|| {
+            self.warnings
+                .iter()
+                .map(LanguageWarning::message)
+                .collect::<Vec<_>>()
+                .join("; ")
+        })
     }
 
     pub fn server_available(&self, name: &str) -> bool {
@@ -175,7 +185,7 @@ impl Languages {
             servers,
             languages,
             available,
-            warning: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -236,22 +246,27 @@ fn available_servers(servers: &BTreeMap<String, ServerConfig>) -> BTreeMap<Strin
         .collect()
 }
 
-fn validate(servers: &BTreeMap<String, ServerConfig>, languages: &[LanguageConfig]) -> Vec<String> {
+fn validate(
+    servers: &BTreeMap<String, ServerConfig>,
+    languages: &[LanguageConfig],
+) -> Vec<LanguageWarning> {
     let mut warnings = Vec::new();
     for language in languages.iter().filter(|language| language.enabled) {
         if language.name.is_empty() {
-            warnings.push("languages.toml: language name is empty".to_string());
+            warnings.push(LanguageWarning::new("language name is empty"));
         }
         for server in &language.servers {
             match servers.get(server) {
-                Some(config) if config.command.trim().is_empty() => warnings.push(format!(
-                    "languages.toml: server {server} for {} has an empty command",
+                Some(config) if config.command.trim().is_empty() => {
+                    warnings.push(LanguageWarning::new(format!(
+                        "server {server} for {} has an empty command",
+                        language.name
+                    )))
+                }
+                None => warnings.push(LanguageWarning::new(format!(
+                    "server {server} for {} is not configured",
                     language.name
-                )),
-                None => warnings.push(format!(
-                    "languages.toml: server {server} for {} is not configured",
-                    language.name
-                )),
+                ))),
                 _ => {}
             }
         }
@@ -363,16 +378,17 @@ mod tests {
         );
         let languages = Languages::load(&path);
         assert!(languages
-            .warning()
-            .expect("warning")
-            .contains("server missing"));
+            .warnings()
+            .iter()
+            .any(|warning| warning.message().contains("server missing")));
     }
 
     #[test]
     fn invalid_file_falls_back_to_defaults() {
         let path = temp_file("invalid", "history = \n");
         let languages = Languages::load(&path);
-        assert!(languages.warning().is_some());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0].line().is_some());
         assert!(languages.language("rust").is_some());
     }
 

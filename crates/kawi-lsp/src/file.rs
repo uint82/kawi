@@ -1,4 +1,4 @@
-use crate::{LanguageConfig, ServerConfig};
+use crate::{LanguageConfig, LanguageWarning, ServerConfig};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -93,7 +93,7 @@ impl LanguageOverride {
     }
 }
 
-pub(crate) fn load(path: &Path) -> (LanguagesFile, Vec<String>) {
+pub(crate) fn load(path: &Path) -> (LanguagesFile, Vec<LanguageWarning>) {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -102,17 +102,26 @@ pub(crate) fn load(path: &Path) -> (LanguagesFile, Vec<String>) {
         Err(error) => {
             return (
                 LanguagesFile::default(),
-                vec![format!("languages.toml: {error}")],
+                vec![LanguageWarning::new(one_line(&error.to_string()))],
             )
         }
     };
     match toml::from_str(&text) {
         Ok(file) => (file, Vec::new()),
-        Err(error) => (
-            LanguagesFile::default(),
-            vec![format!("languages.toml: {}", one_line(&error.to_string()))],
-        ),
+        Err(error) => {
+            let line = error.span().map(|span| line_at(&text, span.start));
+            (
+                LanguagesFile::default(),
+                vec![LanguageWarning::new(one_line(error.message())).at_line(line)],
+            )
+        }
     }
+}
+
+fn line_at(text: &str, offset: usize) -> usize {
+    text.get(..offset)
+        .map(|before| before.bytes().filter(|byte| *byte == b'\n').count() + 1)
+        .unwrap_or(1)
 }
 
 fn one_line(details: &str) -> String {
