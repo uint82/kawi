@@ -82,8 +82,9 @@ struct ParkedState {
     listed: bool,
     cursor: Cursor,
     file_indent: IndentConfig,
-    shiftwidth_override: Option<usize>,
-    expandtab_override: Option<bool>,
+    runtime_shiftwidth: Option<usize>,
+    runtime_expandtab: Option<bool>,
+    language_indent: super::options::LanguageIndent,
     autoindent: bool,
     viewport_top: usize,
     last_change: Option<RepeatChange>,
@@ -875,8 +876,9 @@ impl Editor {
             listed: self.buffers.current_listed,
             cursor: std::mem::take(&mut self.cursor),
             file_indent: std::mem::replace(&mut self.file_indent, indent::detect(None)),
-            shiftwidth_override: self.shiftwidth_override.take(),
-            expandtab_override: self.expandtab_override.take(),
+            runtime_shiftwidth: self.runtime_shiftwidth.take(),
+            runtime_expandtab: self.runtime_expandtab.take(),
+            language_indent: std::mem::take(&mut self.language_indent),
             autoindent: std::mem::replace(&mut self.autoindent, self.buffer_defaults.autoindent),
             viewport_top: self.viewport.top(),
             last_change: self.last_change.take(),
@@ -897,8 +899,9 @@ impl Editor {
         self.buffers.current_listed = state.listed;
         self.cursor = state.cursor;
         self.file_indent = state.file_indent;
-        self.shiftwidth_override = state.shiftwidth_override;
-        self.expandtab_override = state.expandtab_override;
+        self.runtime_shiftwidth = state.runtime_shiftwidth;
+        self.runtime_expandtab = state.runtime_expandtab;
+        self.language_indent = state.language_indent;
         self.autoindent = state.autoindent;
         self.viewport
             .place_top(state.viewport_top, self.buffer.line_count());

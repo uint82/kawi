@@ -54,7 +54,7 @@ mod workspace_edit;
 use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
-pub use options::{BufferOptionDefaults, WindowOptions};
+pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;
 
@@ -80,8 +80,9 @@ pub struct Editor {
     substitute_replacement: String,
     substitute_settings: substitute::SubstituteSettings,
     command_preview: Option<preview::CommandPreview>,
-    shiftwidth_override: Option<usize>,
-    expandtab_override: Option<bool>,
+    runtime_shiftwidth: Option<usize>,
+    runtime_expandtab: Option<bool>,
+    language_indent: LanguageIndent,
     registers: crate::registers::Registers,
     pending_register: Option<char>,
     force_numbered_register: bool,
@@ -644,11 +645,11 @@ impl Editor {
     }
 
     pub fn set_shiftwidth(&mut self, width: usize) {
-        self.shiftwidth_override = Some(width);
+        self.runtime_shiftwidth = Some(width);
     }
 
     pub fn set_expandtab(&mut self, expandtab: bool) {
-        self.expandtab_override = Some(expandtab);
+        self.runtime_expandtab = Some(expandtab);
     }
 
     pub fn expandtab(&self) -> bool {
@@ -666,10 +667,14 @@ impl Editor {
     pub(super) fn effective_indent(&self) -> indent::IndentConfig {
         indent::IndentConfig {
             shiftwidth: self
-                .shiftwidth_override
+                .runtime_shiftwidth
+                .or(self.language_indent.shiftwidth)
+                .or(self.buffer_defaults.shiftwidth)
                 .unwrap_or(self.file_indent.shiftwidth),
             expandtab: self
-                .expandtab_override
+                .runtime_expandtab
+                .or(self.language_indent.expandtab)
+                .or(self.buffer_defaults.expandtab)
                 .unwrap_or(self.file_indent.expandtab),
             tabstop: self.file_indent.tabstop,
         }
@@ -744,8 +749,9 @@ impl Editor {
             substitute_replacement: String::new(),
             substitute_settings: substitute::SubstituteSettings::default(),
             command_preview: None,
-            shiftwidth_override: None,
-            expandtab_override: None,
+            runtime_shiftwidth: None,
+            runtime_expandtab: None,
+            language_indent: LanguageIndent::default(),
             registers: crate::registers::Registers::new(),
             pending_register: None,
             force_numbered_register: false,
