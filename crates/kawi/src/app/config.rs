@@ -42,25 +42,37 @@ impl App {
             autoindent: config
                 .get("autoindent")
                 .and_then(OptionValue::as_bool)
-                .unwrap_or(true),
+                .unwrap_or_else(|| default_bool("autoindent")),
         };
         self.editor.set_buffer_defaults(defaults);
         let window = WindowOptions {
             number: config
                 .get("number")
                 .and_then(OptionValue::as_bool)
-                .unwrap_or(true),
+                .unwrap_or_else(|| default_bool("number")),
             relativenumber: config
                 .get("relativenumber")
                 .and_then(OptionValue::as_bool)
-                .unwrap_or(false),
+                .unwrap_or_else(|| default_bool("relativenumber")),
             numberwidth: config
                 .get("numberwidth")
                 .and_then(OptionValue::as_int)
-                .unwrap_or(4),
+                .unwrap_or_else(|| default_int("numberwidth")),
         };
         self.apply_window_options(window);
     }
+}
+
+fn default_bool(name: &str) -> bool {
+    crate::options::lookup(name)
+        .and_then(|spec| spec.default_value().as_bool())
+        .unwrap_or(false)
+}
+
+fn default_int(name: &str) -> usize {
+    crate::options::lookup(name)
+        .and_then(|spec| spec.default_value().as_int())
+        .unwrap_or_default()
 }
 
 fn config_warning_message(count: usize, path: &std::path::Path) -> String {
