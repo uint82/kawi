@@ -12,7 +12,6 @@ pub(crate) enum TerminalQuery {
     SecondaryDeviceAttributes,
     StatusReport,
     KittyKeyboard,
-    CursorStyle,
     XtGetTcap(Vec<u8>),
     DecMode(u16),
 }
@@ -95,7 +94,6 @@ fn parse_csi(sequence: &[u8]) -> Option<TerminalQuery> {
             _ => None,
         },
         b'u' if params == b"?" => Some(TerminalQuery::KittyKeyboard),
-        b'q' if params.starts_with(b">") => Some(TerminalQuery::CursorStyle),
         b'p' if params.starts_with(b"?") && params.ends_with(b"$") => {
             let digits = &params[1..params.len().saturating_sub(1)];
             parse_u16(digits).map(TerminalQuery::DecMode)
@@ -175,9 +173,13 @@ mod tests {
     }
 
     #[test]
-    fn detects_keyboard_and_cursor_queries() {
+    fn detects_keyboard_queries() {
         assert_eq!(queries(b"\x1b[?u"), vec![TerminalQuery::KittyKeyboard]);
-        assert_eq!(queries(b"\x1b[>0q"), vec![TerminalQuery::CursorStyle]);
+    }
+
+    #[test]
+    fn ignores_cursor_style_queries() {
+        assert!(queries(b"\x1b[>0q").is_empty());
     }
 
     #[test]

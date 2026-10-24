@@ -31,7 +31,6 @@ impl TerminalSession {
             TerminalQuery::SecondaryDeviceAttributes => Some(b"\x1b[>0;0;0c".to_vec()),
             TerminalQuery::StatusReport => Some(b"\x1b[0n".to_vec()),
             TerminalQuery::KittyKeyboard => Some(b"\x1b[?0u".to_vec()),
-            TerminalQuery::CursorStyle => Some(b"\x1bP1$r0 q\x1b\\".to_vec()),
             TerminalQuery::XtGetTcap(key) => {
                 let mut response = b"\x1bP0+r".to_vec();
                 response.extend_from_slice(&key);
