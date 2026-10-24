@@ -6,8 +6,8 @@ use super::lsp_text::LspText;
 use kawi_editor::{Editor, LanguageIndent};
 use kawi_lsp::{
     CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticSeverity,
-    FormattingEvent, FormattingSettings, Languages, LspCommand, LspEvent, LspService, MessageLevel,
-    ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
+    FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand, LspEvent,
+    LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -42,9 +42,9 @@ struct ProgressSnapshot {
 }
 
 impl LspUi {
-    pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Option<String> {
+    pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
         let languages = Languages::load(path);
-        let warning = languages.warning();
+        let warnings = languages.warnings().to_vec();
         match LspService::new(languages.clone(), wake) {
             Ok(service) => {
                 self.languages = Some(languages);
@@ -57,7 +57,7 @@ impl LspUi {
             }
         }
         self.update_display();
-        warning
+        warnings
     }
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {

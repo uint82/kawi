@@ -46,7 +46,7 @@ impl ConfigWarning {
         }
     }
 
-    fn format(&self, path: &Path) -> String {
+    pub(crate) fn format(&self, path: &Path) -> String {
         let location = match self.line {
             Some(line) => format!("{}:{line}", path.display()),
             None => path.display().to_string(),
@@ -102,19 +102,11 @@ pub(crate) fn load(path: &Path) -> ConfigLoad {
     }
 }
 
-pub(crate) fn write_warning_log(
-    log_path: &Path,
-    config_path: &Path,
-    warnings: &[ConfigWarning],
-) -> Result<()> {
+pub(crate) fn write_warning_log(log_path: &Path, warnings: &[String]) -> Result<()> {
     if warnings.is_empty() {
         return remove_stale_log(log_path);
     }
-    let text = warnings
-        .iter()
-        .map(|warning| warning.format(config_path))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let text = warnings.join("\n");
     write_private_atomically(log_path, format!("{text}\n").as_bytes())
 }
 
@@ -456,13 +448,9 @@ x = 1
         let dir = temp_dir("log");
         let config = dir.join("config.toml");
         let log = dir.join("config.log");
-        let warnings = vec![ConfigWarning::new(
-            Some(2),
-            "editor.number",
-            "false",
-            "true",
-        )];
-        write_warning_log(&log, &config, &warnings).unwrap();
+        let warnings =
+            vec![ConfigWarning::new(Some(2), "editor.number", "false", "true").format(&config)];
+        write_warning_log(&log, &warnings).unwrap();
         assert_eq!(
             fs::read_to_string(&log).unwrap(),
             format!(
@@ -470,8 +458,9 @@ x = 1
                 config.display()
             )
         );
-        let replacement = vec![ConfigWarning::new(Some(4), "ui.theme", "nope", "default")];
-        write_warning_log(&log, &config, &replacement).unwrap();
+        let replacement =
+            vec![ConfigWarning::new(Some(4), "ui.theme", "nope", "default").format(&config)];
+        write_warning_log(&log, &replacement).unwrap();
         assert_eq!(
             fs::read_to_string(&log).unwrap(),
             format!(
@@ -479,7 +468,7 @@ x = 1
                 config.display()
             )
         );
-        write_warning_log(&log, &config, &[]).unwrap();
+        write_warning_log(&log, &[]).unwrap();
         assert!(!log.exists());
         let _ = fs::remove_dir_all(dir);
     }

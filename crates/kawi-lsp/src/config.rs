@@ -139,16 +139,6 @@ impl Languages {
         &self.warnings
     }
 
-    pub fn warning(&self) -> Option<String> {
-        (!self.warnings.is_empty()).then(|| {
-            self.warnings
-                .iter()
-                .map(LanguageWarning::message)
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
-    }
-
     pub fn server_available(&self, name: &str) -> bool {
         self.available.contains_key(name)
     }
