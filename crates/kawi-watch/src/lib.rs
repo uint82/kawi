@@ -80,14 +80,9 @@ impl WatchService {
         })
     }
 
-    pub fn watch_files<'a>(&self, files: impl IntoIterator<Item = &'a Path>) {
-        let mut parents = BTreeSet::new();
-        for file in files {
-            if let Some(parent) = file.parent() {
-                parents.insert(parent.to_path_buf());
-            }
-        }
-        let _ = self.commands.send(Command::Watch(parents));
+    pub fn watch_directories<'a>(&self, directories: impl IntoIterator<Item = &'a Path>) {
+        let watched = directories.into_iter().map(Path::to_path_buf).collect();
+        let _ = self.commands.send(Command::Watch(watched));
     }
 
     pub fn try_recv_paths(&self) -> Vec<PathBuf> {
@@ -216,7 +211,7 @@ mod tests {
         fs::write(&path, "alpha\n").expect("write");
         let (wake, _wake_rx) = mpsc::channel();
         let service = WatchService::new(wake).expect("service");
-        service.watch_files([path.as_path()]);
+        service.watch_directories([dir.as_path()]);
         thread::sleep(Duration::from_millis(100));
         fs::write(&temp, "beta\n").expect("temp");
         fs::rename(&temp, &path).expect("rename");
