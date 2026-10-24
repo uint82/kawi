@@ -362,6 +362,7 @@ dependencies = [
  "kawi-lsp",
  "kawi-picker",
  "kawi-syntax",
+ "kawi-task",
  "kawi-tui",
  "libc",
  "ropey",

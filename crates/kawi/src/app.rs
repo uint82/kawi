@@ -23,11 +23,13 @@ mod macro_codec;
 mod macro_ops;
 mod options;
 mod picker;
+mod quickfix;
 mod recovery;
 mod rename;
 mod replace;
 mod replace_apply;
 mod restore;
+mod task;
 mod window;
 mod workspace_edit;
 
@@ -84,15 +86,18 @@ use crate::mouse::{horizontal_wheel_delta, wheel_delta};
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
-    parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, SearchOutcome,
-    WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
+    parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, QuickfixCommand,
+    SearchOutcome, TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
+use kawi_task::Tasks;
 use kawi_tui::{frame::SearchSpan, terminal, theme::Theme};
 use lsp::LspUi;
 use picker::PickerSession;
+use quickfix::Quickfix;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
+use task::TaskSession;
 use window::Windows;
 
 pub struct App {
@@ -122,6 +127,9 @@ pub struct App {
     git_path: Option<PathBuf>,
     git_error: Option<String>,
     lsp: LspUi,
+    tasks: Tasks,
+    task: TaskSession,
+    quickfix: Quickfix,
     windows: Windows,
     screen_width: usize,
     screen_height: usize,
@@ -164,6 +172,9 @@ impl App {
             git_path: None,
             git_error: None,
             lsp: LspUi::default(),
+            tasks: Tasks::default(),
+            task: TaskSession::default(),
+            quickfix: Quickfix::default(),
             windows,
             screen_width: FALLBACK_WIDTH,
             screen_height: FALLBACK_HEIGHT.saturating_add(2),
@@ -259,6 +270,7 @@ impl App {
             self.show_recovery_prompt_if_ready();
             self.sync_git();
             self.sync_lsp();
+            self.sync_task();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
             }
@@ -287,6 +299,7 @@ impl App {
             redraw |= self.lsp.poll_events(&self.editor);
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
+            redraw |= self.sync_task();
             if self.picker.is_some() || self.replace.is_some() {
                 redraw |= self.refresh_picker() | self.refresh_replace();
             } else {
@@ -867,6 +880,13 @@ impl App {
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
             Action::GitPreviewHunk => self.handle_git_preview_hunk(),
             Action::GitDiff => self.handle_git_diff(),
+            Action::TaskList => self.handle_task_command(TaskCommand::List),
+            Action::TaskRerun => self.handle_task_command(TaskCommand::Rerun),
+            Action::TaskCancel => self.handle_task_command(TaskCommand::Cancel),
+            Action::TaskOutput => self.handle_task_command(TaskCommand::Output),
+            Action::QuickfixNext => self.handle_quickfix_command(QuickfixCommand::Next),
+            Action::QuickfixPrev => self.handle_quickfix_command(QuickfixCommand::Previous),
+            Action::QuickfixOpen => self.handle_quickfix_command(QuickfixCommand::Open),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -1326,6 +1346,8 @@ impl App {
             Command::Set { name, value } => self.handle_set(&name, value),
             Command::Pick(command) => self.handle_pick_command(command),
             Command::Git(command) => self.handle_git_command(command),
+            Command::Task(command) => self.handle_task_command(command),
+            Command::Quickfix(command) => self.handle_quickfix_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {

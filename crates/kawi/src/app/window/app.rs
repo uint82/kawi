@@ -96,12 +96,12 @@ impl App {
     }
 
     pub(crate) fn window_area(&self) -> Rect {
-        Rect::new(
-            0,
-            0,
-            self.screen_width.max(1),
-            self.screen_height.saturating_sub(1).max(1),
-        )
+        let height = self
+            .screen_height
+            .saturating_sub(1)
+            .saturating_sub(self.task.panel_height(self.screen_height))
+            .max(1);
+        Rect::new(0, 0, self.screen_width.max(1), height)
     }
 
     pub(crate) fn window_layout(&self) -> WindowLayout {

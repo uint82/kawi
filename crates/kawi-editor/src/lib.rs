@@ -23,7 +23,9 @@ mod registers;
 mod sentences;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
-pub use command::{parse, Command, CommandLine, GitCommand, PickerCommand, SetValue};
+pub use command::{
+    parse, Command, CommandLine, GitCommand, PickerCommand, QuickfixCommand, SetValue, TaskCommand,
+};
 pub use cursor::Cursor;
 pub use editor::{
     BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, LanguageIndent,

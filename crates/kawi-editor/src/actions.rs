@@ -333,6 +333,13 @@ pub enum Action {
     GitStageBuffer,
     GitPreviewHunk,
     GitDiff,
+    TaskList,
+    TaskRerun,
+    TaskCancel,
+    TaskOutput,
+    QuickfixNext,
+    QuickfixPrev,
+    QuickfixOpen,
     Noop,
 }
 
@@ -407,6 +414,13 @@ impl Action {
                 | Self::Rename
                 | Self::CodeAction
                 | Self::Format
+                | Self::TaskList
+                | Self::TaskRerun
+                | Self::TaskCancel
+                | Self::TaskOutput
+                | Self::QuickfixNext
+                | Self::QuickfixPrev
+                | Self::QuickfixOpen
                 | Self::Noop
         )
     }

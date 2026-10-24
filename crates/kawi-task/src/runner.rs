@@ -15,6 +15,7 @@ const READER_BUFFER: usize = 1_024;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CANCEL_GRACE: Duration = Duration::from_millis(500);
 const EXIT_DRAIN: Duration = Duration::from_millis(250);
+const MAX_OUTPUT_LINE_CHARS: usize = 4_096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TaskStatus {
@@ -82,7 +83,7 @@ impl TaskRunner {
         let monitor_cancel = Arc::clone(&cancel);
         let monitor_pid = Arc::clone(&shared_pid);
         let start = Instant::now();
-        let monitor = thread::Builder::new()
+        let monitor = match thread::Builder::new()
             .name("kawi-task-monitor".to_string())
             .spawn(move || {
                 monitor(
@@ -96,8 +97,13 @@ impl TaskRunner {
                     finding_root,
                     start,
                 );
-            })
-            .context("spawn task monitor")?;
+            }) {
+            Ok(monitor) => monitor,
+            Err(error) => {
+                signal_group(pid, ProcessSignal::Kill);
+                return Err(anyhow::Error::new(error).context("spawn task monitor"));
+            }
+        };
         Ok(Self {
             events,
             cancel,
@@ -137,6 +143,56 @@ struct RawLine {
     line: String,
 }
 
+fn sanitize_line(text: &str) -> String {
+    let mut result = String::new();
+    let mut characters = text.chars().peekable();
+    let mut length = 0;
+    while let Some(character) = characters.next() {
+        if length >= MAX_OUTPUT_LINE_CHARS {
+            break;
+        }
+        match character {
+            '\u{1b}' => skip_escape(&mut characters),
+            '\t' => {
+                let spaces = (MAX_OUTPUT_LINE_CHARS - length).min(4);
+                result.push_str(&" ".repeat(spaces));
+                length = length.saturating_add(spaces);
+            }
+            '\r' => {}
+            control if control.is_control() => {}
+            text => {
+                result.push(text);
+                length = length.saturating_add(1);
+            }
+        }
+    }
+    result
+}
+
+fn skip_escape(characters: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    match characters.next() {
+        Some('[') => {
+            for character in characters.by_ref() {
+                if ('@'..='~').contains(&character) {
+                    break;
+                }
+            }
+        }
+        Some(']') => {
+            while let Some(character) = characters.next() {
+                if character == '\u{7}' {
+                    break;
+                }
+                if character == '\u{1b}' && characters.peek() == Some(&'\\') {
+                    characters.next();
+                    break;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn task_directory(spec: &TaskSpec, root: &Path) -> PathBuf {
     match spec.cwd.as_deref() {
         Some(cwd) if cwd.is_absolute() => cwd.to_path_buf(),
@@ -167,7 +223,7 @@ fn spawn_reader<R: Read + Send + 'static>(
                         if bytes.last() == Some(&b'\r') {
                             bytes.pop();
                         }
-                        let line = String::from_utf8_lossy(&bytes).into_owned();
+                        let line = sanitize_line(&String::from_utf8_lossy(&bytes));
                         if sender.send(RawLine { stream, line }).is_err() {
                             return;
                         }
@@ -324,6 +380,15 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
         panic!("task did not finish");
+    }
+
+    #[test]
+    fn strips_terminal_sequences_and_bounds_lines() {
+        let text = format!("\u{1b}[31merror\u{1b}[0m\tvalue\r{}", "x".repeat(5_000));
+        let line = sanitize_line(&text);
+        assert!(line.starts_with("error    value"));
+        assert!(!line.contains('\u{1b}'));
+        assert_eq!(line.chars().count(), MAX_OUTPUT_LINE_CHARS);
     }
 
     #[test]

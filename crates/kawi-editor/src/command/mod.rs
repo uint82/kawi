@@ -46,6 +46,8 @@ pub enum Command {
     },
     Pick(PickerCommand),
     Git(GitCommand),
+    Task(TaskCommand),
+    Quickfix(QuickfixCommand),
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
@@ -66,6 +68,24 @@ pub enum PickerCommand {
     Grep,
     Buffers,
     Replace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskCommand {
+    Run(String),
+    List,
+    Rerun,
+    Cancel,
+    Output,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickfixCommand {
+    Open,
+    Next,
+    Previous,
+    Close,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,8 +111,12 @@ pub const COMMAND_NAMES: &[&str] = &[
     "bprevious",
     "buffer",
     "buffers",
+    "cclose",
     "clo",
     "close",
+    "cnext",
+    "copen",
+    "cprev",
     "e",
     "edit",
     "files",
@@ -105,29 +129,32 @@ pub const COMMAND_NAMES: &[&str] = &[
     "q",
     "q!",
     "qa",
-    "replace",
     "qa!",
+    "qf",
+    "quickfix",
     "quit",
     "quit!",
     "quitall",
     "quitall!",
+    "replace",
     "s",
     "set",
     "sp",
     "split",
     "substitute",
+    "task",
     "vnew",
+    "vs",
+    "vsplit",
     "w",
     "w!",
     "wall",
-    "write",
-    "write!",
-    "writequit",
     "wq",
     "wqa",
     "wqall",
-    "vs",
-    "vsplit",
+    "write",
+    "write!",
+    "writequit",
 ];
 
 pub const SET_OPTION_NAMES: &[&str] = &[
@@ -213,6 +240,12 @@ fn parse_named(text: &str) -> Command {
         ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
         ("replace", []) => Command::Pick(PickerCommand::Replace),
         ("git", rest) => parse_git_command(rest),
+        ("task", rest) => parse_task_command(rest),
+        ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
+        ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
+        ("cclose", []) => Command::Quickfix(QuickfixCommand::Close),
+        ("cnext", []) => Command::Quickfix(QuickfixCommand::Next),
+        ("cprev", []) => Command::Quickfix(QuickfixCommand::Previous),
         ("set", rest) => set::parse(rest),
         _ => Command::Unknown,
     }
@@ -271,6 +304,32 @@ fn edit_command(command: &str, name: Option<&str>) -> Command {
         name: name.map(str::to_string),
         force,
     }
+}
+
+fn parse_task_command(words: &[&str]) -> Command {
+    let command = match words {
+        [] | ["list"] => TaskCommand::List,
+        ["rerun"] => TaskCommand::Rerun,
+        ["cancel"] => TaskCommand::Cancel,
+        ["output"] => TaskCommand::Output,
+        ["close"] => TaskCommand::Close,
+        ["run"] => return Command::Unknown,
+        ["run", name] => TaskCommand::Run((*name).to_string()),
+        [name] => TaskCommand::Run((*name).to_string()),
+        _ => return Command::Unknown,
+    };
+    Command::Task(command)
+}
+
+fn parse_quickfix_command(words: &[&str]) -> Command {
+    let command = match words {
+        [] | ["open"] => QuickfixCommand::Open,
+        ["next"] => QuickfixCommand::Next,
+        ["prev" | "previous"] => QuickfixCommand::Previous,
+        ["close"] => QuickfixCommand::Close,
+        _ => return Command::Unknown,
+    };
+    Command::Quickfix(command)
 }
 
 fn parse_git_command(words: &[&str]) -> Command {
@@ -641,6 +700,40 @@ mod tests {
         assert_eq!(parse("only"), Command::OnlyWindow);
         assert_eq!(parse("on"), Command::OnlyWindow);
         assert_eq!(parse("close now"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_task_commands() {
+        assert_eq!(parse("task"), Command::Task(TaskCommand::List));
+        assert_eq!(parse("task list"), Command::Task(TaskCommand::List));
+        assert_eq!(
+            parse("task check"),
+            Command::Task(TaskCommand::Run("check".to_string()))
+        );
+        assert_eq!(
+            parse("task run check"),
+            Command::Task(TaskCommand::Run("check".to_string()))
+        );
+        assert_eq!(parse("task rerun"), Command::Task(TaskCommand::Rerun));
+        assert_eq!(parse("task cancel"), Command::Task(TaskCommand::Cancel));
+        assert_eq!(parse("task output"), Command::Task(TaskCommand::Output));
+        assert_eq!(parse("task close"), Command::Task(TaskCommand::Close));
+        assert_eq!(parse("task run"), Command::Unknown);
+        assert_eq!(parse("task a b"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_quickfix_commands() {
+        assert_eq!(parse("quickfix"), Command::Quickfix(QuickfixCommand::Open));
+        assert_eq!(parse("qf open"), Command::Quickfix(QuickfixCommand::Open));
+        assert_eq!(parse("cnext"), Command::Quickfix(QuickfixCommand::Next));
+        assert_eq!(parse("cprev"), Command::Quickfix(QuickfixCommand::Previous));
+        assert_eq!(
+            parse("quickfix prev"),
+            Command::Quickfix(QuickfixCommand::Previous)
+        );
+        assert_eq!(parse("cclose"), Command::Quickfix(QuickfixCommand::Close));
+        assert_eq!(parse("quickfix nope"), Command::Unknown);
     }
 
     #[test]

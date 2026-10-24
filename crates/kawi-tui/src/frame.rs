@@ -41,6 +41,7 @@ pub struct Frame<'a> {
     pub completion: Option<CompletionMenu<'a>>,
     pub picker: Option<PickerMenu<'a>>,
     pub replace: Option<ReplaceMenu<'a>>,
+    pub task: Option<TaskPanel<'a>>,
     pub viewport: &'a Viewport,
     pub message: Option<&'a str>,
     pub prompt: Option<PromptMenu<'a>>,
@@ -51,6 +52,18 @@ pub struct Frame<'a> {
     pub showcmd: Option<String>,
     pub cursor_style: CursorStyle,
     pub theme: &'a Theme,
+}
+
+pub struct TaskPanel<'a> {
+    pub rect: Rect,
+    pub title: &'a str,
+    pub status: &'a str,
+    pub lines: &'a [TaskLine<'a>],
+}
+
+pub struct TaskLine<'a> {
+    pub text: &'a str,
+    pub stderr: bool,
 }
 
 pub struct PaneFrame<'a> {
