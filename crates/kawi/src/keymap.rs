@@ -32,6 +32,15 @@ pub enum Flavor {
     Helix,
 }
 
+impl Flavor {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Vim => "vim",
+            Self::Helix => "helix",
+        }
+    }
+}
+
 pub enum ActiveKeymap {
     Vim(VimKeymap),
     Helix(HelixKeymap),

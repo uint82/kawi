@@ -1,16 +1,15 @@
 use anyhow::Result;
 use kawi_editor::paths::home_dir;
-use kawi_editor::{Editor, HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
-use serde::Deserialize;
+use kawi_editor::{Editor, HistoryEntries};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::persist::write_atomically;
-use crate::text::one_line;
 
 #[derive(Debug)]
 pub struct StatePaths {
     pub config: PathBuf,
+    pub config_log: PathBuf,
     pub languages: PathBuf,
     pub history: PathBuf,
     pub sessions: PathBuf,
@@ -23,6 +22,7 @@ impl StatePaths {
         let state = xdg_dir("XDG_STATE_HOME", ".local/state")?;
         Some(Self {
             config: config.join("kawi/config.toml"),
+            config_log: state.join("kawi/config.log"),
             languages: config.join("kawi/languages.toml"),
             history: state.join("kawi/history"),
             sessions: state.join("kawi/sessions"),
@@ -31,55 +31,12 @@ impl StatePaths {
     }
 }
 
-pub fn load(editor: &mut Editor, paths: &StatePaths) -> Option<String> {
-    let (config, warning) = load_config(&paths.config);
-    editor.set_history_limit(config.history);
+pub fn load(editor: &mut Editor, paths: &StatePaths) {
     editor.load_history(load_history(&paths.history));
-    warning
 }
 
 pub fn save(editor: &Editor, paths: &StatePaths) -> Result<()> {
     save_history(&paths.history, &editor.history_entries())
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(default)]
-struct Config {
-    history: usize,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            history: DEFAULT_HISTORY_LIMIT,
-        }
-    }
-}
-
-fn load_config(path: &Path) -> (Config, Option<String>) {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return (Config::default(), None);
-        }
-        Err(error) => return (Config::default(), Some(format!("config.toml: {error}"))),
-    };
-    let config: Config = match toml::from_str(&text) {
-        Ok(config) => config,
-        Err(error) => return (Config::default(), Some(config_error(&error.to_string()))),
-    };
-    if config.history > MAX_HISTORY_LIMIT {
-        let message = format!(
-            "config.toml: E474: Invalid argument: history={}",
-            config.history
-        );
-        return (Config::default(), Some(message));
-    }
-    (config, None)
-}
-
-fn config_error(details: &str) -> String {
-    format!("config.toml: {}", one_line(details))
 }
 
 fn load_history(path: &Path) -> HistoryEntries {
@@ -139,47 +96,15 @@ mod tests {
         Editor::new(Buffer::from_string("text"))
     }
 
-    #[test]
-    fn config_defaults_when_missing() {
-        let dir = temp_dir("config_missing");
-        let (config, warning) = load_config(&dir.join("config.toml"));
-        assert_eq!(config.history, DEFAULT_HISTORY_LIMIT);
-        assert_eq!(warning, None);
-    }
-
-    #[test]
-    fn config_reads_the_history_limit() {
-        let dir = temp_dir("config_history");
-        let path = dir.join("config.toml");
-        fs::write(&path, "history = 25\n").unwrap();
-        let (config, warning) = load_config(&path);
-        assert_eq!(config.history, 25);
-        assert_eq!(warning, None);
-    }
-
-    #[test]
-    fn config_rejects_out_of_range_history() {
-        let dir = temp_dir("config_range");
-        let path = dir.join("config.toml");
-        fs::write(&path, "history = 10001\n").unwrap();
-        let (config, warning) = load_config(&path);
-        assert_eq!(config.history, DEFAULT_HISTORY_LIMIT);
-        assert_eq!(
-            warning.as_deref(),
-            Some("config.toml: E474: Invalid argument: history=10001")
-        );
-    }
-
-    #[test]
-    fn config_reports_parse_errors() {
-        let dir = temp_dir("config_invalid");
-        let path = dir.join("config.toml");
-        fs::write(&path, "history = \n").unwrap();
-        let (config, warning) = load_config(&path);
-        assert_eq!(config.history, DEFAULT_HISTORY_LIMIT);
-        let warning = warning.expect("parse warning");
-        assert!(warning.starts_with("config.toml: "));
-        assert!(!warning.contains('\n'));
+    fn paths(dir: &Path) -> StatePaths {
+        StatePaths {
+            config: dir.join("config.toml"),
+            config_log: dir.join("config.log"),
+            languages: dir.join("languages.toml"),
+            history: dir.join("history"),
+            sessions: dir.join("sessions"),
+            recovery: dir.join("recovery"),
+        }
     }
 
     #[test]
@@ -214,35 +139,21 @@ mod tests {
     }
 
     #[test]
-    fn state_load_applies_config_and_history() {
+    fn state_load_applies_history() {
         let dir = temp_dir("load_applies");
-        let paths = StatePaths {
-            config: dir.join("config.toml"),
-            languages: dir.join("languages.toml"),
-            history: dir.join("history"),
-            sessions: dir.join("sessions"),
-            recovery: dir.join("recovery"),
-        };
-        fs::write(&paths.config, "history = 1\n").unwrap();
+        let paths = paths(&dir);
         fs::write(&paths.history, ":first\n:second\n/search\n").unwrap();
         let mut editor = editor();
-        let warning = load(&mut editor, &paths);
-        assert_eq!(warning, None);
+        load(&mut editor, &paths);
         let entries = editor.history_entries();
-        assert_eq!(entries.command, vec!["second"]);
+        assert_eq!(entries.command, vec!["first", "second"]);
         assert_eq!(entries.search, vec!["search"]);
     }
 
     #[test]
     fn state_save_writes_the_editor_history() {
         let dir = temp_dir("save_editor");
-        let paths = StatePaths {
-            config: dir.join("config.toml"),
-            languages: dir.join("languages.toml"),
-            history: dir.join("history"),
-            sessions: dir.join("sessions"),
-            recovery: dir.join("recovery"),
-        };
+        let paths = paths(&dir);
         let mut editor = editor();
         editor.load_history(HistoryEntries {
             command: vec!["write".to_string()],

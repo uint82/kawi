@@ -1,4 +1,4 @@
-use super::Editor;
+use super::{Editor, WindowOptions};
 
 impl Editor {
     pub fn set_number(&mut self, number: bool) {
@@ -34,8 +34,10 @@ impl Editor {
     }
 
     pub fn gutter_width(&self) -> usize {
-        let numbers = if self.numbers_visible() {
-            self.number_column_width().saturating_add(1)
+        let options = self.window_options();
+        let numbers = if numbers_visible(options) {
+            number_column_width_for(options, self.buffer.line_count(), self.view_height())
+                .saturating_add(1)
         } else {
             0
         };
@@ -49,6 +51,7 @@ impl Editor {
             first,
             count,
             self.view_height(),
+            self.window_options(),
         )
     }
 
@@ -59,9 +62,10 @@ impl Editor {
         count: usize,
         cursor_row: usize,
         height: usize,
+        options: WindowOptions,
     ) -> Option<Vec<String>> {
         let line_count = self.buffer_line_count(number)?;
-        Some(self.gutter_lines_for(line_count, cursor_row, first, count, height))
+        Some(self.gutter_lines_for(line_count, cursor_row, first, count, height, options))
     }
 
     fn gutter_lines_for(
@@ -71,9 +75,10 @@ impl Editor {
         first: usize,
         count: usize,
         height: usize,
+        options: WindowOptions,
     ) -> Vec<String> {
         (first..first.saturating_add(count))
-            .map(|row| self.gutter_line_for(row, line_count, cursor_row, height))
+            .map(|row| self.gutter_line_for(row, line_count, cursor_row, height, options))
             .collect()
     }
 
@@ -95,53 +100,50 @@ impl Editor {
         line_count: usize,
         cursor_row: usize,
         height: usize,
+        options: WindowOptions,
     ) -> String {
-        if !self.numbers_visible() {
+        if !numbers_visible(options) {
             return String::new();
         }
-        let width = self.number_column_width_for(line_count, height);
-        match self.display_number(row, line_count, cursor_row) {
+        let width = number_column_width_for(options, line_count, height);
+        match display_number(options, row, line_count, cursor_row) {
             Some((number, false)) => format!("{number:>width$} "),
             Some((number, true)) => format!("{number:<width$} "),
             None => " ".repeat(width.saturating_add(1)),
         }
     }
+}
 
-    fn display_number(
-        &self,
-        row: usize,
-        line_count: usize,
-        cursor_row: usize,
-    ) -> Option<(usize, bool)> {
-        if row >= line_count {
-            return None;
-        }
-        if self.number && !self.relativenumber {
-            return Some((row.saturating_add(1), false));
-        }
-        let distance = row.abs_diff(cursor_row);
-        if distance == 0 && self.number {
-            return Some((row.saturating_add(1), true));
-        }
-        Some((distance, false))
+fn display_number(
+    options: WindowOptions,
+    row: usize,
+    line_count: usize,
+    cursor_row: usize,
+) -> Option<(usize, bool)> {
+    if row >= line_count {
+        return None;
     }
+    if options.number && !options.relativenumber {
+        return Some((row.saturating_add(1), false));
+    }
+    let distance = row.abs_diff(cursor_row);
+    if distance == 0 && options.number {
+        return Some((row.saturating_add(1), true));
+    }
+    Some((distance, false))
+}
 
-    fn numbers_visible(&self) -> bool {
-        self.number || self.relativenumber
-    }
+fn numbers_visible(options: WindowOptions) -> bool {
+    options.number || options.relativenumber
+}
 
-    fn number_column_width(&self) -> usize {
-        self.number_column_width_for(self.buffer.line_count(), self.view_height())
-    }
-
-    fn number_column_width_for(&self, line_count: usize, height: usize) -> usize {
-        let reference = if self.relativenumber && !self.number {
-            height
-        } else {
-            line_count
-        };
-        digit_count(reference).max(self.numberwidth.saturating_sub(1))
-    }
+fn number_column_width_for(options: WindowOptions, line_count: usize, height: usize) -> usize {
+    let reference = if options.relativenumber && !options.number {
+        height
+    } else {
+        line_count
+    };
+    digit_count(reference).max(options.numberwidth.saturating_sub(1))
 }
 
 fn digit_count(value: usize) -> usize {

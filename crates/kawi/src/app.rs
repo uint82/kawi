@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 mod code_action;
 mod completion;
+mod config;
 mod formatting;
 mod frame;
 mod git;
@@ -19,6 +20,7 @@ mod lsp_navigation;
 mod lsp_text;
 mod macro_codec;
 mod macro_ops;
+mod options;
 mod picker;
 mod recovery;
 mod rename;
@@ -76,13 +78,13 @@ fn ui_diagnostic_severity(
 }
 
 use crate::event::EventQueue;
-use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
+use crate::keymap::{ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{horizontal_wheel_delta, wheel_delta};
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
     parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, SearchOutcome,
-    FALLBACK_HEIGHT, FALLBACK_WIDTH,
+    WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
@@ -95,6 +97,7 @@ use window::Windows;
 pub struct App {
     editor: Editor,
     keymap: ActiveKeymap,
+    flavor: Flavor,
     theme: Theme,
     message: Option<String>,
     pager: Option<Vec<String>>,
@@ -124,6 +127,7 @@ pub struct App {
     events: EventQueue,
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
+    window_defaults: WindowOptions,
 }
 
 impl App {
@@ -134,6 +138,7 @@ impl App {
         Self {
             editor,
             keymap: ActiveKeymap::for_flavor(flavor),
+            flavor,
             theme: Theme::default(),
             message: None,
             pager: None,
@@ -163,6 +168,7 @@ impl App {
             events: EventQueue::new(),
             recovery: None,
             recovery_prompt: None,
+            window_defaults: WindowOptions::default(),
         }
     }
 
@@ -185,18 +191,6 @@ impl App {
                 self.finish_recovery_abnormal();
                 std::panic::resume_unwind(payload);
             }
-        }
-    }
-
-    pub fn load_state(&mut self) {
-        let Some(paths) = StatePaths::resolve() else {
-            return;
-        };
-        if let Some(warning) = state::load(&mut self.editor, &paths) {
-            self.message = Some(warning);
-        }
-        if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
-            self.message = Some(warning);
         }
     }
 
@@ -1325,18 +1319,7 @@ impl App {
             Command::NewWindow { vertical, name } => self.new_window(vertical, name),
             Command::CloseWindow => self.close_active_window(false),
             Command::OnlyWindow => self.only_window(),
-            Command::SetKeymap(name) => self.switch_keymap(&name),
-            Command::SetTheme(name) => self.switch_theme(&name),
-            Command::SetShiftWidth(width) => self.switch_shiftwidth(width),
-            Command::SetExpandTab(expandtab) => self.switch_expandtab(expandtab),
-            Command::SetNumber(number) => self.switch_number(number),
-            Command::SetRelativeNumber(relativenumber) => {
-                self.switch_relativenumber(relativenumber)
-            }
-            Command::SetNumberWidth(width) => self.switch_numberwidth(width),
-            Command::SetIgnoreCase(value) => self.switch_ignorecase(value),
-            Command::SetSmartCase(value) => self.switch_smartcase(value),
-            Command::SetAutoIndent(value) => self.switch_autoindent(value),
+            Command::Set { name, value } => self.handle_set(&name, value),
             Command::Pick(command) => self.handle_pick_command(command),
             Command::Git(command) => self.handle_git_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
@@ -1360,87 +1343,9 @@ impl App {
         }
     }
 
-    fn switch_keymap(&mut self, name: &str) -> Result<bool> {
-        match flavor_from_name(name) {
-            Some(flavor) => self.apply_flavor(flavor),
-            None => self.report_unknown_keymap(name),
-        }
-    }
-
-    fn report_unknown_keymap(&mut self, name: &str) -> Result<bool> {
-        self.show_message(format!("Unknown keymap: {name}"));
-        Ok(false)
-    }
-
-    fn switch_shiftwidth(&mut self, width: usize) -> Result<bool> {
-        self.editor.set_shiftwidth(width);
-        Ok(false)
-    }
-
-    fn switch_expandtab(&mut self, expandtab: bool) -> Result<bool> {
-        self.editor.set_expandtab(expandtab);
-        Ok(false)
-    }
-
-    fn switch_number(&mut self, number: bool) -> Result<bool> {
-        self.editor.set_number(number);
-        Ok(false)
-    }
-
-    fn switch_relativenumber(&mut self, relativenumber: bool) -> Result<bool> {
-        self.editor.set_relativenumber(relativenumber);
-        Ok(false)
-    }
-
-    fn switch_numberwidth(&mut self, width: usize) -> Result<bool> {
-        self.editor.set_numberwidth(width);
-        Ok(false)
-    }
-
-    fn switch_ignorecase(&mut self, value: bool) -> Result<bool> {
-        self.editor.set_ignorecase(value);
-        Ok(false)
-    }
-
-    fn switch_smartcase(&mut self, value: bool) -> Result<bool> {
-        self.editor.set_smartcase(value);
-        Ok(false)
-    }
-
-    fn switch_autoindent(&mut self, value: bool) -> Result<bool> {
-        self.editor.set_autoindent(value);
-        Ok(false)
-    }
-
     fn handle_search_word(&mut self, forward: bool) -> Result<bool> {
         if let Err(error) = self.editor.search_word(forward) {
             self.show_message(file_error_message(error));
-        }
-        self.reveal_cursor();
-        Ok(false)
-    }
-
-    fn switch_theme(&mut self, name: &str) -> Result<bool> {
-        match Theme::named(name) {
-            Some(theme) => self.apply_theme(theme),
-            None => self.report_unknown_theme(name),
-        }
-    }
-
-    fn report_unknown_theme(&mut self, name: &str) -> Result<bool> {
-        self.show_message(format!("Unknown theme: {name}"));
-        Ok(false)
-    }
-
-    fn apply_theme(&mut self, theme: Theme) -> Result<bool> {
-        self.theme = theme;
-        Ok(false)
-    }
-
-    fn apply_flavor(&mut self, flavor: Flavor) -> Result<bool> {
-        self.keymap = ActiveKeymap::for_flavor(flavor);
-        if flavor == Flavor::Vim {
-            self.exit_visual_if_active();
         }
         self.reveal_cursor();
         Ok(false)
@@ -1796,6 +1701,13 @@ mod tests {
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn set_command(name: &str, value: &str) -> Command {
+        Command::Set {
+            name: name.to_string(),
+            value: kawi_editor::SetValue::Assign(Some(value.to_string())),
+        }
     }
 
     fn press(column: u16, row: u16) -> MouseEvent {
@@ -2381,7 +2293,7 @@ mod tests {
     #[test]
     fn set_keymap_switches_to_helix() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
-        app.run_command(Command::SetKeymap("helix".to_string()))
+        app.run_command(set_command("keymap", "helix"))
             .expect("switch");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
@@ -2390,7 +2302,7 @@ mod tests {
     #[test]
     fn set_keymap_back_to_vim_clears() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Helix);
-        app.run_command(Command::SetKeymap("vim".to_string()))
+        app.run_command(set_command("keymap", "vim"))
             .expect("switch");
         assert_eq!(app.editor_mode(), Mode::Normal);
         assert_eq!(app.editor_selection(), None);
@@ -2402,7 +2314,7 @@ mod tests {
         app.handle_key(key(KeyCode::Char('v'))).expect("visual");
         app.handle_key(key(KeyCode::Char('l'))).expect("extend");
         app.handle_key(key(KeyCode::Char('l'))).expect("extend");
-        app.run_command(Command::SetKeymap("helix".to_string()))
+        app.run_command(set_command("keymap", "helix"))
             .expect("switch");
         assert_eq!(app.editor_mode(), Mode::Visual);
         assert_eq!(app.editor_selection(), Some(((0, 0), (0, 2))));
@@ -2411,7 +2323,7 @@ mod tests {
     #[test]
     fn set_keymap_unknown_keeps_flavor() {
         let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
-        app.run_command(Command::SetKeymap("personal".to_string()))
+        app.run_command(set_command("keymap", "personal"))
             .expect("unknown");
         assert_eq!(app.editor_mode(), Mode::Normal);
     }
@@ -2532,7 +2444,7 @@ mod tests {
     #[test]
     fn unknown_keymap_reports() {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
-        app.run_command(Command::SetKeymap("personal".to_string()))
+        app.run_command(set_command("keymap", "personal"))
             .expect("unknown");
         assert_eq!(app.last_message(), Some("Unknown keymap: personal"));
     }
@@ -3105,7 +3017,7 @@ mod tests {
     fn set_theme_switches_palette() {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
         assert_eq!(app.theme_name(), "default");
-        app.run_command(Command::SetTheme("gruvbox-dark".to_string()))
+        app.run_command(set_command("theme", "gruvbox-dark"))
             .expect("switch");
         assert_eq!(app.theme_name(), "gruvbox-dark");
         assert_eq!(app.last_message(), None);
@@ -3114,7 +3026,7 @@ mod tests {
     #[test]
     fn set_theme_unknown_reports_and_keeps() {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
-        app.run_command(Command::SetTheme("nope".to_string()))
+        app.run_command(set_command("theme", "nope"))
             .expect("unknown");
         assert_eq!(app.theme_name(), "default");
         assert_eq!(app.last_message(), Some("Unknown theme: nope"));
