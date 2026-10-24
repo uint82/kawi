@@ -153,7 +153,7 @@ limit = 25
         fs::create_dir_all(&themes).unwrap();
         fs::write(
             themes.join("personal.toml"),
-            include_str!("../../../../testdata/custom-theme.toml"),
+            crate::test_support::custom_theme(),
         )
         .unwrap();
         let path = dir.join("config.toml");

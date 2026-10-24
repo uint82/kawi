@@ -181,7 +181,58 @@ mod tests {
     use kawi_syntax::SyntaxGroup;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    const THEME: &str = include_str!("../../../../testdata/custom-theme.toml");
+    const SECTIONS: &[(&str, &[&str])] = &[
+        ("base", &["foreground", "background"]),
+        ("search_match", &["foreground", "background"]),
+        ("search_current", &["foreground", "background"]),
+        ("substitute", &["foreground", "background"]),
+        ("selection", &["foreground", "background"]),
+        ("status", &["foreground", "background"]),
+        ("gutter", &["line_number", "non_text"]),
+        (
+            "git",
+            &[
+                "add",
+                "change",
+                "delete",
+                "staged_add",
+                "staged_change",
+                "staged_delete",
+            ],
+        ),
+        ("diagnostics", &["error", "warning", "information", "hint"]),
+        (
+            "syntax",
+            &[
+                "comment",
+                "keyword",
+                "string",
+                "number",
+                "constant",
+                "function",
+                "type",
+                "variable",
+                "property",
+                "operator",
+                "punctuation",
+                "attribute",
+                "tag",
+                "invalid",
+            ],
+        ),
+    ];
+
+    fn theme_text() -> String {
+        let mut text = String::new();
+        for (section, fields) in SECTIONS {
+            text.push_str(&format!("[{section}]\n"));
+            for field in *fields {
+                text.push_str(&format!("{field} = \"#010203\"\n"));
+            }
+            text.push('\n');
+        }
+        text
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -199,24 +250,13 @@ mod tests {
     #[test]
     fn loads_a_custom_theme() {
         let dir = temp_dir("load");
-        fs::write(dir.join("personal.toml"), THEME).unwrap();
+        fs::write(dir.join("personal.toml"), theme_text()).unwrap();
         let theme = Theme::load("personal", &dir).unwrap();
         assert_eq!(theme.name, "personal");
-        assert_eq!(
-            theme.base.background,
-            Color::Rgb {
-                r: 20,
-                g: 22,
-                b: 27
-            }
-        );
+        assert_eq!(theme.base.background, Color::Rgb { r: 1, g: 2, b: 3 });
         assert_eq!(
             theme.syntax.color(SyntaxGroup::Keyword),
-            Color::Rgb {
-                r: 198,
-                g: 120,
-                b: 221
-            }
+            Color::Rgb { r: 1, g: 2, b: 3 }
         );
         let _ = fs::remove_dir_all(dir);
     }
@@ -224,7 +264,7 @@ mod tests {
     #[test]
     fn theme_files_override_builtins() {
         let dir = temp_dir("override");
-        let text = THEME.replacen("background = \"#14161b\"", "background = \"#123456\"", 1);
+        let text = theme_text().replacen("background = \"#010203\"", "background = \"#123456\"", 1);
         fs::write(dir.join("default.toml"), text).unwrap();
         let theme = Theme::load("default", &dir).unwrap();
         assert_eq!(
@@ -281,14 +321,14 @@ mod tests {
 
     #[test]
     fn rejects_unknown_fields() {
-        let text = format!("{THEME}\nextra = 1\n");
+        let text = format!("{}\nextra = 1\n", theme_text());
         let error = Theme::from_toml("personal", &text).unwrap_err();
         assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
     fn rejects_missing_colors() {
-        let text = THEME.replacen("foreground = \"#e0e2ea\"\n", "", 1);
+        let text = theme_text().replacen("foreground = \"#010203\"\n", "", 1);
         let error = Theme::from_toml("personal", &text).unwrap_err();
         assert!(error.to_string().contains("missing field"));
         assert!(error.to_string().contains("line"));
@@ -296,7 +336,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_colors() {
-        let text = THEME.replacen("background = \"#14161b\"", "background = \"#zzzzzz\"", 1);
+        let text = theme_text().replacen("background = \"#010203\"", "background = \"#zzzzzz\"", 1);
         let error = Theme::from_toml("personal", &text).unwrap_err();
         assert!(error.to_string().contains("base.background"));
     }

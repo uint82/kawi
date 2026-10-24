@@ -336,7 +336,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join("personal.toml"),
-            include_str!("../../../../testdata/custom-theme.toml"),
+            crate::test_support::custom_theme(),
         )
         .unwrap();
         let mut app = app();

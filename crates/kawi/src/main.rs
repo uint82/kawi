@@ -9,6 +9,8 @@ mod persist;
 mod recovery;
 mod session;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod text;
 mod vim;
 mod workspace;
