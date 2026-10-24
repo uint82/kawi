@@ -1,4 +1,4 @@
-use crate::{LanguageConfig, LanguageWarning, ServerConfig};
+use crate::{LanguageConfig, LanguageWarning, ServerConfig, MAX_SHIFTWIDTH};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -57,11 +57,61 @@ pub(crate) struct LanguageOverride {
     filenames: Option<Vec<String>>,
     root_markers: Option<Vec<String>>,
     servers: Option<Vec<String>>,
+    shiftwidth: Option<Value>,
+    expandtab: Option<Value>,
     enabled: Option<bool>,
 }
 
+fn apply_shiftwidth(
+    language: &mut LanguageConfig,
+    value: Value,
+    warnings: &mut Vec<LanguageWarning>,
+) {
+    let parsed = match value {
+        Value::Integer(value) if (0..=MAX_SHIFTWIDTH as i64).contains(&value) => {
+            Some(value as usize)
+        }
+        value => {
+            warnings.push(LanguageWarning::new(format!(
+                "language {}: shiftwidth must be an integer from 0 to {MAX_SHIFTWIDTH}, got {value}; using editor settings",
+                language.name
+            )));
+            None
+        }
+    };
+    language.shiftwidth = parsed;
+}
+
+fn apply_expandtab(
+    language: &mut LanguageConfig,
+    value: Value,
+    warnings: &mut Vec<LanguageWarning>,
+) {
+    let parsed = match value {
+        Value::Boolean(value) => Some(value),
+        value => {
+            warnings.push(LanguageWarning::new(format!(
+                "language {}: expandtab must be a boolean, got {value}; using editor settings",
+                language.name
+            )));
+            None
+        }
+    };
+    language.expandtab = parsed;
+}
+
 impl LanguageOverride {
-    pub(crate) fn overlay(self, mut language: LanguageConfig) -> LanguageConfig {
+    pub(crate) fn overlay(
+        self,
+        mut language: LanguageConfig,
+    ) -> (LanguageConfig, Vec<LanguageWarning>) {
+        let mut warnings = Vec::new();
+        if let Some(value) = self.shiftwidth {
+            apply_shiftwidth(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.expandtab {
+            apply_expandtab(&mut language, value, &mut warnings);
+        }
         if let Some(language_id) = self.language_id {
             language.language_id = language_id;
         }
@@ -83,10 +133,10 @@ impl LanguageOverride {
         if let Some(enabled) = self.enabled {
             language.enabled = enabled;
         }
-        language
+        (language, warnings)
     }
 
-    pub(crate) fn into_config(self) -> LanguageConfig {
+    pub(crate) fn into_config(self) -> (LanguageConfig, Vec<LanguageWarning>) {
         let name = self.name.clone();
         let language = LanguageConfig::new(name.clone(), name);
         self.overlay(language)

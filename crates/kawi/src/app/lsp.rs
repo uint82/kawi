@@ -44,7 +44,7 @@ struct ProgressSnapshot {
 impl LspUi {
     pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Option<String> {
         let languages = Languages::load(path);
-        let warning = languages.warning().map(str::to_string);
+        let warning = languages.warning();
         match LspService::new(languages.clone(), wake) {
             Ok(service) => {
                 self.languages = Some(languages);

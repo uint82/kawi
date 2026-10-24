@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml::Value;
 
+pub const MAX_SHIFTWIDTH: usize = 1000;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerConfig {
     pub command: String,
@@ -49,6 +51,8 @@ pub struct LanguageConfig {
     pub filenames: Vec<String>,
     pub root_markers: Vec<String>,
     pub servers: Vec<String>,
+    pub shiftwidth: Option<usize>,
+    pub expandtab: Option<bool>,
     pub enabled: bool,
 }
 
@@ -62,6 +66,8 @@ impl LanguageConfig {
             filenames: Vec::new(),
             root_markers: Vec::new(),
             servers: Vec::new(),
+            shiftwidth: None,
+            expandtab: None,
             enabled: true,
         }
     }
@@ -117,7 +123,7 @@ impl Languages {
     pub fn load(path: &Path) -> Self {
         let (user, mut warnings) = file::load(path);
         let servers = merge_servers(user.server);
-        let mut languages = merge_languages(user.language);
+        let mut languages = merge_languages(user.language, &mut warnings);
         normalize_languages(&mut languages);
         warnings.extend(validate(&servers, &languages));
         let available = available_servers(&servers);
@@ -206,18 +212,29 @@ fn merge_servers(
     servers
 }
 
-fn merge_languages(overrides: Vec<file::LanguageOverride>) -> Vec<LanguageConfig> {
+fn merge_languages(
+    overrides: Vec<file::LanguageOverride>,
+    warnings: &mut Vec<LanguageWarning>,
+) -> Vec<LanguageConfig> {
     let mut languages = defaults::languages();
     for language in overrides {
-        match languages
+        let (merged, language_warnings) = match languages
             .iter()
             .position(|candidate| candidate.name == language.name)
         {
             Some(index) => {
                 let base = languages.remove(index);
-                languages.insert(index, language.overlay(base));
+                language.overlay(base)
             }
-            None => languages.push(language.into_config()),
+            None => language.into_config(),
+        };
+        warnings.extend(language_warnings);
+        match languages
+            .iter()
+            .position(|candidate| candidate.name == merged.name)
+        {
+            Some(index) => languages.insert(index, merged),
+            None => languages.push(merged),
         }
     }
     languages
@@ -351,6 +368,50 @@ mod tests {
         let lua = languages.language("lua").expect("lua");
         assert_eq!(lua.language_id, "lua");
         assert_eq!(lua.extensions, vec!["lua"]);
+    }
+
+    #[test]
+    fn user_languages_set_editor_overrides() {
+        let path = temp_file(
+            "editor_overrides",
+            "[[language]]\nname = \"rust\"\nshiftwidth = 2\nexpandtab = true\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.shiftwidth, Some(2));
+        assert_eq!(rust.expandtab, Some(true));
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn new_languages_set_editor_overrides() {
+        let path = temp_file(
+            "new_editor_overrides",
+            "[[language]]\nname = \"lua\"\nextensions = [\"lua\"]\nshiftwidth = 3\nexpandtab = false\n",
+        );
+        let languages = Languages::load(&path);
+        let lua = languages.language("lua").expect("lua");
+        assert_eq!(lua.shiftwidth, Some(3));
+        assert_eq!(lua.expandtab, Some(false));
+    }
+
+    #[test]
+    fn invalid_editor_overrides_warn_and_are_ignored() {
+        let path = temp_file(
+            "invalid_editor_overrides",
+            "[[language]]\nname = \"rust\"\nshiftwidth = -1\nexpandtab = \"yes\"\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.shiftwidth, None);
+        assert_eq!(rust.expandtab, None);
+        assert_eq!(languages.warnings().len(), 2);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("shiftwidth must be an integer"));
+        assert!(languages.warnings()[1]
+            .message()
+            .contains("expandtab must be a boolean"));
     }
 
     #[test]
