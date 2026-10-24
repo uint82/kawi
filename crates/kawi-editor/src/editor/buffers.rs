@@ -1078,13 +1078,7 @@ fn same_file_path(path: &str, target: &Path) -> bool {
     if absolute == target {
         return true;
     }
-    match (
-        std::fs::canonicalize(&absolute),
-        std::fs::canonicalize(target),
-    ) {
-        (Ok(path), Ok(target)) => path == target,
-        _ => false,
-    }
+    paths::same_file(&absolute, target)
 }
 
 fn home_path(path: &str) -> String {

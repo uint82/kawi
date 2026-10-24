@@ -13,6 +13,16 @@ pub fn absolute(path: &str, cwd: &Path) -> PathBuf {
     normalize(&joined)
 }
 
+pub fn same_file(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
 pub fn shorten(path: &Path, cwd: &Path) -> String {
     match path.strip_prefix(cwd) {
         Ok(rest) if !rest.as_os_str().is_empty() => rest.to_string_lossy().into_owned(),
@@ -66,6 +76,12 @@ mod tests {
             absolute("/etc/./hosts", &cwd()),
             PathBuf::from("/etc/hosts")
         );
+    }
+
+    #[test]
+    fn same_file_resolves_aliases() {
+        assert!(same_file(Path::new("/tmp/./a"), Path::new("/tmp/a")));
+        assert!(!same_file(Path::new("/tmp/a"), Path::new("/tmp/b")));
     }
 
     #[test]
