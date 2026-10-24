@@ -386,6 +386,7 @@ dependencies = [
  "anyhow",
  "crossterm",
  "kawi-buffer",
+ "kawi-completion",
  "kawi-editor",
  "kawi-git",
  "kawi-lsp",
@@ -410,6 +411,14 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "ropey",
+]
+
+[[package]]
+name = "kawi-completion"
+version = "0.0.1"
+dependencies = [
+ "kawi-buffer",
+ "serde_json",
 ]
 
 [[package]]
@@ -502,6 +511,7 @@ dependencies = [
  "anyhow",
  "crossterm",
  "kawi-buffer",
+ "kawi-completion",
  "kawi-editor",
  "kawi-syntax",
  "serde",

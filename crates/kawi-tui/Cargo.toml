@@ -12,6 +12,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 crossterm.workspace = true
 kawi-buffer = { path = "../kawi-buffer" }
+kawi-completion = { path = "../kawi-completion" }
 kawi-editor = { path = "../kawi-editor" }
 kawi-syntax = { path = "../kawi-syntax" }
 serde.workspace = true
