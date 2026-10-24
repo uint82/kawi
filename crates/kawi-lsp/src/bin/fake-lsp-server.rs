@@ -39,6 +39,8 @@ fn main() -> Result<()> {
         std::env::var("FAKE_LSP_PULL_DIAGNOSTICS").is_ok_and(|value| value == "1");
     let refresh_diagnostics =
         std::env::var("FAKE_LSP_REFRESH_DIAGNOSTICS").is_ok_and(|value| value == "1");
+    let workspace_diagnostics =
+        std::env::var("FAKE_LSP_WORKSPACE_DIAGNOSTICS").is_ok_and(|value| value == "1");
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
@@ -76,10 +78,10 @@ fn main() -> Result<()> {
                         "documentFormattingProvider": true,
                         "documentRangeFormattingProvider": true
                     });
-                    if pull_diagnostics {
+                    if pull_diagnostics || workspace_diagnostics {
                         capabilities["diagnosticProvider"] = json!({
-                            "interFileDependencies": false,
-                            "workspaceDiagnostics": false
+                            "interFileDependencies": workspace_diagnostics,
+                            "workspaceDiagnostics": workspace_diagnostics
                         });
                     }
                     let result = json!({
@@ -117,6 +119,9 @@ fn main() -> Result<()> {
                 "workspace/executeCommand" => handle_execute_command(&mut writer, id, params)?,
                 "textDocument/diagnostic" => {
                     handle_pull_diagnostic(&mut writer, id, params, &documents)?
+                }
+                "workspace/diagnostic" => {
+                    handle_workspace_diagnostic(&mut writer, id, params, &documents)?
                 }
                 "shutdown" => {
                     send(&mut writer, Message::response(id, Value::Null))?;
@@ -652,6 +657,66 @@ fn handle_execute_command(
     send(writer, Message::response(id, Value::Null))
 }
 
+fn handle_workspace_diagnostic(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    documents: &HashMap<String, i64>,
+) -> Result<()> {
+    let previous = params
+        .as_ref()
+        .and_then(|params| params.get("previousResultIds"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut items = Vec::new();
+    for (uri, version) in documents {
+        let result_id = format!("workspace:{version}");
+        let unchanged = previous.iter().any(|previous| {
+            previous.get("uri").and_then(Value::as_str) == Some(uri.as_str())
+                && previous.get("value").and_then(Value::as_str) == Some(result_id.as_str())
+        });
+        if unchanged {
+            items.push(json!({
+                "kind": "unchanged",
+                "uri": uri,
+                "version": version,
+                "resultId": result_id
+            }));
+        } else {
+            items.push(json!({
+                "kind": "full",
+                "uri": uri,
+                "version": version,
+                "resultId": result_id,
+                "items": [{
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 1}
+                    },
+                    "severity": 1,
+                    "source": "workspace",
+                    "code": "E0302",
+                    "tags": [2],
+                    "relatedInformation": [{
+                        "location": {
+                            "uri": uri,
+                            "range": {
+                                "start": {"line": 0, "character": 0},
+                                "end": {"line": 0, "character": 1}
+                            }
+                        },
+                        "message": "related workspace"
+                    }],
+                    "message": format!("workspace:{version}")
+                }]
+            }));
+        }
+    }
+    send_log(writer, &format!("workspace-diagnostic:{}", previous.len()))?;
+    send(writer, Message::response(id, json!({"items": items})))
+}
+
 fn handle_pull_diagnostic(
     writer: &mut impl io::Write,
     id: RequestId,
@@ -685,6 +750,18 @@ fn handle_pull_diagnostic(
             },
             "severity": 1,
             "source": "pull",
+            "code": "E0301",
+            "tags": [1],
+            "relatedInformation": [{
+                "location": {
+                    "uri": uri,
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 1}
+                    }
+                },
+                "message": "related"
+            }],
             "message": format!("pull:{version}")
         }]
     });

@@ -5,9 +5,10 @@ use super::lsp_navigation::{
 use super::lsp_text::LspText;
 use kawi_editor::{Editor, LanguageIndent};
 use kawi_lsp::{
-    CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticSeverity,
-    FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand, LspEvent,
-    LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
+    CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticMode,
+    DiagnosticSeverity, DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning,
+    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
+    RenameReady, ServerState, StatusEvent, WorkspaceDiagnosticState,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -24,6 +25,10 @@ pub struct LspUi {
     status_messages: BTreeMap<String, String>,
     progress: BTreeMap<(String, String), ProgressSnapshot>,
     diagnostics: DiagnosticState,
+    diagnostic_modes: BTreeMap<String, DiagnosticMode>,
+    workspace_diagnostics_loading: std::collections::BTreeSet<String>,
+    workspace_diagnostics_requested: bool,
+    diagnostics_activity: bool,
     navigation: LspNavigation,
     text: LspText,
     rename_request: Option<u64>,
@@ -33,6 +38,13 @@ pub struct LspUi {
     display: Option<String>,
     message: Option<String>,
     formatting_failure: Option<(u64, String)>,
+    diagnostic_updates: Vec<DiagnosticUpdate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DiagnosticUpdate {
+    Replace(DiagnosticsEvent),
+    Clear(String),
 }
 
 #[derive(Clone)]
@@ -190,6 +202,38 @@ impl LspUi {
         end: CursorPosition,
     ) -> Vec<Diagnostic> {
         self.diagnostics.in_range(start, end)
+    }
+
+    pub(super) fn take_diagnostic_updates(&mut self) -> Vec<DiagnosticUpdate> {
+        std::mem::take(&mut self.diagnostic_updates)
+    }
+
+    pub(super) fn request_workspace_diagnostics(&mut self) -> bool {
+        self.workspace_diagnostics_requested = true;
+        self.service
+            .as_ref()
+            .is_some_and(LspService::workspace_diagnostics)
+    }
+
+    pub(super) fn diagnostics_loading(&self) -> bool {
+        !self.workspace_diagnostics_loading.is_empty()
+    }
+
+    pub(super) fn take_diagnostics_activity(&mut self) -> bool {
+        std::mem::take(&mut self.diagnostics_activity)
+    }
+
+    pub(super) fn diagnostic_mode_label(&self) -> &'static str {
+        let modes: Vec<DiagnosticMode> = self.diagnostic_modes.values().copied().collect();
+        if modes.contains(&DiagnosticMode::Workspace) {
+            "workspace pull"
+        } else if modes.contains(&DiagnosticMode::Pull) {
+            "single-file pull"
+        } else if modes.contains(&DiagnosticMode::Push) {
+            "server push"
+        } else {
+            "off"
+        }
     }
 
     pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, String> {
@@ -367,10 +411,41 @@ impl LspUi {
                 self.apply_progress(progress);
                 true
             }
-            LspEvent::Diagnostics(diagnostics) => self
-                .path
-                .as_deref()
-                .is_some_and(|path| self.diagnostics.apply(diagnostics, path)),
+            LspEvent::DiagnosticMode(event) => {
+                let workspace = event.mode == DiagnosticMode::Workspace;
+                self.diagnostic_modes.insert(event.server, event.mode);
+                if workspace && self.workspace_diagnostics_requested {
+                    let _ = self
+                        .service
+                        .as_ref()
+                        .is_some_and(LspService::workspace_diagnostics);
+                }
+                true
+            }
+            LspEvent::WorkspaceDiagnostics(event) => {
+                self.diagnostics_activity = true;
+                match event.state {
+                    WorkspaceDiagnosticState::Started => {
+                        self.workspace_diagnostics_loading.insert(event.server);
+                    }
+                    WorkspaceDiagnosticState::Finished => {
+                        self.workspace_diagnostics_loading.remove(&event.server);
+                    }
+                }
+                true
+            }
+            LspEvent::Diagnostics(diagnostics) => {
+                let active = self.path.as_deref() == Some(diagnostics.path.as_path());
+                let accepted = !active
+                    || self
+                        .diagnostics
+                        .apply(diagnostics.clone(), &diagnostics.path);
+                if accepted {
+                    self.diagnostic_updates
+                        .push(DiagnosticUpdate::Replace(diagnostics));
+                }
+                accepted
+            }
             LspEvent::Definition(location) => self
                 .navigation
                 .apply_location(&location, LocationKind::Definition),
@@ -435,6 +510,10 @@ impl LspUi {
         self.statuses.insert(server.clone(), status.state);
         if matches!(status.state, ServerState::Failed | ServerState::Stopped) {
             self.diagnostics.remove_server(&server);
+            self.diagnostic_modes.remove(&server);
+            self.workspace_diagnostics_loading.remove(&server);
+            self.diagnostic_updates
+                .push(DiagnosticUpdate::Clear(server.clone()));
         }
         match status.message {
             Some(message) => {
@@ -565,6 +644,67 @@ pub(super) fn one_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inactive_workspace_diagnostics_reach_the_problem_store() {
+        let mut ui = LspUi::default();
+        let path = PathBuf::from("/tmp/workspace-diagnostic.rs");
+        let event = DiagnosticsEvent {
+            server: "fake".to_string(),
+            path: path.clone(),
+            version: None,
+            diagnostics: vec![Diagnostic {
+                range: kawi_lsp::DiagnosticRange {
+                    start: kawi_lsp::DiagnosticPosition {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: kawi_lsp::DiagnosticPosition {
+                        line: 0,
+                        character: 1,
+                    },
+                },
+                severity: DiagnosticSeverity::Error,
+                message: "workspace".to_string(),
+                source: None,
+                code: None,
+                tags: Vec::new(),
+                related: Vec::new(),
+            }],
+        };
+        assert!(ui.apply_event(LspEvent::Diagnostics(event)));
+        let updates = ui.take_diagnostic_updates();
+        assert!(matches!(
+            updates.as_slice(),
+            [DiagnosticUpdate::Replace(event)] if event.path == path
+        ));
+    }
+
+    #[test]
+    fn workspace_loading_and_mode_are_visible_to_the_pane() {
+        let mut ui = LspUi::default();
+        ui.apply_event(LspEvent::DiagnosticMode(kawi_lsp::DiagnosticModeEvent {
+            server: "fake".to_string(),
+            mode: DiagnosticMode::Workspace,
+        }));
+        assert_eq!(ui.diagnostic_mode_label(), "workspace pull");
+        ui.apply_event(LspEvent::WorkspaceDiagnostics(
+            kawi_lsp::WorkspaceDiagnosticEvent {
+                server: "fake".to_string(),
+                state: kawi_lsp::WorkspaceDiagnosticState::Started,
+            },
+        ));
+        assert!(ui.diagnostics_loading());
+        assert!(ui.take_diagnostics_activity());
+        ui.apply_event(LspEvent::WorkspaceDiagnostics(
+            kawi_lsp::WorkspaceDiagnosticEvent {
+                server: "fake".to_string(),
+                state: kawi_lsp::WorkspaceDiagnosticState::Finished,
+            },
+        ));
+        assert!(!ui.diagnostics_loading());
+        assert!(ui.take_diagnostics_activity());
+    }
 
     #[test]
     fn rename_errors_are_reported_for_the_pending_request() {

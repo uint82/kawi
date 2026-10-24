@@ -168,9 +168,13 @@ impl Manager {
                 .result_ids
                 .get(&(key.clone(), path.to_path_buf()))
                 .cloned();
+            let identifier = self
+                .clients
+                .get(&key)
+                .and_then(|client| client.diagnostic_identifier.clone());
             let params = DocumentDiagnosticParams {
                 text_document: TextDocumentIdentifier { uri: uri.clone() },
-                identifier: None,
+                identifier,
                 previous_result_id: previous,
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),

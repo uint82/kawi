@@ -30,6 +30,7 @@ impl Manager {
             pending_text_requests: HashMap::new(),
             pending_commands: HashMap::new(),
             pull_diagnostics: pull_diagnostics::PullDiagnostics::default(),
+            workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics::default(),
             next_request: 0,
             initialize_timeout,
         }
@@ -162,6 +163,7 @@ impl Manager {
                 command,
                 arguments,
             } => self.execute_command(path, server, command, arguments),
+            Command::WorkspaceDiagnostics => self.request_workspace_diagnostics(),
             Command::Cancel { request } => self.cancel_request(request),
             Command::Shutdown => {}
         }
@@ -212,6 +214,7 @@ impl Manager {
         client.client.terminate();
         self.fail_requests_for_client(&key, &message);
         self.pull_diagnostics.fail_client(&key);
+        self.workspace_diagnostics.fail_client(&key);
         self.pending_commands.retain(|_, client| client != &key);
         for document in self.documents.values_mut() {
             document.clients.retain(|candidate| candidate != &key);

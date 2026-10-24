@@ -27,6 +27,19 @@ pub enum DiagnosticSeverity {
     Hint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticTag {
+    Unnecessary,
+    Deprecated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticRelatedInformation {
+    pub path: PathBuf,
+    pub line: u32,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     pub range: DiagnosticRange,
@@ -34,6 +47,8 @@ pub struct Diagnostic {
     pub message: String,
     pub source: Option<String>,
     pub code: Option<String>,
+    pub tags: Vec<DiagnosticTag>,
+    pub related: Vec<DiagnosticRelatedInformation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +144,40 @@ fn convert_diagnostic(
         message: diagnostic.message.clone(),
         source: diagnostic.source.clone(),
         code: diagnostic.code.as_ref().map(code_string),
+        tags: diagnostic
+            .tags
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|tag| {
+                if *tag == lsp_types::DiagnosticTag::UNNECESSARY {
+                    Some(DiagnosticTag::Unnecessary)
+                } else if *tag == lsp_types::DiagnosticTag::DEPRECATED {
+                    Some(DiagnosticTag::Deprecated)
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        related: diagnostic
+            .related_information
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(related_information)
+            .collect(),
     }
+}
+
+fn related_information(
+    information: &lsp_types::DiagnosticRelatedInformation,
+) -> Option<DiagnosticRelatedInformation> {
+    let path = path_from_uri(&information.location.uri)?;
+    Some(DiagnosticRelatedInformation {
+        path: workspace::absolute(&path),
+        line: information.location.range.start.line,
+        message: information.message.clone(),
+    })
 }
 
 fn severity(severity: Option<LspSeverity>) -> DiagnosticSeverity {
@@ -170,6 +218,27 @@ mod tests {
         assert!(!is_current_version(4, Some(3)));
         assert!(!is_current_version(4, Some(5)));
         assert!(is_current_version(4, None));
+    }
+
+    #[test]
+    fn converts_tags_and_related_information() {
+        let text = Rope::from_str("a\n");
+        let lines = LineIndex::new(&text);
+        let mut value = diagnostic(Range::new(Position::new(0, 0), Position::new(0, 1)));
+        value.tags = Some(vec![lsp_types::DiagnosticTag::UNNECESSARY]);
+        value.related_information = Some(vec![lsp_types::DiagnosticRelatedInformation {
+            location: lsp_types::Location {
+                uri: crate::workspace::file_uri(Path::new("/tmp/related.rs")).expect("uri"),
+                range: Range::new(Position::new(3, 2), Position::new(3, 4)),
+            },
+            message: "related".to_string(),
+        }]);
+        let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF16);
+        assert_eq!(converted.tags, vec![DiagnosticTag::Unnecessary]);
+        assert_eq!(converted.related.len(), 1);
+        assert_eq!(converted.related[0].path, PathBuf::from("/tmp/related.rs"));
+        assert_eq!(converted.related[0].line, 3);
+        assert_eq!(converted.related[0].message, "related");
     }
 
     #[test]

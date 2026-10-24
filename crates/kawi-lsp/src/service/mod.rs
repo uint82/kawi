@@ -28,10 +28,36 @@ mod pull_diagnostics;
 mod rename;
 mod request;
 mod text_requests;
+mod workspace_diagnostics;
 mod workspace_edit;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(12);
 pub const INITIAL_DOCUMENT_VERSION: i32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticMode {
+    Push,
+    Pull,
+    Workspace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticModeEvent {
+    pub server: String,
+    pub mode: DiagnosticMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceDiagnosticState {
+    Started,
+    Finished,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceDiagnosticEvent {
+    pub server: String,
+    pub state: WorkspaceDiagnosticState,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerState {
@@ -186,6 +212,8 @@ pub use kawi_buffer::TextEdit as TextChange;
 pub enum LspEvent {
     Status(StatusEvent),
     Progress(ProgressEvent),
+    DiagnosticMode(DiagnosticModeEvent),
+    WorkspaceDiagnostics(WorkspaceDiagnosticEvent),
     Diagnostics(DiagnosticsEvent),
     Definition(LocationEvent),
     References(LocationEvent),
@@ -211,7 +239,8 @@ pub enum LspEvent {
 }
 
 pub use diagnostics::{
-    Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity, DiagnosticsEvent,
+    Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation,
+    DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
 };
 
 pub struct LspService {
@@ -371,6 +400,10 @@ impl LspService {
         request
     }
 
+    pub fn workspace_diagnostics(&self) -> bool {
+        self.send(Command::WorkspaceDiagnostics)
+    }
+
     pub fn execute_command(&self, path: &Path, server: &str, command: &LspCommand) -> bool {
         self.send(Command::Execute {
             path: path.to_path_buf(),
@@ -476,6 +509,7 @@ pub(crate) enum Command {
         command: String,
         arguments: Option<Vec<Value>>,
     },
+    WorkspaceDiagnostics,
     Cancel {
         request: u64,
     },
@@ -501,6 +535,7 @@ struct Manager {
     pending_text_requests: HashMap<u64, text_requests::PendingTextRequest>,
     pending_commands: HashMap<RequestId, ClientKey>,
     pull_diagnostics: pull_diagnostics::PullDiagnostics,
+    workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics,
     next_request: i64,
     initialize_timeout: Duration,
 }
@@ -510,6 +545,7 @@ struct ClientState {
     status: ServerState,
     sync: SyncConfig,
     encoding: PositionEncodingKind,
+    diagnostic_identifier: Option<String>,
     initialization_options: Option<Value>,
     settings: Value,
     pending_initialize: Option<RequestId>,
@@ -530,6 +566,7 @@ struct RequestSupport {
     formatting: bool,
     range_formatting: bool,
     pull_diagnostics: bool,
+    workspace_diagnostics: bool,
 }
 
 struct Document {

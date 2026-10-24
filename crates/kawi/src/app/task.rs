@@ -228,7 +228,9 @@ impl App {
             return Ok(false);
         };
         let root = self.task_root();
-        self.quickfix.clear();
+        self.problems
+            .clear_source(&super::problems::task_source(name));
+        self.mark_problems_changed();
         self.task.begin(&spec);
         match TaskRunner::start(&spec, &root, self.events.wake()) {
             Ok(runner) => {
@@ -302,8 +304,12 @@ impl App {
                 true
             }
             TaskEvent::Finding(finding) => {
-                self.quickfix.push(finding.into());
+                let Some(name) = self.task.name().map(str::to_string) else {
+                    return false;
+                };
+                self.problems.push_task(&name, finding);
                 self.task.count_finding();
+                self.mark_problems_changed();
                 true
             }
             TaskEvent::Finished {
@@ -411,8 +417,8 @@ parser = "go"
         assert!(app.task.is_running());
         assert!(app.task_panel_rect().is_some());
         finish(&mut app);
-        assert_eq!(app.quickfix.len(), 1);
-        assert_eq!(app.quickfix.entries()[0].line, 2);
+        assert_eq!(app.problems.total(), 1);
+        assert_eq!(app.problems.visible(None)[0].line, 2);
         assert_eq!(app.task.findings(), 1);
         assert!(app.task.status().starts_with("exit 1"));
         let output = app.task_panel_lines(100);

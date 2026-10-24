@@ -35,6 +35,10 @@ impl Manager {
                 self.handle_pull_diagnostic_response(key, id, result);
                 return;
             }
+            if self.workspace_diagnostics.is_pending(&id) {
+                self.handle_workspace_diagnostic_response(key, id, result);
+                return;
+            }
             match self.pending_replies.get(&id).map(|reply| reply.purpose) {
                 Some(ReplyPurpose::Navigation) => {
                     self.handle_navigation_response(key, id, result);
@@ -76,13 +80,33 @@ impl Manager {
         };
         client.sync = sync;
         client.encoding = encoding;
+        client.diagnostic_identifier =
+            diagnostic_identifier(result.capabilities.diagnostic_provider.as_ref());
         client.support = support;
         client.status = ServerState::Ready;
         let initialized = Message::notification("initialized", Some(serde_json::json!({})));
         client.client.send(initialized);
         self.emit_status(&key.server, ServerState::Ready, None);
+        self.emit_diagnostic_mode(&key);
         self.open_documents_for(&key);
         self.schedule_all_diagnostics();
+    }
+
+    fn emit_diagnostic_mode(&self, key: &ClientKey) {
+        let Some(client) = self.clients.get(key) else {
+            return;
+        };
+        let mode = if client.support.workspace_diagnostics {
+            DiagnosticMode::Workspace
+        } else if client.support.pull_diagnostics {
+            DiagnosticMode::Pull
+        } else {
+            DiagnosticMode::Push
+        };
+        self.emit(LspEvent::DiagnosticMode(DiagnosticModeEvent {
+            server: key.server.clone(),
+            mode,
+        }));
     }
 
     fn open_documents_for(&mut self, key: &ClientKey) {
@@ -123,6 +147,7 @@ impl Manager {
                 status: ServerState::Initializing,
                 sync: SyncConfig::default(),
                 encoding: PositionEncodingKind::UTF16,
+                diagnostic_identifier: None,
                 initialization_options,
                 settings,
                 pending_initialize: None,
@@ -196,6 +221,33 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
             capabilities.document_range_formatting_provider.as_ref(),
         ),
         pull_diagnostics: capabilities.diagnostic_provider.is_some(),
+        workspace_diagnostics: workspace_diagnostics(capabilities.diagnostic_provider.as_ref()),
+    }
+}
+
+fn diagnostic_identifier(
+    provider: Option<&lsp_types::DiagnosticServerCapabilities>,
+) -> Option<String> {
+    match provider {
+        Some(lsp_types::DiagnosticServerCapabilities::Options(options)) => {
+            options.identifier.clone()
+        }
+        Some(lsp_types::DiagnosticServerCapabilities::RegistrationOptions(options)) => {
+            options.diagnostic_options.identifier.clone()
+        }
+        None => None,
+    }
+}
+
+fn workspace_diagnostics(provider: Option<&lsp_types::DiagnosticServerCapabilities>) -> bool {
+    match provider {
+        Some(lsp_types::DiagnosticServerCapabilities::Options(options)) => {
+            options.workspace_diagnostics
+        }
+        Some(lsp_types::DiagnosticServerCapabilities::RegistrationOptions(options)) => {
+            options.diagnostic_options.workspace_diagnostics
+        }
+        None => false,
     }
 }
 

@@ -118,6 +118,29 @@ impl Picker {
         self.status.as_deref()
     }
 
+    pub fn set_locations(&mut self, rows: Vec<PickerRow>) {
+        let selected_index = self.selected;
+        let selected = self
+            .selected
+            .and_then(|index| self.rows.get(index))
+            .map(location_key);
+        self.locations = rows;
+        self.rows = self.location_rows();
+        self.selected = selected
+            .and_then(|selected| {
+                self.rows
+                    .iter()
+                    .position(|row| location_key(row) == selected)
+            })
+            .or_else(|| selected_index.and_then(|index| selection_at(index, self.rows.len())))
+            .or_else(|| (!self.rows.is_empty()).then_some(0));
+    }
+
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.status = status;
+        self.loading = false;
+    }
+
     pub fn set_files(&mut self, files: Vec<String>) {
         self.files = files;
         self.loading = false;
@@ -287,15 +310,18 @@ impl Picker {
     }
 
     fn refresh_locations(&mut self) {
+        self.rows = self.location_rows();
+    }
+
+    fn location_rows(&self) -> Vec<PickerRow> {
         if self.query().is_empty() {
-            self.rows = self.locations.iter().take(MAX_ROWS).cloned().collect();
-            return;
+            return self.locations.iter().take(MAX_ROWS).cloned().collect();
         }
         let candidates = self
             .locations
             .iter()
             .map(|row| (row.display.clone(), row.clone()));
-        self.rows = self.rank_fuzzy(candidates);
+        self.rank_fuzzy(candidates)
     }
 
     fn refresh_buffers(&mut self) {
@@ -330,6 +356,10 @@ impl Picker {
             .map(|(_, row)| row)
             .collect()
     }
+}
+
+fn location_key(row: &PickerRow) -> (String, Option<usize>, Option<usize>, Option<usize>) {
+    (row.path.clone(), row.line, row.column, row.buffer)
 }
 
 #[cfg(test)]
@@ -389,6 +419,40 @@ mod tests {
         assert_eq!(picker.rows().len(), 1);
         let outcome = picker.handle_key(key(KeyCode::Enter));
         assert!(matches!(outcome, PickerOutcome::Open(row) if row.path == "src/lib.rs"));
+    }
+
+    #[test]
+    fn replacing_locations_preserves_the_selected_row() {
+        let rows = vec![
+            PickerRow {
+                display: "a.rs:1:1 first".to_string(),
+                path: "a.rs".to_string(),
+                line: Some(1),
+                column: Some(1),
+                buffer: None,
+            },
+            PickerRow {
+                display: "b.rs:2:1 second".to_string(),
+                path: "b.rs".to_string(),
+                line: Some(2),
+                column: Some(1),
+                buffer: None,
+            },
+        ];
+        let mut picker = Picker::locations("Problems", rows.clone());
+        picker.handle_key(key(KeyCode::Down));
+        let mut updated = vec![PickerRow {
+            display: "a.rs:3:1 new".to_string(),
+            path: "a.rs".to_string(),
+            line: Some(3),
+            column: Some(1),
+            buffer: None,
+        }];
+        updated.extend(rows);
+        updated[2].display = "b.rs:2:1 updated message".to_string();
+        picker.set_locations(updated);
+        assert_eq!(picker.selected(), Some(2));
+        assert_eq!(picker.rows()[2].display, "b.rs:2:1 updated message");
     }
 
     #[test]
