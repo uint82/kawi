@@ -26,6 +26,7 @@ mod macro_codec;
 mod macro_ops;
 mod options;
 mod picker;
+mod problems;
 mod quickfix;
 mod recovery;
 mod rename;
@@ -99,7 +100,7 @@ use kawi_task::Tasks;
 use kawi_tui::{frame::SearchSpan, terminal, theme::Theme};
 use lsp::LspUi;
 use picker::PickerSession;
-use quickfix::Quickfix;
+use problems::Problems;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
 use task::TaskSession;
 use window::Windows;
@@ -140,7 +141,9 @@ pub struct App {
     format_on_save: bool,
     quit_pending: bool,
     autosave: autosave::Autosave,
-    quickfix: Quickfix,
+    problems: Problems,
+    problem_pane_dirty: bool,
+    problem_pane_deadline: Option<std::time::Instant>,
     windows: Windows,
     screen_width: usize,
     screen_height: usize,
@@ -192,7 +195,9 @@ impl App {
             format_on_save: false,
             quit_pending: false,
             autosave: autosave::Autosave::default(),
-            quickfix: Quickfix::default(),
+            problems: Problems::default(),
+            problem_pane_dirty: false,
+            problem_pane_deadline: None,
             windows,
             screen_width: FALLBACK_WIDTH,
             screen_height: FALLBACK_HEIGHT.saturating_add(2),
@@ -300,6 +305,7 @@ impl App {
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
             }
+            self.problem_pane_tick();
             self.refresh_picker();
             self.refresh_replace();
             self.draw_frame(&mut out)?;
@@ -329,6 +335,7 @@ impl App {
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             redraw |= self.sync_task();
+            redraw |= self.problem_pane_tick();
             redraw |= self.save_tick();
             redraw |= self.autosave_tick();
             if self.quit_pending {
@@ -348,7 +355,10 @@ impl App {
             }
             let timeout = shortest_timeout(
                 shortest_timeout(self.recovery_wait_timeout(), self.save_wait_timeout()),
-                self.autosave_wait_timeout(),
+                shortest_timeout(
+                    self.autosave_wait_timeout(),
+                    self.problem_pane_wait_timeout(),
+                ),
             );
             match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,
@@ -530,7 +540,14 @@ impl App {
     }
 
     fn sync_lsp(&mut self) {
+        let path = self.problem_path();
+        self.problems.observe_editor(
+            path.as_deref(),
+            self.editor.buffer_revision(),
+            self.editor.document_snapshot(),
+        );
         self.lsp.refresh(&self.editor);
+        self.apply_diagnostic_updates();
         self.update_signcolumn_width();
         if let Some(message) = self.lsp.take_message() {
             self.show_message(message);
@@ -775,6 +792,10 @@ impl App {
         let Some(mut session) = self.picker.take() else {
             return Ok(false);
         };
+        if self.handle_quickfix_filter_key(&mut session, key) {
+            self.picker = Some(session);
+            return Ok(false);
+        }
         if is_replace_key(key) && session.picker().kind() == PickerKind::Grep {
             let query = session.picker().query().to_string();
             if query.is_empty() {

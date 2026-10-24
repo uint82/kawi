@@ -11,6 +11,7 @@ pub struct PickerSession {
     service: Option<ProjectService>,
     root: PathBuf,
     latest: u64,
+    quickfix: bool,
 }
 
 impl PickerSession {
@@ -24,6 +25,7 @@ impl PickerSession {
             service: Some(service),
             root,
             latest,
+            quickfix: false,
         }
     }
 
@@ -34,6 +36,7 @@ impl PickerSession {
             service: Some(ProjectService::with_wake(wake)),
             root,
             latest: 0,
+            quickfix: false,
         };
         if let Some(query) = query {
             session.set_query(query);
@@ -47,6 +50,7 @@ impl PickerSession {
             service: None,
             root,
             latest: 0,
+            quickfix: false,
         }
     }
 
@@ -60,7 +64,30 @@ impl PickerSession {
             service: None,
             root,
             latest: 0,
+            quickfix: false,
         }
+    }
+
+    pub fn quickfix(root: PathBuf, rows: Vec<kawi_picker::PickerRow>) -> Self {
+        Self {
+            picker: Picker::locations("Problems", rows),
+            service: None,
+            root,
+            latest: 0,
+            quickfix: true,
+        }
+    }
+
+    pub fn is_quickfix(&self) -> bool {
+        self.quickfix
+    }
+
+    pub fn set_locations(&mut self, rows: Vec<kawi_picker::PickerRow>) {
+        self.picker.set_locations(rows);
+    }
+
+    pub fn set_status(&mut self, status: Option<String>) {
+        self.picker.set_status(status);
     }
 
     pub fn picker(&self) -> &Picker {
