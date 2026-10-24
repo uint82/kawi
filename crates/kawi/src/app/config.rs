@@ -49,7 +49,7 @@ impl App {
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
-        self.picker_root().join(super::task::PROJECT_TASKS)
+        self.task_root().join(super::task::PROJECT_TASKS)
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {

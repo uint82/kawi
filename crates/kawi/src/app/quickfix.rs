@@ -98,7 +98,7 @@ impl super::App {
             self.show_message("Quickfix list is empty".to_string());
             return Ok(false);
         }
-        let root = self.picker_root();
+        let root = self.task_root();
         let rows = self.quickfix_rows(&root);
         self.pager = None;
         self.picker = Some(super::picker::PickerSession::locations(
