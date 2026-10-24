@@ -208,10 +208,10 @@ fn merge_languages(
 ) -> Vec<LanguageConfig> {
     let mut languages = defaults::languages();
     for language in overrides {
-        let (merged, language_warnings) = match languages
+        let index = languages
             .iter()
-            .position(|candidate| candidate.name == language.name)
-        {
+            .position(|candidate| candidate.name == language.name);
+        let (merged, language_warnings) = match index {
             Some(index) => {
                 let base = languages.remove(index);
                 language.overlay(base)
@@ -219,13 +219,10 @@ fn merge_languages(
             None => language.into_config(),
         };
         warnings.extend(language_warnings);
-        match languages
-            .iter()
-            .position(|candidate| candidate.name == merged.name)
-        {
+        match index {
             Some(index) => languages.insert(index, merged),
             None => languages.push(merged),
-        }
+        };
     }
     languages
 }
