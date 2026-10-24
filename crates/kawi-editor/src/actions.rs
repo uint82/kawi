@@ -232,6 +232,9 @@ pub enum Action {
     CommentAt {
         motion: ShiftMotion,
     },
+    SurroundSelection {
+        open: char,
+    },
     Lowercase,
     Uppercase,
     ReselectVisual,
@@ -427,6 +430,7 @@ impl Action {
                 | Self::QuickfixOpen
                 | Self::CommentLines
                 | Self::CommentAt { .. }
+                | Self::SurroundSelection { .. }
                 | Self::Noop
         )
     }

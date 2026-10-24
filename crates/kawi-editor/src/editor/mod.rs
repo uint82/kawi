@@ -13,6 +13,7 @@ use crate::selection::{SavedVisual, Selection};
 use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 
 mod addsub;
+mod auto_pairs;
 mod autoindent;
 mod buffers;
 mod case_ops;
@@ -343,6 +344,7 @@ impl Editor {
             Action::ToggleCase => self.toggle_case(),
             Action::CommentLines => self.comment_lines(),
             Action::CommentAt { motion } => self.comment_at(motion),
+            Action::SurroundSelection { open } => self.surround_selection(open),
             Action::Lowercase => self.lowercase(),
             Action::Uppercase => self.uppercase(),
             Action::ToggleCaseAt { motion } => self.toggle_case_at(motion),

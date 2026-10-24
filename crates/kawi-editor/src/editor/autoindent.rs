@@ -94,7 +94,7 @@ impl Editor {
         true
     }
 
-    fn indent_text(&self, width: usize) -> String {
+    pub(super) fn indent_text(&self, width: usize) -> String {
         let indent = self.effective_indent();
         if indent.expandtab {
             return " ".repeat(width);
