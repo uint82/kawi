@@ -10,6 +10,7 @@ impl App {
         let Some(paths) = StatePaths::resolve() else {
             return;
         };
+        self.theme_dir = Some(paths.themes.clone());
         let loaded = crate::config::load(&paths.config);
         let _ =
             crate::config::write_warning_log(&paths.config_log, &paths.config, &loaded.warnings);
@@ -142,6 +143,26 @@ limit = 25
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn config_applies_custom_themes() {
+        let dir = temp_dir("custom_theme");
+        let themes = dir.join("themes");
+        fs::create_dir_all(&themes).unwrap();
+        fs::write(
+            themes.join("personal.toml"),
+            crate::test_support::custom_theme(),
+        )
+        .unwrap();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\ntheme = \"personal\"\n").unwrap();
+        let loaded = config::load(&path);
+        let mut app = app();
+        app.theme_dir = Some(themes);
+        app.apply_config(&loaded.config);
+        assert_eq!(app.theme_name(), "personal");
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -1,53 +1,12 @@
 use crossterm::style::Color;
-use kawi_syntax::SyntaxGroup;
 
-pub struct BaseColors {
-    pub foreground: Color,
-    pub background: Color,
-}
+use super::{BaseColors, MatchColors, SyntaxColors, Theme};
 
-pub struct MatchColors {
-    pub foreground: Color,
-    pub background: Color,
-}
-
-pub struct SyntaxColors {
-    comment: Color,
-    keyword: Color,
-    string: Color,
-    number: Color,
-    constant: Color,
-    function: Color,
-    type_name: Color,
-    variable: Color,
-    property: Color,
-    operator: Color,
-    punctuation: Color,
-    attribute: Color,
-    tag: Color,
-    invalid: Color,
+fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color::Rgb { r, g, b }
 }
 
 impl SyntaxColors {
-    pub fn color(&self, group: SyntaxGroup) -> Color {
-        match group {
-            SyntaxGroup::Comment => self.comment,
-            SyntaxGroup::Keyword => self.keyword,
-            SyntaxGroup::String => self.string,
-            SyntaxGroup::Number => self.number,
-            SyntaxGroup::Constant => self.constant,
-            SyntaxGroup::Function => self.function,
-            SyntaxGroup::Type => self.type_name,
-            SyntaxGroup::Variable => self.variable,
-            SyntaxGroup::Property => self.property,
-            SyntaxGroup::Operator => self.operator,
-            SyntaxGroup::Punctuation => self.punctuation,
-            SyntaxGroup::Attribute => self.attribute,
-            SyntaxGroup::Tag => self.tag,
-            SyntaxGroup::Invalid => self.invalid,
-        }
-    }
-
     fn default_palette() -> Self {
         Self {
             comment: rgb(92, 99, 112),
@@ -106,33 +65,6 @@ impl SyntaxColors {
     }
 }
 
-fn rgb(r: u8, g: u8, b: u8) -> Color {
-    Color::Rgb { r, g, b }
-}
-
-pub struct Theme {
-    pub name: &'static str,
-    pub base: BaseColors,
-    pub search_match: MatchColors,
-    pub search_current: MatchColors,
-    pub substitute: MatchColors,
-    pub selection: MatchColors,
-    pub status: MatchColors,
-    pub line_number: Color,
-    pub non_text: Color,
-    pub git_add: Color,
-    pub git_change: Color,
-    pub git_delete: Color,
-    pub git_staged_add: Color,
-    pub git_staged_change: Color,
-    pub git_staged_delete: Color,
-    pub diagnostic_error: Color,
-    pub diagnostic_warning: Color,
-    pub diagnostic_information: Color,
-    pub diagnostic_hint: Color,
-    pub syntax: SyntaxColors,
-}
-
 impl Theme {
     pub fn named(name: &str) -> Option<Self> {
         match name {
@@ -149,7 +81,7 @@ impl Theme {
 
     pub fn default_theme() -> Self {
         Self {
-            name: "default",
+            name: "default".to_string(),
             base: BaseColors {
                 foreground: Color::Rgb {
                     r: 224,
@@ -276,7 +208,7 @@ impl Theme {
 
     pub fn gruvbox_dark() -> Self {
         Self {
-            name: "gruvbox-dark",
+            name: "gruvbox-dark".to_string(),
             base: BaseColors {
                 foreground: Color::Rgb {
                     r: 235,
@@ -415,7 +347,7 @@ impl Theme {
 
     pub fn gruvbox_light() -> Self {
         Self {
-            name: "gruvbox-light",
+            name: "gruvbox-light".to_string(),
             base: BaseColors {
                 foreground: Color::Rgb {
                     r: 60,
@@ -545,45 +477,6 @@ impl Theme {
     }
 }
 
-impl Theme {
-    pub fn sign_color(&self, sign: crate::frame::Sign) -> Color {
-        match sign {
-            crate::frame::Sign::Git(sign) => self.git_sign_color(sign),
-            crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(severity),
-        }
-    }
-
-    pub fn diagnostic_color(&self, severity: crate::frame::DiagnosticSeverity) -> Color {
-        match severity {
-            crate::frame::DiagnosticSeverity::Error => self.diagnostic_error,
-            crate::frame::DiagnosticSeverity::Warning => self.diagnostic_warning,
-            crate::frame::DiagnosticSeverity::Information => self.diagnostic_information,
-            crate::frame::DiagnosticSeverity::Hint => self.diagnostic_hint,
-        }
-    }
-
-    fn git_sign_color(&self, sign: crate::frame::GitSign) -> Color {
-        match sign {
-            crate::frame::GitSign::Add | crate::frame::GitSign::Untracked => self.git_add,
-            crate::frame::GitSign::Change | crate::frame::GitSign::ChangeDelete => self.git_change,
-            crate::frame::GitSign::Delete | crate::frame::GitSign::TopDelete => self.git_delete,
-            crate::frame::GitSign::StagedAdd => self.git_staged_add,
-            crate::frame::GitSign::StagedChange | crate::frame::GitSign::StagedChangeDelete => {
-                self.git_staged_change
-            }
-            crate::frame::GitSign::StagedDelete | crate::frame::GitSign::StagedTopDelete => {
-                self.git_staged_delete
-            }
-        }
-    }
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self::default_theme()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,7 +484,10 @@ mod tests {
     #[test]
     fn registry_resolves_all_names() {
         for name in Theme::names() {
-            assert_eq!(Theme::named(name).map(|theme| theme.name), Some(name));
+            assert_eq!(
+                Theme::named(name).map(|theme| theme.name),
+                Some(name.to_string())
+            );
         }
         assert!(Theme::named("nope").is_none());
     }
@@ -771,6 +667,7 @@ mod tests {
 #[cfg(test)]
 mod syntax_tests {
     use super::*;
+    use kawi_syntax::SyntaxGroup;
 
     #[test]
     fn every_theme_colors_every_group() {

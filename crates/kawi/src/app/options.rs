@@ -56,7 +56,18 @@ impl App {
         spec: &'static OptionSpec,
         input: OptionInput<'_>,
     ) -> Result<()> {
-        match options::validate_spec(spec, input) {
+        if spec.name == "theme" {
+            if let OptionInput::Text(value) = input {
+                return self.apply_option(spec, OptionValue::Text(value.to_string()));
+            }
+        }
+        let validated = {
+            let context = options::OptionContext {
+                theme_dir: self.theme_dir.as_deref(),
+            };
+            options::validate_spec(spec, input, &context)
+        };
+        match validated {
             Ok(value) => self.apply_option(spec, value),
             Err(error) => {
                 self.show_message(option_error_message(spec, &error));
@@ -119,13 +130,27 @@ impl App {
 
     fn apply_theme_value(&mut self, value: &OptionValue) -> Result<()> {
         let name = value.as_text().unwrap_or_default();
-        match Theme::named(name) {
-            Some(theme) => {
+        let loaded = match self.theme_dir.as_deref() {
+            Some(theme_dir) => Theme::load(name, theme_dir),
+            None => match Theme::named(name) {
+                Some(theme) => Ok(theme),
+                None => {
+                    self.show_message(format!("Unknown theme: {name}"));
+                    return Ok(());
+                }
+            },
+        };
+        match loaded {
+            Ok(theme) => {
                 self.theme = theme;
                 Ok(())
             }
-            None => {
+            Err(error) if error.is_not_found() => {
                 self.show_message(format!("Unknown theme: {name}"));
+                Ok(())
+            }
+            Err(error) => {
+                self.show_message(format!("Invalid theme {name}: {error}"));
                 Ok(())
             }
         }
@@ -216,6 +241,7 @@ mod tests {
     use super::*;
     use crate::keymap::Flavor;
     use kawi_buffer::Buffer;
+    use std::fs;
 
     fn app() -> App {
         App::new(Buffer::from_string("alpha\nbeta\n"), Flavor::Vim)
@@ -297,6 +323,48 @@ mod tests {
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(!app.editor.expandtab());
         assert!(!app.editor.autoindent());
+    }
+
+    #[test]
+    fn set_loads_custom_theme_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "kawi_custom_theme_set_{}_{}",
+            std::process::id(),
+            "valid"
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("personal.toml"),
+            crate::test_support::custom_theme(),
+        )
+        .unwrap();
+        let mut app = app();
+        app.theme_dir = Some(dir.clone());
+        execute(&mut app, "set theme personal");
+        assert_eq!(app.theme_name(), "personal");
+        assert_eq!(app.last_message(), None);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn set_reports_invalid_custom_theme_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "kawi_custom_theme_set_{}_{}",
+            std::process::id(),
+            "invalid"
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("personal.toml"), "[base]\n").unwrap();
+        let mut app = app();
+        app.theme_dir = Some(dir.clone());
+        execute(&mut app, "set theme personal");
+        assert_eq!(app.theme_name(), "default");
+        assert!(app
+            .last_message()
+            .is_some_and(|message| message.starts_with("Invalid theme personal:")));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

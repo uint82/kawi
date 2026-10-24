@@ -9,6 +9,8 @@ mod persist;
 mod recovery;
 mod session;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod text;
 mod vim;
 mod workspace;
@@ -163,6 +165,7 @@ mod tests {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
             languages: dir.join("languages.toml"),
+            themes: dir.join("themes"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
             recovery: dir.join("recovery"),

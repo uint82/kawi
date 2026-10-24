@@ -99,6 +99,7 @@ pub struct App {
     keymap: ActiveKeymap,
     flavor: Flavor,
     theme: Theme,
+    theme_dir: Option<PathBuf>,
     message: Option<String>,
     pager: Option<Vec<String>>,
     macros: macro_ops::MacroEngine,
@@ -140,6 +141,7 @@ impl App {
             keymap: ActiveKeymap::for_flavor(flavor),
             flavor,
             theme: Theme::default(),
+            theme_dir: None,
             message: None,
             pager: None,
             macros: macro_ops::MacroEngine::new(),
@@ -246,7 +248,7 @@ impl App {
 
     #[cfg(test)]
     pub fn theme_name(&self) -> &str {
-        self.theme.name
+        &self.theme.name
     }
 
     fn run_loop(&mut self) -> Result<()> {

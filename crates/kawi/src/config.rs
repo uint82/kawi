@@ -86,7 +86,10 @@ pub(crate) fn load(path: &Path) -> ConfigLoad {
         }
     };
     match Document::parse(text.as_str()) {
-        Ok(document) => load_document(&text, &document),
+        Ok(document) => {
+            let themes_dir = path.parent().map(|parent| parent.join("themes"));
+            load_document(&text, &document, themes_dir.as_deref())
+        }
         Err(error) => ConfigLoad {
             config: Config::default(),
             warnings: vec![ConfigWarning::new(
@@ -123,9 +126,10 @@ fn remove_stale_log(path: &Path) -> Result<()> {
     }
 }
 
-fn load_document(text: &str, document: &Document<&str>) -> ConfigLoad {
+fn load_document(text: &str, document: &Document<&str>, theme_dir: Option<&Path>) -> ConfigLoad {
     let mut loader = Loader {
         text,
+        theme_dir,
         config: Config::default(),
         warnings: Vec::new(),
     };
@@ -140,6 +144,7 @@ fn load_document(text: &str, document: &Document<&str>) -> ConfigLoad {
 
 struct Loader<'a> {
     text: &'a str,
+    theme_dir: Option<&'a Path>,
     config: Config,
     warnings: Vec<ConfigWarning>,
 }
@@ -192,8 +197,11 @@ impl Loader<'_> {
 
     fn load_option(&mut self, spec: &'static OptionSpec, key: &str, item: &Item) {
         let fallback = spec.default_value().display();
+        let context = options::OptionContext {
+            theme_dir: self.theme_dir,
+        };
         match option_input(item) {
-            Some(input) => match options::validate_spec(spec, input) {
+            Some(input) => match options::validate_spec(spec, input, &context) {
                 Ok(value) => {
                     self.config.values.insert(spec.name, value);
                 }
@@ -484,6 +492,71 @@ x = 1
             Some(&OptionValue::Int(DEFAULT_HISTORY_LIMIT))
         );
         assert_eq!(loaded.warnings.len(), 1);
+    }
+
+    #[test]
+    fn custom_theme_files_are_valid_config_values() {
+        let dir = temp_dir("custom_theme");
+        let themes = dir.join("themes");
+        fs::create_dir_all(&themes).unwrap();
+        fs::write(
+            themes.join("personal.toml"),
+            crate::test_support::custom_theme(),
+        )
+        .unwrap();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\ntheme = \"personal\"\n").unwrap();
+        let loaded = load(&path);
+        assert!(loaded.warnings.is_empty());
+        assert_eq!(
+            loaded.config.get("theme"),
+            Some(&OptionValue::Text("personal".to_string()))
+        );
+        assert_eq!(
+            kawi_tui::theme::Theme::load("personal", &themes)
+                .unwrap()
+                .name,
+            "personal"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn invalid_custom_themes_fall_back_with_a_warning() {
+        let dir = temp_dir("invalid_theme");
+        let themes = dir.join("themes");
+        fs::create_dir_all(&themes).unwrap();
+        fs::write(
+            themes.join("personal.toml"),
+            "[base]\nforeground = \"#zzzzzz\"\n",
+        )
+        .unwrap();
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\ntheme = \"personal\"\n").unwrap();
+        let loaded = load(&path);
+        assert_eq!(
+            loaded.config.get("theme"),
+            Some(&OptionValue::Text("default".to_string()))
+        );
+        assert_eq!(loaded.warnings.len(), 1);
+        assert!(loaded.warnings[0]
+            .format(&path)
+            .contains("ui.theme: rejected \"personal\": using default"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_custom_themes_fall_back_with_a_warning() {
+        let dir = temp_dir("missing_theme");
+        let path = dir.join("config.toml");
+        fs::write(&path, "[ui]\ntheme = \"personal\"\n").unwrap();
+        let loaded = load(&path);
+        assert_eq!(
+            loaded.config.get("theme"),
+            Some(&OptionValue::Text("default".to_string()))
+        );
+        assert_eq!(loaded.warnings.len(), 1);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
