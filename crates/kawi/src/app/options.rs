@@ -3,7 +3,7 @@ use kawi_editor::{SetValue, WindowOptions};
 
 use super::App;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor};
-use crate::options::{self, OptionError, OptionInput, OptionSpec, OptionValue};
+use crate::options::{self, AutosaveMode, OptionError, OptionInput, OptionSpec, OptionValue};
 use kawi_tui::theme::Theme;
 
 impl App {
@@ -109,6 +109,16 @@ impl App {
             "autoindent" => self
                 .editor
                 .set_autoindent(value.as_bool().unwrap_or_default()),
+            "format_on_save" => self.format_on_save = value.as_bool().unwrap_or_default(),
+            "autosave" => self.autosave.set_mode(
+                value
+                    .as_text()
+                    .and_then(AutosaveMode::parse)
+                    .unwrap_or_default(),
+            ),
+            "autosave_delay" => self
+                .autosave
+                .set_delay_millis(value.as_int().unwrap_or_default()),
             _ => {}
         }
         if spec.scope == options::OptionScope::Window {
@@ -196,6 +206,11 @@ impl App {
             "ignorecase" => OptionValue::Bool(self.editor.ignorecase()),
             "smartcase" => OptionValue::Bool(self.editor.smartcase()),
             "autoindent" => OptionValue::Bool(self.editor.autoindent()),
+            "format_on_save" => OptionValue::Bool(self.format_on_save),
+            "autosave" => OptionValue::Text(self.autosave.mode().name().to_string()),
+            "autosave_delay" => OptionValue::Int(
+                usize::try_from(self.autosave.delay_millis()).unwrap_or(usize::MAX),
+            ),
             _ => spec.default_value(),
         }
     }

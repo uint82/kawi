@@ -172,6 +172,9 @@ expandtab = true
 autoindent = false
 number = false
 ignorecase = true
+format_on_save = true
+autosave = "idle"
+autosave_delay = 250
 
 [history]
 limit = 25
@@ -188,6 +191,9 @@ limit = 25
         assert!(!app.editor.autoindent());
         assert!(!app.editor.number());
         assert!(app.editor.ignorecase());
+        assert!(app.format_on_save);
+        assert_eq!(app.autosave.mode(), crate::options::AutosaveMode::Idle);
+        assert_eq!(app.autosave.delay_millis(), 250);
         assert_eq!(app.editor.history_limit(), 25);
         app.editor.open_empty_buffer();
         assert_eq!(app.editor.shiftwidth(), 2);

@@ -81,6 +81,10 @@ impl LspText {
         true
     }
 
+    pub(super) fn formatting_pending(&self, request: u64) -> bool {
+        self.formatting_request == Some(request)
+    }
+
     pub(super) fn apply_formatting(&mut self, event: FormattingEvent) -> bool {
         if self.formatting_request != Some(event.request) {
             return false;
@@ -130,6 +134,18 @@ impl LspText {
             service.cancel(request);
         }
         self.code_actions = None;
+        true
+    }
+
+    pub(super) fn cancel_formatting(&mut self, service: Option<&LspService>) -> bool {
+        let Some(request) = self.formatting_request.take() else {
+            self.formatting = None;
+            return false;
+        };
+        if let Some(service) = service {
+            service.cancel(request);
+        }
+        self.formatting = None;
         true
     }
 

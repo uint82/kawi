@@ -7,6 +7,44 @@ use crate::keymap::flavor_from_name;
 
 const MAX_NUMBERWIDTH: usize = 20;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum AutosaveMode {
+    #[default]
+    Off,
+    Idle,
+    Focus,
+    All,
+}
+
+impl AutosaveMode {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "off" => Some(Self::Off),
+            "idle" => Some(Self::Idle),
+            "focus" => Some(Self::Focus),
+            "all" => Some(Self::All),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Idle => "idle",
+            Self::Focus => "focus",
+            Self::All => "all",
+        }
+    }
+
+    pub(crate) fn idle(self) -> bool {
+        matches!(self, Self::Idle | Self::All)
+    }
+
+    pub(crate) fn focus(self) -> bool {
+        matches!(self, Self::Focus | Self::All)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OptionScope {
     Global,
@@ -129,7 +167,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 11] = [
+pub(crate) const OPTIONS: [OptionSpec; 14] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -225,6 +263,36 @@ pub(crate) const OPTIONS: [OptionSpec; 11] = [
         section: ConfigSection::Editor,
         config_key: "autoindent",
         default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "format_on_save",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "format_on_save",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "autosave",
+        aliases: &[],
+        kind: OptionKind::Enum(valid_autosave),
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "autosave",
+        default: OptionDefault::Text("off"),
+    },
+    OptionSpec {
+        name: "autosave_delay",
+        aliases: &[],
+        kind: OptionKind::Int {
+            min: 100,
+            max: 60_000,
+        },
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "autosave_delay",
+        default: OptionDefault::Int(1000),
     },
     OptionSpec {
         name: "history",
@@ -326,6 +394,10 @@ fn parse_enum(
             value: value.to_string(),
         }),
     }
+}
+
+fn valid_autosave(name: &str, _context: &OptionContext<'_>) -> bool {
+    AutosaveMode::parse(name).is_some()
 }
 
 fn valid_keymap(name: &str, _context: &OptionContext<'_>) -> bool {

@@ -31,7 +31,18 @@ impl App {
 
     pub(super) fn handle_formatting_result(&mut self) {
         if let Some(event) = self.lsp.take_formatting() {
-            self.handle_formatting_event(event);
+            if self
+                .pending_save
+                .as_ref()
+                .is_some_and(|pending| pending.matches(event.request))
+            {
+                self.finish_formatted_save(event);
+            } else {
+                self.handle_formatting_event(event);
+            }
+        }
+        if let Some((request, message)) = self.lsp.take_formatting_failure() {
+            self.finish_formatting_failure(request, message);
         }
     }
 }

@@ -322,7 +322,10 @@ impl App {
     }
 
     pub(super) fn record_saved_buffer(&mut self) {
-        let number = self.editor.buffer_number();
+        self.record_saved_buffer_number(self.editor.buffer_number());
+    }
+
+    pub(super) fn record_saved_buffer_number(&mut self, number: usize) {
         let Some(path) = self.editor.buffer_path(number).map(PathBuf::from) else {
             return;
         };
@@ -355,6 +358,10 @@ impl App {
 
     pub(super) fn disk_conflict(&self, number: usize) -> bool {
         self.disk.conflict(number)
+    }
+
+    pub(super) fn disk_deleted(&self, number: usize) -> bool {
+        self.disk.status(number) == Some(STATUS_DELETED)
     }
 
     pub(super) fn has_disk_conflicts(&self) -> bool {

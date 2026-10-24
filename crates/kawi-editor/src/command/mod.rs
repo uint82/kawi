@@ -161,7 +161,10 @@ pub const COMMAND_NAMES: &[&str] = &[
 
 pub const SET_OPTION_NAMES: &[&str] = &[
     "autoindent",
+    "autosave",
+    "autosave_delay",
     "expandtab",
+    "format_on_save",
     "history",
     "ignorecase",
     "keymap",
