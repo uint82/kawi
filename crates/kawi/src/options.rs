@@ -1,10 +1,10 @@
 use kawi_editor::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
+use kawi_lsp::MAX_SHIFTWIDTH;
 use kawi_tui::theme::Theme;
 use std::path::Path;
 
 use crate::keymap::flavor_from_name;
 
-const MAX_SHIFTWIDTH: usize = 1000;
 const MAX_NUMBERWIDTH: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

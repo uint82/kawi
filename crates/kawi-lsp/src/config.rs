@@ -1,7 +1,9 @@
-use crate::{binary, defaults, file};
+use crate::{binary, defaults, file, LanguageWarning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml::Value;
+
+pub const MAX_SHIFTWIDTH: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerConfig {
@@ -49,6 +51,8 @@ pub struct LanguageConfig {
     pub filenames: Vec<String>,
     pub root_markers: Vec<String>,
     pub servers: Vec<String>,
+    pub shiftwidth: Option<usize>,
+    pub expandtab: Option<bool>,
     pub enabled: bool,
 }
 
@@ -62,6 +66,8 @@ impl LanguageConfig {
             filenames: Vec::new(),
             root_markers: Vec::new(),
             servers: Vec::new(),
+            shiftwidth: None,
+            expandtab: None,
             enabled: true,
         }
     }
@@ -110,14 +116,14 @@ pub struct Languages {
     servers: BTreeMap<String, ServerConfig>,
     languages: Vec<LanguageConfig>,
     available: BTreeMap<String, PathBuf>,
-    warning: Option<String>,
+    warnings: Vec<LanguageWarning>,
 }
 
 impl Languages {
     pub fn load(path: &Path) -> Self {
         let (user, mut warnings) = file::load(path);
         let servers = merge_servers(user.server);
-        let mut languages = merge_languages(user.language);
+        let mut languages = merge_languages(user.language, &mut warnings);
         normalize_languages(&mut languages);
         warnings.extend(validate(&servers, &languages));
         let available = available_servers(&servers);
@@ -125,12 +131,12 @@ impl Languages {
             servers,
             languages,
             available,
-            warning: (!warnings.is_empty()).then(|| warnings.join("; ")),
+            warnings,
         }
     }
 
-    pub fn warning(&self) -> Option<&str> {
-        self.warning.as_deref()
+    pub fn warnings(&self) -> &[LanguageWarning] {
+        &self.warnings
     }
 
     pub fn server_available(&self, name: &str) -> bool {
@@ -175,7 +181,7 @@ impl Languages {
             servers,
             languages,
             available,
-            warning: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -196,19 +202,27 @@ fn merge_servers(
     servers
 }
 
-fn merge_languages(overrides: Vec<file::LanguageOverride>) -> Vec<LanguageConfig> {
+fn merge_languages(
+    overrides: Vec<file::LanguageOverride>,
+    warnings: &mut Vec<LanguageWarning>,
+) -> Vec<LanguageConfig> {
     let mut languages = defaults::languages();
     for language in overrides {
-        match languages
+        let index = languages
             .iter()
-            .position(|candidate| candidate.name == language.name)
-        {
+            .position(|candidate| candidate.name == language.name);
+        let (merged, language_warnings) = match index {
             Some(index) => {
                 let base = languages.remove(index);
-                languages.insert(index, language.overlay(base));
+                language.overlay(base)
             }
-            None => languages.push(language.into_config()),
-        }
+            None => language.into_config(),
+        };
+        warnings.extend(language_warnings);
+        match index {
+            Some(index) => languages.insert(index, merged),
+            None => languages.push(merged),
+        };
     }
     languages
 }
@@ -236,22 +250,27 @@ fn available_servers(servers: &BTreeMap<String, ServerConfig>) -> BTreeMap<Strin
         .collect()
 }
 
-fn validate(servers: &BTreeMap<String, ServerConfig>, languages: &[LanguageConfig]) -> Vec<String> {
+fn validate(
+    servers: &BTreeMap<String, ServerConfig>,
+    languages: &[LanguageConfig],
+) -> Vec<LanguageWarning> {
     let mut warnings = Vec::new();
     for language in languages.iter().filter(|language| language.enabled) {
         if language.name.is_empty() {
-            warnings.push("languages.toml: language name is empty".to_string());
+            warnings.push(LanguageWarning::new("language name is empty"));
         }
         for server in &language.servers {
             match servers.get(server) {
-                Some(config) if config.command.trim().is_empty() => warnings.push(format!(
-                    "languages.toml: server {server} for {} has an empty command",
+                Some(config) if config.command.trim().is_empty() => {
+                    warnings.push(LanguageWarning::new(format!(
+                        "server {server} for {} has an empty command",
+                        language.name
+                    )))
+                }
+                None => warnings.push(LanguageWarning::new(format!(
+                    "server {server} for {} is not configured",
                     language.name
-                )),
-                None => warnings.push(format!(
-                    "languages.toml: server {server} for {} is not configured",
-                    language.name
-                )),
+                ))),
                 _ => {}
             }
         }
@@ -339,6 +358,50 @@ mod tests {
     }
 
     #[test]
+    fn user_languages_set_editor_overrides() {
+        let path = temp_file(
+            "editor_overrides",
+            "[[language]]\nname = \"rust\"\nshiftwidth = 2\nexpandtab = true\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.shiftwidth, Some(2));
+        assert_eq!(rust.expandtab, Some(true));
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn new_languages_set_editor_overrides() {
+        let path = temp_file(
+            "new_editor_overrides",
+            "[[language]]\nname = \"lua\"\nextensions = [\"lua\"]\nshiftwidth = 3\nexpandtab = false\n",
+        );
+        let languages = Languages::load(&path);
+        let lua = languages.language("lua").expect("lua");
+        assert_eq!(lua.shiftwidth, Some(3));
+        assert_eq!(lua.expandtab, Some(false));
+    }
+
+    #[test]
+    fn invalid_editor_overrides_warn_and_are_ignored() {
+        let path = temp_file(
+            "invalid_editor_overrides",
+            "[[language]]\nname = \"rust\"\nshiftwidth = -1\nexpandtab = \"yes\"\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(rust.shiftwidth, None);
+        assert_eq!(rust.expandtab, None);
+        assert_eq!(languages.warnings().len(), 2);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("shiftwidth must be an integer"));
+        assert!(languages.warnings()[1]
+            .message()
+            .contains("expandtab must be a boolean"));
+    }
+
+    #[test]
     fn user_servers_preserve_unspecified_defaults() {
         let path = temp_file(
             "server_override",
@@ -363,16 +426,17 @@ mod tests {
         );
         let languages = Languages::load(&path);
         assert!(languages
-            .warning()
-            .expect("warning")
-            .contains("server missing"));
+            .warnings()
+            .iter()
+            .any(|warning| warning.message().contains("server missing")));
     }
 
     #[test]
     fn invalid_file_falls_back_to_defaults() {
         let path = temp_file("invalid", "history = \n");
         let languages = Languages::load(&path);
-        assert!(languages.warning().is_some());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0].line().is_some());
         assert!(languages.language("rust").is_some());
     }
 

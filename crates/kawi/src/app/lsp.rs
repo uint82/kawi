@@ -3,11 +3,11 @@ use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
 use super::lsp_text::LspText;
-use kawi_editor::Editor;
+use kawi_editor::{Editor, LanguageIndent};
 use kawi_lsp::{
     CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, DiagnosticSeverity,
-    FormattingEvent, FormattingSettings, Languages, LspCommand, LspEvent, LspService, MessageLevel,
-    ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
+    FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand, LspEvent,
+    LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState, StatusEvent,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -42,9 +42,9 @@ struct ProgressSnapshot {
 }
 
 impl LspUi {
-    pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Option<String> {
+    pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
         let languages = Languages::load(path);
-        let warning = languages.warning().map(str::to_string);
+        let warnings = languages.warnings().to_vec();
         match LspService::new(languages.clone(), wake) {
             Ok(service) => {
                 self.languages = Some(languages);
@@ -57,7 +57,7 @@ impl LspUi {
             }
         }
         self.update_display();
-        warning
+        warnings
     }
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {
@@ -224,6 +224,19 @@ impl LspUi {
 
     pub fn take_rename_edit(&mut self) -> Option<RenameEvent> {
         self.rename_edit.take()
+    }
+
+    pub fn language_indent(&self, path: Option<&Path>) -> LanguageIndent {
+        let Some(languages) = self.languages.as_ref() else {
+            return LanguageIndent::default();
+        };
+        let Some(language) = path.and_then(|path| languages.language_for_path(path)) else {
+            return LanguageIndent::default();
+        };
+        LanguageIndent {
+            shiftwidth: language.shiftwidth,
+            expandtab: language.expandtab,
+        }
     }
 
     pub fn take_rename_error(&mut self) -> Option<u64> {

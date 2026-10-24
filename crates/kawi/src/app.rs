@@ -13,6 +13,7 @@ mod config;
 mod formatting;
 mod frame;
 mod git;
+mod language;
 mod lsp;
 mod lsp_diagnostics;
 mod lsp_menu;
@@ -512,6 +513,7 @@ impl App {
             _ => Ok(false),
         };
         self.sync_active_window();
+        self.sync_language_indent();
         result
     }
 

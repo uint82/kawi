@@ -1,4 +1,5 @@
 use kawi_editor::{BufferOptionDefaults, WindowOptions};
+use kawi_lsp::LanguageWarning;
 
 use super::App;
 use crate::keymap::Flavor;
@@ -12,26 +13,30 @@ impl App {
         };
         self.theme_dir = Some(paths.themes.clone());
         let loaded = crate::config::load(&paths.config);
-        let _ =
-            crate::config::write_warning_log(&paths.config_log, &paths.config, &loaded.warnings);
-        if !loaded.warnings.is_empty() {
-            self.show_startup_warning(config_warning_message(
-                loaded.warnings.len(),
-                &paths.config_log,
-            ));
+        let language_warnings = self.lsp.load(&paths.languages, self.events.wake());
+        let warnings = startup_warning_lines(
+            &loaded.warnings,
+            &paths.config,
+            &language_warnings,
+            &paths.languages,
+        );
+        let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
+        if !warnings.is_empty() {
+            self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));
         }
         self.apply_config(&loaded.config);
         if let Some(flavor) = cli_flavor {
             let _ = self.apply_cli_flavor(flavor);
         }
         state::load(&mut self.editor, &paths);
-        if let Some(warning) = self.lsp.load(&paths.languages, self.events.wake()) {
-            self.show_startup_warning(warning);
-        }
+        self.sync_language_indent();
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {
         for (name, value) in config.values() {
+            if matches!(*name, "shiftwidth" | "expandtab") {
+                continue;
+            }
             let Some(spec) = crate::options::lookup(name) else {
                 continue;
             };
@@ -74,6 +79,24 @@ fn default_int(name: &str) -> usize {
     crate::options::lookup(name)
         .and_then(|spec| spec.default_value().as_int())
         .unwrap_or_default()
+}
+
+fn startup_warning_lines(
+    config_warnings: &[crate::config::ConfigWarning],
+    config_path: &std::path::Path,
+    language_warnings: &[LanguageWarning],
+    language_path: &std::path::Path,
+) -> Vec<String> {
+    let mut lines = config_warnings
+        .iter()
+        .map(|warning| warning.format(config_path))
+        .collect::<Vec<_>>();
+    lines.extend(
+        language_warnings
+            .iter()
+            .map(|warning| warning.format(language_path)),
+    );
+    lines
 }
 
 fn config_warning_message(count: usize, path: &std::path::Path) -> String {
@@ -176,6 +199,29 @@ limit = 25
         app.apply_config(&loaded.config);
         app.apply_cli_flavor(Flavor::Vim).unwrap();
         assert_eq!(app.flavor, Flavor::Vim);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn startup_warnings_include_config_and_language_details() {
+        let dir = temp_dir("warning_lines");
+        let config_path = dir.join("config.toml");
+        let languages_path = dir.join("languages.toml");
+        fs::write(&config_path, "[editor]\nshiftwidth = \"wide\"\n").unwrap();
+        let loaded = config::load(&config_path);
+        let language_warnings =
+            vec![
+                LanguageWarning::new("language rust: expandtab must be a boolean").at_line(Some(3)),
+            ];
+        let lines = startup_warning_lines(
+            &loaded.warnings,
+            &config_path,
+            &language_warnings,
+            &languages_path,
+        );
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with(&config_path.display().to_string()));
+        assert!(lines[1].starts_with(&format!("{}:3:", languages_path.display())));
         let _ = fs::remove_dir_all(dir);
     }
 
