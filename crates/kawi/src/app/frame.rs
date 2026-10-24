@@ -21,7 +21,10 @@ fn cursor_style_for(mode: Mode) -> CursorStyle {
 }
 
 impl App {
-    pub(crate) fn draw_frame(&self, out: &mut Stdout) -> Result<()> {
+    pub(crate) fn draw_frame(&mut self, out: &mut Stdout) -> Result<()> {
+        self.prepare_completion_overlay();
+        let overlay_data = self.overlay_data();
+        let overlay = overlay_data.as_ref().map(|data| data.view());
         let layout = self.window_layout();
         let data = self.frame_panes(&layout);
         let statuses: Vec<StatusInfo> = data
@@ -122,6 +125,7 @@ impl App {
             separators: &layout.separators,
             pager: self.pager.as_deref(),
             completion: self.completion_menu(),
+            overlay,
             picker,
             replace,
             task,
@@ -148,12 +152,6 @@ impl App {
             })
             .or_else(|| {
                 self.code_actions.as_ref().map(|session| CompletionMenu {
-                    items: session.items(),
-                    selected: session.selected(),
-                })
-            })
-            .or_else(|| {
-                self.completion.as_ref().map(|session| CompletionMenu {
                     items: session.items(),
                     selected: session.selected(),
                 })

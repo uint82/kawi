@@ -64,6 +64,7 @@ pub(crate) enum OptionKind {
     Bool,
     Int { min: usize, max: usize },
     Enum(fn(&str, &OptionContext<'_>) -> bool),
+    Text,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -167,7 +168,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 15] = [
+pub(crate) const OPTIONS: [OptionSpec; 19] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -315,6 +316,42 @@ pub(crate) const OPTIONS: [OptionSpec; 15] = [
         config_key: "limit",
         default: OptionDefault::Int(DEFAULT_HISTORY_LIMIT),
     },
+    OptionSpec {
+        name: "auto_completion",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "auto_completion",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "signature_help",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "signature_help",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "completion_docs_up",
+        aliases: &[],
+        kind: OptionKind::Text,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "completion_docs_up",
+        default: OptionDefault::Text("ctrl-b"),
+    },
+    OptionSpec {
+        name: "completion_docs_down",
+        aliases: &[],
+        kind: OptionKind::Text,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "completion_docs_down",
+        default: OptionDefault::Text("ctrl-f"),
+    },
 ];
 
 pub(crate) fn lookup(name: &str) -> Option<&'static OptionSpec> {
@@ -336,6 +373,26 @@ pub(crate) fn validate_spec(
         OptionKind::Bool => parse_bool(input),
         OptionKind::Int { min, max } => parse_int(input, min, max),
         OptionKind::Enum(valid) => parse_enum(input, valid, context),
+        OptionKind::Text => parse_text(input),
+    }
+}
+
+fn parse_text(input: OptionInput<'_>) -> Result<OptionValue, OptionError> {
+    match input {
+        OptionInput::Text(value) if !value.trim().is_empty() => {
+            Ok(OptionValue::Text(value.to_string()))
+        }
+        OptionInput::Text(value) => Err(OptionError::InvalidValue {
+            value: value.to_string(),
+        }),
+        OptionInput::Bool(value) => Err(OptionError::InvalidType {
+            expected: "text",
+            value: value.to_string(),
+        }),
+        OptionInput::Integer(value) => Err(OptionError::InvalidType {
+            expected: "text",
+            value: value.to_string(),
+        }),
     }
 }
 
@@ -538,6 +595,22 @@ mod tests {
         assert_eq!(
             lookup("keymap").unwrap().default_value(),
             OptionValue::Text("vim".to_string())
+        );
+        assert_eq!(
+            lookup("auto_completion").unwrap().default_value(),
+            OptionValue::Bool(false)
+        );
+        assert_eq!(
+            lookup("signature_help").unwrap().default_value(),
+            OptionValue::Bool(true)
+        );
+        assert_eq!(
+            lookup("completion_docs_up").unwrap().default_value(),
+            OptionValue::Text("ctrl-b".to_string())
+        );
+        assert_eq!(
+            lookup("completion_docs_down").unwrap().default_value(),
+            OptionValue::Text("ctrl-f".to_string())
         );
     }
 

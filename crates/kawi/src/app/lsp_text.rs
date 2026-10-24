@@ -1,14 +1,31 @@
 use std::path::Path;
 
+mod cancel;
+
+#[cfg(test)]
+mod tests;
+
 use kawi_lsp::{
-    CodeActionEvent, CompletionEvent, CursorPosition, Diagnostic, FormattingEvent,
-    FormattingSettings, LspService,
+    CodeActionEvent, CompletionEvent, CompletionResolveEvent, CompletionTrigger, CursorPosition,
+    Diagnostic, FormattingEvent, FormattingSettings, LspService, SignatureHelpEvent,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TextFailure {
+    Report,
+    Silent,
+}
 
 #[derive(Default)]
 pub(super) struct LspText {
     completion_request: Option<u64>,
+    completion_report_errors: bool,
     completion: Option<CompletionEvent>,
+    completion_resolve_request: Option<u64>,
+    completion_resolved: Option<CompletionResolveEvent>,
+    completion_resolve_failed: Option<u64>,
+    signature_request: Option<u64>,
+    signature: Option<SignatureHelpEvent>,
     code_action_request: Option<u64>,
     code_actions: Option<CodeActionEvent>,
     formatting_request: Option<u64>,
@@ -21,13 +38,53 @@ impl LspText {
         service: Option<&LspService>,
         path: &Path,
         position: CursorPosition,
+        trigger: CompletionTrigger,
     ) -> Result<u64, String> {
         let Some(service) = service else {
             return Err("lsp unavailable".to_string());
         };
-        self.cancel_all(Some(service));
-        let request = service.completion(path, position);
+        self.cancel_completion(Some(service));
+        self.cancel_completion_resolve(Some(service));
+        let request = service.completion(path, position, trigger);
         self.completion_request = Some(request);
+        self.completion_report_errors = true;
+        Ok(request)
+    }
+
+    pub(super) fn resolve_completion(
+        &mut self,
+        service: Option<&LspService>,
+        item_id: u64,
+    ) -> Result<u64, String> {
+        let Some(service) = service else {
+            return Err("lsp unavailable".to_string());
+        };
+        if let Some(request) = self.completion_resolve_request.take() {
+            service.cancel(request);
+        }
+        let request = service.resolve_completion(item_id);
+        self.completion_resolve_request = Some(request);
+        self.completion_resolved = None;
+        self.completion_resolve_failed = None;
+        Ok(request)
+    }
+
+    pub(super) fn signature_help(
+        &mut self,
+        service: Option<&LspService>,
+        path: &Path,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
+    ) -> Result<u64, String> {
+        let Some(service) = service else {
+            return Err("lsp unavailable".to_string());
+        };
+        if let Some(request) = self.signature_request.take() {
+            service.cancel(request);
+        }
+        let request = service.signature_help(path, position, trigger);
+        self.signature_request = Some(request);
+        self.signature = None;
         Ok(request)
     }
 
@@ -72,6 +129,24 @@ impl LspText {
         true
     }
 
+    pub(super) fn apply_completion_resolved(&mut self, event: CompletionResolveEvent) -> bool {
+        if self.completion_resolve_request != Some(event.request) {
+            return false;
+        }
+        self.completion_resolve_request = None;
+        self.completion_resolved = Some(event);
+        true
+    }
+
+    pub(super) fn apply_signature(&mut self, event: SignatureHelpEvent) -> bool {
+        if self.signature_request != Some(event.request) {
+            return false;
+        }
+        self.signature_request = None;
+        self.signature = Some(event);
+        true
+    }
+
     pub(super) fn apply_code_actions(&mut self, event: CodeActionEvent) -> bool {
         if self.code_action_request != Some(event.request) {
             return false;
@@ -94,82 +169,60 @@ impl LspText {
         true
     }
 
-    pub(super) fn fail(&mut self, request: u64) -> bool {
+    pub(super) fn fail(&mut self, request: u64) -> Option<TextFailure> {
         if self.completion_request == Some(request) {
             self.completion_request = None;
             self.completion = None;
-            return true;
+            return Some(if self.completion_report_errors {
+                TextFailure::Report
+            } else {
+                TextFailure::Silent
+            });
+        }
+        if self.completion_resolve_request == Some(request) {
+            self.completion_resolve_request = None;
+            self.completion_resolved = None;
+            self.completion_resolve_failed = Some(request);
+            return Some(TextFailure::Silent);
+        }
+        if self.signature_request == Some(request) {
+            self.signature_request = None;
+            self.signature = None;
+            return Some(TextFailure::Silent);
         }
         if self.code_action_request == Some(request) {
             self.code_action_request = None;
             self.code_actions = None;
-            return true;
+            return Some(TextFailure::Report);
         }
         if self.formatting_request == Some(request) {
             self.formatting_request = None;
             self.formatting = None;
-            return true;
+            return Some(TextFailure::Report);
         }
-        false
+        None
     }
 
-    pub(super) fn cancel_completion(&mut self, service: Option<&LspService>) -> bool {
-        let Some(request) = self.completion_request.take() else {
-            self.completion = None;
-            return false;
-        };
-        if let Some(service) = service {
-            service.cancel(request);
+    pub(super) fn set_completion_report_errors(&mut self, request: u64, report: bool) {
+        if self.completion_request == Some(request) {
+            self.completion_report_errors = report;
         }
-        self.completion = None;
-        true
-    }
-
-    pub(super) fn cancel_code_actions(&mut self, service: Option<&LspService>) -> bool {
-        let Some(request) = self.code_action_request.take() else {
-            self.code_actions = None;
-            return false;
-        };
-        if let Some(service) = service {
-            service.cancel(request);
-        }
-        self.code_actions = None;
-        true
-    }
-
-    pub(super) fn cancel_formatting(&mut self, service: Option<&LspService>) -> bool {
-        let Some(request) = self.formatting_request.take() else {
-            self.formatting = None;
-            return false;
-        };
-        if let Some(service) = service {
-            service.cancel(request);
-        }
-        self.formatting = None;
-        true
-    }
-
-    pub(super) fn cancel_all(&mut self, service: Option<&LspService>) -> bool {
-        let requests = [
-            self.completion_request.take(),
-            self.code_action_request.take(),
-            self.formatting_request.take(),
-        ];
-        let mut cancelled = false;
-        for request in requests.into_iter().flatten() {
-            if let Some(service) = service {
-                service.cancel(request);
-            }
-            cancelled = true;
-        }
-        self.completion = None;
-        self.code_actions = None;
-        self.formatting = None;
-        cancelled
     }
 
     pub(super) fn take_completion(&mut self) -> Option<CompletionEvent> {
         self.completion.take()
+    }
+
+    pub(super) fn take_completion_resolved(&mut self) -> Option<CompletionResolveEvent> {
+        self.completion_resolved.take()
+    }
+
+    pub(super) fn take_completion_resolve_failed(&mut self) -> Option<u64> {
+        self.completion_resolve_failed.take()
+    }
+
+    pub(super) fn take_signature(&mut self) -> Option<SignatureHelpEvent> {
+        self.signature.take()
     }
 
     pub(super) fn take_code_actions(&mut self) -> Option<CodeActionEvent> {
@@ -178,71 +231,5 @@ impl LspText {
 
     pub(super) fn take_formatting(&mut self) -> Option<FormattingEvent> {
         self.formatting.take()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use kawi_lsp::{CompletionEntry, TextChange};
-    use std::path::PathBuf;
-
-    fn completion(request: u64) -> CompletionEvent {
-        CompletionEvent {
-            request,
-            server: "fake".to_string(),
-            path: PathBuf::from("/tmp/lsp_text.rs"),
-            version: 1,
-            original_hash: 0,
-            items: vec![CompletionEntry {
-                server: "fake".to_string(),
-                label: "value".to_string(),
-                detail: None,
-                documentation: None,
-                primary: TextChange {
-                    start: 0,
-                    end: 0,
-                    text: "value".to_string(),
-                },
-                additional: Vec::new(),
-                deprecated: false,
-                preselect: false,
-                command: None,
-            }],
-        }
-    }
-
-    #[test]
-    fn stale_completion_events_are_ignored() {
-        let mut text = LspText {
-            completion_request: Some(2),
-            ..LspText::default()
-        };
-        assert!(!text.apply_completion(completion(1)));
-        assert!(text.take_completion().is_none());
-        assert!(text.apply_completion(completion(2)));
-        assert!(text.take_completion().is_some());
-    }
-
-    #[test]
-    fn failures_clear_the_matching_request() {
-        let mut text = LspText {
-            code_action_request: Some(3),
-            ..LspText::default()
-        };
-        assert!(text.fail(3));
-        assert!(!text.fail(3));
-        assert!(text.take_code_actions().is_none());
-    }
-
-    #[test]
-    fn requests_without_a_service_report_unavailable() {
-        let mut text = LspText::default();
-        let result = text.completion(
-            None,
-            Path::new("/tmp/lsp_text.rs"),
-            CursorPosition { line: 0, column: 0 },
-        );
-        assert_eq!(result, Err("lsp unavailable".to_string()));
     }
 }

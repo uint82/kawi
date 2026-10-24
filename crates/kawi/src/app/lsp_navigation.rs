@@ -26,7 +26,7 @@ pub(super) struct LocationResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct HoverResult {
-    pub(super) lines: Vec<String>,
+    pub(super) documents: Vec<kawi_lsp::MarkupDocument>,
 }
 
 #[derive(Default)]
@@ -120,7 +120,7 @@ impl LspNavigation {
         }
         self.pending = None;
         self.hover = Some(HoverResult {
-            lines: event.contents.clone(),
+            documents: event.contents.clone(),
         });
         true
     }
@@ -209,19 +209,6 @@ impl super::App {
             return;
         }
         self.open_location_picker(result);
-    }
-
-    pub(super) fn handle_hover_result(&mut self, result: HoverResult) {
-        if self.picker.is_some() || self.replace.is_some() {
-            return;
-        }
-        let text = result.lines.join("\n");
-        let lines = super::pager_lines(&text, self.editor.viewport().width());
-        if lines.is_empty() {
-            self.show_message("No hover information".to_string());
-        } else {
-            self.show_pager(lines);
-        }
     }
 
     fn open_location_picker(&mut self, result: LocationResult) {
@@ -322,13 +309,19 @@ mod tests {
             request: 4,
             path: PathBuf::from("/tmp/file.rs"),
             position: CursorPosition { line: 0, column: 0 },
-            contents: vec!["hover".to_string()],
+            contents: vec![kawi_lsp::MarkupDocument {
+                text: "hover".to_string(),
+                markdown: false,
+            }],
         };
         assert!(navigation.apply_hover(&event));
         assert_eq!(
             navigation.take_hover(),
             Some(HoverResult {
-                lines: vec!["hover".to_string()],
+                documents: vec![kawi_lsp::MarkupDocument {
+                    text: "hover".to_string(),
+                    markdown: false,
+                }],
             })
         );
     }
@@ -401,12 +394,16 @@ mod tests {
     }
 
     #[test]
-    fn hover_opens_the_pager() {
+    fn hover_opens_the_overlay() {
         let mut app = super::super::App::new(Buffer::from_string("one"), Flavor::Vim);
         app.handle_hover_result(HoverResult {
-            lines: vec!["fn fake()".to_string(), "Fake hover".to_string()],
+            documents: vec![kawi_lsp::MarkupDocument {
+                text: "fn fake()\nFake hover".to_string(),
+                markdown: false,
+            }],
         });
-        assert!(app.pager.is_some());
+        assert!(app.hover.is_some());
+        assert!(app.pager.is_none());
     }
 
     #[test]
