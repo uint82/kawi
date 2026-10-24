@@ -284,6 +284,13 @@ fn read_parser(
     if let Some(pattern) = table.get("pattern") {
         return custom_parser(pattern, text, name, table, warnings);
     }
+    if let Some(item) = table.get("severity") {
+        warnings.push(warning(
+            item,
+            text,
+            format!("task {name}: severity ignored without pattern"),
+        ));
+    }
     let Some(item) = table.get("parser") else {
         return infer_parser(command);
     };
@@ -506,6 +513,10 @@ parser = "gcc"
 pattern = "("
 severity = "loud"
 unknown = true
+
+[task.severity]
+command = "true"
+severity = "warning"
 "#,
         );
         let messages = loaded
@@ -531,6 +542,9 @@ unknown = true
         assert!(messages
             .iter()
             .any(|message| message.contains("task odd.unknown: ignored")));
+        assert!(messages
+            .iter()
+            .any(|message| message.contains("severity ignored without pattern")));
         assert!(matches!(
             loaded.tasks.get("odd").unwrap().parser,
             ParserSpec::None

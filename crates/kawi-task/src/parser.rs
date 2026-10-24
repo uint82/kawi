@@ -234,7 +234,10 @@ fn finding_with_message(
     fallback: Severity,
     message: String,
 ) -> Option<Finding> {
-    let path = captures.name("file")?.as_str();
+    let path = captures.name("file")?.as_str().trim();
+    if path.is_empty() {
+        return None;
+    }
     let line = captures.name("line")?.as_str().parse::<usize>().ok()?;
     let column = captures
         .name("col")
@@ -433,6 +436,13 @@ mod tests {
             .unwrap();
         assert_eq!(finding.column, 1);
         assert_eq!(finding.severity, Severity::Hint);
+    }
+
+    #[test]
+    fn custom_regex_ignores_empty_paths() {
+        let parser =
+            RegexParser::new(r"^(?P<file>.*):(?P<line>\d+): (?P<message>.+)$", "error").unwrap();
+        assert!(parse(ParserSpec::Regex(parser), ":2: missing file").is_empty());
     }
 
     #[test]

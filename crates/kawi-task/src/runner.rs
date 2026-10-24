@@ -5,7 +5,7 @@ use kawi_process::{signal_group, ProcessSignal};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -40,7 +40,7 @@ pub enum TaskEvent {
 pub struct TaskRunner {
     events: Receiver<TaskEvent>,
     cancel: Arc<AtomicBool>,
-    pid: Arc<AtomicI32>,
+    force_kill: Arc<AtomicBool>,
     monitor: Option<JoinHandle<()>>,
 }
 
@@ -77,11 +77,11 @@ impl TaskRunner {
         }
         let (sender, events) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
-        let shared_pid = Arc::new(AtomicI32::new(i32::try_from(pid).unwrap_or(0)));
+        let force_kill = Arc::new(AtomicBool::new(false));
         let parser = Parser::new(spec.parser.clone());
         let finding_root = cwd;
         let monitor_cancel = Arc::clone(&cancel);
-        let monitor_pid = Arc::clone(&shared_pid);
+        let monitor_kill = Arc::clone(&force_kill);
         let start = Instant::now();
         let monitor = match thread::Builder::new()
             .name("kawi-task-monitor".to_string())
@@ -93,7 +93,7 @@ impl TaskRunner {
                     sender,
                     wake,
                     monitor_cancel,
-                    monitor_pid,
+                    monitor_kill,
                     finding_root,
                     start,
                 );
@@ -107,7 +107,7 @@ impl TaskRunner {
         Ok(Self {
             events,
             cancel,
-            pid: shared_pid,
+            force_kill,
             monitor: Some(monitor),
         })
     }
@@ -118,20 +118,12 @@ impl TaskRunner {
 
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::SeqCst);
-        let pid = self.pid.load(Ordering::SeqCst);
-        if pid > 0 {
-            signal_group(pid as u32, ProcessSignal::Terminate);
-        }
     }
 }
 
 impl Drop for TaskRunner {
     fn drop(&mut self) {
-        self.cancel.store(true, Ordering::SeqCst);
-        let pid = self.pid.load(Ordering::SeqCst);
-        if pid > 0 {
-            signal_group(pid as u32, ProcessSignal::Kill);
-        }
+        self.force_kill.store(true, Ordering::SeqCst);
         if let Some(monitor) = self.monitor.take() {
             let _ = monitor.join();
         }
@@ -241,7 +233,7 @@ fn monitor(
     events: Sender<TaskEvent>,
     wake: Sender<()>,
     cancel: Arc<AtomicBool>,
-    pid: Arc<AtomicI32>,
+    force_kill: Arc<AtomicBool>,
     root: PathBuf,
     start: Instant,
 ) {
@@ -250,16 +242,18 @@ fn monitor(
     let mut exit_at = None;
     let mut closed = false;
     loop {
-        if cancel.load(Ordering::SeqCst) && deadline.is_none() {
+        if exited.is_none() && cancel.load(Ordering::SeqCst) && deadline.is_none() {
+            signal_group(child.id(), ProcessSignal::Terminate);
             deadline = Some(Instant::now() + CANCEL_GRACE);
         }
-        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-            let pid = pid.load(Ordering::SeqCst);
-            if pid > 0 {
-                signal_group(pid as u32, ProcessSignal::Kill);
-            }
+        if exited.is_none()
+            && (force_kill.load(Ordering::SeqCst)
+                || deadline.is_some_and(|deadline| Instant::now() >= deadline))
+        {
+            signal_group(child.id(), ProcessSignal::Kill);
             let _ = child.kill();
             deadline = None;
+            force_kill.store(false, Ordering::SeqCst);
         }
         match raw.recv_timeout(POLL_INTERVAL) {
             Ok(raw) => {
