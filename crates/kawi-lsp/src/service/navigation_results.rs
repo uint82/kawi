@@ -1,9 +1,10 @@
+use super::markup::{markup_document, plain_document};
 use super::*;
 use crate::text;
 use crate::workspace::{self, path_from_uri};
 use lsp_types::{
-    GotoDefinitionResponse, Hover, HoverContents, Location, LocationLink, MarkedString,
-    MarkupContent, Position, PositionEncodingKind,
+    GotoDefinitionResponse, Hover, HoverContents, Location, LocationLink, MarkedString, Position,
+    PositionEncodingKind,
 };
 use ropey::Rope;
 use serde_json::Value;
@@ -120,101 +121,32 @@ pub(super) fn sort_locations(locations: &mut Vec<TextLocation>) {
     locations.dedup();
 }
 
-pub(super) fn hover_lines(value: Value) -> Option<Vec<String>> {
+pub(super) fn hover_documents(value: Value) -> Option<Vec<MarkupDocument>> {
     let hover = serde_json::from_value::<Hover>(value).ok()?;
-    let mut lines = match hover.contents {
-        HoverContents::Scalar(marked) => marked_lines(&marked),
-        HoverContents::Array(items) => items.iter().flat_map(marked_lines).collect(),
-        HoverContents::Markup(markup) => markup_lines(&markup),
+    let mut documents = match hover.contents {
+        HoverContents::Scalar(marked) => vec![marked_document(&marked)],
+        HoverContents::Array(items) => items.iter().map(marked_document).collect(),
+        HoverContents::Markup(markup) => vec![markup_document(
+            lsp_types::Documentation::MarkupContent(markup),
+        )],
     };
-    trim_empty_lines(&mut lines);
-    Some(lines)
+    documents.retain(|document| !document.text.trim().is_empty());
+    (!documents.is_empty()).then_some(documents)
 }
 
-fn marked_lines(marked: &MarkedString) -> Vec<String> {
+fn marked_document(marked: &MarkedString) -> MarkupDocument {
     match marked {
-        MarkedString::String(text) => plain_lines(text),
-        MarkedString::LanguageString(value) => plain_lines(&value.value),
+        MarkedString::String(text) => plain_document(text),
+        MarkedString::LanguageString(value) => plain_document(&value.value),
     }
 }
 
-fn markup_lines(markup: &MarkupContent) -> Vec<String> {
-    if markup.kind == lsp_types::MarkupKind::Markdown {
-        markdown_lines(&markup.value)
-    } else {
-        plain_lines(&markup.value)
+pub(super) fn join_hover_documents(hovers: Vec<Vec<MarkupDocument>>) -> Vec<MarkupDocument> {
+    let mut documents = Vec::new();
+    for mut group in hovers {
+        documents.append(&mut group);
     }
-}
-
-fn plain_lines(text: &str) -> Vec<String> {
-    text.lines().map(sanitize_line).collect()
-}
-
-fn sanitize_line(line: &str) -> String {
-    line.chars()
-        .map(|character| {
-            if character == '\t' || character.is_control() {
-                ' '
-            } else {
-                character
-            }
-        })
-        .collect()
-}
-
-fn markdown_lines(text: &str) -> Vec<String> {
-    let mut in_fence = false;
-    let mut lines = Vec::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("```") {
-            in_fence = !in_fence;
-            continue;
-        }
-        if in_fence {
-            lines.push(sanitize_line(line));
-        } else if trimmed != "---" {
-            lines.push(strip_markdown(line));
-        }
-    }
-    lines
-}
-
-fn strip_markdown(line: &str) -> String {
-    let mut text = line.to_string();
-    for marker in ["**", "__", "`", "~~"] {
-        text = text.replace(marker, "");
-    }
-    let trimmed = text.trim_start();
-    if let Some(rest) = trimmed.strip_prefix('#') {
-        text = rest.trim_start().to_string();
-    } else if let Some(rest) = trimmed.strip_prefix("> ") {
-        text = rest.to_string();
-    }
-    sanitize_line(text.trim_end())
-}
-
-fn trim_empty_lines(lines: &mut Vec<String>) {
-    while lines.first().is_some_and(|line| line.is_empty()) {
-        lines.remove(0);
-    }
-    while lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-}
-
-pub(super) fn join_hovers(hovers: Vec<Vec<String>>) -> Vec<String> {
-    let mut contents = Vec::new();
-    for lines in hovers {
-        if lines.is_empty() {
-            continue;
-        }
-        if !contents.is_empty() {
-            contents.push(String::new());
-        }
-        contents.extend(lines);
-    }
-    contents
+    documents
 }
 
 #[cfg(test)]
@@ -323,19 +255,48 @@ mod tests {
     }
 
     #[test]
-    fn markdown_is_flattened_for_the_pager() {
-        let lines = markdown_lines("# Title\n\n```rust\nfn main()\n```\n---\n`value`");
-        assert_eq!(lines, vec!["Title", "", "fn main()", "value"]);
+    fn markdown_is_preserved_for_the_overlay() {
+        let contents = hover_documents(serde_json::json!({
+            "contents": {
+                "kind": "markdown",
+                "value": "# Title\n\n```rust\nfn main()\n```\n---\n`value`"
+            }
+        }))
+        .expect("hover");
+        assert_eq!(
+            contents[0].text,
+            "# Title\n\n```rust\nfn main()\n```\n---\n`value`"
+        );
+        assert!(contents[0].markdown);
     }
 
     #[test]
     fn control_characters_are_removed_from_hover_text() {
-        assert_eq!(plain_lines("safe\x1b[31mtext"), vec!["safe [31mtext"]);
+        let contents = hover_documents(serde_json::json!({
+            "contents": {"kind": "plaintext", "value": "safe\u{001b}[31mtext"}
+        }))
+        .expect("hover");
+        assert_eq!(contents[0].text, "safe [31mtext");
     }
 
     #[test]
     fn hover_merges_multiple_parts() {
-        let contents = join_hovers(vec![vec!["one".to_string()], vec!["two".to_string()]]);
-        assert_eq!(contents, vec!["one", "", "two"]);
+        let contents = join_hover_documents(vec![
+            vec![MarkupDocument {
+                text: "one".to_string(),
+                markdown: false,
+            }],
+            vec![MarkupDocument {
+                text: "two".to_string(),
+                markdown: false,
+            }],
+        ]);
+        assert_eq!(
+            contents
+                .iter()
+                .map(|document| document.text.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
     }
 }

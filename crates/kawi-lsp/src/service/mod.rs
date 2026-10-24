@@ -16,17 +16,24 @@ use std::time::{Duration, Instant};
 mod code_actions;
 mod commands;
 mod completion;
+mod completion_candidates;
+mod completion_edit;
+mod completion_entry;
+mod completion_resolve;
+mod completion_snippet;
 mod diagnostics;
 mod document;
 mod formatting;
 mod initialize;
 mod manager;
+mod markup;
 mod navigation;
 mod navigation_results;
 mod pending;
 mod pull_diagnostics;
 mod rename;
 mod request;
+mod signature_help;
 mod text_requests;
 mod workspace_diagnostics;
 mod workspace_edit;
@@ -116,11 +123,45 @@ pub struct LocationEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkupDocument {
+    pub text: String,
+    pub markdown: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HoverEvent {
     pub request: u64,
     pub path: PathBuf,
     pub position: CursorPosition,
-    pub contents: Vec<String>,
+    pub contents: Vec<MarkupDocument>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionTriggerKind {
+    Invoked,
+    TriggerCharacter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionTrigger {
+    pub kind: CompletionTriggerKind,
+    pub character: Option<String>,
+}
+
+impl CompletionTrigger {
+    pub fn invoked() -> Self {
+        Self {
+            kind: CompletionTriggerKind::Invoked,
+            character: None,
+        }
+    }
+
+    pub fn character(character: impl Into<String>) -> Self {
+        Self {
+            kind: CompletionTriggerKind::TriggerCharacter,
+            character: Some(character.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,12 +199,16 @@ pub struct LspCommand {
 pub struct CompletionEntry {
     pub server: String,
     pub label: String,
+    pub filter_text: Option<String>,
+    pub sort_text: Option<String>,
     pub detail: Option<String>,
-    pub documentation: Option<String>,
+    pub documentation: Option<MarkupDocument>,
     pub primary: TextChange,
     pub additional: Vec<TextChange>,
     pub deprecated: bool,
     pub preselect: bool,
+    pub snippet: bool,
+    pub resolve_id: Option<u64>,
     pub command: Option<LspCommand>,
 }
 
@@ -174,7 +219,54 @@ pub struct CompletionEvent {
     pub path: PathBuf,
     pub version: i32,
     pub original_hash: u64,
+    pub cursor: usize,
+    pub word_start: usize,
+    pub prefix: String,
     pub items: Vec<CompletionEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionResolveEvent {
+    pub request: u64,
+    pub item_id: u64,
+    pub original_hash: u64,
+    pub detail: Option<String>,
+    pub documentation: Option<MarkupDocument>,
+    pub additional: Vec<TextChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureParameter {
+    pub label: String,
+    pub documentation: Option<MarkupDocument>,
+    pub range: Option<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureEntry {
+    pub label: String,
+    pub documentation: Option<MarkupDocument>,
+    pub parameters: Vec<SignatureParameter>,
+    pub active_parameter: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureHelpEvent {
+    pub request: u64,
+    pub server: String,
+    pub signatures: Vec<SignatureEntry>,
+    pub active_signature: Option<usize>,
+    pub active_parameter: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionCapabilitiesEvent {
+    pub server: String,
+    pub completion: bool,
+    pub completion_triggers: Vec<String>,
+    pub completion_resolve: bool,
+    pub signature_help: bool,
+    pub signature_triggers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,6 +313,9 @@ pub enum LspEvent {
     RenameReady(RenameReady),
     Rename(RenameEvent),
     Completion(CompletionEvent),
+    CompletionResolved(CompletionResolveEvent),
+    CompletionCapabilities(CompletionCapabilitiesEvent),
+    SignatureHelp(SignatureHelpEvent),
     CodeActions(CodeActionEvent),
     Formatting(FormattingEvent),
     RequestError {
@@ -358,12 +453,40 @@ impl LspService {
         })
     }
 
-    pub fn completion(&self, path: &Path, position: CursorPosition) -> u64 {
+    pub fn completion(
+        &self,
+        path: &Path,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
+    ) -> u64 {
         let request = self.allocate_request();
         self.send(Command::Completion {
             request,
             path: path.to_path_buf(),
             position,
+            trigger,
+        });
+        request
+    }
+
+    pub fn resolve_completion(&self, item_id: u64) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::ResolveCompletion { request, item_id });
+        request
+    }
+
+    pub fn signature_help(
+        &self,
+        path: &Path,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
+    ) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::SignatureHelp {
+            request,
+            path: path.to_path_buf(),
+            position,
+            trigger,
         });
         request
     }
@@ -490,6 +613,17 @@ pub(crate) enum Command {
         request: u64,
         path: PathBuf,
         position: CursorPosition,
+        trigger: CompletionTrigger,
+    },
+    ResolveCompletion {
+        request: u64,
+        item_id: u64,
+    },
+    SignatureHelp {
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
     },
     CodeActions {
         request: u64,
@@ -533,10 +667,13 @@ struct Manager {
     pending_replies: HashMap<RequestId, pending::PendingReply>,
     pending_renames: HashMap<u64, rename::PendingRename>,
     pending_text_requests: HashMap<u64, text_requests::PendingTextRequest>,
+    pending_completion_resolves: HashMap<u64, completion_resolve::PendingResolve>,
+    completion_resolve: HashMap<u64, completion_resolve::ResolveItem>,
     pending_commands: HashMap<RequestId, ClientKey>,
     pull_diagnostics: pull_diagnostics::PullDiagnostics,
     workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics,
     next_request: i64,
+    next_completion_item: u64,
     initialize_timeout: Duration,
 }
 
@@ -562,6 +699,8 @@ struct RequestSupport {
     rename: bool,
     prepare_rename: bool,
     completion: bool,
+    completion_resolve: bool,
+    signature_help: bool,
     code_actions: bool,
     formatting: bool,
     range_formatting: bool,

@@ -73,7 +73,11 @@ fn main() -> Result<()> {
                         "referencesProvider": true,
                         "hoverProvider": true,
                         "renameProvider": rename,
-                        "completionProvider": {"triggerCharacters": ["."]},
+                        "completionProvider": {
+                            "triggerCharacters": ["."],
+                            "resolveProvider": true
+                        },
+                        "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
                         "codeActionProvider": {"codeActionKinds": ["quickfix"]},
                         "documentFormattingProvider": true,
                         "documentRangeFormattingProvider": true
@@ -112,6 +116,8 @@ fn main() -> Result<()> {
                     &documents,
                 )?,
                 "textDocument/completion" => handle_completion(&mut writer, id, params)?,
+                "completionItem/resolve" => handle_completion_resolve(&mut writer, id, params)?,
+                "textDocument/signatureHelp" => handle_signature_help(&mut writer, id, params)?,
                 "textDocument/codeAction" => handle_code_actions(&mut writer, id, params)?,
                 "textDocument/formatting" | "textDocument/rangeFormatting" => {
                     handle_formatting(&mut writer, id, &method, params)?
@@ -565,6 +571,58 @@ fn handle_completion(
         ]
     });
     send(writer, Message::response(id, result))
+}
+
+fn handle_completion_resolve(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let mut item = params.context("completion resolve params")?;
+    send_log(writer, "resolve")?;
+    item["detail"] = json!("resolved detail");
+    item["documentation"] = json!({
+        "kind": "markdown",
+        "value": "**resolved** documentation"
+    });
+    item["additionalTextEdits"] = json!([{
+        "range": range(0, 0, 0),
+        "newText": "// resolved\n"
+    }]);
+    send(writer, Message::response(id, item))
+}
+
+fn handle_signature_help(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let params = params.context("signature help params")?;
+    let position = &params["position"];
+    let line = position["line"].as_i64().unwrap_or(0);
+    let character = position["character"].as_i64().unwrap_or(0);
+    send_log(writer, &format!("signature:{line}:{character}"))?;
+    send(
+        writer,
+        Message::response(
+            id,
+            json!({
+                "signatures": [{
+                    "label": "fake(value: i32, other: i32)",
+                    "documentation": {
+                        "kind": "markdown",
+                        "value": "Fake signature"
+                    },
+                    "parameters": [
+                        {"label": [5, 10]},
+                        {"label": [17, 22]}
+                    ]
+                }],
+                "activeSignature": 0,
+                "activeParameter": 1
+            }),
+        ),
+    )
 }
 
 fn handle_code_actions(

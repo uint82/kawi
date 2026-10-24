@@ -1,15 +1,15 @@
 use super::code_actions::protocol_diagnostics;
 use super::completion::completion_event;
 use super::pending::ReplyPurpose;
+use super::signature_help::signature_help_event;
 use super::*;
 use crate::protocol::{RequestId, ResponseError};
 use crate::text;
 use crate::workspace;
 use lsp_types::{
     CodeActionContext, CodeActionParams, CodeActionTriggerKind, CompletionContext,
-    CompletionParams, CompletionTriggerKind, DocumentFormattingParams,
-    DocumentRangeFormattingParams, FormattingOptions, Range, TextDocumentIdentifier,
-    TextDocumentPositionParams,
+    CompletionParams, DocumentFormattingParams, DocumentRangeFormattingParams, FormattingOptions,
+    Range, TextDocumentIdentifier, TextDocumentPositionParams,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TextRequestKind {
     Completion,
+    SignatureHelp,
     CodeAction,
     Formatting,
 }
@@ -36,8 +37,10 @@ pub(super) struct PendingTextRequest {
 #[derive(Debug, Clone)]
 pub(super) struct TextResponse {
     pub(super) server: String,
+    pub(super) key: ClientKey,
     pub(super) value: Value,
     pub(super) encoding: PositionEncodingKind,
+    pub(super) resolve: bool,
 }
 
 impl PendingTextRequest {
@@ -65,6 +68,7 @@ impl PendingTextRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextCapability {
     Completion,
+    SignatureHelp,
     CodeAction,
     Formatting,
     RangeFormatting,
@@ -84,6 +88,7 @@ impl Manager {
         request: u64,
         path: PathBuf,
         position: CursorPosition,
+        trigger: CompletionTrigger,
     ) {
         let path = workspace::absolute(&path);
         let targets = self.text_targets(&path, TextCapability::Completion);
@@ -91,6 +96,7 @@ impl Manager {
             self.emit_unsupported(request, &path, TextCapability::Completion);
             return;
         };
+        self.clear_resolve_items();
         self.pending_text_requests.insert(
             request,
             PendingTextRequest::new(
@@ -118,15 +124,73 @@ impl Manager {
                 },
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
-                context: Some(CompletionContext {
-                    trigger_kind: CompletionTriggerKind::INVOKED,
-                    trigger_character: None,
-                }),
+                context: Some(completion_context(trigger.clone())),
             };
             self.dispatch_text_request(
                 request,
                 &target.key,
                 "textDocument/completion",
+                to_params(params),
+            );
+        }
+    }
+
+    pub(super) fn start_signature_help(
+        &mut self,
+        request: u64,
+        path: PathBuf,
+        position: CursorPosition,
+        trigger: CompletionTrigger,
+    ) {
+        let path = workspace::absolute(&path);
+        let targets = self.text_targets(&path, TextCapability::SignatureHelp);
+        let Some(version) = targets.first().map(|target| target.version) else {
+            self.emit_unsupported(request, &path, TextCapability::SignatureHelp);
+            return;
+        };
+        self.pending_text_requests.insert(
+            request,
+            PendingTextRequest::new(
+                request,
+                TextRequestKind::SignatureHelp,
+                path,
+                position,
+                version,
+                targets.len(),
+            ),
+        );
+        for target in targets {
+            let protocol_position = text::position_from_column(
+                &target.text,
+                position.line,
+                position.column,
+                &target.encoding,
+            );
+            let kind = match trigger.kind {
+                CompletionTriggerKind::Invoked => lsp_types::SignatureHelpTriggerKind::INVOKED,
+                CompletionTriggerKind::TriggerCharacter => {
+                    lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER
+                }
+            };
+            let params = lsp_types::SignatureHelpParams {
+                context: Some(lsp_types::SignatureHelpContext {
+                    trigger_kind: kind,
+                    trigger_character: trigger.character.clone(),
+                    is_retrigger: false,
+                    active_signature_help: None,
+                }),
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: target.uri.clone(),
+                    },
+                    position: protocol_position,
+                },
+                work_done_progress_params: Default::default(),
+            };
+            self.dispatch_text_request(
+                request,
+                &target.key,
+                "textDocument/signatureHelp",
                 to_params(params),
             );
         }
@@ -254,10 +318,16 @@ impl Manager {
             return;
         }
         let request = reply.request;
+        let resolve = self
+            .clients
+            .get(&reply.key)
+            .is_some_and(|client| client.support.completion_resolve);
         let response = result.map(|value| TextResponse {
             server: reply.key.server.clone(),
+            key: reply.key,
             value,
             encoding: reply.encoding,
+            resolve,
         });
         let Some(pending) = self.pending_text_requests.get_mut(&request) else {
             return;
@@ -316,20 +386,44 @@ impl Manager {
             self.emit_text_error(pending.request, "document changed".to_string());
             return;
         }
+        let text = document.text.clone();
         let parse = match pending.kind {
             TextRequestKind::Completion => {
-                completion_event(&pending, &pending.responses, &document.text)
-                    .map(LspEvent::Completion)
+                match completion_event(
+                    &pending,
+                    &pending.responses,
+                    &text,
+                    &mut self.next_completion_item,
+                ) {
+                    Ok(output) => {
+                        let original_hash = output.event.original_hash;
+                        for candidate in output.resolve {
+                            self.store_resolve_item(
+                                candidate.id,
+                                candidate.key,
+                                candidate.item,
+                                pending.path.clone(),
+                                pending.version,
+                                original_hash,
+                            );
+                        }
+                        Ok(Some(LspEvent::Completion(output.event)))
+                    }
+                    Err(error) => Err(error),
+                }
             }
+            TextRequestKind::SignatureHelp => signature_help_event(&pending, &pending.responses)
+                .map(|event| Some(LspEvent::SignatureHelp(event))),
             TextRequestKind::CodeAction => self
                 .code_action_event(&pending, &pending.responses)
-                .map(LspEvent::CodeActions),
+                .map(|event| Some(LspEvent::CodeActions(event))),
             TextRequestKind::Formatting => self
-                .formatting_event(&pending, &pending.responses, &document.text)
-                .map(LspEvent::Formatting),
+                .formatting_event(&pending, &pending.responses, &text)
+                .map(|event| Some(LspEvent::Formatting(event))),
         };
         match parse {
-            Ok(event) => self.emit(event),
+            Ok(Some(event)) => self.emit(event),
+            Ok(None) => {}
             Err(error) => self.emit_text_error(pending.request, pending.error.unwrap_or(error)),
         }
     }
@@ -369,7 +463,7 @@ impl Manager {
         self.emit_text_error(request, message);
     }
 
-    fn emit_text_error(&self, request: u64, message: String) {
+    pub(super) fn emit_text_error(&self, request: u64, message: String) {
         self.emit(LspEvent::RequestError { request, message });
     }
 }
@@ -377,6 +471,7 @@ impl Manager {
 fn supports(support: RequestSupport, capability: TextCapability) -> bool {
     match capability {
         TextCapability::Completion => support.completion,
+        TextCapability::SignatureHelp => support.signature_help,
         TextCapability::CodeAction => support.code_actions,
         TextCapability::Formatting => support.formatting,
         TextCapability::RangeFormatting => support.range_formatting,
@@ -386,9 +481,23 @@ fn supports(support: RequestSupport, capability: TextCapability) -> bool {
 fn unsupported_message(capability: TextCapability) -> &'static str {
     match capability {
         TextCapability::Completion => "No language server supports completion",
+        TextCapability::SignatureHelp => "No language server supports signature help",
         TextCapability::CodeAction => "No language server supports code actions",
         TextCapability::Formatting => "No language server supports formatting",
         TextCapability::RangeFormatting => "No language server supports range formatting",
+    }
+}
+
+fn completion_context(trigger: CompletionTrigger) -> CompletionContext {
+    match trigger.kind {
+        CompletionTriggerKind::Invoked => CompletionContext {
+            trigger_kind: lsp_types::CompletionTriggerKind::INVOKED,
+            trigger_character: None,
+        },
+        CompletionTriggerKind::TriggerCharacter => CompletionContext {
+            trigger_kind: lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER,
+            trigger_character: trigger.character,
+        },
     }
 }
 

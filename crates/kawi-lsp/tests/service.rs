@@ -1,6 +1,6 @@
 use kawi_lsp::{
-    CursorPosition, DiagnosticMode, DiagnosticSeverity, FormattingSettings, Languages, LspEvent,
-    LspService, ProgressEvent, ServerState, WorkspaceDiagnosticState,
+    CompletionTrigger, CursorPosition, DiagnosticMode, DiagnosticSeverity, FormattingSettings,
+    Languages, LspEvent, LspService, ProgressEvent, ServerState, WorkspaceDiagnosticState,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -357,8 +357,14 @@ fn resolves_definitions_references_and_hover() {
     let LspEvent::Hover(hover) = hover else {
         panic!("unexpected hover event");
     };
-    assert!(hover.contents.iter().any(|line| line == "fn fake()"));
-    assert!(hover.contents.iter().any(|line| line == "Fake hover"));
+    assert!(hover
+        .contents
+        .iter()
+        .any(|document| document.text.contains("fn fake()")));
+    assert!(hover
+        .contents
+        .iter()
+        .any(|document| document.text.contains("Fake hover")));
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }
@@ -621,7 +627,11 @@ fn returns_completion_items_with_edits_and_snippet_expansion() {
     let file = root.join("src/main.rs");
     assert!(service.open(&file, "fak\n"));
     wait_for_ready(&service);
-    let request = service.completion(&file, CursorPosition { line: 0, column: 3 });
+    let request = service.completion(
+        &file,
+        CursorPosition { line: 0, column: 3 },
+        CompletionTrigger::invoked(),
+    );
     wait_for_log(&service, "completion:0:3");
     let event = wait_for(&service, |event| {
         matches!(
@@ -659,6 +669,89 @@ fn returns_completion_items_with_edits_and_snippet_expansion() {
 }
 
 #[test]
+fn resolves_completion_documentation_and_edits() {
+    let root = temp_project("completion_resolve");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fak\n"));
+    wait_for_ready(&service);
+    let request = service.completion(
+        &file,
+        CursorPosition { line: 0, column: 3 },
+        CompletionTrigger::invoked(),
+    );
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Completion(event) if event.request == request
+        )
+    });
+    let LspEvent::Completion(event) = event else {
+        panic!("unexpected completion event");
+    };
+    let item_id = event
+        .items
+        .iter()
+        .find_map(|item| item.resolve_id)
+        .expect("resolvable item");
+    let request = service.resolve_completion(item_id);
+    wait_for_log(&service, "resolve");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::CompletionResolved(event) if event.request == request
+        )
+    });
+    let LspEvent::CompletionResolved(event) = event else {
+        panic!("unexpected completion resolve event");
+    };
+    assert_eq!(event.item_id, item_id);
+    assert_eq!(event.detail.as_deref(), Some("resolved detail"));
+    let documentation = event.documentation.expect("documentation");
+    assert!(documentation.markdown);
+    assert!(documentation.text.contains("resolved"));
+    assert_eq!(event.additional.len(), 1);
+    assert_eq!(event.additional[0].text, "// resolved\n");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn returns_signature_help() {
+    let root = temp_project("signature");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fake(\n"));
+    wait_for_ready(&service);
+    let request = service.signature_help(
+        &file,
+        CursorPosition { line: 0, column: 5 },
+        CompletionTrigger::character("("),
+    );
+    wait_for_log(&service, "signature:0:5");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::SignatureHelp(event) if event.request == request
+        )
+    });
+    let LspEvent::SignatureHelp(event) = event else {
+        panic!("unexpected signature help event");
+    };
+    assert_eq!(event.active_signature, Some(0));
+    assert_eq!(event.active_parameter, Some(1));
+    assert_eq!(event.signatures.len(), 1);
+    assert_eq!(event.signatures[0].label, "fake(value: i32, other: i32)");
+    assert_eq!(event.signatures[0].parameters[1].range, Some((17, 22)));
+    assert!(event.signatures[0]
+        .documentation
+        .as_ref()
+        .is_some_and(|documentation| documentation.markdown));
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
 fn merges_completion_and_code_actions_from_multiple_servers() {
     let root = temp_project("multi_text");
     let service = start_two_servers(&root, "full", Duration::from_secs(5));
@@ -666,7 +759,11 @@ fn merges_completion_and_code_actions_from_multiple_servers() {
     assert!(service.open(&file, "fak\n"));
     wait_for_ready(&service);
     wait_for_ready(&service);
-    let request = service.completion(&file, CursorPosition { line: 0, column: 3 });
+    let request = service.completion(
+        &file,
+        CursorPosition { line: 0, column: 3 },
+        CompletionTrigger::invoked(),
+    );
     let event = wait_for(&service, |event| {
         matches!(
             event,

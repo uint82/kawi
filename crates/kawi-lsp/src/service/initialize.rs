@@ -45,6 +45,9 @@ impl Manager {
                 }
                 Some(ReplyPurpose::Rename) => self.handle_rename_response(key, id, result),
                 Some(ReplyPurpose::Text) => self.handle_text_response(key, id, result),
+                Some(ReplyPurpose::CompletionResolve) => {
+                    self.handle_completion_resolve_response(key, id, result);
+                }
                 None => {}
             }
             return;
@@ -69,24 +72,28 @@ impl Manager {
     }
 
     fn finish_initialize(&mut self, key: ClientKey, result: InitializeResult) {
-        let support = request_support(&result.capabilities);
-        let sync = sync_config(result.capabilities.text_document_sync);
-        let encoding = result
-            .capabilities
+        let capabilities_event = completion_capabilities_event(&key, &result.capabilities);
+        let capabilities = result.capabilities;
+        let support = request_support(&capabilities);
+        let sync = sync_config(capabilities.text_document_sync);
+        let encoding = capabilities
             .position_encoding
+            .clone()
             .unwrap_or(PositionEncodingKind::UTF16);
+        let diagnostic_identifier =
+            diagnostic_identifier(capabilities.diagnostic_provider.as_ref());
         let Some(client) = self.clients.get_mut(&key) else {
             return;
         };
         client.sync = sync;
         client.encoding = encoding;
-        client.diagnostic_identifier =
-            diagnostic_identifier(result.capabilities.diagnostic_provider.as_ref());
+        client.diagnostic_identifier = diagnostic_identifier;
         client.support = support;
         client.status = ServerState::Ready;
         let initialized = Message::notification("initialized", Some(serde_json::json!({})));
         client.client.send(initialized);
         self.emit_status(&key.server, ServerState::Ready, None);
+        self.emit(LspEvent::CompletionCapabilities(capabilities_event));
         self.emit_diagnostic_mode(&key);
         self.open_documents_for(&key);
         self.schedule_all_diagnostics();
@@ -201,6 +208,28 @@ impl Manager {
     }
 }
 
+fn completion_capabilities_event(
+    key: &ClientKey,
+    capabilities: &lsp_types::ServerCapabilities,
+) -> CompletionCapabilitiesEvent {
+    let completion = capabilities.completion_provider.as_ref();
+    let signature = capabilities.signature_help_provider.as_ref();
+    CompletionCapabilitiesEvent {
+        server: key.server.clone(),
+        completion: completion.is_some(),
+        completion_triggers: completion
+            .and_then(|provider| provider.trigger_characters.clone())
+            .unwrap_or_default(),
+        completion_resolve: completion
+            .and_then(|provider| provider.resolve_provider)
+            .unwrap_or(false),
+        signature_help: signature.is_some(),
+        signature_triggers: signature
+            .and_then(|provider| provider.trigger_characters.clone())
+            .unwrap_or_default(),
+    }
+}
+
 fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSupport {
     RequestSupport {
         definition: provider_enabled(capabilities.definition_provider.as_ref()),
@@ -215,6 +244,12 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
         rename: provider_enabled(capabilities.rename_provider.as_ref()),
         prepare_rename: prepare_enabled(capabilities.rename_provider.as_ref()),
         completion: capabilities.completion_provider.is_some(),
+        completion_resolve: capabilities
+            .completion_provider
+            .as_ref()
+            .and_then(|provider| provider.resolve_provider)
+            .unwrap_or(false),
+        signature_help: capabilities.signature_help_provider.is_some(),
         code_actions: code_action_enabled(capabilities.code_action_provider.as_ref()),
         formatting: provider_enabled(capabilities.document_formatting_provider.as_ref()),
         range_formatting: provider_enabled(
@@ -340,6 +375,20 @@ fn initialize_capabilities() -> ClientCapabilities {
                     lsp_types::MarkupKind::PlainText,
                 ]),
             }),
+            signature_help: Some(lsp_types::SignatureHelpClientCapabilities {
+                dynamic_registration: Some(false),
+                signature_information: Some(lsp_types::SignatureInformationSettings {
+                    documentation_format: Some(vec![
+                        lsp_types::MarkupKind::Markdown,
+                        lsp_types::MarkupKind::PlainText,
+                    ]),
+                    parameter_information: Some(lsp_types::ParameterInformationSettings {
+                        label_offset_support: Some(true),
+                    }),
+                    active_parameter_support: Some(true),
+                }),
+                context_support: Some(true),
+            }),
             rename: Some(RenameClientCapabilities {
                 dynamic_registration: Some(false),
                 prepare_support: Some(true),
@@ -358,6 +407,13 @@ fn initialize_capabilities() -> ClientCapabilities {
                     deprecated_support: Some(true),
                     preselect_support: Some(true),
                     insert_replace_support: Some(true),
+                    resolve_support: Some(lsp_types::CompletionItemCapabilityResolveSupport {
+                        properties: vec![
+                            "documentation".to_string(),
+                            "detail".to_string(),
+                            "additionalTextEdits".to_string(),
+                        ],
+                    }),
                     ..lsp_types::CompletionItemCapability::default()
                 }),
                 context_support: Some(true),
@@ -553,6 +609,66 @@ mod tests {
                 .and_then(|diagnostic| diagnostic.refresh_support),
             Some(true)
         );
+    }
+
+    #[test]
+    fn advertises_completion_and_signature_capabilities() {
+        let capabilities = initialize_capabilities();
+        let text_document = capabilities.text_document.expect("text document");
+        let completion = text_document.completion.expect("completion");
+        let item = completion.completion_item.expect("completion item");
+        assert_eq!(item.snippet_support, Some(false));
+        assert_eq!(
+            item.documentation_format,
+            Some(vec![
+                lsp_types::MarkupKind::Markdown,
+                lsp_types::MarkupKind::PlainText,
+            ])
+        );
+        assert_eq!(
+            item.resolve_support.map(|support| support.properties),
+            Some(vec![
+                "documentation".to_string(),
+                "detail".to_string(),
+                "additionalTextEdits".to_string(),
+            ])
+        );
+        let signature = text_document.signature_help.expect("signature help");
+        assert_eq!(
+            signature
+                .signature_information
+                .and_then(|information| information.documentation_format),
+            Some(vec![
+                lsp_types::MarkupKind::Markdown,
+                lsp_types::MarkupKind::PlainText,
+            ])
+        );
+    }
+
+    #[test]
+    fn reads_completion_and_signature_support_from_server_capabilities() {
+        let capabilities = lsp_types::ServerCapabilities {
+            completion_provider: Some(lsp_types::CompletionOptions {
+                resolve_provider: Some(true),
+                trigger_characters: Some(vec![".".to_string()]),
+                ..lsp_types::CompletionOptions::default()
+            }),
+            signature_help_provider: Some(lsp_types::SignatureHelpOptions {
+                trigger_characters: Some(vec!["(".to_string()]),
+                ..lsp_types::SignatureHelpOptions::default()
+            }),
+            ..lsp_types::ServerCapabilities::default()
+        };
+        let key = ClientKey {
+            server: "fake".to_string(),
+            root: std::path::PathBuf::from("/tmp"),
+        };
+        let event = completion_capabilities_event(&key, &capabilities);
+        assert!(event.completion);
+        assert!(event.completion_resolve);
+        assert_eq!(event.completion_triggers, ["."]);
+        assert!(event.signature_help);
+        assert_eq!(event.signature_triggers, ["("]);
     }
 
     #[test]
