@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use kawi_editor::{Action, Mode};
 
@@ -39,6 +39,11 @@ impl HelixKeymap {
     }
 
     fn map_select(&mut self, key: KeyEvent, mode: Mode) -> Action {
+        if matches!(key.code, KeyCode::Char('\\' | '4'))
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            return Action::ToggleTerminal;
+        }
         if matches!(key.code, KeyCode::Char('v')) {
             return self.enter_select(key, mode);
         }

@@ -347,6 +347,7 @@ pub enum Action {
     QuickfixNext,
     QuickfixPrev,
     QuickfixOpen,
+    ToggleTerminal,
     Noop,
 }
 
@@ -428,6 +429,7 @@ impl Action {
                 | Self::QuickfixNext
                 | Self::QuickfixPrev
                 | Self::QuickfixOpen
+                | Self::ToggleTerminal
                 | Self::CommentLines
                 | Self::CommentAt { .. }
                 | Self::SurroundSelection { .. }

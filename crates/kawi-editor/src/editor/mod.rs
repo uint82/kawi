@@ -517,7 +517,8 @@ impl Editor {
             | Action::TaskOutput
             | Action::QuickfixNext
             | Action::QuickfixPrev
-            | Action::QuickfixOpen => self.noop(),
+            | Action::QuickfixOpen
+            | Action::ToggleTerminal => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {
