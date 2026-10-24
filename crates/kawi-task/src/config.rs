@@ -35,6 +35,10 @@ impl Tasks {
     pub fn is_empty(&self) -> bool {
         self.tasks.is_empty()
     }
+
+    pub fn merge(&mut self, other: Self) {
+        self.tasks.extend(other.tasks);
+    }
 }
 
 #[derive(Debug, Default)]
@@ -487,6 +491,24 @@ severity = "warning"
             loaded.tasks.get("custom").unwrap().parser,
             ParserSpec::Regex(_)
         ));
+    }
+
+    #[test]
+    fn project_tasks_override_global_tasks() {
+        let mut global = load_text(
+            "global",
+            "[task.check]\ncommand = \"cargo\"\nargs = [\"check\"]\n",
+        )
+        .tasks;
+        let project = load_text(
+            "project",
+            "[task.check]\ncommand = \"go\"\nargs = [\"test\"]\n[task.lint]\ncommand = \"go\"\nargs = [\"vet\"]\n",
+        )
+        .tasks;
+        global.merge(project);
+        assert_eq!(global.get("check").unwrap().command, "go");
+        assert_eq!(global.get("check").unwrap().args, ["test"]);
+        assert_eq!(global.get("lint").unwrap().args, ["vet"]);
     }
 
     #[test]
