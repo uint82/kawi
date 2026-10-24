@@ -452,6 +452,8 @@ dependencies = [
  "kawi-buffer",
  "kawi-editor",
  "kawi-syntax",
+ "serde",
+ "toml",
 ]
 
 [[package]]

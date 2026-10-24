@@ -14,3 +14,5 @@ crossterm.workspace = true
 kawi-buffer = { path = "../kawi-buffer" }
 kawi-editor = { path = "../kawi-editor" }
 kawi-syntax = { path = "../kawi-syntax" }
+serde.workspace = true
+toml.workspace = true

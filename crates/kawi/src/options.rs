@@ -1,5 +1,6 @@
 use kawi_editor::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 use kawi_tui::theme::Theme;
+use std::path::Path;
 
 use crate::keymap::flavor_from_name;
 
@@ -24,7 +25,12 @@ pub(crate) enum ConfigSection {
 pub(crate) enum OptionKind {
     Bool,
     Int { min: usize, max: usize },
-    Enum(fn(&str) -> bool),
+    Enum(fn(&str, &OptionContext<'_>) -> bool),
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct OptionContext<'a> {
+    pub(crate) theme_dir: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,11 +253,12 @@ pub(crate) fn canonical_name(name: &str) -> Option<&'static str> {
 pub(crate) fn validate_spec(
     spec: &'static OptionSpec,
     input: OptionInput<'_>,
+    context: &OptionContext<'_>,
 ) -> Result<OptionValue, OptionError> {
     match spec.kind {
         OptionKind::Bool => parse_bool(input),
         OptionKind::Int { min, max } => parse_int(input, min, max),
-        OptionKind::Enum(valid) => parse_enum(input, valid),
+        OptionKind::Enum(valid) => parse_enum(input, valid, context),
     }
 }
 
@@ -298,9 +305,15 @@ fn parse_int(input: OptionInput<'_>, min: usize, max: usize) -> Result<OptionVal
     Ok(OptionValue::Int(value))
 }
 
-fn parse_enum(input: OptionInput<'_>, valid: fn(&str) -> bool) -> Result<OptionValue, OptionError> {
+fn parse_enum(
+    input: OptionInput<'_>,
+    valid: fn(&str, &OptionContext<'_>) -> bool,
+    context: &OptionContext<'_>,
+) -> Result<OptionValue, OptionError> {
     match input {
-        OptionInput::Text(value) if valid(value) => Ok(OptionValue::Text(value.to_string())),
+        OptionInput::Text(value) if valid(value, context) => {
+            Ok(OptionValue::Text(value.to_string()))
+        }
         OptionInput::Text(value) => Err(OptionError::InvalidValue {
             value: value.to_string(),
         }),
@@ -315,12 +328,15 @@ fn parse_enum(input: OptionInput<'_>, valid: fn(&str) -> bool) -> Result<OptionV
     }
 }
 
-fn valid_keymap(name: &str) -> bool {
+fn valid_keymap(name: &str, _context: &OptionContext<'_>) -> bool {
     flavor_from_name(name).is_some()
 }
 
-fn valid_theme(name: &str) -> bool {
-    Theme::named(name).is_some()
+fn valid_theme(name: &str, context: &OptionContext<'_>) -> bool {
+    match context.theme_dir {
+        Some(theme_dir) => Theme::load(name, theme_dir).is_ok(),
+        None => Theme::named(name).is_some(),
+    }
 }
 
 #[cfg(test)]
@@ -351,10 +367,11 @@ mod tests {
     #[test]
     fn validates_boolean_values() {
         let spec = lookup("expandtab").unwrap();
-        let value = validate_spec(spec, OptionInput::Bool(true)).unwrap();
+        let value =
+            validate_spec(spec, OptionInput::Bool(true), &OptionContext::default()).unwrap();
         assert_eq!(value, OptionValue::Bool(true));
         assert_eq!(
-            validate_spec(spec, OptionInput::Integer(1)),
+            validate_spec(spec, OptionInput::Integer(1), &OptionContext::default()),
             Err(OptionError::InvalidType {
                 expected: "a boolean",
                 value: "1".to_string(),
@@ -365,10 +382,11 @@ mod tests {
     #[test]
     fn validates_integer_ranges() {
         let spec = lookup("numberwidth").unwrap();
-        let value = validate_spec(spec, OptionInput::Integer(20)).unwrap();
+        let value =
+            validate_spec(spec, OptionInput::Integer(20), &OptionContext::default()).unwrap();
         assert_eq!(value, OptionValue::Int(20));
         assert_eq!(
-            validate_spec(spec, OptionInput::Integer(0)),
+            validate_spec(spec, OptionInput::Integer(0), &OptionContext::default()),
             Err(OptionError::OutOfRange {
                 value: 0,
                 min: 1,
@@ -376,7 +394,7 @@ mod tests {
             })
         );
         assert_eq!(
-            validate_spec(spec, OptionInput::Integer(21)),
+            validate_spec(spec, OptionInput::Integer(21), &OptionContext::default()),
             Err(OptionError::OutOfRange {
                 value: 21,
                 min: 1,
@@ -388,16 +406,30 @@ mod tests {
     #[test]
     fn validates_dynamic_enums() {
         let keymap = lookup("keymap").unwrap();
-        let value = validate_spec(keymap, OptionInput::Text("helix")).unwrap();
+        let value = validate_spec(
+            keymap,
+            OptionInput::Text("helix"),
+            &OptionContext::default(),
+        )
+        .unwrap();
         assert_eq!(value, OptionValue::Text("helix".to_string()));
         assert_eq!(
-            validate_spec(keymap, OptionInput::Text("personal")),
+            validate_spec(
+                keymap,
+                OptionInput::Text("personal"),
+                &OptionContext::default()
+            ),
             Err(OptionError::InvalidValue {
                 value: "personal".to_string(),
             })
         );
         let theme = lookup("theme").unwrap();
-        let value = validate_spec(theme, OptionInput::Text("gruvbox-dark")).unwrap();
+        let value = validate_spec(
+            theme,
+            OptionInput::Text("gruvbox-dark"),
+            &OptionContext::default(),
+        )
+        .unwrap();
         assert_eq!(value, OptionValue::Text("gruvbox-dark".to_string()));
     }
 
