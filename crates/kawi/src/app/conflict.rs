@@ -49,7 +49,10 @@ impl App {
     }
 
     pub(super) fn maybe_open_conflict(&mut self) {
-        if self.conflict.is_some() || self.pager.is_some() {
+        if self.conflict.is_some()
+            || self.pager.is_some()
+            || self.editor.mode() != kawi_editor::Mode::Normal
+        {
             return;
         }
         let number = self.editor.buffer_number();
@@ -57,6 +60,12 @@ impl App {
             return;
         }
         self.open_conflict_prompt(number);
+    }
+
+    pub(super) fn close_resolved_conflict(&mut self, number: usize) {
+        if self.conflict.is_some() && !self.disk_conflict(number) {
+            self.conflict = None;
+        }
     }
 
     fn open_conflict_prompt(&mut self, number: usize) {

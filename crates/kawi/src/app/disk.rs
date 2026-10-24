@@ -258,7 +258,7 @@ impl App {
             return;
         };
         if let Some(watcher) = self.file_watch.as_ref() {
-            watcher.watch_files(parents.iter().map(PathBuf::as_path));
+            watcher.watch_directories(parents.iter().map(PathBuf::as_path));
         }
     }
 
@@ -286,6 +286,7 @@ impl App {
                 Observation::Deleted => self.report_deleted_file(number),
                 Observation::Changed => self.handle_changed_file(number, observed),
             }
+            self.close_resolved_conflict(number);
         }
     }
 
