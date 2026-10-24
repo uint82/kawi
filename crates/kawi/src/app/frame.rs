@@ -36,6 +36,7 @@ impl App {
                 empty_buffer: pane.empty_buffer,
                 mode: pane.mode,
                 lsp: pane.lsp.as_deref(),
+                external: pane.external,
             })
             .collect();
         let panes: Vec<PaneFrame<'_>> = data
@@ -139,11 +140,17 @@ impl App {
     }
 
     fn completion_menu(&self) -> Option<CompletionMenu<'_>> {
-        self.code_actions
+        self.conflict
             .as_ref()
             .map(|session| CompletionMenu {
                 items: session.items(),
                 selected: session.selected(),
+            })
+            .or_else(|| {
+                self.code_actions.as_ref().map(|session| CompletionMenu {
+                    items: session.items(),
+                    selected: session.selected(),
+                })
             })
             .or_else(|| {
                 self.completion.as_ref().map(|session| CompletionMenu {

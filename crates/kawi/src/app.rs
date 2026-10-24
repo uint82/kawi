@@ -7,9 +7,12 @@ use std::collections::BTreeMap;
 use std::io::stdout;
 use std::path::{Path, PathBuf};
 
+mod autosave;
 mod code_action;
 mod completion;
 mod config;
+mod conflict;
+mod disk;
 mod formatting;
 mod frame;
 mod git;
@@ -29,6 +32,7 @@ mod rename;
 mod replace;
 mod replace_apply;
 mod restore;
+mod save;
 mod task;
 mod window;
 mod workspace_edit;
@@ -129,6 +133,13 @@ pub struct App {
     lsp: LspUi,
     tasks: Tasks,
     task: TaskSession,
+    disk: disk::DiskState,
+    file_watch: Option<kawi_watch::WatchService>,
+    conflict: Option<conflict::ConflictSession>,
+    pending_save: Option<save::PendingSave>,
+    format_on_save: bool,
+    quit_pending: bool,
+    autosave: autosave::Autosave,
     quickfix: Quickfix,
     windows: Windows,
     screen_width: usize,
@@ -174,6 +185,13 @@ impl App {
             lsp: LspUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
+            disk: disk::DiskState::default(),
+            file_watch: None,
+            conflict: None,
+            pending_save: None,
+            format_on_save: false,
+            quit_pending: false,
+            autosave: autosave::Autosave::default(),
             quickfix: Quickfix::default(),
             windows,
             screen_width: FALLBACK_WIDTH,
@@ -191,6 +209,7 @@ impl App {
         self.sync_viewport_size();
         self.events.start_input_thread()?;
         self.events.start_signal_handlers()?;
+        self.start_file_watch();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         match outcome {
             Ok(result) => {
@@ -271,6 +290,13 @@ impl App {
             self.sync_git();
             self.sync_lsp();
             self.sync_task();
+            self.sync_watched_files();
+            self.maybe_open_conflict();
+            self.save_tick();
+            self.autosave_tick();
+            if self.quit_pending {
+                return Ok(());
+            }
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
             }
@@ -297,9 +323,17 @@ impl App {
                 redraw |= needs_redraw;
             }
             redraw |= self.lsp.poll_events(&self.editor);
+            redraw |= self.poll_file_watch();
+            self.sync_watched_files();
+            self.maybe_open_conflict();
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             redraw |= self.sync_task();
+            redraw |= self.save_tick();
+            redraw |= self.autosave_tick();
+            if self.quit_pending {
+                return Ok(Redraw::Quit);
+            }
             if self.picker.is_some() || self.replace.is_some() {
                 redraw |= self.refresh_picker() | self.refresh_replace();
             } else {
@@ -312,7 +346,11 @@ impl App {
             if self.events.input_closed() {
                 return Err(anyhow!("terminal input closed"));
             }
-            match self.recovery_wait_timeout() {
+            let timeout = shortest_timeout(
+                shortest_timeout(self.recovery_wait_timeout(), self.save_wait_timeout()),
+                self.autosave_wait_timeout(),
+            );
+            match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,
                 None => self.events.wait()?,
             }
@@ -487,6 +525,7 @@ impl App {
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status(),
+            external: self.disk_status(self.editor.buffer_number()),
         }
     }
 
@@ -523,7 +562,14 @@ impl App {
             Event::Resize(cols, rows) => self.handle_resize(cols, rows),
             Event::Mouse(mouse) => self.handle_mouse(mouse),
             Event::Paste(text) => self.handle_paste(text),
-            _ => Ok(false),
+            Event::FocusLost => {
+                self.autosave_focus_lost();
+                Ok(false)
+            }
+            Event::FocusGained => {
+                self.sync_watched_files();
+                Ok(false)
+            }
         };
         self.sync_active_window();
         self.sync_language_indent();
@@ -537,6 +583,7 @@ impl App {
             || self.rename.is_some()
             || self.completion.is_some()
             || self.code_actions.is_some()
+            || self.conflict.is_some()
         {
             self.dismiss_lsp_menu();
             return self.handle_noop();
@@ -682,6 +729,9 @@ impl App {
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
+        }
+        if self.pager.is_none() && self.conflict.is_some() {
+            return self.handle_conflict_key(key);
         }
         if self.rename.is_some() {
             return self.handle_rename_key(key);
@@ -905,30 +955,17 @@ impl App {
     }
 
     fn handle_save(&mut self, force: bool) -> Result<bool> {
-        if !self.editor.has_file() {
-            self.show_message("E32: No file name".to_string());
-            return Ok(false);
-        }
-        self.save_and_report(force);
+        self.request_save(force, save::SaveAfter::None, true);
         Ok(false)
-    }
-
-    fn save_and_report(&mut self, force: bool) -> bool {
-        match self.editor.save(force) {
-            Ok(outcome) => {
-                let report = written_report(self.editor.filename(), outcome);
-                self.lsp.save();
-                self.show_message(report);
-                true
-            }
-            Err(error) => self.report_error(file_error_message(error)),
-        }
     }
 
     fn write_as_and_report(&mut self, name: &str, force: bool) -> bool {
         match self.editor.write_as(name, force) {
             Ok(outcome) => {
                 let report = written_report(name, outcome);
+                self.record_saved_buffer();
+                self.lsp.refresh(&self.editor);
+                self.lsp.save();
                 self.show_message(report);
                 true
             }
@@ -1348,6 +1385,7 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
+            Command::Conflict => self.handle_conflict_command(),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {
@@ -1378,13 +1416,7 @@ impl App {
     }
 
     fn handle_write_quit(&mut self, force: bool) -> Result<bool> {
-        if !self.editor.has_file() {
-            self.show_message("E32: No file name".to_string());
-            return Ok(false);
-        }
-        if self.save_and_report(force) {
-            return self.handle_quit();
-        }
+        self.request_save(force, save::SaveAfter::Quit, true);
         Ok(false)
     }
 
@@ -1425,8 +1457,14 @@ impl App {
     }
 
     fn handle_save_all(&mut self) -> Result<bool> {
+        if self.has_disk_conflicts() {
+            self.show_message("Resolve disk conflicts before saving all".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
+                self.record_all_saved();
+                self.lsp.refresh(&self.editor);
                 self.lsp.save();
                 Ok(false)
             }
@@ -1438,8 +1476,14 @@ impl App {
     }
 
     fn handle_write_quit_all(&mut self) -> Result<bool> {
+        if self.has_disk_conflicts() {
+            self.show_message("Resolve disk conflicts before saving all".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
+                self.record_all_saved();
+                self.lsp.refresh(&self.editor);
                 self.lsp.save();
                 Ok(true)
             }
@@ -1595,11 +1639,22 @@ fn replace_stage(stage: ReplaceStage) -> kawi_tui::frame::ReplaceStage {
     }
 }
 
+fn shortest_timeout(
+    left: Option<std::time::Duration>,
+    right: Option<std::time::Duration>,
+) -> Option<std::time::Duration> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.min(right)),
+        (Some(timeout), None) | (None, Some(timeout)) => Some(timeout),
+        (None, None) => None,
+    }
+}
+
 fn event_needs_redraw(event: &Event) -> bool {
     match event {
         Event::Key(_) | Event::Resize(_, _) | Event::Paste(_) => true,
+        Event::FocusGained | Event::FocusLost => true,
         Event::Mouse(mouse) => !matches!(mouse.kind, MouseEventKind::Moved),
-        _ => false,
     }
 }
 
@@ -2961,8 +3016,8 @@ mod tests {
     fn event_needs_redraw_only_for_screen_events() {
         assert!(event_needs_redraw(&Event::Key(key(KeyCode::Char('j')))));
         assert!(event_needs_redraw(&Event::Resize(80, 24)));
-        assert!(!event_needs_redraw(&Event::FocusGained));
-        assert!(!event_needs_redraw(&Event::FocusLost));
+        assert!(event_needs_redraw(&Event::FocusGained));
+        assert!(event_needs_redraw(&Event::FocusLost));
         let moved = MouseEvent {
             kind: MouseEventKind::Moved,
             column: 3,

@@ -32,6 +32,7 @@ pub struct LspUi {
     rename_error: Option<u64>,
     display: Option<String>,
     message: Option<String>,
+    formatting_failure: Option<(u64, String)>,
 }
 
 #[derive(Clone)]
@@ -132,6 +133,7 @@ impl LspUi {
         editor: &Editor,
         range: Option<(CursorPosition, CursorPosition)>,
     ) -> Result<u64, String> {
+        self.formatting_failure = None;
         let Some(path) = editor_path(editor) else {
             return Err("E32: No file name".to_string());
         };
@@ -164,6 +166,14 @@ impl LspUi {
 
     pub fn take_formatting(&mut self) -> Option<FormattingEvent> {
         self.text.take_formatting()
+    }
+
+    pub fn take_formatting_failure(&mut self) -> Option<(u64, String)> {
+        self.formatting_failure.take()
+    }
+
+    pub fn cancel_formatting(&mut self) {
+        self.text.cancel_formatting(self.service.as_ref());
     }
 
     pub fn cancel_completion(&mut self) -> bool {
@@ -268,7 +278,14 @@ impl LspUi {
     }
 
     pub fn save(&mut self) {
-        let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) else {
+        let Some(path) = self.path.clone() else {
+            return;
+        };
+        self.save_path(&path);
+    }
+
+    pub fn save_path(&mut self, path: &Path) {
+        let Some(service) = self.service.as_ref() else {
             return;
         };
         service.save(path);
@@ -391,7 +408,11 @@ impl LspUi {
                     self.message = Some(message);
                     return true;
                 }
+                let formatting = self.text.formatting_pending(request);
                 if self.text.fail(request) {
+                    if formatting {
+                        self.formatting_failure = Some((request, message.clone()));
+                    }
                     self.message = Some(message);
                     return true;
                 }

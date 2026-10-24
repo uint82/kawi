@@ -230,11 +230,28 @@ impl Editor {
     }
 
     fn write_outcome(&self, created: bool) -> WriteOutcome {
-        WriteOutcome {
-            lines: self.buffer.line_count(),
-            bytes: self.buffer.file_bytes(),
-            created,
+        buffer_write_outcome(&self.buffer, created)
+    }
+
+    pub fn save_buffer(&mut self, number: usize, force: bool) -> Result<WriteOutcome, EditError> {
+        if number == self.buffers.current() {
+            return self.save(force);
         }
+        let entry = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+            .ok_or(BufferError::Missing(number))
+            .map_err(|_| EditError::NoName)?;
+        let path = entry.state.buffer.path.clone().ok_or(EditError::NoName)?;
+        let created = !paths::absolute(&path, &current_dir()).exists();
+        entry
+            .state
+            .buffer
+            .save(force)
+            .map_err(|error| EditError::Io(error.to_string()))?;
+        Ok(buffer_write_outcome(&entry.state.buffer, created))
     }
 
     pub fn has_file(&self) -> bool {
@@ -285,26 +302,38 @@ impl Editor {
     }
 
     fn reload_parked_file(&mut self, number: usize) {
-        let Some(entry) = self
+        let _ = self.reload_parked_buffer(number);
+    }
+
+    fn reload_parked_buffer(&mut self, number: usize) -> Result<(), EditError> {
+        let entry = self
             .buffers
             .parked
             .iter_mut()
             .find(|entry| entry.number == number)
-        else {
-            return;
-        };
+            .ok_or(BufferError::Missing(number))
+            .map_err(|_| EditError::NoName)?;
         let state = &mut entry.state;
         let row = state.cursor.row();
         let col = state.cursor.col();
         state.buffer.checkpoint(row, col);
-        if state.buffer.reload_from_disk().is_err() {
-            return;
-        }
+        state
+            .buffer
+            .reload_from_disk()
+            .map_err(|error| EditError::Io(error.to_string()))?;
         state.buffer.mark_clean();
         let row = row.min(state.buffer.line_count().saturating_sub(1));
         let col = col.min(state.buffer.line_len(row).saturating_sub(1));
         state.cursor.set_position(row, col);
         state.cursor.set_desired(col);
+        Ok(())
+    }
+
+    pub fn reload_buffer(&mut self, number: usize) -> Result<(), EditError> {
+        if number == self.buffers.current() {
+            return self.reload_current(true);
+        }
+        self.reload_parked_buffer(number)
     }
 
     pub fn edit_file(&mut self, name: Option<&str>, force: bool) -> Result<(), EditError> {
@@ -704,24 +733,10 @@ impl Editor {
     }
 
     pub fn write_all(&mut self) -> Result<(), EditError> {
-        if self.is_dirty() {
-            if !self.has_file() {
-                return Err(EditError::NoName);
+        for number in self.buffers.numbers() {
+            if self.buffer_at(number).is_some_and(Buffer::is_dirty) {
+                self.save_buffer(number, false)?;
             }
-            self.save(false)?;
-        }
-        for entry in self.buffers.parked.iter_mut() {
-            if !entry.state.buffer.is_dirty() {
-                continue;
-            }
-            if !entry.state.buffer.has_path() {
-                return Err(EditError::NoName);
-            }
-            entry
-                .state
-                .buffer
-                .save(false)
-                .map_err(|error| EditError::Io(error.to_string()))?;
         }
         Ok(())
     }
@@ -1050,18 +1065,20 @@ impl Editor {
     }
 }
 
+fn buffer_write_outcome(buffer: &Buffer, created: bool) -> WriteOutcome {
+    WriteOutcome {
+        lines: buffer.line_count(),
+        bytes: buffer.file_bytes(),
+        created,
+    }
+}
+
 fn same_file_path(path: &str, target: &Path) -> bool {
     let absolute = paths::absolute(path, &current_dir());
     if absolute == target {
         return true;
     }
-    match (
-        std::fs::canonicalize(&absolute),
-        std::fs::canonicalize(target),
-    ) {
-        (Ok(path), Ok(target)) => path == target,
-        _ => false,
-    }
+    paths::same_file(&absolute, target)
 }
 
 fn home_path(path: &str) -> String {
@@ -1310,6 +1327,21 @@ mod tests {
         e.edit_file(None, false).unwrap();
         assert_eq!(lines(&e), vec!["changed"]);
         assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn reload_buffer_forces_a_parked_dirty_buffer() {
+        let dir = temp_dir("reload_parked_force");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "b.txt", "bravo\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        open(&mut e, &dir, "b.txt");
+        write_file(&dir, "a.txt", "changed\n");
+        e.reload_buffer(1).unwrap();
+        assert!(e.buffer_select(1));
+        assert_eq!(lines(&e), vec!["changed"]);
+        assert!(!e.is_dirty());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use crossterm::{
     cursor::SetCursorStyle,
+    event::{DisableFocusChange, EnableFocusChange},
     execute,
     style::{Print, ResetColor},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen},
@@ -20,6 +21,7 @@ pub fn init() -> Result<TerminalGuard> {
     apply_initial_style()?;
     enable_mouse()?;
     enable_bracketed_paste()?;
+    enable_focus_change()?;
     Ok(TerminalGuard)
 }
 
@@ -29,6 +31,7 @@ pub fn size() -> Result<(u16, u16)> {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        let _ = execute!(stdout(), DisableFocusChange);
         let _ = execute!(stdout(), Print(PASTE_DISABLE));
         let _ = execute!(stdout(), Print(MOUSE_DISABLE));
         let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
@@ -60,5 +63,10 @@ fn enable_mouse() -> Result<()> {
 
 fn enable_bracketed_paste() -> Result<()> {
     execute!(stdout(), Print(PASTE_ENABLE)).context("enable bracketed paste")?;
+    Ok(())
+}
+
+fn enable_focus_change() -> Result<()> {
+    execute!(stdout(), EnableFocusChange).context("enable focus events")?;
     Ok(())
 }

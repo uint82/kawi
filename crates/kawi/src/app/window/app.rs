@@ -37,6 +37,7 @@ pub(crate) struct PaneData<'a> {
     pub empty_buffer: bool,
     pub mode: &'static str,
     pub lsp: Option<String>,
+    pub external: Option<&'static str>,
 }
 
 impl App {
@@ -434,6 +435,7 @@ impl App {
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status().map(str::to_string),
+            external: self.disk_status(self.editor.buffer_number()),
         }
     }
 
@@ -536,6 +538,7 @@ impl App {
             empty_buffer: self.editor.buffer_is_empty(window.buffer).unwrap_or(false),
             mode: Mode::Normal.label(),
             lsp: None,
+            external: self.disk_status(window.buffer),
         }
     }
 }

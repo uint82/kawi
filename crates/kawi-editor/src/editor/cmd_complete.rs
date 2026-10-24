@@ -327,7 +327,7 @@ mod tests {
         complete(&mut e, false);
         assert_eq!(e.command_text(), "set noautoindent");
         complete(&mut e, false);
-        assert_eq!(e.command_text(), "set noexpandtab");
+        assert_eq!(e.command_text(), "set noautosave");
     }
 
     #[test]

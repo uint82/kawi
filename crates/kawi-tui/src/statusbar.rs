@@ -15,6 +15,7 @@ pub struct StatusInfo<'a> {
     pub empty_buffer: bool,
     pub mode: &'a str,
     pub lsp: Option<&'a str>,
+    pub external: Option<&'a str>,
 }
 
 pub fn draw_status(
@@ -61,11 +62,16 @@ fn left_text(info: &StatusInfo) -> String {
 }
 
 fn file_part(info: &StatusInfo) -> String {
+    let mut text = info.filename.to_string();
     if info.dirty {
-        format!("{} [+]", info.filename)
-    } else {
-        info.filename.to_string()
+        text.push_str(" [+]");
     }
+    if let Some(external) = info.external {
+        text.push_str(" [");
+        text.push_str(external);
+        text.push(']');
+    }
+    text
 }
 
 fn right_text(info: &StatusInfo) -> String {
@@ -129,6 +135,7 @@ mod tests {
             empty_buffer: false,
             mode,
             lsp: None,
+            external: None,
         }
     }
 
@@ -150,6 +157,15 @@ mod tests {
     #[test]
     fn shows_mode() {
         assert!(build_line(&info("a.txt", false, "NORMAL"), 40).contains("NORMAL"));
+    }
+
+    #[test]
+    fn shows_external_file_state() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.external = Some("changed");
+        assert!(build_line(&status, 40).contains("[changed]"));
+        status.external = Some("deleted");
+        assert!(build_line(&status, 40).contains("[deleted]"));
     }
 
     #[test]

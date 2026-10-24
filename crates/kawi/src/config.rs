@@ -318,9 +318,12 @@ theme = "gruvbox-dark"
 [editor]
 shiftwidth = 2
 expandtab = true
+format_on_save = true
 number = false
 ignorecase = true
 autoindent = false
+autosave = "focus"
+autosave_delay = 250
 
 [history]
 limit = 25
@@ -348,6 +351,14 @@ limit = 25
         assert_eq!(
             loaded.config.get("autoindent"),
             Some(&OptionValue::Bool(false))
+        );
+        assert_eq!(
+            loaded.config.get("autosave"),
+            Some(&OptionValue::Text("focus".to_string()))
+        );
+        assert_eq!(
+            loaded.config.get("autosave_delay"),
+            Some(&OptionValue::Int(250))
         );
         assert_eq!(loaded.config.get("history"), Some(&OptionValue::Int(25)));
     }
