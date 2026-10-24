@@ -393,12 +393,14 @@ dependencies = [
  "kawi-syntax",
  "kawi-task",
  "kawi-tui",
+ "kawi-watch",
  "libc",
  "ropey",
  "serde",
  "serde_json",
  "sha2",
  "signal-hook",
+ "similar",
  "toml_edit",
 ]
 

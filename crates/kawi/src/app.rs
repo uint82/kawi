@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 mod code_action;
 mod completion;
 mod config;
+mod conflict;
+mod disk;
 mod formatting;
 mod frame;
 mod git;
@@ -129,6 +131,9 @@ pub struct App {
     lsp: LspUi,
     tasks: Tasks,
     task: TaskSession,
+    disk: disk::DiskState,
+    file_watch: Option<kawi_watch::WatchService>,
+    conflict: Option<conflict::ConflictSession>,
     quickfix: Quickfix,
     windows: Windows,
     screen_width: usize,
@@ -174,6 +179,9 @@ impl App {
             lsp: LspUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
+            disk: disk::DiskState::default(),
+            file_watch: None,
+            conflict: None,
             quickfix: Quickfix::default(),
             windows,
             screen_width: FALLBACK_WIDTH,
@@ -191,6 +199,7 @@ impl App {
         self.sync_viewport_size();
         self.events.start_input_thread()?;
         self.events.start_signal_handlers()?;
+        self.start_file_watch();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         match outcome {
             Ok(result) => {
@@ -271,6 +280,8 @@ impl App {
             self.sync_git();
             self.sync_lsp();
             self.sync_task();
+            self.sync_watched_files();
+            self.maybe_open_conflict();
             if self.picker.is_none() && self.replace.is_none() {
                 self.refresh_syntax();
             }
@@ -297,6 +308,9 @@ impl App {
                 redraw |= needs_redraw;
             }
             redraw |= self.lsp.poll_events(&self.editor);
+            redraw |= self.poll_file_watch();
+            self.sync_watched_files();
+            self.maybe_open_conflict();
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             redraw |= self.sync_task();
@@ -487,6 +501,7 @@ impl App {
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status(),
+            external: self.disk_status(self.editor.buffer_number()),
         }
     }
 
@@ -537,6 +552,7 @@ impl App {
             || self.rename.is_some()
             || self.completion.is_some()
             || self.code_actions.is_some()
+            || self.conflict.is_some()
         {
             self.dismiss_lsp_menu();
             return self.handle_noop();
@@ -682,6 +698,9 @@ impl App {
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
+        }
+        if self.pager.is_none() && self.conflict.is_some() {
+            return self.handle_conflict_key(key);
         }
         if self.rename.is_some() {
             return self.handle_rename_key(key);
@@ -914,9 +933,15 @@ impl App {
     }
 
     fn save_and_report(&mut self, force: bool) -> bool {
+        let number = self.editor.buffer_number();
+        if self.disk_conflict(number) && !force {
+            self.show_message("File changed on disk; resolve the conflict or use :w!".to_string());
+            return false;
+        }
         match self.editor.save(force) {
             Ok(outcome) => {
                 let report = written_report(self.editor.filename(), outcome);
+                self.record_saved_buffer();
                 self.lsp.save();
                 self.show_message(report);
                 true
@@ -929,6 +954,7 @@ impl App {
         match self.editor.write_as(name, force) {
             Ok(outcome) => {
                 let report = written_report(name, outcome);
+                self.record_saved_buffer();
                 self.show_message(report);
                 true
             }
@@ -1348,6 +1374,7 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
+            Command::Conflict => self.handle_conflict_command(),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {
@@ -1425,8 +1452,13 @@ impl App {
     }
 
     fn handle_save_all(&mut self) -> Result<bool> {
+        if self.has_disk_conflicts() {
+            self.show_message("Resolve disk conflicts before saving all".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
+                self.record_all_saved();
                 self.lsp.save();
                 Ok(false)
             }
@@ -1438,8 +1470,13 @@ impl App {
     }
 
     fn handle_write_quit_all(&mut self) -> Result<bool> {
+        if self.has_disk_conflicts() {
+            self.show_message("Resolve disk conflicts before saving all".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
+                self.record_all_saved();
                 self.lsp.save();
                 Ok(true)
             }

@@ -15,6 +15,7 @@ impl App {
         self.check_replace_targets(preview, &paths)?;
         self.write_replace_files(preview, &paths)?;
         self.editor.reload_files(&paths);
+        self.record_reloaded_paths(&paths);
         Ok(())
     }
 

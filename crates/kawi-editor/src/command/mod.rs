@@ -48,6 +48,7 @@ pub enum Command {
     Git(GitCommand),
     Task(TaskCommand),
     Quickfix(QuickfixCommand),
+    Conflict,
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
@@ -115,6 +116,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "clo",
     "close",
     "cnext",
+    "conflict",
     "copen",
     "cprev",
     "e",
@@ -242,6 +244,7 @@ fn parse_named(text: &str) -> Command {
         ("git", rest) => parse_git_command(rest),
         ("task", rest) => parse_task_command(rest),
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
+        ("conflict", []) => Command::Conflict,
         ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
         ("cclose", []) => Command::Quickfix(QuickfixCommand::Close),
         ("cnext", []) => Command::Quickfix(QuickfixCommand::Next),
@@ -720,6 +723,12 @@ mod tests {
         assert_eq!(parse("task close"), Command::Task(TaskCommand::Close));
         assert_eq!(parse("task run"), Command::Unknown);
         assert_eq!(parse("task a b"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_conflict_command() {
+        assert_eq!(parse("conflict"), Command::Conflict);
+        assert_eq!(parse("conflict now"), Command::Unknown);
     }
 
     #[test]

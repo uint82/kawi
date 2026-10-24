@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 const SECTIONS: &[(&str, &[&str])] = &[
     ("base", &["foreground", "background"]),
     ("search_match", &["foreground", "background"]),
@@ -49,4 +52,17 @@ pub(crate) fn custom_theme() -> String {
         text.push('\n');
     }
     text
+}
+
+pub(crate) fn temp_dir(prefix: &str) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let dir = std::env::temp_dir().join(format!(
+        "kawi_test_{}_{}_{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed),
+        prefix
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp directory");
+    dir
 }
