@@ -124,7 +124,7 @@ impl TerminalUi {
             if let Some(status) = session.exit_description() {
                 let cursor = session.screen().cursor();
                 self.normal_cursor = (cursor.row, cursor.col);
-                self.status = status;
+                self.status = format!("{status} (q closes)");
                 self.exit_reported = true;
                 self.mode = TerminalMode::Normal;
                 self.escape_pending = false;

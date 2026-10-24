@@ -103,7 +103,7 @@ fn exit_switches_to_normal_and_reports_status() {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(terminal.mode, TerminalMode::Normal);
-    assert_eq!(terminal.status(), "process exited: 7");
+    assert_eq!(terminal.status(), "process exited: 7 (q closes)");
     terminal.close();
 }
 
