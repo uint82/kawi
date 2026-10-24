@@ -452,6 +452,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kawi-task"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kawi-process",
+ "regex",
+ "serde",
+ "serde_json",
+ "toml_edit",
+]
+
+[[package]]
 name = "kawi-tui"
 version = "0.0.1"
 dependencies = [
