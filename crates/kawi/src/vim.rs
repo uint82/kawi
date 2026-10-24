@@ -357,7 +357,7 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r')) = key.code {
+            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r' | 't')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(' ');
                     self.pending.push(prefix);
@@ -1200,13 +1200,13 @@ impl VimKeymap {
     fn leader_prefix_armed(&self) -> bool {
         matches!(
             self.pending.as_str(),
-            " c" | " f" | " v" | " r" | "\\" | "\\c" | "\\f" | "\\v" | "\\r"
+            " c" | " f" | " v" | " r" | " t" | "\\" | "\\c" | "\\f" | "\\v" | "\\r" | "\\t"
         )
     }
 
     fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
         if self.pending == "\\" {
-            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r')) = key.code {
+            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r' | 't')) = key.code {
                 if !has_ctrl_or_alt(key) {
                     self.pending.push(prefix);
                     return Action::Noop;
@@ -1234,6 +1234,11 @@ impl VimKeymap {
             (" c" | "\\c", KeyCode::Char('a')) if !has_ctrl_or_alt(key) => Action::CodeAction,
             (" c" | "\\c", KeyCode::Char('f')) if !has_ctrl_or_alt(key) => Action::Format,
             (" r" | "\\r", KeyCode::Char('n')) if !has_ctrl_or_alt(key) => Action::Rename,
+            (" t" | "\\t", KeyCode::Char('r')) if !has_ctrl_or_alt(key) => Action::TaskRerun,
+            (" t" | "\\t", KeyCode::Char('c')) if !has_ctrl_or_alt(key) => Action::TaskCancel,
+            (" t" | "\\t", KeyCode::Char('o')) if !has_ctrl_or_alt(key) => Action::TaskOutput,
+            (" t" | "\\t", KeyCode::Char('l')) if !has_ctrl_or_alt(key) => Action::TaskList,
+            (" t" | "\\t", KeyCode::Char('q')) if !has_ctrl_or_alt(key) => Action::QuickfixOpen,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -1264,6 +1269,14 @@ impl VimKeymap {
                     Action::DiagnosticNext
                 } else {
                     Action::DiagnosticPrev
+                }
+            }
+            KeyCode::Char('q') if !has_ctrl_or_alt(key) => {
+                self.clear_pending();
+                if forward {
+                    Action::QuickfixNext
+                } else {
+                    Action::QuickfixPrev
                 }
             }
             _ => self.cancel_sequence(),
@@ -4138,6 +4151,51 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('d')), Mode::Normal),
             Action::DiagnosticPrev
+        );
+    }
+
+    #[test]
+    fn task_shortcuts_resolve() {
+        for leader in [' ', '\\'] {
+            for (key, action) in [
+                ('r', Action::TaskRerun),
+                ('c', Action::TaskCancel),
+                ('o', Action::TaskOutput),
+                ('l', Action::TaskList),
+                ('q', Action::QuickfixOpen),
+            ] {
+                let mut map = VimKeymap::new();
+                assert_eq!(
+                    map.map(plain(KeyCode::Char(leader)), Mode::Normal),
+                    Action::Noop
+                );
+                assert_eq!(
+                    map.map(plain(KeyCode::Char('t')), Mode::Normal),
+                    Action::Noop
+                );
+                assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            }
+        }
+    }
+
+    #[test]
+    fn quickfix_navigation_sequences_resolve() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(']')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('q')), Mode::Normal),
+            Action::QuickfixNext
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('[')), Mode::Normal),
+            Action::BeginSequence
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('q')), Mode::Normal),
+            Action::QuickfixPrev
         );
     }
 
