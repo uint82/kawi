@@ -131,13 +131,13 @@ fn delete_allowed(app: &App, target: &Path, force: bool) -> bool {
     let cwd = std::env::current_dir()
         .ok()
         .map(|path| canonical_or_absolute(&path));
-    if home.as_deref() == Some(target.as_path())
-        || cwd.as_deref() == Some(target.as_path())
-        || workspace == target
-    {
-        return false;
-    }
-    target.starts_with(&workspace)
+    !is_protected(&target, &workspace)
+        && !home.is_some_and(|home| is_protected(&target, &home))
+        && !cwd.is_some_and(|cwd| is_protected(&target, &cwd))
+}
+
+fn is_protected(target: &Path, protected: &Path) -> bool {
+    protected.starts_with(target)
 }
 
 fn canonical_or_absolute(path: &Path) -> PathBuf {
