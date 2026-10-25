@@ -57,3 +57,27 @@ fn moving_the_selection_prepares_the_new_documentation() {
     );
     assert!(session.selected_document().is_some());
 }
+
+#[test]
+fn resolved_documentation_replaces_initial_documentation() {
+    let mut value = item("a", "value");
+    value.resolve = true;
+    value.documentation = Some(markdown_document("initial"));
+    let mut session = CompletionSession::new(event(vec![value]), "");
+    let value = session.needs_resolve().expect("resolve").clone();
+    session.start_resolve(7, &value);
+    assert!(session.apply_resolved(ResolvedItem {
+        request: 7,
+        item_id: "a".to_string(),
+        detail: None,
+        documentation: Some(markdown_document("```rust\nfn resolved() {}\n```")),
+        additional: Vec::new(),
+    }));
+    let document = session.selected_document().expect("prepared document");
+    let text = markdown::render_document(document, 80)
+        .iter()
+        .map(|line| line.text())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(text, "fn resolved() {}");
+}
