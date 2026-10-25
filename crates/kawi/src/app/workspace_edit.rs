@@ -239,6 +239,22 @@ mod tests {
     }
 
     #[test]
+    fn applies_a_rename_to_one_buffer_as_one_undo_step() {
+        let root = project("undo_group");
+        let path = root.join("a.txt");
+        fs::write(&path, "old old\n").expect("file");
+        let mut app = app_for(&root, "a.txt");
+        let edit = WorkspaceEdit {
+            documents: vec![document(&path, "old old\n", rename_all("old old\n"))],
+        };
+        assert_eq!(app.apply_workspace_edit(&edit), Ok(1));
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["new new"]);
+        assert!(app.editor.try_undo());
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["old old"]);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
     fn applies_edits_to_a_modified_current_buffer() {
         let root = project("dirty_current");
         let path = root.join("a.txt");
