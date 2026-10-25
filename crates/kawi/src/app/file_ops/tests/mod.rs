@@ -5,6 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use kawi_editor::{parse, Action};
 
+mod delete;
 mod rename;
 
 use super::App;
@@ -241,5 +242,35 @@ fn creating_a_file_does_not_report_its_own_watcher_event() {
         app.last_message(),
         Some(format!("Created \"{}\"", target.display())).as_deref()
     );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn normal_mode_ctrl_r_still_redoes() {
+    let dir = temp_dir("ctrl_r_redo");
+    let path = dir.join("a.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = app_for(&path);
+    edit(&mut app, "x");
+    app.editor.apply(Action::Undo);
+    assert_eq!(app.editor.buffer_text(1).unwrap(), "alpha\n");
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+        .expect("redo");
+    assert_eq!(app.editor.buffer_text(1).unwrap(), "xalpha\n");
+    assert!(app.file_ops_prompt().is_none());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn insert_mode_ctrl_d_still_shifts_left() {
+    let dir = temp_dir("ctrl_d_shift");
+    let path = dir.join("a.txt");
+    fs::write(&path, "\tab\n").unwrap();
+    let mut app = app_for(&path);
+    app.editor.apply(Action::EnterInsert);
+    app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
+        .expect("shift");
+    assert_eq!(app.editor.buffer_text(1).unwrap(), "ab\n");
+    assert!(app.file_ops_prompt().is_none());
     let _ = fs::remove_dir_all(dir);
 }

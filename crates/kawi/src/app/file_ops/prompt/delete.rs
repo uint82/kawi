@@ -183,3 +183,43 @@ impl DeleteSession {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(permanent: bool) -> DeleteRequest {
+        DeleteRequest {
+            target: PathBuf::from("/tmp/item"),
+            permanent,
+            dirty: Vec::new(),
+            items: None,
+        }
+    }
+
+    #[test]
+    fn typed_confirmation_is_required_without_trash() {
+        let mut session = DeleteSession::new(request(false), true);
+        assert!(session.prompt().label.contains("Type delete"));
+        for character in "delet".chars() {
+            let outcome =
+                session.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
+            assert!(matches!(outcome, DeleteOutcome::Consumed));
+        }
+        assert!(matches!(
+            session.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            DeleteOutcome::Consumed
+        ));
+        session.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+        assert!(matches!(
+            session.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            DeleteOutcome::Execute { keep_dirty: false }
+        ));
+    }
+
+    #[test]
+    fn permanent_delete_is_explicitly_labelled() {
+        let session = DeleteSession::new(request(true), false);
+        assert!(session.prompt().label.contains("Permanently delete"));
+    }
+}
