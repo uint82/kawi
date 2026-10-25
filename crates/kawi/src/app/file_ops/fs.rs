@@ -130,10 +130,6 @@ pub(super) fn missing_parent(path: &Path) -> Option<PathBuf> {
     (!parent.as_os_str().is_empty() && !parent.is_dir()).then(|| parent.to_path_buf())
 }
 
-pub(super) fn is_within(path: &Path, root: &Path) -> bool {
-    path.starts_with(root) && path != root
-}
-
 fn rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     {

@@ -179,7 +179,18 @@ pub(super) fn is_directory_text(text: &str) -> bool {
 }
 
 pub(super) fn path_under(path: &Path, root: &Path) -> bool {
-    path == root || fs::is_within(path, root)
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_ok_and(|rest| !rest.as_os_str().is_empty())
+}
+
+pub(super) fn rewrite_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
+    if path == old {
+        return Some(new.to_path_buf());
+    }
+    let rest = path.strip_prefix(old).ok()?;
+    (!rest.as_os_str().is_empty()).then(|| new.join(rest))
 }
 
 pub(super) fn buffer_numbers_under(app: &App, target: &Path) -> Vec<usize> {

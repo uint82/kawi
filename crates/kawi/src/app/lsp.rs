@@ -133,7 +133,10 @@ impl LspUi {
         let Some(path) = self.path.as_mut() else {
             return;
         };
-        let Some(rewritten) = rewrite_any(path, files) else {
+        let Some(rewritten) = files
+            .iter()
+            .find_map(|(old, new)| super::file_ops::rewrite_path(path, old, new))
+        else {
             return;
         };
         *path = rewritten;
@@ -145,10 +148,11 @@ impl LspUi {
         if let Some(service) = self.service.as_ref() {
             service.did_delete_files(files);
         }
-        let removed = self
-            .path
-            .as_ref()
-            .is_some_and(|path| files.iter().any(|target| is_under(path, target)));
+        let removed = self.path.as_ref().is_some_and(|path| {
+            files
+                .iter()
+                .any(|target| super::file_ops::path_under(path, target))
+        });
         if !removed {
             return;
         }
@@ -855,25 +859,6 @@ pub(super) fn one_line(text: &str) -> String {
             }
         })
         .collect()
-}
-
-fn rewrite_any(path: &Path, files: &[(PathBuf, PathBuf)]) -> Option<PathBuf> {
-    files.iter().find_map(|(old, new)| rewrite(path, old, new))
-}
-
-fn rewrite(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
-    if path == old {
-        return Some(new.to_path_buf());
-    }
-    let rest = path.strip_prefix(old).ok()?;
-    (!rest.as_os_str().is_empty()).then(|| new.join(rest))
-}
-
-fn is_under(path: &Path, root: &Path) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_ok_and(|rest| !rest.as_os_str().is_empty())
 }
 
 #[cfg(test)]

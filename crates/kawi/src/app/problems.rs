@@ -5,6 +5,8 @@ use ropey::Rope;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use super::file_ops::{path_under, rewrite_path};
+
 const MAX_PROBLEMS: usize = 10_000;
 const TASK_PREFIX: &str = "task:";
 const LSP_PREFIX: &str = "lsp:";
@@ -512,21 +514,6 @@ pub(super) fn source_label(source: &str) -> &str {
 pub(super) fn code_label(problem: &Problem) -> Option<String> {
     let code = problem.code.as_deref()?;
     Some(format!("{} {code}", problem.provider_label()))
-}
-
-fn path_under(path: &Path, root: &Path) -> bool {
-    path == root
-        || path
-            .strip_prefix(root)
-            .is_ok_and(|rest| !rest.as_os_str().is_empty())
-}
-
-fn rewrite_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
-    if path == old {
-        return Some(new.to_path_buf());
-    }
-    let rest = path.strip_prefix(old).ok()?;
-    (!rest.as_os_str().is_empty()).then(|| new.join(rest))
 }
 
 fn sort_problems(problems: &mut [&Problem]) {
