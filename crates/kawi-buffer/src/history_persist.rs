@@ -1,9 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use ropey::Rope;
 
-use crate::diff::diff_ropes;
-use crate::history::{History, Snapshot};
+use crate::history::{History, Node};
+
+mod reconstruct;
+mod trim;
+
+use reconstruct::{delta_between, reconstruct_texts, validate_entries};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HistoryDelta {
@@ -20,11 +24,17 @@ pub struct HistoryEntry {
     pub col: usize,
     pub line_changes: u64,
     pub delta: HistoryDelta,
+    pub timestamp: u64,
+    pub save_marker: Option<u64>,
+    pub last_visited_child: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedHistory {
     pub current_id: u64,
+    pub clean_id: Option<u64>,
+    pub next_id: u64,
+    pub next_write_marker: u64,
     pub entries: Vec<HistoryEntry>,
 }
 
@@ -38,23 +48,6 @@ impl PersistedHistory {
             .iter()
             .position(|entry| entry.id == self.current_id)
     }
-
-    pub fn trim_oldest(&mut self) -> bool {
-        let Some(current) = self.current_index() else {
-            return false;
-        };
-        if current > 0 {
-            self.entries.remove(0);
-            self.entries[0].parent = None;
-            self.entries[0].delta = HistoryDelta::default();
-            return true;
-        }
-        if self.entries.len() > 1 {
-            self.entries.pop();
-            return true;
-        }
-        false
-    }
 }
 
 impl History {
@@ -65,231 +58,163 @@ impl History {
         col: usize,
         line_changes: u64,
     ) -> PersistedHistory {
-        let mut states: Vec<State<'_>> = self.undo.iter().map(State::from_snapshot).collect();
-        states.push(State {
-            id: self.current_id,
-            text: current,
-            row,
-            col,
-            line_changes,
-        });
-        states.extend(self.redo.iter().rev().map(State::from_snapshot));
-        let mut entries = Vec::with_capacity(states.len());
-        for (index, state) in states.iter().enumerate() {
-            let (parent, delta) = match index.checked_sub(1).and_then(|i| states.get(i)) {
-                Some(previous) => (Some(previous.id), delta_between(previous.text, state.text)),
-                None => (None, HistoryDelta::default()),
-            };
-            entries.push(HistoryEntry {
-                id: state.id,
-                parent,
-                row: state.row,
-                col: state.col,
-                line_changes: state.line_changes,
-                delta,
-            });
-        }
+        let context = ExportContext::new(self, current, row, col, line_changes);
+        let entries = self
+            .nodes
+            .iter()
+            .map(|(id, node)| export_entry(*id, node, &context))
+            .collect();
         PersistedHistory {
             current_id: self.current_id,
+            clean_id: self.clean_id,
+            next_id: self.next_id,
+            next_write_marker: self.next_write_marker,
             entries,
         }
     }
 
     pub fn from_persisted(current: &Rope, persisted: &PersistedHistory) -> Option<Self> {
-        validate_entries(&persisted.entries)?;
-        let current_index = persisted.current_index()?;
-        let mut texts = reconstruct_texts(current, persisted, current_index)?;
-        let next_id = persisted
-            .entries
-            .iter()
-            .map(|entry| entry.id)
-            .max()
-            .unwrap_or_default()
-            .saturating_add(1);
-        let mut snapshots = persisted
-            .entries
-            .iter()
-            .map(|entry| {
-                Some(Snapshot {
-                    id: entry.id,
-                    text: texts.pop_front()?,
-                    row: entry.row,
-                    col: entry.col,
-                    line_changes: entry.line_changes,
-                })
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let mut redo = snapshots.split_off(current_index + 1);
-        snapshots.pop()?;
-        redo.reverse();
-        Some(Self {
-            undo: snapshots,
-            redo,
-            group_open: false,
+        let entries = validate_entries(persisted)?;
+        let texts = reconstruct_texts(current, persisted, &entries)?;
+        let nodes = build_nodes(persisted, &texts)?;
+        let max_id = persisted.entries.iter().map(|entry| entry.id).max()?;
+        let max_marker = max_save_marker(persisted);
+        let mut history = Self {
+            nodes,
             current_id: persisted.current_id,
-            next_id,
-            clean_id: persisted.current_id,
-        })
+            next_id: persisted.next_id.max(max_id.saturating_add(1)),
+            clean_id: persisted.clean_id,
+            next_write_marker: persisted
+                .next_write_marker
+                .max(max_marker.saturating_add(1)),
+            group_open: false,
+        };
+        history.evict_to_cap();
+        Some(history)
     }
 }
 
-struct State<'a> {
-    id: u64,
-    text: &'a Rope,
+struct ExportContext<'a> {
+    history: &'a History,
+    current: &'a Rope,
     row: usize,
     col: usize,
     line_changes: u64,
+    texts: BTreeMap<u64, &'a Rope>,
 }
 
-impl<'a> State<'a> {
-    fn from_snapshot(snapshot: &'a Snapshot) -> Self {
+impl<'a> ExportContext<'a> {
+    fn new(
+        history: &'a History,
+        current: &'a Rope,
+        row: usize,
+        col: usize,
+        line_changes: u64,
+    ) -> Self {
+        let texts = history
+            .nodes
+            .iter()
+            .map(|(id, node)| (*id, text_for(*id, node, history.current_id, current)))
+            .collect();
         Self {
-            id: snapshot.id,
-            text: &snapshot.text,
-            row: snapshot.row,
-            col: snapshot.col,
-            line_changes: snapshot.line_changes,
+            history,
+            current,
+            row,
+            col,
+            line_changes,
+            texts,
+        }
+    }
+
+    fn text(&self, id: u64) -> &'a Rope {
+        self.texts.get(&id).copied().unwrap_or(self.current)
+    }
+
+    fn row(&self, id: u64, node: &Node) -> usize {
+        if id == self.history.current_id {
+            self.row
+        } else {
+            node.row
+        }
+    }
+
+    fn col(&self, id: u64, node: &Node) -> usize {
+        if id == self.history.current_id {
+            self.col
+        } else {
+            node.col
+        }
+    }
+
+    fn line_changes(&self, id: u64, node: &Node) -> u64 {
+        if id == self.history.current_id {
+            self.line_changes
+        } else {
+            node.line_changes
         }
     }
 }
 
-fn delta_between(previous: &Rope, current: &Rope) -> HistoryDelta {
-    let Some(change) = diff_ropes(previous, current) else {
-        return HistoryDelta::default();
+fn text_for<'a>(id: u64, node: &'a Node, current_id: u64, current: &'a Rope) -> &'a Rope {
+    if id == current_id {
+        current
+    } else {
+        node.text.as_ref().unwrap_or(current)
+    }
+}
+
+fn export_entry(id: u64, node: &Node, context: &ExportContext<'_>) -> HistoryEntry {
+    let text = context.text(id);
+    let (parent, delta) = match node.parent.and_then(|parent| context.texts.get(&parent)) {
+        Some(parent_text) => (node.parent, delta_between(parent_text, text)),
+        None => (None, HistoryDelta::default()),
     };
-    HistoryDelta {
-        start: change.start,
-        removed: previous.slice(change.start..change.old_end).to_string(),
-        inserted: current.slice(change.start..change.new_end).to_string(),
+    HistoryEntry {
+        id,
+        parent,
+        row: context.row(id, node),
+        col: context.col(id, node),
+        line_changes: context.line_changes(id, node),
+        delta,
+        timestamp: node.timestamp,
+        save_marker: node.save_marker,
+        last_visited_child: node.last_visited_child,
     }
 }
 
-fn validate_entries(entries: &[HistoryEntry]) -> Option<()> {
-    if entries.is_empty() {
-        return None;
-    }
-    let mut ids = BTreeSet::new();
-    for (index, entry) in entries.iter().enumerate() {
-        if !ids.insert(entry.id) {
-            return None;
-        }
-        let expected = index.checked_sub(1).map(|previous| entries[previous].id);
-        if entry.parent != expected {
-            return None;
-        }
-    }
-    Some(())
-}
-
-fn reconstruct_texts(
-    current: &Rope,
+fn build_nodes(
     persisted: &PersistedHistory,
-    current_index: usize,
-) -> Option<std::collections::VecDeque<Rope>> {
-    let mut texts = vec![None; persisted.entries.len()];
-    texts[current_index] = Some(current.clone());
-    for index in (1..=current_index).rev() {
-        let next = texts[index].as_ref()?;
-        texts[index - 1] = Some(reverse_delta(next, &persisted.entries[index].delta)?);
-    }
-    for index in current_index + 1..persisted.entries.len() {
-        let previous = texts[index - 1].as_ref()?;
-        texts[index] = Some(forward_delta(previous, &persisted.entries[index].delta)?);
-    }
-    texts.into_iter().collect()
+    texts: &BTreeMap<u64, Rope>,
+) -> Option<BTreeMap<u64, Node>> {
+    persisted
+        .entries
+        .iter()
+        .map(|entry| {
+            Some((
+                entry.id,
+                Node {
+                    parent: entry.parent,
+                    text: Some(texts.get(&entry.id)?.clone()),
+                    row: entry.row,
+                    col: entry.col,
+                    line_changes: entry.line_changes,
+                    timestamp: entry.timestamp,
+                    save_marker: entry.save_marker,
+                    last_visited_child: entry.last_visited_child,
+                },
+            ))
+        })
+        .collect()
 }
 
-fn forward_delta(text: &Rope, delta: &HistoryDelta) -> Option<Rope> {
-    replace_delta(text, delta.start, &delta.removed, &delta.inserted)
-}
-
-fn reverse_delta(text: &Rope, delta: &HistoryDelta) -> Option<Rope> {
-    replace_delta(text, delta.start, &delta.inserted, &delta.removed)
-}
-
-fn replace_delta(text: &Rope, start: usize, removed: &str, inserted: &str) -> Option<Rope> {
-    let end = start.saturating_add(removed.chars().count());
-    if start > text.len_chars() || end > text.len_chars() {
-        return None;
-    }
-    if !text.slice(start..end).chars().eq(removed.chars()) {
-        return None;
-    }
-    let mut result = text.clone();
-    result.remove(start..end);
-    result.insert(start, inserted);
-    Some(result)
+fn max_save_marker(persisted: &PersistedHistory) -> u64 {
+    persisted
+        .entries
+        .iter()
+        .filter_map(|entry| entry.save_marker)
+        .max()
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn rope(text: &str) -> Rope {
-        Rope::from_str(text)
-    }
-
-    fn history_with_changes() -> (History, Rope) {
-        let mut history = History::new();
-        history.checkpoint(&rope("one\n"), 0, 1, 0);
-        history.checkpoint(&rope("two\n"), 0, 1, 1);
-        (history, rope("three\n"))
-    }
-
-    #[test]
-    fn round_trips_undo_and_redo_states() {
-        let (mut history, current) = history_with_changes();
-        let mut undone = current.clone();
-        history.undo(&mut undone, 0, 0, 0);
-        let persisted = history.export(&undone, 0, 0, 0);
-        assert!(persisted.has_changes());
-        let mut restored = History::from_persisted(&undone, &persisted).expect("restore");
-        assert!(!restored.is_dirty());
-        assert_eq!(restored.undo.len(), 1);
-        assert_eq!(restored.redo.len(), 1);
-        assert!(restored.redo(&mut undone, 0, 0, 0).is_some());
-        assert_eq!(undone.to_string(), "three\n");
-    }
-
-    #[test]
-    fn round_trips_a_linear_history() {
-        let (history, current) = history_with_changes();
-        let persisted = history.export(&current, 0, 0, 0);
-        let mut restored = History::from_persisted(&current, &persisted).expect("restore");
-        let mut text = current.clone();
-        assert!(restored.undo(&mut text, 0, 0, 0).is_some());
-        assert_eq!(text.to_string(), "two\n");
-        assert!(restored.undo(&mut text, 0, 0, 0).is_some());
-        assert_eq!(text.to_string(), "one\n");
-        assert!(restored.undo(&mut text, 0, 0, 0).is_none());
-    }
-
-    #[test]
-    fn rejects_tampered_deltas() {
-        let (history, current) = history_with_changes();
-        let mut persisted = history.export(&current, 0, 0, 0);
-        persisted.entries[1].delta.inserted = "wrong".to_string();
-        assert!(History::from_persisted(&current, &persisted).is_none());
-    }
-
-    #[test]
-    fn trim_oldest_keeps_the_current_state() {
-        let (history, current) = history_with_changes();
-        let mut persisted = history.export(&current, 0, 0, 0);
-        assert!(persisted.trim_oldest());
-        assert_eq!(persisted.current_id, persisted.entries.last().unwrap().id);
-        assert!(History::from_persisted(&current, &persisted).is_some());
-    }
-
-    #[test]
-    fn handles_unicode_deltas() {
-        let mut history = History::new();
-        history.checkpoint(&rope("a𝄞b\n"), 0, 0, 0);
-        let current = rope("a𝄢b\n");
-        let persisted = history.export(&current, 0, 0, 0);
-        let mut restored = History::from_persisted(&current, &persisted).expect("restore");
-        let mut text = current.clone();
-        assert!(restored.undo(&mut text, 0, 0, 0).is_some());
-        assert_eq!(text.to_string(), "a𝄞b\n");
-    }
-}
+mod tests;

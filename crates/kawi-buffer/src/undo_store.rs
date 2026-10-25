@@ -250,4 +250,10 @@ fn apply_private_mode(options: &mut OpenOptions) {
 fn apply_private_mode(_options: &mut OpenOptions) {}
 
 #[cfg(test)]
+mod prune_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tree_tests;
