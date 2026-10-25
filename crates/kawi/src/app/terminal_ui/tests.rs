@@ -11,7 +11,13 @@ use crate::app::App;
 use crate::keymap::Flavor;
 
 fn options(command: &str) -> SpawnOptions {
-    let mut options = spawn_options(std::env::temp_dir(), 10, 40, Some(command.to_string()));
+    let mut options = spawn_options(
+        std::env::temp_dir(),
+        10,
+        40,
+        Some(command.to_string()),
+        None,
+    );
     options.shell = "/bin/sh".to_string();
     options.editor = None;
     options

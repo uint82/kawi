@@ -122,6 +122,7 @@ pub struct PaneFrame<'a> {
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
     pub syntax_spans: &'a [SyntaxSpan],
+    pub rulers: &'a [usize],
     pub selection: Option<Selection>,
     pub viewport: Viewport,
     pub cursor_col: usize,

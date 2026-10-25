@@ -5,6 +5,14 @@ use std::io::{Stdout, Write};
 use crate::paint;
 use crate::theme::{MatchColors, Theme};
 
+#[derive(Clone, Copy)]
+pub struct GitStatusInfo<'a> {
+    pub branch: &'a str,
+    pub operation: Option<&'a str>,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
 pub struct StatusInfo<'a> {
     pub filename: &'a str,
     pub dirty: bool,
@@ -16,6 +24,7 @@ pub struct StatusInfo<'a> {
     pub mode: &'a str,
     pub lsp: Option<&'a str>,
     pub external: Option<&'a str>,
+    pub git: Option<GitStatusInfo<'a>>,
 }
 
 pub fn draw_status(
@@ -75,6 +84,32 @@ fn file_part(info: &StatusInfo) -> String {
 }
 
 fn right_text(info: &StatusInfo) -> String {
+    let mut text = String::new();
+    if let Some(git) = info.git.as_ref() {
+        text.push_str(&git_text(git));
+        text.push_str("  ");
+    }
+    text.push_str(&position_text(info));
+    text
+}
+
+fn git_text(git: &GitStatusInfo<'_>) -> String {
+    let mut text = String::new();
+    if let Some(operation) = git.operation {
+        text.push_str(operation);
+        text.push(' ');
+    }
+    text.push_str(git.branch);
+    if git.ahead > 0 {
+        text.push_str(&format!(" +{}", git.ahead));
+    }
+    if git.behind > 0 {
+        text.push_str(&format!(" -{}", git.behind));
+    }
+    text
+}
+
+fn position_text(info: &StatusInfo) -> String {
     let line = if info.empty_buffer {
         0
     } else {
@@ -136,6 +171,7 @@ mod tests {
             mode,
             lsp: None,
             external: None,
+            git: None,
         }
     }
 
@@ -173,6 +209,38 @@ mod tests {
         let mut status = info("a.rs", false, "NORMAL");
         status.lsp = Some("lsp: rust-analyzer not found in PATH");
         assert!(build_line(&status, 80).contains("lsp: rust-analyzer not found in PATH"));
+    }
+
+    #[test]
+    fn shows_git_branch_and_divergence() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.git = Some(GitStatusInfo {
+            branch: "main",
+            operation: None,
+            ahead: 2,
+            behind: 1,
+        });
+        let line = build_line(&status, 60);
+        assert!(line.contains("main +2 -1"));
+    }
+
+    #[test]
+    fn shows_git_operation_and_detached_branch() {
+        let mut status = info("a.txt", false, "NORMAL");
+        status.git = Some(GitStatusInfo {
+            branch: "abc1234",
+            operation: Some("REBASING"),
+            ahead: 0,
+            behind: 0,
+        });
+        let line = build_line(&status, 60);
+        assert!(line.contains("REBASING abc1234"));
+    }
+
+    #[test]
+    fn hides_git_when_no_repository_is_known() {
+        let line = build_line(&info("a.txt", false, "NORMAL"), 60);
+        assert!(!line.contains("main"));
     }
 
     #[test]

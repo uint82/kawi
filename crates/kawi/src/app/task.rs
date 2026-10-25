@@ -1,4 +1,4 @@
-use super::{compact_error, App};
+use super::App;
 use kawi_editor::TaskCommand;
 use kawi_task::{OutputStream, TaskEvent, TaskRunner, TaskSpec, TaskStatus, Tasks};
 use kawi_tui::frame::{Rect, TaskLine};
@@ -224,31 +224,12 @@ impl App {
     }
 
     fn start_task(&mut self, name: &str) -> anyhow::Result<bool> {
-        if self.task.is_running() {
-            self.show_message("E: A task is already running".to_string());
-            return Ok(false);
-        }
         let Some(spec) = self.tasks.get(name).cloned() else {
             self.show_message(format!("E: Unknown task: {name}"));
             return Ok(false);
         };
         let root = self.task_root();
-        self.problems
-            .clear_source(&super::problems::task_source(name));
-        self.mark_problems_changed();
-        self.task.begin(&spec);
-        match TaskRunner::start(&spec, &root, self.events.wake()) {
-            Ok(runner) => {
-                self.task.attach(runner);
-                self.sync_task_panel_size();
-            }
-            Err(error) => {
-                let message = compact_error(&error.to_string());
-                self.task.fail_start(message.clone());
-                self.sync_task_panel_size();
-                self.show_message(format!("Task {name} failed to start: {message}"));
-            }
-        }
+        self.start_task_spec(spec, root, kawi_task::TaskOptions::default());
         Ok(false)
     }
 
@@ -324,6 +305,8 @@ impl App {
                 self.task.finish(status, &description);
                 self.sync_task_panel_size();
                 self.report_task_finished(&description);
+                self.finish_git_task(status);
+                self.refresh_git_status();
                 true
             }
         }
@@ -340,7 +323,7 @@ impl App {
         self.show_message(format!("Task {name}: {description}{suffix}"));
     }
 
-    fn sync_task_panel_size(&mut self) {
+    pub(super) fn sync_task_panel_size(&mut self) {
         self.sync_terminal_panel_size();
     }
 }

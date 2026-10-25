@@ -115,7 +115,7 @@ fn detects_exit_without_output() {
 fn exports_editor_environment() {
     let (wake, _wake_rx) = channel();
     let mut options = options("printf '%s %s' \"$EDITOR\" \"$GIT_EDITOR\"");
-    options.editor = Some(std::path::PathBuf::from("/tmp/kawi-editor"));
+    options.editor = Some("/tmp/kawi-editor".to_string());
     let mut session = TerminalSession::start(&options, wake).unwrap();
     wait_for_text(&mut session, "/tmp/kawi-editor /tmp/kawi-editor");
     session.terminate();
@@ -142,5 +142,16 @@ fn answers_terminal_queries() {
     )
     .unwrap();
     wait_for_text(&mut session, "1b 5b 31 3b 31 52");
+    session.terminate();
+}
+
+#[test]
+#[cfg(unix)]
+fn exports_the_instance_socket() {
+    let (wake, _wake_rx) = channel();
+    let mut options = options("printf '%s' \"$KAWI_IPC_SOCKET\"");
+    options.ipc_socket = Some(std::path::PathBuf::from("/tmp/kawi.sock"));
+    let mut session = TerminalSession::start(&options, wake).unwrap();
+    wait_for_text(&mut session, "/tmp/kawi.sock");
     session.terminate();
 }

@@ -332,13 +332,17 @@ impl App {
         let path = absolute_path(&path);
         let fingerprint = Fingerprint::read(&path).ok();
         self.disk.record_saved(number, path, fingerprint);
+        self.git_commit.mark_saved(number);
+        self.refresh_git_status();
     }
 
     pub(super) fn record_all_saved(&mut self) {
         for (number, path) in self.open_files() {
             let fingerprint = Fingerprint::read(&path).ok();
             self.disk.record_saved(number, path, fingerprint);
+            self.git_commit.mark_saved(number);
         }
+        self.refresh_git_status();
     }
 
     pub(super) fn record_reloaded_paths(&mut self, targets: &[PathBuf]) {
@@ -406,7 +410,7 @@ impl App {
             .to_string()
     }
 
-    fn open_files(&self) -> Vec<(usize, PathBuf)> {
+    pub(super) fn open_files(&self) -> Vec<(usize, PathBuf)> {
         self.editor
             .all_buffer_numbers()
             .into_iter()

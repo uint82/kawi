@@ -8,7 +8,8 @@ pub struct SpawnOptions {
     pub rows: u16,
     pub cols: u16,
     pub command: Option<String>,
-    pub editor: Option<PathBuf>,
+    pub editor: Option<String>,
+    pub ipc_socket: Option<PathBuf>,
 }
 
 impl SpawnOptions {
@@ -20,6 +21,7 @@ impl SpawnOptions {
             cols,
             command: None,
             editor: None,
+            ipc_socket: None,
         }
     }
 }
@@ -34,6 +36,10 @@ pub(super) fn build_command(options: &SpawnOptions) -> CommandBuilder {
         builder.env("EDITOR", editor);
         builder.env("GIT_EDITOR", editor);
     }
+    match options.ipc_socket.as_ref() {
+        Some(socket) => builder.env("KAWI_IPC_SOCKET", socket),
+        None => builder.env_remove("KAWI_IPC_SOCKET"),
+    };
     if let Some(command) = options.command.as_ref() {
         builder.arg("-c");
         builder.arg(command);

@@ -17,6 +17,8 @@ mod disk;
 mod formatting;
 mod frame;
 mod git;
+mod git_commit;
+mod git_status;
 mod hover;
 mod language;
 mod lsp;
@@ -143,6 +145,10 @@ pub struct App {
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
+    git_status: git_status::GitStatusState,
+    git_commit: git_commit::GitCommitState,
+    ipc: Option<crate::ipc::Server>,
+    ipc_root: Option<PathBuf>,
     lsp: LspUi,
     tasks: Tasks,
     task: TaskSession,
@@ -204,6 +210,10 @@ impl App {
             git: None,
             git_path: None,
             git_error: None,
+            git_status: git_status::GitStatusState::default(),
+            git_commit: git_commit::GitCommitState::default(),
+            ipc: None,
+            ipc_root: None,
             lsp: LspUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
@@ -237,9 +247,12 @@ impl App {
         self.events.start_input_thread()?;
         self.events.start_signal_handlers()?;
         self.start_file_watch();
+        self.ensure_ipc();
+        self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.terminal_focus = false;
         self.terminal.close();
+        self.abort_git_editor_on_exit();
         match outcome {
             Ok(result) => {
                 if result.is_err() || self.events.shutdown_requested() {
@@ -317,6 +330,9 @@ impl App {
             self.sync_active_window();
             self.show_recovery_prompt_if_ready();
             self.sync_git();
+            self.sync_ipc();
+            self.sync_git_status();
+            self.poll_git_status();
             self.sync_lsp();
             self.sync_task();
             self.sync_terminal();
@@ -362,6 +378,9 @@ impl App {
             self.maybe_open_conflict();
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
+            redraw |= self.sync_ipc();
+            redraw |= self.sync_git_status();
+            redraw |= self.poll_git_status();
             redraw |= self.sync_task();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
@@ -584,6 +603,7 @@ impl App {
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status(),
             external: self.disk_status(self.editor.buffer_number()),
+            git: self.git_status.display(),
         }
     }
 
@@ -642,6 +662,7 @@ impl App {
             }
             Event::FocusGained => {
                 self.sync_watched_files();
+                self.refresh_git_status();
                 Ok(false)
             }
         };
@@ -823,6 +844,9 @@ impl App {
         if self.terminal_focus {
             return self.handle_terminal_key(key);
         }
+        if self.git_commit.has_pending_push() {
+            return self.handle_git_push_confirmation(key);
+        }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
                 return Ok(result);
@@ -830,6 +854,9 @@ impl App {
         }
         if self.pager.is_none() && self.conflict.is_some() {
             return self.handle_conflict_key(key);
+        }
+        if self.pager.is_none() && self.git_status.has_view() {
+            return self.handle_git_status_key(key);
         }
         if self.rename.is_some() {
             return self.handle_rename_key(key);
@@ -1264,6 +1291,14 @@ impl App {
 
     fn handle_git_command(&mut self, command: GitCommand) -> Result<bool> {
         match command {
+            GitCommand::Status => {
+                self.open_git_status();
+                Ok(false)
+            }
+            GitCommand::Commit { all } => self.start_git_commit(all),
+            GitCommand::Amend { staged } => self.start_git_amend(staged),
+            GitCommand::Push { force } => self.start_git_push(force),
+            GitCommand::Fetch => self.start_git_fetch(),
             GitCommand::NextHunk => self.handle_git_navigation(true),
             GitCommand::PrevHunk => self.handle_git_navigation(false),
             GitCommand::StageHunk => self.handle_git_stage_hunk(),
@@ -1481,6 +1516,7 @@ impl App {
             Command::Write { force } => self.handle_save(force),
             Command::Quit => self.handle_quit(),
             Command::WriteQuit { force } => self.handle_write_quit(force),
+            Command::Cquit => self.handle_cquit(),
             Command::ForceQuit => self.handle_force_quit(),
             Command::ForceQuitAll => self.handle_force_quit_all(),
             Command::QuitAll => self.handle_quit_all(),
@@ -1558,6 +1594,10 @@ impl App {
     fn quit_or_close(&mut self, force: bool) -> Result<bool> {
         if self.windows.len() > 1 {
             return self.close_active_window(force);
+        }
+        if self.git_commit.editor_buffer() == Some(self.editor.buffer_number()) {
+            self.finish_git_editor_for_buffer(self.editor.buffer_number());
+            return Ok(false);
         }
         if force {
             self.discard_recovery_buffers();
@@ -1731,6 +1771,13 @@ impl App {
 
     fn reconcile_unlisted_buffers(&mut self) {
         let listed = self.editor.buffer_numbers();
+        if self
+            .git_commit
+            .editor_buffer()
+            .is_some_and(|buffer| !listed.contains(&buffer))
+        {
+            self.abort_git_editor();
+        }
         let fallback = self.editor.buffer_number();
         if self.windows.replace_unlisted_buffers(&listed, fallback) == 0 {
             return;
