@@ -86,7 +86,13 @@ impl App {
             self.show_message("Terminal pane needs more space".to_string());
             return Ok(false);
         };
-        let options = spawn_options(self.task_root(), rows, cols, command);
+        let options = spawn_options(
+            self.task_root(),
+            rows,
+            cols,
+            command,
+            self.ipc.as_ref().map(crate::ipc::Server::path),
+        );
         self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {

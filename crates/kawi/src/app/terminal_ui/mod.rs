@@ -211,10 +211,12 @@ pub(super) fn spawn_options(
     rows: u16,
     cols: u16,
     command: Option<String>,
+    ipc_socket: Option<&Path>,
 ) -> SpawnOptions {
     let mut options = SpawnOptions::new(cwd, rows, cols);
     options.command = command;
     options.editor = crate::ipc::terminal_editor_command().ok();
+    options.ipc_socket = ipc_socket.map(Path::to_path_buf);
     options
 }
 

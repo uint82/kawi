@@ -2,10 +2,10 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::ffi::OsStringExt;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -19,6 +19,10 @@ const MAX_REQUEST_LINE: usize = 128;
 const MAX_PATH_BYTES: usize = 64 * 1024;
 const ACCEPT_POLL: Duration = Duration::from_millis(10);
 const SOCKET_PATH_LIMIT: usize = 100;
+const SOCKET_KEY_CHARS: usize = 16;
+pub(crate) const SOCKET_ENV: &str = "KAWI_IPC_SOCKET";
+
+static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WaitOutcome {
@@ -88,6 +92,10 @@ impl Server {
     pub(crate) fn try_recv(&self) -> Option<Event> {
         self.events.try_recv().ok()
     }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 impl Drop for Server {
@@ -100,10 +108,16 @@ impl Drop for Server {
     }
 }
 
-pub(crate) fn wait(root: &Path, file: &Path) -> Result<WaitOutcome> {
-    let path = socket_path(root);
+pub(crate) fn wait(file: &Path) -> Result<WaitOutcome> {
+    let path = std::env::var_os(SOCKET_ENV)
+        .map(PathBuf::from)
+        .context("no running kawi instance")?;
+    wait_on(&path, file)
+}
+
+pub(crate) fn wait_on(path: &Path, file: &Path) -> Result<WaitOutcome> {
     let mut stream =
-        UnixStream::connect(&path).with_context(|| format!("connect {}", path.display()))?;
+        UnixStream::connect(path).with_context(|| format!("connect {}", path.display()))?;
     let bytes = file.as_os_str().as_encoded_bytes();
     writeln!(stream, "OPEN_WAIT {}", bytes.len()).context("write ipc request")?;
     stream.write_all(bytes).context("write ipc path")?;
@@ -201,12 +215,26 @@ fn read_line(stream: &mut UnixStream) -> Result<String> {
 
 fn socket_path(root: &Path) -> PathBuf {
     let directory = runtime_directory();
-    let key = workspace::key(root);
-    let candidate = directory.join("kawi").join(format!("{key}.sock"));
+    let name = instance_name(root);
+    let candidate = directory.join("kawi").join(&name);
     if candidate.as_os_str().as_encoded_bytes().len() <= SOCKET_PATH_LIMIT {
         return candidate;
     }
-    fallback_directory().join(format!("{key}.sock"))
+    fallback_directory().join(name)
+}
+
+fn instance_name(root: &Path) -> String {
+    let key = workspace::key(root);
+    let nonce = NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed);
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!(
+        "{}-{}-{time}-{nonce}.sock",
+        &key[..SOCKET_KEY_CHARS],
+        std::process::id()
+    )
 }
 
 fn runtime_directory() -> PathBuf {
@@ -224,6 +252,14 @@ fn fallback_directory() -> PathBuf {
 }
 
 fn set_directory_mode(path: &Path) -> Result<()> {
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("inspect {}", path.display()))?;
+    if !metadata.file_type().is_dir() {
+        bail!("socket directory is not a directory: {}", path.display());
+    }
+    if metadata.uid() != unsafe { libc::geteuid() } {
+        bail!("socket directory is not owned by the current user");
+    }
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))
         .with_context(|| format!("set permissions on {}", path.display()))
 }
@@ -234,48 +270,4 @@ fn set_socket_mode(path: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::mpsc::channel;
-    use std::time::Instant;
-
-    fn temp_root(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "kawi_ipc_{}_{}_{}",
-            std::process::id(),
-            Instant::now().elapsed().as_nanos(),
-            name
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
-
-    #[test]
-    fn server_and_client_handshake() {
-        let root = temp_root("handshake");
-        let file = root.join("COMMIT_EDITMSG");
-        fs::write(&file, "message\n").unwrap();
-        let (wake, _wake_rx) = channel();
-        let server = Server::start(&root, wake).unwrap();
-        let client_root = root.clone();
-        let client_file = file.clone();
-        let client = thread::spawn(move || wait(&client_root, &client_file));
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let event = loop {
-            if let Some(event) = server.try_recv() {
-                break event;
-            }
-            assert!(Instant::now() < deadline);
-            thread::sleep(Duration::from_millis(5));
-        };
-        match event {
-            Event::OpenWait { path, connection } => {
-                assert_eq!(path, file);
-                connection.reply(WaitOutcome::Saved).unwrap();
-            }
-        }
-        assert_eq!(client.join().unwrap().unwrap(), WaitOutcome::Saved);
-        let _ = fs::remove_dir_all(root);
-    }
-}
+mod tests;

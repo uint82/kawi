@@ -31,7 +31,7 @@ impl App {
             reply: EditorReply::Socket(connection),
             path,
         });
-        self.show_message("Git: :wq commits, :cq aborts".to_string());
+        self.show_editor_message();
     }
 
     pub(super) fn open_fallback_editor(
@@ -56,8 +56,18 @@ impl App {
             reply: EditorReply::Fallback(FallbackCommit { root, args, kind }),
             path,
         });
-        self.show_message("Git: :wq commits, :cq aborts".to_string());
+        self.show_editor_message();
         Ok(())
+    }
+
+    fn show_editor_message(&mut self) {
+        let message = if self.git_commit.amend_warning {
+            "HEAD on upstream; force push needed; :wq commits, :cq aborts"
+        } else {
+            "Git: :wq commits, :cq aborts"
+        };
+        self.git_commit.amend_warning = false;
+        self.show_message(message.to_string());
     }
 
     fn open_editor_buffer(&mut self, path: &std::path::Path) -> anyhow::Result<()> {

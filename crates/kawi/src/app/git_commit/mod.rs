@@ -54,6 +54,7 @@ pub(super) struct GitCommitState {
     active: Option<ActiveTask>,
     pub editor: Option<GitEditorSession>,
     pending_push: Option<push::PendingPush>,
+    amend_warning: bool,
 }
 
 impl GitCommitState {
@@ -166,11 +167,20 @@ impl App {
         args: Vec<String>,
         kind: TaskKind,
     ) -> anyhow::Result<bool> {
+        if kind != TaskKind::Amend {
+            self.git_commit.amend_warning = false;
+        }
         self.ensure_ipc();
         if self.ipc.is_some() {
             let editor = crate::ipc::editor_command()?;
             let mut env = std::collections::BTreeMap::new();
             env.insert("GIT_EDITOR".to_string(), editor);
+            if let Some(socket) = self.ipc.as_ref().map(crate::ipc::Server::path) {
+                env.insert(
+                    crate::ipc::SOCKET_ENV.to_string(),
+                    socket.to_string_lossy().into_owned(),
+                );
+            }
             self.start_git_task(GitTask {
                 name: "git commit".to_string(),
                 args,
@@ -187,10 +197,10 @@ impl App {
     }
 
     fn warn_pushed_amend(&mut self, status: &Status) {
-        if status
+        self.git_commit.amend_warning = status
             .upstream()
-            .is_some_and(|upstream| upstream.ahead == 0)
-        {
+            .is_some_and(|upstream| upstream.ahead == 0);
+        if self.git_commit.amend_warning {
             self.show_message(
                 "HEAD is already on upstream; amending requires a force push".to_string(),
             );

@@ -56,10 +56,8 @@ fn run_wait_editor(args: &[String]) -> Result<()> {
     let Some(path) = args.get(index + 1) else {
         anyhow::bail!("missing editor path");
     };
-    let cwd = std::env::current_dir()?;
-    let root = kawi_picker::project_root(&cwd);
     let file = std::path::absolute(Path::new(path))?;
-    match ipc::wait(&root, &file) {
+    match ipc::wait(&file) {
         Ok(ipc::WaitOutcome::Saved) => Ok(()),
         Ok(ipc::WaitOutcome::Aborted) => std::process::exit(1),
         Err(error) => {

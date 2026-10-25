@@ -144,3 +144,14 @@ fn answers_terminal_queries() {
     wait_for_text(&mut session, "1b 5b 31 3b 31 52");
     session.terminate();
 }
+
+#[test]
+#[cfg(unix)]
+fn exports_the_instance_socket() {
+    let (wake, _wake_rx) = channel();
+    let mut options = options("printf '%s' \"$KAWI_IPC_SOCKET\"");
+    options.ipc_socket = Some(std::path::PathBuf::from("/tmp/kawi.sock"));
+    let mut session = TerminalSession::start(&options, wake).unwrap();
+    wait_for_text(&mut session, "/tmp/kawi.sock");
+    session.terminate();
+}
