@@ -17,6 +17,7 @@ mod disk;
 mod formatting;
 mod frame;
 mod git;
+mod git_status;
 mod hover;
 mod language;
 mod lsp;
@@ -143,6 +144,7 @@ pub struct App {
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
+    git_status: git_status::GitStatusState,
     lsp: LspUi,
     tasks: Tasks,
     task: TaskSession,
@@ -204,6 +206,7 @@ impl App {
             git: None,
             git_path: None,
             git_error: None,
+            git_status: git_status::GitStatusState::default(),
             lsp: LspUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
@@ -237,6 +240,7 @@ impl App {
         self.events.start_input_thread()?;
         self.events.start_signal_handlers()?;
         self.start_file_watch();
+        self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.terminal_focus = false;
         self.terminal.close();
@@ -317,6 +321,8 @@ impl App {
             self.sync_active_window();
             self.show_recovery_prompt_if_ready();
             self.sync_git();
+            self.sync_git_status();
+            self.poll_git_status();
             self.sync_lsp();
             self.sync_task();
             self.sync_terminal();
@@ -362,6 +368,8 @@ impl App {
             self.maybe_open_conflict();
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
+            redraw |= self.sync_git_status();
+            redraw |= self.poll_git_status();
             redraw |= self.sync_task();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
@@ -584,6 +592,7 @@ impl App {
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status(),
             external: self.disk_status(self.editor.buffer_number()),
+            git: self.git_status.display(),
         }
     }
 
@@ -642,6 +651,7 @@ impl App {
             }
             Event::FocusGained => {
                 self.sync_watched_files();
+                self.refresh_git_status();
                 Ok(false)
             }
         };
@@ -830,6 +840,9 @@ impl App {
         }
         if self.pager.is_none() && self.conflict.is_some() {
             return self.handle_conflict_key(key);
+        }
+        if self.pager.is_none() && self.git_status.has_view() {
+            return self.handle_git_status_key(key);
         }
         if self.rename.is_some() {
             return self.handle_rename_key(key);
@@ -1264,6 +1277,10 @@ impl App {
 
     fn handle_git_command(&mut self, command: GitCommand) -> Result<bool> {
         match command {
+            GitCommand::Status => {
+                self.open_git_status();
+                Ok(false)
+            }
             GitCommand::NextHunk => self.handle_git_navigation(true),
             GitCommand::PrevHunk => self.handle_git_navigation(false),
             GitCommand::StageHunk => self.handle_git_stage_hunk(),

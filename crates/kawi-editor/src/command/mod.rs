@@ -95,6 +95,7 @@ pub enum QuickfixCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitCommand {
+    Status,
     NextHunk,
     PrevHunk,
     StageHunk,
@@ -366,6 +367,7 @@ fn parse_quickfix_command(words: &[&str]) -> Command {
 fn parse_git_command(words: &[&str]) -> Command {
     let command = match words {
         [] => GitCommand::Diff,
+        ["status"] => GitCommand::Status,
         ["next_hunk"] => GitCommand::NextHunk,
         ["prev_hunk"] => GitCommand::PrevHunk,
         ["stage_hunk"] => GitCommand::StageHunk,
@@ -568,6 +570,7 @@ mod tests {
             Command::Git(GitCommand::PreviewHunk)
         );
         assert_eq!(parse("git refresh"), Command::Git(GitCommand::Refresh));
+        assert_eq!(parse("git status"), Command::Git(GitCommand::Status));
         assert_eq!(parse("git nope"), Command::Unknown);
     }
 

@@ -324,6 +324,7 @@ impl App {
                 self.task.finish(status, &description);
                 self.sync_task_panel_size();
                 self.report_task_finished(&description);
+                self.refresh_git_status();
                 true
             }
         }

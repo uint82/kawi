@@ -27,6 +27,7 @@ impl App {
         let overlay = overlay_data.as_ref().map(|data| data.view());
         let layout = self.window_layout();
         let data = self.frame_panes(&layout);
+        let git = self.git_status.display();
         let statuses: Vec<StatusInfo> = data
             .iter()
             .map(|pane| StatusInfo {
@@ -40,6 +41,7 @@ impl App {
                 mode: pane.mode,
                 lsp: pane.lsp.as_deref(),
                 external: pane.external,
+                git,
             })
             .collect();
         let panes: Vec<PaneFrame<'_>> = data
@@ -76,19 +78,37 @@ impl App {
                     .collect()
             })
             .unwrap_or_default();
-        let picker = self.picker.as_ref().map(|session| {
-            let state = session.picker();
-            kawi_tui::frame::PickerMenu {
-                title: state.title(),
-                query: state.query(),
-                cursor: state.cursor(),
-                items: &picker_items,
-                selected: state.selected(),
-                loading: state.loading(),
-                status: state.status(),
-                replace_hint: state.kind() == PickerKind::Grep,
-            }
-        });
+        let git_lines = self.git_status.view_lines();
+        let picker = self
+            .picker
+            .as_ref()
+            .map(|session| {
+                let state = session.picker();
+                kawi_tui::frame::PickerMenu {
+                    title: state.title(),
+                    query: state.query(),
+                    cursor: state.cursor(),
+                    items: &picker_items,
+                    selected: state.selected(),
+                    loading: state.loading(),
+                    status: state.status(),
+                    replace_hint: state.kind() == PickerKind::Grep,
+                }
+            })
+            .or_else(|| {
+                self.git_status
+                    .has_view()
+                    .then(|| kawi_tui::frame::PickerMenu {
+                        title: "Git status",
+                        query: "",
+                        cursor: 0,
+                        items: &git_lines,
+                        selected: self.git_status.view_selected(),
+                        loading: false,
+                        status: self.git_status.view_status(),
+                        replace_hint: false,
+                    })
+            });
         let replace_state = self.replace.as_ref();
         let replace_rows: Vec<String> = replace_state
             .map(|session| session.rows().to_vec())

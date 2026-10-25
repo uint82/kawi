@@ -332,6 +332,7 @@ impl App {
         let path = absolute_path(&path);
         let fingerprint = Fingerprint::read(&path).ok();
         self.disk.record_saved(number, path, fingerprint);
+        self.refresh_git_status();
     }
 
     pub(super) fn record_all_saved(&mut self) {
@@ -339,6 +340,7 @@ impl App {
             let fingerprint = Fingerprint::read(&path).ok();
             self.disk.record_saved(number, path, fingerprint);
         }
+        self.refresh_git_status();
     }
 
     pub(super) fn record_reloaded_paths(&mut self, targets: &[PathBuf]) {
