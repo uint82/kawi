@@ -1504,7 +1504,14 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
-            Command::Terminal { command } => self.open_terminal(command),
+            Command::Terminal { command, vertical } => {
+                let layout = if vertical {
+                    terminal_ui::TerminalLayout::Vertical
+                } else {
+                    terminal_ui::TerminalLayout::Horizontal
+                };
+                self.open_terminal(command, layout)
+            }
             Command::Conflict => self.handle_conflict_command(),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {

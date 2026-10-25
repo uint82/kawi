@@ -50,6 +50,7 @@ pub enum Command {
     Quickfix(QuickfixCommand),
     Terminal {
         command: Option<String>,
+        vertical: bool,
     },
     Conflict,
     SetError(String),
@@ -151,6 +152,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "term",
     "terminal",
     "vnew",
+    "vterm",
+    "vterminal",
     "vs",
     "vsplit",
     "w",
@@ -259,6 +262,11 @@ fn parse_named(text: &str) -> Command {
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
         ("term" | "terminal", rest) => Command::Terminal {
             command: terminal_command(rest),
+            vertical: false,
+        },
+        ("vterm" | "vterminal", rest) => Command::Terminal {
+            command: terminal_command(rest),
+            vertical: true,
         },
         ("conflict", []) => Command::Conflict,
         ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
@@ -747,12 +755,39 @@ mod tests {
 
     #[test]
     fn parses_terminal_commands() {
-        assert_eq!(parse("term"), Command::Terminal { command: None });
-        assert_eq!(parse("terminal"), Command::Terminal { command: None });
+        assert_eq!(
+            parse("term"),
+            Command::Terminal {
+                command: None,
+                vertical: false
+            }
+        );
+        assert_eq!(
+            parse("terminal"),
+            Command::Terminal {
+                command: None,
+                vertical: false
+            }
+        );
         assert_eq!(
             parse("term echo hello"),
             Command::Terminal {
-                command: Some("echo hello".to_string())
+                command: Some("echo hello".to_string()),
+                vertical: false
+            }
+        );
+        assert_eq!(
+            parse("vterm"),
+            Command::Terminal {
+                command: None,
+                vertical: true
+            }
+        );
+        assert_eq!(
+            parse("vterminal echo hello"),
+            Command::Terminal {
+                command: Some("echo hello".to_string()),
+                vertical: true
             }
         );
     }

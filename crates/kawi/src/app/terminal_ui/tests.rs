@@ -6,7 +6,7 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 use super::frame::line_at;
-use super::{spawn_options, TerminalMode, TerminalUi};
+use super::{spawn_options, TerminalLayout, TerminalMode, TerminalUi};
 use crate::app::App;
 use crate::keymap::Flavor;
 
@@ -146,8 +146,11 @@ fn panel_height_respects_task_panel() {
 fn opens_terminal_pane_in_app() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
-    app.open_terminal(Some("printf app-terminal-ok; sleep 5".to_string()))
-        .unwrap();
+    app.open_terminal(
+        Some("printf app-terminal-ok; sleep 5".to_string()),
+        TerminalLayout::Horizontal,
+    )
+    .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut text = String::new();
     while Instant::now() < deadline {
@@ -179,7 +182,8 @@ fn opens_terminal_pane_in_app() {
 fn app_closes_terminal_after_exit() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
-    app.open_terminal(Some("exit 7".to_string())).unwrap();
+    app.open_terminal(Some("exit 7".to_string()), TerminalLayout::Horizontal)
+        .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline && app.terminal.is_open() {
         app.sync_terminal();
@@ -188,4 +192,40 @@ fn app_closes_terminal_after_exit() {
     assert!(!app.terminal.is_open());
     assert!(app.terminal_panel_rect().is_none());
     assert_eq!(app.last_message(), Some("Terminal: process exited: 7"));
+}
+
+#[test]
+#[cfg(unix)]
+fn vertical_terminal_uses_the_right_side() {
+    let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
+    app.set_screen_size(100, 30);
+    app.open_terminal(Some("sleep 5".to_string()), TerminalLayout::Vertical)
+        .unwrap();
+    let rect = app.terminal_panel_rect().unwrap();
+    assert_eq!(rect.y, 0);
+    assert_eq!(rect.height, 29);
+    assert_eq!(rect.x + rect.width, 100);
+    assert!(rect.width < 100);
+    let area = app.window_area();
+    assert_eq!(area.width + rect.width, 100);
+    assert_eq!(area.height, 29);
+    app.close_terminal();
+}
+
+#[test]
+#[cfg(unix)]
+fn switching_terminal_layout_keeps_the_session() {
+    let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
+    app.set_screen_size(100, 30);
+    app.open_terminal(Some("sleep 5".to_string()), TerminalLayout::Horizontal)
+        .unwrap();
+    let title = app.terminal.title().to_string();
+    let bottom = app.terminal_panel_rect().unwrap();
+    app.open_terminal(None, TerminalLayout::Vertical).unwrap();
+    let side = app.terminal_panel_rect().unwrap();
+    assert_eq!(bottom.y + bottom.height, 29);
+    assert_eq!(side.y, 0);
+    assert!(side.x > 0);
+    assert_eq!(app.terminal.title(), title);
+    app.close_terminal();
 }

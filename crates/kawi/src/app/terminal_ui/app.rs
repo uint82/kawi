@@ -1,25 +1,41 @@
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use kawi_tui::frame::Rect;
 
-use super::{spawn_options, TerminalKey, TerminalUi};
+use super::{spawn_options, TerminalKey, TerminalLayout, TerminalUi};
 use crate::app::{compact_error, App};
 use crate::mouse::wheel_delta;
 
 impl App {
     pub(crate) fn terminal_panel_rect(&self) -> Option<Rect> {
-        let height = self.terminal.panel_height(
-            self.screen_height,
-            self.task.panel_height(self.screen_height),
-        );
-        if height == 0 {
-            return None;
+        match self.terminal.layout() {
+            TerminalLayout::Horizontal => {
+                let height = self.terminal.panel_height(
+                    self.screen_height,
+                    self.task.panel_height(self.screen_height),
+                );
+                if height == 0 {
+                    return None;
+                }
+                Some(Rect::new(
+                    0,
+                    self.screen_height.saturating_sub(1).saturating_sub(height),
+                    self.screen_width,
+                    height,
+                ))
+            }
+            TerminalLayout::Vertical => {
+                let width = self.terminal.panel_width(self.screen_width);
+                if width == 0 {
+                    return None;
+                }
+                Some(Rect::new(
+                    self.screen_width.saturating_sub(width),
+                    0,
+                    width,
+                    self.screen_height.saturating_sub(1),
+                ))
+            }
         }
-        Some(Rect::new(
-            0,
-            self.screen_height.saturating_sub(1).saturating_sub(height),
-            self.screen_width,
-            height,
-        ))
     }
 
     pub(crate) fn sync_terminal(&mut self) -> bool {
@@ -54,16 +70,24 @@ impl App {
         self.reveal_cursor();
     }
 
-    pub(crate) fn open_terminal(&mut self, command: Option<String>) -> anyhow::Result<bool> {
-        let task_height = self.task.panel_height(self.screen_height);
-        let height = TerminalUi::desired_panel_height(self.screen_height, task_height);
-        if height == 0 {
-            self.show_message("Terminal pane needs more space".to_string());
+    pub(crate) fn open_terminal(
+        &mut self,
+        command: Option<String>,
+        layout: TerminalLayout,
+    ) -> anyhow::Result<bool> {
+        if self.terminal.is_open() && command.is_none() {
+            self.terminal.set_layout(layout);
+            self.focus_terminal();
+            self.sync_terminal_panel_size();
+            self.clear_message();
             return Ok(false);
         }
-        let rows = height.saturating_sub(1).max(1) as u16;
-        let cols = self.screen_width.max(1) as u16;
+        let Some((rows, cols)) = self.terminal_spawn_size(layout) else {
+            self.show_message("Terminal pane needs more space".to_string());
+            return Ok(false);
+        };
         let options = spawn_options(self.task_root(), rows, cols, command);
+        self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {
                 self.terminal_focus = true;
@@ -81,9 +105,35 @@ impl App {
         Ok(false)
     }
 
+    fn terminal_spawn_size(&self, layout: TerminalLayout) -> Option<(u16, u16)> {
+        match layout {
+            TerminalLayout::Horizontal => {
+                let task_height = self.task.panel_height(self.screen_height);
+                let height = TerminalUi::desired_panel_height(self.screen_height, task_height);
+                if height == 0 {
+                    return None;
+                }
+                Some((
+                    height.saturating_sub(1).max(1) as u16,
+                    self.screen_width.max(1) as u16,
+                ))
+            }
+            TerminalLayout::Vertical => {
+                let width = TerminalUi::desired_panel_width(self.screen_width);
+                if width == 0 {
+                    return None;
+                }
+                Some((
+                    self.screen_height.saturating_sub(2).max(1) as u16,
+                    width as u16,
+                ))
+            }
+        }
+    }
+
     pub(crate) fn toggle_terminal(&mut self) -> anyhow::Result<bool> {
         if !self.terminal.is_open() {
-            return self.open_terminal(None);
+            return self.open_terminal(None, self.terminal.layout());
         }
         if self.terminal_focus {
             self.close_terminal();

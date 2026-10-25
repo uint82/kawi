@@ -156,13 +156,14 @@ impl App {
             return None;
         }
         let terminal_height = self.terminal.panel_height(self.screen_height, height);
+        let terminal_width = self.terminal.panel_width(self.screen_width);
         Some(Rect::new(
             0,
             self.screen_height
                 .saturating_sub(1)
                 .saturating_sub(terminal_height)
                 .saturating_sub(height),
-            self.screen_width,
+            self.screen_width.saturating_sub(terminal_width),
             height,
         ))
     }

@@ -13,6 +13,16 @@ use kawi_terminal::{SpawnOptions, TerminalSession};
 
 const MIN_HEIGHT: usize = 6;
 const MAX_HEIGHT: usize = 18;
+const MIN_WIDTH: usize = 24;
+const MAX_WIDTH: usize = 100;
+const MIN_EDITOR_WIDTH: usize = 20;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TerminalLayout {
+    #[default]
+    Horizontal,
+    Vertical,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalMode {
@@ -38,6 +48,7 @@ pub struct TerminalUi {
     normal_cursor: (u16, u16),
     exit_reported: bool,
     exit_notice: Option<String>,
+    layout: TerminalLayout,
 }
 
 impl Default for TerminalUi {
@@ -53,6 +64,7 @@ impl Default for TerminalUi {
             normal_cursor: (0, 0),
             exit_reported: false,
             exit_notice: None,
+            layout: TerminalLayout::Horizontal,
         }
     }
 }
@@ -80,6 +92,14 @@ impl TerminalUi {
 
     pub fn status(&self) -> &str {
         &self.status
+    }
+
+    pub fn layout(&self) -> TerminalLayout {
+        self.layout
+    }
+
+    pub fn set_layout(&mut self, layout: TerminalLayout) {
+        self.layout = layout;
     }
 
     pub fn title(&self) -> &str {
@@ -152,7 +172,7 @@ impl TerminalUi {
     }
 
     pub fn panel_height(&self, screen_height: usize, task_height: usize) -> usize {
-        if !self.open {
+        if !self.open || self.layout != TerminalLayout::Horizontal {
             return 0;
         }
         Self::desired_panel_height(screen_height, task_height)
@@ -165,6 +185,23 @@ impl TerminalUi {
         }
         (screen_height / 3)
             .clamp(MIN_HEIGHT, MAX_HEIGHT)
+            .min(available)
+    }
+
+    pub fn panel_width(&self, screen_width: usize) -> usize {
+        if !self.open || self.layout != TerminalLayout::Vertical {
+            return 0;
+        }
+        Self::desired_panel_width(screen_width)
+    }
+
+    pub fn desired_panel_width(screen_width: usize) -> usize {
+        let available = screen_width.saturating_sub(MIN_EDITOR_WIDTH);
+        if available < MIN_WIDTH {
+            return 0;
+        }
+        (screen_width / 3)
+            .clamp(MIN_WIDTH, MAX_WIDTH)
             .min(available)
     }
 }
