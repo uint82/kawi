@@ -94,10 +94,15 @@ impl Theme {
                     b: 27,
                 },
             },
+            float_background: Color::Rgb {
+                r: 20,
+                g: 22,
+                b: 27,
+            },
             code_background: Color::Rgb {
-                r: 30,
-                g: 33,
-                b: 41,
+                r: 20,
+                g: 22,
+                b: 27,
             },
             search_match: MatchColors {
                 foreground: Color::Rgb {
@@ -226,10 +231,15 @@ impl Theme {
                     b: 40,
                 },
             },
+            float_background: Color::Rgb {
+                r: 40,
+                g: 40,
+                b: 40,
+            },
             code_background: Color::Rgb {
-                r: 50,
-                g: 48,
-                b: 47,
+                r: 40,
+                g: 40,
+                b: 40,
             },
             search_match: MatchColors {
                 foreground: Color::Rgb {
@@ -370,10 +380,15 @@ impl Theme {
                     b: 199,
                 },
             },
+            float_background: Color::Rgb {
+                r: 251,
+                g: 241,
+                b: 199,
+            },
             code_background: Color::Rgb {
-                r: 242,
-                g: 229,
-                b: 188,
+                r: 251,
+                g: 241,
+                b: 199,
             },
             search_match: MatchColors {
                 foreground: Color::Rgb {
@@ -700,5 +715,14 @@ mod syntax_tests {
         assert_eq!(theme.syntax.color(SyntaxGroup::Keyword), rgb(198, 120, 221));
         assert_eq!(theme.syntax.color(SyntaxGroup::String), rgb(152, 195, 121));
         assert_eq!(theme.syntax.color(SyntaxGroup::Comment), rgb(92, 99, 112));
+    }
+
+    #[test]
+    fn builtin_floats_use_the_editor_background() {
+        for name in Theme::names() {
+            let theme = Theme::named(name).expect("builtin theme");
+            assert_eq!(theme.float_background, theme.base.background);
+            assert_eq!(theme.code_background, theme.base.background);
+        }
     }
 }
