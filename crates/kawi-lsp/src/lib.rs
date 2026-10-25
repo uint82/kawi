@@ -22,7 +22,7 @@ pub use service::{
     DiagnosticsEvent, DocumentEdit, FormattingEvent, FormattingSettings, HoverEvent, LocationEvent,
     LspCommand, LspEvent, LspService, MarkupDocument, MessageLevel, ProgressEvent, RenameEvent,
     RenameReady, ServerState, SignatureEntry, SignatureHelpEvent, SignatureParameter, StatusEvent,
-    TextChange, TextLocation, WorkspaceDiagnosticEvent, WorkspaceDiagnosticState, WorkspaceEdit,
-    INITIAL_DOCUMENT_VERSION,
+    TextChange, TextLocation, WatchedFileChange, WorkspaceDiagnosticEvent,
+    WorkspaceDiagnosticState, WorkspaceEdit, INITIAL_DOCUMENT_VERSION,
 };
 pub use warning::LanguageWarning;

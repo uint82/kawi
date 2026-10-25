@@ -35,6 +35,7 @@ mod rename;
 mod request;
 mod signature_help;
 mod text_requests;
+mod watched_files;
 mod workspace_diagnostics;
 mod workspace_edit;
 
@@ -64,6 +65,13 @@ pub enum WorkspaceDiagnosticState {
 pub struct WorkspaceDiagnosticEvent {
     pub server: String,
     pub state: WorkspaceDiagnosticState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchedFileChange {
+    Created,
+    Changed,
+    Deleted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -527,6 +535,12 @@ impl LspService {
         self.send(Command::WorkspaceDiagnostics)
     }
 
+    pub fn did_change_watched_files(&self, files: &[(PathBuf, WatchedFileChange)]) -> bool {
+        self.send(Command::WatchedFiles {
+            files: files.to_vec(),
+        })
+    }
+
     pub fn execute_command(&self, path: &Path, server: &str, command: &LspCommand) -> bool {
         self.send(Command::Execute {
             path: path.to_path_buf(),
@@ -644,6 +658,9 @@ pub(crate) enum Command {
         arguments: Option<Vec<Value>>,
     },
     WorkspaceDiagnostics,
+    WatchedFiles {
+        files: Vec<(PathBuf, WatchedFileChange)>,
+    },
     Cancel {
         request: u64,
     },
