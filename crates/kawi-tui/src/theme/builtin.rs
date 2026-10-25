@@ -94,6 +94,11 @@ impl Theme {
                     b: 27,
                 },
             },
+            code_background: Color::Rgb {
+                r: 30,
+                g: 33,
+                b: 41,
+            },
             search_match: MatchColors {
                 foreground: Color::Rgb {
                     r: 224,
@@ -220,6 +225,11 @@ impl Theme {
                     g: 40,
                     b: 40,
                 },
+            },
+            code_background: Color::Rgb {
+                r: 50,
+                g: 48,
+                b: 47,
             },
             search_match: MatchColors {
                 foreground: Color::Rgb {
@@ -359,6 +369,11 @@ impl Theme {
                     g: 241,
                     b: 199,
                 },
+            },
+            code_background: Color::Rgb {
+                r: 242,
+                g: 229,
+                b: 188,
             },
             search_match: MatchColors {
                 foreground: Color::Rgb {
