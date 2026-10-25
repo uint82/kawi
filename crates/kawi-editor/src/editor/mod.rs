@@ -21,6 +21,7 @@ mod changes;
 mod cmd_complete;
 mod comment;
 mod copy_char;
+mod file_paths;
 mod gutter;
 mod hscroll;
 mod indent;
@@ -58,6 +59,7 @@ mod workspace_edit;
 use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
+pub use file_paths::PathAdoption;
 pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;

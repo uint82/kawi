@@ -783,9 +783,13 @@ impl Buffer {
         self.rope.len_chars() > 0 && !self.ends_with_newline()
     }
 
+    pub fn set_path(&mut self, path: Option<&str>, source_hash: Option<[u8; 32]>) {
+        self.path = path.map(str::to_string);
+        self.source_hash = source_hash;
+    }
+
     pub fn adopt_path(&mut self, path: &str, source_hash: [u8; 32]) {
-        self.path = Some(path.to_string());
-        self.source_hash = Some(source_hash);
+        self.set_path(Some(path), Some(source_hash));
         self.history.mark_clean_at(&self.rope, self.line_changes);
     }
 
