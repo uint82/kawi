@@ -4,7 +4,7 @@ use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
 
 use super::App;
 
-mod code;
+pub(super) mod code;
 pub(crate) mod document;
 mod hover;
 mod signature;

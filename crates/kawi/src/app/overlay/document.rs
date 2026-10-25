@@ -99,6 +99,18 @@ mod tests {
     }
 
     #[test]
+    fn oversized_fenced_code_keeps_the_plain_code_style() {
+        let code = "x".repeat(kawi_syntax::MAX_SNIPPET_BYTES + 1);
+        let document = hover(&format!("```rust\n{code}\n```"));
+        let lines = markdown::render_document(&document, 80);
+        assert!(!lines.is_empty());
+        assert!(lines
+            .iter()
+            .flat_map(|line| &line.spans)
+            .all(|span| span.style == MarkdownStyle::Code));
+    }
+
+    #[test]
     fn resize_rewraps_stored_syntax_spans() {
         let document = hover("```rust\nlet answer: u8 = 42;\n```");
         let wide = markdown::render_document(&document, 80);

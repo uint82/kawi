@@ -2,11 +2,28 @@ use kawi_syntax::{highlight_snippet, LanguageId, SnippetSpan, SyntaxGroup};
 use kawi_tui::markdown::{MarkdownCodeBlock, MarkdownLine, MarkdownSpan, MarkdownStyle};
 use kawi_tui::text::sanitize_char;
 
+#[cfg(test)]
+thread_local! {
+    static HIGHLIGHT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_highlight_calls() {
+    HIGHLIGHT_CALLS.with(|calls| calls.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn highlight_calls() -> usize {
+    HIGHLIGHT_CALLS.with(std::cell::Cell::get)
+}
+
 pub(super) fn highlight_code_block(block: &mut MarkdownCodeBlock, fallback: Option<LanguageId>) {
     let Some(language) = code_language(block.language.as_deref(), fallback) else {
         return;
     };
     let text = block.text();
+    #[cfg(test)]
+    HIGHLIGHT_CALLS.with(|calls| calls.set(calls.get() + 1));
     let spans = highlight_snippet(language, &text);
     if !spans.is_empty() {
         block.lines = syntax_lines(&text, &spans);
@@ -225,6 +242,21 @@ mod tests {
     }
 
     #[test]
+    fn oversized_code_keeps_the_fallback_style() {
+        let text = "x".repeat(kawi_syntax::MAX_SNIPPET_BYTES + 1);
+        let mut block = MarkdownCodeBlock {
+            language: Some("rust".to_string()),
+            lines: vec![line(&text)],
+        };
+        highlight_code_block(&mut block, None);
+        assert_eq!(block.lines[0].text(), text);
+        assert!(block.lines[0]
+            .spans
+            .iter()
+            .all(|span| span.style == MarkdownStyle::Code));
+    }
+
+    #[test]
     fn tagged_code_uses_the_snippet_highlighter() {
         let mut block = MarkdownCodeBlock {
             language: Some("rust".to_string()),
@@ -258,6 +290,34 @@ mod tests {
         };
         highlight_code_block(&mut block, None);
         assert_eq!(block.lines[0].spans[0].style, MarkdownStyle::Code);
+    }
+
+    #[test]
+    fn wrapping_keeps_wide_characters_and_tabs_aligned() {
+        let text = "中\t文";
+        let lines = syntax_lines(
+            text,
+            &[SnippetSpan {
+                start: 0,
+                end: text.len(),
+                group: SyntaxGroup::Type,
+            }],
+        );
+        let document = kawi_tui::markdown::MarkdownDocument {
+            blocks: vec![kawi_tui::markdown::MarkdownBlock::Code(MarkdownCodeBlock {
+                language: None,
+                lines,
+            })],
+        };
+        let wrapped = kawi_tui::markdown::render_document(&document, 1);
+        assert_eq!(
+            wrapped.iter().map(MarkdownLine::text).collect::<Vec<_>>(),
+            ["中", " ", "文"]
+        );
+        assert!(wrapped
+            .iter()
+            .flat_map(|line| &line.spans)
+            .all(|span| span.style == MarkdownStyle::Syntax(SyntaxGroup::Type)));
     }
 
     #[test]
