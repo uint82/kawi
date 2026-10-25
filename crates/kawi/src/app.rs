@@ -44,6 +44,7 @@ mod signature;
 mod task;
 mod terminal_ui;
 mod undo;
+mod undo_commands;
 #[cfg(test)]
 mod undo_test_support;
 mod undo_tree;
@@ -1631,6 +1632,7 @@ impl App {
                 self.open_terminal(command, layout)
             }
             Command::Conflict => self.handle_conflict_command(),
+            Command::Undo(command) => self.handle_undo_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {

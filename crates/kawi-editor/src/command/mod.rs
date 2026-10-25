@@ -1,3 +1,5 @@
+use kawi_buffer::UndoOffset;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Write {
@@ -54,6 +56,7 @@ pub enum Command {
         vertical: bool,
     },
     Conflict,
+    Undo(UndoCommand),
     SetError(String),
     Substitute(SubstituteCommand),
     Unknown,
@@ -67,6 +70,10 @@ pub enum SetValue {
     Reset,
     Negate,
 }
+
+mod undo;
+
+pub use undo::UndoCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PickerCommand {
@@ -155,9 +162,11 @@ pub const COMMAND_NAMES: &[&str] = &[
     "cq",
     "cquit",
     "e",
+    "earlier",
     "edit",
     "files",
     "git",
+    "later",
     "ls",
     "new",
     "on",
@@ -182,6 +191,9 @@ pub const COMMAND_NAMES: &[&str] = &[
     "task",
     "term",
     "terminal",
+    "u",
+    "undo",
+    "undolist",
     "vnew",
     "vterm",
     "vterminal",
@@ -302,6 +314,14 @@ fn parse_named(text: &str) -> Command {
             vertical: true,
         },
         ("conflict", []) => Command::Conflict,
+        ("u" | "undo", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
+        ("u" | "undo", [arg]) => undo::jump_command(arg),
+        ("earlier", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
+        ("earlier", [arg]) => undo::offset_command(arg, true),
+        ("later", []) => Command::Undo(UndoCommand::Later(UndoOffset::States(1))),
+        ("later", [arg]) => undo::offset_command(arg, false),
+        ("undolist", []) => Command::Undo(UndoCommand::List),
+        ("undolist", [arg]) => trailing_characters(arg),
         ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
         ("cclose", []) => Command::Quickfix(QuickfixCommand::Close),
         ("cnext", []) => Command::Quickfix(QuickfixCommand::Next),
