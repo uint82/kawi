@@ -1,5 +1,6 @@
 use kawi_syntax::{highlight_snippet, LanguageId, SnippetSpan, SyntaxGroup};
 use kawi_tui::markdown::{MarkdownCodeBlock, MarkdownLine, MarkdownSpan, MarkdownStyle};
+use kawi_tui::text::sanitize_char;
 
 pub(super) fn highlight_code_block(block: &mut MarkdownCodeBlock, fallback: Option<LanguageId>) {
     let Some(language) = code_language(block.language.as_deref(), fallback) else {
@@ -110,7 +111,7 @@ fn build_line(line: &str, cells: &[MarkdownStyle]) -> MarkdownLine {
             push_span(&mut spans, &mut text, current);
             current = Some(*style);
         }
-        text.push(sanitize(character));
+        text.push(sanitize_char(character));
     }
     push_span(&mut spans, &mut text, current);
     MarkdownLine { spans }
@@ -125,14 +126,6 @@ fn push_span(spans: &mut Vec<MarkdownSpan>, text: &mut String, style: Option<Mar
             text: std::mem::take(text),
             style,
         });
-    }
-}
-
-fn sanitize(character: char) -> char {
-    if character.is_control() || character == '\t' {
-        ' '
-    } else {
-        character
     }
 }
 

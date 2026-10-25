@@ -61,11 +61,5 @@ impl MarkdownCodeBlock {
 }
 
 pub(super) fn sanitize(line: &str) -> String {
-    line.chars()
-        .map(|character| match character {
-            '\t' => ' ',
-            character if character.is_control() => ' ',
-            character => character,
-        })
-        .collect()
+    crate::text::sanitize_text(line)
 }
