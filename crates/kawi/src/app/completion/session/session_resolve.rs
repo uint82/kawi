@@ -36,9 +36,12 @@ impl CompletionSession {
         if !self.items.iter().any(|item| item.id == resolved.item_id) {
             return false;
         }
-        self.resolved.insert(resolved.item_id.clone());
+        let item_id = resolved.item_id.clone();
+        self.resolved.insert(item_id.clone());
         if let Some(documentation) = resolved.documentation {
-            self.docs.insert(resolved.item_id.clone(), documentation);
+            self.docs.insert(item_id.clone(), documentation);
+            self.prepared.remove(&item_id);
+            self.prepare_document(&item_id);
         }
         if !resolved.additional.is_empty() {
             self.additional

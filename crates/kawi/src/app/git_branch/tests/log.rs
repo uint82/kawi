@@ -64,13 +64,11 @@ fn log_picker_loads_lazily_as_the_selection_moves() {
     }
     let mut app = app(&path);
     app.open_log_picker(false, None, None).unwrap();
-    wait_log(&mut app);
-    let loaded = app.picker.as_ref().unwrap().picker().rows().len();
+    let loaded = wait_log(&mut app);
     assert!(loaded < 140);
     let session = app.picker.as_mut().unwrap();
     session.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
-    app.refresh_picker();
-    let loaded_after = app.picker.as_ref().unwrap().picker().rows().len();
+    let loaded_after = wait_log_growth(&mut app, loaded);
     assert!(loaded_after > loaded);
     let _ = fs::remove_dir_all(dir);
 }

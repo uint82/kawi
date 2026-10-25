@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use kawi_editor::Editor;
 use kawi_lsp::{CursorPosition, HoverEvent, LocationEvent, LspService, TextLocation};
+use kawi_syntax::LanguageId;
 
 use super::lsp::editor_path;
 
@@ -27,6 +28,7 @@ pub(super) struct LocationResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct HoverResult {
     pub(super) documents: Vec<kawi_lsp::MarkupDocument>,
+    pub(super) language: Option<LanguageId>,
 }
 
 #[derive(Default)]
@@ -121,6 +123,7 @@ impl LspNavigation {
         self.pending = None;
         self.hover = Some(HoverResult {
             documents: event.contents.clone(),
+            language: event.path.to_str().and_then(LanguageId::from_path),
         });
         true
     }
@@ -322,6 +325,7 @@ mod tests {
                     text: "hover".to_string(),
                     markdown: false,
                 }],
+                language: Some(LanguageId::Rust),
             })
         );
     }
@@ -401,6 +405,7 @@ mod tests {
                 text: "fn fake()\nFake hover".to_string(),
                 markdown: false,
             }],
+            language: None,
         });
         assert!(app.hover.is_some());
         assert!(app.pager.is_none());

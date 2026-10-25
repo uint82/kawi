@@ -1,14 +1,14 @@
-use kawi_lsp::{SignatureEntry, SignatureHelpEvent};
+use kawi_lsp::SignatureEntry;
 use kawi_tui::markdown::{self, MarkdownLine, MarkdownSpan, MarkdownStyle};
 
-use super::super::App;
-use super::{as_documentation, panel_content_width, OverlayData, PanelData};
+use super::super::{signature::SignatureSession, App};
+use super::{panel_content_width, OverlayData, PanelData};
 
 impl App {
     pub(super) fn signature_overlay(&self) -> Option<OverlayData<'_>> {
         let session = self.signature.as_ref()?;
         let width = panel_content_width(self.window_area().width);
-        let layout = self.panel_layout(signature_lines(session.event(), width));
+        let layout = self.panel_layout(signature_lines(session, width));
         Some(OverlayData {
             list: None,
             panel: Some(PanelData {
@@ -20,8 +20,9 @@ impl App {
     }
 }
 
-fn signature_lines(event: &SignatureHelpEvent, width: usize) -> Vec<MarkdownLine> {
+fn signature_lines(session: &SignatureSession, width: usize) -> Vec<MarkdownLine> {
     let width = width.max(1);
+    let event = session.event();
     let mut lines = Vec::new();
     for (index, signature) in event.signatures.iter().enumerate() {
         if index > 0 {
@@ -36,8 +37,8 @@ fn signature_lines(event: &SignatureHelpEvent, width: usize) -> Vec<MarkdownLine
             &signature_spans(marker, &signature.label, range),
             width,
         ));
-        if let Some(documentation) = signature.documentation.as_ref() {
-            lines.extend(markdown::render(&as_documentation(documentation), width));
+        if let Some(documentation) = session.document(index) {
+            lines.extend(markdown::render_document(documentation, width));
         }
     }
     lines

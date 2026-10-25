@@ -12,7 +12,7 @@ impl CompletionSession {
         docs_scroll: Option<(usize, usize)>,
     ) -> CompletionOutcome {
         if let Some((limit, page)) = docs_scroll {
-            if self.selected_documentation().is_some() {
+            if self.selected_document().is_some() {
                 let page = isize::try_from(page).unwrap_or(isize::MAX);
                 if key == docs_up {
                     self.scroll_docs(-page, limit);
@@ -29,6 +29,7 @@ impl CompletionSession {
             MenuKey::Move(delta) => {
                 self.selection.move_by(delta);
                 self.docs_scroll = 0;
+                self.prepare_selected_document();
                 CompletionOutcome::Consumed
             }
             MenuKey::Accept => CompletionOutcome::Accept,

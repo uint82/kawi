@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use crossterm::{
     cursor::{MoveTo, SetCursorStyle, Show},
     execute,
-    style::{Attribute, SetAttribute, SetForegroundColor},
+    style::{Attribute, Color, SetAttribute, SetForegroundColor},
     terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{Stdout, Write};
@@ -1107,40 +1107,35 @@ fn apply_markdown_style(
 ) -> Result<()> {
     execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
     paint::apply_base(out, theme)?;
-    match style {
-        crate::markdown::MarkdownStyle::Normal => {}
-        crate::markdown::MarkdownStyle::Strong | crate::markdown::MarkdownStyle::Heading => {
-            execute!(
-                out,
-                SetAttribute(Attribute::Bold),
-                SetForegroundColor(theme.syntax.color(SyntaxGroup::Keyword))
-            )
-            .context("apply overlay heading style")?;
-        }
-        crate::markdown::MarkdownStyle::Emphasis => {
-            execute!(
-                out,
-                SetAttribute(Attribute::Italic),
-                SetForegroundColor(theme.syntax.color(SyntaxGroup::Function))
-            )
-            .context("apply overlay emphasis style")?;
-        }
-        crate::markdown::MarkdownStyle::Code => {
-            execute!(
-                out,
-                SetForegroundColor(theme.syntax.color(SyntaxGroup::String))
-            )
-            .context("apply overlay code style")?;
-        }
-        crate::markdown::MarkdownStyle::Quote => {
-            execute!(
-                out,
-                SetForegroundColor(theme.syntax.color(SyntaxGroup::Comment))
-            )
-            .context("apply overlay quote style")?;
-        }
+    let Some((attribute, color)) = markdown_style(style, theme) else {
+        return Ok(());
+    };
+    if let Some(attribute) = attribute {
+        execute!(out, SetAttribute(attribute)).context("apply overlay attribute")?;
     }
+    execute!(out, SetForegroundColor(color)).context("apply overlay color")?;
     Ok(())
+}
+
+fn markdown_style(
+    style: crate::markdown::MarkdownStyle,
+    theme: &Theme,
+) -> Option<(Option<Attribute>, Color)> {
+    use crate::markdown::MarkdownStyle;
+    match style {
+        MarkdownStyle::Normal => None,
+        MarkdownStyle::Strong | MarkdownStyle::Heading => Some((
+            Some(Attribute::Bold),
+            theme.syntax.color(SyntaxGroup::Keyword),
+        )),
+        MarkdownStyle::Emphasis => Some((
+            Some(Attribute::Italic),
+            theme.syntax.color(SyntaxGroup::Function),
+        )),
+        MarkdownStyle::Code => Some((None, theme.syntax.color(SyntaxGroup::String))),
+        MarkdownStyle::Quote => Some((None, theme.syntax.color(SyntaxGroup::Comment))),
+        MarkdownStyle::Syntax(group) => Some((None, theme.syntax.color(group))),
+    }
 }
 
 fn clear_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
@@ -2143,5 +2138,16 @@ mod tests {
         let painted = syntax_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].text, "        a");
+    }
+
+    #[test]
+    fn theme_change_recolors_overlay_syntax() {
+        let default = Theme::named("default").expect("default theme");
+        let gruvbox = Theme::named("gruvbox-dark").expect("gruvbox theme");
+        let style = crate::markdown::MarkdownStyle::Syntax(SyntaxGroup::Keyword);
+        assert_ne!(
+            markdown_style(style, &default).map(|(_, color)| color),
+            markdown_style(style, &gruvbox).map(|(_, color)| color)
+        );
     }
 }

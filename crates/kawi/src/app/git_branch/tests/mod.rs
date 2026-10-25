@@ -54,20 +54,31 @@ fn app(path: &Path) -> App {
     )
 }
 
-fn wait_log(app: &mut App) {
+fn wait_log(app: &mut App) -> usize {
+    wait_for_log_rows(app, |rows| rows > 0)
+}
+
+fn wait_log_growth(app: &mut App, previous: usize) -> usize {
+    wait_for_log_rows(app, |rows| rows > previous)
+}
+
+fn wait_for_log_rows(app: &mut App, enough: impl Fn(usize) -> bool) -> usize {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         app.refresh_picker();
-        if app
-            .picker
-            .as_ref()
-            .is_some_and(|session| !session.picker().rows().is_empty())
-        {
-            return;
+        let rows = log_rows(app);
+        if enough(rows) {
+            return rows;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    panic!("log picker timed out");
+    panic!("log picker row loading timed out");
+}
+
+fn log_rows(app: &App) -> usize {
+    app.picker
+        .as_ref()
+        .map_or(0, |session| session.picker().rows().len())
 }
 
 mod log;

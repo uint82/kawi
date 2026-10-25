@@ -22,6 +22,13 @@ pub struct SyntaxSpan {
     pub group: SyntaxGroup,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SnippetSpan {
+    pub start: usize,
+    pub end: usize,
+    pub group: SyntaxGroup,
+}
+
 pub struct SyntaxRequest {
     pub key: SyntaxKey,
     pub text: Rope,
