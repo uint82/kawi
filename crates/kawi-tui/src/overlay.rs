@@ -1,5 +1,7 @@
 use crate::frame::Rect;
 
+pub const PANEL_BORDER: usize = 2;
+pub const PANEL_PADDING: usize = 1;
 const GAP: usize = 1;
 const MIN_DOCS_WIDTH: usize = 20;
 
