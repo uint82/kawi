@@ -44,6 +44,9 @@ mod signature;
 mod task;
 mod terminal_ui;
 mod undo;
+#[cfg(test)]
+mod undo_test_support;
+mod undo_tree;
 mod window;
 mod workspace_edit;
 
@@ -1085,6 +1088,8 @@ impl App {
             Action::ExecuteCommand => self.handle_execute(),
             Action::Undo => self.handle_undo(),
             Action::Redo => self.handle_redo(),
+            Action::UndoOlder => self.handle_undo_older(false),
+            Action::UndoNewer => self.handle_undo_older(true),
             Action::NextMatch => self.handle_next_match(),
             Action::PrevMatch => self.handle_prev_match(),
             Action::ConfirmSearch => self.handle_confirm_search(),
