@@ -229,3 +229,21 @@ fn switching_terminal_layout_keeps_the_session() {
     assert_eq!(app.terminal.title(), title);
     app.close_terminal();
 }
+
+#[test]
+#[cfg(unix)]
+fn vertical_terminal_keeps_the_editor_pane() {
+    let mut app = App::new(Buffer::from_string("editor-marker"), Flavor::Vim);
+    app.set_screen_size(100, 30);
+    app.open_terminal(Some("sleep 5".to_string()), TerminalLayout::Vertical)
+        .unwrap();
+    let layout = app.window_layout();
+    let panes = app.frame_panes(&layout);
+    assert_eq!(panes.len(), 1);
+    assert_eq!(panes[0].rect.width, 67);
+    assert!(panes[0]
+        .lines
+        .iter()
+        .any(|line| line.contains("editor-marker")));
+    app.close_terminal();
+}

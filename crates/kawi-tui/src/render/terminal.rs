@@ -44,13 +44,8 @@ fn draw_terminal_header(
     frame: &crate::frame::Frame,
     panel: &TerminalPanel<'_>,
 ) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(panel.rect.x), saturate_u16(panel.rect.y)),
-        Clear(ClearType::CurrentLine),
-        SetAttribute(Attribute::Reset)
-    )
-    .context("prepare terminal header")?;
+    clear_panel_line(out, panel.rect.x, panel.rect.y)?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset terminal header")?;
     let colors = if panel.focused {
         frame.theme.status.clone()
     } else {
@@ -74,12 +69,7 @@ fn draw_terminal_lines(
 ) -> Result<()> {
     for offset in 0..panel.rect.height.saturating_sub(1) {
         let row = panel.rect.y.saturating_add(offset).saturating_add(1);
-        execute!(
-            out,
-            MoveTo(saturate_u16(panel.rect.x), saturate_u16(row)),
-            Clear(ClearType::CurrentLine)
-        )
-        .context("clear terminal line")?;
+        clear_panel_line(out, panel.rect.x, row)?;
         let Some(line) = panel.lines.get(offset) else {
             continue;
         };
@@ -90,6 +80,15 @@ fn draw_terminal_lines(
         paint::restore_base(out, frame.theme)?;
     }
     Ok(())
+}
+
+fn clear_panel_line(out: &mut impl Write, x: usize, y: usize) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(saturate_u16(x), saturate_u16(y)),
+        Clear(ClearType::UntilNewLine)
+    )
+    .context("clear terminal line")
 }
 
 fn apply_terminal_span(
@@ -145,4 +144,16 @@ fn apply_terminal_attrs(out: &mut Stdout, attrs: TerminalAttrs) -> Result<()> {
         execute!(out, SetAttribute(Attribute::Underlined)).context("apply terminal underline")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clear_panel_line;
+
+    #[test]
+    fn clears_only_from_the_panel_start() {
+        let mut out = Vec::new();
+        clear_panel_line(&mut out, 67, 3).unwrap();
+        assert_eq!(out, b"\x1b[4;68H\x1b[K");
+    }
 }
