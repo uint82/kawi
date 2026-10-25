@@ -44,7 +44,7 @@ impl TrashDir {
     pub(super) fn for_target(target: &Path) -> Option<Self> {
         let home = Self::from_env();
         if let Some(home) = home {
-            if same_device(target, &home.root) {
+            if same_device(target, &home.root) && is_writable_location(&home.root) {
                 return Some(home);
             }
         }

@@ -218,6 +218,11 @@ fn create_new_path_creates_files_and_directories() {
     );
     app.create_new_path(&dir, "another/");
     assert!(dir.join("another").is_dir());
+    app.create_new_path(&dir, "another/");
+    assert_eq!(
+        app.last_message(),
+        Some("E13: File exists (add ! to override)")
+    );
     let _ = fs::remove_dir_all(dir);
 }
 

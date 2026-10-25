@@ -81,17 +81,16 @@ fn split_words(text: &str) -> Option<Vec<String>> {
     let mut words = Vec::new();
     let mut current = String::new();
     let mut quote = None;
-    let mut escaped = false;
     let mut started = false;
-    for character in text.chars() {
-        if escaped {
-            current.push(character);
-            escaped = false;
-            started = true;
-            continue;
-        }
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
         if character == '\\' {
-            escaped = true;
+            match characters.peek() {
+                Some(next) if next.is_whitespace() || matches!(next, '\\' | '"' | '\'') => {
+                    current.push(characters.next().expect("peeked character"));
+                }
+                _ => current.push('\\'),
+            }
             started = true;
             continue;
         }
@@ -121,7 +120,7 @@ fn split_words(text: &str) -> Option<Vec<String>> {
             }
         }
     }
-    if quote.is_some() || escaped {
+    if quote.is_some() {
         return None;
     }
     if started {
@@ -139,6 +138,18 @@ mod tests {
         assert_eq!(
             split_words(r#""my file.txt" 'other file.txt'"#).unwrap(),
             vec!["my file.txt", "other file.txt"]
+        );
+    }
+
+    #[test]
+    fn keeps_windows_path_separators() {
+        assert_eq!(
+            split_words(r#"C:\Users\me\file.txt"#).unwrap(),
+            vec![r#"C:\Users\me\file.txt"#]
+        );
+        assert_eq!(
+            split_words(r#""C:\Users\me\file.txt""#).unwrap(),
+            vec![r#"C:\Users\me\file.txt"#]
         );
     }
 

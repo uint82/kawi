@@ -75,6 +75,10 @@ impl App {
     pub(super) fn create_new_path(&mut self, root: &Path, text: &str) {
         let target = paths::absolute(text, root);
         if is_directory_text(text) {
+            if fs::path_exists(&target) {
+                self.show_message("E13: File exists (add ! to override)".to_string());
+                return;
+            }
             self.prepare_write_target(
                 target.clone(),
                 target.to_string_lossy().into_owned(),
