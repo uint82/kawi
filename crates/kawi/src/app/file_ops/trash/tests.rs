@@ -59,6 +59,21 @@ fn refuses_to_trash_across_filesystems() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[cfg(unix)]
+#[test]
+fn an_unwritable_trash_location_is_unavailable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_dir("unwritable");
+    let target = dir.join("a.txt");
+    fs::write(&target, "alpha\n").unwrap();
+    let trash = TrashDir::new(dir.join("Trash"));
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+    assert!(!trash.can_trash(&target));
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = fs::remove_dir_all(dir);
+}
+
 #[test]
 fn topdir_trash_uses_a_relative_info_path() {
     let dir = temp_dir("topdir");
