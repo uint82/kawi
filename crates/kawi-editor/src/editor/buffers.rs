@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use kawi_buffer::{apply_text_edits, content_hash, Buffer, TextEdit};
+use kawi_buffer::{apply_text_edits, content_hash, Buffer, PersistedHistory, TextEdit};
 use ropey::Rope;
 
 use super::indent::{self, IndentConfig};
@@ -213,11 +213,12 @@ impl Editor {
             return Err(EditError::FileExists);
         }
         let created = !target.exists();
-        self.buffer
+        let source_hash = self
+            .buffer
             .write_to(name, force)
             .map_err(|error| EditError::Io(error.to_string()))?;
         if current.is_none() {
-            self.buffer.adopt_path(name);
+            self.buffer.adopt_path(name, source_hash);
         }
         Ok(self.write_outcome(created))
     }
@@ -726,6 +727,7 @@ impl Editor {
         } else {
             self.buffer.replace_all("");
         }
+        self.buffer.reset_history();
         self.buffer.mark_clean();
         self.clamp_row();
         self.clamp_col();
@@ -822,6 +824,37 @@ impl Editor {
 
     pub fn buffer_is_readonly(&self, number: usize) -> Option<bool> {
         self.buffer_at(number).map(Buffer::is_readonly)
+    }
+
+    pub fn buffer_source_hash(&self, number: usize) -> Option<[u8; 32]> {
+        self.buffer_at(number).and_then(Buffer::source_hash)
+    }
+
+    pub fn buffer_history(&self, number: usize) -> Option<PersistedHistory> {
+        if number == self.buffers.current() {
+            let row = self.cursor.row();
+            let col = self.cursor.col();
+            return Some(self.buffer.export_history(row, col));
+        }
+        let entry = self.buffers.entry(number)?;
+        let row = entry.state.cursor.row();
+        let col = entry.state.cursor.col();
+        Some(entry.state.buffer.export_history(row, col))
+    }
+
+    pub fn restore_buffer_history(&mut self, number: usize, history: &PersistedHistory) -> bool {
+        if number == self.buffers.current() {
+            return self.buffer.import_history(history);
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        entry.state.buffer.import_history(history)
     }
 
     pub fn set_buffer_readonly(&mut self, number: usize, readonly: bool) -> bool {
