@@ -168,7 +168,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 19] = [
+pub(crate) const OPTIONS: [OptionSpec; 20] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -315,6 +315,15 @@ pub(crate) const OPTIONS: [OptionSpec; 19] = [
         section: ConfigSection::History,
         config_key: "limit",
         default: OptionDefault::Int(DEFAULT_HISTORY_LIMIT),
+    },
+    OptionSpec {
+        name: "undo_persist",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::History,
+        config_key: "undo_persist",
+        default: OptionDefault::Bool(true),
     },
     OptionSpec {
         name: "auto_completion",

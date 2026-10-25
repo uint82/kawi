@@ -11,6 +11,7 @@ use crate::text::one_line;
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Config {
     values: BTreeMap<&'static str, OptionValue>,
+    undo_exclude: Option<Vec<String>>,
 }
 
 impl Config {
@@ -20,6 +21,10 @@ impl Config {
 
     pub(crate) fn get(&self, name: &str) -> Option<&OptionValue> {
         options::canonical_name(name).and_then(|name| self.values.get(name))
+    }
+
+    pub(crate) fn undo_exclude(&self) -> Option<&[String]> {
+        self.undo_exclude.as_deref()
     }
 }
 
@@ -178,6 +183,10 @@ impl Loader<'_> {
             return;
         };
         for (key, item) in table.iter() {
+            if section == ConfigSection::History && key == "undo_exclude" {
+                self.load_undo_exclude(item);
+                continue;
+            }
             let Some(spec) = spec_for(section, key) else {
                 self.unknown(&format!("{name}.{key}"), item);
                 continue;
@@ -185,6 +194,32 @@ impl Loader<'_> {
             let warning_key = format!("{name}.{key}");
             self.load_option(spec, &warning_key, item);
         }
+    }
+
+    fn load_undo_exclude(&mut self, item: &Item) {
+        let Some(array) = item.as_array() else {
+            self.warn(
+                item.span(),
+                "history.undo_exclude",
+                item.to_string(),
+                "default exclusions",
+            );
+            return;
+        };
+        let mut values = Vec::with_capacity(array.len());
+        for value in array.iter() {
+            let Some(text) = value.as_str() else {
+                self.warn(
+                    value.span(),
+                    "history.undo_exclude",
+                    value.to_string(),
+                    "default exclusions",
+                );
+                return;
+            };
+            values.push(text.to_string());
+        }
+        self.config.undo_exclude = Some(values);
     }
 
     fn load_option(&mut self, spec: &'static OptionSpec, key: &str, item: &Item) {
@@ -329,6 +364,8 @@ autosave_delay = 250
 
 [history]
 limit = 25
+undo_persist = false
+undo_exclude = ["/tmp/*", "*.gpg", "*/.ssh/*"]
 "#,
         );
         assert!(loaded.warnings.is_empty());
@@ -367,6 +404,25 @@ limit = 25
             Some(&OptionValue::Int(250))
         );
         assert_eq!(loaded.config.get("history"), Some(&OptionValue::Int(25)));
+        assert_eq!(
+            loaded.config.get("undo_persist"),
+            Some(&OptionValue::Bool(false))
+        );
+        assert_eq!(
+            loaded.config.undo_exclude(),
+            Some(
+                ["/tmp/*", "*.gpg", "*/.ssh/*"]
+                    .map(str::to_string)
+                    .as_slice()
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_undo_exclusions() {
+        let loaded = load_text("[history]\nundo_exclude = \"/tmp/*\"\n");
+        assert!(loaded.config.undo_exclude().is_none());
+        assert_eq!(loaded.warnings.len(), 1);
     }
 
     #[test]

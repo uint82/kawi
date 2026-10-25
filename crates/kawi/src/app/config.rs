@@ -40,12 +40,15 @@ impl App {
             self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));
         }
         self.set_tasks(tasks);
+        self.undo.configure(paths.undo.clone());
         self.apply_config(&loaded.config);
+        self.undo.spawn_prune();
         if let Some(flavor) = cli_flavor {
             let _ = self.apply_cli_flavor(flavor);
         }
         state::load(&mut self.editor, &paths);
         self.sync_language_settings();
+        self.sync_undo_histories();
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
@@ -61,6 +64,9 @@ impl App {
                 continue;
             };
             let _ = self.apply_option(spec, value.clone());
+        }
+        if let Some(exclusions) = config.undo_exclude() {
+            self.undo.set_exclusions(exclusions.to_vec());
         }
         let defaults = BufferOptionDefaults {
             shiftwidth: config.get("shiftwidth").and_then(OptionValue::as_int),
@@ -179,6 +185,8 @@ autosave_delay = 250
 
 [history]
 limit = 25
+undo_persist = false
+undo_exclude = ["*.gpg"]
 "#,
         )
         .unwrap();
@@ -197,6 +205,8 @@ limit = 25
         assert_eq!(app.autosave.mode(), crate::options::AutosaveMode::Idle);
         assert_eq!(app.autosave.delay_millis(), 250);
         assert_eq!(app.editor.history_limit(), 25);
+        assert!(!app.undo.enabled());
+        assert_eq!(app.undo.exclusions(), ["*.gpg"]);
         app.editor.open_empty_buffer();
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());

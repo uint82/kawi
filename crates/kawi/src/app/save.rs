@@ -14,12 +14,12 @@ pub(super) enum SaveAfter {
 }
 
 pub(super) struct PendingSave {
-    request: u64,
-    number: usize,
-    force: bool,
-    after: SaveAfter,
-    visible: bool,
-    started: Instant,
+    pub(super) request: u64,
+    pub(super) number: usize,
+    pub(super) force: bool,
+    pub(super) after: SaveAfter,
+    pub(super) visible: bool,
+    pub(super) started: Instant,
 }
 
 impl PendingSave {
@@ -202,6 +202,7 @@ impl App {
         match self.editor.save_buffer(number, force) {
             Ok(outcome) => {
                 let report = super::written_report(&name, outcome);
+                self.persist_undo(number);
                 self.record_saved_buffer_number(number);
                 if number == self.editor.buffer_number() {
                     if let Some(path) = path {

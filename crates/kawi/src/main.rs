@@ -197,6 +197,7 @@ mod tests {
             history: dir.join("history"),
             sessions: dir.join("sessions"),
             recovery: dir.join("recovery"),
+            undo: dir.join("undo"),
         };
         let mut app = App::new(
             Buffer::from_file(file.to_str().unwrap()).unwrap(),
