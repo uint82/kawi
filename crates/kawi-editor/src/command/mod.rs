@@ -218,6 +218,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "signature_help",
     "smartcase",
     "theme",
+    "undo_persist",
 ];
 
 pub fn parse(text: &str) -> Command {

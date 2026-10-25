@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use ropey::Rope;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -7,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::history::History;
+use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
 use crate::write;
 
@@ -19,6 +21,7 @@ pub struct Buffer {
     line_changes: u64,
     adjustments: Vec<LineAdjust>,
     readonly: bool,
+    source_hash: Option<[u8; 32]>,
 }
 
 impl Buffer {
@@ -36,17 +39,18 @@ impl Buffer {
             line_changes: 0,
             adjustments: Vec::new(),
             readonly: false,
+            source_hash: None,
         }
     }
 
     pub fn from_file(path: &str) -> Result<Self> {
-        let text = read_file_text(path)?;
-        Ok(Self::from_text_with_path(&text, path))
+        let bytes = fs::read(path).with_context(|| format!("failed to open {path}"))?;
+        Self::from_bytes_with_path(bytes, path)
     }
 
     pub fn open(path: &str) -> Result<Self> {
-        match fs::read_to_string(path) {
-            Ok(text) => Ok(Self::from_text_with_path(&text, path)),
+        match fs::read(path) {
+            Ok(bytes) => Self::from_bytes_with_path(bytes, path),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let mut buffer = Self::from_string("");
                 buffer.path = Some(path.to_string());
@@ -54,6 +58,14 @@ impl Buffer {
             }
             Err(error) => Err(error).with_context(|| format!("failed to open {path}")),
         }
+    }
+
+    fn from_bytes_with_path(bytes: Vec<u8>, path: &str) -> Result<Self> {
+        let source_hash = sha256(&bytes);
+        let text = String::from_utf8(bytes).with_context(|| format!("failed to open {path}"))?;
+        let mut buffer = Self::from_text_with_path(&text, path);
+        buffer.source_hash = Some(source_hash);
+        Ok(buffer)
     }
 
     fn from_text_with_path(text: &str, path: &str) -> Self {
@@ -69,20 +81,30 @@ impl Buffer {
         let Some(path) = self.path.clone() else {
             anyhow::bail!("no file name");
         };
-        let text = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        let (text, source_hash) = match fs::read(&path) {
+            Ok(bytes) => {
+                let hash = sha256(&bytes);
+                let text =
+                    String::from_utf8(bytes).with_context(|| format!("failed to open {path}"))?;
+                (text, Some(hash))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (String::new(), None),
             Err(error) => {
                 return Err(error).with_context(|| format!("failed to open {path}"));
             }
         };
         self.rope = Rope::from_str(&text);
+        self.source_hash = source_hash;
         self.touch();
         Ok(())
     }
 
     pub fn mark_clean(&mut self) {
         self.history.mark_clean();
+    }
+
+    pub fn reset_history(&mut self) {
+        self.history = History::new();
     }
 
     pub fn replace_all(&mut self, text: &str) {
@@ -95,6 +117,22 @@ impl Buffer {
 
     pub fn is_readonly(&self) -> bool {
         self.readonly
+    }
+
+    pub fn source_hash(&self) -> Option<[u8; 32]> {
+        self.source_hash
+    }
+
+    pub fn export_history(&self, row: usize, col: usize) -> PersistedHistory {
+        self.history.export(&self.rope, row, col, self.line_changes)
+    }
+
+    pub fn import_history(&mut self, history: &PersistedHistory) -> bool {
+        let Some(history) = History::from_persisted(&self.rope, history) else {
+            return false;
+        };
+        self.history = history;
+        true
     }
 
     pub fn set_readonly(&mut self, readonly: bool) {
@@ -711,21 +749,24 @@ impl Buffer {
         let Some(path) = self.path.clone() else {
             anyhow::bail!("E32: No file name");
         };
-        self.write_to(&path, force)?;
+        let hash = self.write_to(&path, force)?;
+        self.source_hash = Some(hash);
         self.history.mark_clean();
         Ok(())
     }
 
-    pub fn write_to(&self, path: &str, force: bool) -> Result<()> {
+    pub fn write_to(&self, path: &str, force: bool) -> Result<[u8; 32]> {
+        let mut hasher = Sha256::new();
         write::write(Path::new(path), force, |out| {
-            let mut writer = BufWriter::new(out);
+            let mut writer = HashingWriter::new(BufWriter::new(out), &mut hasher);
             self.rope.write_to(&mut writer)?;
             if self.needs_final_newline() {
                 writer.write_all(b"\n")?;
             }
             writer.flush()
         })
-        .map_err(anyhow::Error::from)
+        .map_err(anyhow::Error::from)?;
+        Ok(hasher.finalize().into())
     }
 
     pub fn file_bytes(&self) -> usize {
@@ -740,8 +781,9 @@ impl Buffer {
         self.rope.len_chars() > 0 && !self.ends_with_newline()
     }
 
-    pub fn adopt_path(&mut self, path: &str) {
+    pub fn adopt_path(&mut self, path: &str, source_hash: [u8; 32]) {
         self.path = Some(path.to_string());
+        self.source_hash = Some(source_hash);
         self.history.mark_clean();
     }
 
@@ -922,8 +964,31 @@ fn next_id() -> String {
     format!("{}-{:x}-{:x}", std::process::id(), nanos, counter)
 }
 
-fn read_file_text(path: &str) -> Result<String> {
-    fs::read_to_string(path).with_context(|| format!("failed to open {path}"))
+fn sha256(bytes: &[u8]) -> [u8; 32] {
+    Sha256::digest(bytes).into()
+}
+
+struct HashingWriter<'a, W> {
+    inner: W,
+    hasher: &'a mut Sha256,
+}
+
+impl<'a, W> HashingWriter<'a, W> {
+    fn new(inner: W, hasher: &'a mut Sha256) -> Self {
+        Self { inner, hasher }
+    }
+}
+
+impl<W: Write> Write for HashingWriter<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let written = self.inner.write(bytes)?;
+        self.hasher.update(&bytes[..written]);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 fn char_count(text: &str) -> usize {
@@ -1232,6 +1297,34 @@ mod tests {
             std::fs::read_to_string(&path).expect("read temp file"),
             "aa\nbb\n"
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_hashes_the_exact_disk_bytes() {
+        let dir = std::env::temp_dir().join(format!("kawi_hash_{}_{}", std::process::id(), "save"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.txt");
+        let mut buffer = Buffer::from_string("\u{feff}a\r\n");
+        buffer.path = Some(path.to_string_lossy().into_owned());
+        buffer.save(false).expect("save");
+        let bytes = std::fs::read(&path).expect("disk");
+        assert_eq!(buffer.source_hash(), Some(Sha256::digest(&bytes).into()));
+        let opened = Buffer::from_file(path.to_str().unwrap()).expect("open");
+        assert_eq!(opened.source_hash(), Some(Sha256::digest(&bytes).into()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn open_rejects_non_utf8_content() {
+        let path = std::env::temp_dir().join(format!(
+            "kawi_non_utf8_{}_{}.txt",
+            std::process::id(),
+            "content"
+        ));
+        std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+        assert!(Buffer::open(path.to_str().unwrap()).is_err());
         let _ = std::fs::remove_file(&path);
     }
 

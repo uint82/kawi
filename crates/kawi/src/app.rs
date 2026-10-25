@@ -43,6 +43,7 @@ mod save;
 mod signature;
 mod task;
 mod terminal_ui;
+mod undo;
 mod window;
 mod workspace_edit;
 
@@ -174,6 +175,7 @@ pub struct App {
     events: EventQueue,
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
+    undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
 }
@@ -242,6 +244,7 @@ impl App {
             events: EventQueue::new(),
             recovery: None,
             recovery_prompt: None,
+            undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
         }
@@ -259,6 +262,7 @@ impl App {
         self.terminal_focus = false;
         self.terminal.close();
         self.abort_git_editor_on_exit();
+        self.persist_clean_undos();
         match outcome {
             Ok(result) => {
                 if result.is_err() || self.events.shutdown_requested() {
@@ -334,6 +338,7 @@ impl App {
         let mut out = stdout();
         loop {
             self.sync_active_window();
+            self.sync_undo_histories();
             self.show_recovery_prompt_if_ready();
             self.sync_git();
             self.sync_ipc();
@@ -1153,6 +1158,7 @@ impl App {
         match self.editor.write_as(name, force) {
             Ok(outcome) => {
                 let report = written_report(name, outcome);
+                self.persist_undo(self.editor.buffer_number());
                 self.record_saved_buffer();
                 self.lsp.refresh(&self.editor);
                 self.lsp.save();
@@ -1701,6 +1707,7 @@ impl App {
         }
         match self.editor.write_all() {
             Ok(()) => {
+                self.persist_clean_undos();
                 self.record_all_saved();
                 self.lsp.refresh(&self.editor);
                 self.lsp.save();
@@ -1720,6 +1727,7 @@ impl App {
         }
         match self.editor.write_all() {
             Ok(()) => {
+                self.persist_clean_undos();
                 self.record_all_saved();
                 self.lsp.refresh(&self.editor);
                 self.lsp.save();
@@ -1832,6 +1840,7 @@ impl App {
     fn handle_delete_buffer(&mut self, spec: Option<String>, force: bool) -> Result<bool> {
         match self.editor.buffer_delete(spec.as_deref(), force) {
             Ok(()) => {
+                self.persist_clean_undos();
                 self.reconcile_unlisted_buffers();
                 self.reveal_cursor();
             }

@@ -4,21 +4,21 @@ use ropey::Rope;
 
 use crate::line_adjust::{self, LineAdjust};
 
-struct Snapshot {
-    id: u64,
-    text: Rope,
-    row: usize,
-    col: usize,
-    line_changes: u64,
+pub(crate) struct Snapshot {
+    pub(crate) id: u64,
+    pub(crate) text: Rope,
+    pub(crate) row: usize,
+    pub(crate) col: usize,
+    pub(crate) line_changes: u64,
 }
 
 pub struct History {
-    undo: Vec<Snapshot>,
-    redo: Vec<Snapshot>,
-    group_open: bool,
-    current_id: u64,
-    next_id: u64,
-    clean_id: u64,
+    pub(crate) undo: Vec<Snapshot>,
+    pub(crate) redo: Vec<Snapshot>,
+    pub(crate) group_open: bool,
+    pub(crate) current_id: u64,
+    pub(crate) next_id: u64,
+    pub(crate) clean_id: u64,
 }
 
 impl History {

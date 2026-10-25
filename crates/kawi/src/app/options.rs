@@ -87,6 +87,7 @@ impl App {
             "history" => self
                 .editor
                 .set_history_limit(value.as_int().unwrap_or_default()),
+            "undo_persist" => self.undo.set_enabled(value.as_bool().unwrap_or(true)),
             "shiftwidth" => self
                 .editor
                 .set_shiftwidth(value.as_int().unwrap_or_default()),
@@ -243,6 +244,7 @@ impl App {
             "keymap" => OptionValue::Text(self.flavor.name().to_string()),
             "theme" => OptionValue::Text(self.theme.name.to_string()),
             "history" => OptionValue::Int(self.editor.history_limit()),
+            "undo_persist" => OptionValue::Bool(self.undo.enabled()),
             "shiftwidth" => OptionValue::Int(self.editor.shiftwidth()),
             "expandtab" => OptionValue::Bool(self.editor.expandtab()),
             "number" => OptionValue::Bool(self.editor.number()),
@@ -375,6 +377,18 @@ mod tests {
         assert!(!app.editor.expandtab());
         execute(&mut app, "set notheme");
         assert_eq!(app.last_message(), Some("E474: Invalid argument: notheme"));
+    }
+
+    #[test]
+    fn undo_persistence_can_be_toggled() {
+        let mut app = app();
+        assert!(app.undo.enabled());
+        execute(&mut app, "set noundo_persist");
+        assert!(!app.undo.enabled());
+        execute(&mut app, "set undo_persist?");
+        assert_eq!(app.last_message(), Some("noundo_persist"));
+        execute(&mut app, "set undo_persist");
+        assert!(app.undo.enabled());
     }
 
     #[test]
