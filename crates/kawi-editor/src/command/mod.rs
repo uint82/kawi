@@ -8,6 +8,7 @@ pub enum Command {
         force: bool,
     },
     ForceQuit,
+    Cquit,
     QuitAll,
     ForceQuitAll,
     WriteAll,
@@ -96,6 +97,8 @@ pub enum QuickfixCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitCommand {
     Status,
+    Commit { all: bool },
+    Amend { staged: bool },
     NextHunk,
     PrevHunk,
     StageHunk,
@@ -124,6 +127,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "conflict",
     "copen",
     "cprev",
+    "cq",
+    "cquit",
     "e",
     "edit",
     "files",
@@ -250,6 +255,7 @@ fn parse_named(text: &str) -> Command {
             vertical: true,
             name: rest.first().map(|name| (*name).to_string()),
         },
+        ("cq" | "cquit", []) => Command::Cquit,
         ("clo" | "close", []) => Command::CloseWindow,
         ("on" | "only", []) => Command::OnlyWindow,
         ("pick", []) => Command::Pick(PickerCommand::Files),
@@ -368,6 +374,10 @@ fn parse_git_command(words: &[&str]) -> Command {
     let command = match words {
         [] => GitCommand::Diff,
         ["status"] => GitCommand::Status,
+        ["commit"] => GitCommand::Commit { all: false },
+        ["commit", "-a" | "all"] => GitCommand::Commit { all: true },
+        ["amend"] => GitCommand::Amend { staged: false },
+        ["amend", "staged"] => GitCommand::Amend { staged: true },
         ["next_hunk"] => GitCommand::NextHunk,
         ["prev_hunk"] => GitCommand::PrevHunk,
         ["stage_hunk"] => GitCommand::StageHunk,
@@ -454,6 +464,12 @@ mod tests {
     #[test]
     fn parses_quit() {
         assert_eq!(parse("q"), Command::Quit);
+    }
+
+    #[test]
+    fn parses_cquit() {
+        assert_eq!(parse("cq"), Command::Cquit);
+        assert_eq!(parse("cquit"), Command::Cquit);
     }
 
     #[test]
@@ -571,6 +587,22 @@ mod tests {
         );
         assert_eq!(parse("git refresh"), Command::Git(GitCommand::Refresh));
         assert_eq!(parse("git status"), Command::Git(GitCommand::Status));
+        assert_eq!(
+            parse("git commit"),
+            Command::Git(GitCommand::Commit { all: false })
+        );
+        assert_eq!(
+            parse("git commit -a"),
+            Command::Git(GitCommand::Commit { all: true })
+        );
+        assert_eq!(
+            parse("git amend"),
+            Command::Git(GitCommand::Amend { staged: false })
+        );
+        assert_eq!(
+            parse("git amend staged"),
+            Command::Git(GitCommand::Amend { staged: true })
+        );
         assert_eq!(parse("git nope"), Command::Unknown);
     }
 

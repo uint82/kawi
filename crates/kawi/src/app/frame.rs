@@ -57,6 +57,7 @@ impl App {
                 search_spans: &pane.search_spans,
                 preview_spans: &pane.preview_spans,
                 syntax_spans: pane.syntax_spans.as_ref(),
+                rulers: &pane.rulers,
                 selection: pane.selection,
                 viewport: pane.viewport,
                 cursor_col: pane.cursor_col,

@@ -17,6 +17,11 @@ const CANCEL_GRACE: Duration = Duration::from_millis(500);
 const EXIT_DRAIN: Duration = Duration::from_millis(250);
 const MAX_OUTPUT_LINE_CHARS: usize = 4_096;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TaskOptions {
+    pub detached: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TaskStatus {
     pub success: bool,
@@ -46,6 +51,15 @@ pub struct TaskRunner {
 
 impl TaskRunner {
     pub fn start(spec: &TaskSpec, root: &Path, wake: Sender<()>) -> Result<Self> {
+        Self::start_with(spec, root, wake, TaskOptions::default())
+    }
+
+    pub fn start_with(
+        spec: &TaskSpec,
+        root: &Path,
+        wake: Sender<()>,
+        options: TaskOptions,
+    ) -> Result<Self> {
         let cwd = task_directory(spec, root);
         let mut command = Command::new(&spec.command);
         command
@@ -55,7 +69,11 @@ impl TaskRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        kawi_process::configure(&mut command);
+        if options.detached {
+            kawi_process::configure_session(&mut command);
+        } else {
+            kawi_process::configure(&mut command);
+        }
         let mut child = command
             .spawn()
             .with_context(|| format!("start {}", spec.command))?;

@@ -465,8 +465,44 @@ fn draw_one_line(
     let width = pane.rect.width.saturating_sub(gutter_width);
     let end = pane.viewport.leftcol().saturating_add(width);
     let text = display::slice_screen(text, pane.viewport.leftcol(), end, pane.tabstop);
+    let visible = display::screen_len(&text, pane.tabstop);
     write!(out, "{}", text).context("write line")?;
     erase_row_tail(out)?;
+    draw_rulers(out, pane, theme, screen_row, gutter_width, visible)?;
+    Ok(())
+}
+
+fn draw_rulers(
+    out: &mut Stdout,
+    pane: &PaneFrame<'_>,
+    theme: &Theme,
+    screen_row: usize,
+    gutter_width: usize,
+    visible: usize,
+) -> Result<()> {
+    let width = pane.rect.width.saturating_sub(gutter_width);
+    let leftcol = pane.viewport.leftcol();
+    for ruler in pane.rulers {
+        if *ruler < leftcol || *ruler >= leftcol.saturating_add(width) || visible > *ruler {
+            continue;
+        }
+        let column = pane
+            .rect
+            .x
+            .saturating_add(gutter_width)
+            .saturating_add(ruler.saturating_sub(leftcol));
+        execute!(
+            out,
+            MoveTo(
+                saturate_u16(column),
+                saturate_u16(pane.rect.y.saturating_add(screen_row))
+            ),
+            SetForegroundColor(theme.non_text)
+        )
+        .context("move to soft ruler")?;
+        write!(out, "|").context("write soft ruler")?;
+        paint::restore_base(out, theme)?;
+    }
     Ok(())
 }
 

@@ -332,6 +332,7 @@ impl App {
         let path = absolute_path(&path);
         let fingerprint = Fingerprint::read(&path).ok();
         self.disk.record_saved(number, path, fingerprint);
+        self.git_commit.mark_saved(number);
         self.refresh_git_status();
     }
 
@@ -339,6 +340,7 @@ impl App {
         for (number, path) in self.open_files() {
             let fingerprint = Fingerprint::read(&path).ok();
             self.disk.record_saved(number, path, fingerprint);
+            self.git_commit.mark_saved(number);
         }
         self.refresh_git_status();
     }

@@ -212,10 +212,9 @@ pub(super) fn spawn_options(
     cols: u16,
     command: Option<String>,
 ) -> SpawnOptions {
-    // TODO: route EDITOR/GIT_EDITOR through a running-instance socket instead of a nested editor.
     let mut options = SpawnOptions::new(cwd, rows, cols);
     options.command = command;
-    options.editor = std::env::current_exe().ok();
+    options.editor = crate::ipc::terminal_editor_command().ok();
     options
 }
 

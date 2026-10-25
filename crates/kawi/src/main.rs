@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod event;
 mod helix;
+mod ipc;
 mod keymap;
 mod mouse;
 mod options;
@@ -24,7 +25,11 @@ use state::StatePaths;
 use std::path::Path;
 
 fn main() -> Result<()> {
-    let (path, cli_flavor) = parse_cli(std::env::args().skip(1).collect());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| is_wait_flag(arg)) {
+        return run_wait_editor(&args);
+    }
+    let (path, cli_flavor) = parse_cli(args);
     let restore_workspace = path.is_none();
     let cwd = std::env::current_dir()?;
     let paths = StatePaths::resolve();
@@ -38,6 +43,30 @@ fn main() -> Result<()> {
     save_workspace_session(&mut app, restore_workspace, paths.as_ref(), &cwd);
     app.save_state();
     outcome
+}
+
+fn is_wait_flag(arg: &str) -> bool {
+    arg == "--git-editor" || arg == "--wait"
+}
+
+fn run_wait_editor(args: &[String]) -> Result<()> {
+    let Some(index) = args.iter().position(|arg| is_wait_flag(arg)) else {
+        anyhow::bail!("missing editor path");
+    };
+    let Some(path) = args.get(index + 1) else {
+        anyhow::bail!("missing editor path");
+    };
+    let cwd = std::env::current_dir()?;
+    let root = kawi_picker::project_root(&cwd);
+    let file = std::path::absolute(Path::new(path))?;
+    match ipc::wait(&root, &file) {
+        Ok(ipc::WaitOutcome::Saved) => Ok(()),
+        Ok(ipc::WaitOutcome::Aborted) => std::process::exit(1),
+        Err(error) => {
+            eprintln!("kawi: git editor: {error}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn load_startup_session(

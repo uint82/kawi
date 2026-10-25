@@ -24,6 +24,7 @@ pub(crate) struct PaneData<'a> {
     pub search_spans: Vec<SearchSpan>,
     pub preview_spans: Vec<SearchSpan>,
     pub syntax_spans: Cow<'a, [SyntaxSpan]>,
+    pub rulers: Vec<usize>,
     pub selection: Option<Selection>,
     pub viewport: Viewport,
     pub cursor_col: usize,
@@ -243,6 +244,7 @@ impl App {
         let closing = self.windows.active();
         self.exit_visual_if_active();
         let buffer = self.editor.buffer_number();
+        self.finish_git_editor_for_buffer(buffer);
         let remaining = self.windows.count_buffer(buffer).saturating_sub(1);
         if force && remaining == 0 && self.editor.is_dirty() {
             self.editor.discard_current_changes();
@@ -361,6 +363,14 @@ impl App {
             .find(|(_, rect)| rect.contains(column, row))
     }
 
+    fn commit_rulers(&self, buffer: usize) -> Vec<usize> {
+        if self.git_commit.editor_buffer() == Some(buffer) {
+            vec![50, 72]
+        } else {
+            Vec::new()
+        }
+    }
+
     pub(crate) fn frame_panes<'a>(&'a self, layout: &WindowLayout) -> Vec<PaneData<'a>> {
         let active = self.windows.active();
         layout
@@ -419,6 +429,7 @@ impl App {
             search_spans,
             preview_spans,
             syntax_spans: self.active_syntax_spans(),
+            rulers: self.commit_rulers(self.editor.buffer_number()),
             selection: self.frame_selection(),
             viewport: pane_viewport(
                 rect,
@@ -520,6 +531,7 @@ impl App {
             search_spans: Vec::new(),
             preview_spans: Vec::new(),
             syntax_spans,
+            rulers: self.commit_rulers(window.buffer),
             selection: None,
             viewport: pane_viewport(rect, top, window.view.leftcol, line_count),
             cursor_col: 0,

@@ -8,7 +8,7 @@ pub struct SpawnOptions {
     pub rows: u16,
     pub cols: u16,
     pub command: Option<String>,
-    pub editor: Option<PathBuf>,
+    pub editor: Option<String>,
 }
 
 impl SpawnOptions {

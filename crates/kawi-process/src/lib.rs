@@ -13,6 +13,11 @@ pub fn configure(command: &mut Command) {
     configure_unix(command);
 }
 
+pub fn configure_session(command: &mut Command) {
+    #[cfg(unix)]
+    configure_session_unix(command);
+}
+
 pub fn signal_group(pid: u32, signal: ProcessSignal) {
     #[cfg(unix)]
     signal_unix(pid, signal);
@@ -35,6 +40,23 @@ fn configure_unix(command: &mut Command) {
     unsafe {
         command.pre_exec(|| {
             if libc::setpgid(0, 0) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            #[cfg(target_os = "linux")]
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(unix)]
+fn configure_session_unix(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
                 return Err(io::Error::last_os_error());
             }
             #[cfg(target_os = "linux")]
