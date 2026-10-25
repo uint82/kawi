@@ -558,6 +558,7 @@ dependencies = [
  "kawi-syntax",
  "serde",
  "toml",
+ "unicode-width",
 ]
 
 [[package]]

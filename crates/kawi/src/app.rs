@@ -149,6 +149,7 @@ pub struct App {
     completion: Option<completion::CompletionSession>,
     completion_auto: completion::AutoTrigger,
     completion_options: completion::CompletionOptions,
+    overlay_options: overlay::options::OverlayOptions,
     signature: Option<signature::SignatureSession>,
     hover: Option<hover::HoverSession>,
     code_actions: Option<code_action::CodeActionSession>,
@@ -220,6 +221,7 @@ impl App {
             completion: None,
             completion_auto: completion::AutoTrigger::new(),
             completion_options: completion::CompletionOptions::default(),
+            overlay_options: overlay::options::OverlayOptions::default(),
             signature: None,
             hover: None,
             code_actions: None,
@@ -916,6 +918,9 @@ impl App {
             if let Some(result) = self.handle_completion_key(key)? {
                 return Ok(result);
             }
+        }
+        if let Some(result) = self.handle_signature_key(key) {
+            return Ok(result);
         }
         if self.pager.is_none() && completion::is_completion_key(key) {
             return self.request_completion();

@@ -51,7 +51,7 @@ pub fn restore_base(out: &mut Stdout, theme: &Theme) -> Result<()> {
     )
 }
 
-fn apply_colors(
+pub fn apply_colors(
     out: &mut Stdout,
     foreground: Color,
     background: Color,

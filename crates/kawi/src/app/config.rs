@@ -171,6 +171,11 @@ mod tests {
 [ui]
 keymap = "helix"
 theme = "gruvbox-dark"
+hover_max_width = 80
+completion_docs_max_width = 50
+overlay_min_width = 24
+overlay_max_height_percent = 60
+overlay_margin = 4
 
 [editor]
 shiftwidth = 2
@@ -195,6 +200,11 @@ undo_exclude = ["*.gpg"]
         app.apply_config(&loaded.config);
         assert_eq!(app.flavor, Flavor::Helix);
         assert_eq!(app.theme.name, "gruvbox-dark");
+        assert_eq!(app.overlay_options.hover_max_width, 80);
+        assert_eq!(app.overlay_options.completion_docs_max_width, 50);
+        assert_eq!(app.overlay_options.min_width, 24);
+        assert_eq!(app.overlay_options.max_height_percent, 60);
+        assert_eq!(app.overlay_options.margin, 4);
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());

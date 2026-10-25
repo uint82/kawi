@@ -1,18 +1,21 @@
 use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
-use kawi_tui::markdown::{self, MarkdownDocument, MarkdownLine};
+use kawi_tui::markdown::{self, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
 
+use self::size::{
+    cursor_vertical_capacity, side_vertical_capacity, size_panel, PanelLimits, SizedPanel,
+};
+use super::completion::CompletionSession;
 use super::App;
 
 pub(super) mod code;
 pub(crate) mod document;
 mod hover;
+pub(super) mod options;
 mod signature;
+mod size;
 
-const DOCS_WIDTH: usize = 42;
 const MAX_LIST_WIDTH: usize = 60;
-const MAX_PANEL_WIDTH: usize = 64;
-const MAX_DOCS_HEIGHT: usize = 24;
 
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
@@ -42,6 +45,7 @@ pub(super) struct CompletionGeometry {
     docs: Option<Rect>,
     docs_side: Option<DocsSide>,
     docs_lines: Vec<MarkdownLine>,
+    docs_width: usize,
     max_scroll: usize,
     page: usize,
 }
@@ -72,6 +76,7 @@ impl App {
             return;
         }
         let docs_side = geometry.docs_side;
+        let docs_width = geometry.docs_width;
         let max_scroll = geometry.max_scroll;
         let Some(session) = self.completion.as_mut() else {
             return;
@@ -81,6 +86,7 @@ impl App {
                 session.set_docs_side(side);
             }
         }
+        session.grow_docs_width(docs_width);
         session.clamp_docs_scroll(max_scroll);
     }
 
@@ -122,9 +128,15 @@ impl App {
         let area = self.window_area();
         let anchor = self.overlay_anchor(area)?;
         let list_size = list_size(session.list_width(), session.items().len(), area);
-        let documentation = session.selected_document();
-        let initial_width = docs_width(area).saturating_sub(2);
-        let (mut docs_lines, docs_size) = docs_preview(documentation, area);
+        let list_rect = placement::place(PlacementInput {
+            area,
+            anchor,
+            list: list_size,
+            docs: None,
+            preferred_docs_side: None,
+        })
+        .list;
+        let (docs_lines, docs_size, docs_width) = self.completion_docs(session, area, list_rect.y);
         let placement = placement::place(PlacementInput {
             area,
             anchor,
@@ -132,21 +144,38 @@ impl App {
             docs: docs_size,
             preferred_docs_side: session.docs_side(),
         });
-        if let Some(rect) = placement.docs {
-            let width = rect.width.saturating_sub(2);
-            if width != initial_width {
-                docs_lines = render_docs(documentation, width);
-            }
-        }
         let (max_scroll, page) = docs_scroll_limits(placement.docs, docs_lines.len());
         Some(CompletionGeometry {
             list: placement.list,
             docs: placement.docs,
             docs_side: placement.docs_side,
             docs_lines,
+            docs_width,
             max_scroll,
             page,
         })
+    }
+
+    fn completion_docs(
+        &self,
+        session: &CompletionSession,
+        area: Rect,
+        list_top: usize,
+    ) -> (Vec<MarkdownLine>, Option<Size>, usize) {
+        let Some(document) = session.selected_document() else {
+            return (Vec::new(), None, 0);
+        };
+        let min_width = self.overlay_options.min_width.max(session.docs_width());
+        let available = side_vertical_capacity(area, list_top);
+        let limits = self.overlay_options.limits(
+            area,
+            self.overlay_options.completion_docs_max_width,
+            min_width,
+            available,
+        );
+        let panel = size_panel(limits, |width| markdown::render_document(document, width));
+        let size = Size::new(panel.width, panel.height);
+        (panel.lines, Some(size), panel.width)
     }
 
     pub(super) fn completion_docs_scroll(&self) -> Option<(usize, usize)> {
@@ -155,25 +184,34 @@ impl App {
             .map(|geometry| (geometry.max_scroll, geometry.page))
     }
 
-    fn panel_layout(&self, lines: Vec<MarkdownLine>) -> PanelLayout {
+    fn panel_layout(&self, panel: SizedPanel) -> PanelLayout {
         let area = self.window_area();
         let anchor = self.overlay_anchor(area).unwrap_or((area.x, area.y));
-        let width = MAX_PANEL_WIDTH.min(area.width);
-        let height = lines.len().saturating_add(2).min(area.height).max(1);
         let placement = placement::place(PlacementInput {
             area,
             anchor,
-            list: Size::new(width, height),
+            list: Size::new(panel.width, panel.height),
             docs: None,
             preferred_docs_side: None,
         });
         let rect = placement.list;
-        let max_scroll = lines.len().saturating_sub(rect.height.saturating_sub(2));
+        let max_scroll = panel
+            .lines
+            .len()
+            .saturating_sub(rect.height.saturating_sub(2));
         PanelLayout {
             rect,
-            lines,
+            lines: panel.lines,
             max_scroll,
         }
+    }
+
+    fn cursor_limits(&self, max_width: usize, min_width: usize) -> PanelLimits {
+        let area = self.window_area();
+        let anchor = self.overlay_anchor(area).unwrap_or((area.x, area.y));
+        let available = cursor_vertical_capacity(area, anchor);
+        self.overlay_options
+            .limits(area, max_width, min_width, available)
     }
 
     fn overlay_anchor(&self, area: Rect) -> Option<(usize, usize)> {
@@ -203,39 +241,8 @@ fn list_size(width: usize, items: usize, area: Rect) -> Size {
     Size::new(width, height)
 }
 
-fn panel_content_width(area_width: usize) -> usize {
-    MAX_PANEL_WIDTH.min(area_width).saturating_sub(2)
-}
-
 fn page_height(rect: Rect) -> usize {
     rect.height.saturating_sub(4).max(1)
-}
-
-fn docs_width(area: Rect) -> usize {
-    DOCS_WIDTH.min(area.width)
-}
-
-fn docs_preview(
-    documentation: Option<&MarkdownDocument>,
-    area: Rect,
-) -> (Vec<MarkdownLine>, Option<Size>) {
-    let width = docs_width(area);
-    let lines = render_docs(documentation, width.saturating_sub(2));
-    let size = documentation.map(|_| Size::new(width, docs_height(lines.len(), area)));
-    (lines, size)
-}
-
-fn render_docs(documentation: Option<&MarkdownDocument>, width: usize) -> Vec<MarkdownLine> {
-    documentation
-        .map(|documentation| markdown::render_document(documentation, width.max(1)))
-        .unwrap_or_default()
-}
-
-fn docs_height(lines: usize, area: Rect) -> usize {
-    lines
-        .saturating_add(2)
-        .min(MAX_DOCS_HEIGHT.saturating_add(2))
-        .min(area.height)
 }
 
 fn docs_scroll_limits(docs: Option<Rect>, lines: usize) -> (usize, usize) {

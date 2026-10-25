@@ -111,7 +111,8 @@ fn place_right(area: Rect, list: Rect, size: Size) -> Option<Rect> {
     if width < MIN_DOCS_WIDTH {
         return None;
     }
-    Some(side_rect(area, list, x, width, size.height))
+    let rect = side_rect(area, list, x, width, size.height);
+    (rect.height > 0).then_some(rect)
 }
 
 fn place_left(area: Rect, list: Rect, size: Size) -> Option<Rect> {
@@ -122,13 +123,13 @@ fn place_left(area: Rect, list: Rect, size: Size) -> Option<Rect> {
         return None;
     }
     let x = list.x.saturating_sub(GAP).saturating_sub(width);
-    Some(side_rect(area, list, x, width, size.height))
+    let rect = side_rect(area, list, x, width, size.height);
+    (rect.height > 0).then_some(rect)
 }
 
 fn side_rect(area: Rect, list: Rect, x: usize, width: usize, height: usize) -> Rect {
     let available = area.bottom().saturating_sub(list.y);
-    let height = height.max(list.height).min(available);
-    Rect::new(x, list.y, width, height)
+    Rect::new(x, list.y, width, height.min(available))
 }
 
 fn place_below(area: Rect, list: Rect, size: Size) -> Option<Rect> {
@@ -210,6 +211,12 @@ mod tests {
         let placement = place(input(Size::new(24, 5), Some(Size::new(30, 10))));
         assert_eq!(placement.docs_side, Some(DocsSide::Right));
         assert_eq!(placement.docs, Some(Rect::new(35, 11, 30, 10)));
+    }
+
+    #[test]
+    fn docs_keep_their_content_height() {
+        let placement = place(input(Size::new(24, 12), Some(Size::new(30, 4))));
+        assert_eq!(placement.docs.map(|rect| rect.height), Some(4));
     }
 
     #[test]

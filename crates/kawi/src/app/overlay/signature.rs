@@ -2,21 +2,36 @@ use kawi_lsp::SignatureEntry;
 use kawi_tui::markdown::{self, MarkdownLine, MarkdownSpan, MarkdownStyle};
 
 use super::super::{signature::SignatureSession, App};
-use super::{panel_content_width, OverlayData, PanelData};
+use super::size::size_panel;
+use super::{page_height, OverlayData, PanelData};
 
 impl App {
     pub(super) fn signature_overlay(&self) -> Option<OverlayData<'_>> {
         let session = self.signature.as_ref()?;
-        let width = panel_content_width(self.window_area().width);
-        let layout = self.panel_layout(signature_lines(session, width));
+        let layout = self.panel_layout(self.signature_panel(session));
         Some(OverlayData {
             list: None,
             panel: Some(PanelData {
                 rect: layout.rect,
                 lines: layout.lines,
-                scroll: 0,
+                scroll: session.scroll().min(layout.max_scroll),
             }),
         })
+    }
+
+    pub(crate) fn signature_scroll(&self) -> Option<(usize, usize)> {
+        let session = self.signature.as_ref()?;
+        let panel = self.signature_panel(session);
+        let layout = self.panel_layout(panel);
+        Some((layout.max_scroll, page_height(layout.rect)))
+    }
+
+    fn signature_panel(&self, session: &SignatureSession) -> super::size::SizedPanel {
+        let limits = self.cursor_limits(
+            self.overlay_options.hover_max_width,
+            self.overlay_options.min_width,
+        );
+        size_panel(limits, |width| signature_lines(session, width))
     }
 }
 

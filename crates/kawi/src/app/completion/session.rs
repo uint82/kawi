@@ -34,6 +34,7 @@ pub(crate) struct CompletionSession {
     pub(super) resolve_failed: BTreeSet<ItemId>,
     pub(super) docs_scroll: usize,
     pub(super) docs_side: Option<DocsSide>,
+    pub(super) docs_width: usize,
     pub(super) list_width: usize,
     fallback_language: Option<LanguageId>,
 }
@@ -65,6 +66,7 @@ impl CompletionSession {
             resolve_failed: BTreeSet::new(),
             docs_scroll: 0,
             docs_side: None,
+            docs_width: 0,
             list_width,
             fallback_language,
         };
@@ -166,6 +168,14 @@ impl CompletionSession {
 
     pub(crate) fn set_docs_side(&mut self, side: DocsSide) {
         self.docs_side = Some(side);
+    }
+
+    pub(crate) fn docs_width(&self) -> usize {
+        self.docs_width
+    }
+
+    pub(crate) fn grow_docs_width(&mut self, width: usize) {
+        self.docs_width = self.docs_width.max(width);
     }
 
     pub(super) fn refilter(&mut self, query: &str, preferred: Option<ItemId>) {

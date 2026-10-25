@@ -163,6 +163,14 @@ fn resolved_items_without_documentation_are_not_retried() {
 }
 
 #[test]
+fn docs_width_grows_to_the_largest_seen() {
+    let mut session = CompletionSession::new(event(Vec::new()), "");
+    session.grow_docs_width(30);
+    session.grow_docs_width(20);
+    assert_eq!(session.docs_width(), 30);
+}
+
+#[test]
 fn docs_side_is_fixed_for_the_session() {
     let mut session = CompletionSession::new(event(vec![item("a", "value")]), "");
     session.set_docs_side(DocsSide::Right);
