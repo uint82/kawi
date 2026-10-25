@@ -13,7 +13,7 @@ use crate::frame::{
 };
 use crate::paint;
 use crate::statusbar::draw_status;
-use crate::text::count_label;
+use crate::text::{count_label, display_width, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
 use kawi_syntax::{SyntaxGroup, SyntaxSpan};
@@ -1052,28 +1052,104 @@ fn draw_overlay_panel(
         return Ok(());
     }
     for offset in 0..height {
-        let index = panel.scroll.saturating_add(offset);
+        draw_overlay_row(out, frame, panel, offset)?;
+    }
+    draw_scrollbar(out, frame.theme, panel)?;
+    Ok(())
+}
+
+fn draw_overlay_row(
+    out: &mut Stdout,
+    frame: &Frame,
+    panel: &crate::frame::OverlayPanel<'_>,
+    offset: usize,
+) -> Result<()> {
+    let width = panel.rect.width.saturating_sub(2);
+    let index = panel.scroll.saturating_add(offset);
+    let row = panel.rect.y.saturating_add(offset).saturating_add(1);
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(panel.rect.x.saturating_add(1)),
+            saturate_u16(row)
+        )
+    )
+    .context("move to overlay panel row")?;
+    let (used, background) = match panel.lines.get(index) {
+        Some(line) => (
+            draw_markdown_line(out, line, width, frame.theme)?,
+            overlay_background(line, frame.theme),
+        ),
+        None => (0, frame.theme.base.background),
+    };
+    if used < width {
+        paint::apply_colors(
+            out,
+            frame.theme.base.foreground,
+            background,
+            "apply overlay padding",
+        )?;
+        write!(out, "{}", " ".repeat(width.saturating_sub(used)))
+            .context("pad overlay panel row")?;
+    }
+    paint::restore_base(out, frame.theme)
+}
+
+fn draw_scrollbar(
+    out: &mut Stdout,
+    theme: &Theme,
+    panel: &crate::frame::OverlayPanel<'_>,
+) -> Result<()> {
+    let visible = panel.rect.height.saturating_sub(2);
+    let Some(thumb) = scrollbar_thumb(panel.scroll, panel.lines.len(), visible) else {
+        return Ok(());
+    };
+    let x = saturate_u16(panel.rect.right().saturating_sub(1));
+    for offset in 0..visible {
         let row = panel.rect.y.saturating_add(offset).saturating_add(1);
         execute!(
             out,
-            MoveTo(
-                saturate_u16(panel.rect.x.saturating_add(1)),
-                saturate_u16(row)
-            )
+            MoveTo(x, saturate_u16(row)),
+            SetForegroundColor(theme.non_text)
         )
-        .context("move to overlay panel row")?;
-        paint::apply_base(out, frame.theme)?;
-        let used = match panel.lines.get(index) {
-            Some(line) => draw_markdown_line(out, line, width, frame.theme)?,
-            None => 0,
+        .context("move to overlay scrollbar")?;
+        let glyph = if thumb.contains(&offset) {
+            '█'
+        } else {
+            '│'
         };
-        if used < width {
-            write!(out, "{}", " ".repeat(width.saturating_sub(used)))
-                .context("pad overlay panel row")?;
-        }
-        paint::restore_base(out, frame.theme)?;
+        write!(out, "{glyph}").context("write overlay scrollbar")?;
     }
+    paint::restore_base(out, theme)?;
     Ok(())
+}
+
+fn scrollbar_thumb(scroll: usize, total: usize, visible: usize) -> Option<std::ops::Range<usize>> {
+    if visible == 0 || total <= visible {
+        return None;
+    }
+    let thumb = visible
+        .saturating_mul(visible)
+        .checked_div(total)
+        .unwrap_or(0)
+        .max(1)
+        .min(visible);
+    let travel = visible.saturating_sub(thumb);
+    let max_scroll = total.saturating_sub(visible);
+    let start = scroll
+        .min(max_scroll)
+        .saturating_mul(travel)
+        .checked_div(max_scroll)
+        .unwrap_or(0);
+    Some(start..start.saturating_add(thumb))
+}
+
+fn overlay_background(line: &crate::markdown::MarkdownLine, theme: &Theme) -> Color {
+    if line.code {
+        theme.code_background
+    } else {
+        theme.base.background
+    }
 }
 
 fn draw_markdown_line(
@@ -1083,17 +1159,18 @@ fn draw_markdown_line(
     theme: &Theme,
 ) -> Result<usize> {
     let mut used = 0;
+    let background = overlay_background(line, theme);
     for span in &line.spans {
         if used >= width {
             break;
         }
-        let text = truncate_to_width(&span.text, width.saturating_sub(used));
+        let text = truncate_to_display_width(&span.text, width.saturating_sub(used));
         if text.is_empty() {
             continue;
         }
-        apply_markdown_style(out, span.style, theme)?;
+        apply_markdown_style(out, span.style, background, theme)?;
         write!(out, "{text}").context("write overlay span")?;
-        used = used.saturating_add(text.chars().count());
+        used = used.saturating_add(display_width(text));
     }
     execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
     paint::apply_base(out, theme)?;
@@ -1103,10 +1180,16 @@ fn draw_markdown_line(
 fn apply_markdown_style(
     out: &mut Stdout,
     style: crate::markdown::MarkdownStyle,
+    background: Color,
     theme: &Theme,
 ) -> Result<()> {
     execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
-    paint::apply_base(out, theme)?;
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        background,
+        "apply overlay background",
+    )?;
     let Some((attribute, color)) = markdown_style(style, theme) else {
         return Ok(());
     };
@@ -2149,5 +2232,23 @@ mod tests {
             markdown_style(style, &default).map(|(_, color)| color),
             markdown_style(style, &gruvbox).map(|(_, color)| color)
         );
+    }
+
+    #[test]
+    fn code_lines_use_the_code_background() {
+        let theme = Theme::named("default").expect("default theme");
+        let code = crate::markdown::MarkdownLine::code(Vec::new());
+        let text = crate::markdown::MarkdownLine::blank();
+        assert_eq!(overlay_background(&code, &theme), theme.code_background);
+        assert_eq!(overlay_background(&text, &theme), theme.base.background);
+    }
+
+    #[test]
+    fn scrollbar_thumb_tracks_the_visible_range() {
+        assert_eq!(scrollbar_thumb(0, 10, 10), None);
+        assert_eq!(scrollbar_thumb(0, 100, 10), Some(0..1));
+        assert_eq!(scrollbar_thumb(45, 100, 10), Some(4..5));
+        assert_eq!(scrollbar_thumb(90, 100, 10), Some(9..10));
+        assert_eq!(scrollbar_thumb(90, 11, 10), Some(1..10));
     }
 }
