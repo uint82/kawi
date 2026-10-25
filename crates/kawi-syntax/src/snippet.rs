@@ -134,7 +134,8 @@ pub fn highlight_snippet_with_cancel(
 }
 
 fn paint_spans(text: &str, captures: &[SnippetSpan]) -> Vec<SnippetSpan> {
-    let mut cells = vec![None; text.chars().count()];
+    let indices = char_indices(text);
+    let mut cells = vec![None; indices[text.len()]];
     for capture in captures {
         if capture.start > capture.end
             || capture.end > text.len()
@@ -143,13 +144,24 @@ fn paint_spans(text: &str, captures: &[SnippetSpan]) -> Vec<SnippetSpan> {
         {
             continue;
         }
-        let start = text[..capture.start].chars().count();
-        let end = text[..capture.end].chars().count();
+        let start = indices[capture.start];
+        let end = indices[capture.end];
         for cell in &mut cells[start..end] {
             *cell = Some(capture.group);
         }
     }
     merge_spans(text, &cells)
+}
+
+fn char_indices(text: &str) -> Vec<usize> {
+    let mut indices = vec![0; text.len().saturating_add(1)];
+    let mut count = 0;
+    for (byte, _) in text.char_indices() {
+        indices[byte] = count;
+        count += 1;
+    }
+    indices[text.len()] = count;
+    indices
 }
 
 fn merge_spans(text: &str, cells: &[Option<SyntaxGroup>]) -> Vec<SnippetSpan> {
