@@ -94,12 +94,35 @@ pub enum QuickfixCommand {
     Close,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitCommand {
     Status,
-    Commit { all: bool },
-    Amend { staged: bool },
-    Push { force: bool },
+    Branches,
+    Log {
+        file: bool,
+        grep: Option<String>,
+        author: Option<String>,
+    },
+    Switch {
+        target: String,
+    },
+    CreateBranch {
+        name: String,
+        base: Option<String>,
+    },
+    DeleteBranch {
+        name: String,
+        force: bool,
+    },
+    Commit {
+        all: bool,
+    },
+    Amend {
+        staged: bool,
+    },
+    Push {
+        force: bool,
+    },
     Fetch,
     NextHunk,
     PrevHunk,
@@ -372,6 +395,31 @@ fn parse_quickfix_command(words: &[&str]) -> Command {
     Command::Quickfix(command)
 }
 
+fn parse_git_log(words: &[&str]) -> GitCommand {
+    let mut file = false;
+    let mut grep = None;
+    let mut author = None;
+    let mut index = 0;
+    while index < words.len() {
+        match words[index] {
+            "%" => {
+                file = true;
+                index += 1;
+            }
+            "--grep" => {
+                grep = Some(words[index + 1..].join(" "));
+                break;
+            }
+            "--author" => {
+                author = Some(words[index + 1..].join(" "));
+                break;
+            }
+            _ => index += 1,
+        }
+    }
+    GitCommand::Log { file, grep, author }
+}
+
 fn parse_git_command(words: &[&str]) -> Command {
     let command = match words {
         [] => GitCommand::Diff,
@@ -383,6 +431,27 @@ fn parse_git_command(words: &[&str]) -> Command {
         ["push"] => GitCommand::Push { force: false },
         ["push", "--force-with-lease" | "force"] => GitCommand::Push { force: true },
         ["fetch"] => GitCommand::Fetch,
+        ["branches"] | ["branch"] => GitCommand::Branches,
+        ["branch", "-d", name] => GitCommand::DeleteBranch {
+            name: (*name).to_string(),
+            force: false,
+        },
+        ["branch", "-D", name] => GitCommand::DeleteBranch {
+            name: (*name).to_string(),
+            force: true,
+        },
+        ["branch", name] => GitCommand::CreateBranch {
+            name: (*name).to_string(),
+            base: None,
+        },
+        ["branch", name, base] => GitCommand::CreateBranch {
+            name: (*name).to_string(),
+            base: Some((*base).to_string()),
+        },
+        ["switch" | "checkout", target] => GitCommand::Switch {
+            target: (*target).to_string(),
+        },
+        ["log", rest @ ..] => parse_git_log(rest),
         ["next_hunk"] => GitCommand::NextHunk,
         ["prev_hunk"] => GitCommand::PrevHunk,
         ["stage_hunk"] => GitCommand::StageHunk,
@@ -617,6 +686,43 @@ mod tests {
             Command::Git(GitCommand::Push { force: true })
         );
         assert_eq!(parse("git fetch"), Command::Git(GitCommand::Fetch));
+        assert_eq!(parse("git branches"), Command::Git(GitCommand::Branches));
+        assert_eq!(
+            parse("git branch feat/x"),
+            Command::Git(GitCommand::CreateBranch {
+                name: "feat/x".to_string(),
+                base: None,
+            })
+        );
+        assert_eq!(
+            parse("git branch -d feat/x"),
+            Command::Git(GitCommand::DeleteBranch {
+                name: "feat/x".to_string(),
+                force: false,
+            })
+        );
+        assert_eq!(
+            parse("git switch feat/x"),
+            Command::Git(GitCommand::Switch {
+                target: "feat/x".to_string(),
+            })
+        );
+        assert_eq!(
+            parse("git log %"),
+            Command::Git(GitCommand::Log {
+                file: true,
+                grep: None,
+                author: None,
+            })
+        );
+        assert_eq!(
+            parse("git log --grep fix bug"),
+            Command::Git(GitCommand::Log {
+                file: false,
+                grep: Some("fix bug".to_string()),
+                author: None,
+            })
+        );
         assert_eq!(parse("git nope"), Command::Unknown);
     }
 

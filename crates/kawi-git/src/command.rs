@@ -4,28 +4,47 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 pub(crate) fn run(root: &Path, args: &[&str]) -> Result<Output> {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
+    git_command(root)
         .args(args)
         .output()
         .context("failed to run git")
 }
 
+pub(crate) fn run_read(root: &Path, args: &[&str]) -> Result<Output> {
+    read_command(root)
+        .args(args)
+        .output()
+        .context("failed to run git")
+}
+
+pub(crate) fn run_global_read(args: &[&str]) -> Result<Output> {
+    let mut command = Command::new("git");
+    command
+        .arg("--no-optional-locks")
+        .args(args)
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("LC_ALL", "C");
+    command.output().context("failed to run git")
+}
+
 pub(crate) fn run_status(root: &Path, args: &[&str]) -> Result<Output> {
-    status_command(root)
+    read_command(root)
         .args(args)
         .output()
         .context("failed to run git status")
 }
 
-fn status_command(root: &Path) -> Command {
-    let mut command = Command::new("git");
+fn read_command(root: &Path) -> Command {
+    let mut command = git_command(root);
     command
         .arg("--no-optional-locks")
-        .arg("-C")
-        .arg(root)
         .env("GIT_OPTIONAL_LOCKS", "0");
+    command
+}
+
+fn git_command(root: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(root).env("LC_ALL", "C");
     command
 }
 
@@ -39,13 +58,13 @@ pub(crate) fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_string()
 }
 
-pub(crate) fn resolve_root(path: &Path) -> Result<Option<PathBuf>> {
+pub fn resolve_root(path: &Path) -> Result<Option<PathBuf>> {
     let start = if path.is_dir() {
         path
     } else {
         path.parent().unwrap_or_else(|| Path::new("."))
     };
-    let output = run(start, &["rev-parse", "--show-toplevel"])?;
+    let output = run_read(start, &["rev-parse", "--show-toplevel"])?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -54,7 +73,7 @@ pub(crate) fn resolve_root(path: &Path) -> Result<Option<PathBuf>> {
 }
 
 pub(crate) fn resolve_git_dir(root: &Path) -> Result<Option<PathBuf>> {
-    let output = run(root, &["rev-parse", "--absolute-git-dir"])?;
+    let output = run_read(root, &["rev-parse", "--absolute-git-dir"])?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -80,12 +99,20 @@ mod tests {
 
     #[test]
     fn status_commands_do_not_take_optional_locks() {
-        let command = status_command(Path::new("/tmp"));
+        let command = read_command(Path::new("/tmp"));
         assert!(command
             .get_args()
             .any(|argument| argument == "--no-optional-locks"));
         assert!(command.get_envs().any(|(name, value)| {
             name == "GIT_OPTIONAL_LOCKS" && value == Some(std::ffi::OsStr::new("0"))
         }));
+    }
+
+    #[test]
+    fn parsed_commands_use_the_c_locale() {
+        let command = read_command(Path::new("/tmp"));
+        assert!(command
+            .get_envs()
+            .any(|(name, value)| name == "LC_ALL" && value == Some(std::ffi::OsStr::new("C"))));
     }
 }

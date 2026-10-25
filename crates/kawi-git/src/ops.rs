@@ -30,9 +30,9 @@ pub fn clean_path(root: &Path, path: &Path) -> Result<()> {
 
 pub fn diff_path(root: &Path, path: &Path, staged: bool) -> Result<Vec<String>> {
     let output = if staged {
-        run_with_path(root, &["diff", "--cached", "--no-color", "--"], path)?
+        run_read_with_path(root, &["diff", "--cached", "--no-color", "--"], path)?
     } else {
-        run_with_path(root, &["diff", "--no-color", "--"], path)?
+        run_read_with_path(root, &["diff", "--no-color", "--"], path)?
     };
     if !output.status.success() {
         bail!("git diff failed: {}", stderr(&output));
@@ -57,8 +57,22 @@ fn run_with_path(root: &Path, args: &[&str], path: &Path) -> Result<Output> {
         .arg(root)
         .args(args)
         .arg(path)
+        .env("LC_ALL", "C")
         .output()
         .context("failed to run git")
+}
+
+fn run_read_with_path(root: &Path, args: &[&str], path: &Path) -> Result<Output> {
+    Command::new("git")
+        .arg("--no-optional-locks")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .arg(path)
+        .env("LC_ALL", "C")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .output()
+        .context("failed to run git diff")
 }
 
 #[cfg(test)]

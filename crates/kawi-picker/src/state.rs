@@ -14,6 +14,9 @@ pub enum PickerKind {
     Grep,
     Buffers,
     Locations,
+    GitBranches,
+    GitLog,
+    GitCommitFiles,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +73,26 @@ impl Picker {
         picker
     }
 
+    pub fn git_branches(title: &'static str, rows: Vec<PickerRow>) -> Self {
+        let mut picker = Self::new(PickerKind::GitBranches, title);
+        picker.locations = rows;
+        picker.refresh();
+        picker
+    }
+
+    pub fn git_log(title: &'static str) -> Self {
+        let mut picker = Self::new(PickerKind::GitLog, title);
+        picker.loading = true;
+        picker
+    }
+
+    pub fn git_commit_files(title: &'static str, rows: Vec<PickerRow>) -> Self {
+        let mut picker = Self::new(PickerKind::GitCommitFiles, title);
+        picker.locations = rows;
+        picker.refresh();
+        picker
+    }
+
     fn new(kind: PickerKind, title: &'static str) -> Self {
         Self {
             kind,
@@ -116,6 +139,11 @@ impl Picker {
 
     pub fn status(&self) -> Option<&str> {
         self.status.as_deref()
+    }
+
+    pub fn needs_more_rows(&self) -> bool {
+        self.rows.is_empty()
+            || self.selected.unwrap_or_default().saturating_add(PAGE_ROWS) >= self.rows.len()
     }
 
     pub fn set_locations(&mut self, rows: Vec<PickerRow>) {
@@ -273,7 +301,10 @@ impl Picker {
             PickerKind::Files => self.refresh_files(),
             PickerKind::Grep => self.refresh_grep(),
             PickerKind::Buffers => self.refresh_buffers(),
-            PickerKind::Locations => self.refresh_locations(),
+            PickerKind::Locations
+            | PickerKind::GitBranches
+            | PickerKind::GitLog
+            | PickerKind::GitCommitFiles => self.refresh_locations(),
         }
         self.selected = if self.rows.is_empty() { None } else { Some(0) };
     }

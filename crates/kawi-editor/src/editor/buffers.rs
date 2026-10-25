@@ -807,6 +807,44 @@ impl Editor {
         self.buffers.set_current(number);
     }
 
+    pub fn open_scratch_buffer(&mut self, name: &str, text: &str, readonly: bool) -> usize {
+        self.store_current();
+        let number = self.buffers.allocate_number();
+        let mut buffer = Buffer::from_string(text);
+        buffer.path = Some(name.to_string());
+        buffer.set_readonly(readonly);
+        buffer.mark_clean();
+        self.load_fresh(buffer);
+        self.reset_buffer_options();
+        self.buffers.set_current(number);
+        number
+    }
+
+    pub fn buffer_is_readonly(&self, number: usize) -> Option<bool> {
+        self.buffer_at(number).map(Buffer::is_readonly)
+    }
+
+    pub fn set_buffer_readonly(&mut self, number: usize, readonly: bool) -> bool {
+        if number == self.buffers.current() {
+            self.buffer.set_readonly(readonly);
+            return true;
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        entry.state.buffer.set_readonly(readonly);
+        true
+    }
+
+    pub fn current_buffer_is_readonly(&self) -> bool {
+        self.buffer.is_readonly()
+    }
+
     fn open_buffer(&mut self, name: &str, reuse: bool) -> Result<(), EditError> {
         if reuse && self.buffer_reusable() {
             return self.reuse_buffer(name);
@@ -1751,5 +1789,25 @@ mod tests {
         write_file(&dir, "a.txt", "one\n");
         e.edit_file(None, false).unwrap();
         assert_eq!(e.jump_older(), Err(EditError::InvalidMark));
+    }
+    #[test]
+    fn scratch_buffers_are_readonly_and_clean() {
+        let mut editor = Editor::new(Buffer::from_string(""));
+        let number = editor.open_scratch_buffer("HEAD:src/main.rs", "fn main() {}\n", true);
+        assert_eq!(editor.buffer_number(), number);
+        assert_eq!(
+            editor.buffer_text(number).as_deref(),
+            Some("fn main() {}\n")
+        );
+        assert!(editor.buffer_is_readonly(number).unwrap_or(false));
+        assert!(!editor.is_dirty());
+        editor.apply(crate::Action::EnterInsert);
+        editor.apply(crate::Action::InsertChar('x'));
+        editor.apply(crate::Action::ExitInsert);
+        assert_eq!(
+            editor.buffer_text(number).as_deref(),
+            Some("fn main() {}\n")
+        );
+        assert!(!editor.is_dirty());
     }
 }

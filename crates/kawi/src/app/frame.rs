@@ -177,7 +177,15 @@ impl App {
             terminal,
             viewport: &viewport,
             message: self.message.as_deref(),
-            prompt: self.rename.as_ref().and_then(rename::RenameSession::prompt),
+            prompt: self
+                .rename
+                .as_ref()
+                .and_then(rename::RenameSession::prompt)
+                .or_else(|| {
+                    self.branch_prompt
+                        .as_ref()
+                        .and_then(super::git_branch::BranchPrompt::prompt)
+                }),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),

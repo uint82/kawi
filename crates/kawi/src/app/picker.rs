@@ -2,8 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use crossterm::event::KeyEvent;
+use kawi_git::{LogEvent, LogOptions, LogStream};
 use kawi_picker::{
-    Picker, PickerKind, PickerOutcome, ProjectRequest, ProjectResult, ProjectService,
+    Picker, PickerKind, PickerOutcome, PickerRow, ProjectRequest, ProjectResult, ProjectService,
 };
 
 pub struct PickerSession {
@@ -12,6 +13,9 @@ pub struct PickerSession {
     root: PathBuf,
     latest: u64,
     quickfix: bool,
+    log: Option<LogStream>,
+    log_rows: Vec<PickerRow>,
+    log_done: bool,
 }
 
 impl PickerSession {
@@ -26,6 +30,9 @@ impl PickerSession {
             root,
             latest,
             quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
         }
     }
 
@@ -37,6 +44,9 @@ impl PickerSession {
             root,
             latest: 0,
             quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
         };
         if let Some(query) = query {
             session.set_query(query);
@@ -51,6 +61,9 @@ impl PickerSession {
             root,
             latest: 0,
             quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
         }
     }
 
@@ -65,6 +78,9 @@ impl PickerSession {
             root,
             latest: 0,
             quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
         }
     }
 
@@ -75,6 +91,57 @@ impl PickerSession {
             root,
             latest: 0,
             quickfix: true,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
+        }
+    }
+
+    pub fn git_branches(root: PathBuf, rows: Vec<PickerRow>, status: Option<String>) -> Self {
+        let mut picker = Picker::git_branches("Git branches", rows);
+        if status.is_some() {
+            picker.set_status(status);
+        }
+        Self {
+            picker,
+            service: None,
+            root,
+            latest: 0,
+            quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
+        }
+    }
+
+    pub fn git_log(
+        root: PathBuf,
+        options: LogOptions,
+        wake: std::sync::mpsc::Sender<()>,
+    ) -> Result<Self, String> {
+        let stream = LogStream::start(&root, &options, wake).map_err(|error| error.to_string())?;
+        Ok(Self {
+            picker: Picker::git_log("Git log"),
+            service: None,
+            root,
+            latest: 0,
+            quickfix: false,
+            log: Some(stream),
+            log_rows: Vec::new(),
+            log_done: false,
+        })
+    }
+
+    pub fn git_commit_files(root: PathBuf, rows: Vec<PickerRow>) -> Self {
+        Self {
+            picker: Picker::git_commit_files("Commit files", rows),
+            service: None,
+            root,
+            latest: 0,
+            quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
         }
     }
 
@@ -117,6 +184,11 @@ impl PickerSession {
     }
 
     pub fn refresh(&mut self) -> bool {
+        let changed = self.refresh_project();
+        changed | self.refresh_log()
+    }
+
+    fn refresh_project(&mut self) -> bool {
         let mut results = Vec::new();
         if let Some(service) = self.service.as_ref() {
             while let Some(result) = service.try_recv() {
@@ -132,6 +204,45 @@ impl PickerSession {
             changed = true;
         }
         changed
+    }
+
+    fn refresh_log(&mut self) -> bool {
+        if self.picker.kind() != PickerKind::GitLog || self.log_done {
+            return false;
+        }
+        let mut changed = false;
+        while self.picker.needs_more_rows() {
+            let Some(stream) = self.log.as_ref() else {
+                break;
+            };
+            match stream.try_recv() {
+                Some(LogEvent::Entries(entries)) => {
+                    self.log_rows.extend(entries.into_iter().map(log_row));
+                    self.picker.set_locations(self.log_rows.clone());
+                    if !self.picker.rows().is_empty() {
+                        self.picker.set_loading(false);
+                    }
+                    changed = true;
+                }
+                Some(LogEvent::Done(error)) => {
+                    self.log_done = true;
+                    self.finish_log(error);
+                    changed = true;
+                    break;
+                }
+                None => break,
+            }
+        }
+        changed
+    }
+
+    fn finish_log(&mut self, error: Option<String>) {
+        let status = match error {
+            Some(error) => super::compact_error(&error),
+            None if self.log_rows.is_empty() => "No commits".to_string(),
+            None => "End of history".to_string(),
+        };
+        self.picker.set_status(Some(status));
     }
 
     fn apply(&mut self, result: ProjectResult) {
@@ -163,5 +274,15 @@ impl PickerSession {
             limit: 2_000,
         });
         self.picker.set_loading(true);
+    }
+}
+
+fn log_row(entry: kawi_git::LogEntry) -> PickerRow {
+    PickerRow {
+        display: entry.display(),
+        path: entry.oid,
+        line: None,
+        column: None,
+        buffer: None,
     }
 }

@@ -276,11 +276,25 @@ pub(super) struct Problems {
     filter: ProblemFilter,
     current: Option<ProblemKey>,
     editor: Option<EditorText>,
+    stale_sources: std::collections::BTreeSet<String>,
 }
 
 impl Problems {
     pub(super) fn clear_source(&mut self, source: &str) {
+        self.stale_sources.remove(source);
         self.groups.retain(|key, _| key.source != source);
+    }
+
+    pub(super) fn mark_tasks_stale(&mut self) {
+        for key in self.groups.keys() {
+            if key.source.starts_with(TASK_PREFIX) {
+                self.stale_sources.insert(key.source.clone());
+            }
+        }
+    }
+
+    pub(super) fn is_stale(&self, source: &str) -> bool {
+        self.stale_sources.contains(source)
     }
 
     pub(super) fn clear_lsp_source(&mut self, server: &str) {
@@ -301,6 +315,7 @@ impl Problems {
 
     pub(super) fn push_task(&mut self, task_name: &str, finding: task::Finding) -> bool {
         let source = task_source(task_name);
+        self.stale_sources.remove(&source);
         let key = GroupKey {
             source: source.clone(),
             path: finding.path.clone(),
@@ -596,6 +611,19 @@ mod tests {
         assert_eq!(problems.visible(Some(path))[0].source, "task:check");
         problems.clear_source("task:check");
         assert_eq!(problems.total(), 0);
+    }
+
+    #[test]
+    fn task_sources_can_be_marked_stale_and_refreshed() {
+        let mut problems = Problems::default();
+        problems.push_task("check", task_finding(1));
+        problems.mark_tasks_stale();
+        assert!(problems.is_stale("task:check"));
+        problems.push_task("check", task_finding(2));
+        assert!(!problems.is_stale("task:check"));
+        problems.mark_tasks_stale();
+        problems.clear_source("task:check");
+        assert!(!problems.is_stale("task:check"));
     }
 
     #[test]

@@ -177,6 +177,7 @@ impl Manager {
                 arguments,
             } => self.execute_command(path, server, command, arguments),
             Command::WorkspaceDiagnostics => self.request_workspace_diagnostics(),
+            Command::WatchedFiles { files } => self.did_change_watched_files(&files),
             Command::Cancel { request } => self.cancel_request(request),
             Command::Shutdown => {}
         }
