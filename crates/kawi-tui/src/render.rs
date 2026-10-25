@@ -1139,6 +1139,10 @@ fn apply_markdown_style(
             )
             .context("apply overlay quote style")?;
         }
+        crate::markdown::MarkdownStyle::Syntax(group) => {
+            execute!(out, SetForegroundColor(theme.syntax.color(group)))
+                .context("apply overlay syntax style")?;
+        }
     }
     Ok(())
 }

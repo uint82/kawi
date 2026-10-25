@@ -1,3 +1,5 @@
+use kawi_syntax::SyntaxGroup;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarkdownStyle {
     Normal,
@@ -6,6 +8,7 @@ pub enum MarkdownStyle {
     Code,
     Heading,
     Quote,
+    Syntax(SyntaxGroup),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
