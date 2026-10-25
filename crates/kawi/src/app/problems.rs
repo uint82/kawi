@@ -622,7 +622,7 @@ fn compact_message(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kawi_lsp::{DiagnosticPosition, DiagnosticRange};
+    use kawi_lsp::{DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation};
     use kawi_task::Severity;
 
     fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Diagnostic {
@@ -665,6 +665,27 @@ mod tests {
         assert_eq!(problems.total(), 1);
         assert_eq!(problems.visible(Some(path))[0].source, "task:check");
         problems.clear_source("task:check");
+        assert_eq!(problems.total(), 0);
+    }
+
+    #[test]
+    fn rewrites_and_removes_paths_for_a_renamed_directory() {
+        let old = Path::new("/repo/old");
+        let new = Path::new("/repo/new");
+        let mut problems = Problems::default();
+        let mut diagnostic = lsp_diagnostic(1, "error", DiagnosticSeverity::Error);
+        diagnostic.related.push(DiagnosticRelatedInformation {
+            path: old.join("related.rs"),
+            line: 2,
+            message: "related".to_string(),
+        });
+        problems.replace_lsp("server", &old.join("a.rs"), vec![diagnostic]);
+        problems.rewrite_paths(old, new);
+        let visible = problems.visible(Some(&new.join("a.rs")));
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].path, new.join("a.rs"));
+        assert_eq!(visible[0].related[0].path, new.join("related.rs"));
+        problems.remove_paths(new);
         assert_eq!(problems.total(), 0);
     }
 
