@@ -844,6 +844,9 @@ impl App {
         if self.terminal_focus {
             return self.handle_terminal_key(key);
         }
+        if self.git_commit.has_pending_push() {
+            return self.handle_git_push_confirmation(key);
+        }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
                 return Ok(result);
@@ -1294,6 +1297,8 @@ impl App {
             }
             GitCommand::Commit { all } => self.start_git_commit(all),
             GitCommand::Amend { staged } => self.start_git_amend(staged),
+            GitCommand::Push { force } => self.start_git_push(force),
+            GitCommand::Fetch => self.start_git_fetch(),
             GitCommand::NextHunk => self.handle_git_navigation(true),
             GitCommand::PrevHunk => self.handle_git_navigation(false),
             GitCommand::StageHunk => self.handle_git_stage_hunk(),

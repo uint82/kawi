@@ -1,4 +1,5 @@
 mod editor;
+mod push;
 mod tasks;
 
 use std::path::PathBuf;
@@ -12,6 +13,8 @@ use super::App;
 pub(super) enum TaskKind {
     Commit,
     Amend,
+    Push,
+    Fetch,
 }
 
 pub(super) struct ActiveTask {
@@ -50,6 +53,7 @@ pub(super) struct GitEditorSession {
 pub(super) struct GitCommitState {
     active: Option<ActiveTask>,
     pub editor: Option<GitEditorSession>,
+    pending_push: Option<push::PendingPush>,
 }
 
 impl GitCommitState {
@@ -69,6 +73,10 @@ impl GitCommitState {
 
     pub(super) fn editor_buffer(&self) -> Option<usize> {
         self.editor.as_ref().map(|editor| editor.buffer)
+    }
+
+    pub(super) fn has_pending_push(&self) -> bool {
+        self.pending_push.is_some()
     }
 }
 
@@ -133,6 +141,25 @@ impl App {
         self.start_editor_commit(&status, args, TaskKind::Amend)
     }
 
+    pub(super) fn start_git_fetch(&mut self) -> anyhow::Result<bool> {
+        let Some(status) = self.git_status.status().cloned() else {
+            self.show_message("No git repository".to_string());
+            return Ok(false);
+        };
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("GIT_TERMINAL_PROMPT".to_string(), "0".to_string());
+        self.start_git_task(GitTask {
+            name: "git fetch".to_string(),
+            args: vec!["fetch".to_string()],
+            env,
+            detached: true,
+            kind: TaskKind::Fetch,
+            parser: ParserSpec::None,
+            root: status.root,
+        });
+        Ok(false)
+    }
+
     fn start_editor_commit(
         &mut self,
         status: &Status,
@@ -193,6 +220,7 @@ impl App {
                 let _ = self.handle_git_refresh();
                 self.refresh_git_status();
             }
+            TaskKind::Push | TaskKind::Fetch => self.refresh_git_status(),
         }
         if !status.success && !status.cancelled {
             self.show_message(failure_message(kind));
@@ -251,6 +279,8 @@ fn failure_message(kind: TaskKind) -> String {
     match kind {
         TaskKind::Commit => "Commit failed; see the task output".to_string(),
         TaskKind::Amend => "Amend failed; see the task output".to_string(),
+        TaskKind::Push => "Push failed; run :term git push for interactive auth".to_string(),
+        TaskKind::Fetch => "Fetch failed; see the task output".to_string(),
     }
 }
 

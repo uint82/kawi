@@ -99,6 +99,8 @@ pub enum GitCommand {
     Status,
     Commit { all: bool },
     Amend { staged: bool },
+    Push { force: bool },
+    Fetch,
     NextHunk,
     PrevHunk,
     StageHunk,
@@ -378,6 +380,9 @@ fn parse_git_command(words: &[&str]) -> Command {
         ["commit", "-a" | "all"] => GitCommand::Commit { all: true },
         ["amend"] => GitCommand::Amend { staged: false },
         ["amend", "staged"] => GitCommand::Amend { staged: true },
+        ["push"] => GitCommand::Push { force: false },
+        ["push", "--force-with-lease" | "force"] => GitCommand::Push { force: true },
+        ["fetch"] => GitCommand::Fetch,
         ["next_hunk"] => GitCommand::NextHunk,
         ["prev_hunk"] => GitCommand::PrevHunk,
         ["stage_hunk"] => GitCommand::StageHunk,
@@ -603,6 +608,15 @@ mod tests {
             parse("git amend staged"),
             Command::Git(GitCommand::Amend { staged: true })
         );
+        assert_eq!(
+            parse("git push"),
+            Command::Git(GitCommand::Push { force: false })
+        );
+        assert_eq!(
+            parse("git push --force-with-lease"),
+            Command::Git(GitCommand::Push { force: true })
+        );
+        assert_eq!(parse("git fetch"), Command::Git(GitCommand::Fetch));
         assert_eq!(parse("git nope"), Command::Unknown);
     }
 
