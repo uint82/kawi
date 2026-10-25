@@ -244,6 +244,7 @@ pub struct PickerMenu<'a> {
     pub loading: bool,
     pub status: Option<&'a str>,
     pub replace_hint: bool,
+    pub file_hint: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

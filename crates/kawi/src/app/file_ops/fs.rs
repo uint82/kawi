@@ -1,0 +1,215 @@
+use std::fs::{self, File, OpenOptions};
+use std::io;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RenameKind {
+    Moved,
+    Copied,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RenameOutcome {
+    pub kind: RenameKind,
+    pub symlink: bool,
+}
+
+pub(super) fn rename_path(old: &Path, new: &Path, force: bool) -> io::Result<RenameOutcome> {
+    let source = fs::symlink_metadata(old)?;
+    let symlink = source.file_type().is_symlink();
+    let target = fs::symlink_metadata(new);
+    let case_only = target
+        .as_ref()
+        .is_ok_and(|target| same_entry(&source, target) && is_case_variant(old, new));
+    if !force && target.is_ok() && !case_only {
+        return Err(already_exists(new));
+    }
+    let result = if force || case_only {
+        fs::rename(old, new)
+    } else {
+        rename_noreplace(old, new)
+    };
+    match result {
+        Ok(()) => Ok(RenameOutcome {
+            kind: RenameKind::Moved,
+            symlink,
+        }),
+        Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
+            copy_tree(old, new)?;
+            remove_path(old, true)?;
+            Ok(RenameOutcome {
+                kind: RenameKind::Copied,
+                symlink,
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+pub(super) fn remove_path(path: &Path, permanent: bool) -> io::Result<()> {
+    if !permanent {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "permanent removal was not requested",
+        ));
+    }
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+pub(super) fn count_tree(path: &Path) -> io::Result<usize> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Ok(0);
+    }
+    let mut count: usize = 0;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        count = count.saturating_add(1);
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            count = count.saturating_add(count_tree(&entry.path())?);
+        }
+    }
+    Ok(count)
+}
+
+pub(super) fn path_exists(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+fn same_entry(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        left.dev() == right.dev() && left.ino() == right.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (left, right);
+        false
+    }
+}
+
+fn is_case_variant(old: &Path, new: &Path) -> bool {
+    let (Some(old_name), Some(new_name)) = (old.file_name(), new.file_name()) else {
+        return false;
+    };
+    old_name != new_name
+        && old_name
+            .to_string_lossy()
+            .to_lowercase()
+            .eq(&new_name.to_string_lossy().to_lowercase())
+}
+
+fn already_exists(path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!("{} already exists", path.display()),
+    )
+}
+
+pub(super) fn create_empty_file(path: &Path) -> io::Result<()> {
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map(|_| ())
+}
+
+pub(super) fn create_directory(path: &Path) -> io::Result<()> {
+    fs::create_dir_all(path)
+}
+
+pub(super) fn missing_parent(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    (!parent.as_os_str().is_empty() && !parent.is_dir()).then(|| parent.to_path_buf())
+}
+
+pub(super) fn is_within(path: &Path, root: &Path) -> bool {
+    path.starts_with(root) && path != root
+}
+
+fn rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        match linux_rename_noreplace(old, new) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::ENOSYS) | Some(libc::EINVAL) | Some(libc::EOPNOTSUPP)
+                ) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    if fs::symlink_metadata(new).is_ok() {
+        return Err(already_exists(new));
+    }
+    let metadata = fs::symlink_metadata(old)?;
+    if metadata.is_dir() || metadata.file_type().is_symlink() {
+        return fs::rename(old, new);
+    }
+    fs::hard_link(old, new)?;
+    fs::remove_file(old)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let old = CString::new(old.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))?;
+    let new = CString::new(new.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))?;
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            old.as_ptr(),
+            libc::AT_FDCWD,
+            new.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn copy_tree(old: &Path, new: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(old)?;
+    if metadata.file_type().is_symlink() {
+        return copy_symlink(old, new);
+    }
+    if metadata.is_dir() {
+        fs::create_dir(new)?;
+        for entry in fs::read_dir(old)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &new.join(entry.file_name()))?;
+        }
+        return File::open(old).and_then(|directory| directory.sync_all());
+    }
+    fs::copy(old, new)?;
+    File::open(new)?.sync_all()
+}
+
+#[cfg(unix)]
+fn copy_symlink(old: &Path, new: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(fs::read_link(old)?, new)
+}
+
+#[cfg(not(unix))]
+fn copy_symlink(old: &Path, new: &Path) -> io::Result<()> {
+    fs::copy(old, new).map(|_| ())
+}
+
+#[cfg(test)]
+mod tests;

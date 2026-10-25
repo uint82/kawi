@@ -54,6 +54,22 @@ impl PickerSession {
         session
     }
 
+    #[cfg(test)]
+    pub(super) fn test_files(root: PathBuf, files: Vec<String>) -> Self {
+        let mut picker = Picker::files();
+        picker.set_files(files);
+        Self {
+            picker,
+            service: None,
+            root,
+            latest: 0,
+            quickfix: false,
+            log: None,
+            log_rows: Vec::new(),
+            log_done: false,
+        }
+    }
+
     pub fn buffers(root: PathBuf, buffers: Vec<(usize, String)>) -> Self {
         Self {
             picker: Picker::buffers(buffers),

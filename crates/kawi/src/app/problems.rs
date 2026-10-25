@@ -285,6 +285,59 @@ impl Problems {
         self.groups.retain(|key, _| key.source != source);
     }
 
+    pub(super) fn rewrite_paths(&mut self, old: &Path, new: &Path) {
+        let groups = std::mem::take(&mut self.groups);
+        for (mut key, problems) in groups {
+            let Some(path) = rewrite_path(&key.path, old, new) else {
+                self.groups.insert(key, problems);
+                continue;
+            };
+            key.path = path;
+            let problems = problems
+                .into_iter()
+                .map(|mut problem| {
+                    problem.path = rewrite_path(&problem.path, old, new)
+                        .unwrap_or_else(|| problem.path.clone());
+                    for related in &mut problem.related {
+                        if let Some(path) = rewrite_path(&related.path, old, new) {
+                            related.path = path;
+                        }
+                    }
+                    problem
+                })
+                .collect::<Vec<_>>();
+            self.groups.entry(key).or_default().extend(problems);
+        }
+        if let Some(current) = self.current.as_mut() {
+            if let Some(path) = rewrite_path(&current.path, old, new) {
+                current.path = path;
+            }
+        }
+        if let Some(editor) = self.editor.as_mut() {
+            if let Some(path) = rewrite_path(&editor.path, old, new) {
+                editor.path = path;
+            }
+        }
+    }
+
+    pub(super) fn remove_paths(&mut self, target: &Path) {
+        self.groups.retain(|key, _| !path_under(&key.path, target));
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|current| path_under(&current.path, target))
+        {
+            self.current = None;
+        }
+        if self
+            .editor
+            .as_ref()
+            .is_some_and(|editor| path_under(&editor.path, target))
+        {
+            self.editor = None;
+        }
+    }
+
     pub(super) fn mark_tasks_stale(&mut self) {
         for key in self.groups.keys() {
             if key.source.starts_with(TASK_PREFIX) {
@@ -459,6 +512,21 @@ pub(super) fn source_label(source: &str) -> &str {
 pub(super) fn code_label(problem: &Problem) -> Option<String> {
     let code = problem.code.as_deref()?;
     Some(format!("{} {code}", problem.provider_label()))
+}
+
+fn path_under(path: &Path, root: &Path) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_ok_and(|rest| !rest.as_os_str().is_empty())
+}
+
+fn rewrite_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
+    if path == old {
+        return Some(new.to_path_buf());
+    }
+    let rest = path.strip_prefix(old).ok()?;
+    (!rest.as_os_str().is_empty()).then(|| new.join(rest))
 }
 
 fn sort_problems(problems: &mut [&Problem]) {

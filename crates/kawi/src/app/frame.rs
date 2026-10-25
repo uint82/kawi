@@ -94,6 +94,7 @@ impl App {
                     loading: state.loading(),
                     status: state.status(),
                     replace_hint: state.kind() == PickerKind::Grep,
+                    file_hint: state.kind() == PickerKind::Files,
                 }
             })
             .or_else(|| {
@@ -108,6 +109,7 @@ impl App {
                         loading: false,
                         status: self.git_status.view_status(),
                         replace_hint: false,
+                        file_hint: false,
                     })
             });
         let replace_state = self.replace.as_ref();
@@ -178,9 +180,8 @@ impl App {
             viewport: &viewport,
             message: self.message.as_deref(),
             prompt: self
-                .rename
-                .as_ref()
-                .and_then(rename::RenameSession::prompt)
+                .file_ops_prompt()
+                .or_else(|| self.rename.as_ref().and_then(rename::RenameSession::prompt))
                 .or_else(|| {
                     self.branch_prompt
                         .as_ref()

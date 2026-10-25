@@ -23,6 +23,19 @@ pub enum Command {
         name: String,
         force: bool,
     },
+    SaveAs {
+        name: String,
+        force: bool,
+    },
+    RenameFile {
+        source: Option<String>,
+        name: String,
+        force: bool,
+    },
+    DeleteFile {
+        path: Option<String>,
+        force: bool,
+    },
     DeleteBuffer {
         spec: Option<String>,
         force: bool,
@@ -71,6 +84,7 @@ pub enum SetValue {
     Negate,
 }
 
+mod file_ops;
 mod undo;
 
 pub use undo::UndoCommand;
@@ -182,8 +196,16 @@ pub const COMMAND_NAMES: &[&str] = &[
     "quit!",
     "quitall",
     "quitall!",
+    "delete",
+    "delete!",
+    "rename",
+    "rename!",
     "replace",
     "s",
+    "sav",
+    "sav!",
+    "saveas",
+    "saveas!",
     "set",
     "sp",
     "split",
@@ -249,6 +271,9 @@ pub fn parse(text: &str) -> Command {
 }
 
 fn parse_named(text: &str) -> Command {
+    if let Some(command) = file_ops::parse(text) {
+        return command;
+    }
     let words: Vec<&str> = text.split_whitespace().collect();
     let Some((command, rest)) = words.split_first() else {
         return Command::Unknown;
@@ -659,6 +684,79 @@ mod tests {
         );
         assert_eq!(parse("write"), Command::Write { force: false });
         assert_eq!(parse("w!"), Command::Write { force: true });
+    }
+
+    #[test]
+    fn parses_save_as_and_file_commands() {
+        assert_eq!(
+            parse("saveas copy.txt"),
+            Command::SaveAs {
+                name: "copy.txt".to_string(),
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("sav! copy.txt"),
+            Command::SaveAs {
+                name: "copy.txt".to_string(),
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("rename next.txt"),
+            Command::RenameFile {
+                source: None,
+                name: "next.txt".to_string(),
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("rename! next.txt"),
+            Command::RenameFile {
+                source: None,
+                name: "next.txt".to_string(),
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("rename"),
+            Command::RenameFile {
+                source: None,
+                name: String::new(),
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("delete"),
+            Command::DeleteFile {
+                path: None,
+                force: false
+            }
+        );
+        assert_eq!(
+            parse("delete! old.txt"),
+            Command::DeleteFile {
+                path: Some("old.txt".to_string()),
+                force: true
+            }
+        );
+        assert_eq!(
+            parse("rename old.txt next.txt"),
+            Command::RenameFile {
+                source: Some("old.txt".to_string()),
+                name: "next.txt".to_string(),
+                force: false
+            }
+        );
+        assert_eq!(parse("rename a b c"), Command::Unknown);
+        assert_eq!(
+            parse("delete now"),
+            Command::DeleteFile {
+                path: Some("now".to_string()),
+                force: false
+            }
+        );
+        assert_eq!(parse("delete a b"), Command::Unknown);
     }
 
     #[test]
