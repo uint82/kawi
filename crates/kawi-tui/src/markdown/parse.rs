@@ -57,6 +57,7 @@ fn plain_lines(text: &str) -> Vec<MarkdownLine> {
     text.lines()
         .map(|line| MarkdownLine {
             spans: vec![normal_span(sanitize(line))],
+            code: false,
         })
         .collect()
 }
@@ -79,6 +80,7 @@ fn parse_text_line(line: &str, blocks: &mut Vec<MarkdownBlock>, text: &mut Vec<M
         let line = list_line(trimmed, line);
         text.push(MarkdownLine {
             spans: inline_spans(&line),
+            code: false,
         });
     }
 }
@@ -94,6 +96,7 @@ fn list_line<'a>(trimmed: &'a str, line: &'a str) -> String {
 fn styled_line(text: String, style: MarkdownStyle) -> MarkdownLine {
     MarkdownLine {
         spans: vec![MarkdownSpan { text, style }],
+        code: false,
     }
 }
 
@@ -105,7 +108,10 @@ fn normal_span(text: String) -> MarkdownSpan {
 }
 
 fn code_line(line: &str) -> MarkdownLine {
-    styled_line(sanitize(line), MarkdownStyle::Code)
+    MarkdownLine::code(vec![MarkdownSpan {
+        text: sanitize(line),
+        style: MarkdownStyle::Code,
+    }])
 }
 
 fn flush_text(blocks: &mut Vec<MarkdownBlock>, text: &mut Vec<MarkdownLine>) {

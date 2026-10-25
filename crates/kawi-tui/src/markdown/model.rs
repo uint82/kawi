@@ -20,11 +20,19 @@ pub struct MarkdownSpan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarkdownLine {
     pub spans: Vec<MarkdownSpan>,
+    pub code: bool,
 }
 
 impl MarkdownLine {
     pub fn blank() -> Self {
-        Self { spans: Vec::new() }
+        Self {
+            spans: Vec::new(),
+            code: false,
+        }
+    }
+
+    pub fn code(spans: Vec<MarkdownSpan>) -> Self {
+        Self { spans, code: true }
     }
 
     pub fn text(&self) -> String {

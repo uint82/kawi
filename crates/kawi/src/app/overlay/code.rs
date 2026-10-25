@@ -131,7 +131,7 @@ fn build_line(line: &str, cells: &[MarkdownStyle]) -> MarkdownLine {
         text.push(sanitize_char(character));
     }
     push_span(&mut spans, &mut text, current);
-    MarkdownLine { spans }
+    MarkdownLine { spans, code: true }
 }
 
 fn push_span(spans: &mut Vec<MarkdownSpan>, text: &mut String, style: Option<MarkdownStyle>) {
@@ -157,6 +157,7 @@ mod tests {
                 text: text.to_string(),
                 style: MarkdownStyle::Code,
             }],
+            code: true,
         }
     }
 
@@ -180,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_wide_characters_and_sanitizes_tabs() {
+    fn keeps_wide_characters_and_tabs_after_conversion() {
         let lines = syntax_lines(
             "\téx",
             &[SnippetSpan {
@@ -189,7 +190,7 @@ mod tests {
                 group: SyntaxGroup::Type,
             }],
         );
-        assert_eq!(lines[0].text(), " éx");
+        assert_eq!(lines[0].text(), "\téx");
         assert_eq!(
             lines[0].spans[0].style,
             MarkdownStyle::Syntax(SyntaxGroup::Type)
@@ -312,7 +313,7 @@ mod tests {
         let wrapped = kawi_tui::markdown::render_document(&document, 1);
         assert_eq!(
             wrapped.iter().map(MarkdownLine::text).collect::<Vec<_>>(),
-            ["中", " ", "文"]
+            ["中", " ", " ", " ", " ", " ", " ", "文"]
         );
         assert!(wrapped
             .iter()

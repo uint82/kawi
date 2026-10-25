@@ -172,3 +172,45 @@ fn raw_markdown_rendering_never_infers_untagged_languages() {
         .iter()
         .all(|span| span.style == MarkdownStyle::Code));
 }
+
+#[test]
+fn code_lines_keep_their_background_across_blocks() {
+    let document = parse(&markdown("```rust\na\nb\n```\n\ntext\n\n```\nc\n```"));
+    let lines = render_document(&document, 20);
+    let flags: Vec<bool> = lines.iter().map(|line| line.code).collect();
+    assert_eq!(flags, [true, true, false, false, false, true]);
+}
+
+#[test]
+fn expands_tabs_at_the_standard_tab_stop() {
+    let lines = render_spans(
+        &[MarkdownSpan {
+            text: "a\tb".to_string(),
+            style: MarkdownStyle::Normal,
+        }],
+        80,
+    );
+    assert_eq!(lines[0].text(), "a       b");
+}
+
+#[test]
+fn wraps_wide_characters_by_display_width() {
+    let spans = [MarkdownSpan {
+        text: "中文".to_string(),
+        style: MarkdownStyle::Normal,
+    }];
+    assert_eq!(
+        render_spans(&spans, 4)
+            .iter()
+            .map(MarkdownLine::text)
+            .collect::<Vec<_>>(),
+        ["中文"]
+    );
+    assert_eq!(
+        render_spans(&spans, 2)
+            .iter()
+            .map(MarkdownLine::text)
+            .collect::<Vec<_>>(),
+        ["中", "文"]
+    );
+}
