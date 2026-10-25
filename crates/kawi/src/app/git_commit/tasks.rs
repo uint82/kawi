@@ -77,16 +77,6 @@ impl App {
             self.show_message(failure_message(kind));
         }
     }
-
-    fn reload_open_files(&mut self) {
-        self.sync_watched_files();
-        let paths = self
-            .open_files()
-            .into_iter()
-            .map(|(_, path)| path)
-            .collect::<Vec<_>>();
-        self.handle_disk_paths(&paths);
-    }
 }
 
 fn failure_message(kind: TaskKind) -> String {

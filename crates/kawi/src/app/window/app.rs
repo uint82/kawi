@@ -139,16 +139,19 @@ impl App {
         self.open_split(vertical, name, true)
     }
 
+    pub(crate) fn open_readonly_window(&mut self, name: &str, text: &str) -> Result<bool> {
+        self.begin_split();
+        self.editor.open_scratch_buffer(name, text, true);
+        self.complete_split(false)
+    }
+
     fn open_split(
         &mut self,
         vertical: bool,
         name: Option<String>,
         new_buffer: bool,
     ) -> Result<bool> {
-        self.sync_active_window();
-        let previous = self.windows.active();
-        self.stash_active_syntax_copy(previous);
-        self.exit_visual_if_active();
+        let previous = self.begin_split();
         if let Some(name) = name {
             if let Err(error) = self.editor.edit_file(Some(&name), false) {
                 self.window_syntax.remove(&previous);
@@ -158,6 +161,18 @@ impl App {
         } else if new_buffer {
             self.editor.open_empty_buffer();
         }
+        self.complete_split(vertical)
+    }
+
+    fn begin_split(&mut self) -> WindowId {
+        self.sync_active_window();
+        let previous = self.windows.active();
+        self.stash_active_syntax_copy(previous);
+        self.exit_visual_if_active();
+        previous
+    }
+
+    fn complete_split(&mut self, vertical: bool) -> Result<bool> {
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
         let direction = if vertical {

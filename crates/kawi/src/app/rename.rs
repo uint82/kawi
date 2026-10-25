@@ -20,6 +20,7 @@ pub(super) struct RenameSession {
     stage: RenameStage,
     input: TextInput,
     pristine: bool,
+    label: &'static str,
 }
 
 impl RenameSession {
@@ -29,6 +30,17 @@ impl RenameSession {
             stage: RenameStage::Preparing,
             input: TextInput::new(),
             pristine: false,
+            label: "rename",
+        }
+    }
+
+    pub(super) fn input(label: &'static str) -> Self {
+        Self {
+            request: 0,
+            stage: RenameStage::Input,
+            input: TextInput::new(),
+            pristine: false,
+            label,
         }
     }
 
@@ -48,7 +60,7 @@ impl RenameSession {
 
     pub(super) fn prompt(&self) -> Option<PromptMenu<'_>> {
         (self.stage == RenameStage::Input).then(|| PromptMenu {
-            label: "rename",
+            label: self.label,
             value: self.input.text(),
             cursor: self.input.cursor(),
         })

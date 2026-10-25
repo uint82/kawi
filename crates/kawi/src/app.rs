@@ -17,6 +17,7 @@ mod disk;
 mod formatting;
 mod frame;
 mod git;
+mod git_branch;
 mod git_commit;
 mod git_status;
 mod hover;
@@ -136,6 +137,7 @@ pub struct App {
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
+    branch_prompt: Option<git_branch::BranchPrompt>,
     completion: Option<completion::CompletionSession>,
     completion_auto: completion::AutoTrigger,
     completion_options: completion::CompletionOptions,
@@ -147,6 +149,7 @@ pub struct App {
     git_error: Option<String>,
     git_status: git_status::GitStatusState,
     git_commit: git_commit::GitCommitState,
+    git_branch: git_branch::GitBranchState,
     ipc: Option<crate::ipc::Server>,
     ipc_root: Option<PathBuf>,
     lsp: LspUi,
@@ -177,6 +180,7 @@ pub struct App {
 
 impl App {
     pub fn new(buffer: Buffer, flavor: Flavor) -> Self {
+        let _ = kawi_git::git_version();
         let mut editor = Editor::new(buffer);
         editor.set_clipboard(Box::new(kawi_tui::clipboard::SystemClipboard::new()));
         let windows = Windows::new(editor.buffer_number(), editor.view_state());
@@ -201,6 +205,7 @@ impl App {
             picker: None,
             replace: None,
             rename: None,
+            branch_prompt: None,
             completion: None,
             completion_auto: completion::AutoTrigger::new(),
             completion_options: completion::CompletionOptions::default(),
@@ -212,6 +217,7 @@ impl App {
             git_error: None,
             git_status: git_status::GitStatusState::default(),
             git_commit: git_commit::GitCommitState::default(),
+            git_branch: git_branch::GitBranchState::default(),
             ipc: None,
             ipc_root: None,
             lsp: LspUi::default(),
@@ -614,7 +620,11 @@ impl App {
             self.editor.buffer_revision(),
             self.editor.document_snapshot(),
         );
-        self.lsp.refresh(&self.editor);
+        if self.editor.current_buffer_is_readonly() {
+            self.lsp.detach();
+        } else {
+            self.lsp.refresh(&self.editor);
+        }
         self.apply_diagnostic_updates();
         self.update_signcolumn_width();
         if let Some(message) = self.lsp.take_message() {
@@ -847,6 +857,12 @@ impl App {
         if self.git_commit.has_pending_push() {
             return self.handle_git_push_confirmation(key);
         }
+        if self.has_pending_branch_action() {
+            return self.handle_pending_branch_key(key);
+        }
+        if self.branch_prompt.is_some() {
+            return self.handle_branch_prompt_key(key);
+        }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
                 return Ok(result);
@@ -911,7 +927,32 @@ impl App {
             self.picker = Some(session);
             return Ok(false);
         }
-        if is_replace_key(key) && session.picker().kind() == PickerKind::Grep {
+        let kind = session.picker().kind();
+        if kind == PickerKind::GitLog {
+            match self.handle_log_picker_key(&session, key)? {
+                git_branch::LogKeyOutcome::Unhandled => {}
+                git_branch::LogKeyOutcome::KeepOpen => {
+                    self.picker = Some(session);
+                    return Ok(false);
+                }
+                git_branch::LogKeyOutcome::Closed => return Ok(false),
+            }
+        }
+        if kind == PickerKind::GitBranches && is_create_branch_key(key) {
+            let base = selected_branch_ref(&session);
+            self.picker = None;
+            self.open_branch_prompt(base);
+            return Ok(false);
+        }
+        if kind == PickerKind::GitBranches && is_delete_branch_key(key) {
+            let branch = selected_branch_ref(&session);
+            self.picker = None;
+            if let Some(branch) = branch {
+                return self.delete_branch_ref(&branch);
+            }
+            return Ok(false);
+        }
+        if is_replace_key(key) && kind == PickerKind::Grep {
             let query = session.picker().query().to_string();
             if query.is_empty() {
                 self.show_message("Type a search pattern first".to_string());
@@ -929,6 +970,18 @@ impl App {
         match outcome {
             kawi_picker::PickerOutcome::Cancel => Ok(false),
             kawi_picker::PickerOutcome::Open(row) => {
+                if kind == PickerKind::GitBranches {
+                    self.picker = Some(session);
+                    return self.switch_selected_branch(&row.path);
+                }
+                if kind == PickerKind::GitLog {
+                    self.picker = Some(session);
+                    return self.open_commit_diff(&row.path);
+                }
+                if kind == PickerKind::GitCommitFiles {
+                    self.picker = Some(session);
+                    return self.open_commit_file_diff(&row.path);
+                }
                 match self.open_picker_row(&row, session.root()) {
                     Ok(()) => Ok(false),
                     Err(message) => {
@@ -1194,6 +1247,9 @@ impl App {
             PickerKind::Grep => PickerSession::grep(root, None, wake),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
             PickerKind::Locations => PickerSession::locations(root, "Locations", Vec::new()),
+            PickerKind::GitBranches | PickerKind::GitLog | PickerKind::GitCommitFiles => {
+                return Ok(false);
+            }
         });
         Ok(false)
     }
@@ -1255,6 +1311,9 @@ impl App {
         if self.paste_rename(&text) {
             return Ok(false);
         }
+        if self.paste_branch_prompt(&text) {
+            return Ok(false);
+        }
         if let Some(session) = self.replace.as_mut() {
             session.paste(&text);
             return Ok(false);
@@ -1295,6 +1354,11 @@ impl App {
                 self.open_git_status();
                 Ok(false)
             }
+            GitCommand::Branches => self.open_branch_picker(),
+            GitCommand::Log { file, grep, author } => self.open_log_picker(file, grep, author),
+            GitCommand::Switch { target } => self.handle_switch_command(&target),
+            GitCommand::CreateBranch { name, base } => self.create_branch(&name, base.as_deref()),
+            GitCommand::DeleteBranch { name, force } => self.delete_branch(&name, force),
             GitCommand::Commit { all } => self.start_git_commit(all),
             GitCommand::Amend { staged } => self.start_git_amend(staged),
             GitCommand::Push { force } => self.start_git_push(force),
@@ -1311,6 +1375,13 @@ impl App {
     }
 
     fn sync_git(&mut self) {
+        if self.editor.current_buffer_is_readonly() {
+            self.git = None;
+            self.git_error = None;
+            self.update_signcolumn_width();
+            self.git_path = None;
+            return;
+        }
         let path = self
             .editor
             .has_file()
@@ -1893,6 +1964,22 @@ fn buffer_error_message(error: kawi_editor::BufferError) -> String {
             format!("E89: No write since last change for buffer {number} (add ! to override)")
         }
     }
+}
+
+fn is_create_branch_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('b')
+}
+
+fn is_delete_branch_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d')
+}
+
+fn selected_branch_ref(session: &PickerSession) -> Option<String> {
+    let row = session
+        .picker()
+        .selected()
+        .and_then(|index| session.picker().rows().get(index))?;
+    Some(row.path.clone())
 }
 
 fn pager_lines(text: &str, width: usize) -> Vec<String> {

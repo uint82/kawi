@@ -12,7 +12,7 @@ use kawi_lsp::{
     CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
     DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand,
     LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState,
-    SignatureHelpEvent, StatusEvent, WorkspaceDiagnosticState,
+    SignatureHelpEvent, StatusEvent, WatchedFileChange, WorkspaceDiagnosticState,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -87,6 +87,25 @@ impl LspUi {
 
     pub fn sync_editor(&mut self, editor: &Editor) -> bool {
         self.sync_document(editor)
+    }
+
+    pub fn did_change_watched_files(&self, files: &[(PathBuf, WatchedFileChange)]) {
+        if let Some(service) = self.service.as_ref() {
+            service.did_change_watched_files(files);
+        }
+    }
+
+    pub fn detach(&mut self) -> bool {
+        self.text.cancel_all(self.service.as_ref());
+        self.close_current();
+        let changed = self.path.take().is_some();
+        self.revision = None;
+        self.statuses.clear();
+        self.status_messages.clear();
+        self.progress.clear();
+        self.diagnostics.reset();
+        self.update_display();
+        changed
     }
 
     pub fn poll_events(&mut self, editor: &Editor) -> bool {

@@ -414,11 +414,22 @@ impl App {
         self.editor
             .all_buffer_numbers()
             .into_iter()
+            .filter(|number| !self.editor.buffer_is_readonly(*number).unwrap_or(false))
             .filter_map(|number| {
                 let path = self.editor.buffer_path(number)?;
                 Some((number, absolute_path(Path::new(path))))
             })
             .collect()
+    }
+
+    pub(super) fn reload_open_files(&mut self) {
+        self.sync_watched_files();
+        let paths = self
+            .open_files()
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect::<Vec<_>>();
+        self.handle_disk_paths(&paths);
     }
 }
 

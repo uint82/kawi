@@ -146,7 +146,7 @@ impl super::App {
         let visible = self.problems.visible(path.as_deref());
         let rows = visible
             .iter()
-            .map(|problem| problem_row(&root, problem))
+            .map(|problem| problem_row(&root, problem, self.problems.is_stale(&problem.source)))
             .collect();
         let status = self.problem_status(visible.len());
         session.set_locations(rows);
@@ -180,7 +180,7 @@ impl super::App {
     }
 }
 
-fn problem_row(root: &Path, problem: &Problem) -> PickerRow {
+fn problem_row(root: &Path, problem: &Problem, stale: bool) -> PickerRow {
     let path = problem.path.strip_prefix(root).unwrap_or(&problem.path);
     let code = code_label(problem)
         .map(|label| format!(" [{label}]"))
@@ -194,9 +194,10 @@ fn problem_row(root: &Path, problem: &Problem) -> PickerRow {
         0 => String::new(),
         count => format!(" (+{count} related)"),
     };
+    let stale = if stale { " [stale]" } else { "" };
     PickerRow {
         display: format!(
-            "{}:{}:{} {} [{}]{code}{tags} {}{related}",
+            "{}:{}:{} {} [{}]{code}{tags}{stale} {}{related}",
             path.display(),
             problem.line,
             problem.column,

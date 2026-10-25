@@ -43,6 +43,12 @@ impl App {
             return false;
         }
         let number = self.editor.buffer_number();
+        if self.editor.buffer_is_readonly(number).unwrap_or(false) {
+            if visible {
+                self.show_message("E45: 'readonly' option is set".to_string());
+            }
+            return false;
+        }
         if self.disk_conflict(number) && !force {
             if visible {
                 self.show_message(
@@ -169,6 +175,12 @@ impl App {
         visible: bool,
         suffix: Option<&str>,
     ) -> bool {
+        if self.editor.buffer_is_readonly(number).unwrap_or(false) {
+            if visible {
+                self.show_message("E45: 'readonly' option is set".to_string());
+            }
+            return false;
+        }
         if self.disk_conflict(number) && !force {
             if visible {
                 self.show_message(
