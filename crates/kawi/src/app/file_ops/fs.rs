@@ -1,6 +1,10 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
+
+mod copy;
+
+use copy::copy_across_filesystems;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RenameKind {
@@ -21,7 +25,10 @@ pub(super) fn rename_path(old: &Path, new: &Path, force: bool) -> io::Result<Ren
     let case_only = target
         .as_ref()
         .is_ok_and(|target| same_entry(&source, target) && is_case_variant(old, new));
-    if !force && target.is_ok() && !case_only {
+    let target_is_directory = target
+        .as_ref()
+        .is_ok_and(|target| !case_only && target.is_dir() && !target.file_type().is_symlink());
+    if target_is_directory || (!force && target.is_ok() && !case_only) {
         return Err(already_exists(new));
     }
     let result = if force || case_only {
@@ -35,7 +42,7 @@ pub(super) fn rename_path(old: &Path, new: &Path, force: bool) -> io::Result<Ren
             symlink,
         }),
         Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
-            copy_tree(old, new)?;
+            copy_across_filesystems(old, new, force)?;
             remove_path(old, true)?;
             Ok(RenameOutcome {
                 kind: RenameKind::Copied,
@@ -178,33 +185,6 @@ fn linux_rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
     } else {
         Err(io::Error::last_os_error())
     }
-}
-
-fn copy_tree(old: &Path, new: &Path) -> io::Result<()> {
-    let metadata = fs::symlink_metadata(old)?;
-    if metadata.file_type().is_symlink() {
-        return copy_symlink(old, new);
-    }
-    if metadata.is_dir() {
-        fs::create_dir(new)?;
-        for entry in fs::read_dir(old)? {
-            let entry = entry?;
-            copy_tree(&entry.path(), &new.join(entry.file_name()))?;
-        }
-        return File::open(old).and_then(|directory| directory.sync_all());
-    }
-    fs::copy(old, new)?;
-    File::open(new)?.sync_all()
-}
-
-#[cfg(unix)]
-fn copy_symlink(old: &Path, new: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(fs::read_link(old)?, new)
-}
-
-#[cfg(not(unix))]
-fn copy_symlink(old: &Path, new: &Path) -> io::Result<()> {
-    fs::copy(old, new).map(|_| ())
 }
 
 #[cfg(test)]
