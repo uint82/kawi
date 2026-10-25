@@ -27,6 +27,7 @@ impl Manager {
             pending_requests: HashMap::new(),
             pending_replies: HashMap::new(),
             pending_renames: HashMap::new(),
+            pending_file_operations: HashMap::new(),
             pending_text_requests: HashMap::new(),
             pending_completion_resolves: HashMap::new(),
             completion_resolve: HashMap::new(),
@@ -78,13 +79,14 @@ impl Manager {
     }
 
     fn next_deadline(&self) -> Option<Duration> {
-        let initialize = self.next_initialize_deadline();
-        let diagnostics = self.pull_diagnostics.next_deadline();
-        match (initialize, diagnostics) {
-            (Some(initialize), Some(diagnostics)) => Some(initialize.min(diagnostics)),
-            (Some(deadline), None) | (None, Some(deadline)) => Some(deadline),
-            (None, None) => None,
-        }
+        [
+            self.next_initialize_deadline(),
+            self.pull_diagnostics.next_deadline(),
+            self.next_file_operation_deadline(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     fn next_initialize_deadline(&self) -> Option<Duration> {
@@ -98,6 +100,7 @@ impl Manager {
     fn expire_deadlines(&mut self) {
         self.expire_initializations();
         self.expire_pull_diagnostics();
+        self.expire_file_operations();
     }
 
     fn expire_initializations(&mut self) {
@@ -143,6 +146,14 @@ impl Manager {
                 position,
             } => self.start_prepare_rename(request, path, position),
             Command::Rename { request, new_name } => self.start_rename(request, new_name),
+            Command::WillRenameFiles { request, files } => {
+                self.start_will_rename_files(request, files);
+            }
+            Command::DidRenameFiles { files } => self.did_rename_files(&files),
+            Command::WillDeleteFiles { request, files } => {
+                self.start_will_delete_files(request, files);
+            }
+            Command::DidDeleteFiles { files } => self.did_delete_files(&files),
             Command::Completion {
                 request,
                 path,

@@ -5,6 +5,7 @@ use crate::protocol::Message;
 pub(super) enum ReplyPurpose {
     Navigation,
     Rename,
+    FileOperation,
     Text,
     CompletionResolve,
 }
@@ -90,6 +91,7 @@ impl Manager {
         match reply.purpose {
             ReplyPurpose::Navigation => self.fail_navigation_reply(reply.request, message),
             ReplyPurpose::Rename => self.fail_rename_request(reply.request, message),
+            ReplyPurpose::FileOperation => self.fail_file_operation(reply.request, message),
             ReplyPurpose::Text => self.fail_text_request(reply.request, message),
             ReplyPurpose::CompletionResolve => {
                 self.pending_completion_resolves.remove(&reply.request);

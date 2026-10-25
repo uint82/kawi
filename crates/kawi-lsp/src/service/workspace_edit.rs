@@ -9,6 +9,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
+pub(super) const EMPTY_WORKSPACE_EDIT: &str = "Workspace edit contained no changes";
+
 impl Manager {
     pub(super) fn text_edits_workspace(
         &self,
@@ -41,7 +43,7 @@ impl Manager {
             };
         }
         let Some(changes) = edit.changes else {
-            return Err("Workspace edit contained no changes".to_string());
+            return Err(EMPTY_WORKSPACE_EDIT.to_string());
         };
         self.plain_edits(changes.into_iter().collect(), encoding)
     }
@@ -170,7 +172,7 @@ fn edit_error(error: TextEditError) -> String {
 
 fn finish_edit(documents: Vec<DocumentEdit>) -> Result<WorkspaceEdit, String> {
     if documents.is_empty() {
-        return Err("Workspace edit contained no changes".to_string());
+        return Err(EMPTY_WORKSPACE_EDIT.to_string());
     }
     Ok(WorkspaceEdit { documents })
 }

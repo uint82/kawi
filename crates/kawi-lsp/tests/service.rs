@@ -1,6 +1,7 @@
 use kawi_lsp::{
-    CompletionTrigger, CursorPosition, DiagnosticMode, DiagnosticSeverity, FormattingSettings,
-    Languages, LspEvent, LspService, ProgressEvent, ServerState, WorkspaceDiagnosticState,
+    CompletionTrigger, CursorPosition, DiagnosticMode, DiagnosticSeverity, FileOperationKind,
+    FormattingSettings, Languages, LspEvent, LspService, ProgressEvent, ServerState,
+    WorkspaceDiagnosticState,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,6 +51,22 @@ fn rename_config(root: &Path, rename_mode: &str, rename_delay: u64) -> PathBuf {
     );
     fs::write(&path, text).expect("config");
     path
+}
+
+fn file_operations_config(root: &Path) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_FILE_OPERATIONS = \"1\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_file_operations(root: &Path) -> LspService {
+    let languages = Languages::load(&file_operations_config(root));
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
 }
 
 fn phase_seven_config(root: &Path, pull_diagnostics: bool) -> PathBuf {
@@ -1014,6 +1031,78 @@ fn answers_diagnostic_refresh_requests() {
     assert!(service.open(&file, "a\n"));
     wait_for_ready(&service);
     wait_for_log(&service, "requests:ok");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn requests_will_rename_and_reports_the_resulting_edit() {
+    let root = temp_project("file_op_rename");
+    let old = root.join("src/main.rs");
+    let new = root.join("src/renamed.rs");
+    fs::write(&old, "fn main() {}\n").expect("source");
+    let service = start_file_operations(&root);
+    assert!(service.open(&old, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.will_rename_files(&[(old.clone(), new.clone())]);
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::FileOperation(event)
+                if event.request == request && event.kind == FileOperationKind::Rename
+        )
+    });
+    let LspEvent::FileOperation(event) = event else {
+        panic!("unexpected file operation event");
+    };
+    assert!(event.error.is_none());
+    let edit = event.edit.expect("workspace edit");
+    assert_eq!(edit.documents.len(), 1);
+    assert_eq!(edit.documents[0].path, old);
+    assert!(service.did_rename_files(&[(old, new)]));
+    wait_for_log_prefix(&service, "didRename:");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn requests_will_delete_before_removing_the_file() {
+    let root = temp_project("file_op_delete");
+    let path = root.join("src/main.rs");
+    fs::write(&path, "fn main() {}\n").expect("source");
+    let service = start_file_operations(&root);
+    assert!(service.open(&path, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.will_delete_files(std::slice::from_ref(&path));
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::FileOperation(event)
+                if event.request == request && event.kind == FileOperationKind::Delete
+        )
+    });
+    let LspEvent::FileOperation(event) = event else {
+        panic!("unexpected file operation event");
+    };
+    assert!(event.error.is_none());
+    assert!(event.edit.is_none());
+    assert!(service.did_delete_files(std::slice::from_ref(&path)));
+    wait_for_log_prefix(&service, "didDelete:");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn falls_back_to_close_and_open_without_file_operation_support() {
+    let root = temp_project("file_op_fallback");
+    let old = root.join("src/main.rs");
+    let new = root.join("src/renamed.rs");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    assert!(service.open(&old, "fn main() {}\n"));
+    wait_for_ready(&service);
+    assert!(service.did_rename_files(&[(old, new)]));
+    wait_for_log(&service, "close");
+    wait_for_log_prefix(&service, "open:1:");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

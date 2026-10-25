@@ -41,6 +41,7 @@ fn main() -> Result<()> {
         std::env::var("FAKE_LSP_REFRESH_DIAGNOSTICS").is_ok_and(|value| value == "1");
     let workspace_diagnostics =
         std::env::var("FAKE_LSP_WORKSPACE_DIAGNOSTICS").is_ok_and(|value| value == "1");
+    let file_operations = std::env::var("FAKE_LSP_FILE_OPERATIONS").is_ok_and(|value| value == "1");
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
@@ -88,6 +89,16 @@ fn main() -> Result<()> {
                             "workspaceDiagnostics": workspace_diagnostics
                         });
                     }
+                    if file_operations {
+                        capabilities["workspace"] = json!({
+                            "fileOperations": {
+                                "didRename": {"filters": [{"pattern": {"glob": "**/*"}}]},
+                                "willRename": {"filters": [{"pattern": {"glob": "**/*"}}]},
+                                "didDelete": {"filters": [{"pattern": {"glob": "**/*"}}]},
+                                "willDelete": {"filters": [{"pattern": {"glob": "**/*"}}]}
+                            }
+                        });
+                    }
                     let result = json!({
                         "capabilities": capabilities,
                         "serverInfo": {"name": "fake-lsp", "version": "1"}
@@ -122,6 +133,10 @@ fn main() -> Result<()> {
                 "textDocument/formatting" | "textDocument/rangeFormatting" => {
                     handle_formatting(&mut writer, id, &method, params)?
                 }
+                "workspace/willRenameFiles" => handle_will_rename(&mut writer, id, params)?,
+                "workspace/willDeleteFiles" => {
+                    send(&mut writer, Message::response(id, Value::Null))?;
+                }
                 "workspace/executeCommand" => handle_execute_command(&mut writer, id, params)?,
                 "textDocument/diagnostic" => {
                     handle_pull_diagnostic(&mut writer, id, params, &documents)?
@@ -151,6 +166,15 @@ fn main() -> Result<()> {
                 "textDocument/didChange" => handle_change(&mut writer, params, &mut documents)?,
                 "textDocument/didSave" => handle_save(&mut writer, params)?,
                 "textDocument/didClose" => send_log(&mut writer, "close")?,
+                "workspace/didRenameFiles" => {
+                    let old = file_uri_field(params.as_ref(), "oldUri");
+                    let new = file_uri_field(params.as_ref(), "newUri");
+                    send_log(&mut writer, &format!("didRename:{old}:{new}"))?;
+                }
+                "workspace/didDeleteFiles" => {
+                    let uri = file_uri_field(params.as_ref(), "uri");
+                    send_log(&mut writer, &format!("didDelete:{uri}"))?;
+                }
                 "$/cancelRequest" => {
                     let id = params
                         .as_ref()
@@ -824,4 +848,40 @@ fn handle_pull_diagnostic(
         }]
     });
     send(writer, Message::response(id, result))
+}
+
+fn handle_will_rename(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+) -> Result<()> {
+    let old = file_uri_field(params.as_ref(), "oldUri");
+    let new = file_uri_field(params.as_ref(), "newUri");
+    send_log(writer, &format!("willRename:{old}:{new}"))?;
+    let mut changes = serde_json::Map::new();
+    changes.insert(
+        old,
+        json!([{
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 0}
+            },
+            "newText": ""
+        }]),
+    );
+    send(
+        writer,
+        Message::response(id, json!({"changes": Value::Object(changes)})),
+    )
+}
+
+fn file_uri_field(params: Option<&Value>, field: &str) -> String {
+    params
+        .and_then(|params| params.get("files"))
+        .and_then(|files| files.as_array())
+        .and_then(|files| files.first())
+        .and_then(|file| file.get(field))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }

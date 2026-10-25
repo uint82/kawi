@@ -10,9 +10,10 @@ use kawi_editor::{
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
     CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
-    DiagnosticsEvent, FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand,
-    LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState,
-    SignatureHelpEvent, StatusEvent, WatchedFileChange, WorkspaceDiagnosticState,
+    DiagnosticsEvent, FileOperationEvent, FormattingEvent, FormattingSettings, LanguageWarning,
+    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
+    RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
+    WorkspaceDiagnosticState,
 };
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
@@ -44,6 +45,9 @@ pub struct LspUi {
     formatting_failure: Option<(u64, String)>,
     diagnostic_updates: Vec<DiagnosticUpdate>,
     completion_capabilities: BTreeMap<String, CompletionCapabilitiesEvent>,
+    rename_files: bool,
+    delete_files: bool,
+    file_operation: Option<FileOperationEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +65,9 @@ struct ProgressSnapshot {
 
 impl LspUi {
     pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
+        self.rename_files = false;
+        self.delete_files = false;
+        self.file_operation = None;
         let languages = Languages::load(path);
         let warnings = languages.warnings().to_vec();
         match LspService::new(languages.clone(), wake) {
@@ -93,6 +100,62 @@ impl LspUi {
         if let Some(service) = self.service.as_ref() {
             service.did_change_watched_files(files);
         }
+    }
+
+    pub fn supports_file_rename(&self) -> bool {
+        self.rename_files
+    }
+
+    pub fn supports_file_delete(&self) -> bool {
+        self.delete_files
+    }
+
+    pub fn will_rename_files(&self, files: &[(PathBuf, PathBuf)]) -> u64 {
+        self.service
+            .as_ref()
+            .map_or(0, |service| service.will_rename_files(files))
+    }
+
+    pub fn will_delete_files(&self, files: &[PathBuf]) -> u64 {
+        self.service
+            .as_ref()
+            .map_or(0, |service| service.will_delete_files(files))
+    }
+
+    pub fn take_file_operation(&mut self) -> Option<FileOperationEvent> {
+        self.file_operation.take()
+    }
+
+    pub fn did_rename_files(&mut self, files: &[(PathBuf, PathBuf)]) {
+        if let Some(service) = self.service.as_ref() {
+            service.did_rename_files(files);
+        }
+        let Some(path) = self.path.as_mut() else {
+            return;
+        };
+        let Some(rewritten) = rewrite_any(path, files) else {
+            return;
+        };
+        *path = rewritten;
+        self.text.cancel_all(self.service.as_ref());
+        self.diagnostics.reset();
+    }
+
+    pub fn did_delete_files(&mut self, files: &[PathBuf]) {
+        if let Some(service) = self.service.as_ref() {
+            service.did_delete_files(files);
+        }
+        let removed = self
+            .path
+            .as_ref()
+            .is_some_and(|path| files.iter().any(|target| is_under(path, target)));
+        if !removed {
+            return;
+        }
+        self.path = None;
+        self.revision = None;
+        self.text.cancel_all(self.service.as_ref());
+        self.diagnostics.reset();
     }
 
     pub fn detach(&mut self) -> bool {
@@ -594,6 +657,15 @@ impl LspUi {
                     .insert(event.server.clone(), event);
                 true
             }
+            LspEvent::FileOperationCapabilities(event) => {
+                self.rename_files |= event.rename;
+                self.delete_files |= event.delete;
+                true
+            }
+            LspEvent::FileOperation(event) => {
+                self.file_operation = Some(event);
+                true
+            }
             LspEvent::SignatureHelp(event) => self.text.apply_signature(event),
             LspEvent::CodeActions(event) => self.text.apply_code_actions(event),
             LspEvent::Formatting(event) => self.text.apply_formatting(event),
@@ -783,6 +855,25 @@ pub(super) fn one_line(text: &str) -> String {
             }
         })
         .collect()
+}
+
+fn rewrite_any(path: &Path, files: &[(PathBuf, PathBuf)]) -> Option<PathBuf> {
+    files.iter().find_map(|(old, new)| rewrite(path, old, new))
+}
+
+fn rewrite(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
+    if path == old {
+        return Some(new.to_path_buf());
+    }
+    let rest = path.strip_prefix(old).ok()?;
+    (!rest.as_os_str().is_empty()).then(|| new.join(rest))
+}
+
+fn is_under(path: &Path, root: &Path) -> bool {
+    path == root
+        || path
+            .strip_prefix(root)
+            .is_ok_and(|rest| !rest.as_os_str().is_empty())
 }
 
 #[cfg(test)]
