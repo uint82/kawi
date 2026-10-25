@@ -251,6 +251,17 @@ fn commit_message_buffers_are_skipped() {
 }
 
 #[test]
+fn never_saved_buffers_are_skipped() {
+    let dir = crate::test_support::temp_dir("never_saved");
+    let mut app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
+    app.undo.configure(dir.join("undo"));
+    app.undo.set_exclusions(Vec::new());
+    app.persist_clean_undos();
+    assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn scratch_buffers_are_skipped() {
     let (dir, _path, mut app) = app_with("scratch", "alpha\n");
     app.editor
