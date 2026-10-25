@@ -74,15 +74,37 @@ pub(super) fn ensure_directory(path: &Path) -> io::Result<()> {
 
 pub(super) fn ensure_root(path: &Path) -> io::Result<()> {
     match ensure_directory(path) {
-        Ok(()) => Ok(()),
+        Ok(()) => verify_owner(path),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::create_dir(path)
+            fs::create_dir(path)?;
+            verify_owner(path)
         }
         Err(error) => Err(error),
     }
+}
+
+fn verify_owner(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = fs::symlink_metadata(path)?;
+        let owner = metadata.uid();
+        let current = unsafe { libc::geteuid() };
+        if owner != current {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("trash path is owned by uid {owner}: {}", path.display()),
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
 }
 
 fn device_of(path: &Path) -> Option<u64> {
