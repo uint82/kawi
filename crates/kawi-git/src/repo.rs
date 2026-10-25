@@ -2,7 +2,9 @@ use anyhow::{bail, Context, Result};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Stdio};
+
+use crate::command::stderr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitFile {
@@ -226,17 +228,8 @@ fn is_ignored(root: &Path, relpath: &str) -> Result<bool> {
     }
 }
 
-fn run_git(root: &Path, args: &[&str]) -> Result<Output> {
-    Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .context("failed to run git")
-}
-
-fn stderr(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stderr).trim().to_string()
+fn run_git(root: &Path, args: &[&str]) -> Result<std::process::Output> {
+    crate::command::run(root, args)
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf> {
