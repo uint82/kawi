@@ -43,7 +43,7 @@ mod tests {
     use crate::keymap::Flavor;
     use kawi_buffer::Buffer;
     use kawi_lsp::MarkupDocument;
-    use kawi_syntax::{LanguageId, SyntaxGroup};
+    use kawi_syntax::LanguageId;
     use kawi_tui::markdown::{MarkdownLine, MarkdownStyle};
     use kawi_tui::theme::Theme;
 
