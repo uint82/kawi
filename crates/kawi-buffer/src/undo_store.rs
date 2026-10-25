@@ -121,6 +121,10 @@ impl UndoStore {
         let mut files = Vec::new();
         let mut total: u64 = 0;
         for entry in entries.flatten() {
+            let path = entry.path();
+            if !is_undo_key(&path) {
+                continue;
+            }
             let metadata = match entry.metadata() {
                 Ok(metadata) if metadata.is_file() => metadata,
                 _ => continue,
@@ -196,6 +200,12 @@ fn touch_file(path: &Path) {
         .write(true)
         .open(path)
         .and_then(|file| file.set_modified(SystemTime::now()));
+}
+
+fn is_undo_key(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.len() == 64 && name.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 fn remove_and_subtract(path: &Path, size: &u64, total: &mut u64) {

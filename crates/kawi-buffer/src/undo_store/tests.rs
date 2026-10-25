@@ -131,6 +131,26 @@ fn uses_private_permissions() {
 
 #[cfg(unix)]
 #[test]
+fn fixes_existing_directory_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = temp_dir("existing_permissions");
+    let source = dir.join("a.txt");
+    fs::write(&source, "three\n").unwrap();
+    let store = UndoStore::new(dir.join("undo"));
+    fs::create_dir_all(&store.dir).unwrap();
+    fs::set_permissions(&store.dir, fs::Permissions::from_mode(0o755)).unwrap();
+    store
+        .save(&source, &hash("three\n"), &history("three\n"))
+        .unwrap();
+    assert_eq!(
+        fs::metadata(&store.dir).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
 fn keys_non_utf8_paths_by_bytes() {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
@@ -246,6 +266,52 @@ fn prune_removes_files_over_the_total_cap() {
     }
     store.prune(0, Duration::from_secs(3600)).unwrap();
     assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn prune_skips_temporary_files() {
+    let dir = temp_dir("prune_temp");
+    let source = dir.join("a.txt");
+    fs::write(&source, "three\n").unwrap();
+    let store = UndoStore::new(dir.join("undo"));
+    store
+        .save(&source, &hash("three\n"), &history("three\n"))
+        .unwrap();
+    let temp = store.dir.join(".undo-live.tmp");
+    fs::write(&temp, b"partial").unwrap();
+    store.prune(0, Duration::from_secs(3600)).unwrap();
+    assert!(temp.exists());
+    assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 1);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn prune_errors_do_not_panic() {
+    let dir = temp_dir("prune_error");
+    let store = UndoStore::new(dir.join("undo"));
+    fs::write(&store.dir, b"not a directory").unwrap();
+    assert!(store.prune(0, Duration::from_secs(3600)).is_err());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn prune_does_not_break_open_reads() {
+    use std::io::Read;
+    let dir = temp_dir("prune_read");
+    let source = dir.join("a.txt");
+    fs::write(&source, "three\n").unwrap();
+    let store = UndoStore::new(dir.join("undo"));
+    store
+        .save(&source, &hash("three\n"), &history("three\n"))
+        .unwrap();
+    let file_path = store.file_path(&canonical_path(&source));
+    let mut file = File::open(&file_path).unwrap();
+    store.prune(0, Duration::from_secs(3600)).unwrap();
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).unwrap();
+    assert!(!bytes.is_empty());
     let _ = fs::remove_dir_all(dir);
 }
 
