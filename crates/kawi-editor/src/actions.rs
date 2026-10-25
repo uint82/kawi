@@ -283,6 +283,8 @@ pub enum Action {
     PasteBeforeAdvance,
     Undo,
     Redo,
+    UndoOlder,
+    UndoNewer,
     Save,
     Quit,
     EnterInsert,

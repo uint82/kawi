@@ -746,6 +746,14 @@ impl VimKeymap {
             self.clear_pending();
             return Action::JoinLinesNoSpace;
         }
+        if body == "g" && pushed == '-' {
+            self.clear_pending();
+            return Action::UndoOlder;
+        }
+        if body == "g" && pushed == '+' {
+            self.clear_pending();
+            return Action::UndoNewer;
+        }
         if body == "g" && pushed == ';' {
             self.clear_pending();
             return Action::OlderChange;
@@ -2076,6 +2084,27 @@ mod tests {
         assert_eq!(
             map.map(plain(KeyCode::Char('J')), Mode::Normal),
             Action::JoinLinesNoSpace
+        );
+    }
+
+    #[test]
+    fn normal_g_minus_and_plus_walk_undo_tree() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('-')), Mode::Normal),
+            Action::UndoOlder
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('g')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('+')), Mode::Normal),
+            Action::UndoNewer
         );
     }
 
@@ -3793,7 +3822,7 @@ mod tests {
     fn normal_g_unimplemented_second_keys_cancel() {
         let implemented = [
             '~', 'u', 'U', 'g', 'v', 'i', 'e', 'E', 'I', 'j', 'k', '0', '$', 'J', '*', '#', 'p',
-            'P', ';', ',', 'r', 'd', 'c',
+            'P', ';', ',', '-', '+', 'r', 'd', 'c',
         ];
         for code in 0..128u8 {
             let pushed = code as char;

@@ -2,16 +2,20 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use crate::history_persist::{HistoryDelta, HistoryEntry, PersistedHistory};
+use crate::history_persist::PersistedHistory;
 
 use super::UndoStoreError;
+
+mod decode;
+
+pub(super) use decode::decode;
 
 pub(super) const MAX_PATH_BYTES: u64 = 64 * 1024;
 pub(super) const MAX_ENTRIES: usize = 401;
 pub(super) const MAX_FILE_BYTES: usize = 2 * 1024 * 1024;
 
-const MAGIC: &[u8; 8] = b"KAWIUNDO";
-const VERSION: u32 = 1;
+pub(super) const MAGIC: &[u8; 8] = b"KAWIUNDO";
+pub(super) const VERSION: u32 = 2;
 
 pub(super) struct Record {
     pub(super) content_hash: [u8; 32],
@@ -25,15 +29,37 @@ pub(super) fn encode_trimmed(
     history: &PersistedHistory,
 ) -> Result<Vec<u8>, UndoStoreError> {
     let mut history = history.clone();
-    loop {
-        let bytes = encode(path, content_hash, &history)?;
-        if bytes.len() <= MAX_FILE_BYTES {
-            return Ok(bytes);
-        }
+    while encoded_len(path, &history)? > MAX_FILE_BYTES {
         if !history.trim_oldest() {
             return Err(UndoStoreError::TooLarge);
         }
     }
+    encode(path, content_hash, &history)
+}
+
+fn encoded_len(path: &Path, history: &PersistedHistory) -> Result<usize, UndoStoreError> {
+    let path_length = path_bytes(path).len();
+    if path_length as u64 > MAX_PATH_BYTES {
+        return Err(UndoStoreError::TooLarge);
+    }
+    let payload = payload_len(history)?;
+    let total = 8u64 + 4 + 32 + 4 + path_length as u64 + 8 + 32 + payload;
+    usize::try_from(total).map_err(|_| UndoStoreError::TooLarge)
+}
+
+fn payload_len(history: &PersistedHistory) -> Result<u64, UndoStoreError> {
+    if history.entries.len() > MAX_ENTRIES {
+        return Err(UndoStoreError::TooLarge);
+    }
+    let mut length = 8u64 + 1 + 8 + 8 + 8 + 4;
+    for entry in &history.entries {
+        length = length
+            .checked_add(82)
+            .and_then(|value| value.checked_add(entry.delta.removed.len() as u64))
+            .and_then(|value| value.checked_add(entry.delta.inserted.len() as u64))
+            .ok_or(UndoStoreError::TooLarge)?;
+    }
+    Ok(length)
 }
 
 fn encode(
@@ -64,6 +90,9 @@ fn encode_payload(history: &PersistedHistory) -> Result<Vec<u8>, UndoStoreError>
     }
     let mut payload = Vec::new();
     payload.extend_from_slice(&history.current_id.to_le_bytes());
+    push_optional(&mut payload, history.clean_id);
+    payload.extend_from_slice(&history.next_id.to_le_bytes());
+    payload.extend_from_slice(&history.next_write_marker.to_le_bytes());
     payload.extend_from_slice(&(history.entries.len() as u32).to_le_bytes());
     for entry in &history.entries {
         payload.extend_from_slice(&entry.id.to_le_bytes());
@@ -74,8 +103,16 @@ fn encode_payload(history: &PersistedHistory) -> Result<Vec<u8>, UndoStoreError>
         payload.extend_from_slice(&(entry.delta.start as u64).to_le_bytes());
         push_text(&mut payload, &entry.delta.removed)?;
         push_text(&mut payload, &entry.delta.inserted)?;
+        payload.extend_from_slice(&entry.timestamp.to_le_bytes());
+        push_optional(&mut payload, entry.save_marker);
+        push_optional(&mut payload, entry.last_visited_child);
     }
     Ok(payload)
+}
+
+fn push_optional(payload: &mut Vec<u8>, value: Option<u64>) {
+    payload.push(u8::from(value.is_some()));
+    payload.extend_from_slice(&value.unwrap_or_default().to_le_bytes());
 }
 
 fn push_text(payload: &mut Vec<u8>, text: &str) -> Result<(), UndoStoreError> {
@@ -85,133 +122,6 @@ fn push_text(payload: &mut Vec<u8>, text: &str) -> Result<(), UndoStoreError> {
     Ok(())
 }
 
-pub(super) fn decode(bytes: &[u8]) -> Result<Record, UndoStoreError> {
-    let mut reader = Reader::new(bytes);
-    if reader.take(MAGIC.len())? != MAGIC {
-        return Err(UndoStoreError::Invalid("invalid undo magic".to_string()));
-    }
-    let version = reader.u32()?;
-    if version != VERSION {
-        return Err(UndoStoreError::Version(version));
-    }
-    let content_hash = reader.array::<32>()?;
-    let path_length = reader.u32()? as usize;
-    if path_length as u64 > MAX_PATH_BYTES {
-        return Err(UndoStoreError::Invalid("undo path is too long".to_string()));
-    }
-    let path = reader.take(path_length)?.to_vec();
-    let payload_length = reader.u64()?;
-    let checksum = reader.array::<32>()?;
-    if payload_length > MAX_FILE_BYTES as u64 {
-        return Err(UndoStoreError::TooLarge);
-    }
-    let payload = reader.take(payload_length as usize)?;
-    if Sha256::digest(payload).as_slice() != checksum {
-        return Err(UndoStoreError::Checksum);
-    }
-    if !reader.is_empty() {
-        return Err(UndoStoreError::Invalid("trailing undo bytes".to_string()));
-    }
-    Ok(Record {
-        content_hash,
-        path,
-        history: decode_payload(payload)?,
-    })
-}
-
-fn decode_payload(bytes: &[u8]) -> Result<PersistedHistory, UndoStoreError> {
-    let mut reader = Reader::new(bytes);
-    let current_id = reader.u64()?;
-    let count = reader.u32()? as usize;
-    if count == 0 || count > MAX_ENTRIES {
-        return Err(UndoStoreError::Invalid(
-            "invalid undo entry count".to_string(),
-        ));
-    }
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let id = reader.u64()?;
-        let parent = reader.u64()?;
-        let row = reader.usize()?;
-        let col = reader.usize()?;
-        let line_changes = reader.u64()?;
-        let start = reader.usize()?;
-        let removed = reader.text()?;
-        let inserted = reader.text()?;
-        entries.push(HistoryEntry {
-            id,
-            parent: (parent != u64::MAX).then_some(parent),
-            row,
-            col,
-            line_changes,
-            delta: HistoryDelta {
-                start,
-                removed,
-                inserted,
-            },
-        });
-    }
-    if !reader.is_empty() {
-        return Err(UndoStoreError::Invalid("trailing undo payload".to_string()));
-    }
-    Ok(PersistedHistory {
-        current_id,
-        entries,
-    })
-}
-
-struct Reader<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, offset: 0 }
-    }
-
-    fn take(&mut self, length: usize) -> Result<&'a [u8], UndoStoreError> {
-        let end = self
-            .offset
-            .checked_add(length)
-            .filter(|end| *end <= self.bytes.len())
-            .ok_or_else(|| UndoStoreError::Invalid("truncated undo file".to_string()))?;
-        let slice = &self.bytes[self.offset..end];
-        self.offset = end;
-        Ok(slice)
-    }
-
-    fn array<const N: usize>(&mut self) -> Result<[u8; N], UndoStoreError> {
-        self.take(N)?
-            .try_into()
-            .map_err(|_| UndoStoreError::Invalid("truncated undo file".to_string()))
-    }
-
-    fn u32(&mut self) -> Result<u32, UndoStoreError> {
-        Ok(u32::from_le_bytes(self.array()?))
-    }
-
-    fn u64(&mut self) -> Result<u64, UndoStoreError> {
-        Ok(u64::from_le_bytes(self.array()?))
-    }
-
-    fn usize(&mut self) -> Result<usize, UndoStoreError> {
-        usize::try_from(self.u64()?)
-            .map_err(|_| UndoStoreError::Invalid("undo integer overflow".to_string()))
-    }
-
-    fn text(&mut self) -> Result<String, UndoStoreError> {
-        let length = self.u32()? as usize;
-        String::from_utf8(self.take(length)?.to_vec())
-            .map_err(|_| UndoStoreError::Invalid("invalid undo text".to_string()))
-    }
-
-    fn is_empty(&self) -> bool {
-        self.offset == self.bytes.len()
-    }
-}
-
-#[cfg(unix)]
 pub(super) fn path_bytes(path: &Path) -> Vec<u8> {
     use std::os::unix::ffi::OsStrExt;
     path.as_os_str().as_bytes().to_vec()

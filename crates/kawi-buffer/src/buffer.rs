@@ -12,6 +12,8 @@ use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
 use crate::write;
 
+mod undo_tree;
+
 pub struct Buffer {
     id: String,
     rope: Rope,
@@ -751,7 +753,7 @@ impl Buffer {
         };
         let hash = self.write_to(&path, force)?;
         self.source_hash = Some(hash);
-        self.history.mark_clean();
+        self.history.mark_clean_at(&self.rope, self.line_changes);
         Ok(())
     }
 
@@ -784,7 +786,7 @@ impl Buffer {
     pub fn adopt_path(&mut self, path: &str, source_hash: [u8; 32]) {
         self.path = Some(path.to_string());
         self.source_hash = Some(source_hash);
-        self.history.mark_clean();
+        self.history.mark_clean_at(&self.rope, self.line_changes);
     }
 
     pub fn byte_count(&self) -> usize {

@@ -49,6 +49,7 @@ mod shift_ops;
 mod substitute;
 mod syntax;
 mod tab;
+mod undo_tree;
 mod view;
 mod visual_block;
 mod word_search;
@@ -442,6 +443,12 @@ impl Editor {
             Action::Redo => {
                 self.redo();
             }
+            Action::UndoOlder => {
+                self.chronological_undo(false);
+            }
+            Action::UndoNewer => {
+                self.chronological_undo(true);
+            }
             Action::RepeatLastChange => self.repeat_last_change(),
             Action::EnterInsert => {
                 self.arm_insert_repeat(false);
@@ -553,7 +560,11 @@ impl Editor {
         if was_normal
             && !matches!(
                 action,
-                Action::Undo | Action::Redo | Action::RepeatLastChange
+                Action::Undo
+                    | Action::Redo
+                    | Action::UndoOlder
+                    | Action::UndoNewer
+                    | Action::RepeatLastChange
             )
             && buffer_changed
         {
@@ -564,7 +575,12 @@ impl Editor {
                 record: Vec::new(),
             });
         }
-        if buffer_changed && !matches!(action, Action::Undo | Action::Redo) {
+        if buffer_changed
+            && !matches!(
+                action,
+                Action::Undo | Action::Redo | Action::UndoOlder | Action::UndoNewer
+            )
+        {
             let insert_entry =
                 !was_insert && repeat::is_insert_entry(action) && self.mode.is_insert();
             let change_origin = if was_insert && action == Action::DeleteBackward {

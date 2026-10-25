@@ -1,34 +1,6 @@
+use super::test_support::{hash, history, temp_dir};
 use super::*;
-use crate::history::History;
-use ropey::Rope;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static NEXT: AtomicU64 = AtomicU64::new(1);
-
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "kawi_undo_store_{}_{}_{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed),
-        name
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn history(current: &str) -> PersistedHistory {
-    let mut history = History::new();
-    history.checkpoint(&Rope::from_str("one\n"), 0, 0, 0);
-    history.checkpoint(&Rope::from_str("two\n"), 0, 0, 1);
-    history.export(&Rope::from_str(current), 0, 0, 2)
-}
-
-fn hash(text: &str) -> [u8; 32] {
-    Sha256::digest(text.as_bytes()).into()
-}
 
 #[test]
 fn round_trips_history() {
@@ -89,11 +61,11 @@ fn wrong_version_and_truncation_are_discarded() {
         .unwrap();
     let file = store.file_path(&canonical_path(&source));
     let mut bytes = fs::read(&file).unwrap();
-    bytes[8..12].copy_from_slice(&2u32.to_le_bytes());
+    bytes[8..12].copy_from_slice(&3u32.to_le_bytes());
     fs::write(&file, &bytes).unwrap();
     assert!(matches!(
         store.load(&source, &hash("three\n")),
-        Err(UndoStoreError::Version(2))
+        Err(UndoStoreError::Version(3))
     ));
     assert!(!file.exists());
     store
@@ -250,105 +222,5 @@ fn load_survives_a_deleted_source_file() {
         .unwrap();
     fs::remove_file(&source).unwrap();
     assert!(store.load(&source, &hash("three\n")).unwrap().is_some());
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn prune_removes_files_over_the_total_cap() {
-    let dir = temp_dir("prune");
-    let store = UndoStore::new(dir.join("undo"));
-    for name in ["a.txt", "b.txt"] {
-        let source = dir.join(name);
-        fs::write(&source, "three\n").unwrap();
-        store
-            .save(&source, &hash("three\n"), &history("three\n"))
-            .unwrap();
-    }
-    store.prune(0, Duration::from_secs(3600)).unwrap();
-    assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 0);
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn prune_skips_temporary_files() {
-    let dir = temp_dir("prune_temp");
-    let source = dir.join("a.txt");
-    fs::write(&source, "three\n").unwrap();
-    let store = UndoStore::new(dir.join("undo"));
-    store
-        .save(&source, &hash("three\n"), &history("three\n"))
-        .unwrap();
-    let temp = store.dir.join(".undo-live.tmp");
-    fs::write(&temp, b"partial").unwrap();
-    store.prune(0, Duration::from_secs(3600)).unwrap();
-    assert!(temp.exists());
-    assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 1);
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn prune_errors_do_not_panic() {
-    let dir = temp_dir("prune_error");
-    let store = UndoStore::new(dir.join("undo"));
-    fs::write(&store.dir, b"not a directory").unwrap();
-    assert!(store.prune(0, Duration::from_secs(3600)).is_err());
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[cfg(unix)]
-#[test]
-fn prune_does_not_break_open_reads() {
-    use std::io::Read;
-    let dir = temp_dir("prune_read");
-    let source = dir.join("a.txt");
-    fs::write(&source, "three\n").unwrap();
-    let store = UndoStore::new(dir.join("undo"));
-    store
-        .save(&source, &hash("three\n"), &history("three\n"))
-        .unwrap();
-    let file_path = store.file_path(&canonical_path(&source));
-    let mut file = File::open(&file_path).unwrap();
-    store.prune(0, Duration::from_secs(3600)).unwrap();
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).unwrap();
-    assert!(!bytes.is_empty());
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn prune_keeps_the_most_recent_files() {
-    let dir = temp_dir("prune_lru");
-    let first = dir.join("a.txt");
-    let second = dir.join("b.txt");
-    fs::write(&first, "three\n").unwrap();
-    fs::write(&second, "three\n").unwrap();
-    let store = UndoStore::new(dir.join("undo"));
-    store
-        .save(&first, &hash("three\n"), &history("three\n"))
-        .unwrap();
-    std::thread::sleep(Duration::from_millis(20));
-    store
-        .save(&second, &hash("three\n"), &history("three\n"))
-        .unwrap();
-    let file = store.file_path(&canonical_path(&second));
-    let one_file = fs::metadata(&file).unwrap().len();
-    store.prune(one_file, Duration::from_secs(3600)).unwrap();
-    assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 1);
-    assert!(store.load(&second, &hash("three\n")).unwrap().is_some());
-    assert!(store.load(&first, &hash("three\n")).unwrap().is_none());
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn prune_removes_old_files() {
-    let dir = temp_dir("prune_age");
-    let source = dir.join("a.txt");
-    fs::write(&source, "three\n").unwrap();
-    let store = UndoStore::new(dir.join("undo"));
-    store
-        .save(&source, &hash("three\n"), &history("three\n"))
-        .unwrap();
-    store.prune(u64::MAX, Duration::ZERO).unwrap();
-    assert_eq!(fs::read_dir(&store.dir).unwrap().count(), 0);
     let _ = fs::remove_dir_all(dir);
 }

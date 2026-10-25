@@ -1,35 +1,41 @@
-const MAX_HISTORY: usize = 200;
+pub(crate) const MAX_HISTORY: usize = 200;
+
+use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use ropey::Rope;
 
 use crate::line_adjust::{self, LineAdjust};
 
-pub(crate) struct Snapshot {
-    pub(crate) id: u64,
-    pub(crate) text: Rope,
+pub(crate) struct Node {
+    pub(crate) parent: Option<u64>,
+    pub(crate) text: Option<Rope>,
     pub(crate) row: usize,
     pub(crate) col: usize,
     pub(crate) line_changes: u64,
+    pub(crate) timestamp: u64,
+    pub(crate) save_marker: Option<u64>,
+    pub(crate) last_visited_child: Option<u64>,
 }
 
 pub struct History {
-    pub(crate) undo: Vec<Snapshot>,
-    pub(crate) redo: Vec<Snapshot>,
-    pub(crate) group_open: bool,
+    pub(crate) nodes: BTreeMap<u64, Node>,
     pub(crate) current_id: u64,
     pub(crate) next_id: u64,
-    pub(crate) clean_id: u64,
+    pub(crate) clean_id: Option<u64>,
+    pub(crate) next_write_marker: u64,
+    pub(crate) group_open: bool,
 }
 
 impl History {
     pub fn new() -> Self {
         Self {
-            undo: Vec::new(),
-            redo: Vec::new(),
-            group_open: false,
+            nodes: BTreeMap::new(),
             current_id: 0,
             next_id: 1,
-            clean_id: 0,
+            clean_id: Some(0),
+            next_write_marker: 1,
+            group_open: false,
         }
     }
 
@@ -42,14 +48,34 @@ impl History {
     }
 
     pub fn checkpoint(&mut self, text: &Rope, row: usize, col: usize, line_changes: u64) {
-        self.push_snapshot(text, row, col, line_changes);
+        self.record_current(text, row, col, line_changes);
+        let parent = self.current_id;
+        let id = self.next_id;
+        self.next_id = self.next_id.saturating_add(1);
+        self.nodes.insert(
+            id,
+            Node {
+                parent: Some(parent),
+                text: None,
+                row: 0,
+                col: 0,
+                line_changes,
+                timestamp: now_millis(),
+                save_marker: None,
+                last_visited_child: None,
+            },
+        );
+        if let Some(node) = self.nodes.get_mut(&parent) {
+            node.last_visited_child = Some(id);
+        }
+        self.current_id = id;
         self.group_open = false;
+        self.evict_to_cap();
     }
 
     pub fn maybe_checkpoint(&mut self, text: &Rope, row: usize, col: usize, line_changes: u64) {
         if self.group_open {
-            self.push_snapshot(text, row, col, line_changes);
-            self.group_open = false;
+            self.checkpoint(text, row, col, line_changes);
         }
     }
 
@@ -60,10 +86,8 @@ impl History {
         col: usize,
         line_changes: u64,
     ) -> Option<((usize, usize), Option<LineAdjust>)> {
-        let snapshot = self.undo.pop()?;
-        let adjust = snapshot.adjust(text, line_changes);
-        let restored = self.restore_snapshot(text, row, col, snapshot, true, line_changes);
-        Some((restored, adjust))
+        let parent = self.nodes.get(&self.current_id)?.parent?;
+        self.undo_to(text, row, col, line_changes, parent)
     }
 
     pub fn redo(
@@ -73,87 +97,169 @@ impl History {
         col: usize,
         line_changes: u64,
     ) -> Option<((usize, usize), Option<LineAdjust>)> {
-        let snapshot = self.redo.pop()?;
-        let adjust = snapshot.adjust(text, line_changes);
-        let restored = self.restore_snapshot(text, row, col, snapshot, false, line_changes);
-        Some((restored, adjust))
+        let child = self.redo_child(self.current_id)?;
+        self.redo_to(text, row, col, line_changes, child)
     }
 
-    pub fn mark_clean(&mut self) {
-        self.clean_id = self.current_id;
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.current_id != self.clean_id
-    }
-
-    fn restore_snapshot(
+    pub(crate) fn undo_to(
         &mut self,
         text: &mut Rope,
         row: usize,
         col: usize,
-        snapshot: Snapshot,
-        is_undo: bool,
         line_changes: u64,
-    ) -> (usize, usize) {
-        self.push_other_side(text, row, col, is_undo, line_changes);
-        self.current_id = snapshot.id;
-        *text = snapshot.text;
-        (snapshot.row, snapshot.col)
+        target: u64,
+    ) -> Option<((usize, usize), Option<LineAdjust>)> {
+        self.record_current(text, row, col, line_changes);
+        let current = self.current_id;
+        let parent = self.nodes.get(&current)?.parent?;
+        if parent != target {
+            return None;
+        }
+        if let Some(node) = self.nodes.get_mut(&parent) {
+            node.last_visited_child = Some(current);
+        }
+        self.move_to(text, target, line_changes)
     }
 
-    fn push_other_side(
+    pub(crate) fn redo_to(
         &mut self,
-        text: &Rope,
+        text: &mut Rope,
         row: usize,
         col: usize,
-        is_undo: bool,
         line_changes: u64,
-    ) {
-        let snapshot = Snapshot {
-            id: self.current_id,
-            text: text.clone(),
-            row,
-            col,
-            line_changes,
-        };
-        if is_undo {
-            self.redo.push(snapshot);
+        target: u64,
+    ) -> Option<((usize, usize), Option<LineAdjust>)> {
+        self.record_current(text, row, col, line_changes);
+        let current = self.current_id;
+        if self.nodes.get(&target)?.parent != Some(current) {
+            return None;
+        }
+        if let Some(node) = self.nodes.get_mut(&current) {
+            node.last_visited_child = Some(target);
+        }
+        self.move_to(text, target, line_changes)
+    }
+
+    fn move_to(
+        &mut self,
+        text: &mut Rope,
+        target: u64,
+        line_changes: u64,
+    ) -> Option<((usize, usize), Option<LineAdjust>)> {
+        let (target_text, target_row, target_col, adjust) =
+            self.target_state(text, target, line_changes)?;
+        self.current_id = target;
+        *text = target_text;
+        Some(((target_row, target_col), adjust))
+    }
+
+    fn target_state(
+        &self,
+        text: &Rope,
+        target: u64,
+        line_changes: u64,
+    ) -> Option<(Rope, usize, usize, Option<LineAdjust>)> {
+        let node = self.nodes.get(&target)?;
+        let target_text = node.text.clone()?;
+        let adjust = adjust_between(text, &target_text, node.line_changes, line_changes);
+        Some((target_text, node.row, node.col, adjust))
+    }
+
+    pub fn mark_clean(&mut self) {
+        self.clean_id = Some(self.current_id);
+        let marker = self.next_write_marker;
+        self.next_write_marker = self.next_write_marker.saturating_add(1);
+        if let Some(node) = self.nodes.get_mut(&self.current_id) {
+            node.save_marker = Some(marker);
+        }
+    }
+
+    pub(crate) fn mark_clean_at(&mut self, text: &Rope, line_changes: u64) {
+        if let Some(node) = self.nodes.get_mut(&self.current_id) {
+            if node.text.is_none() {
+                node.text = Some(text.clone());
+                node.line_changes = line_changes;
+            }
         } else {
-            self.undo.push(snapshot);
+            self.nodes.insert(
+                self.current_id,
+                Node {
+                    parent: None,
+                    text: Some(text.clone()),
+                    row: 0,
+                    col: 0,
+                    line_changes,
+                    timestamp: now_millis(),
+                    save_marker: None,
+                    last_visited_child: None,
+                },
+            );
         }
+        self.mark_clean();
     }
 
-    fn push_snapshot(&mut self, text: &Rope, row: usize, col: usize, line_changes: u64) {
-        let snapshot = Snapshot {
-            id: self.current_id,
-            text: text.clone(),
-            row,
-            col,
-            line_changes,
-        };
-        self.undo.push(snapshot);
-        self.current_id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-        self.redo.clear();
-        self.trim_to_cap();
+    pub fn is_dirty(&self) -> bool {
+        self.clean_id != Some(self.current_id)
     }
 
-    fn trim_to_cap(&mut self) {
-        if self.undo.len() > MAX_HISTORY {
-            let excess = self.undo.len() - MAX_HISTORY;
-            self.undo.drain(..excess);
+    pub fn current_id(&self) -> u64 {
+        self.current_id
+    }
+
+    fn record_current(&mut self, text: &Rope, row: usize, col: usize, line_changes: u64) {
+        if let Some(node) = self.nodes.get_mut(&self.current_id) {
+            node.text = Some(text.clone());
+            node.row = row;
+            node.col = col;
+            node.line_changes = line_changes;
+            return;
         }
+        self.nodes.insert(
+            self.current_id,
+            Node {
+                parent: None,
+                text: Some(text.clone()),
+                row,
+                col,
+                line_changes,
+                timestamp: now_millis(),
+                save_marker: None,
+                last_visited_child: None,
+            },
+        );
+    }
+
+    fn redo_child(&self, parent: u64) -> Option<u64> {
+        let node = self.nodes.get(&parent)?;
+        if let Some(child) = node.last_visited_child {
+            if self.nodes.get(&child)?.parent == Some(parent) {
+                return Some(child);
+            }
+        }
+        self.nodes
+            .iter()
+            .filter(|(_, child)| child.parent == Some(parent))
+            .map(|(id, _)| *id)
+            .next_back()
     }
 }
 
-impl Snapshot {
-    fn adjust(&self, text: &Rope, line_changes: u64) -> Option<LineAdjust> {
-        if self.line_changes == line_changes {
-            return None;
-        }
-        line_adjust::undo(text, &self.text)
+pub(crate) fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
+}
+
+fn adjust_between(
+    text: &Rope,
+    target: &Rope,
+    target_line_changes: u64,
+    line_changes: u64,
+) -> Option<LineAdjust> {
+    if target_line_changes == line_changes {
+        return None;
     }
+    line_adjust::undo(text, target)
 }
 
 impl Default for History {
@@ -163,92 +269,8 @@ impl Default for History {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn rope_of(text: &str) -> Rope {
-        Rope::from_str(text)
-    }
-
-    fn text_of(rope: &Rope) -> String {
-        rope.to_string()
-    }
-
-    #[test]
-    fn fresh_is_clean() {
-        let history = History::new();
-        assert!(!history.is_dirty());
-    }
-
-    #[test]
-    fn checkpoint_marks_dirty() {
-        let mut history = History::new();
-        history.checkpoint(&rope_of("ab"), 0, 0, 0);
-        assert!(history.is_dirty());
-    }
-
-    #[test]
-    fn undo_restores_snapshot_and_cursor() {
-        let mut history = History::new();
-        let before = rope_of("ab");
-        history.checkpoint(&before, 0, 1, 0);
-        let mut now = rope_of("abcd");
-        assert_eq!(history.undo(&mut now, 0, 3, 0), Some(((0, 1), None)));
-        assert_eq!(text_of(&now), text_of(&before));
-    }
-
-    #[test]
-    fn redo_restores_forward_and_cursor() {
-        let mut history = History::new();
-        history.checkpoint(&rope_of("ab"), 0, 0, 0);
-        let mut now = rope_of("abcd");
-        history.undo(&mut now, 0, 3, 0);
-        assert_eq!(history.redo(&mut now, 0, 0, 0), Some(((0, 3), None)));
-        assert_eq!(text_of(&now), "abcd");
-    }
-
-    #[test]
-    fn new_change_clears_redo() {
-        let mut history = History::new();
-        history.checkpoint(&rope_of("ab"), 0, 0, 0);
-        let mut now = rope_of("abcd");
-        history.undo(&mut now, 0, 0, 0);
-        history.checkpoint(&now, 0, 0, 0);
-        assert_eq!(history.redo(&mut now, 0, 0, 0), None);
-    }
-
-    #[test]
-    fn undo_to_saved_clears_dirty() {
-        let mut history = History::new();
-        history.checkpoint(&rope_of("ab"), 0, 0, 0);
-        let mut now = rope_of("abc");
-        history.mark_clean();
-        history.checkpoint(&now, 0, 1, 0);
-        now = rope_of("abcd");
-        assert!(history.undo(&mut now, 0, 2, 0).is_some());
-        assert_eq!(text_of(&now), "abc");
-        assert!(!history.is_dirty());
-    }
-
-    #[test]
-    fn group_records_once() {
-        let mut history = History::new();
-        let before = rope_of("ab");
-        history.begin_change();
-        history.maybe_checkpoint(&before, 0, 0, 0);
-        history.maybe_checkpoint(&rope_of("abc"), 0, 1, 0);
-        let mut now = rope_of("abcd");
-        assert!(history.undo(&mut now, 0, 2, 0).is_some());
-        assert_eq!(text_of(&now), text_of(&before));
-        assert_eq!(history.undo(&mut now, 0, 0, 0), None);
-    }
-
-    #[test]
-    fn empty_group_records_nothing() {
-        let mut history = History::new();
-        history.begin_change();
-        history.end_change();
-        let mut now = rope_of("ab");
-        assert_eq!(history.undo(&mut now, 0, 0, 0), None);
-    }
-}
+mod evict_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod tests;
