@@ -441,6 +441,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "ropey",
+ "sha2",
 ]
 
 [[package]]
