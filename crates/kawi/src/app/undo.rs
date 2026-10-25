@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use kawi_buffer::UndoStore;
+use sha2::{Digest, Sha256};
 
 use super::App;
 
@@ -159,6 +160,9 @@ impl App {
         let Some(hash) = self.editor.buffer_source_hash(number) else {
             return;
         };
+        if !disk_matches(Path::new(&path), &hash) {
+            return;
+        }
         let Some(history) = self.editor.buffer_history(number) else {
             return;
         };
@@ -199,6 +203,10 @@ fn is_commit_message_path(path: &Path) -> bool {
 
 fn source_is_too_large(path: &Path) -> bool {
     std::fs::metadata(path).is_ok_and(|metadata| metadata.len() > MAX_SOURCE_BYTES)
+}
+
+fn disk_matches(path: &Path, hash: &[u8; 32]) -> bool {
+    std::fs::read(path).is_ok_and(|bytes| Sha256::digest(&bytes).as_slice() == hash)
 }
 
 fn canonical_display(path: &Path) -> String {

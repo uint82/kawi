@@ -5,6 +5,7 @@ use std::time::Instant;
 use kawi_buffer::{content_hash, Buffer};
 use kawi_editor::Action;
 use kawi_lsp::{DocumentEdit, FormattingEvent, TextChange, WorkspaceEdit};
+use sha2::{Digest, Sha256};
 
 use super::super::save::{PendingSave, SaveAfter};
 use super::*;
@@ -115,6 +116,8 @@ fn last_writer_keeps_a_valid_history() {
     edit(&mut second, "y");
     save(&mut second);
     assert_eq!(fs::read_to_string(&path).expect("disk"), "yalpha\n");
+    first.persist_clean_undos();
+    second.persist_clean_undos();
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
     assert!(restarted.editor.try_undo());
     assert_eq!(buffer_text(&restarted), "alpha\n");
@@ -135,7 +138,12 @@ fn crlf_format_on_save_restores_history() {
         started: Instant::now(),
     });
     app.finish_formatted_save(formatting_event(7, &path, &current, "formatted\r\n"));
-    assert_eq!(fs::read(&path).expect("disk"), b"formatted\r\n");
+    let disk = fs::read(&path).expect("disk");
+    assert_eq!(disk, b"formatted\r\n");
+    assert_eq!(
+        app.editor.buffer_source_hash(1),
+        Some(Sha256::digest(&disk).into())
+    );
     drop(app);
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
     assert!(restarted.editor.try_undo());
@@ -155,6 +163,36 @@ fn bom_files_round_trip() {
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
     assert!(restarted.editor.try_undo());
     assert_eq!(buffer_text(&restarted), "\u{feff}alpha\n");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn undoable_reload_keeps_history() {
+    let (dir, path, mut app) = app_with("reload_undoable", "alpha\n");
+    edit(&mut app, "x");
+    save(&mut app);
+    fs::write(&path, "changed\n").expect("rewrite");
+    app.editor.reload_buffer(1).expect("reload");
+    assert_eq!(buffer_text(&app), "changed\n");
+    app.persist_clean_undos();
+    let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
+    assert!(restarted.editor.try_undo());
+    assert_eq!(buffer_text(&restarted), "xalpha\n");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn reload_outside_history_drops_the_entry() {
+    let (dir, path, mut app) = app_with("reload_discard", "alpha\n");
+    edit(&mut app, "x");
+    save(&mut app);
+    fs::write(&path, "changed\n").expect("rewrite");
+    app.editor.discard_current_changes();
+    app.persist_clean_undos();
+    assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
+    assert!(!restarted.editor.try_undo());
+    assert_eq!(buffer_text(&restarted), "changed\n");
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -185,6 +223,53 @@ fn disabling_persistence_skips_writes() {
     edit(&mut app, "x");
     save(&mut app);
     assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn readonly_historical_buffers_are_skipped() {
+    let (dir, _path, mut app) = app_with("readonly_history", "alpha\n");
+    app.open_readonly_window("HEAD:src/main.rs", "diff\n")
+        .expect("historical buffer");
+    app.persist_clean_undos();
+    assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn commit_message_buffers_are_skipped() {
+    let dir = crate::test_support::temp_dir("commit_message");
+    fs::create_dir_all(dir.join(".git")).expect("git dir");
+    let path = dir.join(".git/COMMIT_EDITMSG");
+    fs::write(&path, "message\n").expect("write");
+    let mut app = configured_app(&path, &dir.join("undo"), Vec::new());
+    edit(&mut app, "x");
+    save(&mut app);
+    assert_eq!(fs::read_to_string(&path).expect("disk"), "xmessage\n");
+    assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn scratch_buffers_are_skipped() {
+    let (dir, _path, mut app) = app_with("scratch", "alpha\n");
+    app.editor
+        .open_scratch_buffer("scratch.txt", "scratch\n", true);
+    app.persist_clean_undos();
+    assert_eq!(undo_file_count(&dir.join("undo")), 0);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn failed_undo_writes_do_not_fail_saves() {
+    let (dir, path, mut app) = app_with("store_failure", "alpha\n");
+    let bad_store = dir.join("undo-store");
+    fs::write(&bad_store, "not a directory").expect("block store");
+    app.undo.configure(bad_store.clone());
+    edit(&mut app, "x");
+    save(&mut app);
+    assert_eq!(fs::read_to_string(&path).expect("disk"), "xalpha\n");
+    assert!(bad_store.is_file());
     let _ = fs::remove_dir_all(dir);
 }
 
