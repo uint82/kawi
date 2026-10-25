@@ -17,6 +17,10 @@ pub(super) fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
 
+fn path_exists(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditError {
     NoName,
@@ -65,23 +69,23 @@ impl MatchStage {
 }
 
 pub struct Buffers {
-    parked: Vec<BufferEntry>,
+    pub(super) parked: Vec<BufferEntry>,
     current: usize,
     current_listed: bool,
     alternate: Option<usize>,
     next_number: usize,
 }
 
-struct BufferEntry {
-    number: usize,
-    state: ParkedState,
+pub(super) struct BufferEntry {
+    pub(super) number: usize,
+    pub(super) state: ParkedState,
 }
 
-struct ParkedState {
-    buffer: Buffer,
+pub(super) struct ParkedState {
+    pub(super) buffer: Buffer,
     listed: bool,
     cursor: Cursor,
-    file_indent: IndentConfig,
+    pub(super) file_indent: IndentConfig,
     runtime_shiftwidth: Option<usize>,
     runtime_expandtab: Option<bool>,
     language_indent: super::options::LanguageIndent,
@@ -149,6 +153,10 @@ impl Buffers {
         self.parked.push(BufferEntry { number, state });
     }
 
+    pub(super) fn remove(&mut self, number: usize) {
+        self.parked.retain(|entry| entry.number != number);
+    }
+
     fn set_listed(&mut self, number: usize, listed: bool) {
         if number == self.current {
             self.current_listed = listed;
@@ -175,7 +183,7 @@ impl Buffers {
         numbers
     }
 
-    fn listed_numbers(&self) -> Vec<usize> {
+    pub(super) fn listed_numbers(&self) -> Vec<usize> {
         let mut numbers: Vec<usize> = self
             .parked
             .iter()
@@ -200,27 +208,45 @@ impl Editor {
     }
 
     pub fn write_as(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
+        self.write_copy_to(name, force, false)
+    }
+
+    pub fn save_as(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
+        self.write_copy_to(name, force, true)
+    }
+
+    fn write_copy_to(
+        &mut self,
+        name: &str,
+        force: bool,
+        adopt_existing: bool,
+    ) -> Result<WriteOutcome, EditError> {
         let target = paths::absolute(name, &current_dir());
-        let current = self
+        let current_path = self
             .buffer
             .path
             .as_deref()
             .map(|path| paths::absolute(path, &current_dir()));
-        if current.as_deref() == Some(target.as_path()) {
+        if current_path.as_deref() == Some(target.as_path()) {
             return self.write_current(name, force);
         }
-        if target.exists() && !force {
+        let exists = path_exists(&target);
+        if exists && !force {
             return Err(EditError::FileExists);
         }
-        let created = !target.exists();
         let source_hash = self
             .buffer
             .write_to(name, force)
             .map_err(|error| EditError::Io(error.to_string()))?;
-        if current.is_none() {
-            self.buffer.adopt_path(name, source_hash);
+        if adopt_existing || current_path.is_none() {
+            self.adopt_buffer_path(super::file_paths::PathAdoption {
+                number: self.buffers.current(),
+                path: Some(name.to_string()),
+                source_hash: Some(source_hash),
+                mark_clean: true,
+            });
         }
-        Ok(self.write_outcome(created))
+        Ok(self.write_outcome(!exists))
     }
 
     fn write_current(&mut self, name: &str, force: bool) -> Result<WriteOutcome, EditError> {
@@ -1584,6 +1610,47 @@ mod tests {
         assert_eq!(e.filename(), target);
         assert!(!e.is_dirty());
         assert_eq!(read_file(&dir, "named.txt"), "alpha\n");
+    }
+
+    #[test]
+    fn save_as_adopts_the_new_path_and_keeps_the_old_file() {
+        let dir = temp_dir("save_as");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        type_text(&mut e, "x");
+        let target = file_path(&dir, "copy.txt");
+        let outcome = e.save_as(&target, false).unwrap();
+        assert!(outcome.created);
+        assert_eq!(e.filename(), target);
+        assert!(!e.is_dirty());
+        assert_eq!(read_file(&dir, "a.txt"), "alpha\n");
+        assert_eq!(read_file(&dir, "copy.txt"), "xalpha\n");
+    }
+
+    #[test]
+    fn save_as_redetects_language_defaults() {
+        let dir = temp_dir("save_as_language");
+        write_file(&dir, "a.txt", "alpha\n");
+        let mut e = editor_in(&dir, "a.txt");
+        assert_eq!(e.shiftwidth(), 8);
+        let target = file_path(&dir, "copy.rs");
+        e.save_as(&target, false).unwrap();
+        assert_eq!(e.shiftwidth(), 4);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn save_as_refuses_an_existing_target_without_force() {
+        let dir = temp_dir("save_as_exists");
+        write_file(&dir, "a.txt", "alpha\n");
+        write_file(&dir, "exists.txt", "old\n");
+        let mut e = editor_in(&dir, "a.txt");
+        let target = file_path(&dir, "exists.txt");
+        assert_eq!(e.save_as(&target, false), Err(EditError::FileExists));
+        assert_eq!(e.filename(), file_path(&dir, "a.txt"));
+        e.save_as(&target, true).unwrap();
+        assert_eq!(e.filename(), target);
+        assert_eq!(read_file(&dir, "exists.txt"), "alpha\n");
     }
 
     #[test]

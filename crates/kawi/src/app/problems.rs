@@ -5,6 +5,8 @@ use ropey::Rope;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use super::file_ops::{path_under, rewrite_path};
+
 const MAX_PROBLEMS: usize = 10_000;
 const TASK_PREFIX: &str = "task:";
 const LSP_PREFIX: &str = "lsp:";
@@ -283,6 +285,59 @@ impl Problems {
     pub(super) fn clear_source(&mut self, source: &str) {
         self.stale_sources.remove(source);
         self.groups.retain(|key, _| key.source != source);
+    }
+
+    pub(super) fn rewrite_paths(&mut self, old: &Path, new: &Path) {
+        let groups = std::mem::take(&mut self.groups);
+        for (mut key, problems) in groups {
+            let Some(path) = rewrite_path(&key.path, old, new) else {
+                self.groups.insert(key, problems);
+                continue;
+            };
+            key.path = path;
+            let problems = problems
+                .into_iter()
+                .map(|mut problem| {
+                    problem.path = rewrite_path(&problem.path, old, new)
+                        .unwrap_or_else(|| problem.path.clone());
+                    for related in &mut problem.related {
+                        if let Some(path) = rewrite_path(&related.path, old, new) {
+                            related.path = path;
+                        }
+                    }
+                    problem
+                })
+                .collect::<Vec<_>>();
+            self.groups.entry(key).or_default().extend(problems);
+        }
+        if let Some(current) = self.current.as_mut() {
+            if let Some(path) = rewrite_path(&current.path, old, new) {
+                current.path = path;
+            }
+        }
+        if let Some(editor) = self.editor.as_mut() {
+            if let Some(path) = rewrite_path(&editor.path, old, new) {
+                editor.path = path;
+            }
+        }
+    }
+
+    pub(super) fn remove_paths(&mut self, target: &Path) {
+        self.groups.retain(|key, _| !path_under(&key.path, target));
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|current| path_under(&current.path, target))
+        {
+            self.current = None;
+        }
+        if self
+            .editor
+            .as_ref()
+            .is_some_and(|editor| path_under(&editor.path, target))
+        {
+            self.editor = None;
+        }
     }
 
     pub(super) fn mark_tasks_stale(&mut self) {
@@ -567,7 +622,7 @@ fn compact_message(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kawi_lsp::{DiagnosticPosition, DiagnosticRange};
+    use kawi_lsp::{DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation};
     use kawi_task::Severity;
 
     fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Diagnostic {
@@ -610,6 +665,27 @@ mod tests {
         assert_eq!(problems.total(), 1);
         assert_eq!(problems.visible(Some(path))[0].source, "task:check");
         problems.clear_source("task:check");
+        assert_eq!(problems.total(), 0);
+    }
+
+    #[test]
+    fn rewrites_and_removes_paths_for_a_renamed_directory() {
+        let old = Path::new("/repo/old");
+        let new = Path::new("/repo/new");
+        let mut problems = Problems::default();
+        let mut diagnostic = lsp_diagnostic(1, "error", DiagnosticSeverity::Error);
+        diagnostic.related.push(DiagnosticRelatedInformation {
+            path: old.join("related.rs"),
+            line: 2,
+            message: "related".to_string(),
+        });
+        problems.replace_lsp("server", &old.join("a.rs"), vec![diagnostic]);
+        problems.rewrite_paths(old, new);
+        let visible = problems.visible(Some(&new.join("a.rs")));
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].path, new.join("a.rs"));
+        assert_eq!(visible[0].related[0].path, new.join("related.rs"));
+        problems.remove_paths(new);
         assert_eq!(problems.total(), 0);
     }
 

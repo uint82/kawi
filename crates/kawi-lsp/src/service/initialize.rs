@@ -10,7 +10,7 @@ use lsp_types::{
     PublishDiagnosticsClientCapabilities, RenameClientCapabilities, RenameOptions,
     TextDocumentClientCapabilities, TextDocumentSyncCapability, TextDocumentSyncSaveOptions,
     WindowClientCapabilities, WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
-    WorkspaceFolder,
+    WorkspaceFileOperationsClientCapabilities, WorkspaceFolder,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -44,6 +44,13 @@ impl Manager {
                     self.handle_navigation_response(key, id, result);
                 }
                 Some(ReplyPurpose::Rename) => self.handle_rename_response(key, id, result),
+                Some(ReplyPurpose::FileOperation) => {
+                    let request = self
+                        .pending_replies
+                        .remove(&id)
+                        .map_or(0, |reply| reply.request);
+                    self.handle_file_operation_response(key, request, result);
+                }
                 Some(ReplyPurpose::Text) => self.handle_text_response(key, id, result),
                 Some(ReplyPurpose::CompletionResolve) => {
                     self.handle_completion_resolve_response(key, id, result);
@@ -90,10 +97,16 @@ impl Manager {
         client.diagnostic_identifier = diagnostic_identifier;
         client.support = support;
         client.status = ServerState::Ready;
+        let file_operations = FileOperationCapabilitiesEvent {
+            server: key.server.clone(),
+            rename: support.will_rename_files,
+            delete: support.will_delete_files,
+        };
         let initialized = Message::notification("initialized", Some(serde_json::json!({})));
         client.client.send(initialized);
         self.emit_status(&key.server, ServerState::Ready, None);
         self.emit(LspEvent::CompletionCapabilities(capabilities_event));
+        self.emit(LspEvent::FileOperationCapabilities(file_operations));
         self.emit_diagnostic_mode(&key);
         self.open_documents_for(&key);
         self.schedule_all_diagnostics();
@@ -257,7 +270,31 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
         ),
         pull_diagnostics: capabilities.diagnostic_provider.is_some(),
         workspace_diagnostics: workspace_diagnostics(capabilities.diagnostic_provider.as_ref()),
+        will_rename_files: file_operation_enabled(capabilities.workspace.as_ref(), |ops| {
+            ops.will_rename.as_ref()
+        }),
+        did_rename_files: file_operation_enabled(capabilities.workspace.as_ref(), |ops| {
+            ops.did_rename.as_ref()
+        }),
+        will_delete_files: file_operation_enabled(capabilities.workspace.as_ref(), |ops| {
+            ops.will_delete.as_ref()
+        }),
+        did_delete_files: file_operation_enabled(capabilities.workspace.as_ref(), |ops| {
+            ops.did_delete.as_ref()
+        }),
     }
+}
+
+fn file_operation_enabled(
+    workspace: Option<&lsp_types::WorkspaceServerCapabilities>,
+    operation: impl Fn(
+        &lsp_types::WorkspaceFileOperationsServerCapabilities,
+    ) -> Option<&lsp_types::FileOperationRegistrationOptions>,
+) -> bool {
+    workspace
+        .and_then(|workspace| workspace.file_operations.as_ref())
+        .and_then(operation)
+        .is_some()
 }
 
 fn diagnostic_identifier(
@@ -346,6 +383,14 @@ fn initialize_capabilities() -> ClientCapabilities {
                 document_changes: Some(true),
                 failure_handling: Some(FailureHandlingKind::Abort),
                 ..WorkspaceEditClientCapabilities::default()
+            }),
+            file_operations: Some(WorkspaceFileOperationsClientCapabilities {
+                dynamic_registration: Some(false),
+                will_rename: Some(true),
+                did_rename: Some(true),
+                will_delete: Some(true),
+                did_delete: Some(true),
+                ..WorkspaceFileOperationsClientCapabilities::default()
             }),
             diagnostic: Some(lsp_types::DiagnosticWorkspaceClientCapabilities {
                 refresh_support: Some(true),
@@ -589,6 +634,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_file_operation_support_from_server_capabilities() {
+        let registration = lsp_types::FileOperationRegistrationOptions {
+            filters: Vec::new(),
+        };
+        let capabilities = lsp_types::ServerCapabilities {
+            workspace: Some(lsp_types::WorkspaceServerCapabilities {
+                file_operations: Some(lsp_types::WorkspaceFileOperationsServerCapabilities {
+                    will_rename: Some(registration.clone()),
+                    did_delete: Some(registration),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let support = request_support(&capabilities);
+        assert!(support.will_rename_files);
+        assert!(!support.did_rename_files);
+        assert!(!support.will_delete_files);
+        assert!(support.did_delete_files);
+    }
+
+    #[test]
     fn advertises_phase_seven_capabilities() {
         let capabilities = initialize_capabilities();
         let text_document = capabilities.text_document.expect("text document");
@@ -609,6 +677,11 @@ mod tests {
                 .and_then(|diagnostic| diagnostic.refresh_support),
             Some(true)
         );
+        let operations = workspace.file_operations.expect("file operations");
+        assert_eq!(operations.will_rename, Some(true));
+        assert_eq!(operations.did_rename, Some(true));
+        assert_eq!(operations.will_delete, Some(true));
+        assert_eq!(operations.did_delete, Some(true));
     }
 
     #[test]

@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::history_persist::PersistedHistory;
 
 mod format;
+mod move_path;
 
 use format::{decode, encode_trimmed, path_bytes, MAX_FILE_BYTES, MAX_PATH_BYTES};
 
@@ -215,8 +216,15 @@ fn remove_and_subtract(path: &Path, size: &u64, total: &mut u64) {
 }
 
 fn canonical_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path)
-        .unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()))
+    if let Ok(path) = fs::canonicalize(path) {
+        return path;
+    }
+    if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
+        if let Ok(parent) = fs::canonicalize(parent) {
+            return parent.join(name);
+        }
+    }
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -249,6 +257,8 @@ fn apply_private_mode(options: &mut OpenOptions) {
 #[cfg(not(unix))]
 fn apply_private_mode(_options: &mut OpenOptions) {}
 
+#[cfg(test)]
+mod move_tests;
 #[cfg(test)]
 mod prune_tests;
 #[cfg(test)]

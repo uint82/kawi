@@ -248,6 +248,12 @@ fn picker_footer(picker: &PickerMenu<'_>) -> String {
             picker.items.len()
         );
     }
+    if picker.file_hint {
+        return format!(
+            "{} results  Enter open  Ctrl-A new  Ctrl-R rename  Ctrl-D delete  Tab next  Esc cancel",
+            picker.items.len()
+        );
+    }
     format!(
         "{} results  Enter open  Tab next  Esc cancel",
         picker.items.len()

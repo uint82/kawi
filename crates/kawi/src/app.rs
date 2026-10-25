@@ -14,6 +14,7 @@ mod completion;
 mod config;
 mod conflict;
 mod disk;
+mod file_ops;
 mod formatting;
 mod frame;
 mod git;
@@ -142,6 +143,8 @@ pub struct App {
     picker: Option<PickerSession>,
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
+    file_ops: Option<file_ops::FileOpSession>,
+    pending_file_op: Option<file_ops::PendingFileOp>,
     branch_prompt: Option<git_branch::BranchPrompt>,
     completion: Option<completion::CompletionSession>,
     completion_auto: completion::AutoTrigger,
@@ -211,6 +214,8 @@ impl App {
             picker: None,
             replace: None,
             rename: None,
+            file_ops: None,
+            pending_file_op: None,
             branch_prompt: None,
             completion: None,
             completion_auto: completion::AutoTrigger::new(),
@@ -662,6 +667,7 @@ impl App {
         }
         self.handle_formatting_result();
         self.sync_rename();
+        self.handle_file_operation_result();
     }
 
     fn update_signcolumn_width(&mut self) {
@@ -710,6 +716,8 @@ impl App {
         if self.picker.is_some()
             || self.replace.is_some()
             || self.rename.is_some()
+            || self.file_ops.is_some()
+            || self.pending_file_op.is_some()
             || self.completion.is_some()
             || self.code_actions.is_some()
             || self.conflict.is_some()
@@ -869,6 +877,12 @@ impl App {
         if self.has_pending_branch_action() {
             return self.handle_pending_branch_key(key);
         }
+        if self.file_ops.is_some() {
+            return self.handle_file_op_key(key);
+        }
+        if self.pending_file_op.is_some() {
+            return self.handle_pending_file_op_key(key);
+        }
         if self.branch_prompt.is_some() {
             return self.handle_branch_prompt_key(key);
         }
@@ -958,6 +972,32 @@ impl App {
             self.picker = None;
             if let Some(branch) = branch {
                 return self.delete_branch_ref(&branch);
+            }
+            return Ok(false);
+        }
+        if kind == PickerKind::Files && is_new_file_key(key) {
+            let directory = picker_directory(&session);
+            self.picker = None;
+            self.picker_new_file(directory);
+            return Ok(false);
+        }
+        if kind == PickerKind::Files && is_rename_file_key(key) {
+            let path = selected_picker_path(&session);
+            self.picker = None;
+            if let Some(path) = path {
+                self.picker_rename_file(path);
+            } else {
+                self.show_message("Select a file to rename".to_string());
+            }
+            return Ok(false);
+        }
+        if kind == PickerKind::Files && is_delete_file_key(key) {
+            let path = selected_picker_path(&session);
+            self.picker = None;
+            if let Some(path) = path {
+                self.picker_delete_file(path);
+            } else {
+                self.show_message("Select a file to delete".to_string());
             }
             return Ok(false);
         }
@@ -1168,6 +1208,9 @@ impl App {
                 self.record_saved_buffer();
                 self.lsp.refresh(&self.editor);
                 self.lsp.save();
+                self.sync_language_settings();
+                self.sync_watched_files();
+                self.refresh_git_status();
                 self.show_message(report);
                 true
             }
@@ -1318,6 +1361,9 @@ impl App {
     fn handle_paste(&mut self, text: String) -> Result<bool> {
         self.window_prefix = false;
         if self.handle_terminal_paste(&text) {
+            return Ok(false);
+        }
+        if self.paste_file_op(&text) {
             return Ok(false);
         }
         if self.paste_rename(&text) {
@@ -1607,6 +1653,15 @@ impl App {
             Command::WriteQuitAll => self.handle_write_quit_all(),
             Command::Edit { name, force } => self.handle_edit(name, force),
             Command::WriteAs { name, force } => self.handle_write_as(name, force),
+            Command::SaveAs { name, force } => self.handle_save_as_command(&name, force),
+            Command::RenameFile {
+                source,
+                name,
+                force,
+            } => self.handle_rename_command(source.as_deref(), &name, force),
+            Command::DeleteFile { path, force } => {
+                self.handle_delete_command(path.as_deref(), force)
+            }
             Command::DeleteBuffer { spec, force } => self.handle_delete_buffer(spec, force),
             Command::ListBuffers => self.handle_list_buffers(),
             Command::Marks => self.handle_marks(),
@@ -1840,7 +1895,7 @@ impl App {
     }
 
     fn handle_write_as(&mut self, name: String, force: bool) -> Result<bool> {
-        self.write_as_and_report(&name, force);
+        self.handle_write_as_target(&name, force);
         Ok(false)
     }
 
@@ -1980,6 +2035,30 @@ fn buffer_error_message(error: kawi_editor::BufferError) -> String {
             format!("E89: No write since last change for buffer {number} (add ! to override)")
         }
     }
+}
+
+fn is_new_file_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('a')
+}
+
+fn is_rename_file_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r')
+}
+
+fn is_delete_file_key(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d')
+}
+
+fn selected_picker_path(session: &PickerSession) -> Option<PathBuf> {
+    let index = session.picker().selected()?;
+    let row = session.picker().rows().get(index)?;
+    Some(session.root().join(&row.path))
+}
+
+fn picker_directory(session: &PickerSession) -> PathBuf {
+    selected_picker_path(session)
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| session.root().to_path_buf())
 }
 
 fn is_create_branch_key(key: KeyEvent) -> bool {

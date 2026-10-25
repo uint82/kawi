@@ -85,6 +85,24 @@ impl UndoState {
                 .any(|pattern| glob_matches(pattern, &canonical_display(path)))
     }
 
+    pub(super) fn move_prefix(&mut self, old: &Path, new: &Path) {
+        if let Some(store) = self.store.as_ref() {
+            if let Err(error) = store.move_prefix(old, new) {
+                log_undo(old, error);
+            }
+        }
+        self.attached.clear();
+    }
+
+    pub(super) fn remove_prefix(&mut self, path: &Path) {
+        if let Some(store) = self.store.as_ref() {
+            if let Err(error) = store.remove_prefix(path) {
+                log_undo(path, error);
+            }
+        }
+        self.attached.clear();
+    }
+
     pub(super) fn spawn_prune(&self) {
         let Some(store) = self.store.clone() else {
             return;

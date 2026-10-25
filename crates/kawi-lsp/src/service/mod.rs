@@ -23,6 +23,7 @@ mod completion_resolve;
 mod completion_snippet;
 mod diagnostics;
 mod document;
+mod file_operations;
 mod formatting;
 mod initialize;
 mod manager;
@@ -196,6 +197,27 @@ pub struct RenameEvent {
     pub edit: WorkspaceEdit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOperationKind {
+    Rename,
+    Delete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileOperationEvent {
+    pub request: u64,
+    pub kind: FileOperationKind,
+    pub edit: Option<WorkspaceEdit>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileOperationCapabilitiesEvent {
+    pub server: String,
+    pub rename: bool,
+    pub delete: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspCommand {
     pub title: String,
@@ -320,6 +342,8 @@ pub enum LspEvent {
     Hover(HoverEvent),
     RenameReady(RenameReady),
     Rename(RenameEvent),
+    FileOperationCapabilities(FileOperationCapabilitiesEvent),
+    FileOperation(FileOperationEvent),
     Completion(CompletionEvent),
     CompletionResolved(CompletionResolveEvent),
     CompletionCapabilities(CompletionCapabilitiesEvent),
@@ -458,6 +482,36 @@ impl LspService {
         self.send(Command::Rename {
             request,
             new_name: new_name.to_string(),
+        })
+    }
+
+    pub fn will_rename_files(&self, files: &[(PathBuf, PathBuf)]) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::WillRenameFiles {
+            request,
+            files: files.to_vec(),
+        });
+        request
+    }
+
+    pub fn did_rename_files(&self, files: &[(PathBuf, PathBuf)]) -> bool {
+        self.send(Command::DidRenameFiles {
+            files: files.to_vec(),
+        })
+    }
+
+    pub fn will_delete_files(&self, files: &[PathBuf]) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::WillDeleteFiles {
+            request,
+            files: files.to_vec(),
+        });
+        request
+    }
+
+    pub fn did_delete_files(&self, files: &[PathBuf]) -> bool {
+        self.send(Command::DidDeleteFiles {
+            files: files.to_vec(),
         })
     }
 
@@ -623,6 +677,20 @@ pub(crate) enum Command {
         request: u64,
         new_name: String,
     },
+    WillRenameFiles {
+        request: u64,
+        files: Vec<(PathBuf, PathBuf)>,
+    },
+    DidRenameFiles {
+        files: Vec<(PathBuf, PathBuf)>,
+    },
+    WillDeleteFiles {
+        request: u64,
+        files: Vec<PathBuf>,
+    },
+    DidDeleteFiles {
+        files: Vec<PathBuf>,
+    },
     Completion {
         request: u64,
         path: PathBuf,
@@ -683,6 +751,7 @@ struct Manager {
     pending_requests: HashMap<u64, navigation::PendingRequest>,
     pending_replies: HashMap<RequestId, pending::PendingReply>,
     pending_renames: HashMap<u64, rename::PendingRename>,
+    pending_file_operations: HashMap<u64, PendingFileOperation>,
     pending_text_requests: HashMap<u64, text_requests::PendingTextRequest>,
     pending_completion_resolves: HashMap<u64, completion_resolve::PendingResolve>,
     completion_resolve: HashMap<u64, completion_resolve::ResolveItem>,
@@ -723,6 +792,10 @@ struct RequestSupport {
     range_formatting: bool,
     pull_diagnostics: bool,
     workspace_diagnostics: bool,
+    will_rename_files: bool,
+    did_rename_files: bool,
+    will_delete_files: bool,
+    did_delete_files: bool,
 }
 
 struct Document {
@@ -731,6 +804,13 @@ struct Document {
     text: Rope,
     version: i32,
     clients: Vec<ClientKey>,
+}
+
+struct PendingFileOperation {
+    kind: FileOperationKind,
+    remaining: HashSet<ClientKey>,
+    edit: Option<WorkspaceEdit>,
+    deadline: Instant,
 }
 
 #[derive(Default)]
