@@ -1,4 +1,5 @@
 pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_SNIPPET_BYTES: usize = 64 * 1024;
 pub const MAX_LINE_BYTES: usize = 8 * 1024;
 pub const MAX_CAPTURES: usize = 20_000;
 pub const WINDOW_PARSE_BYTES: usize = 512 * 1024;

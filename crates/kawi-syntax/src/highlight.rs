@@ -210,7 +210,7 @@ fn window_bounds(index: &LineIndex, top: usize, end: usize) -> Range<usize> {
     start..end
 }
 
-fn refine_group(group: SyntaxGroup, kind: &str) -> SyntaxGroup {
+pub(crate) fn refine_group(group: SyntaxGroup, kind: &str) -> SyntaxGroup {
     let numeric = kind.contains("number")
         || kind.contains("integer")
         || kind.contains("float")

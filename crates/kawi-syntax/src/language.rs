@@ -19,17 +19,23 @@ impl LanguageId {
         if path.file_name().and_then(|name| name.to_str()) == Some("Cargo.lock") {
             return Some(Self::Toml);
         }
-        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-        match extension.as_str() {
-            "rs" => Some(Self::Rust),
+        Self::from_alias(path.extension()?.to_str()?)
+    }
+
+    pub fn from_alias(alias: &str) -> Option<Self> {
+        if alias.len() > 32 {
+            return None;
+        }
+        match alias.to_ascii_lowercase().as_str() {
+            "rust" | "rs" => Some(Self::Rust),
             "toml" => Some(Self::Toml),
-            "ts" | "mts" | "cts" => Some(Self::TypeScript),
+            "typescript" | "ts" | "mts" | "cts" => Some(Self::TypeScript),
             "tsx" => Some(Self::Tsx),
-            "js" | "mjs" | "cjs" => Some(Self::JavaScript),
+            "javascript" | "js" | "mjs" | "cjs" => Some(Self::JavaScript),
             "jsx" => Some(Self::Jsx),
-            "py" | "pyw" => Some(Self::Python),
+            "python" | "py" | "pyw" => Some(Self::Python),
             "json" => Some(Self::Json),
-            "sh" | "bash" | "zsh" => Some(Self::Bash),
+            "bash" | "sh" | "shell" | "zsh" => Some(Self::Bash),
             _ => None,
         }
     }
@@ -103,6 +109,19 @@ mod tests {
         assert_eq!(LanguageId::from_path("A.RS"), Some(LanguageId::Rust));
         assert_eq!(LanguageId::from_path("a.txt"), None);
         assert_eq!(LanguageId::from_path("noextension"), None);
+    }
+
+    #[test]
+    fn normalizes_alias_names() {
+        assert_eq!(LanguageId::from_alias("Rust"), Some(LanguageId::Rust));
+        assert_eq!(LanguageId::from_alias("rs"), Some(LanguageId::Rust));
+        assert_eq!(LanguageId::from_alias("ts"), Some(LanguageId::TypeScript));
+        assert_eq!(LanguageId::from_alias("mts"), Some(LanguageId::TypeScript));
+        assert_eq!(LanguageId::from_alias("js"), Some(LanguageId::JavaScript));
+        assert_eq!(LanguageId::from_alias("py"), Some(LanguageId::Python));
+        assert_eq!(LanguageId::from_alias("sh"), Some(LanguageId::Bash));
+        assert_eq!(LanguageId::from_alias("brainfuck"), None);
+        assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
     }
 
     #[test]
