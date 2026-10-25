@@ -410,7 +410,7 @@ impl App {
             .to_string()
     }
 
-    fn open_files(&self) -> Vec<(usize, PathBuf)> {
+    pub(super) fn open_files(&self) -> Vec<(usize, PathBuf)> {
         self.editor
             .all_buffer_numbers()
             .into_iter()

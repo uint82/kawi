@@ -67,6 +67,7 @@ impl App {
         }
         match kind {
             TaskKind::Commit | TaskKind::Amend => {
+                self.reload_open_files();
                 let _ = self.handle_git_refresh();
                 self.refresh_git_status();
             }
@@ -75,6 +76,16 @@ impl App {
         if !status.success && !status.cancelled {
             self.show_message(failure_message(kind));
         }
+    }
+
+    fn reload_open_files(&mut self) {
+        self.sync_watched_files();
+        let paths = self
+            .open_files()
+            .into_iter()
+            .map(|(_, path)| path)
+            .collect::<Vec<_>>();
+        self.handle_disk_paths(&paths);
     }
 }
 
