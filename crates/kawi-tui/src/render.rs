@@ -11,6 +11,7 @@ use crate::frame::{
     CursorStyle, DiagnosticSpan, Frame, PaneFrame, PickerMenu, PromptMenu, ReplaceMenu,
     ReplaceStage, SearchSpan, Selection, TaskPanel,
 };
+use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
 use crate::statusbar::draw_status;
 use crate::text::{count_label, display_width, truncate_to_display_width};
@@ -1008,8 +1009,8 @@ fn draw_overlay_list(
     frame: &Frame,
     list: &crate::frame::OverlayList<'_>,
 ) -> Result<()> {
-    clear_rect(out, list.rect, frame.theme)?;
-    draw_box(out, list.rect, frame.theme)?;
+    clear_overlay_rect(out, list.rect, frame.theme)?;
+    draw_rounded_box(out, list.rect, frame.theme)?;
     let width = list.rect.width.saturating_sub(2);
     let height = list.rect.height.saturating_sub(2);
     if width == 0 || height == 0 {
@@ -1030,7 +1031,12 @@ fn draw_overlay_list(
         if list.selected == Some(index) {
             paint::apply_match(out, &frame.theme.selection)?;
         } else {
-            paint::apply_base(out, frame.theme)?;
+            paint::apply_colors(
+                out,
+                frame.theme.base.foreground,
+                frame.theme.float_background,
+                "apply overlay item",
+            )?;
         }
         let item = list.items.get(index).map_or("", String::as_str);
         write_padded(out, item, width)?;
@@ -1044,10 +1050,10 @@ fn draw_overlay_panel(
     frame: &Frame,
     panel: &crate::frame::OverlayPanel<'_>,
 ) -> Result<()> {
-    clear_rect(out, panel.rect, frame.theme)?;
-    draw_box(out, panel.rect, frame.theme)?;
-    let width = panel.rect.width.saturating_sub(2);
-    let height = panel.rect.height.saturating_sub(2);
+    clear_overlay_rect(out, panel.rect, frame.theme)?;
+    draw_rounded_box(out, panel.rect, frame.theme)?;
+    let width = overlay_content_width(panel.rect.width);
+    let height = panel.rect.height.saturating_sub(PANEL_BORDER);
     if width == 0 || height == 0 {
         return Ok(());
     }
@@ -1064,23 +1070,22 @@ fn draw_overlay_row(
     panel: &crate::frame::OverlayPanel<'_>,
     offset: usize,
 ) -> Result<()> {
-    let width = panel.rect.width.saturating_sub(2);
+    let width = overlay_content_width(panel.rect.width);
     let index = panel.scroll.saturating_add(offset);
     let row = panel.rect.y.saturating_add(offset).saturating_add(1);
-    execute!(
-        out,
-        MoveTo(
-            saturate_u16(panel.rect.x.saturating_add(1)),
-            saturate_u16(row)
-        )
-    )
-    .context("move to overlay panel row")?;
+    let x = panel
+        .rect
+        .x
+        .saturating_add(PANEL_BORDER / 2)
+        .saturating_add(PANEL_PADDING);
+    execute!(out, MoveTo(saturate_u16(x), saturate_u16(row)))
+        .context("move to overlay panel row")?;
     let (used, background) = match panel.lines.get(index) {
         Some(line) => (
             draw_markdown_line(out, line, width, frame.theme)?,
             overlay_background(line, frame.theme),
         ),
-        None => (0, frame.theme.base.background),
+        None => (0, frame.theme.float_background),
     };
     if used < width {
         paint::apply_colors(
@@ -1095,24 +1100,31 @@ fn draw_overlay_row(
     paint::restore_base(out, frame.theme)
 }
 
+fn overlay_content_width(panel_width: usize) -> usize {
+    panel_width
+        .saturating_sub(PANEL_BORDER)
+        .saturating_sub(2 * PANEL_PADDING)
+}
+
 fn draw_scrollbar(
     out: &mut Stdout,
     theme: &Theme,
     panel: &crate::frame::OverlayPanel<'_>,
 ) -> Result<()> {
-    let visible = panel.rect.height.saturating_sub(2);
+    let visible = panel.rect.height.saturating_sub(PANEL_BORDER);
     let Some(thumb) = scrollbar_thumb(panel.scroll, panel.lines.len(), visible) else {
         return Ok(());
     };
+    paint::apply_colors(
+        out,
+        theme.non_text,
+        theme.float_background,
+        "apply overlay scrollbar",
+    )?;
     let x = saturate_u16(panel.rect.right().saturating_sub(1));
     for offset in 0..visible {
         let row = panel.rect.y.saturating_add(offset).saturating_add(1);
-        execute!(
-            out,
-            MoveTo(x, saturate_u16(row)),
-            SetForegroundColor(theme.non_text)
-        )
-        .context("move to overlay scrollbar")?;
+        execute!(out, MoveTo(x, saturate_u16(row))).context("move to overlay scrollbar")?;
         let glyph = if thumb.contains(&offset) {
             '█'
         } else {
@@ -1148,7 +1160,7 @@ fn overlay_background(line: &crate::markdown::MarkdownLine, theme: &Theme) -> Co
     if line.code {
         theme.code_background
     } else {
-        theme.base.background
+        theme.float_background
     }
 }
 
@@ -1221,11 +1233,16 @@ fn markdown_style(
     }
 }
 
-fn clear_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
+fn clear_overlay_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
     if rect.width == 0 || rect.height == 0 {
         return Ok(());
     }
-    paint::apply_base(out, theme)?;
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        theme.float_background,
+        "clear overlay surface",
+    )?;
     for row in rect.y..rect.bottom() {
         execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(row)))
             .context("move to overlay row")?;
@@ -1234,14 +1251,14 @@ fn clear_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Resu
     Ok(())
 }
 
-fn draw_box(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
+fn draw_rounded_box(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
     if rect.width < 2 || rect.height < 2 {
         return Ok(());
     }
     execute!(out, SetForegroundColor(theme.non_text)).context("apply overlay border color")?;
     let inner = rect.width.saturating_sub(2);
-    let top = format!("┌{}┐", "─".repeat(inner));
-    let bottom = format!("└{}┘", "─".repeat(inner));
+    let top = format!("╭{}╮", "─".repeat(inner));
+    let bottom = format!("╰{}╯", "─".repeat(inner));
     execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(rect.y)))
         .context("move to overlay border")?;
     write!(out, "{top}").context("write overlay top border")?;
@@ -2240,7 +2257,7 @@ mod tests {
         let code = crate::markdown::MarkdownLine::code(Vec::new());
         let text = crate::markdown::MarkdownLine::blank();
         assert_eq!(overlay_background(&code, &theme), theme.code_background);
-        assert_eq!(overlay_background(&text, &theme), theme.base.background);
+        assert_eq!(overlay_background(&text, &theme), theme.float_background);
     }
 
     #[test]

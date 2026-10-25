@@ -64,6 +64,7 @@ impl SyntaxColors {
 pub struct Theme {
     pub name: String,
     pub base: BaseColors,
+    pub float_background: Color,
     pub code_background: Color,
     pub search_match: MatchColors,
     pub search_current: MatchColors,

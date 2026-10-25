@@ -1,6 +1,9 @@
 use kawi_tui::frame::Rect;
 use kawi_tui::markdown::MarkdownLine;
+use kawi_tui::overlay::{PANEL_BORDER, PANEL_PADDING};
 use kawi_tui::text::display_width;
+
+const PANEL_CHROME: usize = PANEL_BORDER + 2 * PANEL_PADDING;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PanelLimits {
@@ -22,11 +25,13 @@ pub(super) fn size_panel(
 ) -> SizedPanel {
     let max_width = limits.max_width.max(1);
     let min_width = limits.min_width.min(max_width).max(1);
-    let content_width = max_width.saturating_sub(2).max(1);
+    let content_width = max_width.saturating_sub(PANEL_CHROME).max(1);
     let mut lines = render(content_width);
     clean_lines(&mut lines);
     let widest = lines.iter().map(line_width).max().unwrap_or(0);
-    let width = widest.saturating_add(2).clamp(min_width, max_width);
+    let width = widest
+        .saturating_add(PANEL_CHROME)
+        .clamp(min_width, max_width);
     let height = lines.len().saturating_add(2).min(limits.max_height.max(1));
     SizedPanel {
         width,
@@ -124,7 +129,13 @@ mod tests {
         assert!(panel
             .lines
             .iter()
-            .all(|line| display_width(&line.text()) <= 22));
+            .all(|line| display_width(&line.text()) <= 20));
+    }
+
+    #[test]
+    fn width_includes_border_and_padding_columns() {
+        let panel = panel(&"x".repeat(10), limits(8, 64, 24));
+        assert_eq!(panel.width, 14);
     }
 
     #[test]

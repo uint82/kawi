@@ -10,6 +10,8 @@ use super::{BaseColors, MatchColors, SyntaxColors, Theme, ThemeError};
 #[serde(deny_unknown_fields)]
 struct ThemeFile {
     #[serde(default)]
+    float_background: Option<String>,
+    #[serde(default)]
     code_background: Option<String>,
     base: ColorPair,
     search_match: ColorPair,
@@ -114,9 +116,13 @@ impl Theme {
         let (base_foreground, base_background) = file.base.colors("base")?;
         let line_number = parse_color("gutter.line_number", &file.gutter.line_number)?;
         let non_text = parse_color("gutter.non_text", &file.gutter.non_text)?;
+        let float_background = match file.float_background.as_deref() {
+            Some(value) => parse_color("float_background", value)?,
+            None => base_background,
+        };
         let code_background = match file.code_background.as_deref() {
             Some(value) => parse_color("code_background", value)?,
-            None => base_background,
+            None => float_background,
         };
         Ok(Self {
             name: name.to_string(),
@@ -124,6 +130,7 @@ impl Theme {
                 foreground: base_foreground,
                 background: base_background,
             },
+            float_background,
             code_background,
             search_match: file.search_match.match_colors("search_match")?,
             search_current: file.search_current.match_colors("search_current")?,
@@ -255,9 +262,16 @@ mod tests {
     }
 
     #[test]
-    fn code_background_defaults_to_the_base_background() {
+    fn float_background_defaults_to_the_base_background() {
         let theme = Theme::from_toml("personal", &theme_text()).unwrap();
-        assert_eq!(theme.code_background, theme.base.background);
+        assert_eq!(theme.float_background, theme.base.background);
+    }
+
+    #[test]
+    fn code_background_defaults_to_the_float_background() {
+        let text = format!("float_background = \"#0a0b0c\"\n{}", theme_text());
+        let theme = Theme::from_toml("personal", &text).unwrap();
+        assert_eq!(theme.code_background, theme.float_background);
     }
 
     #[test]
