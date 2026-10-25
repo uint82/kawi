@@ -18,6 +18,7 @@ pub struct Buffer {
     revision: u64,
     line_changes: u64,
     adjustments: Vec<LineAdjust>,
+    readonly: bool,
 }
 
 impl Buffer {
@@ -34,6 +35,7 @@ impl Buffer {
             revision: 0,
             line_changes: 0,
             adjustments: Vec::new(),
+            readonly: false,
         }
     }
 
@@ -61,6 +63,9 @@ impl Buffer {
     }
 
     pub fn reload_from_disk(&mut self) -> Result<()> {
+        if self.readonly {
+            return Ok(());
+        }
         let Some(path) = self.path.clone() else {
             anyhow::bail!("no file name");
         };
@@ -81,8 +86,19 @@ impl Buffer {
     }
 
     pub fn replace_all(&mut self, text: &str) {
+        if self.readonly {
+            return;
+        }
         self.rope = Rope::from_str(text);
         self.touch();
+    }
+
+    pub fn is_readonly(&self) -> bool {
+        self.readonly
+    }
+
+    pub fn set_readonly(&mut self, readonly: bool) {
+        self.readonly = readonly;
     }
 
     pub fn has_path(&self) -> bool {
@@ -102,6 +118,9 @@ impl Buffer {
     }
 
     fn touch(&mut self) {
+        if self.readonly {
+            return;
+        }
         self.revision = self.revision.wrapping_add(1);
     }
 
@@ -193,6 +212,9 @@ impl Buffer {
     }
 
     pub fn begin_change(&mut self) {
+        if self.readonly {
+            return;
+        }
         self.history.begin_change();
     }
 
@@ -201,16 +223,25 @@ impl Buffer {
     }
 
     pub fn checkpoint(&mut self, row: usize, col: usize) {
+        if self.readonly {
+            return;
+        }
         self.history
             .checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn maybe_checkpoint(&mut self, row: usize, col: usize) {
+        if self.readonly {
+            return;
+        }
         self.history
             .maybe_checkpoint(&self.rope, row, col, self.line_changes);
     }
 
     pub fn undo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
+        if self.readonly {
+            return None;
+        }
         let (restored, adjust) = self
             .history
             .undo(&mut self.rope, row, col, self.line_changes)?;
@@ -220,6 +251,9 @@ impl Buffer {
     }
 
     pub fn redo(&mut self, row: usize, col: usize) -> Option<(usize, usize)> {
+        if self.readonly {
+            return None;
+        }
         let (restored, adjust) = self
             .history
             .redo(&mut self.rope, row, col, self.line_changes)?;
@@ -229,6 +263,9 @@ impl Buffer {
     }
 
     pub fn redo_keep_cursor(&mut self, row: usize, col: usize) -> bool {
+        if self.readonly {
+            return false;
+        }
         let Some((_, adjust)) = self
             .history
             .redo(&mut self.rope, row, col, self.line_changes)
@@ -668,6 +705,9 @@ impl Buffer {
     }
 
     pub fn save(&mut self, force: bool) -> Result<()> {
+        if self.readonly {
+            anyhow::bail!("E45: 'readonly' option is set (add ! to override)");
+        }
         let Some(path) = self.path.clone() else {
             anyhow::bail!("E32: No file name");
         };
@@ -757,6 +797,9 @@ impl Buffer {
     }
 
     fn ensure_line_exists(&mut self, row: usize) {
+        if self.readonly {
+            return;
+        }
         while self.raw_line_count() <= row {
             let end = self.rope.len_chars();
             self.insert_text(end, "\n");
@@ -764,17 +807,23 @@ impl Buffer {
     }
 
     fn insert_text(&mut self, index: usize, text: &str) {
+        if self.readonly {
+            return;
+        }
         self.push_adjustment(line_adjust::insertion(&self.rope, index, text));
         self.rope.insert(index, text);
     }
 
     fn remove_text(&mut self, start: usize, end: usize) {
+        if self.readonly {
+            return;
+        }
         self.push_adjustment(line_adjust::char_removal(&self.rope, start, end));
         self.rope.remove(start..end);
     }
 
     fn remove_row_range(&mut self, first: usize, last: usize) {
-        if first >= self.len() {
+        if self.readonly || first >= self.len() {
             return;
         }
         let last = last.min(self.len().saturating_sub(1));
@@ -802,6 +851,9 @@ impl Buffer {
     }
 
     fn rewrite_text(&mut self, start: usize, end: usize, text: &str) {
+        if self.readonly {
+            return;
+        }
         self.rope.remove(start..end.max(start));
         self.rope.insert(start.min(self.rope.len_chars()), text);
     }
@@ -1513,6 +1565,32 @@ mod tests {
         b.insert_char(0, 2, 'c');
         assert_eq!(snapshot.to_string(), "ab");
         assert_eq!(b.line_text(0), "abc");
+    }
+
+    #[test]
+    fn readonly_buffers_reject_edits_and_undo() {
+        let mut buffer = Buffer::from_string("one\ntwo\n");
+        buffer.checkpoint(0, 0);
+        buffer.set_readonly(true);
+        let revision = buffer.revision();
+        buffer.insert_char(0, 0, 'x');
+        buffer.delete_backward(1, 0);
+        buffer.delete_forward(0, 0);
+        buffer.replace_all("other");
+        buffer.paste_after(0, 0, "tail");
+        assert!(buffer.undo(0, 0).is_none());
+        assert!(!buffer.redo_keep_cursor(0, 0));
+        assert_eq!(buffer.snapshot().to_string(), "one\ntwo\n");
+        assert_eq!(buffer.revision(), revision);
+    }
+
+    #[test]
+    fn readonly_buffers_can_be_made_writable() {
+        let mut buffer = Buffer::from_string("one\n");
+        buffer.set_readonly(true);
+        buffer.set_readonly(false);
+        buffer.insert_char(0, 3, '!');
+        assert_eq!(buffer.line_text(0), "one!");
     }
 
     #[test]

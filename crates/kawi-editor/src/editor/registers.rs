@@ -8,6 +8,15 @@ impl Editor {
         self.clipboard = Some(clipboard);
     }
 
+    pub fn yank_text(&mut self, text: &str) {
+        let register = crate::register::Register::from_parts(
+            text.to_string(),
+            crate::register::RegisterKind::CharWise,
+        );
+        self.registers.yank(None, register);
+        self.sync_clipboard(RegisterSlot::Plus);
+    }
+
     // TODO(registers): support the read-only registers (". "% ": "/ "#) and the expression register.
     pub(super) fn select_register(&mut self, name: char) {
         if !matches!(name, 'a'..='z' | 'A'..='Z' | '0'..='9' | '"' | '-' | '+' | '*' | '_') {
