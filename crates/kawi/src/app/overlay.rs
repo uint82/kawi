@@ -1,12 +1,11 @@
-use kawi_completion::Documentation;
-use kawi_lsp::MarkupDocument;
 use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
-use kawi_tui::markdown::{self, MarkdownLine};
+use kawi_tui::markdown::{self, MarkdownDocument, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
 
 use super::App;
 
 mod code;
+pub(crate) mod document;
 mod hover;
 mod signature;
 
@@ -123,7 +122,7 @@ impl App {
         let area = self.window_area();
         let anchor = self.overlay_anchor(area)?;
         let list_size = list_size(session.list_width(), session.items().len(), area);
-        let documentation = session.selected_documentation();
+        let documentation = session.selected_document();
         let initial_width = docs_width(area).saturating_sub(2);
         let (mut docs_lines, docs_size) = docs_preview(documentation, area);
         let placement = placement::place(PlacementInput {
@@ -217,7 +216,7 @@ fn docs_width(area: Rect) -> usize {
 }
 
 fn docs_preview(
-    documentation: Option<&Documentation>,
+    documentation: Option<&MarkdownDocument>,
     area: Rect,
 ) -> (Vec<MarkdownLine>, Option<Size>) {
     let width = docs_width(area);
@@ -226,9 +225,9 @@ fn docs_preview(
     (lines, size)
 }
 
-fn render_docs(documentation: Option<&Documentation>, width: usize) -> Vec<MarkdownLine> {
+fn render_docs(documentation: Option<&MarkdownDocument>, width: usize) -> Vec<MarkdownLine> {
     documentation
-        .map(|documentation| markdown::render(documentation, width.max(1)))
+        .map(|documentation| markdown::render_document(documentation, width.max(1)))
         .unwrap_or_default()
 }
 
@@ -247,10 +246,6 @@ fn docs_scroll_limits(docs: Option<Rect>, lines: usize) -> (usize, usize) {
         lines.saturating_sub(rect.height.saturating_sub(2)),
         page_height(rect),
     )
-}
-
-fn as_documentation(document: &MarkupDocument) -> Documentation {
-    Documentation::from_markup(document.text.clone(), document.markdown)
 }
 
 #[cfg(test)]

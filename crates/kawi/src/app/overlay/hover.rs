@@ -1,8 +1,7 @@
-use kawi_lsp::MarkupDocument;
-use kawi_tui::markdown::{self, MarkdownLine};
+use kawi_tui::markdown::{self, MarkdownDocument, MarkdownLine};
 
 use super::super::App;
-use super::{as_documentation, page_height, panel_content_width, OverlayData, PanelData};
+use super::{page_height, panel_content_width, OverlayData, PanelData};
 
 impl App {
     pub(super) fn hover_overlay(&self) -> Option<OverlayData<'_>> {
@@ -24,14 +23,14 @@ impl App {
         Some((layout.max_scroll, page_height(layout.rect)))
     }
 
-    fn hover_lines(&self, documents: &[MarkupDocument]) -> Vec<MarkdownLine> {
+    fn hover_lines(&self, documents: &[MarkdownDocument]) -> Vec<MarkdownLine> {
         let width = panel_content_width(self.window_area().width);
         let mut lines = Vec::new();
         for (index, document) in documents.iter().enumerate() {
             if index > 0 {
                 lines.push(MarkdownLine::blank());
             }
-            lines.extend(markdown::render(&as_documentation(document), width));
+            lines.extend(markdown::render_document(document, width));
         }
         lines
     }

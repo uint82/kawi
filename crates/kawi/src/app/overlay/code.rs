@@ -258,6 +258,16 @@ mod tests {
     }
 
     #[test]
+    fn untagged_code_without_fallback_keeps_the_code_style() {
+        let mut block = MarkdownCodeBlock {
+            language: None,
+            lines: vec![line("raw")],
+        };
+        highlight_code_block(&mut block, None);
+        assert_eq!(block.lines[0].spans[0].style, MarkdownStyle::Code);
+    }
+
+    #[test]
     fn unknown_code_keeps_the_fallback_style() {
         let mut block = MarkdownCodeBlock {
             language: Some("brainfuck".to_string()),

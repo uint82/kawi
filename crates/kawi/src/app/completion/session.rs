@@ -4,9 +4,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::TextEdit;
 use kawi_completion::{Documentation, Event, Item, ItemId, RequestId};
 use kawi_picker::fuzzy_score;
+use kawi_syntax::LanguageId;
+use kawi_tui::markdown::MarkdownDocument;
 use kawi_tui::overlay::DocsSide;
 
 use super::super::lsp_menu::MenuSelection;
+use super::super::overlay::document::prepare_documentation;
 use session_display::{display_item, list_width};
 
 mod session_display;
@@ -24,6 +27,7 @@ pub(crate) struct CompletionSession {
     pub(super) displays: Vec<String>,
     pub(super) selection: MenuSelection,
     pub(super) docs: BTreeMap<ItemId, Documentation>,
+    pub(super) prepared: BTreeMap<ItemId, MarkdownDocument>,
     pub(super) additional: BTreeMap<ItemId, Vec<TextEdit>>,
     pub(super) resolved: BTreeSet<ItemId>,
     pub(super) resolve_pending: Option<(RequestId, ItemId)>,
@@ -31,6 +35,7 @@ pub(crate) struct CompletionSession {
     pub(super) docs_scroll: usize,
     pub(super) docs_side: Option<DocsSide>,
     pub(super) list_width: usize,
+    fallback_language: Option<LanguageId>,
 }
 
 pub(crate) enum CompletionOutcome {
@@ -45,6 +50,7 @@ impl CompletionSession {
         let items = event.items.clone();
         let selected = items.iter().position(|item| item.preselect);
         let list_width = list_width(&items);
+        let fallback_language = event.path.to_str().and_then(LanguageId::from_path);
         let mut session = Self {
             event,
             items,
@@ -52,6 +58,7 @@ impl CompletionSession {
             displays: Vec::new(),
             selection: MenuSelection::new(0, None),
             docs: BTreeMap::new(),
+            prepared: BTreeMap::new(),
             additional: BTreeMap::new(),
             resolved: BTreeSet::new(),
             resolve_pending: None,
@@ -59,6 +66,7 @@ impl CompletionSession {
             docs_scroll: 0,
             docs_side: None,
             list_width,
+            fallback_language,
         };
         session.refilter(query, selected.map(|index| session.items[index].id.clone()));
         session
@@ -67,9 +75,11 @@ impl CompletionSession {
     pub(super) fn update(&mut self, event: Event, query: &str) {
         let selected = self.selected_id();
         self.event = event;
+        self.fallback_language = self.event.path.to_str().and_then(LanguageId::from_path);
         self.items = self.event.items.clone();
         self.list_width = list_width(&self.items);
         self.docs.clear();
+        self.prepared.clear();
         self.additional.clear();
         self.resolved.clear();
         self.resolve_pending = None;
@@ -104,12 +114,38 @@ impl CompletionSession {
         self.selected_item().map(|item| item.id.clone())
     }
 
-    pub(crate) fn selected_documentation(&self) -> Option<&Documentation> {
-        let item = self.selected_item()?;
-        self.docs
-            .get(&item.id)
-            .or(item.documentation.as_ref())
+    pub(crate) fn selected_document(&self) -> Option<&MarkdownDocument> {
+        self.prepared.get(&self.selected_item()?.id)
+    }
+
+    pub(super) fn prepare_selected_document(&mut self) {
+        let Some(id) = self.selected_item().map(|item| item.id.clone()) else {
+            return;
+        };
+        self.prepare_document(&id);
+    }
+
+    pub(super) fn prepare_document(&mut self, id: &ItemId) {
+        if self.prepared.contains_key(id) {
+            return;
+        }
+        let documentation = self
+            .docs
+            .get(id)
+            .or_else(|| {
+                self.items
+                    .iter()
+                    .find(|item| item.id == *id)?
+                    .documentation
+                    .as_ref()
+            })
             .filter(|documentation| !documentation.text.trim().is_empty())
+            .cloned();
+        let Some(documentation) = documentation else {
+            return;
+        };
+        let document = prepare_documentation(&documentation, self.fallback_language);
+        self.prepared.insert(id.clone(), document);
     }
 
     pub(crate) fn docs_scroll(&self) -> usize {
@@ -164,6 +200,7 @@ impl CompletionSession {
             });
         self.selection = MenuSelection::new(self.filtered.len(), preferred);
         self.rebuild_displays();
+        self.prepare_selected_document();
     }
 
     pub(super) fn rebuild_displays(&mut self) {

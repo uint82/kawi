@@ -157,3 +157,9 @@ fn supports_tilde_fences_and_longer_closers() {
         ["print('hi')", "after"]
     );
 }
+
+#[test]
+fn code_blocks_sanitize_control_characters() {
+    let document = parse(&markdown("```\nsafe\u{1b}[31m\n```"));
+    assert_eq!(code_block(&document).text(), "safe [31m");
+}

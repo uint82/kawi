@@ -660,7 +660,10 @@ impl App {
             self.handle_completion_resolve_failed(request);
         }
         if let Some(event) = self.lsp.take_signature() {
-            self.signature = Some(signature::SignatureSession::new(event));
+            self.signature = Some(signature::SignatureSession::new(
+                event,
+                self.editor.language_id(),
+            ));
         }
         if let Some(event) = self.lsp.take_code_actions() {
             self.handle_code_action_event(event);

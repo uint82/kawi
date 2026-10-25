@@ -178,7 +178,7 @@ fn empty_documentation_is_hidden() {
         kind: MarkupKind::PlainText,
     });
     let session = CompletionSession::new(event(vec![value]), "");
-    assert!(session.selected_documentation().is_none());
+    assert!(session.selected_document().is_none());
 }
 
 #[test]
@@ -276,3 +276,5 @@ fn docs_scroll_only_applies_with_documentation() {
     );
     assert_eq!(session.docs_scroll(), 2);
 }
+
+mod documentation;

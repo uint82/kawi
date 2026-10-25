@@ -3,8 +3,12 @@ use kawi_syntax::{file_size_supported, LanguageId, SyntaxKey, SyntaxRequest};
 use super::Editor;
 
 impl Editor {
+    pub fn language_id(&self) -> Option<LanguageId> {
+        LanguageId::from_path(self.buffer.path.as_deref()?)
+    }
+
     pub fn syntax_key(&self) -> Option<SyntaxKey> {
-        let language = LanguageId::from_path(self.buffer.path.as_deref()?)?;
+        let language = self.language_id()?;
         if !file_size_supported(self.buffer.len_bytes()) {
             return None;
         }

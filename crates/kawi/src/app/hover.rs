@@ -1,24 +1,28 @@
 use crossterm::event::KeyEvent;
 
 use kawi_lsp::MarkupDocument;
+use kawi_syntax::LanguageId;
+use kawi_tui::markdown::MarkdownDocument;
+
+use super::overlay::document::prepare_markup_documents;
 
 use super::lsp_navigation::HoverResult;
 use super::App;
 
 pub(super) struct HoverSession {
-    documents: Vec<MarkupDocument>,
+    documents: Vec<MarkdownDocument>,
     scroll: usize,
 }
 
 impl HoverSession {
-    pub(super) fn new(documents: Vec<MarkupDocument>) -> Self {
+    pub(super) fn new(documents: Vec<MarkupDocument>, fallback: Option<LanguageId>) -> Self {
         Self {
-            documents,
+            documents: prepare_markup_documents(&documents, fallback),
             scroll: 0,
         }
     }
 
-    pub(super) fn documents(&self) -> &[MarkupDocument] {
+    pub(super) fn documents(&self) -> &[MarkdownDocument] {
         &self.documents
     }
 
@@ -41,7 +45,7 @@ impl App {
             return;
         }
         self.pager = None;
-        self.hover = Some(HoverSession::new(result.documents));
+        self.hover = Some(HoverSession::new(result.documents, result.language));
     }
 
     pub(super) fn handle_hover_key(&mut self, key: KeyEvent) -> anyhow::Result<Option<bool>> {
@@ -82,10 +86,13 @@ mod tests {
 
     fn hover_app() -> App {
         let mut app = App::new(Buffer::from_string("value\n"), Flavor::Vim);
-        app.hover = Some(HoverSession::new(vec![MarkupDocument {
-            text: "documentation".to_string(),
-            markdown: false,
-        }]));
+        app.hover = Some(HoverSession::new(
+            vec![MarkupDocument {
+                text: "documentation".to_string(),
+                markdown: false,
+            }],
+            None,
+        ));
         app
     }
 
@@ -111,5 +118,27 @@ mod tests {
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(app.handle_hover_key(key).expect("hover"), Some(false));
         assert!(app.hover.is_none());
+    }
+}
+
+#[cfg(test)]
+mod syntax_tests {
+    use super::*;
+    use kawi_tui::markdown::{self, MarkdownStyle};
+
+    #[test]
+    fn hover_documents_are_prepared_with_the_buffer_language() {
+        let session = HoverSession::new(
+            vec![MarkupDocument {
+                text: "```\nlet answer = 1;\n```".to_string(),
+                markdown: true,
+            }],
+            Some(LanguageId::Rust),
+        );
+        let lines = markdown::render_document(&session.documents()[0], 80);
+        assert!(lines[0]
+            .spans
+            .iter()
+            .any(|span| matches!(span.style, MarkdownStyle::Syntax(_))));
     }
 }
