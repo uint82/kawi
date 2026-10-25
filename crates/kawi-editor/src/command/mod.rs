@@ -48,6 +48,10 @@ pub enum Command {
     Git(GitCommand),
     Task(TaskCommand),
     Quickfix(QuickfixCommand),
+    Terminal {
+        command: Option<String>,
+        vertical: bool,
+    },
     Conflict,
     SetError(String),
     Substitute(SubstituteCommand),
@@ -145,7 +149,11 @@ pub const COMMAND_NAMES: &[&str] = &[
     "split",
     "substitute",
     "task",
+    "term",
+    "terminal",
     "vnew",
+    "vterm",
+    "vterminal",
     "vs",
     "vsplit",
     "w",
@@ -252,6 +260,14 @@ fn parse_named(text: &str) -> Command {
         ("git", rest) => parse_git_command(rest),
         ("task", rest) => parse_task_command(rest),
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
+        ("term" | "terminal", rest) => Command::Terminal {
+            command: terminal_command(rest),
+            vertical: false,
+        },
+        ("vterm" | "vterminal", rest) => Command::Terminal {
+            command: terminal_command(rest),
+            vertical: true,
+        },
         ("conflict", []) => Command::Conflict,
         ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
         ("cclose", []) => Command::Quickfix(QuickfixCommand::Close),
@@ -330,6 +346,10 @@ fn parse_task_command(words: &[&str]) -> Command {
         _ => return Command::Unknown,
     };
     Command::Task(command)
+}
+
+fn terminal_command(words: &[&str]) -> Option<String> {
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 fn parse_quickfix_command(words: &[&str]) -> Command {
@@ -731,6 +751,45 @@ mod tests {
         assert_eq!(parse("task close"), Command::Task(TaskCommand::Close));
         assert_eq!(parse("task run"), Command::Unknown);
         assert_eq!(parse("task a b"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_terminal_commands() {
+        assert_eq!(
+            parse("term"),
+            Command::Terminal {
+                command: None,
+                vertical: false
+            }
+        );
+        assert_eq!(
+            parse("terminal"),
+            Command::Terminal {
+                command: None,
+                vertical: false
+            }
+        );
+        assert_eq!(
+            parse("term echo hello"),
+            Command::Terminal {
+                command: Some("echo hello".to_string()),
+                vertical: false
+            }
+        );
+        assert_eq!(
+            parse("vterm"),
+            Command::Terminal {
+                command: None,
+                vertical: true
+            }
+        );
+        assert_eq!(
+            parse("vterminal echo hello"),
+            Command::Terminal {
+                command: Some("echo hello".to_string()),
+                vertical: true
+            }
+        );
     }
 
     #[test]

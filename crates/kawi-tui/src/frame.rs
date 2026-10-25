@@ -44,6 +44,7 @@ pub struct Frame<'a> {
     pub picker: Option<PickerMenu<'a>>,
     pub replace: Option<ReplaceMenu<'a>>,
     pub task: Option<TaskPanel<'a>>,
+    pub terminal: Option<TerminalPanel<'a>>,
     pub viewport: &'a Viewport,
     pub message: Option<&'a str>,
     pub prompt: Option<PromptMenu<'a>>,
@@ -66,6 +67,49 @@ pub struct TaskPanel<'a> {
 pub struct TaskLine<'a> {
     pub text: &'a str,
     pub stderr: bool,
+}
+
+pub struct TerminalPanel<'a> {
+    pub rect: Rect,
+    pub title: &'a str,
+    pub status: &'a str,
+    pub lines: &'a [TerminalLine],
+    pub cursor: Option<TerminalCursor>,
+    pub focused: bool,
+}
+
+pub struct TerminalLine {
+    pub spans: Vec<TerminalSpan>,
+}
+
+pub struct TerminalSpan {
+    pub text: String,
+    pub foreground: TerminalColor,
+    pub background: TerminalColor,
+    pub attrs: TerminalAttrs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalColor {
+    Default,
+    Indexed(u8),
+    Rgb(u8, u8, u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TerminalAttrs {
+    pub bold: bool,
+    pub dim: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub inverse: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalCursor {
+    pub row: usize,
+    pub col: usize,
+    pub style: CursorStyle,
 }
 
 pub struct PaneFrame<'a> {

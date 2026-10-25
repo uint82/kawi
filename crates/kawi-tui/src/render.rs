@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use crossterm::{
-    cursor::{MoveTo, SetCursorStyle},
+    cursor::{MoveTo, SetCursorStyle, Show},
     execute,
     style::{Attribute, SetAttribute, SetForegroundColor},
     terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
@@ -20,6 +20,10 @@ use kawi_syntax::{SyntaxGroup, SyntaxSpan};
 
 use crate::display;
 
+mod terminal;
+
+use terminal::{draw_terminal_panel, place_terminal_cursor};
+
 pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
     let contents = match (frame.replace.as_ref(), frame.picker.as_ref()) {
@@ -38,14 +42,20 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     }
     draw_separators(out, frame)?;
     draw_task_panel(out, frame)?;
+    draw_terminal_panel(out, frame)?;
     match frame.pager {
         Some(lines) => draw_pager(out, frame, lines)?,
         None => draw_message_row(out, frame)?,
     }
     draw_completion(out, frame)?;
     draw_overlay(out, frame)?;
-    apply_cursor_style(out, frame.cursor_style)?;
-    place_cursor(out, frame)?;
+    if let Some(terminal) = frame.terminal.as_ref().filter(|terminal| terminal.focused) {
+        place_terminal_cursor(out, terminal)?;
+    } else {
+        execute!(out, Show).context("show editor cursor")?;
+        apply_cursor_style(out, frame.cursor_style)?;
+        place_cursor(out, frame)?;
+    }
     flush(out)?;
     Ok(())
 }

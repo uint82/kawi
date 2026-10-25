@@ -3,6 +3,7 @@ use std::process::{Child, Command};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessSignal {
+    Hangup,
     Terminate,
     Kill,
 }
@@ -51,6 +52,7 @@ fn signal_unix(pid: u32, signal: ProcessSignal) {
         return;
     };
     let signal = match signal {
+        ProcessSignal::Hangup => libc::SIGHUP,
         ProcessSignal::Terminate => libc::SIGTERM,
         ProcessSignal::Kill => libc::SIGKILL,
     };

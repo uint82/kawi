@@ -407,6 +407,7 @@ impl VimKeymap {
             match key.code {
                 KeyCode::Char('a') => return Action::Increment,
                 KeyCode::Char('x') => return Action::Decrement,
+                KeyCode::Char('\\' | '4') => return Action::ToggleTerminal,
                 KeyCode::Char(']') | KeyCode::Char('5') | KeyCode::Char('}') => {
                     return Action::GotoDefinition
                 }
@@ -1273,6 +1274,7 @@ impl VimKeymap {
             (" t" | "\\t", KeyCode::Char('o')) if !has_ctrl_or_alt(key) => Action::TaskOutput,
             (" t" | "\\t", KeyCode::Char('l')) if !has_ctrl_or_alt(key) => Action::TaskList,
             (" t" | "\\t", KeyCode::Char('q')) if !has_ctrl_or_alt(key) => Action::QuickfixOpen,
+            (" t" | "\\t", KeyCode::Char('t')) if !has_ctrl_or_alt(key) => Action::ToggleTerminal,
             _ => return self.cancel_sequence(),
         };
         self.clear_pending();
@@ -1503,6 +1505,7 @@ impl VimKeymap {
             match key.code {
                 KeyCode::Char('a') => return Action::Increment,
                 KeyCode::Char('x') => return Action::Decrement,
+                KeyCode::Char('\\' | '4') => return Action::ToggleTerminal,
                 _ => {}
             }
         }
@@ -4201,6 +4204,7 @@ mod tests {
                 ('o', Action::TaskOutput),
                 ('l', Action::TaskList),
                 ('q', Action::QuickfixOpen),
+                ('t', Action::ToggleTerminal),
             ] {
                 let mut map = VimKeymap::new();
                 assert_eq!(
@@ -4214,6 +4218,20 @@ mod tests {
                 assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
             }
         }
+    }
+
+    #[test]
+    fn terminal_toggle_keys_map() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('4')), Mode::Normal),
+            Action::ToggleTerminal
+        );
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(ctrl(KeyCode::Char('4')), Mode::Visual),
+            Action::ToggleTerminal
+        );
     }
 
     #[test]

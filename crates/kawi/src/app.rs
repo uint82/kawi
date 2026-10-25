@@ -6,6 +6,7 @@ use kawi_buffer::Buffer;
 use std::collections::BTreeMap;
 use std::io::stdout;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 mod autosave;
 mod code_action;
@@ -38,8 +39,12 @@ mod restore;
 mod save;
 mod signature;
 mod task;
+mod terminal_ui;
 mod window;
 mod workspace_edit;
+
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+const TERMINAL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -141,6 +146,8 @@ pub struct App {
     lsp: LspUi,
     tasks: Tasks,
     task: TaskSession,
+    terminal: terminal_ui::TerminalUi,
+    terminal_focus: bool,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
     conflict: Option<conflict::ConflictSession>,
@@ -159,6 +166,7 @@ pub struct App {
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
     window_defaults: WindowOptions,
+    last_frame: Instant,
 }
 
 impl App {
@@ -199,6 +207,8 @@ impl App {
             lsp: LspUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
+            terminal: terminal_ui::TerminalUi::default(),
+            terminal_focus: false,
             disk: disk::DiskState::default(),
             file_watch: None,
             conflict: None,
@@ -217,6 +227,7 @@ impl App {
             recovery: None,
             recovery_prompt: None,
             window_defaults: WindowOptions::default(),
+            last_frame: Instant::now(),
         }
     }
 
@@ -227,6 +238,8 @@ impl App {
         self.events.start_signal_handlers()?;
         self.start_file_watch();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
+        self.terminal_focus = false;
+        self.terminal.close();
         match outcome {
             Ok(result) => {
                 if result.is_err() || self.events.shutdown_requested() {
@@ -306,6 +319,7 @@ impl App {
             self.sync_git();
             self.sync_lsp();
             self.sync_task();
+            self.sync_terminal();
             self.sync_watched_files();
             self.maybe_open_conflict();
             self.save_tick();
@@ -320,6 +334,7 @@ impl App {
             self.refresh_picker();
             self.refresh_replace();
             self.draw_frame(&mut out)?;
+            self.last_frame = Instant::now();
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
             }
@@ -348,6 +363,7 @@ impl App {
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
             redraw |= self.sync_task();
+            redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
             redraw |= self.save_tick();
             redraw |= self.autosave_tick();
@@ -361,6 +377,7 @@ impl App {
             }
             redraw |= self.recovery_tick();
             if redraw {
+                self.wait_for_frame_budget()?;
                 return Ok(Redraw::Redraw);
             }
             if self.events.input_closed() {
@@ -374,10 +391,25 @@ impl App {
                 ),
             );
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,
                 None => self.events.wait()?,
             }
+        }
+    }
+
+    fn terminal_wait_timeout(&self) -> Option<Duration> {
+        self.terminal.needs_poll().then_some(TERMINAL_POLL_INTERVAL)
+    }
+
+    fn wait_for_frame_budget(&self) -> Result<()> {
+        loop {
+            let elapsed = self.last_frame.elapsed();
+            if elapsed >= FRAME_INTERVAL {
+                return Ok(());
+            }
+            self.events.wait_timeout(FRAME_INTERVAL - elapsed)?;
         }
     }
 
@@ -620,6 +652,17 @@ impl App {
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
         self.window_prefix = false;
+        if let Some(result) = self.handle_terminal_mouse(mouse) {
+            return Ok(result);
+        }
+        if matches!(
+            mouse.kind,
+            MouseEventKind::Down(MouseButton::Left)
+                | MouseEventKind::ScrollUp
+                | MouseEventKind::ScrollDown
+        ) {
+            self.terminal_focus = false;
+        }
         if self.hover.is_some() {
             self.hover = None;
             return self.handle_noop();
@@ -747,6 +790,7 @@ impl App {
 
     fn handle_resize(&mut self, cols: u16, rows: u16) -> Result<bool> {
         self.set_viewport_size(cols, rows);
+        self.sync_terminal_panel_size();
         self.reveal_cursor();
         Ok(false)
     }
@@ -775,6 +819,9 @@ impl App {
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
+        }
+        if self.terminal_focus {
+            return self.handle_terminal_key(key);
         }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
@@ -999,6 +1046,7 @@ impl App {
             Action::QuickfixNext => self.handle_quickfix_command(QuickfixCommand::Next),
             Action::QuickfixPrev => self.handle_quickfix_command(QuickfixCommand::Previous),
             Action::QuickfixOpen => self.handle_quickfix_command(QuickfixCommand::Open),
+            Action::ToggleTerminal => self.toggle_terminal(),
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -1174,6 +1222,9 @@ impl App {
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
         self.window_prefix = false;
+        if self.handle_terminal_paste(&text) {
+            return Ok(false);
+        }
         if self.paste_rename(&text) {
             return Ok(false);
         }
@@ -1453,6 +1504,14 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
+            Command::Terminal { command, vertical } => {
+                let layout = if vertical {
+                    terminal_ui::TerminalLayout::Vertical
+                } else {
+                    terminal_ui::TerminalLayout::Horizontal
+                };
+                self.open_terminal(command, layout)
+            }
             Command::Conflict => self.handle_conflict_command(),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {

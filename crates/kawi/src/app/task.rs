@@ -155,10 +155,15 @@ impl App {
         if height == 0 {
             return None;
         }
+        let terminal_height = self.terminal.panel_height(self.screen_height, height);
+        let terminal_width = self.terminal.panel_width(self.screen_width);
         Some(Rect::new(
             0,
-            self.screen_height.saturating_sub(1).saturating_sub(height),
-            self.screen_width,
+            self.screen_height
+                .saturating_sub(1)
+                .saturating_sub(terminal_height)
+                .saturating_sub(height),
+            self.screen_width.saturating_sub(terminal_width),
             height,
         ))
     }
@@ -336,8 +341,7 @@ impl App {
     }
 
     fn sync_task_panel_size(&mut self) {
-        self.refresh_window_sizes();
-        self.reveal_cursor();
+        self.sync_terminal_panel_size();
     }
 }
 
