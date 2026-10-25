@@ -8,10 +8,6 @@ use super::{
 use super::{UndoStore, UndoStoreError};
 
 impl UndoStore {
-    pub fn move_path(&self, old: &Path, new: &Path) -> Result<(), UndoStoreError> {
-        self.move_prefix(old, new)
-    }
-
     pub fn move_prefix(&self, old: &Path, new: &Path) -> Result<(), UndoStoreError> {
         self.rewrite_prefix(old, new, false)
     }

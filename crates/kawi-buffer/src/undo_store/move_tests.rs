@@ -11,7 +11,7 @@ fn moves_a_history_to_a_new_path() {
     fs::write(&new, "two\n").unwrap();
     let store = UndoStore::new(dir.join("undo"));
     store.save(&old, &hash("two\n"), &history("two\n")).unwrap();
-    store.move_path(&old, &new).unwrap();
+    store.move_prefix(&old, &new).unwrap();
     assert!(store.load(&old, &hash("two\n")).unwrap().is_none());
     assert!(store.load(&new, &hash("two\n")).unwrap().is_some());
     let _ = fs::remove_dir_all(dir);

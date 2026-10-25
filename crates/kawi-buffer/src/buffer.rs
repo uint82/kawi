@@ -788,11 +788,6 @@ impl Buffer {
         self.source_hash = source_hash;
     }
 
-    pub fn adopt_path(&mut self, path: &str, source_hash: [u8; 32]) {
-        self.set_path(Some(path), Some(source_hash));
-        self.history.mark_clean_at(&self.rope, self.line_changes);
-    }
-
     pub fn byte_count(&self) -> usize {
         self.rope.len_bytes()
     }
