@@ -12,6 +12,7 @@ use super::App;
 pub(super) struct SignatureSession {
     event: SignatureHelpEvent,
     documents: Vec<Option<MarkdownDocument>>,
+    scroll: usize,
 }
 
 impl SignatureSession {
@@ -26,7 +27,11 @@ impl SignatureSession {
                     .map(|documentation| prepare_markup_document(documentation, fallback))
             })
             .collect();
-        Self { event, documents }
+        Self {
+            event,
+            documents,
+            scroll: 0,
+        }
     }
 
     pub(super) fn event(&self) -> &SignatureHelpEvent {
@@ -36,9 +41,34 @@ impl SignatureSession {
     pub(super) fn document(&self, index: usize) -> Option<&MarkdownDocument> {
         self.documents.get(index)?.as_ref()
     }
+
+    pub(super) fn scroll(&self) -> usize {
+        self.scroll
+    }
+
+    fn scroll_by(&mut self, delta: isize, limit: usize) {
+        self.scroll = self.scroll.saturating_add_signed(delta).min(limit);
+    }
 }
 
 impl App {
+    pub(super) fn handle_signature_key(&mut self, key: KeyEvent) -> Option<bool> {
+        if self.signature.is_none() || !self.editor.mode().is_insert() {
+            return None;
+        }
+        let up = self.completion_options.keys.up.event();
+        let down = self.completion_options.keys.down.event();
+        if key != up && key != down {
+            return None;
+        }
+        let (limit, page) = self.signature_scroll()?;
+        let mut session = self.signature.take()?;
+        let page = isize::try_from(page).unwrap_or(isize::MAX);
+        session.scroll_by(if key == up { -page } else { page }, limit);
+        self.signature = Some(session);
+        Some(false)
+    }
+
     pub(super) fn after_signature_key(&mut self, key: KeyEvent) {
         if key.modifiers.intersects(
             crossterm::event::KeyModifiers::CONTROL | crossterm::event::KeyModifiers::ALT,

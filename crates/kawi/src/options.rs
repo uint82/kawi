@@ -6,6 +6,11 @@ use std::path::Path;
 use crate::keymap::flavor_from_name;
 
 const MAX_NUMBERWIDTH: usize = 20;
+pub(crate) const HOVER_MAX_WIDTH_DEFAULT: usize = 64;
+pub(crate) const COMPLETION_DOCS_MAX_WIDTH_DEFAULT: usize = 42;
+pub(crate) const OVERLAY_MIN_WIDTH_DEFAULT: usize = 20;
+pub(crate) const OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT: usize = 50;
+pub(crate) const OVERLAY_MARGIN_DEFAULT: usize = 2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum AutosaveMode {
@@ -168,7 +173,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 20] = [
+pub(crate) const OPTIONS: [OptionSpec; 25] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -360,6 +365,51 @@ pub(crate) const OPTIONS: [OptionSpec; 20] = [
         section: ConfigSection::Editor,
         config_key: "completion_docs_down",
         default: OptionDefault::Text("ctrl-f"),
+    },
+    OptionSpec {
+        name: "hover_max_width",
+        aliases: &[],
+        kind: OptionKind::Int { min: 20, max: 200 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "hover_max_width",
+        default: OptionDefault::Int(HOVER_MAX_WIDTH_DEFAULT),
+    },
+    OptionSpec {
+        name: "completion_docs_max_width",
+        aliases: &[],
+        kind: OptionKind::Int { min: 20, max: 200 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "completion_docs_max_width",
+        default: OptionDefault::Int(COMPLETION_DOCS_MAX_WIDTH_DEFAULT),
+    },
+    OptionSpec {
+        name: "overlay_min_width",
+        aliases: &[],
+        kind: OptionKind::Int { min: 8, max: 200 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "overlay_min_width",
+        default: OptionDefault::Int(OVERLAY_MIN_WIDTH_DEFAULT),
+    },
+    OptionSpec {
+        name: "overlay_max_height_percent",
+        aliases: &[],
+        kind: OptionKind::Int { min: 10, max: 100 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "overlay_max_height_percent",
+        default: OptionDefault::Int(OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT),
+    },
+    OptionSpec {
+        name: "overlay_margin",
+        aliases: &[],
+        kind: OptionKind::Int { min: 0, max: 40 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "overlay_margin",
+        default: OptionDefault::Int(OVERLAY_MARGIN_DEFAULT),
     },
 ];
 

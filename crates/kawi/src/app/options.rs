@@ -142,6 +142,21 @@ impl App {
             "completion_docs_down" => {
                 self.apply_completion_key(&value, false);
             }
+            "hover_max_width" => {
+                self.overlay_options.hover_max_width = value.as_int().unwrap_or_default();
+            }
+            "completion_docs_max_width" => {
+                self.overlay_options.completion_docs_max_width = value.as_int().unwrap_or_default();
+            }
+            "overlay_min_width" => {
+                self.overlay_options.min_width = value.as_int().unwrap_or_default();
+            }
+            "overlay_max_height_percent" => {
+                self.overlay_options.max_height_percent = value.as_int().unwrap_or_default();
+            }
+            "overlay_margin" => {
+                self.overlay_options.margin = value.as_int().unwrap_or_default();
+            }
             _ => {}
         }
         if spec.scope == options::OptionScope::Window {
@@ -267,6 +282,15 @@ impl App {
             "completion_docs_down" => {
                 OptionValue::Text(self.completion_options.keys.down.name().to_string())
             }
+            "hover_max_width" => OptionValue::Int(self.overlay_options.hover_max_width),
+            "completion_docs_max_width" => {
+                OptionValue::Int(self.overlay_options.completion_docs_max_width)
+            }
+            "overlay_min_width" => OptionValue::Int(self.overlay_options.min_width),
+            "overlay_max_height_percent" => {
+                OptionValue::Int(self.overlay_options.max_height_percent)
+            }
+            "overlay_margin" => OptionValue::Int(self.overlay_options.margin),
             _ => spec.default_value(),
         }
     }
