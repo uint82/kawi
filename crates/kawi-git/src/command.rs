@@ -13,14 +13,20 @@ pub(crate) fn run(root: &Path, args: &[&str]) -> Result<Output> {
 }
 
 pub(crate) fn run_status(root: &Path, args: &[&str]) -> Result<Output> {
-    Command::new("git")
+    status_command(root)
+        .args(args)
+        .output()
+        .context("failed to run git status")
+}
+
+fn status_command(root: &Path) -> Command {
+    let mut command = Command::new("git");
+    command
         .arg("--no-optional-locks")
         .arg("-C")
         .arg(root)
-        .args(args)
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .output()
-        .context("failed to run git status")
+        .env("GIT_OPTIONAL_LOCKS", "0");
+    command
 }
 
 pub(crate) fn path_from_output(bytes: &[u8]) -> PathBuf {
@@ -66,4 +72,20 @@ pub(crate) fn path_from_bytes(bytes: &[u8]) -> PathBuf {
 #[cfg(not(unix))]
 pub(crate) fn path_from_bytes(bytes: &[u8]) -> PathBuf {
     PathBuf::from(String::from_utf8_lossy(bytes).into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_commands_do_not_take_optional_locks() {
+        let command = status_command(Path::new("/tmp"));
+        assert!(command
+            .get_args()
+            .any(|argument| argument == "--no-optional-locks"));
+        assert!(command.get_envs().any(|(name, value)| {
+            name == "GIT_OPTIONAL_LOCKS" && value == Some(std::ffi::OsStr::new("0"))
+        }));
+    }
 }

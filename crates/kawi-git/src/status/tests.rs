@@ -2,6 +2,7 @@ use super::*;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -205,5 +206,31 @@ fn preserves_non_utf8_paths() {
         .find(|entry| entry.kind == EntryKind::Untracked)
         .unwrap();
     assert_eq!(entry.path.as_os_str(), name.as_os_str());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn status_refresh_does_not_collide_with_commit() {
+    let dir = repo("concurrent");
+    fs::write(dir.join("a.txt"), "one\n").unwrap();
+    git(&dir, &["add", "a.txt"]);
+    git(&dir, &["commit", "-qm", "one"]);
+    fs::write(dir.join("a.txt"), "two\n").unwrap();
+    git(&dir, &["add", "a.txt"]);
+    let reader_dir = dir.clone();
+    let reader = thread::spawn(move || {
+        for _ in 0..50 {
+            assert!(Status::load(&reader_dir).unwrap().is_some());
+        }
+    });
+    let output = Command::new("git")
+        .current_dir(&dir)
+        .args(["commit", "-m", "two"])
+        .env("GIT_EDITOR", "true")
+        .output()
+        .unwrap();
+    reader.join().unwrap();
+    assert!(output.status.success(), "commit failed: {output:?}");
+    assert_eq!(git(&dir, &["log", "-1", "--format=%s"]), "two");
     let _ = fs::remove_dir_all(dir);
 }

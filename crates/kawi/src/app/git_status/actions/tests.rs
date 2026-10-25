@@ -69,3 +69,23 @@ fn stages_unstages_and_discards_the_selected_entry() {
     assert_eq!(fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn untracked_discard_prompts_every_time() {
+    let (dir, mut app) = app_with_repo("discard_untracked");
+    let path = dir.join("new.txt");
+    fs::write(&path, "new\n").unwrap();
+    wait_for_status(&mut app);
+    app.open_git_status();
+    app.handle_git_status_key(key('j')).unwrap();
+    app.handle_git_status_key(key('x')).unwrap();
+    assert!(app.last_message().unwrap().contains("Discard changes"));
+    app.handle_git_status_key(key('n')).unwrap();
+    assert!(path.exists());
+    app.handle_git_status_key(key('x')).unwrap();
+    assert!(app.last_message().unwrap().contains("Discard changes"));
+    app.handle_git_status_key(key('y')).unwrap();
+    wait_for_status(&mut app);
+    assert!(!path.exists());
+    let _ = fs::remove_dir_all(dir);
+}

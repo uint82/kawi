@@ -55,3 +55,24 @@ fn watcher_relevance_is_limited_to_git_state() {
     assert!(is_relevant(git_dir, git_dir));
     assert!(!is_relevant(&git_dir.join("objects"), git_dir));
 }
+
+#[test]
+fn unborn_branch_has_no_divergence() {
+    let state = GitStatusState {
+        status: Some(status(BranchStatus::Named {
+            name: "main".to_string(),
+            oid: None,
+            upstream: None,
+        })),
+        ..GitStatusState::default()
+    };
+    let display = state.display().unwrap();
+    assert_eq!(display.branch, "main");
+    assert_eq!(display.ahead, 0);
+    assert_eq!(display.behind, 0);
+}
+
+#[test]
+fn missing_status_hides_the_git_statusline() {
+    assert!(GitStatusState::default().display().is_none());
+}

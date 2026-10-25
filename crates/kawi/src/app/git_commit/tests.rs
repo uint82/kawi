@@ -1,3 +1,5 @@
+mod hooks;
+
 use std::fs;
 use std::process::Command;
 use std::sync::mpsc;
@@ -33,10 +35,11 @@ fn repo_with_staged_change(name: &str) -> (std::path::PathBuf, App) {
     git(&dir, &["commit", "-qm", "initial"]);
     fs::write(&path, "two\n").unwrap();
     git(&dir, &["add", "a.txt"]);
-    let app = App::new(
+    let mut app = App::new(
         Buffer::from_file(path.to_str().unwrap()).unwrap(),
         Flavor::Vim,
     );
+    app.sync_watched_files();
     (dir, app)
 }
 
@@ -58,6 +61,32 @@ fn insert_message(app: &mut App, message: &str) {
     app.editor.apply(Action::ExitInsert);
 }
 
+fn install_hook(dir: &std::path::Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let hooks = dir.join(".git/hooks");
+    fs::create_dir_all(&hooks).unwrap();
+    let path = hooks.join("pre-commit");
+    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn wait_for_clean_status(app: &mut App) {
+    app.refresh_git_status();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.sync_git_status();
+        if app
+            .git_status
+            .status()
+            .is_some_and(|status| status.entries.is_empty())
+        {
+            return;
+        }
+        assert!(Instant::now() < deadline, "git status did not become clean");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn wait_for_task(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while app.task.is_running() {
@@ -73,11 +102,11 @@ fn open_socket_editor(
     path: &std::path::Path,
 ) -> mpsc::Receiver<anyhow::Result<WaitOutcome>> {
     app.ensure_ipc();
-    let root = app.task_root();
+    let socket = app.ipc.as_ref().unwrap().path().to_path_buf();
     let file = path.to_path_buf();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
-        let _ = sender.send(crate::ipc::wait(&root, &file));
+        let _ = sender.send(crate::ipc::wait_on(&socket, &file));
     });
     let deadline = Instant::now() + Duration::from_secs(5);
     while app.git_commit.editor.is_none() {
@@ -221,5 +250,23 @@ fn commit_without_staged_changes_reports_it() {
         app.last_message(),
         Some("Nothing staged; use :git commit -a")
     );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn socket_editor_quit_without_saving_replies_abort() {
+    let (dir, mut app) = repo_with_staged_change("socket_quit");
+    let path = dir.join(".git/COMMIT_EDITMSG");
+    fs::write(&path, "").unwrap();
+    let receiver = open_socket_editor(&mut app, &path);
+    app.close_active_window(false).unwrap();
+    assert_eq!(
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap(),
+        WaitOutcome::Aborted
+    );
+    assert!(app.git_commit.editor.is_none());
     let _ = fs::remove_dir_all(dir);
 }
