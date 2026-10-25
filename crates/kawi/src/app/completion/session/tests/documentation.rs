@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::overlay::code::{highlight_calls, reset_highlight_calls};
 use kawi_syntax::SyntaxGroup;
 use kawi_tui::markdown::{self, MarkdownStyle};
 
@@ -80,4 +81,36 @@ fn resolved_documentation_replaces_initial_documentation() {
         .collect::<Vec<_>>()
         .join("\n");
     assert_eq!(text, "fn resolved() {}");
+}
+
+#[test]
+fn selection_changes_highlight_each_document_once() {
+    let mut first = item("a", "alpha");
+    first.documentation = Some(markdown_document("```rust\nfn alpha() {}\n```"));
+    let mut second = item("b", "beta");
+    second.documentation = Some(markdown_document("```rust\nfn beta() {}\n```"));
+    reset_highlight_calls();
+    let mut session = CompletionSession::new(event(vec![first, second]), "");
+    assert_eq!(highlight_calls(), 1);
+    session.handle_key(
+        KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+        None,
+    );
+    assert_eq!(highlight_calls(), 2);
+    session.handle_key(
+        KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+        None,
+    );
+    assert_eq!(highlight_calls(), 2);
+    session.handle_key(
+        KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
+        KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+        None,
+    );
+    assert_eq!(highlight_calls(), 2);
 }

@@ -225,6 +225,33 @@ mod tests {
     }
 
     #[test]
+    fn highlights_a_bare_signature() {
+        assert!(groups(LanguageId::Rust, "fn push(&mut self, value: T)")
+            .contains(&SyntaxGroup::Keyword));
+    }
+
+    #[test]
+    fn highlights_a_single_expression_in_every_language() {
+        let fragments = [
+            (LanguageId::Rust, "self.items.push(value)"),
+            (LanguageId::Toml, "name = \"kawi\""),
+            (LanguageId::TypeScript, "value + 1"),
+            (LanguageId::Tsx, "<div className=\"x\" />"),
+            (LanguageId::JavaScript, "value + 1"),
+            (LanguageId::Jsx, "<div className=\"x\" />"),
+            (LanguageId::Python, "value + 1"),
+            (LanguageId::Json, "{\"value\": 1}"),
+            (LanguageId::Bash, "echo \"hi\""),
+        ];
+        for (language, fragment) in fragments {
+            assert!(
+                !groups(language, fragment).is_empty(),
+                "{language:?} fragment returned no groups"
+            );
+        }
+    }
+
+    #[test]
     fn spans_stay_on_utf8_boundaries() {
         let text = "let café = \"héllo\";";
         for span in highlight_snippet(LanguageId::Rust, text) {

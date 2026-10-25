@@ -163,3 +163,12 @@ fn code_blocks_sanitize_control_characters() {
     let document = parse(&markdown("```\nsafe\u{1b}[31m\n```"));
     assert_eq!(code_block(&document).text(), "safe [31m");
 }
+
+#[test]
+fn raw_markdown_rendering_never_infers_untagged_languages() {
+    let lines = render(&markdown("```\nlet answer = 1;\n```"), 80);
+    assert!(lines[0]
+        .spans
+        .iter()
+        .all(|span| span.style == MarkdownStyle::Code));
+}
