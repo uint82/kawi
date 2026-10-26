@@ -33,6 +33,9 @@ fn main() -> Result<()> {
     let restore_workspace = path.is_none();
     let cwd = std::env::current_dir()?;
     let paths = StatePaths::resolve();
+    if let Some(paths) = paths.as_ref() {
+        kawi_syntax::set_user_query_dir(paths.queries.clone());
+    }
     let (session, warning) = load_startup_session(restore_workspace, paths.as_ref(), &cwd);
     let buffer = load_buffer(path)?;
     let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
@@ -194,6 +197,7 @@ mod tests {
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),
+            queries: dir.join("queries"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
             recovery: dir.join("recovery"),

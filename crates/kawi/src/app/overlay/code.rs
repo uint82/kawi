@@ -1,4 +1,4 @@
-use kawi_syntax::{highlight_snippet, LanguageId, SnippetSpan, SyntaxGroup};
+use kawi_syntax::{highlight_snippet, LanguageId, SnippetSpan, SyntaxHighlight};
 use kawi_tui::markdown::{MarkdownCodeBlock, MarkdownLine, MarkdownSpan, MarkdownStyle};
 use kawi_tui::text::sanitize_char;
 
@@ -100,7 +100,7 @@ fn apply_span(
         }
         let from = span.start.max(*start).min(*end) - start;
         let to = span.end.min(*end) - start;
-        fill_cells(line, &mut cells[index], from, to, span.group);
+        fill_cells(line, &mut cells[index], from, to, span.highlight);
     }
 }
 
@@ -109,13 +109,13 @@ fn fill_cells(
     cells: &mut [MarkdownStyle],
     start: usize,
     end: usize,
-    group: SyntaxGroup,
+    highlight: SyntaxHighlight,
 ) {
     let from = line[..start].chars().count();
     let to = line[..end].chars().count();
     let len = cells.len();
     for cell in &mut cells[from.min(len)..to.min(len)] {
-        *cell = MarkdownStyle::Syntax(group);
+        *cell = MarkdownStyle::Syntax(highlight);
     }
 }
 
@@ -149,7 +149,12 @@ fn push_span(spans: &mut Vec<MarkdownSpan>, text: &mut String, style: Option<Mar
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kawi_syntax::registry;
     use kawi_tui::markdown::MarkdownLine;
+
+    fn highlight(name: &str) -> SyntaxHighlight {
+        registry().index_of(name).expect("registered capture")
+    }
 
     fn line(text: &str) -> MarkdownLine {
         MarkdownLine {
@@ -169,14 +174,14 @@ mod tests {
             &[SnippetSpan {
                 start: 0,
                 end: text.len(),
-                group: SyntaxGroup::Keyword,
+                highlight: highlight("keyword"),
             }],
         );
         assert_eq!(lines.len(), 2);
         assert!(lines.iter().all(|line| {
             line.spans
                 .iter()
-                .all(|span| span.style == MarkdownStyle::Syntax(SyntaxGroup::Keyword))
+                .all(|span| span.style == MarkdownStyle::Syntax(highlight("keyword")))
         }));
     }
 
@@ -187,13 +192,13 @@ mod tests {
             &[SnippetSpan {
                 start: 0,
                 end: 4,
-                group: SyntaxGroup::Type,
+                highlight: highlight("type"),
             }],
         );
         assert_eq!(lines[0].text(), "\téx");
         assert_eq!(
             lines[0].spans[0].style,
-            MarkdownStyle::Syntax(SyntaxGroup::Type)
+            MarkdownStyle::Syntax(highlight("type"))
         );
     }
 
@@ -205,12 +210,12 @@ mod tests {
                 SnippetSpan {
                     start: 0,
                     end: 6,
-                    group: SyntaxGroup::Keyword,
+                    highlight: highlight("keyword"),
                 },
                 SnippetSpan {
                     start: 2,
                     end: 4,
-                    group: SyntaxGroup::Type,
+                    highlight: highlight("type"),
                 },
             ],
         );
@@ -221,9 +226,9 @@ mod tests {
                 .map(|span| (span.text.as_str(), span.style))
                 .collect::<Vec<_>>(),
             [
-                ("ab", MarkdownStyle::Syntax(SyntaxGroup::Keyword)),
-                ("cd", MarkdownStyle::Syntax(SyntaxGroup::Type)),
-                ("ef", MarkdownStyle::Syntax(SyntaxGroup::Keyword)),
+                ("ab", MarkdownStyle::Syntax(highlight("keyword"))),
+                ("cd", MarkdownStyle::Syntax(highlight("type"))),
+                ("ef", MarkdownStyle::Syntax(highlight("keyword"))),
             ]
         );
     }
@@ -235,7 +240,7 @@ mod tests {
             &[SnippetSpan {
                 start: 0,
                 end: 1,
-                group: SyntaxGroup::Keyword,
+                highlight: highlight("keyword"),
             }],
         );
         assert_eq!(lines[0].text(), "é");
@@ -255,6 +260,21 @@ mod tests {
             .spans
             .iter()
             .all(|span| span.style == MarkdownStyle::Code));
+    }
+
+    #[test]
+    fn overlays_keep_finer_capture_names() {
+        let mut block = MarkdownCodeBlock {
+            language: Some("python".to_string()),
+            lines: vec![line("def greet(name: str):")],
+        };
+        highlight_code_block(&mut block, None);
+        assert!(block.lines[0].spans.iter().any(|span| {
+            let MarkdownStyle::Syntax(highlight) = span.style else {
+                return false;
+            };
+            registry().name(highlight) == Some("variable.parameter")
+        }));
     }
 
     #[test]
@@ -280,7 +300,7 @@ mod tests {
         assert!(block.lines[0]
             .spans
             .iter()
-            .any(|span| span.style == MarkdownStyle::Syntax(SyntaxGroup::Keyword)));
+            .any(|span| span.style == MarkdownStyle::Syntax(highlight("keyword"))));
     }
 
     #[test]
@@ -301,7 +321,7 @@ mod tests {
             &[SnippetSpan {
                 start: 0,
                 end: text.len(),
-                group: SyntaxGroup::Type,
+                highlight: highlight("type"),
             }],
         );
         let document = kawi_tui::markdown::MarkdownDocument {
@@ -318,7 +338,7 @@ mod tests {
         assert!(wrapped
             .iter()
             .flat_map(|line| &line.spans)
-            .all(|span| span.style == MarkdownStyle::Syntax(SyntaxGroup::Type)));
+            .all(|span| span.style == MarkdownStyle::Syntax(highlight("type"))));
     }
 
     #[test]

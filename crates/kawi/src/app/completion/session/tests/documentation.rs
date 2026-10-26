@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::overlay::code::{highlight_calls, reset_highlight_calls};
-use kawi_syntax::SyntaxGroup;
+use kawi_syntax::registry;
 use kawi_tui::markdown::{self, MarkdownStyle};
 
 fn markdown_document(text: &str) -> Documentation {
@@ -20,7 +20,7 @@ fn selected_untagged_documentation_uses_the_buffer_language() {
     assert!(lines[0]
         .spans
         .iter()
-        .any(|span| span.style == MarkdownStyle::Syntax(SyntaxGroup::Keyword)));
+        .any(|span| span.style == MarkdownStyle::Syntax(registry().index_of("keyword").unwrap())));
 }
 
 #[test]

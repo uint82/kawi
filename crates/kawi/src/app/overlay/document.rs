@@ -42,8 +42,12 @@ fn as_documentation(document: &MarkupDocument) -> Documentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kawi_syntax::SyntaxGroup;
+    use kawi_syntax::{registry, SyntaxHighlight};
     use kawi_tui::markdown::{MarkdownLine, MarkdownStyle};
+
+    fn keyword() -> SyntaxHighlight {
+        registry().index_of("keyword").expect("registered capture")
+    }
 
     fn hover(text: &str) -> MarkdownDocument {
         prepare_markup_document(
@@ -68,7 +72,7 @@ mod tests {
         let lines = markdown::render_document(&document, 80);
         assert_eq!(
             style_of(&lines[0], "let"),
-            Some(MarkdownStyle::Syntax(SyntaxGroup::Keyword))
+            Some(MarkdownStyle::Syntax(keyword()))
         );
         assert_eq!(
             lines
@@ -94,7 +98,7 @@ mod tests {
         let lines = markdown::render_document(&document, 80);
         assert_eq!(
             style_of(&lines[0], "let"),
-            Some(MarkdownStyle::Syntax(SyntaxGroup::Keyword))
+            Some(MarkdownStyle::Syntax(keyword()))
         );
     }
 
