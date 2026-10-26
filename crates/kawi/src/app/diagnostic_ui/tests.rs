@@ -131,16 +131,16 @@ fn virtual_text_modes_follow_the_cursor_and_severity_filter() {
         diagnostic(1, DiagnosticSeverity::Warning, "warning"),
         diagnostic(2, DiagnosticSeverity::Information, "info"),
     ]);
-    let options = DiagnosticOptions::default();
-    let texts = build_virtual_texts(&problems, &options, request(&path, 0, 3, 1, false));
+    let cursor_line = DiagnosticOptions {
+        virtual_text: VirtualTextMode::CursorLine,
+        ..DiagnosticOptions::default()
+    };
+    let texts = build_virtual_texts(&problems, &cursor_line, request(&path, 0, 3, 1, false));
     assert_eq!(texts.len(), 3);
     assert!(texts[0].is_none());
     assert_eq!(texts[1].as_ref().unwrap().text, "warning");
     assert!(texts[2].is_none());
-    let all = DiagnosticOptions {
-        virtual_text: VirtualTextMode::All,
-        ..options
-    };
+    let all = DiagnosticOptions::default();
     let texts = build_virtual_texts(&problems, &all, request(&path, 0, 3, 0, false));
     assert_eq!(texts[0].as_ref().unwrap().text, "first");
     assert_eq!(texts[1].as_ref().unwrap().text, "warning");

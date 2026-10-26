@@ -141,7 +141,7 @@ pub(super) struct DiagnosticOptions {
 impl Default for DiagnosticOptions {
     fn default() -> Self {
         Self {
-            virtual_text: VirtualTextMode::CursorLine,
+            virtual_text: VirtualTextMode::All,
             virtual_severity: SeverityFilter::Warning,
             source: SourceDisplay::IfMany,
             counts: CountsMode::ErrorsWarnings,
