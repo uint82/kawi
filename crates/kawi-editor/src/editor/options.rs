@@ -57,13 +57,23 @@ impl Editor {
     pub fn set_language_indent(&mut self, indent: LanguageIndent) {
         if self.language_indent != indent {
             self.language_indent = indent;
+            self.bump_language_generation();
         }
     }
 
     pub fn set_language_editing(&mut self, editing: LanguageEditing) {
         if self.language_editing != editing {
             self.language_editing = editing;
+            self.bump_language_generation();
         }
+    }
+
+    pub fn language_generation(&self) -> u64 {
+        self.language_generation
+    }
+
+    fn bump_language_generation(&mut self) {
+        self.language_generation = self.language_generation.wrapping_add(1);
     }
 
     pub fn language_editing(&self) -> &LanguageEditing {
@@ -78,11 +88,19 @@ impl Editor {
         self.auto_pairs
     }
 
+    pub fn set_match_brackets(&mut self, enabled: bool) {
+        self.match_brackets = enabled;
+    }
+
+    pub fn match_brackets(&self) -> bool {
+        self.match_brackets
+    }
+
     pub(super) fn reset_buffer_options(&mut self) {
         self.runtime_shiftwidth = None;
         self.runtime_expandtab = None;
-        self.language_indent = LanguageIndent::default();
-        self.language_editing = LanguageEditing::default();
+        self.set_language_indent(LanguageIndent::default());
+        self.set_language_editing(LanguageEditing::default());
         self.autoindent = self.buffer_defaults.autoindent;
     }
 

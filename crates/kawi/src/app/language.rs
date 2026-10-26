@@ -63,7 +63,7 @@ mod tests {
         let path = dir.join("languages.toml");
         fs::write(&path, text).unwrap();
         app.lsp.load(&path, app.events.wake());
-        app.sync_language_indent();
+        app.sync_language_settings();
     }
 
     #[test]
@@ -73,13 +73,20 @@ mod tests {
         load_languages(
             &mut app,
             &dir,
-            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = []\nauto_pairs = [[\"<\", \">\"]]\n",
+            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = []\nauto_pairs = [[\"<\", \">\"]]\nmatch_pairs = [[\"(\", \")\"], [\"<\", \">\"]]\n",
         );
         app.sync_language_editing();
         let editing = app.editor.language_editing();
         assert_eq!(editing.comments.line.as_deref(), Some("#"));
         assert_eq!(editing.comments.block, None);
         assert_eq!(editing.pairs, vec![kawi_editor::Pair::new('<', '>')]);
+        assert_eq!(
+            editing.match_pairs,
+            vec![
+                kawi_editor::Pair::new('(', ')'),
+                kawi_editor::Pair::new('<', '>'),
+            ]
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -93,6 +100,14 @@ mod tests {
         assert_eq!(editing.comments.line.as_deref(), Some("//"));
         assert!(editing.pairs.contains(&kawi_editor::Pair::new('(', ')')));
         assert!(!editing.pairs.contains(&kawi_editor::Pair::new('\'', '\'')));
+        assert_eq!(
+            editing.match_pairs,
+            vec![
+                kawi_editor::Pair::new('(', ')'),
+                kawi_editor::Pair::new('[', ']'),
+                kawi_editor::Pair::new('{', '}'),
+            ]
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

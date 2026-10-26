@@ -15,6 +15,7 @@ fn editing() -> LanguageEditing {
             Pair::new('{', '}'),
             Pair::new('"', '"'),
         ],
+        match_pairs: Vec::new(),
     }
 }
 
@@ -23,6 +24,7 @@ fn editor_with(text: &str, pairs: Vec<Pair>) -> Editor {
     editor.set_language_editing(LanguageEditing {
         comments: editing().comments,
         pairs,
+        match_pairs: Vec::new(),
     });
     editor
 }

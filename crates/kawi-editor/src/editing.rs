@@ -43,6 +43,7 @@ pub struct CommentTokens {
 pub struct LanguageEditing {
     pub comments: CommentTokens,
     pub pairs: Vec<Pair>,
+    pub match_pairs: Vec<Pair>,
 }
 
 impl Default for LanguageEditing {
@@ -50,6 +51,7 @@ impl Default for LanguageEditing {
         Self {
             comments: CommentTokens::default(),
             pairs: default_pairs(),
+            match_pairs: default_match_pairs(),
         }
     }
 }
@@ -62,6 +64,14 @@ pub fn default_pairs() -> Vec<Pair> {
         Pair::new('"', '"'),
         Pair::new('\'', '\''),
         Pair::new('`', '`'),
+    ]
+}
+
+pub fn default_match_pairs() -> Vec<Pair> {
+    vec![
+        Pair::new('(', ')'),
+        Pair::new('[', ']'),
+        Pair::new('{', '}'),
     ]
 }
 
@@ -83,5 +93,17 @@ mod tests {
         assert!(pairs.contains(&Pair::new('[', ']')));
         assert!(pairs.contains(&Pair::new('{', '}')));
         assert!(pairs.contains(&Pair::new('"', '"')));
+    }
+
+    #[test]
+    fn default_match_pairs_match_vim_matchpairs() {
+        assert_eq!(
+            default_match_pairs(),
+            vec![
+                Pair::new('(', ')'),
+                Pair::new('[', ']'),
+                Pair::new('{', '}'),
+            ]
+        );
     }
 }

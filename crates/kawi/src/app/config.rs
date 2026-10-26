@@ -183,6 +183,7 @@ shiftwidth = 2
 expandtab = true
 autoindent = false
 auto_pairs = false
+match_brackets = false
 number = false
 ignorecase = true
 format_on_save = true
@@ -210,6 +211,7 @@ undo_exclude = ["*.gpg"]
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());
         assert!(!app.editor.auto_pairs());
+        assert!(!app.editor.match_brackets());
         assert!(!app.editor.number());
         assert!(app.editor.ignorecase());
         assert!(app.format_on_save);
@@ -222,6 +224,7 @@ undo_exclude = ["*.gpg"]
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());
+        assert!(!app.editor.match_brackets());
         let _ = fs::remove_dir_all(dir);
     }
 

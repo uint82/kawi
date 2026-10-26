@@ -29,6 +29,7 @@ fn closer_does_not_dedent_inside_comment() {
             block: Some(BlockComment::new("/*", "*/")),
         },
         pairs: vec![Pair::new('(', ')')],
+        match_pairs: Vec::new(),
     });
     append_last_line_end(&mut e);
     e.apply(Action::InsertChar(')'));

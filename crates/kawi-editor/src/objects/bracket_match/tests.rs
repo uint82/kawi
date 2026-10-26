@@ -2,7 +2,9 @@ use kawi_buffer::Buffer;
 use kawi_syntax::LanguageId;
 
 use super::*;
-use crate::editing::{default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair};
+use crate::editing::{
+    default_match_pairs, default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair,
+};
 
 const ALL_PAIRS: [Pair; 4] = [
     Pair::new('(', ')'),
@@ -18,6 +20,7 @@ fn editing(line_comment: &str, block_comment: (&str, &str)) -> LanguageEditing {
             block: Some(BlockComment::new(block_comment.0, block_comment.1)),
         },
         pairs: default_pairs(),
+        match_pairs: default_match_pairs(),
     }
 }
 

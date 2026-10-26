@@ -67,6 +67,7 @@ pub(crate) struct LanguageOverride {
     line_comment: Option<Value>,
     block_comment: Option<Value>,
     auto_pairs: Option<Value>,
+    match_pairs: Option<Value>,
     enabled: Option<bool>,
 }
 
@@ -190,6 +191,9 @@ impl LanguageOverride {
         }
         if let Some(value) = self.auto_pairs {
             editing::apply_auto_pairs(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.match_pairs {
+            editing::apply_match_pairs(&mut language, value, &mut warnings);
         }
         if let Some(language_id) = self.language_id {
             language.language_id = language_id;

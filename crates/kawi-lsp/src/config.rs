@@ -60,6 +60,7 @@ pub struct LanguageConfig {
     pub line_comment: Option<String>,
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
+    pub match_pairs: Option<Vec<PairConfig>>,
     pub enabled: bool,
 }
 
@@ -81,6 +82,7 @@ impl LanguageConfig {
             line_comment: None,
             block_comment: None,
             auto_pairs: None,
+            match_pairs: None,
             enabled: true,
         }
     }
@@ -97,6 +99,16 @@ impl LanguageConfig {
 
     pub fn with_auto_pairs<const N: usize>(mut self, pairs: [(char, char); N]) -> Self {
         self.auto_pairs = Some(
+            pairs
+                .into_iter()
+                .map(|(open, close)| PairConfig::new(open, close))
+                .collect(),
+        );
+        self
+    }
+
+    pub fn with_match_pairs<const N: usize>(mut self, pairs: [(char, char); N]) -> Self {
+        self.match_pairs = Some(
             pairs
                 .into_iter()
                 .map(|(open, close)| PairConfig::new(open, close))
@@ -563,6 +575,7 @@ mod tests {
             .auto_pairs
             .as_ref()
             .is_some_and(|pairs| pairs.contains(&crate::PairConfig::new('(', ')'))));
+        assert!(rust.match_pairs.is_none());
         let markdown = languages.language("markdown").expect("markdown");
         assert_eq!(
             markdown
@@ -591,6 +604,39 @@ mod tests {
             Some(vec![crate::PairConfig::new('<', '>')])
         );
         assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn user_languages_override_match_pairs() {
+        let path = temp_file(
+            "match_pairs",
+            "[[language]]\nname = \"rust\"\nmatch_pairs = [[\"(\", \")\"], [\"<\", \">\"]]\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert_eq!(
+            rust.match_pairs,
+            Some(vec![
+                crate::PairConfig::new('(', ')'),
+                crate::PairConfig::new('<', '>'),
+            ])
+        );
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn invalid_match_pairs_warn_and_are_ignored() {
+        let path = temp_file(
+            "match_pairs_invalid",
+            "[[language]]\nname = \"rust\"\nmatch_pairs = [[\"'\", \"'\"]]\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.match_pairs.is_none());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("match_pairs must be an array"));
     }
 
     #[test]
