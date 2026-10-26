@@ -10,6 +10,7 @@ use crate::keymap::Keymap;
 use crate::leader::{self, LeaderPath};
 
 const KEY_LABEL_SEPARATOR: &str = "  ";
+const RIGHT_MARGIN: usize = 1;
 const BOTTOM_MARGIN: usize = 1;
 
 impl App {
@@ -64,7 +65,11 @@ fn leader_rect(area: Rect, items: &[String]) -> Rect {
         .saturating_add(PANEL_BORDER)
         .min(area.height)
         .max(1);
-    let x = area.x.saturating_add(area.width.saturating_sub(width) / 2);
+    let x = area
+        .right()
+        .saturating_sub(width)
+        .saturating_sub(RIGHT_MARGIN)
+        .max(area.x);
     let y = area
         .bottom()
         .saturating_sub(height)
@@ -167,12 +172,12 @@ mod tests {
     }
 
     #[test]
-    fn menu_is_centered_above_the_bottom_edge() {
+    fn menu_is_right_aligned_above_the_bottom_edge() {
         let items = vec!["f  find".to_string(), "v  git".to_string()];
         let rect = leader_rect(Rect::new(0, 0, 80, 24), &items);
         assert_eq!(rect.width, 9);
         assert_eq!(rect.height, 4);
-        assert_eq!(rect.x, 35);
+        assert_eq!(rect.x, 70);
         assert_eq!(rect.y, 19);
     }
 }
