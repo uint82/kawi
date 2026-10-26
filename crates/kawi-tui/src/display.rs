@@ -1,9 +1,19 @@
 use kawi_buffer::tab_width;
 
+use crate::text::char_width;
+
+fn cell_width(ch: char, screen: usize, tabstop: usize) -> usize {
+    if ch == '\t' {
+        tab_width(ch, screen, tabstop)
+    } else {
+        char_width(ch)
+    }
+}
+
 pub fn screen_col(text: &str, chars: usize, tabstop: usize) -> usize {
     let mut screen = 0;
     for ch in text.chars().take(chars) {
-        screen += tab_width(ch, screen, tabstop);
+        screen += cell_width(ch, screen, tabstop);
     }
     screen
 }
@@ -19,7 +29,7 @@ pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> Strin
     let mut out = String::new();
     let mut screen = 0;
     for ch in text.chars() {
-        let width = tab_width(ch, screen, tabstop);
+        let width = cell_width(ch, screen, tabstop);
         let start = screen;
         let end = screen + width;
         screen = end;
@@ -50,6 +60,13 @@ mod tests {
         assert_eq!(screen_col("a\tb", 2, 8), 8);
         assert_eq!(screen_col("\tx", 2, 8), 9);
         assert_eq!(screen_col("\tx", 2, 4), 5);
+    }
+
+    #[test]
+    fn screen_col_counts_wide_and_multibyte_cells() {
+        assert_eq!(screen_col("界x", 1, 8), 2);
+        assert_eq!(screen_col("é界x", 2, 8), 3);
+        assert_eq!(screen_col("\té界x", 3, 8), 11);
     }
 
     #[test]
