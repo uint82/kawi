@@ -190,6 +190,13 @@ fn bash_parameter_expansion_is_not_a_block() {
 }
 
 #[test]
+fn bracket_flag_disables_bracket_indent() {
+    let rules = IndentRules::new(Vec::new(), Vec::new(), false);
+    assert_eq!(width(&["foo("], 0, &rules), 0);
+    assert_eq!(width(&["foo[", "    bar"], 4, &rules), 4);
+}
+
+#[test]
 fn json_and_toml_use_brackets() {
     assert_eq!(width(&["["], 0, &brackets()), 4);
     assert_eq!(width(&["{\"key\": 1"], 0, &brackets()), 4);
