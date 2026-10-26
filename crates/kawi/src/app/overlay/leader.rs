@@ -83,6 +83,7 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use kawi_buffer::Buffer;
+    use kawi_editor::Mode;
 
     use crate::keymap::Flavor;
 
@@ -157,6 +158,27 @@ mod tests {
         app.handle_key(key(KeyCode::Char('t'))).expect("group");
         app.handle_key(key(KeyCode::Char('c'))).expect("command");
         assert!(app.overlay_data().is_none());
+    }
+
+    #[test]
+    fn pressing_space_again_dismisses_the_root_menu() {
+        let mut app = app();
+        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
+        assert_eq!(items(&app), root_items());
+        app.handle_key(key(KeyCode::Char(' '))).expect("toggle");
+        assert!(app.overlay_data().is_none());
+        assert_eq!(app.editor_mode(), Mode::Normal);
+    }
+
+    #[test]
+    fn pressing_space_again_keeps_visual_mode() {
+        let mut app = app();
+        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
+        assert_eq!(items(&app), ["c  code", "f  find"]);
+        app.handle_key(key(KeyCode::Char(' '))).expect("toggle");
+        assert!(app.overlay_data().is_none());
+        assert_eq!(app.editor_mode(), Mode::Visual);
     }
 
     #[test]

@@ -33,6 +33,10 @@ fn plain_char(key: KeyEvent) -> Option<char> {
     }
 }
 
+fn is_space_leader(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key)
+}
+
 fn insert_control_action(key: KeyEvent) -> Option<Action> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -375,6 +379,9 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
+            if is_space_leader(key) {
+                return self.cancel_sequence();
+            }
             if let Some(prefix) = plain_char(key) {
                 if group(prefix).is_some() {
                     self.pending.push(' ');
@@ -399,7 +406,7 @@ impl VimKeymap {
     }
 
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
-        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+        if is_space_leader(key) {
             self.leader_space = true;
             return Action::Noop;
         }
@@ -1446,6 +1453,9 @@ impl VimKeymap {
     fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
         if self.leader_space {
             self.leader_space = false;
+            if is_space_leader(key) {
+                return self.cancel_sequence();
+            }
             if let Some(prefix) = plain_char(key) {
                 if group(prefix).is_some_and(|group| group.visual) {
                     self.pending.push(' ');
@@ -1465,7 +1475,7 @@ impl VimKeymap {
     }
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+        if is_space_leader(key) {
             self.leader_space = true;
             return Action::Noop;
         }
@@ -4129,6 +4139,21 @@ mod tests {
         assert_eq!(map.leader_path(), Some(LeaderPath::Root));
         map.map(plain(KeyCode::Char('v')), Mode::Normal);
         assert_eq!(leader_group(map.leader_path()), Some('v'));
+    }
+
+    #[test]
+    fn second_space_closes_the_leader_menu() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.leader_path(), Some(LeaderPath::Root));
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.leader_path(), None);
     }
 
     #[test]
