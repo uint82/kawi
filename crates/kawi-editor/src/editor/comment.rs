@@ -340,6 +340,7 @@ mod tests {
         editor.set_language_editing(LanguageEditing {
             comments: tokens,
             pairs: Vec::new(),
+            match_pairs: Vec::new(),
         });
         editor
     }

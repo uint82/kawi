@@ -1,6 +1,8 @@
 use kawi_buffer::Buffer;
+use kawi_syntax::LanguageId;
 
-use super::smartmatch::{find_close_forward, find_open_backward, starts_escaped, MatchConfig};
+use crate::editing::LanguageEditing;
+use crate::objects::bracket_match::{find_match, MatchRequest, Position};
 
 pub enum MatchTarget {
     Bracket { pos: (usize, usize) },
@@ -8,20 +10,25 @@ pub enum MatchTarget {
     Comment { pos: (usize, usize) },
 }
 
-const PAIRS: [(char, char); 3] = [('(', ')'), ('{', '}'), ('[', ']')];
-
 // TODO(matchit): nvim loads the matchit plugin by default and maps percent to
 // a syntax-aware search: candidates in string, character, singlequote, escape,
 // symbol or comment syntax regions are skipped, then b:match_words keyword
 // pairs are matched per filetype. Needs a syntax model or treesitter captures.
-pub fn match_target(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
+pub fn match_target(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    language: Option<LanguageId>,
+    editing: &LanguageEditing,
+    bound: usize,
+) -> Option<MatchTarget> {
     if let Some(found) = hash_jump_before_hash(buffer, row, col) {
         return Some(found);
     }
     if let Some(found) = comment_jump(buffer, row, col) {
         return Some(found);
     }
-    if let Some(found) = bracket_jump(buffer, row, col) {
+    if let Some(found) = bracket_jump(buffer, row, col, language, editing, bound) {
         return Some(found);
     }
     hash_jump_anywhere(buffer, row)
@@ -177,7 +184,14 @@ fn comment_match(buffer: &Buffer, row: usize, col: usize, forward: bool) -> Opti
     }
 }
 
-fn bracket_jump(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> {
+fn bracket_jump(
+    buffer: &Buffer,
+    row: usize,
+    col: usize,
+    language: Option<LanguageId>,
+    editing: &LanguageEditing,
+    bound: usize,
+) -> Option<MatchTarget> {
     let line = buffer.line_cow(row)?;
     let text: Vec<char> = line.chars().collect();
     if text.is_empty() {
@@ -185,22 +199,31 @@ fn bracket_jump(buffer: &Buffer, row: usize, col: usize) -> Option<MatchTarget> 
     }
     let col = col.min(text.len().saturating_sub(1));
     for (at, ch) in text.iter().enumerate().skip(col) {
-        if let Some((open, close, forward)) = pair_of(*ch) {
-            let config = MatchConfig::smart(open, close, starts_escaped(buffer, (row, at)));
-            let found = if forward {
-                find_close_forward(buffer, (row, at), config)
-            } else {
-                find_open_backward(buffer, (row, at), config)
-            };
-            return found.map(|pos| MatchTarget::Bracket { pos });
+        if editing
+            .match_pairs
+            .iter()
+            .any(|pair| pair.open == *ch || pair.close == *ch)
+        {
+            return partner_at(buffer, (row, at), language, editing, bound)
+                .map(|pos| MatchTarget::Bracket { pos });
         }
     }
     None
 }
 
-fn pair_of(ch: char) -> Option<(char, char, bool)> {
-    PAIRS
-        .iter()
-        .find(|(open, close)| *open == ch || *close == ch)
-        .map(|(open, close)| (*open, *close, *open == ch))
+fn partner_at(
+    buffer: &Buffer,
+    position: Position,
+    language: Option<LanguageId>,
+    editing: &LanguageEditing,
+    bound: usize,
+) -> Option<Position> {
+    find_match(&MatchRequest {
+        buffer,
+        position,
+        language,
+        editing,
+        pairs: &editing.match_pairs,
+        bound,
+    })
 }

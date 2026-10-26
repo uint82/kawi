@@ -1,5 +1,7 @@
 use kawi_buffer::indent_width_of;
 
+use kawi_syntax::LanguageId;
+
 use crate::editing::LanguageEditing;
 use crate::editor::lexical::{LexicalContext, LexicalScanner};
 
@@ -16,6 +18,7 @@ pub(crate) struct IndentRequest<'a> {
     pub tabstop: usize,
     pub rules: &'a IndentRules,
     pub editing: &'a LanguageEditing,
+    pub language: Option<LanguageId>,
 }
 
 pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
@@ -51,7 +54,10 @@ pub(crate) fn closer_width(request: &IndentRequest<'_>, closer: char) -> Option<
 }
 
 fn scan(request: &IndentRequest<'_>) -> Scan {
-    let mut scanner = LexicalScanner::new(LexicalContext::new(request.editing));
+    let mut scanner = LexicalScanner::new(LexicalContext::with_language(
+        request.editing,
+        request.language,
+    ));
     let mut scan = Scan::default();
     for line_index in 0..=request.row {
         let chars: Vec<char> = request.lines[line_index].chars().collect();

@@ -15,6 +15,7 @@ fn editing() -> LanguageEditing {
             Pair::new('{', '}'),
             Pair::new('"', '"'),
         ],
+        match_pairs: Vec::new(),
     }
 }
 
@@ -53,6 +54,7 @@ fn width_at(
         tabstop: 4,
         rules,
         editing: &editing,
+        language: None,
     };
     next_width(&request)
 }
@@ -81,6 +83,7 @@ fn closer(lines: &[&str], closer: char) -> Option<usize> {
         tabstop: 4,
         rules: &brackets(),
         editing: &editing,
+        language: None,
     };
     closer_width(&request, closer)
 }
@@ -259,6 +262,7 @@ fn closer_outside_window_is_ignored() {
         tabstop: 4,
         rules: &brackets(),
         editing: &editing,
+        language: None,
     };
     assert_eq!(closer_width(&request, ')'), None);
 }

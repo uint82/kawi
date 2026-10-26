@@ -220,7 +220,8 @@ impl Editor {
     fn inside_string_or_comment(&self, row: usize, col: usize) -> bool {
         // TODO: replace the bounded lexical scan with tree-sitter context when available.
         let start_row = self.context_scan_start(row);
-        let context = LexicalContext::new(&self.language_editing);
+        let context =
+            LexicalContext::with_language(&self.language_editing, self.language_indent.language);
         let mut scanner = LexicalScanner::new(context);
         for current_row in start_row..=row {
             let line = self.buffer.line(current_row).unwrap_or_default();

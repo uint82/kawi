@@ -247,6 +247,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "hover_max_width",
     "ignorecase",
     "keymap",
+    "match_brackets",
     "number",
     "numberwidth",
     "overlay_margin",

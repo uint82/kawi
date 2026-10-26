@@ -113,6 +113,9 @@ impl App {
             "auto_pairs" => self
                 .editor
                 .set_auto_pairs(value.as_bool().unwrap_or_default()),
+            "match_brackets" => self
+                .editor
+                .set_match_brackets(value.as_bool().unwrap_or_default()),
             "format_on_save" => self.format_on_save = value.as_bool().unwrap_or_default(),
             "autosave" => self.autosave.set_mode(
                 value
@@ -269,6 +272,7 @@ impl App {
             "smartcase" => OptionValue::Bool(self.editor.smartcase()),
             "autoindent" => OptionValue::Bool(self.editor.autoindent()),
             "auto_pairs" => OptionValue::Bool(self.editor.auto_pairs()),
+            "match_brackets" => OptionValue::Bool(self.editor.match_brackets()),
             "format_on_save" => OptionValue::Bool(self.format_on_save),
             "autosave" => OptionValue::Text(self.autosave.mode().name().to_string()),
             "autosave_delay" => OptionValue::Int(
@@ -443,6 +447,18 @@ mod tests {
         assert_eq!(app.last_message(), Some("noauto_pairs"));
         execute(&mut app, "set auto_pairs");
         assert!(app.editor.auto_pairs());
+    }
+
+    #[test]
+    fn match_brackets_can_be_disabled_globally() {
+        let mut app = app();
+        assert!(app.editor.match_brackets());
+        execute(&mut app, "set nomatch_brackets");
+        assert!(!app.editor.match_brackets());
+        execute(&mut app, "set match_brackets?");
+        assert_eq!(app.last_message(), Some("nomatch_brackets"));
+        execute(&mut app, "set match_brackets");
+        assert!(app.editor.match_brackets());
     }
 
     #[test]

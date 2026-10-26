@@ -80,6 +80,7 @@ fn python_editing() -> LanguageEditing {
             Pair::new('\'', '\''),
             Pair::new('"', '"'),
         ],
+        match_pairs: Vec::new(),
     }
 }
 

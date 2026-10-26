@@ -33,6 +33,7 @@ pub struct Theme {
     pub search_current: MatchColors,
     pub substitute: MatchColors,
     pub selection: MatchColors,
+    pub bracket_match: MatchColors,
     pub status: MatchColors,
     pub line_number: Color,
     pub non_text: Color,

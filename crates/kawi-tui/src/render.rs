@@ -21,6 +21,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
 use crate::display;
 
+mod bracket;
 mod leader;
 mod terminal;
 
@@ -582,6 +583,7 @@ impl SpanView<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
     Selection,
+    BracketMatch,
     SearchMatch,
     SearchCurrent,
     Substitute,
@@ -812,7 +814,7 @@ fn span_segment(span: &SearchSpan, view: &SpanView, tint: Tint) -> Option<Highli
     span_segment_at(span.row, span.start, span.end, view, tint)
 }
 
-fn span_segment_at(
+pub(super) fn span_segment_at(
     row: usize,
     start: usize,
     end: usize,
@@ -865,6 +867,9 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     ) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
+    for span in bracket::bracket_match_spans(pane.bracket_match, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
+    }
     for span in diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
@@ -908,6 +913,7 @@ fn paint_span(
     )?;
     match span.tint {
         Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
+        Tint::BracketMatch => bracket::paint_bracket_match(out, &span.text, theme),
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
         Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme),
@@ -940,7 +946,7 @@ fn move_to_segment(out: &mut Stdout, col: usize, screen_row: usize) -> Result<()
     Ok(())
 }
 
-fn write_segment(out: &mut Stdout, text: &str) -> Result<()> {
+fn write_segment<W: Write>(out: &mut W, text: &str) -> Result<()> {
     write!(out, "{text}").context("write segment")?;
     Ok(())
 }
@@ -1636,6 +1642,7 @@ fn saturate_u16(v: usize) -> u16 {
 
 #[cfg(test)]
 mod tests {
+    use super::bracket::bracket_match_spans;
     use super::*;
 
     fn viewport() -> Viewport {
@@ -2032,6 +2039,77 @@ mod tests {
         let layout =
             layout_message_row(None, None, '/', Some("saved"), Some("/ar [1/3]"), None, 20);
         assert_eq!(layout.line, "saved");
+    }
+
+    #[test]
+    fn bracket_match_spans_convert_tabs_wide_and_multibyte_cells() {
+        let lines = lines_of("\té界(x)");
+        let viewport = Viewport::new(10, 40);
+        let view = span_view(&lines, &viewport);
+        let spans = bracket_match_spans(
+            Some(kawi_editor::BracketMatch {
+                first: (0, 3),
+                second: (0, 5),
+            }),
+            &view,
+        );
+        assert_eq!(spans.len(), 2);
+        assert_eq!((spans[0].from, spans[0].text.as_str()), (11, "("));
+        assert_eq!((spans[1].from, spans[1].text.as_str()), (13, ")"));
+        assert!(spans.iter().all(|span| span.tint == Tint::BracketMatch));
+    }
+
+    #[test]
+    fn bracket_match_spans_require_both_brackets_on_screen() {
+        let lines = lines_of("(\n)");
+        let viewport = Viewport::new(1, 20);
+        let view = span_view(&lines, &viewport);
+        assert!(bracket_match_spans(
+            Some(kawi_editor::BracketMatch {
+                first: (0, 0),
+                second: (1, 0),
+            }),
+            &view,
+        )
+        .is_empty());
+        let lines = lines_of(&format!("({})", " ".repeat(30)));
+        let viewport = Viewport::new(10, 10);
+        let view = span_view(&lines, &viewport);
+        assert!(bracket_match_spans(
+            Some(kawi_editor::BracketMatch {
+                first: (0, 0),
+                second: (0, 31),
+            }),
+            &view,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn bracket_match_spans_compose_with_selection_and_cursor() {
+        let lines = lines_of("a (b) c");
+        let viewport = Viewport::new(10, 20);
+        let view = span_view(&lines, &viewport);
+        let selection = highlight_spans(
+            &view,
+            Some(Selection::Range {
+                start: (0, 3),
+                end: (0, 3),
+            }),
+            Some((0, 2)),
+        );
+        let brackets = bracket_match_spans(
+            Some(kawi_editor::BracketMatch {
+                first: (0, 2),
+                second: (0, 4),
+            }),
+            &view,
+        );
+        assert_eq!(selection.len(), 1);
+        assert_eq!(selection[0].text, "b");
+        assert_eq!(brackets.len(), 2);
+        assert_eq!((brackets[0].from, brackets[0].text.as_str()), (2, "("));
+        assert_eq!((brackets[1].from, brackets[1].text.as_str()), (4, ")"));
     }
 
     #[test]

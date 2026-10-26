@@ -22,6 +22,7 @@ fn cursor_style_for(mode: Mode) -> CursorStyle {
 
 impl App {
     pub(crate) fn draw_frame(&mut self, out: &mut Stdout) -> Result<()> {
+        self.refresh_bracket_match();
         self.prepare_completion_overlay();
         let overlay_data = self.overlay_data();
         let overlay = overlay_data.as_ref().map(|data| data.view());
@@ -59,6 +60,7 @@ impl App {
                 syntax_spans: pane.syntax_spans.as_ref(),
                 rulers: &pane.rulers,
                 selection: pane.selection,
+                bracket_match: pane.bracket_match,
                 viewport: pane.viewport,
                 cursor_col: pane.cursor_col,
                 row: pane.row,

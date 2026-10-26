@@ -5,8 +5,8 @@ use super::lsp_navigation::{
 use super::lsp_text::{LspText, TextFailure};
 use kawi_completion::Capabilities;
 use kawi_editor::{
-    default_pairs, BlockComment, CommentTokens, Editor, IndentRules, LanguageEditing,
-    LanguageIndent, Pair,
+    default_match_pairs, default_pairs, BlockComment, CommentTokens, Editor, IndentRules,
+    LanguageEditing, LanguageIndent, Pair,
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
@@ -496,7 +496,21 @@ impl LspUi {
                     .collect()
             })
             .unwrap_or_else(default_pairs);
-        LanguageEditing { comments, pairs }
+        let match_pairs = language
+            .match_pairs
+            .as_ref()
+            .map(|pairs| {
+                pairs
+                    .iter()
+                    .map(|pair| Pair::new(pair.open, pair.close))
+                    .collect()
+            })
+            .unwrap_or_else(default_match_pairs);
+        LanguageEditing {
+            comments,
+            pairs,
+            match_pairs,
+        }
     }
 
     fn language_config(&self, path: Option<&Path>) -> Option<&kawi_lsp::LanguageConfig> {

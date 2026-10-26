@@ -99,6 +99,30 @@ pub(crate) fn apply_auto_pairs(
     }
 }
 
+pub(crate) fn apply_match_pairs(
+    language: &mut LanguageConfig,
+    value: Value,
+    warnings: &mut Vec<LanguageWarning>,
+) {
+    let display = value.to_string();
+    let parsed = match &value {
+        Value::Array(pairs) => pairs
+            .iter()
+            .cloned()
+            .map(parse_pair)
+            .collect::<Option<Vec<PairConfig>>>()
+            .filter(|pairs| pairs.iter().all(|pair| pair.open != pair.close)),
+        _ => None,
+    };
+    match parsed {
+        Some(pairs) => language.match_pairs = Some(pairs),
+        None => warnings.push(LanguageWarning::new(format!(
+            "language {}: match_pairs must be an array of two different single-character strings, got {display}; keeping the previous pairs",
+            language.name
+        ))),
+    }
+}
+
 fn parse_pair(value: Value) -> Option<PairConfig> {
     let Value::Array(pair) = value else {
         return None;

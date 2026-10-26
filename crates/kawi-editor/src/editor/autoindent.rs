@@ -126,6 +126,7 @@ impl Editor {
             tabstop: indent.tabstop,
             rules: &self.language_indent.rules,
             editing: &self.language_editing,
+            language: self.language_indent.language,
         }
     }
 

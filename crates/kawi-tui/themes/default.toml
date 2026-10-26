@@ -21,6 +21,10 @@ background = "#F2C27B"
 foreground = "#E7E2D6"
 background = "#2C3E43"
 
+[bracket.match]
+foreground = "#E7E2D6"
+background = "#233F3D"
+
 [status]
 foreground = "#E7E2D6"
 background = "#233136"

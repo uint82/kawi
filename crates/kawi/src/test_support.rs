@@ -7,6 +7,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ("search_current", &["foreground", "background"]),
     ("substitute", &["foreground", "background"]),
     ("selection", &["foreground", "background"]),
+    ("bracket.match", &["foreground", "background"]),
     ("status", &["foreground", "background"]),
     ("gutter", &["line_number", "non_text"]),
     (

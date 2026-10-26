@@ -291,20 +291,11 @@ impl Editor {
         object: Object,
         count: usize,
     ) -> Option<words::WordSpan> {
+        if Self::is_bracket_object(object) {
+            return self.bracket_object_range(object, inner, count);
+        }
         let (row, col) = (self.cursor.row(), self.cursor.col());
         match object {
-            Object::Paren => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '(', ')', inner, count)
-            }
-            Object::Brace => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '{', '}', inner, count)
-            }
-            Object::Bracket => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '[', ']', inner, count)
-            }
-            Object::Angle => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '<', '>', inner, count)
-            }
             Object::SingleQuote => {
                 objects::quotes::quote_range(&self.buffer, row, col, '\'', inner, count)
             }
@@ -317,6 +308,7 @@ impl Editor {
             Object::Paragraph => {
                 objects::paragraph::paragraph_range(&self.buffer, row, !inner, count)
             }
+            _ => None,
         }
     }
 

@@ -2,13 +2,13 @@ use std::borrow::Cow;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_editor::{Mode, Viewport};
+use kawi_editor::{BracketMatch, Mode, Viewport, HIGHLIGHT_MATCH_STEP_BUDGET};
 use kawi_syntax::{SyntaxKey, SyntaxSpan};
 use kawi_tui::frame::{DiagnosticSpan, Rect, SearchSpan, Selection, Sign};
 
 use super::{
-    is_window_prefix, FocusDirection, ResizeAxis, SplitDirection, WindowId, WindowLayout,
-    WindowView,
+    is_window_prefix, BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis,
+    SplitDirection, WindowId, WindowLayout, WindowView,
 };
 use crate::keymap::Keymap;
 
@@ -26,6 +26,7 @@ pub(crate) struct PaneData<'a> {
     pub syntax_spans: Cow<'a, [SyntaxSpan]>,
     pub rulers: Vec<usize>,
     pub selection: Option<Selection>,
+    pub bracket_match: Option<BracketMatch>,
     pub viewport: Viewport,
     pub cursor_col: usize,
     pub row: usize,
@@ -54,6 +55,44 @@ impl App {
 
     pub(crate) fn sync_active_window_options(&mut self) {
         self.windows.active_view_mut().options = self.editor.window_options();
+    }
+
+    pub(crate) fn refresh_bracket_match(&mut self) {
+        let key = BracketMatchKey {
+            buffer: self.editor.buffer_number(),
+            revision: self.editor.buffer_revision(),
+            language_generation: self.editor.language_generation(),
+            row: self.editor.row(),
+            col: self.editor.col(),
+            insert: self.editor.mode().is_insert(),
+            top: self.editor.view_top(),
+            leftcol: self.editor.view_leftcol(),
+            width: self.editor.viewport().width(),
+            height: self.editor.view_height(),
+            enabled: self.editor.match_brackets(),
+        };
+        if self
+            .windows
+            .active_view()
+            .bracket_match
+            .is_some_and(|cache| cache.key == key)
+        {
+            return;
+        }
+        let matched = self.bracket_match_for_key(key);
+        self.windows.active_view_mut().bracket_match = Some(BracketMatchCache { key, matched });
+    }
+
+    fn bracket_match_for_key(&self, key: BracketMatchKey) -> Option<BracketMatch> {
+        if !key.enabled {
+            return None;
+        }
+        let viewport = key
+            .width
+            .saturating_mul(key.height)
+            .saturating_add(HIGHLIGHT_MATCH_STEP_BUDGET)
+            .saturating_add(key.leftcol);
+        self.editor.bracket_match(viewport)
     }
 
     fn stash_active_syntax(&mut self, id: WindowId) {
@@ -446,6 +485,11 @@ impl App {
             syntax_spans: self.active_syntax_spans(),
             rulers: self.commit_rulers(self.editor.buffer_number()),
             selection: self.frame_selection(),
+            bracket_match: self
+                .windows
+                .active_view()
+                .bracket_match
+                .and_then(|cache| cache.matched),
             viewport: pane_viewport(
                 rect,
                 top,
@@ -548,6 +592,7 @@ impl App {
             syntax_spans,
             rulers: self.commit_rulers(window.buffer),
             selection: None,
+            bracket_match: None,
             viewport: pane_viewport(rect, top, window.view.leftcol, line_count),
             cursor_col: 0,
             row,

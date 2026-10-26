@@ -1,5 +1,6 @@
 use super::Editor;
 use crate::objects;
+use crate::objects::bracket_match::ACTION_MATCH_BOUND;
 use crate::objects::matchit::{match_target, MatchTarget};
 use crate::register::RegisterKind;
 
@@ -23,7 +24,14 @@ impl Editor {
     fn jump_to_match(&mut self) {
         let row = self.cursor.row();
         let col = self.cursor.col();
-        if let Some(target) = match_target(&self.buffer, row, col) {
+        if let Some(target) = match_target(
+            &self.buffer,
+            row,
+            col,
+            self.language_indent.language,
+            &self.language_editing,
+            ACTION_MATCH_BOUND,
+        ) {
             self.set_pcmark();
             match target {
                 MatchTarget::Bracket { pos } | MatchTarget::Comment { pos } => {
@@ -88,7 +96,14 @@ impl Editor {
     fn match_char_span(&self) -> (bool, CharSpan) {
         let row = self.cursor.row();
         let col = self.cursor.col();
-        match match_target(&self.buffer, row, col) {
+        match match_target(
+            &self.buffer,
+            row,
+            col,
+            self.language_indent.language,
+            &self.language_editing,
+            ACTION_MATCH_BOUND,
+        ) {
             Some(MatchTarget::Bracket { pos }) | Some(MatchTarget::Comment { pos }) => {
                 (true, order_span((row, col), pos))
             }
@@ -233,7 +248,9 @@ fn order_span(first: (usize, usize), second: (usize, usize)) -> CharSpan {
 mod tests {
     use super::*;
     use crate::actions::Action;
+    use crate::editing::{LanguageEditing, Pair};
     use crate::mode::Mode;
+    use crate::objects::bracket_match::MAX_MATCH_LINE_CHARS;
     use crate::register::RegisterKind;
     use kawi_buffer::Buffer;
 
@@ -296,6 +313,35 @@ mod tests {
         e.apply(Action::JumpTo(0, 5));
         e.apply(Action::MoveToMatch);
         assert_eq!((e.row(), e.col()), (1, 5));
+    }
+
+    #[test]
+    fn match_angle_pairs_are_opt_in() {
+        let mut e = editor_with("<a>");
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 0));
+        e.set_language_editing(LanguageEditing {
+            match_pairs: vec![Pair::new('<', '>')],
+            ..LanguageEditing::default()
+        });
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn match_inside_block_comment_matches_the_comment_pair() {
+        let mut e = editor_with("/* (a) */");
+        e.apply(Action::JumpTo(0, 3));
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 5));
+    }
+
+    #[test]
+    fn match_skips_very_long_lines() {
+        let text = format!("({})", "x".repeat(MAX_MATCH_LINE_CHARS));
+        let mut e = editor_with(&text);
+        e.apply(Action::MoveToMatch);
+        assert_eq!((e.row(), e.col()), (0, 0));
     }
 
     #[test]

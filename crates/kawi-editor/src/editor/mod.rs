@@ -15,6 +15,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 mod addsub;
 mod auto_pairs;
 mod autoindent;
+mod bracket_match;
 mod buffers;
 mod case_ops;
 mod changes;
@@ -29,7 +30,7 @@ mod insert_erase;
 mod insert_shift;
 mod join;
 mod jumps;
-mod lexical;
+pub(crate) mod lexical;
 mod line_ops;
 mod marks;
 mod match_ops;
@@ -92,7 +93,9 @@ pub struct Editor {
     runtime_expandtab: Option<bool>,
     language_indent: LanguageIndent,
     language_editing: LanguageEditing,
+    language_generation: u64,
     auto_pairs: bool,
+    match_brackets: bool,
     registers: crate::registers::Registers,
     pending_register: Option<char>,
     force_numbered_register: bool,
@@ -789,7 +792,9 @@ impl Editor {
             runtime_expandtab: None,
             language_indent: LanguageIndent::default(),
             language_editing: LanguageEditing::default(),
+            language_generation: 0,
             auto_pairs: true,
+            match_brackets: true,
             registers: crate::registers::Registers::new(),
             pending_register: None,
             force_numbered_register: false,

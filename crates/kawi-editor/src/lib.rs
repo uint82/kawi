@@ -29,13 +29,16 @@ pub use command::{
     UndoCommand,
 };
 pub use cursor::Cursor;
-pub use editing::{default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair};
+pub use editing::{
+    default_match_pairs, default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair,
+};
 pub use editor::{
     BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, IndentRules,
     LanguageIndent, PathAdoption, ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
 };
 pub use mode::Mode;
+pub use objects::bracket_match::{BracketMatch, HIGHLIGHT_MATCH_STEP_BUDGET};
 pub use register::{Register, RegisterKind};
 pub use search::{MatchSpan, SearchOutcome};
 pub use selection::Selection;

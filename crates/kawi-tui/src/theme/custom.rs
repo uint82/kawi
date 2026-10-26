@@ -21,6 +21,8 @@ struct ThemeFile {
     substitute: ColorPair,
     selection: ColorPair,
     status: ColorPair,
+    #[serde(default)]
+    bracket: Option<BracketFile>,
     gutter: GutterFile,
     git: GitFile,
     diagnostics: DiagnosticsFile,
@@ -51,6 +53,13 @@ impl ColorPair {
             background,
         })
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BracketFile {
+    #[serde(rename = "match")]
+    matched: ColorPair,
 }
 
 #[derive(Deserialize)]
@@ -108,6 +117,11 @@ impl Theme {
             Some(value) => parse_color("code_background", value)?,
             None => float_background,
         };
+        let selection = file.selection.match_colors("selection")?;
+        let bracket_match = match file.bracket.as_ref() {
+            Some(bracket) => bracket.matched.match_colors("bracket.match")?,
+            None => selection.clone(),
+        };
         Ok(Self {
             name: name.to_string(),
             base: BaseColors {
@@ -119,7 +133,8 @@ impl Theme {
             search_match: file.search_match.match_colors("search_match")?,
             search_current: file.search_current.match_colors("search_current")?,
             substitute: file.substitute.match_colors("substitute")?,
-            selection: file.selection.match_colors("selection")?,
+            selection,
+            bracket_match,
             status: file.status.match_colors("status")?,
             line_number,
             non_text,
