@@ -946,7 +946,7 @@ fn move_to_segment(out: &mut Stdout, col: usize, screen_row: usize) -> Result<()
     Ok(())
 }
 
-fn write_segment(out: &mut Stdout, text: &str) -> Result<()> {
+fn write_segment<W: Write>(out: &mut W, text: &str) -> Result<()> {
     write!(out, "{text}").context("write segment")?;
     Ok(())
 }

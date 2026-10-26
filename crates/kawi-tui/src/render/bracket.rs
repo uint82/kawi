@@ -3,7 +3,7 @@ use crossterm::{
     execute,
     style::{Attribute, SetAttribute},
 };
-use std::io::Stdout;
+use std::io::Write;
 
 use crate::paint;
 use crate::theme::Theme;
@@ -36,10 +36,27 @@ fn bracket_position_span(position: (usize, usize), view: &SpanView) -> Option<Hi
     )
 }
 
-pub(super) fn paint_bracket_match(out: &mut Stdout, text: &str, theme: &Theme) -> Result<()> {
+pub(super) fn paint_bracket_match<W: Write>(out: &mut W, text: &str, theme: &Theme) -> Result<()> {
     paint::apply_match(out, &theme.bracket_match)?;
     execute!(out, SetAttribute(Attribute::Bold)).context("apply bracket match weight")?;
     write_segment(out, text)?;
-    execute!(out, SetAttribute(Attribute::NoBold)).context("clear bracket match weight")?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("clear bracket match style")?;
     paint::restore_base(out, theme)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::Theme;
+
+    #[test]
+    fn bracket_match_does_not_leave_underline_attributes() {
+        let mut out = Vec::new();
+        paint_bracket_match(&mut out, "(", &Theme::default()).expect("paint");
+        let output = String::from_utf8(out).expect("utf8");
+        assert!(output.contains("\u{1b}[1m"));
+        assert!(output.contains("\u{1b}[0m"));
+        assert!(!output.contains("\u{1b}[4m"));
+        assert!(!output.contains("\u{1b}[21m"));
+    }
 }
