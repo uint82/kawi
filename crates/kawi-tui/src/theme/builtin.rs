@@ -7,6 +7,8 @@ mod palette;
 const GRUVBOX_NIGHT: &str = include_str!("../../themes/gruvbox-night.toml");
 
 #[cfg(test)]
+mod snapshots;
+#[cfg(test)]
 mod syntax_tests;
 #[cfg(test)]
 mod tests;
