@@ -1,0 +1,114 @@
+float_background = "#10171A"
+code_background = "#10171A"
+
+[base]
+foreground = "#E7E2D6"
+background = "#10171A"
+
+[search_match]
+foreground = "#10171A"
+background = "#F2C27B"
+
+[search_current]
+foreground = "#10171A"
+background = "#FFB86B"
+
+[substitute]
+foreground = "#10171A"
+background = "#F2C27B"
+
+[selection]
+foreground = "#E7E2D6"
+background = "#2C3E43"
+
+[status]
+foreground = "#E7E2D6"
+background = "#233136"
+
+[gutter]
+line_number = "#70837F"
+non_text = "#70837F"
+
+[git]
+add = "#A8D98A"
+change = "#F2C27B"
+delete = "#FF7E87"
+staged_add = "#6F8F78"
+staged_change = "#9A895F"
+staged_delete = "#A06C73"
+
+[diagnostics]
+error = "#FF7E87"
+warning = "#F2C27B"
+information = "#6ED0F0"
+hint = "#6FE0C8"
+
+[palette]
+ink = "#10171A"
+parchment = "#E7E2D6"
+comment = "#728582"
+stone = "#8C9E9B"
+coral = "#FF7E87"
+cyan = "#6ED0F0"
+gold = "#F2C27B"
+leaf = "#A8D98A"
+lilac = "#C9A7FF"
+rose = "#F0A6B8"
+amber = "#FFB86B"
+mint = "#6FE0C8"
+danger = "#FF6B6B"
+surface = "#233136"
+selection = "#2C3E43"
+gutter = "#70837F"
+
+[syntax]
+comment = { fg = "comment", italic = true }
+"comment.documentation" = { fg = "comment", italic = true }
+keyword = { fg = "coral" }
+"keyword.control" = { fg = "coral", bold = true }
+"keyword.function" = { fg = "coral" }
+"keyword.import" = { fg = "lilac" }
+"keyword.operator" = { fg = "coral" }
+"keyword.return" = { fg = "coral", bold = true }
+"keyword.storage" = { fg = "amber" }
+function = { fg = "cyan", bold = true }
+"function.builtin" = { fg = "amber" }
+"function.call" = { fg = "cyan", bold = true }
+"function.macro" = { fg = "mint", italic = true }
+"function.method" = { fg = "cyan", bold = true }
+type = { fg = "gold" }
+"type.builtin" = { fg = "gold" }
+"type.definition" = { fg = "gold" }
+constructor = { fg = "amber" }
+namespace = { fg = "parchment" }
+module = { fg = "parchment" }
+label = { fg = "coral" }
+string = { fg = "leaf", italic = true }
+"string.escape" = { fg = "amber" }
+"string.regexp" = { fg = "leaf", italic = true }
+"string.special" = { fg = "amber" }
+"string.special.key" = { fg = "amber" }
+constant = { fg = "lilac" }
+"constant.builtin" = { fg = "amber" }
+"constant.macro" = { fg = "mint" }
+number = { fg = "lilac" }
+boolean = { fg = "lilac" }
+character = { fg = "lilac" }
+variable = { fg = "parchment" }
+"variable.builtin" = { fg = "amber" }
+"variable.member" = { fg = "rose" }
+"variable.parameter" = { fg = "rose" }
+property = { fg = "rose" }
+"property.builtin" = { fg = "rose" }
+operator = { fg = "stone" }
+punctuation = { fg = "stone" }
+"punctuation.bracket" = { fg = "stone" }
+"punctuation.delimiter" = { fg = "stone" }
+"punctuation.special" = { fg = "amber" }
+attribute = { fg = "mint" }
+decorator = { fg = "mint" }
+tag = { fg = "coral" }
+"tag.attribute" = { fg = "rose" }
+"tag.delimiter" = { fg = "stone" }
+invalid = { fg = "danger", bold = true }
+special = { fg = "amber" }

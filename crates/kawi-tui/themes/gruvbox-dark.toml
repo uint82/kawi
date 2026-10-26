@@ -1,0 +1,110 @@
+float_background = "#282828"
+code_background = "#282828"
+
+[base]
+foreground = "#ebdbb2"
+background = "#282828"
+
+[search_match]
+foreground = "#282828"
+background = "#fabd2f"
+
+[search_current]
+foreground = "#282828"
+background = "#fe8019"
+
+[substitute]
+foreground = "#282828"
+background = "#fabd2f"
+
+[selection]
+foreground = "#ebdbb2"
+background = "#665c54"
+
+[status]
+foreground = "#ebdbb2"
+background = "#504945"
+
+[gutter]
+line_number = "#928374"
+non_text = "#928374"
+
+[git]
+add = "#b8bb26"
+change = "#fabd2f"
+delete = "#fb4934"
+staged_add = "#7e8746"
+staged_change = "#6e8c64"
+staged_delete = "#b45a46"
+
+[diagnostics]
+error = "#fb4934"
+warning = "#fabd2f"
+information = "#83a598"
+hint = "#8ec07c"
+
+[palette]
+bg = "#282828"
+fg = "#ebdbb2"
+red = "#fb4934"
+orange = "#fe8019"
+yellow = "#fabd2f"
+green = "#b8bb26"
+aqua = "#8ec07c"
+blue = "#83a598"
+purple = "#d3869b"
+gray = "#928374"
+surface = "#504945"
+selection = "#665c54"
+
+[syntax]
+comment = { fg = "gray", italic = true }
+"comment.documentation" = { fg = "gray", italic = true }
+keyword = { fg = "red" }
+"keyword.control" = { fg = "red", bold = true }
+"keyword.function" = { fg = "red" }
+"keyword.import" = { fg = "aqua" }
+"keyword.operator" = { fg = "red" }
+"keyword.return" = { fg = "red", bold = true }
+"keyword.storage" = { fg = "orange" }
+function = { fg = "green", bold = true }
+"function.builtin" = { fg = "orange" }
+"function.call" = { fg = "green", bold = true }
+"function.macro" = { fg = "aqua", italic = true }
+"function.method" = { fg = "green", bold = true }
+type = { fg = "yellow" }
+"type.builtin" = { fg = "yellow" }
+"type.definition" = { fg = "yellow" }
+constructor = { fg = "orange" }
+namespace = { fg = "fg" }
+module = { fg = "fg" }
+label = { fg = "red" }
+string = { fg = "green", italic = true }
+"string.escape" = { fg = "orange" }
+"string.regexp" = { fg = "green", italic = true }
+"string.special" = { fg = "orange" }
+"string.special.key" = { fg = "orange" }
+constant = { fg = "purple" }
+"constant.builtin" = { fg = "orange" }
+"constant.macro" = { fg = "aqua" }
+number = { fg = "purple" }
+boolean = { fg = "purple" }
+character = { fg = "purple" }
+variable = { fg = "fg" }
+"variable.builtin" = { fg = "orange" }
+"variable.member" = { fg = "blue" }
+"variable.parameter" = { fg = "blue" }
+property = { fg = "blue" }
+"property.builtin" = { fg = "blue" }
+operator = { fg = "orange" }
+punctuation = { fg = "orange" }
+"punctuation.bracket" = { fg = "orange" }
+"punctuation.delimiter" = { fg = "orange" }
+"punctuation.special" = { fg = "orange" }
+attribute = { fg = "aqua" }
+decorator = { fg = "aqua" }
+tag = { fg = "orange" }
+"tag.attribute" = { fg = "blue" }
+"tag.delimiter" = { fg = "orange" }
+invalid = { fg = "red", bold = true }
+special = { fg = "orange" }
