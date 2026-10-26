@@ -14,6 +14,8 @@ pub enum PickerKind {
     Grep,
     Buffers,
     Locations,
+    Symbols,
+    WorkspaceSymbols,
     GitBranches,
     GitLog,
     GitCommitFiles,
@@ -26,6 +28,9 @@ pub struct PickerRow {
     pub line: Option<usize>,
     pub column: Option<usize>,
     pub buffer: Option<usize>,
+    pub secondary: Option<String>,
+    pub deprecated: bool,
+    pub id: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +89,17 @@ impl Picker {
         let mut picker = Self::new(PickerKind::GitLog, title);
         picker.loading = true;
         picker
+    }
+
+    pub fn symbols(title: &'static str, rows: Vec<PickerRow>) -> Self {
+        let mut picker = Self::new(PickerKind::Symbols, title);
+        picker.locations = rows;
+        picker.refresh();
+        picker
+    }
+
+    pub fn workspace_symbols(title: &'static str) -> Self {
+        Self::new(PickerKind::WorkspaceSymbols, title)
     }
 
     pub fn git_commit_files(title: &'static str, rows: Vec<PickerRow>) -> Self {
@@ -147,21 +163,42 @@ impl Picker {
     }
 
     pub fn set_locations(&mut self, rows: Vec<PickerRow>) {
+        self.replace_rows(rows, true);
+    }
+
+    pub fn set_workspace_symbols(&mut self, rows: Vec<PickerRow>) {
+        self.replace_rows(rows, false);
+        self.loading = false;
+        self.status = None;
+    }
+
+    fn replace_rows(&mut self, rows: Vec<PickerRow>, refresh: bool) {
+        let selected = self.selected_row_key();
         let selected_index = self.selected;
-        let selected = self
-            .selected
-            .and_then(|index| self.rows.get(index))
-            .map(location_key);
         self.locations = rows;
-        self.rows = self.location_rows();
+        self.rows = if refresh {
+            self.location_rows()
+        } else {
+            self.locations.iter().take(MAX_ROWS).cloned().collect()
+        };
         self.selected = selected
-            .and_then(|selected| {
-                self.rows
-                    .iter()
-                    .position(|row| location_key(row) == selected)
-            })
+            .and_then(|selected| self.rows.iter().position(|row| row.key() == selected))
             .or_else(|| selected_index.and_then(|index| selection_at(index, self.rows.len())))
             .or_else(|| (!self.rows.is_empty()).then_some(0));
+    }
+
+    fn selected_row_key(&self) -> Option<RowKey> {
+        self.selected
+            .and_then(|index| self.rows.get(index))
+            .map(PickerRow::key)
+    }
+
+    pub fn select_symbol(&mut self, id: u64) -> bool {
+        let Some(index) = self.rows.iter().position(|row| row.id == Some(id)) else {
+            return false;
+        };
+        self.selected = Some(index);
+        true
     }
 
     pub fn set_status(&mut self, status: Option<String>) {
@@ -292,6 +329,11 @@ impl Picker {
             self.loading = true;
             return PickerOutcome::QueryChanged;
         }
+        if self.kind == PickerKind::WorkspaceSymbols {
+            self.status = None;
+            self.loading = true;
+            return PickerOutcome::QueryChanged;
+        }
         self.refresh();
         PickerOutcome::Consumed
     }
@@ -301,6 +343,10 @@ impl Picker {
             PickerKind::Files => self.refresh_files(),
             PickerKind::Grep => self.refresh_grep(),
             PickerKind::Buffers => self.refresh_buffers(),
+            PickerKind::Symbols => self.refresh_locations(),
+            PickerKind::WorkspaceSymbols => {
+                self.rows = self.locations.iter().take(MAX_ROWS).cloned().collect();
+            }
             PickerKind::Locations
             | PickerKind::GitBranches
             | PickerKind::GitLog
@@ -319,6 +365,9 @@ impl Picker {
                     line: None,
                     column: None,
                     buffer: None,
+                    secondary: None,
+                    deprecated: false,
+                    id: None,
                 },
             )
         });
@@ -336,6 +385,9 @@ impl Picker {
                 line: Some(hit.line),
                 column: Some(hit.column),
                 buffer: None,
+                secondary: None,
+                deprecated: false,
+                id: None,
             })
             .collect();
     }
@@ -365,6 +417,9 @@ impl Picker {
                     line: None,
                     column: None,
                     buffer: Some(*number),
+                    secondary: None,
+                    deprecated: false,
+                    id: None,
                 },
             )
         });
@@ -389,8 +444,24 @@ impl Picker {
     }
 }
 
-fn location_key(row: &PickerRow) -> (String, Option<usize>, Option<usize>, Option<usize>) {
-    (row.path.clone(), row.line, row.column, row.buffer)
+type RowKey = (
+    Option<u64>,
+    String,
+    Option<usize>,
+    Option<usize>,
+    Option<usize>,
+);
+
+impl PickerRow {
+    fn key(&self) -> RowKey {
+        (
+            self.id,
+            self.path.clone(),
+            self.line,
+            self.column,
+            self.buffer,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -431,6 +502,9 @@ mod tests {
                 line: Some(1),
                 column: Some(1),
                 buffer: None,
+                secondary: None,
+                deprecated: false,
+                id: None,
             },
             PickerRow {
                 display: "src/lib.rs:4:2".to_string(),
@@ -438,6 +512,9 @@ mod tests {
                 line: Some(4),
                 column: Some(2),
                 buffer: None,
+                secondary: None,
+                deprecated: false,
+                id: None,
             },
         ];
         let mut picker = Picker::locations("References", rows);
@@ -461,6 +538,9 @@ mod tests {
                 line: Some(1),
                 column: Some(1),
                 buffer: None,
+                secondary: None,
+                deprecated: false,
+                id: None,
             },
             PickerRow {
                 display: "b.rs:2:1 second".to_string(),
@@ -468,6 +548,9 @@ mod tests {
                 line: Some(2),
                 column: Some(1),
                 buffer: None,
+                secondary: None,
+                deprecated: false,
+                id: None,
             },
         ];
         let mut picker = Picker::locations("Problems", rows.clone());
@@ -478,6 +561,9 @@ mod tests {
             line: Some(3),
             column: Some(1),
             buffer: None,
+            secondary: None,
+            deprecated: false,
+            id: None,
         }];
         updated.extend(rows);
         updated[2].display = "b.rs:2:1 updated message".to_string();

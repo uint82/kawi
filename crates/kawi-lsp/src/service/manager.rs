@@ -31,6 +31,10 @@ impl Manager {
             pending_text_requests: HashMap::new(),
             pending_completion_resolves: HashMap::new(),
             completion_resolve: HashMap::new(),
+            pending_symbols: HashMap::new(),
+            pending_symbol_resolves: HashMap::new(),
+            symbol_resolve_items: HashMap::new(),
+            next_symbol_item: 0,
             pending_commands: HashMap::new(),
             pull_diagnostics: pull_diagnostics::PullDiagnostics::default(),
             workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics::default(),
@@ -181,6 +185,17 @@ impl Manager {
                 range,
                 settings,
             } => self.start_formatting(request, path, range, settings),
+            Command::DocumentSymbols {
+                request,
+                path,
+                version,
+            } => self.start_document_symbols(request, path, version),
+            Command::WorkspaceSymbols { request, query } => {
+                self.start_workspace_symbols(request, query);
+            }
+            Command::ResolveWorkspaceSymbol { request, symbol_id } => {
+                self.start_workspace_symbol_resolve(request, symbol_id);
+            }
             Command::Execute {
                 path,
                 server,

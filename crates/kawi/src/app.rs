@@ -42,6 +42,7 @@ mod replace_apply;
 mod restore;
 mod save;
 mod signature;
+mod symbols;
 mod task;
 mod terminal_ui;
 mod undo;
@@ -141,6 +142,8 @@ pub struct App {
     syntax_applied: u64,
     window_syntax: BTreeMap<window::WindowId, SyntaxCache>,
     picker: Option<PickerSession>,
+    symbol_picker: Option<symbols::SymbolSession>,
+    symbol_cache: symbols::SymbolCache,
     replace: Option<ReplaceSession>,
     rename: Option<rename::RenameSession>,
     file_ops: Option<file_ops::FileOpSession>,
@@ -213,6 +216,8 @@ impl App {
             syntax_applied: 0,
             window_syntax: BTreeMap::new(),
             picker: None,
+            symbol_picker: None,
+            symbol_cache: symbols::SymbolCache::default(),
             replace: None,
             rename: None,
             file_ops: None,
@@ -356,6 +361,8 @@ impl App {
             self.sync_git_status();
             self.poll_git_status();
             self.sync_lsp();
+            self.poll_symbol_events();
+            self.symbols_tick();
             self.sync_task();
             self.sync_terminal();
             self.sync_watched_files();
@@ -394,6 +401,8 @@ impl App {
             }
             redraw |= self.lsp.sync_editor(&self.editor);
             redraw |= self.lsp.poll_events(&self.editor);
+            redraw |= self.poll_symbol_events();
+            redraw |= self.symbols_tick();
             redraw |= self.completion_tick();
             redraw |= self.poll_file_watch();
             self.sync_watched_files();
@@ -432,6 +441,7 @@ impl App {
                 ),
             );
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,
@@ -908,6 +918,9 @@ impl App {
         if self.replace.is_some() {
             return self.handle_replace_key(key);
         }
+        if self.symbol_picker.is_some() {
+            return self.handle_symbol_picker_key(key);
+        }
         if self.picker.is_some() {
             return self.handle_picker_key(key);
         }
@@ -1163,6 +1176,8 @@ impl App {
             Action::OpenGrepWordPicker => self.open_grep_word_picker(),
             Action::OpenBufferPicker => self.open_picker(PickerKind::Buffers),
             Action::OpenReplacePicker => self.open_replace_picker(),
+            Action::OpenDocumentSymbols => self.open_document_symbols(),
+            Action::OpenWorkspaceSymbols => self.open_workspace_symbols(),
             Action::GitNextHunk => self.handle_git_navigation(true),
             Action::GitPrevHunk => self.handle_git_navigation(false),
             Action::DiagnosticNext => self.handle_diagnostic_navigation(true),
@@ -1310,6 +1325,7 @@ impl App {
             PickerKind::Grep => PickerSession::grep(root, None, wake),
             PickerKind::Buffers => PickerSession::buffers(root, self.buffer_picker_rows()),
             PickerKind::Locations => PickerSession::locations(root, "Locations", Vec::new()),
+            PickerKind::Symbols | PickerKind::WorkspaceSymbols => return Ok(false),
             PickerKind::GitBranches | PickerKind::GitLog | PickerKind::GitCommitFiles => {
                 return Ok(false);
             }
@@ -1363,6 +1379,8 @@ impl App {
             PickerCommand::Grep => self.open_picker(PickerKind::Grep),
             PickerCommand::Buffers => self.open_picker(PickerKind::Buffers),
             PickerCommand::Replace => self.open_replace_picker(),
+            PickerCommand::Symbols => self.open_document_symbols(),
+            PickerCommand::WorkspaceSymbols => self.open_workspace_symbols(),
         }
     }
 
@@ -1383,6 +1401,15 @@ impl App {
         if let Some(session) = self.replace.as_mut() {
             session.paste(&text);
             return Ok(false);
+        }
+        if let Some(session) = self.symbol_picker.as_mut() {
+            match session.paste(&text, &self.editor, &mut self.lsp) {
+                Ok(()) => return Ok(false),
+                Err(message) => {
+                    self.show_message(message);
+                    return Ok(false);
+                }
+            }
         }
         if let Some(session) = self.picker.as_mut() {
             session.paste(&text);

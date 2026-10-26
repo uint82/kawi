@@ -300,5 +300,8 @@ fn log_row(entry: kawi_git::LogEntry) -> PickerRow {
         line: None,
         column: None,
         buffer: None,
+        secondary: None,
+        deprecated: false,
+        id: None,
     }
 }

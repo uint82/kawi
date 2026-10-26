@@ -74,7 +74,7 @@ fn resolve_location(
     resolve_position(documents, cache, &path, location.range.start, encoding)
 }
 
-fn resolve_position(
+pub(super) fn resolve_position(
     documents: &HashMap<PathBuf, Document>,
     cache: &mut HashMap<PathBuf, Rope>,
     path: &Path,
@@ -107,7 +107,7 @@ fn resolve_position(
     })
 }
 
-fn path_for_uri(uri: &lsp_types::Uri) -> Option<PathBuf> {
+pub(super) fn path_for_uri(uri: &lsp_types::Uri) -> Option<PathBuf> {
     path_from_uri(uri).map(|path| workspace::absolute(&path))
 }
 

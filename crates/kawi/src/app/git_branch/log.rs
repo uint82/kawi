@@ -75,6 +75,9 @@ impl App {
             line: None,
             column: None,
             buffer: None,
+            secondary: None,
+            deprecated: false,
+            id: None,
         });
         if action == LogAction::CopySha {
             self.run_log_action(action, root, row, query, options)?;
@@ -264,5 +267,8 @@ fn commit_file_row(file: &CommitFile) -> PickerRow {
         line: None,
         column: None,
         buffer: None,
+        secondary: None,
+        deprecated: false,
+        id: None,
     }
 }

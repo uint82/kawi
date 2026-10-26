@@ -1,6 +1,6 @@
 use kawi_lsp::{
     CompletionTrigger, CursorPosition, DiagnosticMode, DiagnosticSeverity, FileOperationKind,
-    FormattingSettings, Languages, LspEvent, LspService, ProgressEvent, ServerState,
+    FormattingSettings, Languages, LspEvent, LspService, ProgressEvent, ServerState, SymbolKind,
     WorkspaceDiagnosticState,
 };
 use std::fs;
@@ -92,6 +92,31 @@ fn workspace_config(root: &Path) -> PathBuf {
     );
     fs::write(&path, text).expect("config");
     path
+}
+
+fn symbol_config(root: &Path, mode: &str, resolve: bool, providers: bool, delay: u64) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_SYMBOL_MODE = \"{mode}\"\nFAKE_LSP_SYMBOL_RESOLVE = \"{}\"\nFAKE_LSP_SYMBOL_PROVIDERS = \"{}\"\nFAKE_LSP_SYMBOL_DELAY_MS = \"{delay}\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n",
+        u8::from(resolve),
+        u8::from(providers),
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
+fn start_symbols(
+    root: &Path,
+    mode: &str,
+    resolve: bool,
+    providers: bool,
+    delay: u64,
+) -> LspService {
+    let config = symbol_config(root, mode, resolve, providers, delay);
+    let languages = Languages::load(&config);
+    let (wake, _wake_rx) = mpsc::channel();
+    LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5)).expect("service")
 }
 
 fn start_workspace_diagnostics(root: &Path) -> LspService {
@@ -1103,6 +1128,172 @@ fn falls_back_to_close_and_open_without_file_operation_support() {
     assert!(service.did_rename_files(&[(old, new)]));
     wait_for_log(&service, "close");
     wait_for_log_prefix(&service, "open:1:");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn flattens_document_symbols_with_containers_and_tags() {
+    let root = temp_project("symbols_document");
+    let service = start_symbols(&root, "nested", true, true, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(
+        &file,
+        "fn outer() {\n    let inner = 1;\n}\nstruct old_struct\nfuture\n"
+    ));
+    wait_for_ready(&service);
+    let request = service.document_symbols(&file, 7);
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::DocumentSymbols(event) if event.request == request),
+    );
+    let LspEvent::DocumentSymbols(event) = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(event.path, fs::canonicalize(&file).unwrap_or(file));
+    assert_eq!(event.version, 7);
+    assert_eq!(event.symbols.len(), 4);
+    assert_eq!(event.symbols[0].name, "outer");
+    assert_eq!(event.symbols[0].kind, SymbolKind::Function);
+    assert_eq!(event.symbols[0].detail.as_deref(), Some("fn outer()"));
+    assert_eq!(event.symbols[1].container.as_deref(), Some("outer"));
+    assert_eq!(event.symbols[1].selection.expect("selection").column, 4);
+    assert!(event.symbols[2].deprecated);
+    assert_eq!(event.symbols[3].kind, SymbolKind::Unknown);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn flat_document_symbols_use_location_starts() {
+    let root = temp_project("symbols_flat");
+    let service = start_symbols(&root, "flat", true, true, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\nlet flat_symbol = 1;\n"));
+    wait_for_ready(&service);
+    let request = service.document_symbols(&file, 1);
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::DocumentSymbols(event) if event.request == request),
+    );
+    let LspEvent::DocumentSymbols(event) = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(event.symbols.len(), 1);
+    assert_eq!(event.symbols[0].name, "flat_symbol");
+    assert_eq!(event.symbols[0].selection.expect("selection").line, 1);
+    assert_eq!(event.symbols[0].container.as_deref(), Some("module"));
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn workspace_symbols_resolve_missing_ranges_and_skip_non_file_uris() {
+    let root = temp_project("symbols_workspace");
+    let service = start_symbols(&root, "nested", true, true, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "one\ntwo\nthree\n"));
+    wait_for_ready(&service);
+    let request = service.workspace_symbols("work");
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::WorkspaceSymbols(event) if event.request == request),
+    );
+    let LspEvent::WorkspaceSymbols(event) = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(event.query, "work");
+    assert_eq!(event.symbols.len(), 2);
+    assert_eq!(event.symbols[0].name, "workspace_fn");
+    assert_eq!(event.symbols[0].server.as_deref(), Some("fake"));
+    let lazy = &event.symbols[1];
+    assert_eq!(lazy.name, "lazy_symbol");
+    assert!(!lazy.is_jumpable());
+    let resolve = service.resolve_workspace_symbol(lazy.resolve_id.expect("resolve id"));
+    let resolved = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::WorkspaceSymbolResolved(event) if event.request == resolve),
+    );
+    let LspEvent::WorkspaceSymbolResolved(resolved) = resolved else {
+        panic!("unexpected event");
+    };
+    assert_eq!(resolved.symbol_id, lazy.resolve_id.expect("resolve id"));
+    assert!(resolved.symbol.is_jumpable());
+    assert_eq!(resolved.symbol.selection.expect("selection").line, 2);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn workspace_symbols_without_resolve_keep_full_locations() {
+    let root = temp_project("symbols_no_resolve");
+    let service = start_symbols(&root, "nested", false, true, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "one\ntwo\nthree\n"));
+    wait_for_ready(&service);
+    let request = service.workspace_symbols("work");
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::WorkspaceSymbols(event) if event.request == request),
+    );
+    let LspEvent::WorkspaceSymbols(event) = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(event.symbols.len(), 1);
+    assert_eq!(event.symbols[0].name, "workspace_fn");
+    assert!(event.symbols[0].is_jumpable());
+    assert_eq!(event.symbols[0].selection.expect("selection").line, 1);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn symbol_requests_report_missing_capabilities() {
+    let root = temp_project("symbols_missing");
+    let service = start_symbols(&root, "nested", true, false, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let document = service.document_symbols(&file, 1);
+    let error = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::RequestError { request, .. } if *request == document),
+    );
+    let LspEvent::RequestError { message, .. } = error else {
+        panic!("unexpected event");
+    };
+    assert_eq!(message, "No language server supports document symbols");
+    let workspace = service.workspace_symbols("main");
+    let error = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::RequestError { request, .. } if *request == workspace),
+    );
+    let LspEvent::RequestError { message, .. } = error else {
+        panic!("unexpected event");
+    };
+    assert_eq!(message, "No language server supports workspace symbols");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn cancelling_workspace_symbols_sends_cancel_and_drops_the_response() {
+    let root = temp_project("symbols_cancel");
+    let service = start_symbols(&root, "nested", true, true, 300);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let request = service.workspace_symbols("main");
+    wait_for_log(&service, "workspace-symbols:main");
+    service.cancel(request);
+    wait_for_log_prefix(&service, "cancel:");
+    let deadline = Instant::now() + Duration::from_millis(700);
+    while Instant::now() < deadline {
+        if let Some(LspEvent::WorkspaceSymbols(event)) = service.try_recv() {
+            panic!("received cancelled symbols: {event:?}");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

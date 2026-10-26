@@ -55,6 +55,12 @@ impl Manager {
                 Some(ReplyPurpose::CompletionResolve) => {
                     self.handle_completion_resolve_response(key, id, result);
                 }
+                Some(ReplyPurpose::Symbols) => {
+                    self.handle_symbols_response(key, id, result);
+                }
+                Some(ReplyPurpose::SymbolResolve) => {
+                    self.handle_symbol_resolve_response(key, id, result);
+                }
                 None => {}
             }
             return;
@@ -80,6 +86,7 @@ impl Manager {
 
     fn finish_initialize(&mut self, key: ClientKey, result: InitializeResult) {
         let capabilities_event = completion_capabilities_event(&key, &result.capabilities);
+        let symbol_capabilities_event = symbol_capabilities_event(&key, &result.capabilities);
         let capabilities = result.capabilities;
         let support = request_support(&capabilities);
         let sync = sync_config(capabilities.text_document_sync);
@@ -106,6 +113,7 @@ impl Manager {
         client.client.send(initialized);
         self.emit_status(&key.server, ServerState::Ready, None);
         self.emit(LspEvent::CompletionCapabilities(capabilities_event));
+        self.emit(LspEvent::SymbolCapabilities(symbol_capabilities_event));
         self.emit(LspEvent::FileOperationCapabilities(file_operations));
         self.emit_diagnostic_mode(&key);
         self.open_documents_for(&key);
@@ -243,6 +251,18 @@ fn completion_capabilities_event(
     }
 }
 
+fn symbol_capabilities_event(
+    key: &ClientKey,
+    capabilities: &lsp_types::ServerCapabilities,
+) -> SymbolCapabilitiesEvent {
+    SymbolCapabilitiesEvent {
+        server: key.server.clone(),
+        document: provider_enabled(capabilities.document_symbol_provider.as_ref()),
+        workspace: capabilities.workspace_symbol_provider.is_some(),
+        resolve: workspace_symbol_resolve(capabilities.workspace_symbol_provider.as_ref()),
+    }
+}
+
 fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSupport {
     RequestSupport {
         definition: provider_enabled(capabilities.definition_provider.as_ref()),
@@ -282,7 +302,21 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
         did_delete_files: file_operation_enabled(capabilities.workspace.as_ref(), |ops| {
             ops.did_delete.as_ref()
         }),
+        document_symbols: provider_enabled(capabilities.document_symbol_provider.as_ref()),
+        workspace_symbols: capabilities.workspace_symbol_provider.is_some(),
+        workspace_symbol_resolve: workspace_symbol_resolve(
+            capabilities.workspace_symbol_provider.as_ref(),
+        ),
     }
+}
+
+fn workspace_symbol_resolve(
+    provider: Option<&lsp_types::OneOf<bool, lsp_types::WorkspaceSymbolOptions>>,
+) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::OneOf::Left(_) => false,
+        lsp_types::OneOf::Right(options) => options.resolve_provider.unwrap_or(false),
+    })
 }
 
 fn file_operation_enabled(
@@ -374,6 +408,37 @@ pub(super) fn include_save_text(save: &TextDocumentSyncSaveOptions) -> bool {
     }
 }
 
+fn symbol_kinds() -> Vec<lsp_types::SymbolKind> {
+    vec![
+        lsp_types::SymbolKind::FILE,
+        lsp_types::SymbolKind::MODULE,
+        lsp_types::SymbolKind::NAMESPACE,
+        lsp_types::SymbolKind::PACKAGE,
+        lsp_types::SymbolKind::CLASS,
+        lsp_types::SymbolKind::METHOD,
+        lsp_types::SymbolKind::PROPERTY,
+        lsp_types::SymbolKind::FIELD,
+        lsp_types::SymbolKind::CONSTRUCTOR,
+        lsp_types::SymbolKind::ENUM,
+        lsp_types::SymbolKind::INTERFACE,
+        lsp_types::SymbolKind::FUNCTION,
+        lsp_types::SymbolKind::VARIABLE,
+        lsp_types::SymbolKind::CONSTANT,
+        lsp_types::SymbolKind::STRING,
+        lsp_types::SymbolKind::NUMBER,
+        lsp_types::SymbolKind::BOOLEAN,
+        lsp_types::SymbolKind::ARRAY,
+        lsp_types::SymbolKind::OBJECT,
+        lsp_types::SymbolKind::KEY,
+        lsp_types::SymbolKind::NULL,
+        lsp_types::SymbolKind::ENUM_MEMBER,
+        lsp_types::SymbolKind::STRUCT,
+        lsp_types::SymbolKind::EVENT,
+        lsp_types::SymbolKind::OPERATOR,
+        lsp_types::SymbolKind::TYPE_PARAMETER,
+    ]
+}
+
 fn initialize_capabilities() -> ClientCapabilities {
     ClientCapabilities {
         workspace: Some(WorkspaceClientCapabilities {
@@ -394,6 +459,18 @@ fn initialize_capabilities() -> ClientCapabilities {
             }),
             diagnostic: Some(lsp_types::DiagnosticWorkspaceClientCapabilities {
                 refresh_support: Some(true),
+            }),
+            symbol: Some(lsp_types::WorkspaceSymbolClientCapabilities {
+                dynamic_registration: Some(false),
+                symbol_kind: Some(lsp_types::SymbolKindCapability {
+                    value_set: Some(symbol_kinds()),
+                }),
+                tag_support: Some(lsp_types::TagSupport {
+                    value_set: vec![lsp_types::SymbolTag::DEPRECATED],
+                }),
+                resolve_support: Some(lsp_types::WorkspaceSymbolResolveSupportCapability {
+                    properties: vec!["location.range".to_string()],
+                }),
             }),
             ..WorkspaceClientCapabilities::default()
         }),
@@ -494,6 +571,16 @@ fn initialize_capabilities() -> ClientCapabilities {
             diagnostic: Some(lsp_types::DiagnosticClientCapabilities {
                 dynamic_registration: Some(false),
                 related_document_support: Some(false),
+            }),
+            document_symbol: Some(lsp_types::DocumentSymbolClientCapabilities {
+                dynamic_registration: Some(false),
+                symbol_kind: Some(lsp_types::SymbolKindCapability {
+                    value_set: Some(symbol_kinds()),
+                }),
+                hierarchical_document_symbol_support: Some(true),
+                tag_support: Some(lsp_types::TagSupport {
+                    value_set: vec![lsp_types::SymbolTag::DEPRECATED],
+                }),
             }),
             ..TextDocumentClientCapabilities::default()
         }),

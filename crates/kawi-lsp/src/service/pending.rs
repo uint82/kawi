@@ -8,6 +8,8 @@ pub(super) enum ReplyPurpose {
     FileOperation,
     Text,
     CompletionResolve,
+    Symbols,
+    SymbolResolve,
 }
 
 pub(super) struct PendingReply {
@@ -61,7 +63,8 @@ impl Manager {
         let rename = self.pending_renames.remove(&request).is_some();
         let text = self.pending_text_requests.remove(&request).is_some();
         let resolve = self.pending_completion_resolves.remove(&request).is_some();
-        if !navigation && !rename && !text && !resolve {
+        let symbols = self.cancel_symbol_request(request);
+        if !navigation && !rename && !text && !resolve && !symbols {
             return;
         }
         let ids: Vec<RequestId> = self
@@ -97,6 +100,8 @@ impl Manager {
                 self.pending_completion_resolves.remove(&reply.request);
                 self.emit_text_error(reply.request, message);
             }
+            ReplyPurpose::Symbols => self.fail_symbol_request(reply.request, message),
+            ReplyPurpose::SymbolResolve => self.fail_symbol_resolve(reply.request, message),
         }
     }
 

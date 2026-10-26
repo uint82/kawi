@@ -42,6 +42,27 @@ fn main() -> Result<()> {
     let workspace_diagnostics =
         std::env::var("FAKE_LSP_WORKSPACE_DIAGNOSTICS").is_ok_and(|value| value == "1");
     let file_operations = std::env::var("FAKE_LSP_FILE_OPERATIONS").is_ok_and(|value| value == "1");
+    let symbol_providers = std::env::var("FAKE_LSP_SYMBOL_PROVIDERS")
+        .is_ok_and(|value| value == "1")
+        || std::env::var("FAKE_LSP_SYMBOL_PROVIDERS").is_err();
+    let symbol_resolve = std::env::var("FAKE_LSP_SYMBOL_RESOLVE").is_ok_and(|value| value == "1")
+        || std::env::var("FAKE_LSP_SYMBOL_RESOLVE").is_err();
+    let symbol_mode =
+        std::env::var("FAKE_LSP_SYMBOL_MODE").unwrap_or_else(|_| "nested".to_string());
+    let symbol_delay = std::env::var("FAKE_LSP_SYMBOL_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let symbol_line_offset = std::env::var("FAKE_LSP_SYMBOL_LINE_OFFSET")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    let symbol_settings = SymbolSettings {
+        mode: &symbol_mode,
+        delay: symbol_delay,
+        line_offset: symbol_line_offset,
+        resolve: symbol_resolve,
+    };
     if let Ok(path) = std::env::var("FAKE_LSP_PID_FILE") {
         std::fs::write(PathBuf::from(path), std::process::id().to_string())
             .context("write fake server pid")?;
@@ -89,6 +110,12 @@ fn main() -> Result<()> {
                             "workspaceDiagnostics": workspace_diagnostics
                         });
                     }
+                    if symbol_providers {
+                        capabilities["documentSymbolProvider"] = json!(true);
+                        capabilities["workspaceSymbolProvider"] = json!({
+                            "resolveProvider": symbol_resolve
+                        });
+                    }
                     if file_operations {
                         capabilities["workspace"] = json!({
                             "fileOperations": {
@@ -132,6 +159,15 @@ fn main() -> Result<()> {
                 "textDocument/codeAction" => handle_code_actions(&mut writer, id, params)?,
                 "textDocument/formatting" | "textDocument/rangeFormatting" => {
                     handle_formatting(&mut writer, id, &method, params)?
+                }
+                "textDocument/documentSymbol" => {
+                    handle_document_symbols(&mut writer, id, params, &symbol_settings)?
+                }
+                "workspace/symbol" => {
+                    handle_workspace_symbols(&mut writer, id, params, &documents, &symbol_settings)?
+                }
+                "workspaceSymbol/resolve" => {
+                    handle_workspace_symbol_resolve(&mut writer, id, params, symbol_line_offset)?
                 }
                 "workspace/willRenameFiles" => handle_will_rename(&mut writer, id, params)?,
                 "workspace/willDeleteFiles" => {
@@ -482,6 +518,148 @@ fn send_diagnostics(
         writer,
         Message::notification("textDocument/publishDiagnostics", Some(params)),
     )
+}
+
+struct SymbolSettings<'a> {
+    mode: &'a str,
+    delay: u64,
+    line_offset: i64,
+    resolve: bool,
+}
+
+fn handle_document_symbols(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    settings: &SymbolSettings<'_>,
+) -> Result<()> {
+    let params = params.context("document symbol params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("document symbol uri")?;
+    send_log(writer, &format!("document-symbols:{uri}"))?;
+    if settings.delay > 0 {
+        std::thread::sleep(Duration::from_millis(settings.delay));
+    }
+    let line_offset = settings.line_offset;
+    let result = match settings.mode {
+        "null" => Value::Null,
+        "flat" => json!([{
+            "name": "flat_symbol",
+            "kind": 12,
+            "location": location(uri, 1 + line_offset, 4),
+            "containerName": "module"
+        }]),
+        _ => json!([
+            {
+                "name": "outer",
+                "detail": "fn outer()",
+                "kind": 12,
+                "range": symbol_range(line_offset, 0, 2 + line_offset, 1),
+                "selectionRange": symbol_range(line_offset, 3, line_offset, 8),
+                "children": [{
+                    "name": "inner",
+                    "kind": 13,
+                    "range": symbol_range(1 + line_offset, 0, 1 + line_offset, 10),
+                    "selectionRange": symbol_range(1 + line_offset, 4, 1 + line_offset, 9)
+                }]
+            },
+            {
+                "name": "old_struct",
+                "kind": 23,
+                "tags": [1],
+                "range": symbol_range(3 + line_offset, 0, 3 + line_offset, 10),
+                "selectionRange": symbol_range(3 + line_offset, 5, 3 + line_offset, 15)
+            },
+            {
+                "name": "future",
+                "kind": 999,
+                "range": symbol_range(4 + line_offset, 0, 4 + line_offset, 6),
+                "selectionRange": symbol_range(4 + line_offset, 0, 4 + line_offset, 6)
+            }
+        ]),
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn handle_workspace_symbols(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    documents: &HashMap<String, i64>,
+    settings: &SymbolSettings<'_>,
+) -> Result<()> {
+    let params = params.context("workspace symbol params")?;
+    let query = params["query"].as_str().unwrap_or("");
+    send_log(writer, &format!("workspace-symbols:{query}"))?;
+    if settings.delay > 0 {
+        std::thread::sleep(Duration::from_millis(settings.delay));
+    }
+    let Some(uri) = documents.keys().min() else {
+        return send(writer, Message::response(id, Value::Null));
+    };
+    let line_offset = settings.line_offset;
+    let result = match settings.mode {
+        "null" => Value::Null,
+        "flat" => json!([{
+            "name": "workspace_flat",
+            "kind": 12,
+            "location": location(uri, 2 + line_offset, 1),
+            "containerName": "workspace"
+        }]),
+        _ => {
+            let mut symbols = vec![
+                json!({
+                    "name": "workspace_fn",
+                    "kind": 12,
+                    "containerName": "module",
+                    "location": location(uri, 1 + line_offset, 0)
+                }),
+                json!({
+                    "name": "remote_symbol",
+                    "kind": 12,
+                    "location": {"uri": "jar:file:///tmp/fake.jar!/Remote.class"}
+                }),
+            ];
+            if settings.resolve {
+                symbols.push(json!({
+                    "name": "lazy_symbol",
+                    "kind": 12,
+                    "containerName": "module",
+                    "location": {"uri": uri},
+                    "data": {"symbol": "lazy"}
+                }));
+            }
+            Value::Array(symbols)
+        }
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn handle_workspace_symbol_resolve(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    line_offset: i64,
+) -> Result<()> {
+    let mut symbol = params.context("workspace resolve params")?;
+    send_log(writer, "workspace-resolve")?;
+    let uri = symbol["location"]["uri"]
+        .as_str()
+        .context("workspace resolve uri")?
+        .to_string();
+    symbol["location"] = json!({
+        "uri": uri,
+        "range": symbol_range(2 + line_offset, 2, 2 + line_offset, 8)
+    });
+    send(writer, Message::response(id, symbol))
+}
+
+fn symbol_range(start_line: i64, start_character: i64, end_line: i64, end_character: i64) -> Value {
+    json!({
+        "start": {"line": start_line, "character": start_character},
+        "end": {"line": end_line, "character": end_character}
+    })
 }
 
 fn handle_navigation(

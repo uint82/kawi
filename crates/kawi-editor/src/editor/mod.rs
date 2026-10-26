@@ -510,6 +510,8 @@ impl Editor {
             | Action::OpenGrepWordPicker
             | Action::OpenBufferPicker
             | Action::OpenReplacePicker
+            | Action::OpenDocumentSymbols
+            | Action::OpenWorkspaceSymbols
             | Action::GitNextHunk
             | Action::GitPrevHunk
             | Action::GitStageHunk

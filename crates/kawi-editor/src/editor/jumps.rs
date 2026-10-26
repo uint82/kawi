@@ -24,6 +24,10 @@ impl Editor {
         }
     }
 
+    pub fn record_jump(&mut self) {
+        self.set_pcmark();
+    }
+
     pub fn jump_older(&mut self) -> Result<(), EditError> {
         self.jump_step(true)
     }
