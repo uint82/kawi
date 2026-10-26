@@ -49,31 +49,26 @@ impl App {
     }
 
     pub(super) fn handle_hover_key(&mut self, key: KeyEvent) -> anyhow::Result<Option<bool>> {
-        if self.hover.is_none() {
-            return Ok(None);
-        }
         let up = self.completion_options.keys.up.event();
         let down = self.completion_options.keys.down.event();
-        if key != up && key != down {
-            let dismiss = super::is_pager_dismiss(key);
-            self.hover = None;
-            return Ok(dismiss.then_some(false));
-        }
-        let Some((limit, page)) = self.hover_scroll() else {
-            self.hover = None;
-            return Ok(None);
-        };
-        let Some(mut session) = self.hover.take() else {
-            return Ok(None);
-        };
-        let page = isize::try_from(page).unwrap_or(isize::MAX);
-        if key == up {
-            session.scroll_by(-page, limit);
-        } else {
-            session.scroll_by(page, limit);
-        }
-        self.hover = Some(session);
-        Ok(Some(false))
+        let geometry = (key == up || key == down)
+            .then(|| self.hover_scroll())
+            .flatten();
+        Ok(super::overlay_scroll::handle_scroll_key(
+            super::overlay_scroll::ScrollKey {
+                session: &mut self.hover,
+                geometry,
+                key,
+                up,
+                down,
+            },
+        ))
+    }
+}
+
+impl super::overlay_scroll::Scrollable for HoverSession {
+    fn scroll_by(&mut self, delta: isize, limit: usize) {
+        HoverSession::scroll_by(self, delta, limit);
     }
 }
 

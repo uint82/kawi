@@ -61,31 +61,20 @@ impl App {
     }
 
     pub(super) fn handle_diagnostic_popup_key(&mut self, key: KeyEvent) -> Result<Option<bool>> {
-        if self.diagnostic_popup.is_none() {
-            return Ok(None);
-        }
         let up = self.completion_options.keys.up.event();
         let down = self.completion_options.keys.down.event();
-        if key != up && key != down {
-            let dismiss = super::is_pager_dismiss(key);
-            self.diagnostic_popup = None;
-            return Ok(dismiss.then_some(false));
-        }
-        let Some((limit, page)) = self.diagnostic_scroll() else {
-            self.diagnostic_popup = None;
-            return Ok(None);
-        };
-        let Some(mut popup) = self.diagnostic_popup.take() else {
-            return Ok(None);
-        };
-        let page = isize::try_from(page).unwrap_or(isize::MAX);
-        if key == up {
-            popup.scroll_by(-page, limit);
-        } else {
-            popup.scroll_by(page, limit);
-        }
-        self.diagnostic_popup = Some(popup);
-        Ok(Some(false))
+        let geometry = (key == up || key == down)
+            .then(|| self.diagnostic_scroll())
+            .flatten();
+        Ok(super::overlay_scroll::handle_scroll_key(
+            super::overlay_scroll::ScrollKey {
+                session: &mut self.diagnostic_popup,
+                geometry,
+                key,
+                up,
+                down,
+            },
+        ))
     }
 
     pub(super) fn close_diagnostic_popup(&mut self) -> bool {
@@ -110,6 +99,12 @@ fn source_count(entries: &[Problem]) -> usize {
         .map(|entry| entry.source.as_str())
         .collect::<std::collections::BTreeSet<_>>()
         .len()
+}
+
+impl super::overlay_scroll::Scrollable for DiagnosticPopup {
+    fn scroll_by(&mut self, delta: isize, limit: usize) {
+        DiagnosticPopup::scroll_by(self, delta, limit);
+    }
 }
 
 #[cfg(test)]

@@ -35,6 +35,7 @@ mod macro_codec;
 mod macro_ops;
 mod options;
 mod overlay;
+mod overlay_scroll;
 mod picker;
 mod preview;
 mod problems;
