@@ -159,6 +159,12 @@ fn hanging_brackets_indent_once_from_the_opener_line() {
 }
 
 #[test]
+fn block_rules_wait_for_bracket_depth_zero() {
+    assert_eq!(width(&["d = {", "    \"a\":"], 4, &python()), 4);
+    assert_eq!(width(&["items = [", "    lambda x:"], 4, &python()), 4);
+}
+
+#[test]
 fn matched_brackets_keep_indent() {
     assert_eq!(width(&["foo(bar)"], 0, &brackets()), 0);
     assert_eq!(width(&["[table]"], 0, &brackets()), 0);
