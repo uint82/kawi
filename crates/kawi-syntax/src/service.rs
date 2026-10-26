@@ -232,7 +232,7 @@ mod tests {
         assert!(result
             .spans
             .iter()
-            .any(|span| highlight_is(span, "keyword")));
+            .any(|span| highlight_is(span, "keyword.function")));
     }
 
     #[test]
@@ -240,7 +240,10 @@ mod tests {
         let service = SyntaxService::new();
         service.submit(request("fn main() {}\n", 1));
         let first = wait_for(&service).expect("first result");
-        assert!(first.spans.iter().any(|span| highlight_is(span, "keyword")));
+        assert!(first
+            .spans
+            .iter()
+            .any(|span| highlight_is(span, "keyword.function")));
 
         let mut edited = request("/*\nfn main() {}\n", 2);
         edited.key.revision = 2;
