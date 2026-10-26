@@ -4,6 +4,7 @@ use kawi_editor::Action;
 use kawi_editor::Mode;
 
 use crate::helix::HelixKeymap;
+use crate::leader::LeaderPath;
 use crate::vim::VimKeymap;
 
 pub trait Keymap {
@@ -20,6 +21,10 @@ pub trait Keymap {
     }
 
     fn pending_keys(&self) -> Option<&str> {
+        None
+    }
+
+    fn leader_path(&self) -> Option<LeaderPath> {
         None
     }
 
@@ -96,6 +101,13 @@ impl Keymap for ActiveKeymap {
         match self {
             Self::Vim(inner) => inner.pending_keys(),
             Self::Helix(inner) => inner.pending_keys(),
+        }
+    }
+
+    fn leader_path(&self) -> Option<LeaderPath> {
+        match self {
+            Self::Vim(inner) => inner.leader_path(),
+            Self::Helix(inner) => inner.leader_path(),
         }
     }
 
