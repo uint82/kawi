@@ -32,7 +32,7 @@ fn every_theme_colors_every_group() {
 }
 
 #[test]
-fn default_base_scopes_use_gruvbox_attributes() {
+fn default_base_scopes_use_kawi_attributes() {
     let theme = Theme::default();
     assert!(theme.syntax.named("comment").unwrap().italic);
     assert!(theme.syntax.named("string").unwrap().italic);
@@ -50,32 +50,32 @@ fn default_subcaptures_add_polish() {
 }
 
 #[test]
-fn default_syntax_matches_neovim_gruvbox() {
+fn default_syntax_uses_kawi_palette() {
     let theme = Theme::default();
     let expected = [
-        ("comment", (146, 131, 116)),
-        ("keyword", (251, 73, 52)),
-        ("string", (184, 187, 38)),
-        ("number", (211, 134, 155)),
-        ("constant", (211, 134, 155)),
-        ("function", (184, 187, 38)),
-        ("type", (250, 189, 47)),
-        ("variable", (235, 219, 178)),
-        ("property", (131, 165, 152)),
-        ("operator", (254, 128, 25)),
-        ("punctuation", (254, 128, 25)),
-        ("attribute", (142, 192, 124)),
-        ("tag", (254, 128, 25)),
-        ("invalid", (251, 73, 52)),
-        ("variable.parameter", (131, 165, 152)),
-        ("variable.member", (131, 165, 152)),
-        ("function.method", (184, 187, 38)),
-        ("function.macro", (142, 192, 124)),
-        ("constant.builtin", (254, 128, 25)),
-        ("type.builtin", (250, 189, 47)),
-        ("keyword.return", (251, 73, 52)),
-        ("keyword.import", (142, 192, 124)),
-        ("tag.attribute", (131, 165, 152)),
+        ("comment", (114, 133, 130)),
+        ("keyword", (255, 126, 135)),
+        ("string", (168, 217, 138)),
+        ("number", (201, 167, 255)),
+        ("constant", (201, 167, 255)),
+        ("function", (110, 208, 240)),
+        ("type", (242, 194, 123)),
+        ("variable", (231, 226, 214)),
+        ("property", (240, 166, 184)),
+        ("operator", (140, 158, 155)),
+        ("punctuation", (140, 158, 155)),
+        ("attribute", (111, 224, 200)),
+        ("tag", (255, 126, 135)),
+        ("invalid", (255, 107, 107)),
+        ("variable.parameter", (240, 166, 184)),
+        ("variable.member", (240, 166, 184)),
+        ("function.method", (110, 208, 240)),
+        ("function.macro", (111, 224, 200)),
+        ("constant.builtin", (255, 184, 107)),
+        ("type.builtin", (242, 194, 123)),
+        ("keyword.return", (255, 126, 135)),
+        ("keyword.import", (201, 167, 255)),
+        ("tag.attribute", (240, 166, 184)),
     ];
     for (name, (r, g, b)) in expected {
         assert_eq!(
@@ -88,7 +88,7 @@ fn default_syntax_matches_neovim_gruvbox() {
 
 #[test]
 fn every_default_theme_key_is_configured() {
-    let document: toml::Value = toml::from_str(GRUVBOX_NIGHT).expect("embedded theme");
+    let document: toml::Value = toml::from_str(DEFAULT_THEME).expect("embedded theme");
     let syntax = document
         .get("syntax")
         .and_then(toml::Value::as_table)

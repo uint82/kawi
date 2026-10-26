@@ -48,19 +48,19 @@ fn default_theme_snapshot_for_rust() {
     assert_eq!(
         styled_tokens(LanguageId::Rust, source),
         expected(&[
-            ("fn", "#fb4934"),
-            ("compute", "#b8bb26+bold"),
-            ("(", "#fe8019"),
-            ("value", "#83a598"),
-            (":", "#fe8019"),
-            ("u64", "#fabd2f"),
-            (")", "#fe8019"),
-            ("u64", "#fabd2f"),
-            ("{", "#fe8019"),
-            ("let", "#fb4934"),
-            ("\"ok\"", "#b8bb26+italic"),
-            (";", "#fe8019"),
-            ("}", "#fe8019"),
+            ("fn", "#ff7e87"),
+            ("compute", "#6ed0f0+bold"),
+            ("(", "#8c9e9b"),
+            ("value", "#f0a6b8"),
+            (":", "#8c9e9b"),
+            ("u64", "#f2c27b"),
+            (")", "#8c9e9b"),
+            ("u64", "#f2c27b"),
+            ("{", "#8c9e9b"),
+            ("let", "#ff7e87"),
+            ("\"ok\"", "#a8d98a+italic"),
+            (";", "#8c9e9b"),
+            ("}", "#8c9e9b"),
         ])
     );
 }
@@ -71,12 +71,12 @@ fn default_theme_snapshot_for_python() {
     assert_eq!(
         styled_tokens(LanguageId::Python, source),
         expected(&[
-            ("def", "#fb4934"),
-            ("greet", "#b8bb26+bold"),
-            ("name", "#83a598"),
-            ("str", "#fabd2f"),
-            ("return", "#fb4934+bold"),
-            ("\"hello\"", "#b8bb26+italic"),
+            ("def", "#ff7e87"),
+            ("greet", "#6ed0f0+bold"),
+            ("name", "#f0a6b8"),
+            ("str", "#f2c27b"),
+            ("return", "#ff7e87+bold"),
+            ("\"hello\"", "#a8d98a+italic"),
         ])
     );
 }
@@ -87,18 +87,18 @@ fn default_theme_snapshot_for_typescript() {
     assert_eq!(
         styled_tokens(LanguageId::TypeScript, source),
         expected(&[
-            ("function", "#fb4934"),
-            ("greet", "#b8bb26+bold"),
-            ("(", "#fe8019"),
-            ("name", "#83a598"),
-            ("string", "#fabd2f"),
-            (")", "#fe8019"),
-            ("number", "#fabd2f"),
-            ("{", "#fe8019"),
-            ("return", "#fb4934+bold"),
-            ("1", "#d3869b"),
-            (";", "#fe8019"),
-            ("}", "#fe8019"),
+            ("function", "#ff7e87"),
+            ("greet", "#6ed0f0+bold"),
+            ("(", "#8c9e9b"),
+            ("name", "#f0a6b8"),
+            ("string", "#f2c27b"),
+            (")", "#8c9e9b"),
+            ("number", "#f2c27b"),
+            ("{", "#8c9e9b"),
+            ("return", "#ff7e87+bold"),
+            ("1", "#c9a7ff"),
+            (";", "#8c9e9b"),
+            ("}", "#8c9e9b"),
         ])
     );
 }

@@ -4,8 +4,11 @@ mod gruvbox_light;
 mod one_dark;
 mod palette;
 
+const DEFAULT_THEME: &str = include_str!("../../themes/default.toml");
 const GRUVBOX_NIGHT: &str = include_str!("../../themes/gruvbox-night.toml");
 
+#[cfg(test)]
+mod contrast_tests;
 #[cfg(test)]
 mod snapshots;
 #[cfg(test)]
@@ -24,12 +27,12 @@ impl Theme {
         }
     }
 
-    pub fn names() -> [&'static str; 3] {
-        ["default", "one-dark", "gruvbox-light"]
+    pub fn names() -> [&'static str; 4] {
+        ["default", "one-dark", "gruvbox-dark", "gruvbox-light"]
     }
 
     pub fn default_theme() -> Self {
-        Self::gruvbox_night("default")
+        Self::from_toml("default", DEFAULT_THEME).expect("embedded default theme")
     }
 
     fn gruvbox_night(name: &str) -> Self {
