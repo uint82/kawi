@@ -208,6 +208,41 @@ fn default_differs_from_gruvbox_dark() {
 }
 
 #[test]
+fn cobalt_uses_a_deep_blue_palette() {
+    let theme = Theme::named("cobalt").expect("theme");
+    assert_eq!(
+        theme.base.background,
+        Color::Rgb {
+            r: 10,
+            g: 27,
+            b: 46
+        }
+    );
+    assert_eq!(
+        theme
+            .syntax
+            .named("keyword")
+            .and_then(|style| style.foreground),
+        Some(Color::Rgb {
+            r: 245,
+            g: 215,
+            b: 110
+        })
+    );
+    assert_eq!(
+        theme
+            .syntax
+            .named("function")
+            .and_then(|style| style.foreground),
+        Some(Color::Rgb {
+            r: 102,
+            g: 217,
+            b: 239
+        })
+    );
+}
+
+#[test]
 fn one_dark_preserves_the_previous_default() {
     let theme = Theme::named("one-dark").expect("theme");
     assert_eq!(

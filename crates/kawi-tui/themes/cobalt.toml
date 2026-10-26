@@ -1,0 +1,114 @@
+float_background = "#0A1B2E"
+code_background = "#0A1B2E"
+
+[base]
+foreground = "#D9E6F2"
+background = "#0A1B2E"
+
+[search_match]
+foreground = "#0A1B2E"
+background = "#F5D76E"
+
+[search_current]
+foreground = "#0A1B2E"
+background = "#FF9F43"
+
+[substitute]
+foreground = "#0A1B2E"
+background = "#F5D76E"
+
+[selection]
+foreground = "#D9E6F2"
+background = "#173651"
+
+[status]
+foreground = "#D9E6F2"
+background = "#12304A"
+
+[gutter]
+line_number = "#6C87A1"
+non_text = "#6C87A1"
+
+[git]
+add = "#A5D6A7"
+change = "#F5D76E"
+delete = "#FF8FB3"
+staged_add = "#5D8D7D"
+staged_change = "#8F7C53"
+staged_delete = "#9F6275"
+
+[diagnostics]
+error = "#FF6B6B"
+warning = "#F5D76E"
+information = "#66D9EF"
+hint = "#A5D6A7"
+
+[palette]
+ink = "#0A1B2E"
+fg = "#D9E6F2"
+comment = "#6F8BA5"
+stone = "#7F9BB5"
+yellow = "#F5D76E"
+cyan = "#66D9EF"
+blue = "#7FB3FF"
+green = "#A5D6A7"
+pink = "#FF8FB3"
+lavender = "#C3A6FF"
+orange = "#FF9F43"
+aqua = "#7FE0C3"
+danger = "#FF6B6B"
+surface = "#12304A"
+selection = "#173651"
+gutter = "#6C87A1"
+
+[syntax]
+comment = { fg = "comment", italic = true }
+"comment.documentation" = { fg = "comment", italic = true }
+keyword = { fg = "yellow" }
+"keyword.control" = { fg = "yellow", bold = true }
+"keyword.function" = { fg = "yellow" }
+"keyword.import" = { fg = "blue" }
+"keyword.operator" = { fg = "yellow" }
+"keyword.return" = { fg = "yellow", bold = true }
+"keyword.storage" = { fg = "orange" }
+function = { fg = "cyan", bold = true }
+"function.builtin" = { fg = "orange" }
+"function.call" = { fg = "cyan", bold = true }
+"function.macro" = { fg = "aqua", italic = true }
+"function.method" = { fg = "cyan", bold = true }
+type = { fg = "blue" }
+"type.builtin" = { fg = "blue" }
+"type.definition" = { fg = "blue" }
+constructor = { fg = "orange" }
+namespace = { fg = "fg" }
+module = { fg = "fg" }
+label = { fg = "yellow" }
+string = { fg = "green", italic = true }
+"string.escape" = { fg = "orange" }
+"string.regexp" = { fg = "green", italic = true }
+"string.special" = { fg = "orange" }
+"string.special.key" = { fg = "orange" }
+constant = { fg = "pink" }
+"constant.builtin" = { fg = "orange" }
+"constant.macro" = { fg = "aqua" }
+number = { fg = "pink" }
+boolean = { fg = "pink" }
+character = { fg = "pink" }
+variable = { fg = "fg" }
+"variable.builtin" = { fg = "orange" }
+"variable.member" = { fg = "lavender" }
+"variable.parameter" = { fg = "lavender" }
+property = { fg = "lavender" }
+"property.builtin" = { fg = "lavender" }
+operator = { fg = "stone" }
+punctuation = { fg = "stone" }
+"punctuation.bracket" = { fg = "stone" }
+"punctuation.delimiter" = { fg = "stone" }
+"punctuation.special" = { fg = "orange" }
+attribute = { fg = "aqua" }
+decorator = { fg = "aqua" }
+tag = { fg = "orange" }
+"tag.attribute" = { fg = "lavender" }
+"tag.delimiter" = { fg = "stone" }
+invalid = { fg = "danger", bold = true }
+special = { fg = "orange" }
