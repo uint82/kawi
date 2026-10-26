@@ -179,7 +179,6 @@ fn paint_focus_line(
     paint::apply_match(out, &frame.theme.selection)?;
     let text = display::slice_screen(line, 0, width, view.preview.tabstop);
     write!(out, "{text}").context("write focused preview line")?;
-    write_padding(out, display_width(&text), width)?;
     paint::apply_colors(
         out,
         frame.theme.base.foreground,
