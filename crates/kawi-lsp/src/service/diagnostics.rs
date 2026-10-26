@@ -47,6 +47,7 @@ pub struct Diagnostic {
     pub message: String,
     pub source: Option<String>,
     pub code: Option<String>,
+    pub code_description: Option<String>,
     pub tags: Vec<DiagnosticTag>,
     pub related: Vec<DiagnosticRelatedInformation>,
 }
@@ -144,6 +145,10 @@ fn convert_diagnostic(
         message: diagnostic.message.clone(),
         source: diagnostic.source.clone(),
         code: diagnostic.code.as_ref().map(code_string),
+        code_description: diagnostic
+            .code_description
+            .as_ref()
+            .map(|description| description.href.to_string()),
         tags: diagnostic
             .tags
             .as_deref()
@@ -239,6 +244,41 @@ mod tests {
         assert_eq!(converted.related[0].path, PathBuf::from("/tmp/related.rs"));
         assert_eq!(converted.related[0].line, 3);
         assert_eq!(converted.related[0].message, "related");
+    }
+
+    #[test]
+    fn converts_code_descriptions_and_ignores_unknown_tags() {
+        let text = Rope::from_str("a\n");
+        let lines = LineIndex::new(&text);
+        let mut value = diagnostic(Range::new(Position::new(0, 0), Position::new(0, 1)));
+        value.code_description = Some(lsp_types::CodeDescription {
+            href: "https://example.com/error".parse().expect("uri"),
+        });
+        value.tags = Some(vec![lsp_types::DiagnosticTag::DEPRECATED]);
+        let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF16);
+        assert_eq!(
+            converted.code_description.as_deref(),
+            Some("https://example.com/error")
+        );
+        assert_eq!(converted.tags, vec![DiagnosticTag::Deprecated]);
+    }
+
+    #[test]
+    fn missing_severity_defaults_to_error_and_unknown_tags_are_ignored() {
+        let text = Rope::from_str("a\n");
+        let lines = LineIndex::new(&text);
+        let value: LspDiagnostic = serde_json::from_value(serde_json::json!({
+            "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 1 }
+            },
+            "message": "message",
+            "tags": [99]
+        }))
+        .expect("diagnostic");
+        let converted = convert_diagnostic(&value, &lines, &PositionEncodingKind::UTF16);
+        assert_eq!(converted.severity, DiagnosticSeverity::Error);
+        assert!(converted.tags.is_empty());
     }
 
     #[test]
