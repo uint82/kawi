@@ -4,6 +4,7 @@ mod event;
 mod helix;
 mod ipc;
 mod keymap;
+mod leader;
 mod mouse;
 mod options;
 mod persist;

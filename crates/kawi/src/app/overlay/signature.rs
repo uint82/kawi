@@ -16,6 +16,7 @@ impl App {
                 lines: layout.lines,
                 scroll: session.scroll().min(layout.max_scroll),
             }),
+            leader: None,
         })
     }
 

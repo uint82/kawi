@@ -11,6 +11,7 @@ use super::App;
 pub(super) mod code;
 pub(crate) mod document;
 mod hover;
+mod leader;
 pub(super) mod options;
 mod signature;
 mod size;
@@ -20,6 +21,7 @@ const MAX_LIST_WIDTH: usize = 60;
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
     panel: Option<PanelData>,
+    leader: Option<leader::LeaderData>,
 }
 
 struct ListData<'a> {
@@ -63,6 +65,7 @@ impl OverlayData<'_> {
                 lines: &panel.lines,
                 scroll: panel.scroll,
             }),
+            leader: self.leader.as_ref().map(leader::LeaderData::view),
         }
     }
 }
@@ -91,6 +94,9 @@ impl App {
     }
 
     pub(super) fn overlay_data(&self) -> Option<OverlayData<'_>> {
+        if let Some(overlay) = self.leader_overlay() {
+            return Some(overlay);
+        }
         if self.completion.is_some() {
             return self.completion_overlay();
         }
@@ -120,6 +126,7 @@ impl App {
         Some(OverlayData {
             list: Some(list),
             panel,
+            leader: None,
         })
     }
 

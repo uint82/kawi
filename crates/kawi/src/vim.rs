@@ -1,6 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+mod leader;
+
 use crate::keymap::{has_ctrl_or_alt, normalize_interrupt, Keymap};
+use crate::leader::{group, LeaderPath};
 use kawi_editor::Action;
 use kawi_editor::CaseMotion;
 use kawi_editor::Mode;
@@ -18,6 +21,20 @@ fn is_alternate_key(key: KeyEvent) -> bool {
 
 fn is_redo_key(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('r'))
+}
+
+fn plain_char(key: KeyEvent) -> Option<char> {
+    if has_ctrl_or_alt(key) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char(character) => Some(character),
+        _ => None,
+    }
+}
+
+fn is_space_leader(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key)
 }
 
 fn insert_control_action(key: KeyEvent) -> Option<Action> {
@@ -362,8 +379,11 @@ impl VimKeymap {
     fn map_normal(&mut self, key: KeyEvent) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r' | 't')) = key.code {
-                if !has_ctrl_or_alt(key) {
+            if is_space_leader(key) {
+                return self.cancel_sequence();
+            }
+            if let Some(prefix) = plain_char(key) {
+                if group(prefix).is_some() {
                     self.pending.push(' ');
                     self.pending.push(prefix);
                     return Action::Noop;
@@ -386,7 +406,7 @@ impl VimKeymap {
     }
 
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
-        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+        if is_space_leader(key) {
             self.leader_space = true;
             return Action::Noop;
         }
@@ -1240,55 +1260,6 @@ impl VimKeymap {
         }
     }
 
-    fn leader_prefix_armed(&self) -> bool {
-        matches!(
-            self.pending.as_str(),
-            " c" | " f" | " v" | " r" | " t" | "\\" | "\\c" | "\\f" | "\\v" | "\\r" | "\\t"
-        )
-    }
-
-    fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
-        if self.pending == "\\" {
-            if let KeyCode::Char(prefix @ ('c' | 'f' | 'v' | 'r' | 't')) = key.code {
-                if !has_ctrl_or_alt(key) {
-                    self.pending.push(prefix);
-                    return Action::Noop;
-                }
-            }
-            return self.cancel_sequence();
-        }
-        let action = match (self.pending.as_str(), key.code) {
-            (" f" | "\\f", KeyCode::Char('f' | 'p')) if !has_ctrl_or_alt(key) => {
-                Action::OpenFilePicker
-            }
-            (" f" | "\\f", KeyCode::Char('s')) if !has_ctrl_or_alt(key) => Action::OpenGrepPicker,
-            (" f" | "\\f", KeyCode::Char('w')) if !has_ctrl_or_alt(key) => {
-                Action::OpenGrepWordPicker
-            }
-            (" f" | "\\f", KeyCode::Char('k')) if !has_ctrl_or_alt(key) => Action::OpenBufferPicker,
-            (" f" | "\\f", KeyCode::Char('r')) if !has_ctrl_or_alt(key) => {
-                Action::OpenReplacePicker
-            }
-            (" v" | "\\v", KeyCode::Char('s')) if !has_ctrl_or_alt(key) => Action::GitStageHunk,
-            (" v" | "\\v", KeyCode::Char('u')) if !has_ctrl_or_alt(key) => Action::GitUndoStage,
-            (" v" | "\\v", KeyCode::Char('S')) if !has_ctrl_or_alt(key) => Action::GitStageBuffer,
-            (" v" | "\\v", KeyCode::Char('p')) if !has_ctrl_or_alt(key) => Action::GitPreviewHunk,
-            (" v" | "\\v", KeyCode::Char('d')) if !has_ctrl_or_alt(key) => Action::GitDiff,
-            (" c" | "\\c", KeyCode::Char('a')) if !has_ctrl_or_alt(key) => Action::CodeAction,
-            (" c" | "\\c", KeyCode::Char('f')) if !has_ctrl_or_alt(key) => Action::Format,
-            (" r" | "\\r", KeyCode::Char('n')) if !has_ctrl_or_alt(key) => Action::Rename,
-            (" t" | "\\t", KeyCode::Char('r')) if !has_ctrl_or_alt(key) => Action::TaskRerun,
-            (" t" | "\\t", KeyCode::Char('c')) if !has_ctrl_or_alt(key) => Action::TaskCancel,
-            (" t" | "\\t", KeyCode::Char('o')) if !has_ctrl_or_alt(key) => Action::TaskOutput,
-            (" t" | "\\t", KeyCode::Char('l')) if !has_ctrl_or_alt(key) => Action::TaskList,
-            (" t" | "\\t", KeyCode::Char('q')) if !has_ctrl_or_alt(key) => Action::QuickfixOpen,
-            (" t" | "\\t", KeyCode::Char('t')) if !has_ctrl_or_alt(key) => Action::ToggleTerminal,
-            _ => return self.cancel_sequence(),
-        };
-        self.clear_pending();
-        action
-    }
-
     fn bracket_prefix_armed(&self) -> bool {
         let body = self
             .pending
@@ -1482,8 +1453,11 @@ impl VimKeymap {
     fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
         if self.leader_space {
             self.leader_space = false;
-            if let KeyCode::Char(prefix @ ('c' | 'f')) = key.code {
-                if !has_ctrl_or_alt(key) {
+            if is_space_leader(key) {
+                return self.cancel_sequence();
+            }
+            if let Some(prefix) = plain_char(key) {
+                if group(prefix).is_some_and(|group| group.visual) {
                     self.pending.push(' ');
                     self.pending.push(prefix);
                     return Action::Noop;
@@ -1501,7 +1475,7 @@ impl VimKeymap {
     }
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key) {
+        if is_space_leader(key) {
             self.leader_space = true;
             return Action::Noop;
         }
@@ -1676,8 +1650,8 @@ impl VimKeymap {
                 self.clear_pending();
                 return Action::CancelVisual;
             }
-            if let KeyCode::Char(prefix @ ('c' | 'f')) = key.code {
-                if !has_ctrl_or_alt(key) {
+            if let Some(prefix) = plain_char(key) {
+                if group(prefix).is_some_and(|group| group.visual) {
                     self.pending.push(prefix);
                     return Action::Noop;
                 }
@@ -1990,6 +1964,10 @@ impl Keymap for VimKeymap {
         self.pending_key()
     }
 
+    fn leader_path(&self) -> Option<LeaderPath> {
+        self.pending_leader_path()
+    }
+
     fn reset_pending(&mut self) {
         self.clear_pending();
         self.register_display = None;
@@ -2019,6 +1997,13 @@ mod tests {
 
     fn shift(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::SHIFT)
+    }
+
+    fn leader_group(path: Option<LeaderPath>) -> Option<char> {
+        match path {
+            Some(LeaderPath::Group(group)) => Some(group.key),
+            Some(LeaderPath::Root) | None => None,
+        }
     }
 
     #[test]
@@ -4137,6 +4122,38 @@ mod tests {
             Action::CancelPending
         );
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn leader_path_tracks_space_and_backslash_sequences() {
+        let mut map = VimKeymap::new();
+        assert_eq!(map.leader_path(), None);
+        map.map(plain(KeyCode::Char(' ')), Mode::Normal);
+        assert_eq!(map.leader_path(), Some(LeaderPath::Root));
+        map.map(plain(KeyCode::Char('f')), Mode::Normal);
+        assert_eq!(leader_group(map.leader_path()), Some('f'));
+        map.map(plain(KeyCode::Char('k')), Mode::Normal);
+        assert_eq!(map.leader_path(), None);
+
+        map.map(plain(KeyCode::Char('\\')), Mode::Normal);
+        assert_eq!(map.leader_path(), Some(LeaderPath::Root));
+        map.map(plain(KeyCode::Char('v')), Mode::Normal);
+        assert_eq!(leader_group(map.leader_path()), Some('v'));
+    }
+
+    #[test]
+    fn second_space_closes_the_leader_menu() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.leader_path(), Some(LeaderPath::Root));
+        assert_eq!(
+            map.map(plain(KeyCode::Char(' ')), Mode::Normal),
+            Action::CancelPending
+        );
+        assert_eq!(map.leader_path(), None);
     }
 
     #[test]
