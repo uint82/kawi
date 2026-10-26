@@ -19,11 +19,12 @@ pub use service::{
     CompletionEvent, CompletionResolveEvent, CompletionTrigger, CompletionTriggerKind,
     CursorPosition, Diagnostic, DiagnosticMode, DiagnosticModeEvent, DiagnosticPosition,
     DiagnosticRange, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag,
-    DiagnosticsEvent, DocumentEdit, FileOperationCapabilitiesEvent, FileOperationEvent,
-    FileOperationKind, FormattingEvent, FormattingSettings, HoverEvent, LocationEvent, LspCommand,
-    LspEvent, LspService, MarkupDocument, MessageLevel, ProgressEvent, RenameEvent, RenameReady,
-    ServerState, SignatureEntry, SignatureHelpEvent, SignatureParameter, StatusEvent, TextChange,
+    DiagnosticsEvent, DocumentEdit, DocumentSymbolEvent, FileOperationCapabilitiesEvent,
+    FileOperationEvent, FileOperationKind, FormattingEvent, FormattingSettings, HoverEvent,
+    LocationEvent, LspCommand, LspEvent, LspService, MarkupDocument, MessageLevel, ProgressEvent,
+    RenameEvent, RenameReady, ServerState, SignatureEntry, SignatureHelpEvent, SignatureParameter,
+    StatusEvent, SymbolCapabilitiesEvent, SymbolEntry, SymbolKind, SymbolRange, TextChange,
     TextLocation, WatchedFileChange, WorkspaceDiagnosticEvent, WorkspaceDiagnosticState,
-    WorkspaceEdit, INITIAL_DOCUMENT_VERSION,
+    WorkspaceEdit, WorkspaceSymbolEvent, WorkspaceSymbolResolvedEvent, INITIAL_DOCUMENT_VERSION,
 };
 pub use warning::LanguageWarning;

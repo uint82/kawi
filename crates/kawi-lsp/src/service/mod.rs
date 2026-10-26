@@ -35,6 +35,7 @@ mod pull_diagnostics;
 mod rename;
 mod request;
 mod signature_help;
+mod symbols;
 mod text_requests;
 mod watched_files;
 mod workspace_diagnostics;
@@ -300,6 +301,14 @@ pub struct CompletionCapabilitiesEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolCapabilitiesEvent {
+    pub server: String,
+    pub document: bool,
+    pub workspace: bool,
+    pub resolve: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeActionEntry {
     pub server: String,
     pub title: String,
@@ -347,9 +356,13 @@ pub enum LspEvent {
     Completion(CompletionEvent),
     CompletionResolved(CompletionResolveEvent),
     CompletionCapabilities(CompletionCapabilitiesEvent),
+    SymbolCapabilities(SymbolCapabilitiesEvent),
     SignatureHelp(SignatureHelpEvent),
     CodeActions(CodeActionEvent),
     Formatting(FormattingEvent),
+    DocumentSymbols(DocumentSymbolEvent),
+    WorkspaceSymbols(WorkspaceSymbolEvent),
+    WorkspaceSymbolResolved(WorkspaceSymbolResolvedEvent),
     RequestError {
         request: u64,
         message: String,
@@ -364,6 +377,11 @@ pub enum LspEvent {
         message: String,
     },
 }
+
+pub use symbols::{
+    DocumentSymbolEvent, SymbolEntry, SymbolKind, SymbolRange, WorkspaceSymbolEvent,
+    WorkspaceSymbolResolvedEvent,
+};
 
 pub use diagnostics::{
     Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation,
@@ -585,6 +603,31 @@ impl LspService {
         request
     }
 
+    pub fn document_symbols(&self, path: &Path, version: u64) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::DocumentSymbols {
+            request,
+            path: path.to_path_buf(),
+            version,
+        });
+        request
+    }
+
+    pub fn workspace_symbols(&self, query: impl Into<String>) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::WorkspaceSymbols {
+            request,
+            query: query.into(),
+        });
+        request
+    }
+
+    pub fn resolve_workspace_symbol(&self, symbol_id: u64) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::ResolveWorkspaceSymbol { request, symbol_id });
+        request
+    }
+
     pub fn workspace_diagnostics(&self) -> bool {
         self.send(Command::WorkspaceDiagnostics)
     }
@@ -719,6 +762,19 @@ pub(crate) enum Command {
         range: Option<(CursorPosition, CursorPosition)>,
         settings: FormattingSettings,
     },
+    DocumentSymbols {
+        request: u64,
+        path: PathBuf,
+        version: u64,
+    },
+    WorkspaceSymbols {
+        request: u64,
+        query: String,
+    },
+    ResolveWorkspaceSymbol {
+        request: u64,
+        symbol_id: u64,
+    },
     Execute {
         path: PathBuf,
         server: String,
@@ -755,6 +811,10 @@ struct Manager {
     pending_text_requests: HashMap<u64, text_requests::PendingTextRequest>,
     pending_completion_resolves: HashMap<u64, completion_resolve::PendingResolve>,
     completion_resolve: HashMap<u64, completion_resolve::ResolveItem>,
+    pending_symbols: HashMap<u64, symbols::PendingSymbols>,
+    pending_symbol_resolves: HashMap<u64, symbols::PendingSymbolResolve>,
+    symbol_resolve_items: HashMap<u64, symbols::StoredWorkspaceSymbol>,
+    next_symbol_item: u64,
     pending_commands: HashMap<RequestId, ClientKey>,
     pull_diagnostics: pull_diagnostics::PullDiagnostics,
     workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics,
@@ -796,6 +856,9 @@ struct RequestSupport {
     did_rename_files: bool,
     will_delete_files: bool,
     did_delete_files: bool,
+    document_symbols: bool,
+    workspace_symbols: bool,
+    workspace_symbol_resolve: bool,
 }
 
 struct Document {
