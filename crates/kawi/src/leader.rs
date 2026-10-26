@@ -70,6 +70,33 @@ const CODE_COMMANDS: &[LeaderCommand] = &[
     },
 ];
 
+const DIAGNOSTIC_COMMANDS: &[LeaderCommand] = &[
+    LeaderCommand {
+        key: 'd',
+        aliases: &[],
+        label: "show diagnostic",
+        action: Action::ShowDiagnostic,
+    },
+    LeaderCommand {
+        key: 'n',
+        aliases: &[],
+        label: "next diagnostic",
+        action: Action::DiagnosticNext,
+    },
+    LeaderCommand {
+        key: 'p',
+        aliases: &[],
+        label: "previous diagnostic",
+        action: Action::DiagnosticPrev,
+    },
+    LeaderCommand {
+        key: 'l',
+        aliases: &[],
+        label: "list diagnostics",
+        action: Action::QuickfixOpen,
+    },
+];
+
 const SYMBOL_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 's',
@@ -172,6 +199,12 @@ pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[
         commands: CODE_COMMANDS,
     },
     LeaderGroup {
+        key: 'd',
+        label: "diagnostics",
+        visual: false,
+        commands: DIAGNOSTIC_COMMANDS,
+    },
+    LeaderGroup {
         key: 'f',
         label: "find",
         visual: true,
@@ -232,7 +265,7 @@ mod tests {
     #[test]
     fn groups_cover_the_leader_prefixes() {
         let keys: Vec<char> = LEADER_GROUPS.iter().map(|group| group.key).collect();
-        assert_eq!(keys, ['c', 'f', 'r', 's', 't', 'v']);
+        assert_eq!(keys, ['c', 'd', 'f', 'r', 's', 't', 'v']);
     }
 
     #[test]
@@ -252,6 +285,15 @@ mod tests {
         let path = LeaderPath::Group(group('s').expect("symbols group"));
         assert_eq!(action(path, 's'), Some(Action::OpenDocumentSymbols));
         assert_eq!(action(path, 'w'), Some(Action::OpenWorkspaceSymbols));
+    }
+
+    #[test]
+    fn diagnostics_use_the_d_group() {
+        let path = LeaderPath::Group(group('d').expect("diagnostics group"));
+        assert_eq!(action(path, 'd'), Some(Action::ShowDiagnostic));
+        assert_eq!(action(path, 'n'), Some(Action::DiagnosticNext));
+        assert_eq!(action(path, 'p'), Some(Action::DiagnosticPrev));
+        assert_eq!(action(path, 'l'), Some(Action::QuickfixOpen));
     }
 
     #[test]

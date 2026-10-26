@@ -25,9 +25,10 @@ fn items(app: &App) -> Vec<String> {
         .collect()
 }
 
-fn root_items() -> [&'static str; 6] {
+fn root_items() -> [&'static str; 7] {
     [
         "c  code",
+        "d  diagnostics",
         "f  find",
         "r  rename",
         "s  symbols",
