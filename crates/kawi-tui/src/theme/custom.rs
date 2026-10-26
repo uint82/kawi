@@ -93,7 +93,7 @@ impl Theme {
         Self::from_toml(name, &text)
     }
 
-    fn from_toml(name: &str, text: &str) -> Result<Self, ThemeError> {
+    pub(super) fn from_toml(name: &str, text: &str) -> Result<Self, ThemeError> {
         let file: ThemeFile = toml::from_str(text).map_err(|error| {
             ThemeError::invalid(error.message()).at_line(error_line(&error, text))
         })?;

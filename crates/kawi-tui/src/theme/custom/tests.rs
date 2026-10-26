@@ -136,9 +136,9 @@ fn builtins_fallback_when_theme_files_are_missing() {
     assert_eq!(
         theme.base.background,
         Color::Rgb {
-            r: 20,
-            g: 22,
-            b: 27
+            r: 40,
+            g: 40,
+            b: 40
         }
     );
     let _ = fs::remove_dir_all(dir);

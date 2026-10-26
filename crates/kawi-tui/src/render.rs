@@ -2352,7 +2352,7 @@ mod tests {
     #[test]
     fn theme_change_recolors_overlay_syntax() {
         let default = Theme::named("default").expect("default theme");
-        let gruvbox = Theme::named("gruvbox-dark").expect("gruvbox theme");
+        let gruvbox = Theme::named("one-dark").expect("one dark theme");
         let style = crate::markdown::MarkdownStyle::Syntax(highlight_named("keyword"));
         let default_color = markdown_style(style, &default)
             .and_then(|style| style.foreground)
