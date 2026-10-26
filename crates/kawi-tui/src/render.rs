@@ -8,8 +8,8 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DiagnosticSpan, Frame, PaneFrame, PickerLine, PickerMenu, PromptMenu, ReplaceMenu,
-    ReplaceStage, SearchSpan, Selection, TaskPanel,
+    CursorStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu, ReplaceMenu, ReplaceStage,
+    SearchSpan, Selection, TaskPanel,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -23,6 +23,7 @@ use crate::display;
 
 mod bracket;
 mod leader;
+mod picker;
 mod terminal;
 
 use terminal::{draw_terminal_panel, place_terminal_cursor};
@@ -31,7 +32,7 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
     execute!(out, BeginSynchronizedUpdate).context("begin synchronized update")?;
     let contents = match (frame.replace.as_ref(), frame.picker.as_ref()) {
         (Some(replace), _) => draw_replace(out, frame, replace),
-        (None, Some(picker)) => draw_picker(out, frame, picker),
+        (None, Some(picker)) => picker::draw(out, frame, picker),
         (None, None) => draw_contents(out, frame),
     };
     let finished = execute!(out, EndSynchronizedUpdate).context("end synchronized update");
@@ -39,6 +40,19 @@ pub fn draw(out: &mut Stdout, frame: &Frame) -> Result<()> {
 }
 
 fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
+    draw_surface(out, frame)?;
+    if let Some(terminal) = frame.terminal.as_ref().filter(|terminal| terminal.focused) {
+        place_terminal_cursor(out, terminal)?;
+    } else {
+        execute!(out, Show).context("show editor cursor")?;
+        apply_cursor_style(out, frame.cursor_style)?;
+        place_cursor(out, frame)?;
+    }
+    flush(out)?;
+    Ok(())
+}
+
+fn draw_surface(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::apply_base(out, frame.theme)?;
     for pane in frame.panes {
         draw_pane(out, frame, pane)?;
@@ -52,14 +66,6 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
     }
     draw_completion(out, frame)?;
     draw_overlay(out, frame)?;
-    if let Some(terminal) = frame.terminal.as_ref().filter(|terminal| terminal.focused) {
-        place_terminal_cursor(out, terminal)?;
-    } else {
-        execute!(out, Show).context("show editor cursor")?;
-        apply_cursor_style(out, frame.cursor_style)?;
-        place_cursor(out, frame)?;
-    }
-    flush(out)?;
     Ok(())
 }
 
@@ -152,359 +158,11 @@ fn draw_separators(out: &mut Stdout, frame: &Frame) -> Result<()> {
     paint::restore_base(out, frame.theme)
 }
 
-const PICKER_LIST_MIN_WIDTH: usize = 24;
-const PICKER_LIST_DIVISOR: usize = 5;
-const PICKER_LIST_PARTS: usize = 2;
-
-fn draw_picker(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
-    paint::apply_base(out, frame.theme)?;
-    execute!(out, Clear(ClearType::All)).context("clear picker")?;
-    let list_width = picker_list_width(frame, picker);
-    draw_picker_prompt(out, frame, picker, list_width)?;
-    draw_picker_rows(out, frame, picker, list_width)?;
-    if let Some(preview) = picker.preview.as_ref() {
-        draw_picker_preview(out, frame, preview, list_width)?;
-    }
-    draw_picker_footer(out, frame, picker)?;
-    apply_cursor_style(out, CursorStyle::Bar)?;
-    place_picker_cursor(out, frame, picker)?;
-    flush(out)?;
-    Ok(())
-}
-
-fn picker_list_width(frame: &Frame, picker: &PickerMenu<'_>) -> usize {
-    let width = frame.viewport.width();
-    if picker.preview.is_none() {
-        return width;
-    }
-    let preferred = width.saturating_mul(PICKER_LIST_PARTS) / PICKER_LIST_DIVISOR;
-    preferred
-        .max(PICKER_LIST_MIN_WIDTH)
-        .min(width.saturating_sub(PICKER_LIST_MIN_WIDTH))
-}
-
-fn draw_picker_prompt(
-    out: &mut Stdout,
-    frame: &Frame,
-    picker: &PickerMenu<'_>,
-    width: usize,
-) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(0, 0),
-        Clear(ClearType::CurrentLine),
-        SetForegroundColor(frame.theme.line_number)
-    )
-    .context("prepare picker prompt")?;
-    let prompt = format!("{}  {}", picker.title, picker.query);
-    write!(out, "{}", truncate_to_width(&prompt, width)).context("write picker prompt")?;
-    paint::restore_base(out, frame.theme)?;
-    Ok(())
-}
-
-fn draw_picker_rows(
-    out: &mut Stdout,
-    frame: &Frame,
-    picker: &PickerMenu<'_>,
-    width: usize,
-) -> Result<()> {
-    let available = frame.viewport.height().saturating_sub(2);
-    if available == 0 {
-        return Ok(());
-    }
-    let start = picker_start(available, picker.selected);
-    for offset in 0..available {
-        let index = start + offset;
-        let row = offset.saturating_add(1);
-        execute!(
-            out,
-            MoveTo(0, saturate_u16(row)),
-            Clear(ClearType::CurrentLine)
-        )
-        .context("clear picker row")?;
-        let Some(item) = picker.items.get(index) else {
-            continue;
-        };
-        draw_picker_line(out, frame, item, width, picker.selected == Some(index))?;
-    }
-    Ok(())
-}
-
-fn draw_picker_line(
-    out: &mut Stdout,
-    frame: &Frame,
-    item: &PickerLine<'_>,
-    width: usize,
-    selected: bool,
-) -> Result<()> {
-    if selected {
-        paint::apply_match(out, &frame.theme.selection)?;
-    }
-    if item.deprecated {
-        execute!(out, SetAttribute(Attribute::CrossedOut)).context("cross out picker row")?;
-    }
-    let primary = truncate_to_display_width(item.primary, width);
-    write!(out, "{primary}").context("write picker row")?;
-    if item.deprecated {
-        execute!(out, SetAttribute(Attribute::NotCrossedOut)).context("uncross picker row")?;
-    }
-    let used = display_width(primary);
-    if let Some(detail) = item.detail.filter(|detail| !detail.is_empty()) {
-        let remaining = width.saturating_sub(used);
-        if remaining > 0 {
-            execute!(out, SetForegroundColor(frame.theme.line_number))
-                .context("apply picker detail color")?;
-            let detail = truncate_to_display_width(detail, remaining);
-            write!(out, "{detail}").context("write picker detail")?;
-        }
-    }
-    paint::restore_base(out, frame.theme)?;
-    Ok(())
-}
-
-fn draw_picker_preview(
-    out: &mut Stdout,
-    frame: &Frame,
-    preview: &crate::frame::PickerPreview<'_>,
-    list_width: usize,
-) -> Result<()> {
-    let width = frame.viewport.width();
-    let height = frame.viewport.height();
-    let preview_x = list_width.saturating_add(1);
-    let preview_width = width.saturating_sub(preview_x);
-    if preview_width == 0 || height < 2 {
-        return Ok(());
-    }
-    draw_picker_separator(out, frame, list_width, height)?;
-    draw_picker_preview_title(out, frame, preview, preview_x, preview_width)?;
-    let body_height = height.saturating_sub(2);
-    if body_height == 0 || preview.lines.is_empty() {
-        return Ok(());
-    }
-    let first = preview_first_line(preview, body_height);
-    let view = PreviewView {
-        preview,
-        lines: &preview.lines[first..],
-        first,
-        x: preview_x,
-        body_height,
-        gutter_width: preview_gutter_width(preview, first),
-    };
-    draw_preview_lines(out, frame, &view)?;
-    draw_preview_highlights(out, frame, &view)?;
-    Ok(())
-}
-
-struct PreviewView<'a, 'b> {
-    preview: &'b crate::frame::PickerPreview<'a>,
-    lines: &'a [String],
-    first: usize,
-    x: usize,
-    body_height: usize,
-    gutter_width: usize,
-}
-
-fn draw_picker_separator(
-    out: &mut Stdout,
-    frame: &Frame,
-    column: usize,
-    height: usize,
-) -> Result<()> {
-    execute!(out, SetForegroundColor(frame.theme.non_text)).context("apply separator color")?;
-    for row in 1..height.saturating_sub(1) {
-        execute!(out, MoveTo(saturate_u16(column), saturate_u16(row)))
-            .context("move to picker separator")?;
-        write!(out, "│").context("write picker separator")?;
-    }
-    paint::restore_base(out, frame.theme)?;
-    Ok(())
-}
-
-fn draw_picker_preview_title(
-    out: &mut Stdout,
-    frame: &Frame,
-    preview: &crate::frame::PickerPreview<'_>,
-    x: usize,
-    width: usize,
-) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(x), 0),
-        SetForegroundColor(frame.theme.non_text)
-    )
-    .context("move to preview title")?;
-    write!(out, "{}", truncate_to_width(preview.title, width)).context("write preview title")?;
-    paint::restore_base(out, frame.theme)?;
-    Ok(())
-}
-
-fn preview_first_line(preview: &crate::frame::PickerPreview<'_>, body_height: usize) -> usize {
-    let focus = preview.focus_line.unwrap_or(preview.first_line);
-    let offset = focus.saturating_sub(preview.first_line);
-    offset
-        .saturating_sub(body_height / 2)
-        .min(preview.lines.len().saturating_sub(body_height))
-}
-
-fn preview_line_number(
-    preview: &crate::frame::PickerPreview<'_>,
-    first: usize,
-    offset: usize,
-) -> usize {
-    preview
-        .first_line
-        .saturating_add(first)
-        .saturating_add(offset)
-        .saturating_add(1)
-}
-
-fn preview_gutter_width(preview: &crate::frame::PickerPreview<'_>, first: usize) -> usize {
-    let last = preview
-        .first_line
-        .saturating_add(first)
-        .saturating_add(preview.lines.len());
-    last.to_string().len().saturating_add(1)
-}
-
-fn draw_preview_lines(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) -> Result<()> {
-    let width = frame.viewport.width().saturating_sub(view.x);
-    let text_width = width.saturating_sub(view.gutter_width);
-    for (offset, line) in view.lines.iter().take(view.body_height).enumerate() {
-        let row = offset.saturating_add(1);
-        execute!(out, MoveTo(saturate_u16(view.x), saturate_u16(row)))
-            .context("move to preview line")?;
-        let number = preview_line_number(view.preview, view.first, offset);
-        execute!(out, SetForegroundColor(frame.theme.line_number))
-            .context("apply preview line number color")?;
-        write!(
-            out,
-            "{number:>gutter_width$}",
-            gutter_width = view.gutter_width
-        )
-        .context("write preview line number")?;
-        paint::restore_base(out, frame.theme)?;
-        let text = display::slice_screen(line, 0, text_width, view.preview.tabstop);
-        write!(out, "{text}").context("write preview line")?;
-        erase_row_tail(out)?;
-    }
-    Ok(())
-}
-
-fn draw_preview_highlights(
-    out: &mut Stdout,
-    frame: &Frame,
-    view: &PreviewView<'_, '_>,
-) -> Result<()> {
-    let width = frame.viewport.width().saturating_sub(view.x);
-    let text_width = width.saturating_sub(view.gutter_width);
-    let top = view.preview.first_line.saturating_add(view.first);
-    let mut viewport = Viewport::new(view.body_height, text_width);
-    viewport.place_top(top, view.preview.total_lines.max(1));
-    let span_view = SpanView {
-        window: view.lines,
-        top: viewport.top(),
-        viewport: &viewport,
-        gutter: view.gutter_width,
-        leftcol: 0,
-        tabstop: view.preview.tabstop,
-    };
-    for span in syntax_highlight_spans(view.preview.syntax_spans, &span_view) {
-        paint_span_at(
-            out,
-            &span,
-            view.x.saturating_add(view.gutter_width),
-            1,
-            frame.theme,
-        )?;
-    }
-    if let Some(focus) = view.preview.focus_line {
-        if let Some(offset) = focus.checked_sub(top) {
-            if let Some(line) = view.lines.get(offset) {
-                let end = line.chars().count().saturating_sub(1);
-                let selection = Selection::Range {
-                    start: (focus, 0),
-                    end: (focus, end),
-                };
-                for span in highlight_spans(&span_view, Some(selection), None) {
-                    paint_span_at(
-                        out,
-                        &span,
-                        view.x.saturating_add(view.gutter_width),
-                        1,
-                        frame.theme,
-                    )?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn draw_picker_footer(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
-    let height = frame.viewport.height();
-    if height == 0 {
-        return Ok(());
-    }
-    let row = height.saturating_sub(1);
-    execute!(
-        out,
-        MoveTo(0, saturate_u16(row)),
-        Clear(ClearType::CurrentLine)
-    )
-    .context("clear picker footer")?;
-    let footer = picker_footer(picker);
-    paint::apply_match(out, &frame.theme.status)?;
-    write!(
-        out,
-        "{}",
-        truncate_to_width(&footer, frame.viewport.width())
-    )
-    .context("write picker footer")?;
-    paint::restore_base(out, frame.theme)?;
-    Ok(())
-}
-
-fn picker_footer(picker: &PickerMenu<'_>) -> String {
-    if let Some(status) = picker.status {
-        return status.to_string();
-    }
-    if picker.loading {
-        return "Searching...".to_string();
-    }
-    if picker.query.is_empty() && picker.items.is_empty() {
-        return "Type to search  Esc cancel".to_string();
-    }
-    if picker.replace_hint {
-        return format!(
-            "{} results  Enter open  Ctrl-R replace  Tab next  Esc cancel",
-            picker.items.len()
-        );
-    }
-    if picker.file_hint {
-        return format!(
-            "{} results  Enter open  Ctrl-A new  Ctrl-R rename  Ctrl-D delete  Tab next  Esc cancel",
-            picker.items.len()
-        );
-    }
-    format!(
-        "{} results  Enter open  Tab next  Esc cancel",
-        picker.items.len()
-    )
-}
-
 fn picker_start(available: usize, selected: Option<usize>) -> usize {
     match selected {
         Some(index) if index >= available => index.saturating_add(1).saturating_sub(available),
         _ => 0,
     }
-}
-
-fn place_picker_cursor(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
-    let width = frame.viewport.width().max(1);
-    let prefix = picker.title.chars().count().saturating_add(2);
-    let column = prefix.saturating_add(picker.cursor).min(width - 1);
-    execute!(out, MoveTo(saturate_u16(column), 0)).context("place picker cursor")?;
-    Ok(())
 }
 
 fn draw_replace(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
@@ -1138,6 +796,7 @@ fn paint_span(
         pane.rect.x.saturating_add(gutter_width),
         pane.rect.y,
         theme,
+        theme.base.background,
     )
 }
 
@@ -1147,6 +806,7 @@ fn paint_span_at(
     x: usize,
     y: usize,
     theme: &Theme,
+    background: Color,
 ) -> Result<()> {
     move_to_segment(
         out,
@@ -1154,12 +814,14 @@ fn paint_span_at(
         y.saturating_add(span.screen_row),
     )?;
     match span.tint {
-        Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme),
+        Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme, background),
         Tint::BracketMatch => bracket::paint_bracket_match(out, &span.text, theme),
-        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
-        Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
-        Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme),
-        Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme),
+        Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme, background),
+        Tint::SearchCurrent => {
+            paint_tinted(out, &span.text, &theme.search_current, theme, background)
+        }
+        Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
+        Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
         Tint::Diagnostic(severity) => paint_underlined(out, &span.text, severity, theme),
     }
 }
@@ -1175,10 +837,21 @@ fn paint_underlined(
     paint::clear_underline(out)
 }
 
-fn paint_tinted(out: &mut Stdout, text: &str, colors: &MatchColors, theme: &Theme) -> Result<()> {
+fn paint_tinted(
+    out: &mut Stdout,
+    text: &str,
+    colors: &MatchColors,
+    theme: &Theme,
+    background: Color,
+) -> Result<()> {
     paint::apply_match(out, colors)?;
     write_segment(out, text)?;
-    paint::restore_base(out, theme)?;
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        background,
+        "restore tinted span",
+    )?;
     Ok(())
 }
 
@@ -1507,19 +1180,25 @@ fn paint_syntax(
     text: &str,
     highlight: SyntaxHighlight,
     theme: &Theme,
+    background: Color,
 ) -> Result<()> {
     let style = theme.syntax.style(highlight).unwrap_or_default();
     execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax style")?;
     paint::apply_colors(
         out,
         style.foreground.unwrap_or(theme.base.foreground),
-        style.background.unwrap_or(theme.base.background),
+        style.background.unwrap_or(background),
         "apply syntax colors",
     )?;
     apply_attributes(out, style.bold, style.italic, style.underline)?;
     write_segment(out, text)?;
     execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax attributes")?;
-    paint::restore_base(out, theme)
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        background,
+        "restore syntax background",
+    )
 }
 
 fn apply_attributes(out: &mut Stdout, bold: bool, italic: bool, underline: bool) -> Result<()> {
@@ -2694,51 +2373,6 @@ mod tests {
         let text = crate::markdown::MarkdownLine::blank();
         assert_eq!(overlay_background(&code, &theme), theme.code_background);
         assert_eq!(overlay_background(&text, &theme), theme.float_background);
-    }
-
-    #[test]
-    fn preview_line_numbers_include_the_scroll_offset() {
-        let lines = vec!["line".to_string()];
-        let preview = crate::frame::PickerPreview {
-            title: "file.rs",
-            lines: &lines,
-            first_line: 10,
-            total_lines: 100,
-            focus_line: None,
-            syntax_spans: &[],
-            tabstop: 8,
-        };
-        assert_eq!(preview_line_number(&preview, 5, 2), 18);
-    }
-
-    #[test]
-    fn preview_centers_the_focus_line() {
-        let lines = vec!["line".to_string(); 100];
-        let preview = crate::frame::PickerPreview {
-            title: "file.rs",
-            lines: &lines,
-            first_line: 0,
-            total_lines: 100,
-            focus_line: Some(50),
-            syntax_spans: &[],
-            tabstop: 8,
-        };
-        assert_eq!(preview_first_line(&preview, 20), 40);
-    }
-
-    #[test]
-    fn preview_clamps_the_scroll_to_the_visible_lines() {
-        let lines = vec!["line".to_string(); 30];
-        let preview = crate::frame::PickerPreview {
-            title: "file.rs",
-            lines: &lines,
-            first_line: 0,
-            total_lines: 30,
-            focus_line: Some(25),
-            syntax_spans: &[],
-            tabstop: 8,
-        };
-        assert_eq!(preview_first_line(&preview, 20), 10);
     }
 
     #[test]

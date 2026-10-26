@@ -3,7 +3,7 @@ use std::sync::mpsc::Sender;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_picker::{
-    clamped_selection, selection_at, Picker, PickerOutcome, ProjectRequest, ProjectResult,
+    selection_at, wrapped_selection, Picker, PickerOutcome, ProjectRequest, ProjectResult,
     ProjectService, ReplacePreview, TextInput,
 };
 
@@ -344,7 +344,7 @@ impl ReplaceSession {
     }
 
     fn navigate(&mut self, forward: bool, amount: usize) {
-        self.selected = clamped_selection(self.selected, self.preview_rows.len(), forward, amount);
+        self.selected = wrapped_selection(self.selected, self.preview_rows.len(), forward, amount);
     }
 
     fn select(&mut self, index: usize) {

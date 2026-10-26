@@ -15,6 +15,6 @@ pub use input::TextInput;
 pub use replace::{
     replace_preview, ReplaceEntry, ReplaceFile, ReplacePreview, MAX_REPLACE_MATCHES,
 };
-pub use selection::{clamped_selection, selection_at};
+pub use selection::{selection_at, wrapped_selection};
 pub use service::{ProjectRequest, ProjectResult, ProjectService};
 pub use state::{Picker, PickerKind, PickerOutcome, PickerRow};

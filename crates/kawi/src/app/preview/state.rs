@@ -60,6 +60,9 @@ impl PreviewState {
             focus_line,
         });
         self.deadline = Some(now.checked_add(PREVIEW_DEBOUNCE).unwrap_or(now));
+        self.request = None;
+        self.syntax_request = None;
+        self.entry = None;
         self.status = None;
         self.loading = true;
     }

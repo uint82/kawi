@@ -142,15 +142,7 @@ impl App {
 
     pub(in crate::app) fn symbol_preview(&self) -> Option<kawi_tui::frame::PickerPreview<'_>> {
         let session = self.symbol_picker.as_ref()?;
-        Some(kawi_tui::frame::PickerPreview {
-            title: session.preview_title()?,
-            lines: session.preview_lines(),
-            first_line: session.preview_first_line(),
-            total_lines: session.preview_total_lines(),
-            focus_line: session.preview_focus_line(),
-            syntax_spans: session.preview_syntax(),
-            tabstop: self.editor.tabstop(),
-        })
+        crate::app::preview::preview_menu(session.preview_state(), self.editor.tabstop())
     }
 
     fn apply_symbol_jump(&mut self, jump: SymbolJump) {

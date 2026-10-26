@@ -1,4 +1,4 @@
-pub fn clamped_selection(
+pub fn wrapped_selection(
     current: Option<usize>,
     length: usize,
     forward: bool,
@@ -7,11 +7,12 @@ pub fn clamped_selection(
     if length == 0 {
         return None;
     }
-    let current = current.unwrap_or(0);
+    let current = current.unwrap_or(0).min(length - 1);
+    let offset = amount % length;
     Some(if forward {
-        current.saturating_add(amount).min(length - 1)
+        current.saturating_add(offset) % length
     } else {
-        current.saturating_sub(amount)
+        current.saturating_add(length).saturating_sub(offset) % length
     })
 }
 
@@ -28,11 +29,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clamps_to_both_ends() {
-        assert_eq!(clamped_selection(Some(0), 3, false, 1), Some(0));
-        assert_eq!(clamped_selection(Some(2), 3, true, 1), Some(2));
-        assert_eq!(clamped_selection(Some(1), 3, true, 5), Some(2));
-        assert_eq!(clamped_selection(None, 0, true, 1), None);
+    fn wraps_at_both_ends() {
+        assert_eq!(wrapped_selection(Some(2), 3, true, 1), Some(0));
+        assert_eq!(wrapped_selection(Some(0), 3, false, 1), Some(2));
+        assert_eq!(wrapped_selection(Some(1), 3, true, 5), Some(0));
+        assert_eq!(wrapped_selection(Some(1), 3, true, 3), Some(1));
+        assert_eq!(wrapped_selection(None, 0, true, 1), None);
     }
 
     #[test]
