@@ -1,5 +1,23 @@
 use super::*;
 
+fn long_block_comment_code() -> String {
+    let mut text = String::from("/*\n");
+    for _ in 0..10_000 {
+        text.push_str("xxxxxxx\n");
+    }
+    text.push_str("*/\n(a)\n");
+    text
+}
+
+fn long_triple_string_code() -> String {
+    let mut text = String::from("\"\"\"\n");
+    for _ in 0..10_000 {
+        text.push_str("xxxxxxx\n");
+    }
+    text.push_str("\"\"\"\n(a)\n");
+    text
+}
+
 #[test]
 fn search_respects_the_bound() {
     let buffer = Buffer::from_string("a (xxxxx)");
@@ -46,5 +64,53 @@ fn code_after_a_block_comment_is_matched() {
             ACTION_MATCH_BOUND
         ),
         Some(close)
+    );
+}
+
+#[test]
+fn bounded_search_skips_large_files() {
+    let mut text = String::from("(\n");
+    for _ in 0..10_000 {
+        text.push_str("xxxxxxx\n");
+    }
+    text.push(')');
+    let buffer = Buffer::from_string(&text);
+    let editing = rust_editing();
+    assert!(find(&buffer, &editing, None, &ALL_PAIRS, (0, 0), 100).is_none());
+}
+
+#[test]
+fn context_inside_block_comment_recovers_after_the_comment() {
+    let text = long_block_comment_code();
+    let buffer = Buffer::from_string(&text);
+    let editing = rust_editing();
+    assert_eq!(
+        find(
+            &buffer,
+            &editing,
+            Some(LanguageId::Rust),
+            &ALL_PAIRS,
+            position_of(&text, '(', 0),
+            10,
+        ),
+        Some(position_of(&text, ')', 0))
+    );
+}
+
+#[test]
+fn context_inside_triple_string_recovers_after_the_string() {
+    let text = long_triple_string_code();
+    let buffer = Buffer::from_string(&text);
+    let editing = python_editing();
+    assert_eq!(
+        find(
+            &buffer,
+            &editing,
+            Some(LanguageId::Python),
+            &ALL_PAIRS,
+            position_of(&text, '(', 0),
+            10,
+        ),
+        Some(position_of(&text, ')', 0))
     );
 }

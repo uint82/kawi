@@ -160,6 +160,21 @@ mod tests {
     }
 
     #[test]
+    fn insert_mode_after_auto_pair_highlights_the_pair() {
+        let mut editor = editor("foo");
+        editor.apply(Action::AppendLineEnd);
+        editor.apply(Action::InsertChar('('));
+        assert_eq!(editor.text_lines()[0], "foo()");
+        assert_eq!(
+            editor.bracket_match(100),
+            Some(BracketMatch {
+                first: (0, 4),
+                second: (0, 3),
+            })
+        );
+    }
+
+    #[test]
     fn insert_mode_without_a_bracket_returns_nothing() {
         let mut editor = editor("ab");
         editor.apply(Action::JumpTo(0, 1));

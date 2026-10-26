@@ -563,6 +563,27 @@ mod tests {
     }
 
     #[test]
+    fn bracket_match_cache_honors_highlighting_and_auto_pairs() {
+        let mut app = app("a (b) c\n");
+        app.editor.apply(Action::JumpTo(0, 2));
+        app.editor.set_match_brackets(false);
+        app.refresh_bracket_match();
+        assert!(app
+            .windows
+            .active_view()
+            .bracket_match
+            .is_some_and(|cache| cache.matched.is_none()));
+        app.editor.set_match_brackets(true);
+        app.editor.set_auto_pairs(false);
+        app.refresh_bracket_match();
+        assert!(app
+            .windows
+            .active_view()
+            .bracket_match
+            .is_some_and(|cache| cache.matched.is_some()));
+    }
+
+    #[test]
     fn split_file_opens_it_in_the_new_window() {
         let path = std::env::temp_dir().join(format!(
             "kawi_window_split_{}_{}.txt",
