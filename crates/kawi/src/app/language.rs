@@ -35,6 +35,7 @@ mod tests {
     use crate::keymap::Flavor;
     use kawi_buffer::Buffer;
     use kawi_editor::BufferOptionDefaults;
+    use kawi_syntax::LanguageId;
     use std::fs;
     use std::path::PathBuf;
 
@@ -92,6 +93,33 @@ mod tests {
         assert_eq!(editing.comments.line.as_deref(), Some("//"));
         assert!(editing.pairs.contains(&kawi_editor::Pair::new('(', ')')));
         assert!(!editing.pairs.contains(&kawi_editor::Pair::new('\'', '\'')));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn python_indent_rules_are_loaded() {
+        let dir = temp_dir("python_rules");
+        let mut app = app("main.py");
+        load_languages(&mut app, &dir, "");
+        let indent = app.lsp.language_indent(Some(Path::new("main.py")));
+        assert_eq!(indent.language, Some(LanguageId::Python));
+        assert_eq!(indent.rules.indent_after_suffixes, vec![":"]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn language_indent_overrides_are_loaded() {
+        let dir = temp_dir("indent_overrides");
+        let mut app = app("main.rs");
+        load_languages(
+            &mut app,
+            &dir,
+            "[[language]]\nname = \"rust\"\nindent_after_suffixes = [\"=>\"]\nindent_after_keywords = [\"loop\"]\nindent_brackets = false\n",
+        );
+        let indent = app.lsp.language_indent(Some(Path::new("main.rs")));
+        assert_eq!(indent.rules.indent_after_suffixes, vec!["=>"]);
+        assert_eq!(indent.rules.indent_after_keywords, vec!["loop"]);
+        assert!(!indent.rules.indent_brackets);
         let _ = fs::remove_dir_all(dir);
     }
 
