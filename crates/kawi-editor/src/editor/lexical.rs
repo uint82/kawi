@@ -72,7 +72,9 @@ impl LexicalScanner {
     }
 
     pub(crate) fn finish_line(&mut self) {
-        if matches!(self.state, LexState::LineComment | LexState::Quote(_)) {
+        if self.state == LexState::LineComment
+            || (matches!(self.state, LexState::Quote(_)) && !self.escaped)
+        {
             self.state = LexState::Code;
         }
         self.escaped = false;
