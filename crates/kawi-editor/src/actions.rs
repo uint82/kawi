@@ -327,6 +327,8 @@ pub enum Action {
     OpenGrepWordPicker,
     OpenBufferPicker,
     OpenReplacePicker,
+    OpenDocumentSymbols,
+    OpenWorkspaceSymbols,
     GitNextHunk,
     GitPrevHunk,
     DiagnosticNext,
@@ -416,6 +418,8 @@ impl Action {
                 | Self::OpenGrepWordPicker
                 | Self::OpenBufferPicker
                 | Self::OpenReplacePicker
+                | Self::OpenDocumentSymbols
+                | Self::OpenWorkspaceSymbols
                 | Self::DiagnosticNext
                 | Self::DiagnosticPrev
                 | Self::GotoDefinition

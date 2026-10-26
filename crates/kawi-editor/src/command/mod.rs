@@ -95,6 +95,8 @@ pub enum PickerCommand {
     Grep,
     Buffers,
     Replace,
+    Symbols,
+    WorkspaceSymbols,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,6 +334,10 @@ fn parse_named(text: &str) -> Command {
         ("pick", ["grep" | "live_grep" | "grep_live"]) => Command::Pick(PickerCommand::Grep),
         ("pick", ["buffer" | "buffers"]) => Command::Pick(PickerCommand::Buffers),
         ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
+        ("pick", ["symbol" | "symbols"]) => Command::Pick(PickerCommand::Symbols),
+        ("pick", ["workspace_symbol" | "workspace_symbols" | "workspace-symbols"]) => {
+            Command::Pick(PickerCommand::WorkspaceSymbols)
+        }
         ("replace", []) => Command::Pick(PickerCommand::Replace),
         ("git", rest) => parse_git_command(rest),
         ("task", rest) => parse_task_command(rest),
@@ -1100,6 +1106,11 @@ mod tests {
         assert_eq!(parse("pick live_grep"), Command::Pick(PickerCommand::Grep));
         assert_eq!(parse("pick buffers"), Command::Pick(PickerCommand::Buffers));
         assert_eq!(parse("pick replace"), Command::Pick(PickerCommand::Replace));
+        assert_eq!(parse("pick symbols"), Command::Pick(PickerCommand::Symbols));
+        assert_eq!(
+            parse("pick workspace_symbols"),
+            Command::Pick(PickerCommand::WorkspaceSymbols)
+        );
         assert_eq!(parse("replace"), Command::Pick(PickerCommand::Replace));
         assert_eq!(parse("pick"), Command::Pick(PickerCommand::Files));
         assert_eq!(parse("pick nope"), Command::Unknown);
