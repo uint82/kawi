@@ -92,7 +92,7 @@ impl Editor {
         let Some(width) = self.closer_indent_width(row, col, closer) else {
             return;
         };
-        self.reindent_line(row, width);
+        self.set_line_indent(row, width);
     }
 
     fn closer_indent_width(&self, row: usize, col: usize, closer: char) -> Option<usize> {
@@ -140,7 +140,7 @@ impl Editor {
             .is_some_and(|line| line.chars().take(col).all(|ch| ch.is_whitespace()))
     }
 
-    fn reindent_line(&mut self, row: usize, width: usize) {
+    fn set_line_indent(&mut self, row: usize, width: usize) {
         if self.line_indent_width(row) == width {
             return;
         }
