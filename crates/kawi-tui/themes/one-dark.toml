@@ -22,8 +22,8 @@ foreground = "#000000"
 background = "#FFFFFF"
 
 [bracket.match]
-foreground = "#14161B"
-background = "#98C379"
+foreground = "#E0E2EA"
+background = "#2E392E"
 
 [status]
 foreground = "#14161B"

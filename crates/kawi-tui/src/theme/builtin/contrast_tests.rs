@@ -60,7 +60,31 @@ fn default_ui_meets_contrast() {
             theme.search_current.background,
         ),
         (theme.line_number, theme.base.background),
+        (
+            theme.bracket_match.foreground,
+            theme.bracket_match.background,
+        ),
     ] {
         assert!(contrast_ratio(foreground, background) >= 4.5);
+    }
+}
+
+#[test]
+fn bracket_match_is_subtle_and_readable_in_every_theme() {
+    for name in Theme::names() {
+        let theme = Theme::named(name).expect("theme");
+        assert_eq!(
+            theme.bracket_match.foreground, theme.base.foreground,
+            "{name}"
+        );
+        assert!(
+            contrast_ratio(theme.base.foreground, theme.bracket_match.background) >= 4.5,
+            "{name} bracket match text is below 4.5:1 contrast"
+        );
+        let tint = contrast_ratio(theme.bracket_match.background, theme.base.background);
+        assert!(
+            (1.15..=2.0).contains(&tint),
+            "{name} bracket match tint is {tint:.2}:1"
+        );
     }
 }
