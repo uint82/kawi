@@ -591,6 +591,7 @@ impl Editor {
             self.insert_replace_char(c);
             return;
         }
+        self.dedent_before_closer(c);
         if self.try_auto_pair(c) {
             return;
         }

@@ -1,6 +1,6 @@
 use super::*;
 use crate::actions::Action;
-use crate::editing::{CommentTokens, LanguageEditing, Pair};
+use crate::editing::{BlockComment, CommentTokens, LanguageEditing, Pair};
 use kawi_buffer::Buffer;
 use kawi_syntax::LanguageId;
 
@@ -83,6 +83,7 @@ fn python_editing() -> LanguageEditing {
     }
 }
 
+mod closer;
 mod copy;
 mod language;
 mod repeat;

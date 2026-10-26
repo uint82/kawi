@@ -1,4 +1,5 @@
-use super::indent::engine::{next_width, IndentRequest, INDENT_WINDOW_LINES};
+use super::indent::engine::{closer_width, next_width, IndentRequest, INDENT_WINDOW_LINES};
+use super::indent::reindent_line;
 use super::Editor;
 
 impl Editor {
@@ -79,6 +80,27 @@ impl Editor {
         next_width(&request)
     }
 
+    pub(super) fn dedent_before_closer(&mut self, closer: char) {
+        if !self.autoindent || self.mode != crate::mode::Mode::Insert || !is_closing_bracket(closer)
+        {
+            return;
+        }
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        if !self.line_prefix_is_blank(row, col) {
+            return;
+        }
+        let Some(width) = self.closer_indent_width(row, col, closer) else {
+            return;
+        };
+        self.reindent_line(row, width);
+    }
+
+    fn closer_indent_width(&self, row: usize, col: usize, closer: char) -> Option<usize> {
+        let (start, lines) = self.indent_window(row);
+        let request = self.indent_request(&lines, row - start, col, 0);
+        closer_width(&request, closer)
+    }
+
     fn indent_window(&self, row: usize) -> (usize, Vec<String>) {
         let start = row.saturating_sub(INDENT_WINDOW_LINES - 1);
         let lines = (start..=row)
@@ -110,6 +132,25 @@ impl Editor {
     fn line_indent_width(&self, row: usize) -> usize {
         self.buffer
             .indent_width(row, self.effective_indent().tabstop)
+    }
+
+    fn line_prefix_is_blank(&self, row: usize, col: usize) -> bool {
+        self.buffer
+            .line(row)
+            .is_some_and(|line| line.chars().take(col).all(|ch| ch.is_whitespace()))
+    }
+
+    fn reindent_line(&mut self, row: usize, width: usize) {
+        if self.line_indent_width(row) == width {
+            return;
+        }
+        let indent = self.effective_indent();
+        let line = self.buffer.line(row).unwrap_or_default();
+        let next = reindent_line(&line, width, indent.expandtab, indent.tabstop);
+        self.record_maybe();
+        self.buffer.replace_lines(row, row, &next);
+        self.cursor
+            .set_position(row, self.indent_text(width).chars().count());
     }
 
     pub(super) fn prefix_indent_width(&self, row: usize, col: usize) -> usize {
@@ -164,6 +205,10 @@ impl Editor {
         text.push_str(&" ".repeat(width.saturating_sub(col)));
         text
     }
+}
+
+fn is_closing_bracket(ch: char) -> bool {
+    matches!(ch, ')' | ']' | '}')
 }
 
 fn indent_target(chars: &[char], want: usize, tabstop: usize) -> usize {
