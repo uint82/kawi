@@ -1,4 +1,4 @@
-use super::lsp_diagnostics::{DiagnosticState, Navigation};
+use super::lsp_diagnostics::DiagnosticState;
 use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
 };
@@ -582,15 +582,6 @@ impl LspUi {
         self.diagnostics.spans(window, top)
     }
 
-    pub fn navigate_diagnostics(
-        &self,
-        row: usize,
-        column: usize,
-        forward: bool,
-    ) -> Option<Navigation> {
-        self.diagnostics.navigate(row, column, forward)
-    }
-
     pub fn take_message(&mut self) -> Option<String> {
         self.message.take()
     }
@@ -937,6 +928,7 @@ mod tests {
                 message: "workspace".to_string(),
                 source: None,
                 code: None,
+                code_description: None,
                 tags: Vec::new(),
                 related: Vec::new(),
             }],

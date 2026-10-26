@@ -13,6 +13,9 @@ mod code_action;
 mod completion;
 mod config;
 mod conflict;
+mod diagnostic_index;
+mod diagnostic_popup;
+pub(crate) mod diagnostic_ui;
 mod disk;
 mod file_ops;
 mod formatting;
@@ -32,6 +35,7 @@ mod macro_codec;
 mod macro_ops;
 mod options;
 mod overlay;
+mod overlay_scroll;
 mod picker;
 mod preview;
 mod problems;
@@ -80,15 +84,6 @@ fn preferred_sign(
     diagnostic: Option<kawi_tui::frame::DiagnosticSeverity>,
 ) -> Option<kawi_tui::frame::Sign> {
     diagnostic.map(kawi_tui::frame::Sign::Diagnostic).or(git)
-}
-
-fn diagnostic_label(severity: kawi_lsp::DiagnosticSeverity) -> &'static str {
-    match severity {
-        kawi_lsp::DiagnosticSeverity::Error => "Error",
-        kawi_lsp::DiagnosticSeverity::Warning => "Warning",
-        kawi_lsp::DiagnosticSeverity::Information => "Information",
-        kawi_lsp::DiagnosticSeverity::Hint => "Hint",
-    }
 }
 
 fn ui_diagnostic_severity(
@@ -156,8 +151,10 @@ pub struct App {
     completion_auto: completion::AutoTrigger,
     completion_options: completion::CompletionOptions,
     overlay_options: overlay::options::OverlayOptions,
+    diagnostic_options: diagnostic_ui::DiagnosticOptions,
     signature: Option<signature::SignatureSession>,
     hover: Option<hover::HoverSession>,
+    diagnostic_popup: Option<diagnostic_popup::DiagnosticPopup>,
     code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
@@ -192,6 +189,7 @@ pub struct App {
     undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
+    last_input: Instant,
 }
 
 impl App {
@@ -232,8 +230,10 @@ impl App {
             completion_auto: completion::AutoTrigger::new(),
             completion_options: completion::CompletionOptions::default(),
             overlay_options: overlay::options::OverlayOptions::default(),
+            diagnostic_options: diagnostic_ui::DiagnosticOptions::default(),
             signature: None,
             hover: None,
+            diagnostic_popup: None,
             code_actions: None,
             git: None,
             git_path: None,
@@ -268,6 +268,7 @@ impl App {
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
+            last_input: Instant::now(),
         }
     }
 
@@ -450,9 +451,16 @@ impl App {
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
+            let diagnostic_timeout = self.diagnostic_idle_wait_timeout();
+            let timeout = shortest_timeout(timeout, diagnostic_timeout);
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             match timeout {
-                Some(timeout) => self.events.wait_timeout(timeout)?,
+                Some(timeout) => {
+                    self.events.wait_timeout(timeout)?;
+                    if diagnostic_timeout.is_some_and(|diagnostic| diagnostic <= timeout) {
+                        return Ok(Redraw::Redraw);
+                    }
+                }
                 None => self.events.wait()?,
             }
         }
@@ -642,6 +650,7 @@ impl App {
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status(),
+            diagnostics: None,
             external: self.disk_status(self.editor.buffer_number()),
             git: self.git_status.display(),
         }
@@ -731,6 +740,9 @@ impl App {
                 | MouseEventKind::ScrollDown
         ) {
             self.terminal_focus = false;
+        }
+        if self.close_diagnostic_popup() {
+            return self.handle_noop();
         }
         if self.hover.is_some() {
             self.hover = None;
@@ -882,6 +894,7 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
         self.sync_active_window();
         result
@@ -908,6 +921,9 @@ impl App {
         }
         if self.branch_prompt.is_some() {
             return self.handle_branch_prompt_key(key);
+        }
+        if let Some(result) = self.handle_diagnostic_popup_key(key)? {
+            return Ok(result);
         }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
@@ -1190,6 +1206,7 @@ impl App {
             Action::GitPrevHunk => self.handle_git_navigation(false),
             Action::DiagnosticNext => self.handle_diagnostic_navigation(true),
             Action::DiagnosticPrev => self.handle_diagnostic_navigation(false),
+            Action::ShowDiagnostic => self.show_diagnostic_popup(),
             Action::GotoDefinition => self.request_definition(),
             Action::ShowReferences => self.request_references(),
             Action::Hover => self.request_hover(),
@@ -1312,6 +1329,7 @@ impl App {
             self.lsp.cancel_code_actions();
         }
         self.hover = None;
+        self.diagnostic_popup = None;
         if self.signature.take().is_some() {
             self.lsp.cancel_signature();
         }
@@ -1394,6 +1412,8 @@ impl App {
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
         self.window_prefix = false;
+        self.diagnostic_popup = None;
+        self.mark_diagnostic_input();
         if self.handle_terminal_paste(&text) {
             return Ok(false);
         }
@@ -1558,19 +1578,24 @@ impl App {
     }
 
     fn handle_diagnostic_navigation(&mut self, forward: bool) -> Result<bool> {
+        let Some(path) = self.problem_path() else {
+            self.show_message("No diagnostics".to_string());
+            return Ok(false);
+        };
         let navigation =
-            self.lsp
-                .navigate_diagnostics(self.editor.row(), self.editor.col(), forward);
+            self.problems
+                .navigate_lsp(&path, self.editor.row(), self.editor.col(), forward);
         let Some(navigation) = navigation else {
             self.show_message("No diagnostics".to_string());
             return Ok(false);
         };
+        self.editor.record_jump();
         self.editor
             .apply(Action::JumpTo(navigation.row, navigation.column));
         self.reveal_cursor();
         self.show_message(format!(
             "{} {} of {}: {}",
-            diagnostic_label(navigation.severity),
+            navigation.severity.label(),
             navigation.index,
             navigation.total,
             lsp::one_line(&navigation.message)

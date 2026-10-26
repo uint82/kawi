@@ -2,7 +2,9 @@ use kawi_lsp::{
     CursorPosition, Diagnostic, DiagnosticPosition, DiagnosticSeverity, DiagnosticsEvent,
     INITIAL_DOCUMENT_VERSION,
 };
-use kawi_tui::frame::{DiagnosticSeverity as UiSeverity, DiagnosticSpan};
+use kawi_tui::frame::{
+    DiagnosticSeverity as UiSeverity, DiagnosticSpan, DiagnosticTag as UiDiagnosticTag,
+};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -11,15 +13,6 @@ pub(super) struct DiagnosticState {
     version: i32,
     servers: BTreeMap<String, Vec<Diagnostic>>,
     items: Vec<Diagnostic>,
-}
-
-pub(super) struct Navigation {
-    pub(super) row: usize,
-    pub(super) column: usize,
-    pub(super) index: usize,
-    pub(super) total: usize,
-    pub(super) severity: DiagnosticSeverity,
-    pub(super) message: String,
 }
 
 impl DiagnosticState {
@@ -98,36 +91,6 @@ impl DiagnosticState {
             .cloned()
             .collect()
     }
-
-    pub(super) fn navigate(&self, row: usize, column: usize, forward: bool) -> Option<Navigation> {
-        if self.items.is_empty() {
-            return None;
-        }
-        let cursor = DiagnosticPosition {
-            line: u32::try_from(row).unwrap_or(u32::MAX),
-            character: u32::try_from(column).unwrap_or(u32::MAX),
-        };
-        let index = if forward {
-            self.items
-                .iter()
-                .position(|diagnostic| diagnostic.range.start > cursor)
-                .unwrap_or(0)
-        } else {
-            self.items
-                .iter()
-                .rposition(|diagnostic| diagnostic.range.start < cursor)
-                .unwrap_or(self.items.len().saturating_sub(1))
-        };
-        let diagnostic = self.items.get(index)?;
-        Some(Navigation {
-            row: usize::try_from(diagnostic.range.start.line).unwrap_or(usize::MAX),
-            column: usize::try_from(diagnostic.range.start.character).unwrap_or(usize::MAX),
-            index: index.saturating_add(1),
-            total: self.items.len(),
-            severity: diagnostic.severity,
-            message: diagnostic.message.clone(),
-        })
-    }
 }
 
 fn position(value: CursorPosition) -> DiagnosticPosition {
@@ -166,6 +129,7 @@ fn collect_spans(
             start,
             end,
             severity: ui_severity(diagnostic.severity),
+            tag: diagnostic_tag(&diagnostic.tags),
         });
     }
 }
@@ -195,7 +159,15 @@ fn columns(diagnostic: &Diagnostic, row: usize, line_len: usize) -> Option<(usiz
     (end > start).then_some((start, end))
 }
 
-fn ui_severity(severity: DiagnosticSeverity) -> UiSeverity {
+fn diagnostic_tag(tags: &[kawi_lsp::DiagnosticTag]) -> Option<UiDiagnosticTag> {
+    if tags.contains(&kawi_lsp::DiagnosticTag::Deprecated) {
+        return Some(UiDiagnosticTag::Deprecated);
+    }
+    tags.contains(&kawi_lsp::DiagnosticTag::Unnecessary)
+        .then_some(UiDiagnosticTag::Unnecessary)
+}
+
+pub(super) fn ui_severity(severity: DiagnosticSeverity) -> UiSeverity {
     match severity {
         DiagnosticSeverity::Error => UiSeverity::Error,
         DiagnosticSeverity::Warning => UiSeverity::Warning,
@@ -205,170 +177,4 @@ fn ui_severity(severity: DiagnosticSeverity) -> UiSeverity {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kawi_lsp::DiagnosticRange;
-
-    fn diagnostic(start: (u32, u32), end: (u32, u32), message: &str) -> Diagnostic {
-        Diagnostic {
-            range: DiagnosticRange {
-                start: DiagnosticPosition {
-                    line: start.0,
-                    character: start.1,
-                },
-                end: DiagnosticPosition {
-                    line: end.0,
-                    character: end.1,
-                },
-            },
-            severity: DiagnosticSeverity::Error,
-            message: message.to_string(),
-            source: None,
-            code: None,
-            tags: Vec::new(),
-            related: Vec::new(),
-        }
-    }
-
-    fn event(path: &Path, version: Option<i32>, diagnostics: Vec<Diagnostic>) -> DiagnosticsEvent {
-        event_from("fake", path, version, diagnostics)
-    }
-
-    fn event_from(
-        server: &str,
-        path: &Path,
-        version: Option<i32>,
-        diagnostics: Vec<Diagnostic>,
-    ) -> DiagnosticsEvent {
-        DiagnosticsEvent {
-            server: server.to_string(),
-            path: path.to_path_buf(),
-            version,
-            diagnostics,
-        }
-    }
-
-    #[test]
-    fn stale_and_foreign_diagnostics_are_ignored() {
-        let path = Path::new("/tmp/lsp_diagnostic_state");
-        let mut state = DiagnosticState::default();
-        state.reset();
-        assert!(state.apply(
-            event(path, Some(1), vec![diagnostic((0, 0), (0, 1), "one")]),
-            path
-        ));
-        assert!(state.has_diagnostics());
-        assert!(!state.apply(
-            event(path, Some(0), vec![diagnostic((0, 0), (0, 1), "stale")]),
-            path
-        ));
-        assert!(!state.apply(
-            event(
-                Path::new("/tmp/other"),
-                Some(1),
-                vec![diagnostic((0, 0), (0, 1), "other")]
-            ),
-            path
-        ));
-        state.advance();
-        assert!(!state.has_diagnostics());
-        assert!(state.apply(
-            event(path, Some(2), vec![diagnostic((0, 0), (0, 1), "two")]),
-            path
-        ));
-    }
-
-    #[test]
-    fn server_diagnostics_are_merged_and_removable() {
-        let path = Path::new("/tmp/lsp_diagnostic_merge");
-        let mut state = DiagnosticState::default();
-        state.reset();
-        assert!(state.apply(
-            event_from(
-                "alpha",
-                path,
-                Some(1),
-                vec![diagnostic((0, 0), (0, 1), "a")]
-            ),
-            path
-        ));
-        assert!(state.apply(
-            event_from("beta", path, Some(1), vec![diagnostic((1, 0), (1, 1), "b")]),
-            path
-        ));
-        assert_eq!(state.items.len(), 2);
-        assert_eq!(state.severity_at(0), Some(DiagnosticSeverity::Error));
-        assert_eq!(state.severity_at(1), Some(DiagnosticSeverity::Error));
-        state.remove_server("alpha");
-        assert_eq!(state.items.len(), 1);
-        assert_eq!(state.severity_at(0), None);
-        assert_eq!(state.severity_at(1), Some(DiagnosticSeverity::Error));
-    }
-
-    #[test]
-    fn spans_clip_to_visible_lines_and_extend_zero_width_diagnostics() {
-        let state = DiagnosticState {
-            version: 1,
-            items: vec![
-                diagnostic((0, 1), (0, 1), "point"),
-                diagnostic((0, 2), (2, 1), "multi"),
-            ],
-            ..DiagnosticState::default()
-        };
-        let window = ["abcd".to_string(), String::new(), "ef".to_string()];
-        let spans = state.spans(&window, 0);
-        assert!(spans.contains(&DiagnosticSpan {
-            row: 0,
-            start: 1,
-            end: 2,
-            severity: UiSeverity::Error,
-        }));
-        assert!(spans.contains(&DiagnosticSpan {
-            row: 0,
-            start: 2,
-            end: 4,
-            severity: UiSeverity::Error,
-        }));
-        assert!(spans.contains(&DiagnosticSpan {
-            row: 2,
-            start: 0,
-            end: 1,
-            severity: UiSeverity::Error,
-        }));
-    }
-
-    #[test]
-    fn navigation_wraps_in_both_directions() {
-        let state = DiagnosticState {
-            version: 1,
-            items: vec![
-                diagnostic((0, 0), (0, 1), "first"),
-                diagnostic((2, 0), (2, 1), "second"),
-            ],
-            ..DiagnosticState::default()
-        };
-        let next = state.navigate(1, 0, true).expect("next");
-        assert_eq!((next.row, next.index, next.total), (2, 2, 2));
-        let wrapped = state.navigate(3, 0, true).expect("wrapped next");
-        assert_eq!(wrapped.row, 0);
-        let previous = state.navigate(2, 0, false).expect("previous");
-        assert_eq!(previous.row, 0);
-        let wrapped_previous = state.navigate(0, 0, false).expect("wrapped previous");
-        assert_eq!(wrapped_previous.row, 2);
-    }
-
-    #[test]
-    fn severity_at_prefers_the_most_urgent_diagnostic() {
-        let mut state = DiagnosticState {
-            version: 1,
-            items: vec![
-                diagnostic((3, 0), (3, 1), "error"),
-                diagnostic((3, 2), (3, 3), "warning"),
-            ],
-            ..DiagnosticState::default()
-        };
-        state.items[1].severity = DiagnosticSeverity::Warning;
-        assert_eq!(state.severity_at(3), Some(DiagnosticSeverity::Error));
-        assert_eq!(state.severity_at(4), None);
-    }
-}
+mod tests;

@@ -136,6 +136,7 @@ pub(super) fn protocol_diagnostics(
             range: protocol_range(diagnostic.range, text, encoding),
             severity: Some(protocol_severity(diagnostic.severity)),
             code: diagnostic.code.as_deref().map(protocol_code),
+            code_description: None,
             source: diagnostic.source.clone(),
             message: diagnostic.message.clone(),
             ..lsp_types::Diagnostic::default()
@@ -192,6 +193,7 @@ mod tests {
             message: "message".to_string(),
             source: Some("fake".to_string()),
             code: Some("W1".to_string()),
+            code_description: None,
             tags: Vec::new(),
             related: Vec::new(),
         }];

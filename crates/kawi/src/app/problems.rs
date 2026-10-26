@@ -2,9 +2,11 @@ use kawi_buffer::{diff_ropes, RopeChange};
 use kawi_lsp::{Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag};
 use kawi_task as task;
 use ropey::Rope;
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use super::diagnostic_index::{DiagnosticCounts, DiagnosticIndex, DiagnosticNavigation};
 use super::file_ops::{path_under, rewrite_path};
 
 const MAX_PROBLEMS: usize = 10_000;
@@ -48,6 +50,17 @@ impl From<DiagnosticSeverity> for ProblemSeverity {
             DiagnosticSeverity::Warning => Self::Warning,
             DiagnosticSeverity::Information => Self::Information,
             DiagnosticSeverity::Hint => Self::Hint,
+        }
+    }
+}
+
+impl From<ProblemSeverity> for DiagnosticSeverity {
+    fn from(severity: ProblemSeverity) -> Self {
+        match severity {
+            ProblemSeverity::Error => Self::Error,
+            ProblemSeverity::Warning => Self::Warning,
+            ProblemSeverity::Information => Self::Information,
+            ProblemSeverity::Hint => Self::Hint,
         }
     }
 }
@@ -106,6 +119,7 @@ pub(super) struct Problem {
     pub(super) severity: ProblemSeverity,
     pub(super) message: String,
     pub(super) code: Option<String>,
+    pub(super) code_description: Option<String>,
     pub(super) provider: Option<String>,
     pub(super) tags: Vec<ProblemTag>,
     pub(super) related: Vec<RelatedProblem>,
@@ -123,6 +137,7 @@ impl Problem {
             severity: finding.severity.into(),
             message: finding.message,
             code: None,
+            code_description: None,
             provider: None,
             tags: Vec::new(),
             related: Vec::new(),
@@ -150,8 +165,9 @@ impl Problem {
             end_line,
             end_column,
             severity: diagnostic.severity.into(),
-            message: compact_message(&diagnostic.message),
+            message: sanitize_message(&diagnostic.message),
             code: diagnostic.code,
+            code_description: diagnostic.code_description,
             provider: diagnostic.source,
             tags: diagnostic.tags.into_iter().map(ProblemTag::from).collect(),
             related: diagnostic
@@ -273,18 +289,28 @@ struct EditorText {
 }
 
 #[derive(Default)]
+struct IndexCache {
+    dirty: bool,
+    index: DiagnosticIndex,
+}
+
+#[derive(Default)]
 pub(super) struct Problems {
     groups: BTreeMap<GroupKey, Vec<Problem>>,
     filter: ProblemFilter,
     current: Option<ProblemKey>,
     editor: Option<EditorText>,
-    stale_sources: std::collections::BTreeSet<String>,
+    stale_sources: BTreeSet<String>,
+    source_ranks: BTreeMap<String, usize>,
+    next_source_rank: usize,
+    index_cache: RefCell<IndexCache>,
 }
 
 impl Problems {
     pub(super) fn clear_source(&mut self, source: &str) {
         self.stale_sources.remove(source);
         self.groups.retain(|key, _| key.source != source);
+        self.invalidate_index();
     }
 
     pub(super) fn rewrite_paths(&mut self, old: &Path, new: &Path) {
@@ -320,6 +346,7 @@ impl Problems {
                 editor.path = path;
             }
         }
+        self.invalidate_index();
     }
 
     pub(super) fn remove_paths(&mut self, target: &Path) {
@@ -338,6 +365,7 @@ impl Problems {
         {
             self.editor = None;
         }
+        self.invalidate_index();
     }
 
     pub(super) fn mark_tasks_stale(&mut self) {
@@ -346,6 +374,7 @@ impl Problems {
                 self.stale_sources.insert(key.source.clone());
             }
         }
+        self.invalidate_index();
     }
 
     pub(super) fn is_stale(&self, source: &str) -> bool {
@@ -361,6 +390,7 @@ impl Problems {
             source: lsp_source(server),
             path: path.to_path_buf(),
         };
+        self.ensure_source_rank(&key.source);
         let problems = diagnostics
             .into_iter()
             .map(|diagnostic| Problem::from_lsp(key.source.clone(), path, diagnostic))
@@ -375,6 +405,7 @@ impl Problems {
             source: source.clone(),
             path: finding.path.clone(),
         };
+        self.ensure_source_rank(&source);
         self.push(key, Problem::from_task(source, finding))
     }
 
@@ -463,6 +494,7 @@ impl Problems {
         let old = previous.rope;
         let new = current.rope.clone();
         self.shift_lsp(&path, &old, &new, change);
+        self.invalidate_index();
     }
 
     fn shift_lsp(&mut self, path: &Path, old: &Rope, new: &Rope, change: RopeChange) {
@@ -481,6 +513,7 @@ impl Problems {
             return false;
         }
         self.groups.entry(key).or_default().push(problem);
+        self.invalidate_index();
         true
     }
 
@@ -491,11 +524,74 @@ impl Problems {
         let capacity = MAX_PROBLEMS.saturating_sub(others);
         if problems.is_empty() || capacity == 0 {
             self.groups.remove(&key);
+            self.invalidate_index();
             return;
         }
         let mut problems = problems;
         problems.truncate(capacity);
         self.groups.insert(key, problems);
+        self.invalidate_index();
+    }
+
+    pub(super) fn diagnostics_at(&self, path: &Path, line: usize) -> Vec<Problem> {
+        self.index().at(path, line).to_vec()
+    }
+
+    pub(super) fn primary_diagnostic(
+        &self,
+        path: &Path,
+        line: usize,
+        column: Option<usize>,
+    ) -> Option<Problem> {
+        self.index().primary(path, line, column).cloned()
+    }
+
+    pub(super) fn diagnostic_counts(&self, path: &Path) -> DiagnosticCounts {
+        self.index().counts(path)
+    }
+
+    pub(super) fn workspace_diagnostic_counts(&self) -> DiagnosticCounts {
+        self.index().workspace_counts()
+    }
+
+    pub(super) fn navigate_lsp(
+        &self,
+        path: &Path,
+        line: usize,
+        column: usize,
+        forward: bool,
+    ) -> Option<DiagnosticNavigation> {
+        self.index().navigate_lsp(path, line, column, forward)
+    }
+
+    fn ensure_source_rank(&mut self, source: &str) {
+        if self.source_ranks.contains_key(source) {
+            return;
+        }
+        self.source_ranks
+            .insert(source.to_string(), self.next_source_rank);
+        self.next_source_rank = self.next_source_rank.saturating_add(1);
+    }
+
+    fn invalidate_index(&mut self) {
+        self.index_cache.get_mut().dirty = true;
+    }
+
+    fn index(&self) -> std::cell::RefMut<'_, DiagnosticIndex> {
+        let mut cache = self.index_cache.borrow_mut();
+        if cache.dirty {
+            cache.index = DiagnosticIndex::build(
+                self.groups.iter().flat_map(|(key, problems)| {
+                    problems
+                        .iter()
+                        .map(move |problem| (key.path.as_path(), key.source.as_str(), problem))
+                }),
+                &self.source_ranks,
+                &self.stale_sources,
+            );
+            cache.dirty = false;
+        }
+        std::cell::RefMut::map(cache, |cache: &mut IndexCache| &mut cache.index)
     }
 }
 
@@ -615,208 +711,18 @@ fn line_len(rope: &Rope, line: usize) -> usize {
     end.saturating_sub(start)
 }
 
-fn compact_message(message: &str) -> String {
-    message.split_whitespace().collect::<Vec<_>>().join(" ")
+fn sanitize_message(message: &str) -> String {
+    message
+        .chars()
+        .map(|character| {
+            if character.is_control() && !matches!(character, '\n' | '\t') {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kawi_lsp::{DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation};
-    use kawi_task::Severity;
-
-    fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Diagnostic {
-        Diagnostic {
-            range: DiagnosticRange {
-                start: DiagnosticPosition { line, character: 0 },
-                end: DiagnosticPosition { line, character: 4 },
-            },
-            severity,
-            message: message.to_string(),
-            source: Some("rustc".to_string()),
-            code: Some("E0308".to_string()),
-            tags: Vec::new(),
-            related: Vec::new(),
-        }
-    }
-
-    fn task_finding(line: usize) -> task::Finding {
-        task::Finding {
-            path: PathBuf::from("src/main.rs"),
-            line,
-            column: 1,
-            severity: Severity::Error,
-            message: format!("task {line}"),
-        }
-    }
-
-    #[test]
-    fn sources_are_replaced_independently() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.push_task("check", task_finding(1));
-        problems.replace_lsp(
-            "rust-analyzer",
-            path,
-            vec![lsp_diagnostic(2, "lsp", DiagnosticSeverity::Error)],
-        );
-        assert_eq!(problems.total(), 2);
-        problems.replace_lsp("rust-analyzer", path, Vec::new());
-        assert_eq!(problems.total(), 1);
-        assert_eq!(problems.visible(Some(path))[0].source, "task:check");
-        problems.clear_source("task:check");
-        assert_eq!(problems.total(), 0);
-    }
-
-    #[test]
-    fn rewrites_and_removes_paths_for_a_renamed_directory() {
-        let old = Path::new("/repo/old");
-        let new = Path::new("/repo/new");
-        let mut problems = Problems::default();
-        let mut diagnostic = lsp_diagnostic(1, "error", DiagnosticSeverity::Error);
-        diagnostic.related.push(DiagnosticRelatedInformation {
-            path: old.join("related.rs"),
-            line: 2,
-            message: "related".to_string(),
-        });
-        problems.replace_lsp("server", &old.join("a.rs"), vec![diagnostic]);
-        problems.rewrite_paths(old, new);
-        let visible = problems.visible(Some(&new.join("a.rs")));
-        assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].path, new.join("a.rs"));
-        assert_eq!(visible[0].related[0].path, new.join("related.rs"));
-        problems.remove_paths(new);
-        assert_eq!(problems.total(), 0);
-    }
-
-    #[test]
-    fn task_sources_can_be_marked_stale_and_refreshed() {
-        let mut problems = Problems::default();
-        problems.push_task("check", task_finding(1));
-        problems.mark_tasks_stale();
-        assert!(problems.is_stale("task:check"));
-        problems.push_task("check", task_finding(2));
-        assert!(!problems.is_stale("task:check"));
-        problems.mark_tasks_stale();
-        problems.clear_source("task:check");
-        assert!(!problems.is_stale("task:check"));
-    }
-
-    #[test]
-    fn visible_problems_sort_by_severity_file_and_line() {
-        let mut problems = Problems::default();
-        problems.replace_lsp(
-            "server",
-            Path::new("b.rs"),
-            vec![
-                lsp_diagnostic(1, "warning", DiagnosticSeverity::Warning),
-                lsp_diagnostic(2, "error", DiagnosticSeverity::Error),
-            ],
-        );
-        problems.replace_lsp(
-            "server",
-            Path::new("a.rs"),
-            vec![lsp_diagnostic(5, "error a", DiagnosticSeverity::Error)],
-        );
-        let visible = problems.visible(None);
-        assert_eq!(visible[0].path, PathBuf::from("a.rs"));
-        assert_eq!(visible[1].message, "error");
-        assert_eq!(visible[2].message, "warning");
-    }
-
-    #[test]
-    fn filters_apply_to_navigation() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.replace_lsp(
-            "server",
-            path,
-            vec![
-                lsp_diagnostic(0, "error", DiagnosticSeverity::Error),
-                lsp_diagnostic(1, "warning", DiagnosticSeverity::Warning),
-            ],
-        );
-        problems.toggle_current_file();
-        problems.cycle_severity();
-        let (_, _, problem) = problems.advance(Some(path), true).unwrap();
-        assert_eq!(problem.severity, ProblemSeverity::Error);
-        problems.cycle_severity();
-        assert_eq!(
-            problems.advance(Some(path), true).unwrap().2.message,
-            "warning"
-        );
-        problems.cycle_severity();
-        assert!(problems.advance(Some(path), true).is_none());
-    }
-
-    #[test]
-    fn navigation_wraps_and_follows_the_current_entry() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.replace_lsp(
-            "server",
-            path,
-            vec![
-                lsp_diagnostic(0, "first", DiagnosticSeverity::Error),
-                lsp_diagnostic(2, "second", DiagnosticSeverity::Error),
-            ],
-        );
-        assert_eq!(problems.advance(Some(path), true).unwrap().0, 0);
-        assert_eq!(problems.advance(Some(path), true).unwrap().0, 1);
-        assert_eq!(problems.advance(Some(path), true).unwrap().0, 0);
-        assert_eq!(problems.advance(Some(path), false).unwrap().0, 1);
-    }
-
-    #[test]
-    fn edits_shift_lsp_ranges_until_the_next_publish() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.replace_lsp(
-            "server",
-            path,
-            vec![lsp_diagnostic(2, "stale", DiagnosticSeverity::Error)],
-        );
-        problems.observe_editor(Some(path), 1, Rope::from_str("one\ntwo\nthree\n"));
-        problems.observe_editor(Some(path), 2, Rope::from_str("zero\none\ntwo\nthree\n"));
-        let visible = problems.visible(None);
-        assert_eq!((visible[0].line, visible[0].column), (4, 1));
-    }
-
-    #[test]
-    fn deletions_collapse_ranges_until_the_next_publish() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.replace_lsp(
-            "server",
-            path,
-            vec![lsp_diagnostic(2, "stale", DiagnosticSeverity::Error)],
-        );
-        problems.observe_editor(Some(path), 1, Rope::from_str("one\ntwo\nthree\n"));
-        problems.observe_editor(Some(path), 2, Rope::from_str("one\nthree\n"));
-        let visible = problems.visible(None);
-        assert_eq!(visible[0].line, 2);
-    }
-
-    #[test]
-    fn task_problems_do_not_shift() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.push_task("check", task_finding(3));
-        problems.observe_editor(Some(path), 1, Rope::from_str("one\ntwo\nthree\n"));
-        problems.observe_editor(Some(path), 2, Rope::from_str("zero\none\ntwo\nthree\n"));
-        assert_eq!(problems.visible(None)[0].line, 3);
-    }
-
-    #[test]
-    fn source_count_counts_task_and_lsp_sources() {
-        let path = Path::new("src/main.rs");
-        let mut problems = Problems::default();
-        problems.push_task("check", task_finding(1));
-        problems.replace_lsp(
-            "rust-analyzer",
-            path,
-            vec![lsp_diagnostic(0, "lsp", DiagnosticSeverity::Error)],
-        );
-        assert_eq!(problems.source_count(), 2);
-    }
-}
+mod tests;

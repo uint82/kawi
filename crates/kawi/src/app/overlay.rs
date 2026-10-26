@@ -9,6 +9,7 @@ use super::completion::CompletionSession;
 use super::App;
 
 pub(super) mod code;
+mod diagnostic;
 pub(crate) mod document;
 mod hover;
 mod leader;
@@ -102,6 +103,9 @@ impl App {
         }
         if self.signature.is_some() {
             return self.signature_overlay();
+        }
+        if self.diagnostic_popup.is_some() {
+            return self.diagnostic_overlay();
         }
         if self.hover.is_some() {
             return self.hover_overlay();

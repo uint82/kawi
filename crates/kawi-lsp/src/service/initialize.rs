@@ -480,8 +480,16 @@ fn initialize_capabilities() -> ClientCapabilities {
         }),
         text_document: Some(TextDocumentClientCapabilities {
             publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                related_information: Some(true),
+                tag_support: Some(lsp_types::TagSupport {
+                    value_set: vec![
+                        lsp_types::DiagnosticTag::UNNECESSARY,
+                        lsp_types::DiagnosticTag::DEPRECATED,
+                    ],
+                }),
                 version_support: Some(true),
-                ..PublishDiagnosticsClientCapabilities::default()
+                code_description_support: Some(true),
+                data_support: Some(false),
             }),
             definition: Some(lsp_types::GotoCapability {
                 dynamic_registration: Some(false),
@@ -645,6 +653,16 @@ mod tests {
             .and_then(|text_document| text_document.publish_diagnostics)
             .expect("diagnostics capability");
         assert_eq!(diagnostics.version_support, Some(true));
+        assert_eq!(diagnostics.related_information, Some(true));
+        assert_eq!(diagnostics.code_description_support, Some(true));
+        assert_eq!(diagnostics.data_support, Some(false));
+        assert_eq!(
+            diagnostics.tag_support.map(|support| support.value_set),
+            Some(vec![
+                lsp_types::DiagnosticTag::UNNECESSARY,
+                lsp_types::DiagnosticTag::DEPRECATED,
+            ])
+        );
     }
 
     #[test]

@@ -174,9 +174,21 @@ impl super::App {
     }
 
     pub(super) fn problem_path(&self) -> Option<PathBuf> {
-        let path = self.editor.buffer_path(self.editor.buffer_number())?;
+        self.buffer_problem_path(self.editor.buffer_number())
+    }
+
+    pub(super) fn buffer_problem_path(&self, buffer: usize) -> Option<PathBuf> {
+        let path = self.editor.buffer_path(buffer)?;
         let cwd = std::env::current_dir().unwrap_or_default();
         Some(kawi_editor::paths::absolute(path, &cwd))
+    }
+
+    pub(super) fn diagnostic_status_text(&self, path: Option<&Path>) -> Option<String> {
+        let path = path?;
+        self.diagnostic_options.counts_text(
+            self.problems.diagnostic_counts(path),
+            self.problems.workspace_diagnostic_counts(),
+        )
     }
 }
 
@@ -203,7 +215,7 @@ fn problem_row(root: &Path, problem: &Problem, stale: bool) -> PickerRow {
             problem.column,
             problem.severity.label(),
             source_label(&problem.source),
-            problem.message
+            crate::text::one_line(&problem.message)
         ),
         path: problem.path.to_string_lossy().to_string(),
         line: Some(problem.line),
@@ -264,6 +276,7 @@ mod tests {
             message: "type mismatch".to_string(),
             source: Some("rustc".to_string()),
             code: Some("E0308".to_string()),
+            code_description: None,
             tags: vec![DiagnosticTag::Unnecessary],
             related: vec![DiagnosticRelatedInformation {
                 path: path.to_path_buf(),

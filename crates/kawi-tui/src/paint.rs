@@ -32,6 +32,27 @@ pub fn apply_underline(out: &mut Stdout, color: Color) -> Result<()> {
     Ok(())
 }
 
+pub fn apply_faded_text(out: &mut Stdout, color: Color) -> Result<()> {
+    execute!(out, SetForegroundColor(color), SetAttribute(Attribute::Dim))
+        .context("apply faded diagnostic text")?;
+    Ok(())
+}
+
+pub fn apply_struck_text(out: &mut Stdout, color: Color) -> Result<()> {
+    execute!(
+        out,
+        SetForegroundColor(color),
+        SetAttribute(Attribute::CrossedOut)
+    )
+    .context("apply struck diagnostic text")?;
+    Ok(())
+}
+
+pub fn clear_decorations(out: &mut Stdout) -> Result<()> {
+    execute!(out, SetAttribute(Attribute::Reset)).context("clear diagnostic decorations")?;
+    Ok(())
+}
+
 pub fn clear_underline(out: &mut Stdout) -> Result<()> {
     execute!(
         out,

@@ -9,7 +9,7 @@ use std::io::{Stdout, Write};
 
 use crate::frame::{
     CursorStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu, ReplaceMenu, ReplaceStage,
-    SearchSpan, Selection, TaskPanel,
+    SearchSpan, Selection, TaskPanel, VirtualText,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -365,7 +365,76 @@ fn draw_one_line(
     write!(out, "{}", text).context("write line")?;
     erase_row_tail(out)?;
     draw_rulers(out, pane, theme, screen_row, gutter_width, visible)?;
+    draw_virtual_text(
+        out,
+        VirtualTextDraw {
+            pane,
+            theme,
+            screen_row,
+            gutter_width,
+            width,
+            line_width: visible,
+        },
+    )?;
     Ok(())
+}
+
+const VIRTUAL_TEXT_GAP: usize = 1;
+const VIRTUAL_TEXT_MIN_COLUMNS: usize = 10;
+
+struct VirtualTextDraw<'a> {
+    pane: &'a PaneFrame<'a>,
+    theme: &'a Theme,
+    screen_row: usize,
+    gutter_width: usize,
+    width: usize,
+    line_width: usize,
+}
+
+fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> {
+    let Some(text) = draw
+        .pane
+        .virtual_texts
+        .get(draw.screen_row)
+        .and_then(Option::as_ref)
+    else {
+        return Ok(());
+    };
+    let Some((column, clipped)) = virtual_text_layout(draw.line_width, draw.width, text) else {
+        return Ok(());
+    };
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(
+                draw.pane
+                    .rect
+                    .x
+                    .saturating_add(draw.gutter_width)
+                    .saturating_add(column)
+            ),
+            saturate_u16(draw.pane.rect.y.saturating_add(draw.screen_row))
+        )
+    )
+    .context("move to virtual text")?;
+    paint::apply_faded_text(out, draw.theme.diagnostic_color(text.severity))?;
+    write!(out, "{clipped}").context("write virtual text")?;
+    paint::clear_decorations(out)
+}
+
+fn virtual_text_layout(
+    line_width: usize,
+    pane_width: usize,
+    text: &VirtualText,
+) -> Option<(usize, &str)> {
+    let remaining = pane_width.saturating_sub(line_width);
+    if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
+        return None;
+    }
+    let column = line_width.saturating_add(VIRTUAL_TEXT_GAP);
+    let text_width = pane_width.saturating_sub(column);
+    let clipped = truncate_to_display_width(&text.text, text_width);
+    (!clipped.is_empty()).then_some((column, clipped))
 }
 
 fn draw_rulers(
@@ -475,7 +544,10 @@ pub enum Tint {
     SearchCurrent,
     Substitute,
     Syntax(SyntaxHighlight),
-    Diagnostic(crate::frame::DiagnosticSeverity),
+    Diagnostic {
+        severity: crate::frame::DiagnosticSeverity,
+        tag: Option<crate::frame::DiagnosticTag>,
+    },
 }
 
 pub fn highlight_spans(
@@ -772,7 +844,10 @@ fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<
                 span.start,
                 span.end,
                 view,
-                Tint::Diagnostic(span.severity),
+                Tint::Diagnostic {
+                    severity: span.severity,
+                    tag: span.tag,
+                },
             )
         })
         .collect()
@@ -822,19 +897,41 @@ fn paint_span_at(
         }
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
         Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
-        Tint::Diagnostic(severity) => paint_underlined(out, &span.text, severity, theme),
+        Tint::Diagnostic { severity, tag } => {
+            paint_diagnostic(out, &span.text, DiagnosticPaint { severity, tag }, theme)
+        }
     }
 }
 
-fn paint_underlined(
+struct DiagnosticPaint {
+    severity: crate::frame::DiagnosticSeverity,
+    tag: Option<crate::frame::DiagnosticTag>,
+}
+
+fn paint_diagnostic(
     out: &mut Stdout,
     text: &str,
-    severity: crate::frame::DiagnosticSeverity,
+    paint: DiagnosticPaint,
     theme: &Theme,
 ) -> Result<()> {
-    paint::apply_underline(out, theme.diagnostic_color(severity))?;
-    write_segment(out, text)?;
-    paint::clear_underline(out)
+    let color = theme.diagnostic_color(paint.severity);
+    match paint.tag {
+        Some(crate::frame::DiagnosticTag::Unnecessary) => {
+            paint::apply_faded_text(out, color)?;
+            write_segment(out, text)?;
+            paint::clear_decorations(out)
+        }
+        Some(crate::frame::DiagnosticTag::Deprecated) => {
+            paint::apply_struck_text(out, color)?;
+            write_segment(out, text)?;
+            paint::clear_decorations(out)
+        }
+        None => {
+            paint::apply_underline(out, color)?;
+            write_segment(out, text)?;
+            paint::clear_underline(out)
+        }
+    }
 }
 
 fn paint_tinted(
@@ -2126,6 +2223,46 @@ mod tests {
     }
 
     #[test]
+    fn virtual_text_sits_after_the_line_and_clips() {
+        let text = VirtualText {
+            text: "message".to_string(),
+            severity: crate::frame::DiagnosticSeverity::Error,
+        };
+        assert_eq!(virtual_text_layout(10, 30, &text), Some((11, "message")));
+        let long = VirtualText {
+            text: "abcdefghijklmnop".to_string(),
+            severity: crate::frame::DiagnosticSeverity::Error,
+        };
+        assert_eq!(
+            virtual_text_layout(0, 14, &long),
+            Some((1, "abcdefghijklm"))
+        );
+        assert_eq!(virtual_text_layout(25, 30, &text), None);
+    }
+
+    #[test]
+    fn virtual_text_uses_display_width_for_tabs_and_wide_characters() {
+        let text = VirtualText {
+            text: "中abc".to_string(),
+            severity: crate::frame::DiagnosticSeverity::Warning,
+        };
+        let line_width = crate::display::screen_len("a\tb", 8);
+        assert_eq!(line_width, 9);
+        assert_eq!(
+            virtual_text_layout(line_width, 19, &text),
+            Some((10, "中abc"))
+        );
+        let wide = VirtualText {
+            text: "中中中中中".to_string(),
+            severity: crate::frame::DiagnosticSeverity::Warning,
+        };
+        assert_eq!(
+            virtual_text_layout(line_width, 19, &wide),
+            Some((10, "中中中中"))
+        );
+    }
+
+    #[test]
     fn diagnostic_spans_clip_to_visible_text() {
         let lines = lines_of("abcdef");
         let viewport = viewport();
@@ -2135,6 +2272,7 @@ mod tests {
             start: 2,
             end: 4,
             severity: crate::frame::DiagnosticSeverity::Error,
+            tag: None,
         };
         let spans = diagnostic_highlight_spans(&[diagnostic], &view);
         assert_eq!(spans.len(), 1);
@@ -2143,7 +2281,32 @@ mod tests {
         assert_eq!(spans[0].text, "cd");
         assert_eq!(
             spans[0].tint,
-            Tint::Diagnostic(crate::frame::DiagnosticSeverity::Error)
+            Tint::Diagnostic {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+            }
+        );
+    }
+
+    #[test]
+    fn diagnostic_tags_reach_the_render_tint() {
+        let lines = lines_of("abcdef");
+        let viewport = viewport();
+        let view = span_view(&lines, &viewport);
+        let diagnostic = DiagnosticSpan {
+            row: 0,
+            start: 0,
+            end: 2,
+            severity: crate::frame::DiagnosticSeverity::Warning,
+            tag: Some(crate::frame::DiagnosticTag::Deprecated),
+        };
+        let spans = diagnostic_highlight_spans(&[diagnostic], &view);
+        assert_eq!(
+            spans[0].tint,
+            Tint::Diagnostic {
+                severity: crate::frame::DiagnosticSeverity::Warning,
+                tag: Some(crate::frame::DiagnosticTag::Deprecated),
+            }
         );
     }
 

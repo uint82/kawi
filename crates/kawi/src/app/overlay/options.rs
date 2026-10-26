@@ -2,14 +2,15 @@ use kawi_tui::frame::Rect;
 
 use super::size::PanelLimits;
 use crate::options::{
-    COMPLETION_DOCS_MAX_WIDTH_DEFAULT, HOVER_MAX_WIDTH_DEFAULT, OVERLAY_MARGIN_DEFAULT,
-    OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT, OVERLAY_MIN_WIDTH_DEFAULT,
+    COMPLETION_DOCS_MAX_WIDTH_DEFAULT, DIAGNOSTIC_POPUP_MAX_WIDTH_DEFAULT, HOVER_MAX_WIDTH_DEFAULT,
+    OVERLAY_MARGIN_DEFAULT, OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT, OVERLAY_MIN_WIDTH_DEFAULT,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OverlayOptions {
     pub hover_max_width: usize,
     pub completion_docs_max_width: usize,
+    pub diagnostic_popup_max_width: usize,
     pub min_width: usize,
     pub max_height_percent: usize,
     pub margin: usize,
@@ -20,6 +21,7 @@ impl Default for OverlayOptions {
         Self {
             hover_max_width: HOVER_MAX_WIDTH_DEFAULT,
             completion_docs_max_width: COMPLETION_DOCS_MAX_WIDTH_DEFAULT,
+            diagnostic_popup_max_width: DIAGNOSTIC_POPUP_MAX_WIDTH_DEFAULT,
             min_width: OVERLAY_MIN_WIDTH_DEFAULT,
             max_height_percent: OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT,
             margin: OVERLAY_MARGIN_DEFAULT,
