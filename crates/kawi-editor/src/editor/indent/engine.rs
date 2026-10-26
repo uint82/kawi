@@ -20,7 +20,7 @@ pub(crate) struct IndentRequest<'a> {
 
 pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
     let scan = scan(request);
-    if !scan.in_code() {
+    if !scan.allows_indent() {
         return request.current_width;
     }
     if request.rules.indent_brackets {
@@ -39,7 +39,7 @@ pub(crate) fn closer_width(request: &IndentRequest<'_>, closer: char) -> Option<
         return None;
     }
     let scan = scan(request);
-    if !scan.in_code() {
+    if !scan.code {
         return None;
     }
     let opener = matching_opener(closer)?;
@@ -75,8 +75,8 @@ fn scan(request: &IndentRequest<'_>) -> Scan {
             scanner.finish_line();
         }
     }
-    scan.in_code = scanner.in_code();
-    scan.in_line_comment = scanner.in_line_comment();
+    scan.code = scanner.in_code();
+    scan.line_comment = scanner.in_line_comment();
     scan
 }
 
@@ -139,8 +139,8 @@ struct Scan {
     stack: Vec<Bracket>,
     token: String,
     last_token: String,
-    in_code: bool,
-    in_line_comment: bool,
+    code: bool,
+    line_comment: bool,
 }
 
 impl Scan {
@@ -168,8 +168,8 @@ impl Scan {
         }
     }
 
-    fn in_code(&self) -> bool {
-        self.in_code || self.in_line_comment
+    fn allows_indent(&self) -> bool {
+        self.code || self.line_comment
     }
 }
 
