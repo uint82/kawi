@@ -61,6 +61,7 @@ use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
 pub use file_paths::PathAdoption;
+pub use indent::IndentRules;
 pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;

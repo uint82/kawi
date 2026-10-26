@@ -63,6 +63,10 @@ impl LexicalScanner {
         self.state == LexState::Code
     }
 
+    pub(super) fn in_line_comment(&self) -> bool {
+        self.state == LexState::LineComment
+    }
+
     pub(super) fn finish_line(&mut self) {
         if matches!(self.state, LexState::LineComment | LexState::Quote(_)) {
             self.state = LexState::Code;
