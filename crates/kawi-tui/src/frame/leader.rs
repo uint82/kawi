@@ -1,4 +1,5 @@
 use super::Rect;
+use crate::text::char_width;
 
 pub struct LeaderMenu<'a> {
     pub rect: Rect,
@@ -11,7 +12,27 @@ pub struct LeaderMenu<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LeaderRow<'a> {
     pub key: char,
+    pub aliases: &'a [char],
     pub description: &'a str,
+}
+
+impl LeaderRow<'_> {
+    pub fn key_label(&self) -> String {
+        let mut label = self.key.to_string();
+        for alias in self.aliases {
+            label.push('/');
+            label.push(*alias);
+        }
+        label
+    }
+
+    pub fn key_width(&self) -> usize {
+        self.aliases
+            .iter()
+            .fold(char_width(self.key), |width, alias| {
+                width.saturating_add(char_width(*alias)).saturating_add(1)
+            })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

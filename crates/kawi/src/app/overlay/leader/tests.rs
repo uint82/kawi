@@ -21,7 +21,7 @@ fn items(app: &App) -> Vec<String> {
     leader
         .rows
         .iter()
-        .map(|row| format!("{}  {}", row.key, row.description))
+        .map(|row| format!("{}  {}", row.key_label(), row.description))
         .collect()
 }
 
@@ -51,11 +51,11 @@ fn group_menu_replaces_the_root_menu() {
     assert_eq!(
         items(&app),
         [
-            "f  find project file",
-            "k  find buffer",
-            "r  find and replace",
-            "s  find in project",
-            "w  find current word",
+            "f/p  project files",
+            "k  open buffers",
+            "r  search and replace",
+            "s  live grep",
+            "w  grep current word",
         ]
     );
 }
@@ -101,7 +101,7 @@ fn backslash_leader_uses_the_same_menu() {
     app.handle_key(key(KeyCode::Char('f'))).expect("group");
     assert_eq!(
         items(&app).first().map(String::as_str),
-        Some("f  find project file")
+        Some("f/p  project files")
     );
 }
 
@@ -152,6 +152,7 @@ fn short_menus_use_one_column() {
     let rows: Vec<LeaderRow> = ('a'..='j')
         .map(|key| LeaderRow {
             key,
+            aliases: &[],
             description: "item",
         })
         .collect();
@@ -165,6 +166,7 @@ fn growing_menus_use_two_columns() {
     let rows: Vec<LeaderRow> = ('a'..='k')
         .map(|key| LeaderRow {
             key,
+            aliases: &[],
             description: "item",
         })
         .collect();
@@ -181,6 +183,7 @@ fn wide_two_column_menus_fall_back_to_one_column() {
     let rows: Vec<LeaderRow> = ('a'..='k')
         .map(|key| LeaderRow {
             key,
+            aliases: &[],
             description: "abcdefghijklmnopqrstuvwxyz1234",
         })
         .collect();
@@ -193,10 +196,12 @@ fn menu_is_right_aligned_above_the_bottom_edge() {
     let rows = [
         LeaderRow {
             key: 'f',
+            aliases: &[],
             description: "find",
         },
         LeaderRow {
             key: 'v',
+            aliases: &[],
             description: "git",
         },
     ];
@@ -206,4 +211,16 @@ fn menu_is_right_aligned_above_the_bottom_edge() {
     assert_eq!(rect.height, 5);
     assert_eq!(rect.x, 70);
     assert_eq!(rect.y, 18);
+}
+
+#[test]
+fn aliases_widen_the_key_column() {
+    let rows = [LeaderRow {
+        key: 'f',
+        aliases: &['p'],
+        description: "project files",
+    }];
+    let columns = leader_columns(&rows, 58);
+    assert_eq!(columns[0].key_width, 3);
+    assert_eq!(columns[0].description_offset, 5);
 }

@@ -182,7 +182,7 @@ struct RowRenderer<'a> {
 impl RowRenderer<'_> {
     fn draw(&self, out: &mut Stdout, row: LeaderRow<'_>, offset: usize) -> Result<()> {
         self.move_to(out, offset)?;
-        self.write_key(out, row.key)?;
+        self.write_key(out, row)?;
         self.write_description(out, row.description)?;
         paint::restore_base(out, self.theme)
     }
@@ -204,7 +204,7 @@ impl RowRenderer<'_> {
         execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to leader row")
     }
 
-    fn write_key(&self, out: &mut Stdout, key: char) -> Result<()> {
+    fn write_key(&self, out: &mut Stdout, row: LeaderRow<'_>) -> Result<()> {
         paint::apply_colors(
             out,
             leader_key_color(self.theme),
@@ -212,10 +212,11 @@ impl RowRenderer<'_> {
             "apply leader key",
         )?;
         execute!(out, SetAttribute(Attribute::Bold)).context("apply leader key style")?;
-        let key_width = self.column.key_width.min(self.width);
-        let used = write_key_char(out, key, key_width)?;
+        let label = row.key_label();
+        let label = truncate_to_display_width(&label, self.width);
+        write!(out, "{label}").context("write leader key")?;
         let description_offset = self.column.description_offset.min(self.width);
-        write_spaces(out, description_offset.saturating_sub(used))?;
+        write_spaces(out, description_offset.saturating_sub(display_width(label)))?;
         execute!(out, SetAttribute(Attribute::Reset)).context("reset leader key")
     }
 
@@ -233,16 +234,6 @@ impl RowRenderer<'_> {
         let used = description_offset.saturating_add(display_width(text));
         write_spaces(out, self.width.saturating_sub(used))
     }
-}
-
-fn write_key_char(out: &mut Stdout, key: char, width: usize) -> Result<usize> {
-    let key_width = char_width(key);
-    if key_width > width {
-        write_spaces(out, width)?;
-        return Ok(width);
-    }
-    write!(out, "{key}").context("write leader key")?;
-    Ok(key_width)
 }
 
 fn write_spaces(out: &mut Stdout, width: usize) -> Result<()> {
