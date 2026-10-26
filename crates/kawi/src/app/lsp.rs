@@ -5,7 +5,8 @@ use super::lsp_navigation::{
 use super::lsp_text::{LspText, TextFailure};
 use kawi_completion::Capabilities;
 use kawi_editor::{
-    default_pairs, BlockComment, CommentTokens, Editor, LanguageEditing, LanguageIndent, Pair,
+    default_pairs, BlockComment, CommentTokens, Editor, IndentRules, LanguageEditing,
+    LanguageIndent, Pair,
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
@@ -15,6 +16,7 @@ use kawi_lsp::{
     RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
     WorkspaceDiagnosticState,
 };
+use kawi_syntax::LanguageId;
 use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -463,6 +465,13 @@ impl LspUi {
         LanguageIndent {
             shiftwidth: language.shiftwidth,
             expandtab: language.expandtab,
+            language: LanguageId::from_alias(&language.language_id)
+                .or_else(|| LanguageId::from_alias(&language.name)),
+            rules: IndentRules::new(
+                language.indent_after_suffixes.clone(),
+                language.indent_after_keywords.clone(),
+                language.indent_brackets,
+            ),
         }
     }
 

@@ -29,6 +29,7 @@ mod insert_erase;
 mod insert_shift;
 mod join;
 mod jumps;
+mod lexical;
 mod line_ops;
 mod marks;
 mod match_ops;
@@ -60,6 +61,7 @@ use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
 pub use file_paths::PathAdoption;
+pub use indent::IndentRules;
 pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;

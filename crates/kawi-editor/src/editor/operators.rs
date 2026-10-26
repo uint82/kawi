@@ -591,6 +591,7 @@ impl Editor {
             self.insert_replace_char(c);
             return;
         }
+        self.dedent_before_closer(c);
         if self.try_auto_pair(c) {
             return;
         }
@@ -620,7 +621,7 @@ impl Editor {
         self.mark_replace_newline();
         let row = self.cursor.row();
         let col = self.cursor.col();
-        let width = self.prefix_indent_width(row, col);
+        let width = self.newline_indent_width(row, col);
         self.insert_newline_at(row, col);
         self.clear_autoindent_line();
         self.enter_autoindent(row.saturating_add(1), width);
@@ -674,7 +675,7 @@ impl Editor {
     }
 
     pub(super) fn open_line_before(&mut self, row: usize) {
-        let indent = self.open_indent(row);
+        let indent = self.indent_before_line(row);
         self.insert_newline_at(row, 0);
         if let Some(indent) = indent {
             self.insert_indent(row, &indent);
@@ -684,7 +685,7 @@ impl Editor {
 
     pub(super) fn open_line_after(&mut self, row: usize) {
         let width = self.line_width(row);
-        let indent = self.open_indent(row);
+        let indent = self.indent_after_line(row);
         self.insert_newline_at(row, width);
         if let Some(indent) = indent {
             let new_row = row.saturating_add(1);

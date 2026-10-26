@@ -1,15 +1,9 @@
+use super::lexical::{LexicalContext, LexicalScanner};
 use super::session::InsertEdit;
 use super::Editor;
 use crate::editing::Pair;
 use crate::mode::Mode;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LexState {
-    Code,
-    LineComment,
-    BlockComment(usize),
-    Quote(char),
-}
+use crate::words::is_word_char;
 
 impl Editor {
     pub(super) fn try_auto_pair(&mut self, ch: char) -> bool {
@@ -47,10 +41,11 @@ impl Editor {
             return false;
         }
         let base = self.line_indent(row);
-        let width = self
+        let current_width = self
             .buffer
             .screen_col(row, base.chars().count(), self.tabstop());
-        let inner = self.indent_text(width + self.effective_indent().shift_unit());
+        let width = self.smart_indent_width(row, col, current_width);
+        let inner = self.indent_text(width);
         self.split_pair_line(&base, &inner);
         self.record_insert(InsertEdit::PairNewline { base, inner });
         true
@@ -224,36 +219,8 @@ impl Editor {
 
     fn inside_string_or_comment(&self, row: usize, col: usize) -> bool {
         // TODO: replace the bounded lexical scan with tree-sitter context when available.
-        let tokens = &self.language_editing.comments;
-        let quotes: Vec<char> = self
-            .language_editing
-            .pairs
-            .iter()
-            .filter(|pair| pair.is_quote())
-            .map(|pair| pair.open)
-            .collect();
-        let line_token: Vec<char> = tokens
-            .line
-            .as_ref()
-            .map(|token| token.chars().collect())
-            .unwrap_or_default();
-        let block_open: Vec<char> = tokens
-            .block
-            .as_ref()
-            .map(|block| block.open.chars().collect())
-            .unwrap_or_default();
-        let block_close: Vec<char> = tokens
-            .block
-            .as_ref()
-            .map(|block| block.close.chars().collect())
-            .unwrap_or_default();
         let start_row = self.context_scan_start(row);
-        let context = LexicalContext {
-            quotes: &quotes,
-            line_token: &line_token,
-            block_open: &block_open,
-            block_close: &block_close,
-        };
+        let context = LexicalContext::new(&self.language_editing);
         let mut scanner = LexicalScanner::new(context);
         for current_row in start_row..=row {
             let line = self.buffer.line(current_row).unwrap_or_default();
@@ -308,289 +275,5 @@ impl Editor {
     }
 }
 
-struct LexicalContext<'a> {
-    quotes: &'a [char],
-    line_token: &'a [char],
-    block_open: &'a [char],
-    block_close: &'a [char],
-}
-
-struct LexicalScanner<'a> {
-    context: LexicalContext<'a>,
-    state: LexState,
-    escaped: bool,
-}
-
-impl<'a> LexicalScanner<'a> {
-    fn new(context: LexicalContext<'a>) -> Self {
-        Self {
-            context,
-            state: LexState::Code,
-            escaped: false,
-        }
-    }
-
-    fn in_code(&self) -> bool {
-        self.state == LexState::Code
-    }
-
-    fn finish_line(&mut self) {
-        if matches!(self.state, LexState::LineComment | LexState::Quote(_)) {
-            self.state = LexState::Code;
-        }
-        self.escaped = false;
-    }
-
-    fn advance(&mut self, chars: &[char], index: usize) {
-        self.state = match self.state {
-            LexState::Code => self.advance_code(chars, index),
-            LexState::LineComment => LexState::LineComment,
-            LexState::BlockComment(depth) => self.advance_block(chars, index, depth),
-            LexState::Quote(quote) => self.advance_quote(chars, index, quote),
-        };
-    }
-
-    fn advance_code(&self, chars: &[char], index: usize) -> LexState {
-        if matches_token(chars, index, self.context.line_token) {
-            return LexState::LineComment;
-        }
-        if matches_token(chars, index, self.context.block_open) {
-            return LexState::BlockComment(1);
-        }
-        if self.context.quotes.contains(&chars[index]) {
-            return LexState::Quote(chars[index]);
-        }
-        LexState::Code
-    }
-
-    fn advance_block(&self, chars: &[char], index: usize, depth: usize) -> LexState {
-        if matches_token(chars, index, self.context.block_close) {
-            return match depth.checked_sub(1) {
-                Some(remaining) if remaining > 0 => LexState::BlockComment(remaining),
-                _ => LexState::Code,
-            };
-        }
-        if matches_token(chars, index, self.context.block_open) {
-            return LexState::BlockComment(depth.saturating_add(1));
-        }
-        LexState::BlockComment(depth)
-    }
-
-    fn advance_quote(&mut self, chars: &[char], index: usize, quote: char) -> LexState {
-        if self.escaped {
-            self.escaped = false;
-            return LexState::Quote(quote);
-        }
-        if chars[index] == '\\' {
-            self.escaped = true;
-        } else if chars[index] == quote {
-            return LexState::Code;
-        }
-        LexState::Quote(quote)
-    }
-}
-
-fn matches_token(chars: &[char], index: usize, token: &[char]) -> bool {
-    !token.is_empty()
-        && chars
-            .get(index..index.saturating_add(token.len()))
-            .is_some_and(|slice| slice == token)
-}
-
-fn is_word_char(ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_'
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::actions::Action;
-    use crate::editing::{BlockComment, CommentTokens, LanguageEditing, Pair};
-    use kawi_buffer::Buffer;
-
-    fn editing() -> LanguageEditing {
-        LanguageEditing {
-            comments: CommentTokens {
-                line: Some("//".to_string()),
-                block: Some(BlockComment::new("/*", "*/")),
-            },
-            pairs: vec![
-                Pair::new('(', ')'),
-                Pair::new('[', ']'),
-                Pair::new('{', '}'),
-                Pair::new('"', '"'),
-            ],
-        }
-    }
-
-    fn editor_with(text: &str, pairs: Vec<Pair>) -> Editor {
-        let mut editor = Editor::new(Buffer::from_string(text));
-        editor.set_language_editing(LanguageEditing {
-            comments: editing().comments,
-            pairs,
-        });
-        editor
-    }
-
-    fn open(editor: &mut Editor, row: usize, col: usize) {
-        editor.apply(Action::JumpTo(row, col));
-        editor.apply(Action::EnterInsert);
-    }
-
-    #[test]
-    fn inserts_a_pair_at_a_safe_position() {
-        let mut editor = editor_with("", editing().pairs);
-        editor.apply(Action::EnterInsert);
-        editor.apply(Action::InsertChar('('));
-        assert_eq!(editor.text_lines(), vec!["()".to_string()]);
-        assert_eq!((editor.row(), editor.col()), (0, 1));
-    }
-
-    #[test]
-    fn does_not_close_before_a_word() {
-        let mut editor = editor_with("word", editing().pairs);
-        open(&mut editor, 0, 0);
-        editor.apply(Action::InsertChar('('));
-        assert_eq!(editor.text_lines(), vec!["(word".to_string()]);
-    }
-
-    #[test]
-    fn closes_before_a_closing_bracket() {
-        let mut editor = editor_with("]", editing().pairs);
-        open(&mut editor, 0, 0);
-        editor.apply(Action::InsertChar('['));
-        assert_eq!(editor.text_lines(), vec!["[]]".to_string()]);
-        assert_eq!((editor.row(), editor.col()), (0, 1));
-    }
-
-    #[test]
-    fn typing_a_closer_moves_over_it() {
-        let mut editor = editor_with("()", editing().pairs);
-        open(&mut editor, 0, 2);
-        editor.apply(Action::InsertChar(')'));
-        assert_eq!(editor.text_lines(), vec!["()".to_string()]);
-        assert_eq!((editor.row(), editor.col()), (0, 2));
-    }
-
-    #[test]
-    fn quotes_do_not_pair_after_a_word() {
-        let mut editor = editor_with("don", editing().pairs);
-        editor.apply(Action::AppendLineEnd);
-        editor.apply(Action::InsertChar('\''));
-        assert_eq!(editor.text_lines(), vec!["don'".to_string()]);
-    }
-
-    #[test]
-    fn quotes_do_not_pair_inside_comments_or_strings() {
-        let mut editor = editor_with("// ", editing().pairs);
-        editor.apply(Action::AppendLineEnd);
-        editor.apply(Action::InsertChar('"'));
-        assert_eq!(editor.text_lines(), vec!["// \"".to_string()]);
-
-        let mut editor = editor_with("\"text", editing().pairs);
-        editor.apply(Action::AppendLineEnd);
-        editor.apply(Action::InsertChar('"'));
-        assert_eq!(editor.text_lines(), vec!["\"text\"".to_string()]);
-    }
-
-    #[test]
-    fn quotes_do_not_pair_in_multiline_block_comments() {
-        let mut editor = editor_with("/*\ntext\n", editing().pairs);
-        editor.apply(Action::JumpTo(1, 0));
-        editor.apply(Action::AppendLineEnd);
-        editor.apply(Action::InsertChar('"'));
-        assert_eq!(
-            editor.text_lines(),
-            vec!["/*".to_string(), "text\"".to_string()]
-        );
-    }
-
-    #[test]
-    fn language_table_controls_quotes() {
-        let mut editor = editor_with("", vec![Pair::new('(', ')')]);
-        editor.apply(Action::EnterInsert);
-        editor.apply(Action::InsertChar('\''));
-        assert_eq!(editor.text_lines(), vec!["'".to_string()]);
-    }
-
-    #[test]
-    fn backspace_removes_an_empty_pair() {
-        let mut editor = editor_with("()", editing().pairs);
-        open(&mut editor, 0, 1);
-        editor.apply(Action::DeleteBackward);
-        assert_eq!(editor.text_lines(), vec![String::new()]);
-        assert_eq!((editor.row(), editor.col()), (0, 0));
-    }
-
-    #[test]
-    fn enter_splits_a_bracket_pair_with_indent() {
-        let mut editor = editor_with("    foo()", editing().pairs);
-        editor.set_shiftwidth(4);
-        editor.set_expandtab(true);
-        open(&mut editor, 0, 8);
-        editor.apply(Action::InsertNewline);
-        assert_eq!(
-            editor.text_lines(),
-            vec![
-                "    foo(".to_string(),
-                "        ".to_string(),
-                "    )".to_string()
-            ]
-        );
-        assert_eq!((editor.row(), editor.col()), (1, 8));
-    }
-
-    #[test]
-    fn pair_insertion_is_one_undo_step() {
-        let mut editor = editor_with("", editing().pairs);
-        editor.apply(Action::EnterInsert);
-        editor.apply(Action::InsertChar('('));
-        editor.apply(Action::ExitInsert);
-        editor.apply(Action::Undo);
-        assert_eq!(editor.text_lines(), vec![String::new()]);
-    }
-
-    #[test]
-    fn pair_insertion_repeats_with_dot() {
-        let mut editor = editor_with("ab\ncd\n", editing().pairs);
-        editor.apply(Action::AppendLineEnd);
-        editor.apply(Action::InsertChar('('));
-        editor.apply(Action::ExitInsert);
-        editor.apply(Action::MoveDown);
-        editor.apply(Action::RepeatLastChange);
-        assert_eq!(
-            editor.text_lines(),
-            vec!["ab()".to_string(), "cd()".to_string()]
-        );
-    }
-
-    #[test]
-    fn paste_bypasses_pairing() {
-        let mut editor = editor_with("", editing().pairs);
-        editor.apply(Action::EnterInsert);
-        editor.paste("(");
-        assert_eq!(editor.text_lines(), vec!["(".to_string()]);
-    }
-
-    #[test]
-    fn visual_selection_is_surrounded() {
-        let mut editor = editor_with("word", editing().pairs);
-        editor.apply(Action::JumpTo(0, 0));
-        editor.apply(Action::EnterVisual);
-        editor.apply(Action::MoveRight);
-        editor.apply(Action::MoveRight);
-        editor.apply(Action::MoveRight);
-        editor.apply(Action::SurroundSelection { open: '(' });
-        assert_eq!(editor.text_lines(), vec!["(word)".to_string()]);
-        assert_eq!(editor.mode(), crate::mode::Mode::Normal);
-    }
-
-    #[test]
-    fn global_switch_disables_pairing() {
-        let mut editor = editor_with("", editing().pairs);
-        editor.set_auto_pairs(false);
-        editor.apply(Action::EnterInsert);
-        editor.apply(Action::InsertChar('('));
-        assert_eq!(editor.text_lines(), vec!["(".to_string()]);
-    }
-}
+mod tests;

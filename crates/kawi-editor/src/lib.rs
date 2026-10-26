@@ -31,8 +31,9 @@ pub use command::{
 pub use cursor::Cursor;
 pub use editing::{default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair};
 pub use editor::{
-    BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, LanguageIndent,
-    PathAdoption, ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT,
+    BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, IndentRules,
+    LanguageIndent, PathAdoption, ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT,
+    MAX_HISTORY_LIMIT,
 };
 pub use mode::Mode;
 pub use register::{Register, RegisterKind};

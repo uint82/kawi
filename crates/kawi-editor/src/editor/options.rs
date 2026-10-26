@@ -15,10 +15,12 @@ impl Default for BufferOptionDefaults {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LanguageIndent {
     pub shiftwidth: Option<usize>,
     pub expandtab: Option<bool>,
+    pub language: Option<LanguageId>,
+    pub rules: IndentRules,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,8 +40,10 @@ impl Default for WindowOptions {
     }
 }
 
+use super::indent::IndentRules;
 use super::Editor;
 use crate::editing::LanguageEditing;
+use kawi_syntax::LanguageId;
 
 impl Editor {
     pub fn set_buffer_defaults(&mut self, defaults: BufferOptionDefaults) {
@@ -121,6 +125,7 @@ mod tests {
         editor.set_language_indent(LanguageIndent {
             shiftwidth: Some(2),
             expandtab: Some(true),
+            ..LanguageIndent::default()
         });
         assert_eq!(editor.shiftwidth(), 2);
         assert!(editor.expandtab());
@@ -137,6 +142,7 @@ mod tests {
         editor.set_language_indent(LanguageIndent {
             shiftwidth: Some(2),
             expandtab: Some(true),
+            ..LanguageIndent::default()
         });
         editor.set_shiftwidth(5);
         editor.set_expandtab(false);
