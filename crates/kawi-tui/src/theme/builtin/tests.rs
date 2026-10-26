@@ -191,9 +191,9 @@ fn gruvbox_dark_matches_user_neovim() {
 }
 
 #[test]
-fn default_differs_from_gruvbox_night() {
+fn default_differs_from_gruvbox_dark() {
     let default = Theme::default();
-    let gruvbox = Theme::named("gruvbox-night").expect("theme");
+    let gruvbox = Theme::named("gruvbox-dark").expect("theme");
     assert_ne!(default.base.background, gruvbox.base.background);
     assert_ne!(
         default

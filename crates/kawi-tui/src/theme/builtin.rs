@@ -5,7 +5,7 @@ mod one_dark;
 mod palette;
 
 const DEFAULT_THEME: &str = include_str!("../../themes/default.toml");
-const GRUVBOX_NIGHT: &str = include_str!("../../themes/gruvbox-night.toml");
+const GRUVBOX_DARK: &str = include_str!("../../themes/gruvbox-dark.toml");
 
 #[cfg(test)]
 mod contrast_tests;
@@ -20,7 +20,7 @@ impl Theme {
     pub fn named(name: &str) -> Option<Self> {
         match name {
             "default" => Some(Self::default_theme()),
-            "gruvbox-dark" | "gruvbox-night" => Some(Self::gruvbox_night(name)),
+            "gruvbox-dark" => Some(Self::gruvbox_dark(name)),
             "one-dark" => Some(Self::one_dark()),
             "gruvbox-light" => Some(Self::gruvbox_light()),
             _ => None,
@@ -35,7 +35,7 @@ impl Theme {
         Self::from_toml("default", DEFAULT_THEME).expect("embedded default theme")
     }
 
-    fn gruvbox_night(name: &str) -> Self {
-        Self::from_toml(name, GRUVBOX_NIGHT).expect("embedded Gruvbox theme")
+    fn gruvbox_dark(name: &str) -> Self {
+        Self::from_toml(name, GRUVBOX_DARK).expect("embedded Gruvbox theme")
     }
 }
