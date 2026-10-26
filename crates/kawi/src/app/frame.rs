@@ -60,6 +60,7 @@ impl App {
                 syntax_spans: pane.syntax_spans.as_ref(),
                 rulers: &pane.rulers,
                 selection: pane.selection,
+                bracket_match: pane.bracket_match,
                 viewport: pane.viewport,
                 cursor_col: pane.cursor_col,
                 row: pane.row,

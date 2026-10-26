@@ -26,6 +26,7 @@ pub(crate) struct PaneData<'a> {
     pub syntax_spans: Cow<'a, [SyntaxSpan]>,
     pub rulers: Vec<usize>,
     pub selection: Option<Selection>,
+    pub bracket_match: Option<BracketMatch>,
     pub viewport: Viewport,
     pub cursor_col: usize,
     pub row: usize,
@@ -484,6 +485,11 @@ impl App {
             syntax_spans: self.active_syntax_spans(),
             rulers: self.commit_rulers(self.editor.buffer_number()),
             selection: self.frame_selection(),
+            bracket_match: self
+                .windows
+                .active_view()
+                .bracket_match
+                .and_then(|cache| cache.matched),
             viewport: pane_viewport(
                 rect,
                 top,
@@ -586,6 +592,7 @@ impl App {
             syntax_spans,
             rulers: self.commit_rulers(window.buffer),
             selection: None,
+            bracket_match: None,
             viewport: pane_viewport(rect, top, window.view.leftcol, line_count),
             cursor_col: 0,
             row,

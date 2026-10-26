@@ -1,7 +1,7 @@
 use crate::markdown::MarkdownLine;
 use crate::statusbar::StatusInfo;
 use crate::theme::Theme;
-use kawi_editor::Viewport;
+use kawi_editor::{BracketMatch, Viewport};
 use kawi_syntax::SyntaxSpan;
 
 mod leader;
@@ -128,6 +128,7 @@ pub struct PaneFrame<'a> {
     pub syntax_spans: &'a [SyntaxSpan],
     pub rulers: &'a [usize],
     pub selection: Option<Selection>,
+    pub bracket_match: Option<BracketMatch>,
     pub viewport: Viewport,
     pub cursor_col: usize,
     pub row: usize,

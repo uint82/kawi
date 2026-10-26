@@ -540,6 +540,9 @@ mod tests {
             .active_view()
             .bracket_match
             .is_some_and(|cache| cache.matched.is_none()));
+        let layout = app.window_layout();
+        let panes = app.frame_panes(&layout);
+        assert!(panes.iter().all(|pane| pane.bracket_match.is_none()));
         feed(&mut app, &[ctrl_w(), key(KeyCode::Char('h'))]);
         app.refresh_bracket_match();
         assert!(app
@@ -547,6 +550,16 @@ mod tests {
             .active_view()
             .bracket_match
             .is_some_and(|cache| cache.matched.is_some()));
+        let layout = app.window_layout();
+        let panes = app.frame_panes(&layout);
+        assert!(panes
+            .iter()
+            .find(|pane| pane.active)
+            .is_some_and(|pane| pane.bracket_match.is_some()));
+        assert!(panes
+            .iter()
+            .filter(|pane| !pane.active)
+            .all(|pane| pane.bracket_match.is_none()));
     }
 
     #[test]

@@ -7,6 +7,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ("search_current", &["foreground", "background"]),
     ("substitute", &["foreground", "background"]),
     ("selection", &["foreground", "background"]),
+    ("bracket.match", &["foreground", "background"]),
     ("status", &["foreground", "background"]),
     ("gutter", &["line_number", "non_text"]),
     (
@@ -78,6 +79,41 @@ fn code_background_defaults_to_the_float_background() {
     let text = format!("float_background = \"#0a0b0c\"\n{}", theme_text());
     let theme = Theme::from_toml("personal", &text).unwrap();
     assert_eq!(theme.code_background, theme.float_background);
+}
+
+#[test]
+fn bracket_match_defaults_to_selection() {
+    let text = theme_text().replace(
+        "[bracket.match]\nforeground = \"#010203\"\nbackground = \"#010203\"\n\n",
+        "",
+    );
+    let theme = Theme::from_toml("personal", &text).unwrap();
+    assert_eq!(theme.bracket_match, theme.selection);
+}
+
+#[test]
+fn loads_a_custom_bracket_match() {
+    let text = theme_text().replace(
+        "[bracket.match]\nforeground = \"#010203\"\nbackground = \"#010203\"\n",
+        "[bracket.match]\nforeground = \"#112233\"\nbackground = \"#445566\"\n",
+    );
+    let theme = Theme::from_toml("personal", &text).unwrap();
+    assert_eq!(
+        theme.bracket_match.foreground,
+        Color::Rgb {
+            r: 17,
+            g: 34,
+            b: 51
+        }
+    );
+    assert_eq!(
+        theme.bracket_match.background,
+        Color::Rgb {
+            r: 68,
+            g: 85,
+            b: 102
+        }
+    );
 }
 
 #[test]
