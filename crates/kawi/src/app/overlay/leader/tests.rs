@@ -51,11 +51,11 @@ fn group_menu_replaces_the_root_menu() {
     assert_eq!(
         items(&app),
         [
-            "f/p  find project file",
-            "k  find buffer",
-            "r  find and replace",
-            "s  find in project",
-            "w  find current word",
+            "f/p  project files",
+            "k  open buffers",
+            "r  search and replace",
+            "s  live grep",
+            "w  grep current word",
         ]
     );
 }
@@ -101,7 +101,7 @@ fn backslash_leader_uses_the_same_menu() {
     app.handle_key(key(KeyCode::Char('f'))).expect("group");
     assert_eq!(
         items(&app).first().map(String::as_str),
-        Some("f/p  find project file")
+        Some("f/p  project files")
     );
 }
 

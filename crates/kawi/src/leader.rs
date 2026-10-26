@@ -26,31 +26,31 @@ const FIND_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'f',
         aliases: &['p'],
-        label: "find project file",
+        label: "project files",
         action: Action::OpenFilePicker,
     },
     LeaderCommand {
         key: 'k',
         aliases: &[],
-        label: "find buffer",
+        label: "open buffers",
         action: Action::OpenBufferPicker,
     },
     LeaderCommand {
         key: 'r',
         aliases: &[],
-        label: "find and replace",
+        label: "search and replace",
         action: Action::OpenReplacePicker,
     },
     LeaderCommand {
         key: 's',
         aliases: &[],
-        label: "find in project",
+        label: "live grep",
         action: Action::OpenGrepPicker,
     },
     LeaderCommand {
         key: 'w',
         aliases: &[],
-        label: "find current word",
+        label: "grep current word",
         action: Action::OpenGrepWordPicker,
     },
 ];
@@ -59,13 +59,13 @@ const CODE_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'a',
         aliases: &[],
-        label: "code action",
+        label: "code actions",
         action: Action::CodeAction,
     },
     LeaderCommand {
         key: 'f',
         aliases: &[],
-        label: "format code",
+        label: "format buffer",
         action: Action::Format,
     },
 ];
@@ -159,7 +159,7 @@ const GIT_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'u',
         aliases: &[],
-        label: "undo stage",
+        label: "unstage hunk",
         action: Action::GitUndoStage,
     },
 ];
