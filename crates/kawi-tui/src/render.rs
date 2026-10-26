@@ -17,7 +17,7 @@ use crate::statusbar::draw_status;
 use crate::text::{count_label, display_width, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
-use kawi_syntax::{SyntaxGroup, SyntaxSpan};
+use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
 use crate::display;
 
@@ -584,7 +584,7 @@ pub enum Tint {
     SearchMatch,
     SearchCurrent,
     Substitute,
-    Syntax(SyntaxGroup),
+    Syntax(SyntaxHighlight),
     Diagnostic(crate::frame::DiagnosticSeverity),
 }
 
@@ -790,7 +790,7 @@ pub fn syntax_highlight_spans(spans: &[SyntaxSpan], view: &SpanView) -> Vec<High
                 span.start,
                 span.end,
                 view,
-                Tint::Syntax(span.group),
+                Tint::Syntax(span.highlight),
             )
         })
         .collect()
@@ -910,13 +910,7 @@ fn paint_span(
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme),
         Tint::SearchCurrent => paint_tinted(out, &span.text, &theme.search_current, theme),
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme),
-        Tint::Syntax(group) => {
-            let colors = MatchColors {
-                foreground: theme.syntax.color(group),
-                background: theme.base.background,
-            };
-            paint_tinted(out, &span.text, &colors, theme)
-        }
+        Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme),
         Tint::Diagnostic(severity) => paint_underlined(out, &span.text, severity, theme),
     }
 }
@@ -1196,41 +1190,97 @@ fn apply_markdown_style(
     theme: &Theme,
 ) -> Result<()> {
     execute!(out, SetAttribute(Attribute::Reset)).context("reset overlay style")?;
+    let style = markdown_style(style, theme).unwrap_or_default();
+    let background = style.background.unwrap_or(background);
     paint::apply_colors(
         out,
-        theme.base.foreground,
+        style.foreground.unwrap_or(theme.base.foreground),
         background,
         "apply overlay background",
     )?;
-    let Some((attribute, color)) = markdown_style(style, theme) else {
-        return Ok(());
-    };
-    if let Some(attribute) = attribute {
-        execute!(out, SetAttribute(attribute)).context("apply overlay attribute")?;
-    }
-    execute!(out, SetForegroundColor(color)).context("apply overlay color")?;
+    apply_attributes(out, style.bold, style.italic, style.underline)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct MarkdownRenderStyle {
+    foreground: Option<Color>,
+    background: Option<Color>,
+    bold: bool,
+    italic: bool,
+    underline: bool,
 }
 
 fn markdown_style(
     style: crate::markdown::MarkdownStyle,
     theme: &Theme,
-) -> Option<(Option<Attribute>, Color)> {
+) -> Option<MarkdownRenderStyle> {
     use crate::markdown::MarkdownStyle;
+    let syntax = |name: &str| theme.syntax.named(name).and_then(|style| style.foreground);
     match style {
         MarkdownStyle::Normal => None,
-        MarkdownStyle::Strong | MarkdownStyle::Heading => Some((
-            Some(Attribute::Bold),
-            theme.syntax.color(SyntaxGroup::Keyword),
+        MarkdownStyle::Strong | MarkdownStyle::Heading => Some(MarkdownRenderStyle {
+            foreground: syntax("keyword"),
+            bold: true,
+            ..MarkdownRenderStyle::default()
+        }),
+        MarkdownStyle::Emphasis => Some(MarkdownRenderStyle {
+            foreground: syntax("function"),
+            italic: true,
+            ..MarkdownRenderStyle::default()
+        }),
+        MarkdownStyle::Code => Some(MarkdownRenderStyle {
+            foreground: syntax("string"),
+            ..MarkdownRenderStyle::default()
+        }),
+        MarkdownStyle::Quote => Some(MarkdownRenderStyle {
+            foreground: syntax("comment"),
+            ..MarkdownRenderStyle::default()
+        }),
+        MarkdownStyle::Syntax(highlight) => Some(theme.syntax.style(highlight).map_or_else(
+            MarkdownRenderStyle::default,
+            |style| MarkdownRenderStyle {
+                foreground: style.foreground,
+                background: style.background,
+                bold: style.bold,
+                italic: style.italic,
+                underline: style.underline,
+            },
         )),
-        MarkdownStyle::Emphasis => Some((
-            Some(Attribute::Italic),
-            theme.syntax.color(SyntaxGroup::Function),
-        )),
-        MarkdownStyle::Code => Some((None, theme.syntax.color(SyntaxGroup::String))),
-        MarkdownStyle::Quote => Some((None, theme.syntax.color(SyntaxGroup::Comment))),
-        MarkdownStyle::Syntax(group) => Some((None, theme.syntax.color(group))),
     }
+}
+
+fn paint_syntax(
+    out: &mut Stdout,
+    text: &str,
+    highlight: SyntaxHighlight,
+    theme: &Theme,
+) -> Result<()> {
+    let style = theme.syntax.style(highlight).unwrap_or_default();
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax style")?;
+    paint::apply_colors(
+        out,
+        style.foreground.unwrap_or(theme.base.foreground),
+        style.background.unwrap_or(theme.base.background),
+        "apply syntax colors",
+    )?;
+    apply_attributes(out, style.bold, style.italic, style.underline)?;
+    write_segment(out, text)?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax attributes")?;
+    paint::restore_base(out, theme)
+}
+
+fn apply_attributes(out: &mut Stdout, bold: bool, italic: bool, underline: bool) -> Result<()> {
+    if bold {
+        execute!(out, SetAttribute(Attribute::Bold)).context("apply bold")?;
+    }
+    if italic {
+        execute!(out, SetAttribute(Attribute::Italic)).context("apply italic")?;
+    }
+    if underline {
+        execute!(out, SetAttribute(Attribute::Underlined)).context("apply underline")?;
+    }
+    Ok(())
 }
 
 fn clear_overlay_rect(out: &mut Stdout, rect: crate::frame::Rect, theme: &Theme) -> Result<()> {
@@ -2179,30 +2229,38 @@ mod tests {
         assert_eq!(prompt_cursor_col(Some(""), None, 5, Some("dd")), Some(1));
     }
 
+    fn highlight_named(name: &str) -> SyntaxHighlight {
+        kawi_syntax::registry()
+            .index_of(name)
+            .expect("registered capture")
+    }
+
     #[test]
     fn syntax_spans_use_group_tints() {
         let lines = lines_of("fn main");
         let viewport = Viewport::new(10, 20);
         let view = span_view(&lines, &viewport);
+        let keyword = highlight_named("keyword");
+        let function = highlight_named("function");
         let spans = vec![
             SyntaxSpan {
                 row: 0,
                 start: 0,
                 end: 2,
-                group: SyntaxGroup::Keyword,
+                highlight: keyword,
             },
             SyntaxSpan {
                 row: 0,
                 start: 3,
                 end: 7,
-                group: SyntaxGroup::Function,
+                highlight: function,
             },
         ];
         let painted = syntax_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 2);
-        assert_eq!(painted[0].tint, Tint::Syntax(SyntaxGroup::Keyword));
+        assert_eq!(painted[0].tint, Tint::Syntax(keyword));
         assert_eq!(painted[0].text, "fn");
-        assert_eq!(painted[1].tint, Tint::Syntax(SyntaxGroup::Function));
+        assert_eq!(painted[1].tint, Tint::Syntax(function));
         assert_eq!(painted[1].from, 3);
     }
 
@@ -2216,7 +2274,7 @@ mod tests {
             row: 0,
             start: 0,
             end: 10,
-            group: SyntaxGroup::String,
+            highlight: highlight_named("string"),
         }];
         let painted = syntax_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 1);
@@ -2233,7 +2291,7 @@ mod tests {
             row: 0,
             start: 0,
             end: 2,
-            group: SyntaxGroup::Variable,
+            highlight: highlight_named("variable"),
         }];
         let painted = syntax_highlight_spans(&spans, &view);
         assert_eq!(painted.len(), 1);
@@ -2241,14 +2299,68 @@ mod tests {
     }
 
     #[test]
+    fn syntax_attributes_reach_overlay_style() {
+        use crate::theme::{SyntaxStyle, SyntaxStyles};
+        use std::collections::BTreeMap;
+        let mut theme = Theme::default();
+        let mut styles = BTreeMap::new();
+        for name in [
+            "comment",
+            "keyword",
+            "string",
+            "number",
+            "constant",
+            "function",
+            "type",
+            "variable",
+            "property",
+            "operator",
+            "punctuation",
+            "attribute",
+            "tag",
+            "invalid",
+        ] {
+            let color = theme
+                .syntax
+                .named(name)
+                .and_then(|style| style.foreground)
+                .expect("base color");
+            styles.insert(name.to_string(), SyntaxStyle::with_foreground(color));
+        }
+        styles.insert(
+            "comment".to_string(),
+            SyntaxStyle {
+                background: Some(Color::Blue),
+                bold: true,
+                italic: true,
+                underline: true,
+                ..theme.syntax.named("comment").expect("comment")
+            },
+        );
+        theme.syntax = SyntaxStyles::from_keyed(styles);
+        let style = markdown_style(
+            crate::markdown::MarkdownStyle::Syntax(highlight_named("comment")),
+            &theme,
+        )
+        .expect("syntax style");
+        assert_eq!(style.background, Some(Color::Blue));
+        assert!(style.bold);
+        assert!(style.italic);
+        assert!(style.underline);
+    }
+
+    #[test]
     fn theme_change_recolors_overlay_syntax() {
         let default = Theme::named("default").expect("default theme");
         let gruvbox = Theme::named("gruvbox-dark").expect("gruvbox theme");
-        let style = crate::markdown::MarkdownStyle::Syntax(SyntaxGroup::Keyword);
-        assert_ne!(
-            markdown_style(style, &default).map(|(_, color)| color),
-            markdown_style(style, &gruvbox).map(|(_, color)| color)
-        );
+        let style = crate::markdown::MarkdownStyle::Syntax(highlight_named("keyword"));
+        let default_color = markdown_style(style, &default)
+            .and_then(|style| style.foreground)
+            .expect("default color");
+        let gruvbox_color = markdown_style(style, &gruvbox)
+            .and_then(|style| style.foreground)
+            .expect("gruvbox color");
+        assert_ne!(default_color, gruvbox_color);
     }
 
     #[test]

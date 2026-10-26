@@ -1,4 +1,4 @@
-use kawi_syntax::SyntaxGroup;
+use kawi_syntax::SyntaxHighlight;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarkdownStyle {
@@ -8,7 +8,7 @@ pub enum MarkdownStyle {
     Code,
     Heading,
     Quote,
-    Syntax(SyntaxGroup),
+    Syntax(SyntaxHighlight),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
