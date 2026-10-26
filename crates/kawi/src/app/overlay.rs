@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
 use kawi_tui::markdown::{self, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
@@ -11,6 +13,7 @@ use super::App;
 pub(super) mod code;
 pub(crate) mod document;
 mod hover;
+mod leader;
 pub(super) mod options;
 mod signature;
 mod size;
@@ -24,7 +27,7 @@ pub(super) struct OverlayData<'a> {
 
 struct ListData<'a> {
     rect: Rect,
-    items: &'a [String],
+    items: Cow<'a, [String]>,
     selected: Option<usize>,
 }
 
@@ -55,7 +58,7 @@ impl OverlayData<'_> {
         Overlay {
             list: self.list.as_ref().map(|list| OverlayList {
                 rect: list.rect,
-                items: list.items,
+                items: list.items.as_ref(),
                 selected: list.selected,
             }),
             panel: self.panel.as_ref().map(|panel| OverlayPanel {
@@ -91,6 +94,9 @@ impl App {
     }
 
     pub(super) fn overlay_data(&self) -> Option<OverlayData<'_>> {
+        if let Some(overlay) = self.leader_overlay() {
+            return Some(overlay);
+        }
         if self.completion.is_some() {
             return self.completion_overlay();
         }
@@ -109,7 +115,7 @@ impl App {
         let session = self.completion.as_ref()?;
         let list = ListData {
             rect: geometry.list,
-            items: session.items(),
+            items: Cow::Borrowed(session.items()),
             selected: session.selected(),
         };
         let panel = geometry.docs.map(|rect| PanelData {
