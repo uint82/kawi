@@ -4,6 +4,10 @@ use crate::theme::Theme;
 use kawi_editor::Viewport;
 use kawi_syntax::SyntaxSpan;
 
+mod leader;
+
+pub use leader::{LeaderColumn, LeaderMenu, LeaderRow};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub x: usize,
@@ -221,6 +225,7 @@ pub struct CompletionMenu<'a> {
 pub struct Overlay<'a> {
     pub list: Option<OverlayList<'a>>,
     pub panel: Option<OverlayPanel<'a>>,
+    pub leader: Option<LeaderMenu<'a>>,
 }
 
 pub struct OverlayList<'a> {

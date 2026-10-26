@@ -21,6 +21,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
 use crate::display;
 
+mod leader;
 mod terminal;
 
 use terminal::{draw_terminal_panel, place_terminal_cursor};
@@ -994,6 +995,9 @@ fn draw_overlay(out: &mut Stdout, frame: &Frame) -> Result<()> {
     }
     if let Some(panel) = overlay.panel.as_ref() {
         draw_overlay_panel(out, frame, panel)?;
+    }
+    if let Some(menu) = overlay.leader.as_ref() {
+        leader::draw(out, frame, menu)?;
     }
     Ok(())
 }

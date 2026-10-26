@@ -1,38 +1,61 @@
-use std::borrow::Cow;
-
-use kawi_tui::frame::Rect;
+use kawi_tui::frame::{LeaderColumn, LeaderMenu, LeaderRow, Rect};
 use kawi_tui::overlay::PANEL_BORDER;
-use kawi_tui::text::display_width;
+use kawi_tui::text::{char_width, display_width};
 
 use super::super::App;
-use super::{ListData, OverlayData, MAX_LIST_WIDTH};
+use super::{OverlayData, MAX_LIST_WIDTH};
 use crate::keymap::Keymap;
 use crate::leader::{self, LeaderPath};
 
-const KEY_LABEL_SEPARATOR: &str = "  ";
+const SINGLE_COLUMN_LIMIT: usize = 10;
+const KEY_DESCRIPTION_GAP: usize = 2;
+const COLUMN_GAP: usize = 2;
 const RIGHT_MARGIN: usize = 1;
 const BOTTOM_MARGIN: usize = 1;
+const TITLE: &str = "Leader";
+
+pub(super) struct LeaderData {
+    rect: Rect,
+    group: Option<char>,
+    rows: Vec<LeaderRow<'static>>,
+    columns: Vec<LeaderColumn>,
+}
+
+impl LeaderData {
+    pub(super) fn view(&self) -> LeaderMenu<'_> {
+        LeaderMenu {
+            rect: self.rect,
+            title: TITLE,
+            group: self.group,
+            rows: &self.rows,
+            columns: &self.columns,
+        }
+    }
+}
 
 impl App {
     pub(super) fn leader_overlay(&self) -> Option<OverlayData<'_>> {
         let path = self.keymap.leader_path()?;
-        let items = leader_lines(path, self.editor.mode().is_visual());
-        if items.is_empty() {
-            return None;
-        }
-        let rect = leader_rect(self.window_area(), &items);
+        let visual = self.editor.mode().is_visual();
+        let rows = leader_rows(path, visual);
+        let group = leader_group(path);
+        let area = self.window_area();
+        let columns = leader_columns(&rows, leader_width_limit(area));
+        let rect = leader_rect(area, group, &columns);
         Some(OverlayData {
-            list: Some(ListData {
-                rect,
-                items: Cow::Owned(items),
-                selected: None,
-            }),
+            list: None,
             panel: None,
+            leader: Some(LeaderData {
+                rect,
+                group,
+                rows,
+                columns,
+            }),
         })
     }
 }
 
-fn leader_lines(path: LeaderPath, visual: bool) -> Vec<String> {
+fn leader_rows(path: LeaderPath, visual: bool) -> Vec<LeaderRow<'static>> {
     match path {
         LeaderPath::Root => leader::groups(visual)
             .map(|group| leader_row(group.key, group.label))
@@ -45,23 +68,94 @@ fn leader_lines(path: LeaderPath, visual: bool) -> Vec<String> {
     }
 }
 
-fn leader_row(key: char, label: &str) -> String {
-    format!("{key}{KEY_LABEL_SEPARATOR}{label}")
+fn leader_group(path: LeaderPath) -> Option<char> {
+    match path {
+        LeaderPath::Root => None,
+        LeaderPath::Group(group) => Some(group.key),
+    }
 }
 
-fn leader_rect(area: Rect, items: &[String]) -> Rect {
-    let content_width = items
-        .iter()
-        .map(|item| display_width(item))
+fn leader_row(key: char, description: &'static str) -> LeaderRow<'static> {
+    LeaderRow { key, description }
+}
+
+fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn> {
+    let key_width = leader_key_width(rows);
+    let single = build_columns(rows, 1, key_width);
+    if rows.len() <= SINGLE_COLUMN_LIMIT {
+        return single;
+    }
+    let double = build_columns(rows, 2, key_width);
+    if leader_content_width(&double) <= max_width {
+        double
+    } else {
+        single
+    }
+}
+
+fn leader_key_width(rows: &[LeaderRow<'_>]) -> usize {
+    rows.iter()
+        .map(|row| char_width(row.key))
         .max()
-        .unwrap_or(0);
+        .unwrap_or(1)
+        .max(1)
+}
+
+fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<LeaderColumn> {
+    let per_column = rows.len().div_ceil(count).max(1);
+    let description_offset = key_width.saturating_add(KEY_DESCRIPTION_GAP);
+    let mut offset = 0;
+    rows.chunks(per_column)
+        .enumerate()
+        .map(|(index, chunk)| {
+            let description_width = chunk
+                .iter()
+                .map(|row| display_width(row.description))
+                .max()
+                .unwrap_or(0);
+            let width = description_offset.saturating_add(description_width);
+            let column = LeaderColumn {
+                start: index.saturating_mul(per_column),
+                len: chunk.len(),
+                offset,
+                width,
+                key_width,
+                description_offset,
+            };
+            offset = offset.saturating_add(width).saturating_add(COLUMN_GAP);
+            column
+        })
+        .collect()
+}
+
+fn leader_content_width(columns: &[LeaderColumn]) -> usize {
+    columns
+        .last()
+        .map(|column| column.offset.saturating_add(column.width))
+        .unwrap_or(0)
+}
+
+fn leader_width_limit(area: Rect) -> usize {
+    MAX_LIST_WIDTH
+        .saturating_sub(PANEL_BORDER)
+        .min(area.width.saturating_sub(PANEL_BORDER + RIGHT_MARGIN))
+        .max(1)
+}
+
+fn leader_rect(area: Rect, group: Option<char>, columns: &[LeaderColumn]) -> Rect {
+    let title_width = display_width(TITLE).saturating_add(match group {
+        Some(key) => char_width(key).saturating_add(1),
+        None => 0,
+    });
+    let content_width = leader_content_width(columns).max(title_width);
+    let rows_height = columns.iter().map(|column| column.len).max().unwrap_or(0);
     let width = content_width
         .saturating_add(PANEL_BORDER)
         .min(MAX_LIST_WIDTH)
         .min(area.width)
         .max(1);
-    let height = items
-        .len()
+    let height = rows_height
+        .saturating_add(1)
         .saturating_add(PANEL_BORDER)
         .min(area.height)
         .max(1);
@@ -79,127 +173,4 @@ fn leader_rect(area: Rect, items: &[String]) -> Rect {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use kawi_buffer::Buffer;
-    use kawi_editor::Mode;
-
-    use crate::keymap::Flavor;
-
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
-    }
-
-    fn app() -> App {
-        let mut app = App::new(Buffer::from_string("value\n"), Flavor::Vim);
-        app.set_screen_size(80, 24);
-        app
-    }
-
-    fn items(app: &App) -> Vec<String> {
-        let data = app.overlay_data().expect("overlay");
-        let list = data.list.as_ref().expect("list");
-        list.items.to_vec()
-    }
-
-    fn root_items() -> [&'static str; 5] {
-        ["c  code", "f  find", "r  rename", "t  tasks", "v  git"]
-    }
-
-    #[test]
-    fn root_menu_lists_every_group() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        assert_eq!(items(&app), root_items());
-    }
-
-    #[test]
-    fn group_menu_replaces_the_root_menu() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        app.handle_key(key(KeyCode::Char('f'))).expect("group");
-        assert_eq!(
-            items(&app),
-            [
-                "f  find project file",
-                "k  find buffer",
-                "r  find and replace",
-                "s  find in project",
-                "w  find current word",
-            ]
-        );
-    }
-
-    #[test]
-    fn visual_menu_only_lists_supported_groups() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        assert_eq!(items(&app), ["c  code", "f  find"]);
-    }
-
-    #[test]
-    fn backslash_leader_uses_the_same_menu() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char('\\'))).expect("leader");
-        assert_eq!(items(&app), root_items());
-        app.handle_key(key(KeyCode::Char('f'))).expect("group");
-        assert_eq!(
-            items(&app).first().map(String::as_str),
-            Some("f  find project file")
-        );
-    }
-
-    #[test]
-    fn completing_a_command_dismisses_the_menu() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        app.handle_key(key(KeyCode::Char('t'))).expect("group");
-        app.handle_key(key(KeyCode::Char('c'))).expect("command");
-        assert!(app.overlay_data().is_none());
-    }
-
-    #[test]
-    fn pressing_space_again_dismisses_the_root_menu() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        assert_eq!(items(&app), root_items());
-        app.handle_key(key(KeyCode::Char(' '))).expect("toggle");
-        assert!(app.overlay_data().is_none());
-        assert_eq!(app.editor_mode(), Mode::Normal);
-    }
-
-    #[test]
-    fn pressing_space_again_keeps_visual_mode() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char('v'))).expect("visual");
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        assert_eq!(items(&app), ["c  code", "f  find"]);
-        app.handle_key(key(KeyCode::Char(' '))).expect("toggle");
-        assert!(app.overlay_data().is_none());
-        assert_eq!(app.editor_mode(), Mode::Visual);
-    }
-
-    #[test]
-    fn canceling_and_unknown_keys_dismiss_the_menu() {
-        let mut app = app();
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        app.handle_key(key(KeyCode::Esc)).expect("cancel");
-        assert!(app.overlay_data().is_none());
-
-        app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-        app.handle_key(key(KeyCode::Char('z'))).expect("unknown");
-        assert!(app.overlay_data().is_none());
-    }
-
-    #[test]
-    fn menu_is_right_aligned_above_the_bottom_edge() {
-        let items = vec!["f  find".to_string(), "v  git".to_string()];
-        let rect = leader_rect(Rect::new(0, 0, 80, 24), &items);
-        assert_eq!(rect.width, 9);
-        assert_eq!(rect.height, 4);
-        assert_eq!(rect.x, 70);
-        assert_eq!(rect.y, 19);
-    }
-}
+mod tests;

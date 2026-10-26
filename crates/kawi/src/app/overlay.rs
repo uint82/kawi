@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
 use kawi_tui::markdown::{self, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
@@ -23,11 +21,12 @@ const MAX_LIST_WIDTH: usize = 60;
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
     panel: Option<PanelData>,
+    leader: Option<leader::LeaderData>,
 }
 
 struct ListData<'a> {
     rect: Rect,
-    items: Cow<'a, [String]>,
+    items: &'a [String],
     selected: Option<usize>,
 }
 
@@ -58,7 +57,7 @@ impl OverlayData<'_> {
         Overlay {
             list: self.list.as_ref().map(|list| OverlayList {
                 rect: list.rect,
-                items: list.items.as_ref(),
+                items: list.items,
                 selected: list.selected,
             }),
             panel: self.panel.as_ref().map(|panel| OverlayPanel {
@@ -66,6 +65,7 @@ impl OverlayData<'_> {
                 lines: &panel.lines,
                 scroll: panel.scroll,
             }),
+            leader: self.leader.as_ref().map(leader::LeaderData::view),
         }
     }
 }
@@ -115,7 +115,7 @@ impl App {
         let session = self.completion.as_ref()?;
         let list = ListData {
             rect: geometry.list,
-            items: Cow::Borrowed(session.items()),
+            items: session.items(),
             selected: session.selected(),
         };
         let panel = geometry.docs.map(|rect| PanelData {
@@ -126,6 +126,7 @@ impl App {
         Some(OverlayData {
             list: Some(list),
             panel,
+            leader: None,
         })
     }
 
