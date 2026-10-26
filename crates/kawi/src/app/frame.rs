@@ -22,6 +22,7 @@ fn cursor_style_for(mode: Mode) -> CursorStyle {
 
 impl App {
     pub(crate) fn draw_frame(&mut self, out: &mut Stdout) -> Result<()> {
+        self.refresh_bracket_match();
         self.prepare_completion_overlay();
         let overlay_data = self.overlay_data();
         let overlay = overlay_data.as_ref().map(|data| data.view());

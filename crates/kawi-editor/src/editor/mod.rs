@@ -15,6 +15,7 @@ use crate::viewport::{Viewport, FALLBACK_HEIGHT, FALLBACK_WIDTH};
 mod addsub;
 mod auto_pairs;
 mod autoindent;
+mod bracket_match;
 mod buffers;
 mod case_ops;
 mod changes;

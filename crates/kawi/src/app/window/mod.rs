@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_editor::{Mode, ViewState, WindowOptions};
+use kawi_editor::{BracketMatch, Mode, ViewState, WindowOptions};
 use kawi_tui::frame::Rect;
 
 mod app;
@@ -41,6 +41,7 @@ pub struct WindowView {
     pub buffer: usize,
     pub view: ViewState,
     pub options: WindowOptions,
+    pub(crate) bracket_match: Option<BracketMatchCache>,
 }
 
 impl WindowView {
@@ -53,8 +54,30 @@ impl WindowView {
             buffer,
             view,
             options,
+            bracket_match: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BracketMatchKey {
+    pub buffer: usize,
+    pub revision: u64,
+    pub language_generation: u64,
+    pub row: usize,
+    pub col: usize,
+    pub insert: bool,
+    pub top: usize,
+    pub leftcol: usize,
+    pub width: usize,
+    pub height: usize,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BracketMatchCache {
+    pub key: BracketMatchKey,
+    pub matched: Option<BracketMatch>,
 }
 
 pub struct Windows {
@@ -454,6 +477,76 @@ mod tests {
         let panes = app.frame_panes(&layout);
         assert_eq!(panes.len(), 2);
         assert!(panes.iter().all(|pane| pane.lines[0] == "lpha"));
+    }
+
+    #[test]
+    fn bracket_match_cache_tracks_cursor_and_edit() {
+        let mut app = app("a (b) c\n");
+        app.editor.apply(Action::JumpTo(0, 2));
+        app.refresh_bracket_match();
+        let first = app
+            .windows
+            .active_view()
+            .bracket_match
+            .expect("bracket cache");
+        assert!(first.matched.is_some());
+        app.editor.apply(Action::JumpTo(0, 0));
+        app.refresh_bracket_match();
+        let moved = app
+            .windows
+            .active_view()
+            .bracket_match
+            .expect("bracket cache");
+        assert!(moved.matched.is_none());
+        assert_ne!(moved.key.col, first.key.col);
+        app.editor.apply(Action::JumpTo(0, 2));
+        app.refresh_bracket_match();
+        let revision = app
+            .windows
+            .active_view()
+            .bracket_match
+            .expect("bracket cache")
+            .key
+            .revision;
+        app.editor.apply(Action::EnterInsert);
+        app.editor.apply(Action::InsertChar('x'));
+        app.refresh_bracket_match();
+        let edited = app
+            .windows
+            .active_view()
+            .bracket_match
+            .expect("bracket cache");
+        assert!(edited.key.revision > revision);
+    }
+
+    #[test]
+    fn bracket_match_cache_is_per_window() {
+        let mut app = app("a (b) c\n");
+        app.editor.apply(Action::JumpTo(0, 2));
+        app.refresh_bracket_match();
+        let first = app.windows.active();
+        feed(&mut app, &[ctrl_w(), key(KeyCode::Char('v'))]);
+        let second = app.windows.active();
+        assert_ne!(first, second);
+        app.editor.apply(Action::JumpTo(0, 0));
+        app.refresh_bracket_match();
+        assert!(app
+            .windows
+            .view(first)
+            .and_then(|view| view.bracket_match)
+            .is_some_and(|cache| cache.matched.is_some()));
+        assert!(app
+            .windows
+            .active_view()
+            .bracket_match
+            .is_some_and(|cache| cache.matched.is_none()));
+        feed(&mut app, &[ctrl_w(), key(KeyCode::Char('h'))]);
+        app.refresh_bracket_match();
+        assert!(app
+            .windows
+            .active_view()
+            .bracket_match
+            .is_some_and(|cache| cache.matched.is_some()));
     }
 
     #[test]
