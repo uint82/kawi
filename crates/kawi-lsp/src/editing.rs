@@ -128,6 +128,6 @@ fn token_string(value: &Value) -> Option<String> {
     }
 }
 
-fn token_is_valid(token: &str) -> bool {
+pub(crate) fn token_is_valid(token: &str) -> bool {
     !token.trim().is_empty() && !token.contains(['\n', '\r'])
 }

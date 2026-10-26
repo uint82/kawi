@@ -33,6 +33,7 @@ pub fn languages() -> Vec<LanguageConfig> {
         LanguageConfig::new("python", "python")
             .with_grammar("python")
             .with_extensions(["py", "pyi", "pyw"])
+            .with_indent_after_suffixes([":"])
             .with_root_markers([
                 "pyproject.toml",
                 "pyrightconfig.json",
@@ -101,6 +102,7 @@ pub fn languages() -> Vec<LanguageConfig> {
             ]),
         LanguageConfig::new("bash", "shellscript")
             .with_extensions(["sh", "bash", "zsh"])
+            .with_indent_after_keywords(["then", "do", "{"])
             .with_filenames([".bashrc", ".zshrc", ".profile"])
             .with_line_comment("#")
             .with_auto_pairs([

@@ -54,6 +54,9 @@ pub struct LanguageConfig {
     pub servers: Vec<String>,
     pub shiftwidth: Option<usize>,
     pub expandtab: Option<bool>,
+    pub indent_after_suffixes: Vec<String>,
+    pub indent_after_keywords: Vec<String>,
+    pub indent_brackets: bool,
     pub line_comment: Option<String>,
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
@@ -72,6 +75,9 @@ impl LanguageConfig {
             servers: Vec::new(),
             shiftwidth: None,
             expandtab: None,
+            indent_after_suffixes: Vec::new(),
+            indent_after_keywords: Vec::new(),
+            indent_brackets: true,
             line_comment: None,
             block_comment: None,
             auto_pairs: None,
@@ -96,6 +102,21 @@ impl LanguageConfig {
                 .map(|(open, close)| PairConfig::new(open, close))
                 .collect(),
         );
+        self
+    }
+
+    pub fn with_indent_after_suffixes<const N: usize>(mut self, suffixes: [&str; N]) -> Self {
+        self.indent_after_suffixes = suffixes.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_after_keywords<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_after_keywords = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_brackets(mut self, indent_brackets: bool) -> Self {
+        self.indent_brackets = indent_brackets;
         self
     }
 
@@ -400,6 +421,63 @@ mod tests {
         assert_eq!(rust.shiftwidth, Some(2));
         assert_eq!(rust.expandtab, Some(true));
         assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn built_in_languages_set_indent_rules() {
+        let languages = Languages::load(Path::new("/nonexistent/languages.toml"));
+        let python = languages.language("python").expect("python");
+        assert_eq!(python.indent_after_suffixes, vec![":"]);
+        assert!(python.indent_after_keywords.is_empty());
+        assert!(python.indent_brackets);
+        let bash = languages.language("bash").expect("bash");
+        assert_eq!(bash.indent_after_keywords, vec!["then", "do", "{"]);
+        assert!(bash.indent_after_suffixes.is_empty());
+    }
+
+    #[test]
+    fn user_languages_set_indent_overrides() {
+        let path = temp_file(
+            "indent_overrides",
+            "[[language]]\nname = \"python\"\nindent_after_suffixes = [\";\"]\nindent_after_keywords = [\"begin\"]\nindent_brackets = false\n",
+        );
+        let languages = Languages::load(&path);
+        let python = languages.language("python").expect("python");
+        assert_eq!(python.indent_after_suffixes, vec![";"]);
+        assert_eq!(python.indent_after_keywords, vec!["begin"]);
+        assert!(!python.indent_brackets);
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn user_languages_can_clear_indent_rules() {
+        let path = temp_file(
+            "clear_indent_rules",
+            "[[language]]\nname = \"python\"\nindent_after_suffixes = []\nindent_after_keywords = []\n",
+        );
+        let languages = Languages::load(&path);
+        let python = languages.language("python").expect("python");
+        assert!(python.indent_after_suffixes.is_empty());
+        assert!(python.indent_after_keywords.is_empty());
+    }
+
+    #[test]
+    fn invalid_indent_overrides_warn_and_are_ignored() {
+        let path = temp_file(
+            "invalid_indent_overrides",
+            "[[language]]\nname = \"python\"\nindent_after_suffixes = [\":\", 1]\nindent_brackets = \"yes\"\n",
+        );
+        let languages = Languages::load(&path);
+        let python = languages.language("python").expect("python");
+        assert_eq!(python.indent_after_suffixes, vec![":"]);
+        assert!(python.indent_brackets);
+        assert_eq!(languages.warnings().len(), 2);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("indent_after_suffixes must be an array"));
+        assert!(languages.warnings()[1]
+            .message()
+            .contains("indent_brackets must be a boolean"));
     }
 
     #[test]
