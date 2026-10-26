@@ -1,3 +1,4 @@
+pub mod bracket_match;
 pub mod brackets;
 pub mod matchit;
 pub mod paragraph;
