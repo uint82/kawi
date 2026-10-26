@@ -103,18 +103,10 @@ fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn>
 
 fn leader_key_width(rows: &[LeaderRow<'_>]) -> usize {
     rows.iter()
-        .map(leader_row_key_width)
+        .map(LeaderRow::key_width)
         .max()
         .unwrap_or(1)
         .max(1)
-}
-
-fn leader_row_key_width(row: &LeaderRow<'_>) -> usize {
-    row.aliases
-        .iter()
-        .fold(char_width(row.key), |width, alias| {
-            width.saturating_add(char_width(*alias)).saturating_add(1)
-        })
 }
 
 fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<LeaderColumn> {
