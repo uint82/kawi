@@ -1,5 +1,10 @@
-use super::palette::rgb;
+use crossterm::style::Color;
+
 use super::*;
+
+fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color::Rgb { r, g, b }
+}
 
 #[test]
 fn every_theme_colors_every_group() {

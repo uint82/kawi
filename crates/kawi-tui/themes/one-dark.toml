@@ -1,0 +1,91 @@
+float_background = "#14161B"
+code_background = "#14161B"
+
+[base]
+foreground = "#E0E2EA"
+background = "#14161B"
+
+[search_match]
+foreground = "#E0E2EA"
+background = "#6B5300"
+
+[search_current]
+foreground = "#000000"
+background = "#FCE094"
+
+[substitute]
+foreground = "#E0E2EA"
+background = "#6B5300"
+
+[selection]
+foreground = "#000000"
+background = "#FFFFFF"
+
+[status]
+foreground = "#14161B"
+background = "#E0E2EA"
+
+[gutter]
+line_number = "#4F5258"
+non_text = "#4F5258"
+
+[git]
+add = "#98C379"
+change = "#E5C07B"
+delete = "#E06C75"
+staged_add = "#597B60"
+staged_change = "#467C7B"
+staged_delete = "#965258"
+
+[diagnostics]
+error = "#E06C75"
+warning = "#E5C07B"
+information = "#61AFEF"
+hint = "#98C379"
+
+[palette]
+bg = "#14161B"
+fg = "#E0E2EA"
+comment = "#5C6370"
+keyword = "#C678DD"
+string = "#98C379"
+number = "#D19A66"
+function = "#61AFEF"
+type = "#E5C07B"
+property = "#56B2C2"
+punctuation = "#ABB2BF"
+tag = "#E06C75"
+black = "#000000"
+white = "#FFFFFF"
+
+[syntax]
+comment = { fg = "comment" }
+"comment.documentation" = { fg = "comment", italic = true }
+keyword = { fg = "keyword" }
+"keyword.control" = { fg = "keyword", bold = true }
+"keyword.function" = { fg = "keyword", bold = true }
+"keyword.import" = { fg = "keyword", bold = true }
+"keyword.return" = { fg = "keyword", bold = true }
+"keyword.storage" = { fg = "keyword", bold = true }
+string = { fg = "string" }
+escape = { fg = "string" }
+character = { fg = "string" }
+number = { fg = "number" }
+constant = { fg = "number" }
+boolean = { fg = "number" }
+special = { fg = "number" }
+function = { fg = "function" }
+"function.macro" = { fg = "function", italic = true }
+type = { fg = "type" }
+constructor = { fg = "type" }
+module = { fg = "type" }
+namespace = { fg = "type" }
+variable = { fg = "fg" }
+label = { fg = "fg" }
+property = { fg = "property" }
+operator = { fg = "property" }
+punctuation = { fg = "punctuation" }
+attribute = { fg = "type" }
+decorator = { fg = "type" }
+tag = { fg = "tag" }
+invalid = { fg = "tag" }

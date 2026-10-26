@@ -1,0 +1,88 @@
+float_background = "#FBF1C7"
+code_background = "#FBF1C7"
+
+[base]
+foreground = "#3C3836"
+background = "#FBF1C7"
+
+[search_match]
+foreground = "#FBF1C7"
+background = "#B57614"
+
+[search_current]
+foreground = "#FBF1C7"
+background = "#AF3A03"
+
+[substitute]
+foreground = "#FBF1C7"
+background = "#B57614"
+
+[selection]
+foreground = "#3C3836"
+background = "#BDAE93"
+
+[status]
+foreground = "#3C3836"
+background = "#D5C4A1"
+
+[gutter]
+line_number = "#928374"
+non_text = "#928374"
+
+[git]
+add = "#79740E"
+change = "#B57614"
+delete = "#9D0006"
+staged_add = "#646E32"
+staged_change = "#466E69"
+staged_delete = "#874646"
+
+[diagnostics]
+error = "#9D0006"
+warning = "#B57614"
+information = "#076678"
+hint = "#79740E"
+
+[palette]
+bg = "#FBF1C7"
+fg = "#3C3836"
+comment = "#928374"
+keyword = "#9D0006"
+string = "#79740E"
+number = "#8F3F71"
+function = "#B57614"
+type = "#076678"
+property = "#427B58"
+punctuation = "#7C6F64"
+
+[syntax]
+comment = { fg = "comment" }
+"comment.documentation" = { fg = "comment", italic = true }
+keyword = { fg = "keyword" }
+"keyword.control" = { fg = "keyword", bold = true }
+"keyword.function" = { fg = "keyword", bold = true }
+"keyword.import" = { fg = "keyword", bold = true }
+"keyword.return" = { fg = "keyword", bold = true }
+"keyword.storage" = { fg = "keyword", bold = true }
+string = { fg = "string" }
+escape = { fg = "string" }
+character = { fg = "string" }
+number = { fg = "number" }
+constant = { fg = "number" }
+boolean = { fg = "number" }
+special = { fg = "number" }
+function = { fg = "function" }
+"function.macro" = { fg = "function", italic = true }
+type = { fg = "type" }
+constructor = { fg = "type" }
+module = { fg = "type" }
+namespace = { fg = "type" }
+variable = { fg = "fg" }
+label = { fg = "fg" }
+property = { fg = "property" }
+operator = { fg = "property" }
+punctuation = { fg = "punctuation" }
+attribute = { fg = "function" }
+decorator = { fg = "function" }
+tag = { fg = "keyword" }
+invalid = { fg = "keyword" }

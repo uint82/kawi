@@ -1,11 +1,9 @@
 use super::Theme;
 
-mod gruvbox_light;
-mod one_dark;
-mod palette;
-
 const DEFAULT_THEME: &str = include_str!("../../themes/default.toml");
 const GRUVBOX_DARK: &str = include_str!("../../themes/gruvbox-dark.toml");
+const GRUVBOX_LIGHT: &str = include_str!("../../themes/gruvbox-light.toml");
+const ONE_DARK: &str = include_str!("../../themes/one-dark.toml");
 
 #[cfg(test)]
 mod contrast_tests;
@@ -20,9 +18,9 @@ impl Theme {
     pub fn named(name: &str) -> Option<Self> {
         match name {
             "default" => Some(Self::default_theme()),
-            "gruvbox-dark" => Some(Self::gruvbox_dark(name)),
-            "one-dark" => Some(Self::one_dark()),
-            "gruvbox-light" => Some(Self::gruvbox_light()),
+            "gruvbox-dark" => Some(Self::embedded(name, GRUVBOX_DARK)),
+            "one-dark" => Some(Self::embedded(name, ONE_DARK)),
+            "gruvbox-light" => Some(Self::embedded(name, GRUVBOX_LIGHT)),
             _ => None,
         }
     }
@@ -32,10 +30,10 @@ impl Theme {
     }
 
     pub fn default_theme() -> Self {
-        Self::from_toml("default", DEFAULT_THEME).expect("embedded default theme")
+        Self::embedded("default", DEFAULT_THEME)
     }
 
-    fn gruvbox_dark(name: &str) -> Self {
-        Self::from_toml(name, GRUVBOX_DARK).expect("embedded Gruvbox theme")
+    fn embedded(name: &str, source: &str) -> Self {
+        Self::from_toml(name, source).expect("embedded theme")
     }
 }
