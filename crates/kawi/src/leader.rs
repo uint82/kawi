@@ -227,6 +227,7 @@ pub(crate) fn action(path: LeaderPath, key: char) -> Option<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn groups_cover_the_leader_prefixes() {
@@ -258,5 +259,41 @@ mod tests {
         let path = LeaderPath::Group(group('f').expect("find group"));
         assert_eq!(action(path, 'x'), None);
         assert_eq!(action(LeaderPath::Root, 'f'), None);
+    }
+
+    #[test]
+    fn every_command_and_alias_resolves() {
+        for group in LEADER_GROUPS {
+            let path = LeaderPath::Group(group);
+            for command in group.commands {
+                assert_eq!(action(path, command.key), Some(command.action));
+                for alias in command.aliases {
+                    assert_eq!(action(path, *alias), Some(command.action));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn group_keys_and_aliases_are_unique() {
+        for group in LEADER_GROUPS {
+            let mut keys = HashSet::new();
+            for command in group.commands {
+                assert!(
+                    keys.insert(command.key),
+                    "duplicate leader key {} in group {}",
+                    command.key,
+                    group.key
+                );
+                for alias in command.aliases {
+                    assert!(
+                        keys.insert(*alias),
+                        "duplicate leader alias {} in group {}",
+                        alias,
+                        group.key
+                    );
+                }
+            }
+        }
     }
 }

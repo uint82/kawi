@@ -58,12 +58,12 @@ impl App {
 fn leader_rows(path: LeaderPath, visual: bool) -> Vec<LeaderRow<'static>> {
     match path {
         LeaderPath::Root => leader::groups(visual)
-            .map(|group| leader_row(group.key, group.label))
+            .map(|group| leader_row(group.key, &[], group.label))
             .collect(),
         LeaderPath::Group(group) => group
             .commands
             .iter()
-            .map(|command| leader_row(command.key, command.label))
+            .map(|command| leader_row(command.key, command.aliases, command.label))
             .collect(),
     }
 }
@@ -75,8 +75,16 @@ fn leader_group(path: LeaderPath) -> Option<char> {
     }
 }
 
-fn leader_row(key: char, description: &'static str) -> LeaderRow<'static> {
-    LeaderRow { key, description }
+fn leader_row(
+    key: char,
+    aliases: &'static [char],
+    description: &'static str,
+) -> LeaderRow<'static> {
+    LeaderRow {
+        key,
+        aliases,
+        description,
+    }
 }
 
 fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn> {
@@ -95,10 +103,18 @@ fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn>
 
 fn leader_key_width(rows: &[LeaderRow<'_>]) -> usize {
     rows.iter()
-        .map(|row| char_width(row.key))
+        .map(leader_row_key_width)
         .max()
         .unwrap_or(1)
         .max(1)
+}
+
+fn leader_row_key_width(row: &LeaderRow<'_>) -> usize {
+    row.aliases
+        .iter()
+        .fold(char_width(row.key), |width, alias| {
+            width.saturating_add(char_width(*alias)).saturating_add(1)
+        })
 }
 
 fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<LeaderColumn> {
