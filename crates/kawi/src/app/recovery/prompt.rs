@@ -37,6 +37,7 @@ impl RecoveryPrompt {
     }
 
     pub(super) fn pop(&mut self) -> Option<RecoveryCandidate> {
+        self.shown = false;
         self.candidates.pop_front()
     }
 
@@ -52,7 +53,7 @@ impl RecoveryPrompt {
             "Unsaved changes were found."
         };
         let text = format!(
-            "Recovery snapshot {index}/{}\n{}\n{conflict}\n\nr recover  d discard  s skip",
+            "Recovery snapshot {index}/{}\n{}\n{conflict}\n\nr recover  d discard  s/enter skip",
             self.total, candidate.snapshot.header.name
         );
         Some(super::super::pager_lines(&text, width))
@@ -74,6 +75,7 @@ impl RecoveryPrompt {
 
 pub(super) fn recovery_choice(key: KeyEvent) -> Option<RecoveryChoice> {
     match key.code {
+        KeyCode::Enter => Some(RecoveryChoice::Skip),
         KeyCode::Char('r' | 'R') => Some(RecoveryChoice::Recover),
         KeyCode::Char('d' | 'D') => Some(RecoveryChoice::Discard),
         KeyCode::Char('s' | 'S') => Some(RecoveryChoice::Skip),
