@@ -1,15 +1,9 @@
+use super::lexical::{LexicalContext, LexicalScanner};
 use super::session::InsertEdit;
 use super::Editor;
 use crate::editing::Pair;
 use crate::mode::Mode;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LexState {
-    Code,
-    LineComment,
-    BlockComment(usize),
-    Quote(char),
-}
+use crate::words::is_word_char;
 
 impl Editor {
     pub(super) fn try_auto_pair(&mut self, ch: char) -> bool {
@@ -224,36 +218,8 @@ impl Editor {
 
     fn inside_string_or_comment(&self, row: usize, col: usize) -> bool {
         // TODO: replace the bounded lexical scan with tree-sitter context when available.
-        let tokens = &self.language_editing.comments;
-        let quotes: Vec<char> = self
-            .language_editing
-            .pairs
-            .iter()
-            .filter(|pair| pair.is_quote())
-            .map(|pair| pair.open)
-            .collect();
-        let line_token: Vec<char> = tokens
-            .line
-            .as_ref()
-            .map(|token| token.chars().collect())
-            .unwrap_or_default();
-        let block_open: Vec<char> = tokens
-            .block
-            .as_ref()
-            .map(|block| block.open.chars().collect())
-            .unwrap_or_default();
-        let block_close: Vec<char> = tokens
-            .block
-            .as_ref()
-            .map(|block| block.close.chars().collect())
-            .unwrap_or_default();
         let start_row = self.context_scan_start(row);
-        let context = LexicalContext {
-            quotes: &quotes,
-            line_token: &line_token,
-            block_open: &block_open,
-            block_close: &block_close,
-        };
+        let context = LexicalContext::new(&self.language_editing);
         let mut scanner = LexicalScanner::new(context);
         for current_row in start_row..=row {
             let line = self.buffer.line(current_row).unwrap_or_default();
@@ -306,99 +272,6 @@ impl Editor {
             .paste_before(start.0, start.1, &pair.open.to_string());
         self.cursor.set_position(start.0, start.1);
     }
-}
-
-struct LexicalContext<'a> {
-    quotes: &'a [char],
-    line_token: &'a [char],
-    block_open: &'a [char],
-    block_close: &'a [char],
-}
-
-struct LexicalScanner<'a> {
-    context: LexicalContext<'a>,
-    state: LexState,
-    escaped: bool,
-}
-
-impl<'a> LexicalScanner<'a> {
-    fn new(context: LexicalContext<'a>) -> Self {
-        Self {
-            context,
-            state: LexState::Code,
-            escaped: false,
-        }
-    }
-
-    fn in_code(&self) -> bool {
-        self.state == LexState::Code
-    }
-
-    fn finish_line(&mut self) {
-        if matches!(self.state, LexState::LineComment | LexState::Quote(_)) {
-            self.state = LexState::Code;
-        }
-        self.escaped = false;
-    }
-
-    fn advance(&mut self, chars: &[char], index: usize) {
-        self.state = match self.state {
-            LexState::Code => self.advance_code(chars, index),
-            LexState::LineComment => LexState::LineComment,
-            LexState::BlockComment(depth) => self.advance_block(chars, index, depth),
-            LexState::Quote(quote) => self.advance_quote(chars, index, quote),
-        };
-    }
-
-    fn advance_code(&self, chars: &[char], index: usize) -> LexState {
-        if matches_token(chars, index, self.context.line_token) {
-            return LexState::LineComment;
-        }
-        if matches_token(chars, index, self.context.block_open) {
-            return LexState::BlockComment(1);
-        }
-        if self.context.quotes.contains(&chars[index]) {
-            return LexState::Quote(chars[index]);
-        }
-        LexState::Code
-    }
-
-    fn advance_block(&self, chars: &[char], index: usize, depth: usize) -> LexState {
-        if matches_token(chars, index, self.context.block_close) {
-            return match depth.checked_sub(1) {
-                Some(remaining) if remaining > 0 => LexState::BlockComment(remaining),
-                _ => LexState::Code,
-            };
-        }
-        if matches_token(chars, index, self.context.block_open) {
-            return LexState::BlockComment(depth.saturating_add(1));
-        }
-        LexState::BlockComment(depth)
-    }
-
-    fn advance_quote(&mut self, chars: &[char], index: usize, quote: char) -> LexState {
-        if self.escaped {
-            self.escaped = false;
-            return LexState::Quote(quote);
-        }
-        if chars[index] == '\\' {
-            self.escaped = true;
-        } else if chars[index] == quote {
-            return LexState::Code;
-        }
-        LexState::Quote(quote)
-    }
-}
-
-fn matches_token(chars: &[char], index: usize, token: &[char]) -> bool {
-    !token.is_empty()
-        && chars
-            .get(index..index.saturating_add(token.len()))
-            .is_some_and(|slice| slice == token)
-}
-
-fn is_word_char(ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_'
 }
 
 #[cfg(test)]

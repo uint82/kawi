@@ -29,6 +29,7 @@ mod insert_erase;
 mod insert_shift;
 mod join;
 mod jumps;
+mod lexical;
 mod line_ops;
 mod marks;
 mod match_ops;
