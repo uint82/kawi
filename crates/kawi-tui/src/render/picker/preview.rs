@@ -6,12 +6,10 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use super::super::{
-    highlight_spans, paint_span_at, saturate_u16, syntax_highlight_spans, SpanView,
-};
+use super::super::{paint_span_at, saturate_u16, syntax_highlight_spans, SpanView};
 use super::write_padding;
 use crate::display;
-use crate::frame::{Frame, PickerPreview, Rect, Selection};
+use crate::frame::{Frame, PickerPreview, Rect};
 use crate::paint;
 use crate::text::{display_width, truncate_to_display_width};
 use kawi_editor::Viewport;
@@ -155,18 +153,39 @@ fn draw_highlights(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) 
     if let Some(focus) = view.preview.focus_line {
         if let Some(offset) = focus.checked_sub(top) {
             if let Some(line) = view.lines.get(offset) {
-                let end = line.chars().count().saturating_sub(1);
-                let selection = Selection::Range {
-                    start: (focus, 0),
-                    end: (focus, end),
-                };
-                for span in highlight_spans(&span_view, Some(selection), None) {
-                    paint_preview_span(out, frame, view, &span)?;
-                }
+                paint_focus_line(out, frame, view, line, offset, text_width)?;
             }
         }
     }
     Ok(())
+}
+
+fn paint_focus_line(
+    out: &mut Stdout,
+    frame: &Frame,
+    view: &PreviewView<'_, '_>,
+    line: &str,
+    offset: usize,
+    width: usize,
+) -> Result<()> {
+    execute!(
+        out,
+        MoveTo(
+            saturate_u16(view.rect.x.saturating_add(view.gutter_width)),
+            saturate_u16(view.rect.y.saturating_add(offset))
+        )
+    )
+    .context("move to focused preview line")?;
+    paint::apply_match(out, &frame.theme.selection)?;
+    let text = display::slice_screen(line, 0, width, view.preview.tabstop);
+    write!(out, "{text}").context("write focused preview line")?;
+    write_padding(out, display_width(&text), width)?;
+    paint::apply_colors(
+        out,
+        frame.theme.base.foreground,
+        frame.theme.float_background,
+        "restore focused preview line colors",
+    )
 }
 
 fn paint_preview_span(
