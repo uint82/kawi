@@ -1,7 +1,7 @@
-use super::preview::PreviewState;
 use super::resolve::{identity, Identity};
 use super::*;
 use crate::app::lsp::LspUi;
+use crate::app::preview::PreviewState;
 use crossterm::event::KeyEvent;
 use kawi_editor::Editor;
 use kawi_lsp::SymbolEntry;
@@ -150,30 +150,8 @@ impl SymbolSession {
             .min()
     }
 
-    pub(crate) fn preview_title(&self) -> Option<&str> {
-        self.preview
-            .title()
-            .or_else(|| self.preview.is_loading().then_some(PREVIEW_LOADING))
-    }
-
-    pub(crate) fn preview_lines(&self) -> &[String] {
-        self.preview.lines()
-    }
-
-    pub(crate) fn preview_first_line(&self) -> usize {
-        self.preview.first_line()
-    }
-
-    pub(crate) fn preview_total_lines(&self) -> usize {
-        self.preview.total_lines()
-    }
-
-    pub(crate) fn preview_focus_line(&self) -> Option<usize> {
-        self.preview.focus_line()
-    }
-
-    pub(crate) fn preview_syntax(&self) -> &[kawi_syntax::SyntaxSpan] {
-        self.preview.syntax()
+    pub(crate) fn preview_state(&self) -> &PreviewState {
+        &self.preview
     }
 
     pub(crate) fn paste(

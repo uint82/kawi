@@ -33,6 +33,7 @@ mod macro_ops;
 mod options;
 mod overlay;
 mod picker;
+mod preview;
 mod problems;
 mod quickfix;
 mod recovery;
@@ -142,6 +143,8 @@ pub struct App {
     syntax_applied: u64,
     window_syntax: BTreeMap<window::WindowId, SyntaxCache>,
     picker: Option<PickerSession>,
+    picker_preview: Option<preview::PreviewState>,
+    picker_preview_key: Option<preview::PreviewKey>,
     symbol_picker: Option<symbols::SymbolSession>,
     symbol_cache: symbols::SymbolCache,
     replace: Option<ReplaceSession>,
@@ -216,6 +219,8 @@ impl App {
             syntax_applied: 0,
             window_syntax: BTreeMap::new(),
             picker: None,
+            picker_preview: None,
+            picker_preview_key: None,
             symbol_picker: None,
             symbol_cache: symbols::SymbolCache::default(),
             replace: None,
@@ -378,6 +383,7 @@ impl App {
             self.problem_pane_tick();
             self.refresh_picker();
             self.refresh_replace();
+            self.picker_preview_tick();
             self.draw_frame(&mut out)?;
             self.last_frame = Instant::now();
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
@@ -425,6 +431,7 @@ impl App {
             } else {
                 redraw |= self.apply_syntax_results();
             }
+            redraw |= self.picker_preview_tick();
             redraw |= self.recovery_tick();
             if redraw {
                 self.wait_for_frame_budget()?;
@@ -442,6 +449,7 @@ impl App {
             );
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             match timeout {
                 Some(timeout) => self.events.wait_timeout(timeout)?,

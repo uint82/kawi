@@ -10,7 +10,7 @@ use kawi_tui::{
     CursorStyle, Selection,
 };
 
-use super::{rename, replace_stage, App};
+use super::{preview, rename, replace_stage, App};
 
 fn cursor_style_for(mode: Mode) -> CursorStyle {
     match mode {
@@ -71,6 +71,7 @@ impl App {
         let search_status = self.editor.search_status_text();
         let symbol_items = self.symbol_picker_lines();
         let symbol_preview = self.symbol_preview();
+        let picker_preview = self.picker_preview_menu();
         let picker_items: Vec<kawi_tui::frame::PickerLine<'_>> = self
             .picker
             .as_ref()
@@ -111,6 +112,7 @@ impl App {
                     status: state.status(),
                     replace_hint: false,
                     file_hint: false,
+                    preview_enabled: true,
                     preview: symbol_preview,
                 }
             })
@@ -127,7 +129,8 @@ impl App {
                         status: state.status(),
                         replace_hint: state.kind() == PickerKind::Grep,
                         file_hint: state.kind() == PickerKind::Files,
-                        preview: None,
+                        preview_enabled: preview::has_file_preview(state.kind()),
+                        preview: picker_preview,
                     }
                 })
             })
@@ -144,6 +147,7 @@ impl App {
                         status: self.git_status.view_status(),
                         replace_hint: false,
                         file_hint: false,
+                        preview_enabled: false,
                         preview: None,
                     })
             });

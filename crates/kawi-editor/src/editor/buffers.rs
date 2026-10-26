@@ -633,6 +633,15 @@ impl Editor {
             .and_then(|buffer| buffer.path.as_deref())
     }
 
+    pub fn buffer_snapshot(&self, number: usize) -> Option<Rope> {
+        if number == self.buffers.current() {
+            return Some(self.buffer.snapshot());
+        }
+        self.buffers
+            .entry(number)
+            .map(|entry| entry.state.buffer.snapshot())
+    }
+
     pub fn buffer_list(&self) -> String {
         let mut rows: Vec<(usize, String)> = self
             .buffers

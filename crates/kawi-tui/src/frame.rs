@@ -251,6 +251,7 @@ pub struct PickerMenu<'a> {
     pub status: Option<&'a str>,
     pub replace_hint: bool,
     pub file_hint: bool,
+    pub preview_enabled: bool,
     pub preview: Option<PickerPreview<'a>>,
 }
 
