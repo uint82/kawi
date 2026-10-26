@@ -12,6 +12,7 @@ impl App {
             return;
         };
         self.theme_dir = Some(paths.themes.clone());
+        kawi_syntax::set_user_query_dir(paths.queries.clone());
         let loaded = crate::config::load(&paths.config);
         let language_warnings = self.lsp.load(&paths.languages, self.events.wake());
         let task_load = kawi_task::load(&paths.tasks);

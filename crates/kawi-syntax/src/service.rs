@@ -193,7 +193,7 @@ mod tests {
     use ropey::Rope;
 
     use super::*;
-    use crate::group::SyntaxGroup;
+    use crate::registry::registry;
 
     fn request(text: &str, rows: usize) -> SyntaxRequest {
         SyntaxRequest {
@@ -228,11 +228,11 @@ mod tests {
         assert!(result
             .spans
             .iter()
-            .any(|span| span.group == SyntaxGroup::Comment));
+            .any(|span| highlight_is(span, "comment")));
         assert!(result
             .spans
             .iter()
-            .any(|span| span.group == SyntaxGroup::Keyword));
+            .any(|span| highlight_is(span, "keyword")));
     }
 
     #[test]
@@ -240,10 +240,7 @@ mod tests {
         let service = SyntaxService::new();
         service.submit(request("fn main() {}\n", 1));
         let first = wait_for(&service).expect("first result");
-        assert!(first
-            .spans
-            .iter()
-            .any(|span| span.group == SyntaxGroup::Keyword));
+        assert!(first.spans.iter().any(|span| highlight_is(span, "keyword")));
 
         let mut edited = request("/*\nfn main() {}\n", 2);
         edited.key.revision = 2;
@@ -252,7 +249,11 @@ mod tests {
         assert!(second
             .spans
             .iter()
-            .any(|span| span.group == SyntaxGroup::Comment && span.row == 1));
+            .any(|span| highlight_is(span, "comment") && span.row == 1));
+    }
+
+    fn highlight_is(span: &SyntaxSpan, name: &str) -> bool {
+        registry().name(span.highlight) == Some(name)
     }
 
     fn wait_for(service: &SyntaxService) -> Option<SyntaxResult> {

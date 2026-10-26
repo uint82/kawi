@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use ropey::Rope;
 
-use crate::group::SyntaxGroup;
 use crate::language::LanguageId;
+use crate::registry::SyntaxHighlight;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SyntaxKey {
@@ -19,14 +19,14 @@ pub struct SyntaxSpan {
     pub row: usize,
     pub start: usize,
     pub end: usize,
-    pub group: SyntaxGroup,
+    pub highlight: SyntaxHighlight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnippetSpan {
     pub start: usize,
     pub end: usize,
-    pub group: SyntaxGroup,
+    pub highlight: SyntaxHighlight,
 }
 
 pub struct SyntaxRequest {

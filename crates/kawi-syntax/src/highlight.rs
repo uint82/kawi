@@ -4,33 +4,29 @@ use tree_sitter::{Parser, QueryCursor, Range as TreeRange, StreamingIterator, Tr
 use tree_sitter_highlight::HighlightConfiguration;
 
 use crate::diff::{input_edit, LineIndex};
-use crate::group::SyntaxGroup;
 use crate::language::LanguageId;
 use crate::limits::{MAX_CAPTURES, WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
+use crate::registry::{registry, SyntaxHighlight};
 use crate::rows::{self, RowWindow};
 use crate::span::{SyntaxRequest, SyntaxSpan};
 
 pub(crate) struct Runtime {
     pub(crate) config: HighlightConfiguration,
-    pub(crate) groups: Vec<Option<SyntaxGroup>>,
+    pub(crate) captures: Vec<Option<SyntaxHighlight>>,
 }
 
 impl Runtime {
     pub(crate) fn new(language: LanguageId) -> Option<Self> {
-        let config = HighlightConfiguration::new(
-            language.language(),
-            language.name(),
-            &language.highlights(),
-            "",
-            "",
-        )
-        .ok()?;
-        let groups = config
+        let highlights = language.highlights();
+        let mut config = build_configuration(language, highlights)
+            .or_else(|| build_configuration(language, &language.bundled_highlights()))?;
+        config.configure(registry().names());
+        let captures = config
             .names()
             .iter()
-            .map(|name| SyntaxGroup::from_capture(name))
+            .map(|name| registry().resolve(name))
             .collect();
-        Some(Self { config, groups })
+        Some(Self { config, captures })
     }
 }
 
@@ -42,6 +38,10 @@ pub(crate) struct Document {
     index: LineIndex,
     window_rows: Range<usize>,
     large: bool,
+}
+
+fn build_configuration(language: LanguageId, highlights: &str) -> Option<HighlightConfiguration> {
+    HighlightConfiguration::new(language.language(), language.name(), highlights, "", "").ok()
 }
 
 impl Document {
@@ -178,12 +178,11 @@ impl Document {
                 let Some(capture) = matched.captures().get(*capture_index) else {
                     continue;
                 };
-                let Some(group) = runtime
-                    .groups
+                let Some(highlight) = runtime
+                    .captures
                     .get(capture.index as usize)
                     .copied()
                     .flatten()
-                    .map(|group| refine_group(group, capture.node.kind()))
                 else {
                     continue;
                 };
@@ -193,7 +192,7 @@ impl Document {
                 captures.push(Capture {
                     start: capture.node.start_byte(),
                     end: capture.node.end_byte(),
-                    group,
+                    highlight,
                 });
             }
         }
@@ -210,25 +209,14 @@ fn window_bounds(index: &LineIndex, top: usize, end: usize) -> Range<usize> {
     start..end
 }
 
-pub(crate) fn refine_group(group: SyntaxGroup, kind: &str) -> SyntaxGroup {
-    let numeric = kind.contains("number")
-        || kind.contains("integer")
-        || kind.contains("float")
-        || kind.contains("numeric");
-    if group == SyntaxGroup::Constant && numeric {
-        return SyntaxGroup::Number;
-    }
-    group
-}
-
 struct Capture {
     start: usize,
     end: usize,
-    group: SyntaxGroup,
+    highlight: SyntaxHighlight,
 }
 
 fn paint_captures(text: &str, rows: &[RowWindow], captures: &[Capture]) -> Vec<SyntaxSpan> {
-    let mut cells: Vec<Vec<Option<SyntaxGroup>>> = rows
+    let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
         .iter()
         .map(|row| vec![None; rows::row_char_len(text, row)])
         .collect();
@@ -251,14 +239,14 @@ fn paint_captures(text: &str, rows: &[RowWindow], captures: &[Capture]) -> Vec<S
             let from = from.min(line.len());
             let to = to.min(line.len());
             for cell in &mut line[from..to] {
-                *cell = Some(capture.group);
+                *cell = Some(capture.highlight);
             }
         }
     }
     merge_cells(rows, cells)
 }
 
-fn merge_cells(rows: &[RowWindow], cells: Vec<Vec<Option<SyntaxGroup>>>) -> Vec<SyntaxSpan> {
+fn merge_cells(rows: &[RowWindow], cells: Vec<Vec<Option<SyntaxHighlight>>>) -> Vec<SyntaxSpan> {
     let mut spans = Vec::new();
     for (row, cells) in rows.iter().zip(cells) {
         let mut start = 0usize;
@@ -267,23 +255,23 @@ fn merge_cells(rows: &[RowWindow], cells: Vec<Vec<Option<SyntaxGroup>>>) -> Vec<
             if *cell == current {
                 continue;
             }
-            if let Some(group) = current {
+            if let Some(highlight) = current {
                 spans.push(SyntaxSpan {
                     row: row.row,
                     start,
                     end: column,
-                    group,
+                    highlight,
                 });
             }
             current = *cell;
             start = column;
         }
-        if let Some(group) = current {
+        if let Some(highlight) = current {
             spans.push(SyntaxSpan {
                 row: row.row,
                 start,
                 end: cells.len(),
-                group,
+                highlight,
             });
         }
     }
@@ -317,33 +305,45 @@ mod tests {
         document.update(&request(text, top, end, 1), &runtime).1
     }
 
-    fn group_at(spans: &[SyntaxSpan], row: usize, column: usize) -> Option<SyntaxGroup> {
+    fn name_at(spans: &[SyntaxSpan], row: usize, column: usize) -> Option<&'static str> {
         spans
             .iter()
             .find(|span| span.row == row && span.start <= column && column < span.end)
-            .map(|span| span.group)
+            .and_then(|span| registry().name(span.highlight))
     }
 
     #[test]
     fn highlights_rust_tokens() {
         let text = "// hello\nfn main() {\n    let value = 42;\n    let text = \"hi\";\n}\n";
         let spans = highlight(LanguageId::Rust, text, 0, 5);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 1, 3), Some(SyntaxGroup::Function));
-        assert_eq!(group_at(&spans, 2, 4), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 2, 16), Some(SyntaxGroup::Number));
-        assert_eq!(group_at(&spans, 3, 15), Some(SyntaxGroup::String));
+        assert_eq!(name_at(&spans, 0, 0), Some("comment"));
+        assert_eq!(name_at(&spans, 1, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 1, 3), Some("function"));
+        assert_eq!(name_at(&spans, 2, 4), Some("keyword"));
+        assert_eq!(name_at(&spans, 2, 16), Some("number"));
+        assert_eq!(name_at(&spans, 3, 15), Some("string"));
+    }
+
+    #[test]
+    fn keeps_documentation_and_parameter_captures() {
+        let rust = "/// docs\nfn main(value: u8) {}\n";
+        let spans = highlight(LanguageId::Rust, rust, 0, 2);
+        assert_eq!(name_at(&spans, 0, 0), Some("comment.documentation"));
+        assert_eq!(name_at(&spans, 1, 9), Some("variable.parameter"));
+
+        let python = "def greet(name: str):\n    return name\n";
+        let spans = highlight(LanguageId::Python, python, 0, 2);
+        assert_eq!(name_at(&spans, 0, 10), Some("variable.parameter"));
     }
 
     #[test]
     fn highlights_toml_tokens() {
         let text = "# comment\nname = \"kawi\"\nversion = 1\nenabled = true\n";
         let spans = highlight(LanguageId::Toml, text, 0, 4);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 1, 7), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 2, 10), Some(SyntaxGroup::Number));
-        assert_eq!(group_at(&spans, 3, 10), Some(SyntaxGroup::Constant));
+        assert_eq!(name_at(&spans, 0, 0), Some("comment"));
+        assert_eq!(name_at(&spans, 1, 7), Some("string"));
+        assert_eq!(name_at(&spans, 2, 10), Some("number"));
+        assert_eq!(name_at(&spans, 3, 10), Some("boolean"));
     }
 
     #[test]
@@ -351,38 +351,38 @@ mod tests {
         let text =
             "const x: string = \"hi\";\nfunction greet(name: string) { return name; }\n// tail\n";
         let spans = highlight(LanguageId::TypeScript, text, 0, 3);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 0, 18), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 1, 9), Some(SyntaxGroup::Function));
-        assert_eq!(group_at(&spans, 2, 0), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 0, 18), Some("string"));
+        assert_eq!(name_at(&spans, 1, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 1, 9), Some("function"));
+        assert_eq!(name_at(&spans, 2, 0), Some("comment"));
     }
 
     #[test]
     fn highlights_python_tokens() {
         let text = "def greet(name):\n    # comment\n    return \"hello\"\n";
         let spans = highlight(LanguageId::Python, text, 0, 3);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 0, 4), Some(SyntaxGroup::Function));
-        assert_eq!(group_at(&spans, 1, 4), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 2, 11), Some(SyntaxGroup::String));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 0, 4), Some("function"));
+        assert_eq!(name_at(&spans, 1, 4), Some("comment"));
+        assert_eq!(name_at(&spans, 2, 11), Some("string"));
     }
 
     #[test]
     fn highlights_json_tokens() {
         let text = "{\"name\": \"kawi\", \"count\": 2}\n";
         let spans = highlight(LanguageId::Json, text, 0, 1);
-        assert_eq!(group_at(&spans, 0, 1), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 0, 9), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 0, 26), Some(SyntaxGroup::Number));
+        assert_eq!(name_at(&spans, 0, 1), Some("string"));
+        assert_eq!(name_at(&spans, 0, 9), Some("string"));
+        assert_eq!(name_at(&spans, 0, 26), Some("number"));
     }
 
     #[test]
     fn highlights_bash_tokens() {
         let text = "#!/bin/bash\n# comment\necho \"hi\"\n";
         let spans = highlight(LanguageId::Bash, text, 0, 3);
-        assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 2, 5), Some(SyntaxGroup::String));
+        assert_eq!(name_at(&spans, 1, 0), Some("comment"));
+        assert_eq!(name_at(&spans, 2, 5), Some("string"));
     }
 
     #[test]
@@ -406,37 +406,44 @@ mod tests {
     fn highlights_javascript_tokens() {
         let text = "const value = \"hi\"; // tail\n";
         let spans = highlight(LanguageId::JavaScript, text, 0, 1);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 0, 14), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 0, 20), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 0, 14), Some("string"));
+        assert_eq!(name_at(&spans, 0, 20), Some("comment"));
+    }
+
+    #[test]
+    fn highlights_javascript_parameters() {
+        let text = "function greet(name) { return name; }\n";
+        let spans = highlight(LanguageId::JavaScript, text, 0, 1);
+        assert_eq!(name_at(&spans, 0, 15), Some("variable.parameter"));
     }
 
     #[test]
     fn highlights_jsx_tokens() {
         let text = "const view = <div className=\"x\">hi</div>;\n";
         let spans = highlight(LanguageId::Jsx, text, 0, 1);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 0, 18), Some(SyntaxGroup::Attribute));
-        assert_eq!(group_at(&spans, 0, 30), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 0, 14), Some(SyntaxGroup::Tag));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 0, 18), Some("attribute"));
+        assert_eq!(name_at(&spans, 0, 30), Some("string"));
+        assert_eq!(name_at(&spans, 0, 14), Some("tag"));
     }
 
     #[test]
     fn highlights_tsx_tokens() {
         let text = "const view: string = <div className=\"x\">hi</div>;\n";
         let spans = highlight(LanguageId::Tsx, text, 0, 1);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
-        assert_eq!(group_at(&spans, 0, 27), Some(SyntaxGroup::Attribute));
-        assert_eq!(group_at(&spans, 0, 36), Some(SyntaxGroup::String));
-        assert_eq!(group_at(&spans, 0, 22), Some(SyntaxGroup::Tag));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
+        assert_eq!(name_at(&spans, 0, 27), Some("attribute"));
+        assert_eq!(name_at(&spans, 0, 36), Some("string"));
+        assert_eq!(name_at(&spans, 0, 22), Some("tag"));
     }
 
     #[test]
     fn multiline_comments_reach_the_visible_window() {
         let text = "fn main() {\n    /* first\n    second\n    third */\n    let x = 1;\n}\n";
         let spans = highlight(LanguageId::Rust, text, 2, 3);
-        assert_eq!(group_at(&spans, 2, 4), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 1, 4), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 2, 4), Some("comment"));
+        assert_eq!(name_at(&spans, 1, 4), Some("comment"));
     }
 
     #[test]
@@ -445,11 +452,11 @@ mod tests {
         let mut document = Document::new(LanguageId::Rust);
         let first = "fn main() {\n    let x = 1;\n}\n";
         let spans = document.update(&request(first, 0, 3, 1), &runtime).1;
-        assert_eq!(group_at(&spans, 1, 4), Some(SyntaxGroup::Keyword));
+        assert_eq!(name_at(&spans, 1, 4), Some("keyword"));
         let second = "/*\nfn main() {\n    let x = 1;\n}\n";
         let spans = document.update(&request(second, 0, 4, 2), &runtime).1;
-        assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Comment));
-        assert_eq!(group_at(&spans, 2, 4), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 1, 0), Some("comment"));
+        assert_eq!(name_at(&spans, 2, 4), Some("comment"));
     }
 
     #[test]
@@ -458,7 +465,7 @@ mod tests {
         let spans = highlight(LanguageId::Rust, text, 0, 1);
         let comment = text.find("//").expect("comment");
         let column = text[..comment].chars().count();
-        assert_eq!(group_at(&spans, 0, column), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 0, column), Some("comment"));
     }
 
     #[test]
@@ -482,7 +489,7 @@ mod tests {
         assert!(document.large);
         assert_eq!(window, 29_000..31_020);
         assert_eq!(document.window_rows, 29_000..31_020);
-        assert_eq!(group_at(&spans, 30_000, 0), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 30_000, 0), Some("comment"));
 
         let second = SyntaxRequest {
             key: SyntaxKey {
@@ -495,7 +502,7 @@ mod tests {
         let (window, spans) = document.update(&second, &runtime);
         assert_eq!(window, 39_000..41_020);
         assert_eq!(document.window_rows, 39_000..41_020);
-        assert_eq!(group_at(&spans, 40_000, 0), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 40_000, 0), Some("comment"));
     }
 
     #[test]
@@ -527,7 +534,7 @@ mod tests {
         );
         assert!(document.large);
         assert_eq!(document.window_rows, 0..1_020);
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Comment));
+        assert_eq!(name_at(&spans, 0, 0), Some("comment"));
     }
 
     #[test]
@@ -564,7 +571,7 @@ mod tests {
         );
         assert!(!document.large);
         assert_eq!(document.window_rows, 0..document.index.line_count());
-        assert_eq!(group_at(&spans, 0, 0), Some(SyntaxGroup::Keyword));
+        assert_eq!(name_at(&spans, 0, 0), Some("keyword"));
     }
 
     #[test]
@@ -572,8 +579,8 @@ mod tests {
         let long = format!("{} // tail\n", "a".repeat(MAX_LINE_BYTES + 1));
         let text = format!("{long}fn main() {{}}\n");
         let spans = highlight(LanguageId::Rust, &text, 0, 2);
-        assert_eq!(group_at(&spans, 0, 0), None);
-        assert_eq!(group_at(&spans, 1, 0), Some(SyntaxGroup::Keyword));
+        assert_eq!(name_at(&spans, 0, 0), None);
+        assert_eq!(name_at(&spans, 1, 0), Some("keyword"));
     }
 }
 
@@ -618,7 +625,7 @@ mod parity_tests {
     }
 
     fn assert_reference(language: LanguageId, text: &str) {
-        let (runtime, recognized) = configured_runtime(language);
+        let runtime = configured_runtime(language);
         let row_end = text.lines().count();
         let request = SyntaxRequest {
             key: SyntaxKey {
@@ -634,41 +641,20 @@ mod parity_tests {
         let spans = document.update(&request, &runtime).1;
         let rows = visible_rows(text, &LineIndex::new(text), 0, row_end);
         let ours = our_cells(text, &rows, &spans);
-        let reference = reference_cells(text, &rows, &runtime.config, &recognized);
+        let reference = reference_cells(text, &rows, &runtime.config);
         assert_eq!(ours, reference);
     }
 
-    fn configured_runtime(language: LanguageId) -> (Runtime, Vec<(String, SyntaxGroup)>) {
-        let mut config = HighlightConfiguration::new(
-            language.language(),
-            language.name(),
-            &language.highlights(),
-            "",
-            "",
-        )
-        .expect("config");
-        let groups: Vec<Option<SyntaxGroup>> = config
-            .names()
-            .iter()
-            .map(|name| SyntaxGroup::from_capture(name))
-            .collect();
-        let recognized: Vec<(String, SyntaxGroup)> = config
-            .names()
-            .iter()
-            .zip(groups.iter())
-            .filter_map(|(name, group)| group.map(|group| ((*name).to_string(), group)))
-            .collect();
-        let names: Vec<&str> = recognized.iter().map(|(name, _)| name.as_str()).collect();
-        config.configure(&names);
-        (Runtime { config, groups }, recognized)
+    fn configured_runtime(language: LanguageId) -> Runtime {
+        Runtime::new(language).expect("runtime")
     }
 
     fn our_cells(
         text: &str,
         rows: &[RowWindow],
         spans: &[SyntaxSpan],
-    ) -> Vec<Vec<Option<SyntaxGroup>>> {
-        let mut cells: Vec<Vec<Option<SyntaxGroup>>> = rows
+    ) -> Vec<Vec<Option<SyntaxHighlight>>> {
+        let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
             .iter()
             .map(|row| vec![None; row_char_len(text, row)])
             .collect();
@@ -680,7 +666,7 @@ mod parity_tests {
             let from = span.start.min(line.len());
             let to = span.end.min(line.len());
             for cell in &mut line[from..to] {
-                *cell = Some(span.group);
+                *cell = Some(span.highlight);
             }
         }
         cells
@@ -690,9 +676,8 @@ mod parity_tests {
         text: &str,
         rows: &[RowWindow],
         config: &HighlightConfiguration,
-        recognized: &[(String, SyntaxGroup)],
-    ) -> Vec<Vec<Option<SyntaxGroup>>> {
-        let mut cells: Vec<Vec<Option<SyntaxGroup>>> = rows
+    ) -> Vec<Vec<Option<SyntaxHighlight>>> {
+        let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
             .iter()
             .map(|row| vec![None; row_char_len(text, row)])
             .collect();
@@ -709,7 +694,10 @@ mod parity_tests {
                     }
                 }
                 HighlightEvent::HighlightStart(index) => {
-                    stack.push(recognized[index.0].1);
+                    let name = registry().names().get(index.0).expect("highlight name");
+                    if let Some(highlight) = registry().resolve(name) {
+                        stack.push(highlight);
+                    }
                 }
                 HighlightEvent::HighlightEnd => {
                     stack.pop();
@@ -722,10 +710,10 @@ mod parity_tests {
     fn paint_source(
         text: &str,
         rows: &[RowWindow],
-        cells: &mut [Vec<Option<SyntaxGroup>>],
+        cells: &mut [Vec<Option<SyntaxHighlight>>],
         start: usize,
         end: usize,
-        group: SyntaxGroup,
+        highlight: SyntaxHighlight,
     ) {
         for (position, row) in rows.iter().enumerate() {
             let segment_start = start.max(row.start);
@@ -739,7 +727,7 @@ mod parity_tests {
             let from = from.min(line.len());
             let to = to.min(line.len());
             for cell in &mut line[from..to] {
-                *cell = Some(group);
+                *cell = Some(highlight);
             }
         }
     }

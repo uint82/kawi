@@ -3557,7 +3557,7 @@ mod tests {
         assert!(app
             .syntax_spans
             .iter()
-            .any(|span| span.group == kawi_syntax::SyntaxGroup::Comment));
+            .any(|span| kawi_syntax::registry().name(span.highlight) == Some("comment")));
     }
 
     #[test]

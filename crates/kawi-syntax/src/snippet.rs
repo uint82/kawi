@@ -6,10 +6,10 @@ use tree_sitter::{
     ParseOptions, Parser, Point, QueryCursor, QueryCursorOptions, StreamingIterator, Tree,
 };
 
-use crate::group::SyntaxGroup;
-use crate::highlight::{refine_group, Runtime};
+use crate::highlight::Runtime;
 use crate::language::LanguageId;
 use crate::limits::MAX_SNIPPET_BYTES;
+use crate::registry::SyntaxHighlight;
 use crate::span::SnippetSpan;
 
 thread_local! {
@@ -60,20 +60,19 @@ impl SnippetRuntime {
                 let Some(capture) = matched.captures().get(*capture_index) else {
                     continue;
                 };
-                let Some(group) = self
+                let Some(highlight) = self
                     .runtime
-                    .groups
+                    .captures
                     .get(capture.index as usize)
                     .copied()
                     .flatten()
-                    .map(|group| refine_group(group, capture.node.kind()))
                 else {
                     continue;
                 };
                 captures.push(SnippetSpan {
                     start: capture.node.start_byte(),
                     end: capture.node.end_byte(),
-                    group,
+                    highlight,
                 });
             }
             captures
@@ -147,7 +146,7 @@ fn paint_spans(text: &str, captures: &[SnippetSpan]) -> Vec<SnippetSpan> {
         let start = indices[capture.start];
         let end = indices[capture.end];
         for cell in &mut cells[start..end] {
-            *cell = Some(capture.group);
+            *cell = Some(capture.highlight);
         }
     }
     merge_spans(text, &cells)
@@ -164,7 +163,7 @@ fn char_indices(text: &str) -> Vec<usize> {
     indices
 }
 
-fn merge_spans(text: &str, cells: &[Option<SyntaxGroup>]) -> Vec<SnippetSpan> {
+fn merge_spans(text: &str, cells: &[Option<SyntaxHighlight>]) -> Vec<SnippetSpan> {
     let mut spans = Vec::new();
     let mut current = None;
     let mut start = 0;
@@ -172,21 +171,21 @@ fn merge_spans(text: &str, cells: &[Option<SyntaxGroup>]) -> Vec<SnippetSpan> {
         if cells[index] == current {
             continue;
         }
-        if let Some(group) = current {
+        if let Some(highlight) = current {
             spans.push(SnippetSpan {
                 start,
                 end: byte,
-                group,
+                highlight,
             });
         }
         current = cells[index];
         start = byte;
     }
-    if let Some(group) = current {
+    if let Some(highlight) = current {
         spans.push(SnippetSpan {
             start,
             end: text.len(),
-            group,
+            highlight,
         });
     }
     spans
@@ -195,11 +194,12 @@ fn merge_spans(text: &str, cells: &[Option<SyntaxGroup>]) -> Vec<SnippetSpan> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::registry;
 
-    fn groups(language: LanguageId, text: &str) -> Vec<SyntaxGroup> {
+    fn names(language: LanguageId, text: &str) -> Vec<&'static str> {
         highlight_snippet(language, text)
             .into_iter()
-            .map(|span| span.group)
+            .filter_map(|span| registry().name(span.highlight))
             .collect()
     }
 
@@ -218,7 +218,7 @@ mod tests {
         ];
         for (language, snippet) in snippets {
             assert!(
-                !groups(language, snippet).is_empty(),
+                !names(language, snippet).is_empty(),
                 "{language:?} returned no groups"
             );
         }
@@ -226,8 +226,7 @@ mod tests {
 
     #[test]
     fn highlights_a_bare_signature() {
-        assert!(groups(LanguageId::Rust, "fn push(&mut self, value: T)")
-            .contains(&SyntaxGroup::Keyword));
+        assert!(names(LanguageId::Rust, "fn push(&mut self, value: T)").contains(&"keyword"));
     }
 
     #[test]
@@ -245,7 +244,7 @@ mod tests {
         ];
         for (language, fragment) in fragments {
             assert!(
-                !groups(language, fragment).is_empty(),
+                !names(language, fragment).is_empty(),
                 "{language:?} fragment returned no groups"
             );
         }
@@ -262,7 +261,7 @@ mod tests {
 
     #[test]
     fn highlights_fragments_with_syntax_errors() {
-        assert!(groups(LanguageId::Rust, "fn main(").contains(&SyntaxGroup::Keyword));
+        assert!(names(LanguageId::Rust, "fn main(").contains(&"keyword"));
     }
 
     #[test]

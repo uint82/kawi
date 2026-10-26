@@ -1,11 +1,13 @@
 use crossterm::style::Color;
-use kawi_syntax::SyntaxGroup;
 use std::path::Path;
+
+pub use style::{SyntaxStyle, SyntaxStyles};
 
 mod builtin;
 mod color;
 mod custom;
 mod error;
+mod style;
 
 pub use error::ThemeError;
 
@@ -19,45 +21,6 @@ pub struct BaseColors {
 pub struct MatchColors {
     pub foreground: Color,
     pub background: Color,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyntaxColors {
-    comment: Color,
-    keyword: Color,
-    string: Color,
-    number: Color,
-    constant: Color,
-    function: Color,
-    type_name: Color,
-    variable: Color,
-    property: Color,
-    operator: Color,
-    punctuation: Color,
-    attribute: Color,
-    tag: Color,
-    invalid: Color,
-}
-
-impl SyntaxColors {
-    pub fn color(&self, group: SyntaxGroup) -> Color {
-        match group {
-            SyntaxGroup::Comment => self.comment,
-            SyntaxGroup::Keyword => self.keyword,
-            SyntaxGroup::String => self.string,
-            SyntaxGroup::Number => self.number,
-            SyntaxGroup::Constant => self.constant,
-            SyntaxGroup::Function => self.function,
-            SyntaxGroup::Type => self.type_name,
-            SyntaxGroup::Variable => self.variable,
-            SyntaxGroup::Property => self.property,
-            SyntaxGroup::Operator => self.operator,
-            SyntaxGroup::Punctuation => self.punctuation,
-            SyntaxGroup::Attribute => self.attribute,
-            SyntaxGroup::Tag => self.tag,
-            SyntaxGroup::Invalid => self.invalid,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +46,7 @@ pub struct Theme {
     pub diagnostic_warning: Color,
     pub diagnostic_information: Color,
     pub diagnostic_hint: Color,
-    pub syntax: SyntaxColors,
+    pub syntax: SyntaxStyles,
 }
 
 impl Theme {
