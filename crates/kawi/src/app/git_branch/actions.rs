@@ -31,6 +31,9 @@ pub(crate) fn branch_row(branch: &kawi_git::Branch) -> PickerRow {
         line: None,
         column: None,
         buffer: None,
+        secondary: None,
+        deprecated: false,
+        id: None,
     }
 }
 

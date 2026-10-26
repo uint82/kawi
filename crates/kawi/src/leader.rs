@@ -70,6 +70,21 @@ const CODE_COMMANDS: &[LeaderCommand] = &[
     },
 ];
 
+const SYMBOL_COMMANDS: &[LeaderCommand] = &[
+    LeaderCommand {
+        key: 's',
+        aliases: &[],
+        label: "document symbols",
+        action: Action::OpenDocumentSymbols,
+    },
+    LeaderCommand {
+        key: 'w',
+        aliases: &[],
+        label: "workspace symbols",
+        action: Action::OpenWorkspaceSymbols,
+    },
+];
+
 const RENAME_COMMANDS: &[LeaderCommand] = &[LeaderCommand {
     key: 'n',
     aliases: &[],
@@ -169,6 +184,12 @@ pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[
         commands: RENAME_COMMANDS,
     },
     LeaderGroup {
+        key: 's',
+        label: "symbols",
+        visual: false,
+        commands: SYMBOL_COMMANDS,
+    },
+    LeaderGroup {
         key: 't',
         label: "tasks",
         visual: false,
@@ -210,7 +231,7 @@ mod tests {
     #[test]
     fn groups_cover_the_leader_prefixes() {
         let keys: Vec<char> = LEADER_GROUPS.iter().map(|group| group.key).collect();
-        assert_eq!(keys, ['c', 'f', 'r', 't', 'v']);
+        assert_eq!(keys, ['c', 'f', 'r', 's', 't', 'v']);
     }
 
     #[test]
@@ -223,6 +244,13 @@ mod tests {
     fn project_file_alias_resolves() {
         let path = LeaderPath::Group(group('f').expect("find group"));
         assert_eq!(action(path, 'p'), Some(Action::OpenFilePicker));
+    }
+
+    #[test]
+    fn symbols_use_the_s_group() {
+        let path = LeaderPath::Group(group('s').expect("symbols group"));
+        assert_eq!(action(path, 's'), Some(Action::OpenDocumentSymbols));
+        assert_eq!(action(path, 'w'), Some(Action::OpenWorkspaceSymbols));
     }
 
     #[test]

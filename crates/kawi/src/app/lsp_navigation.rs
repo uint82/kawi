@@ -263,6 +263,9 @@ fn location_row(root: &std::path::Path, location: &TextLocation) -> kawi_picker:
         line: Some(location.line.saturating_add(1) as usize),
         column: Some(location.column.saturating_add(1) as usize),
         buffer: None,
+        secondary: None,
+        deprecated: false,
+        id: None,
     }
 }
 

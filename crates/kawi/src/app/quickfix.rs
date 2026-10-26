@@ -209,6 +209,9 @@ fn problem_row(root: &Path, problem: &Problem, stale: bool) -> PickerRow {
         line: Some(problem.line),
         column: Some(problem.column),
         buffer: None,
+        secondary: None,
+        deprecated: false,
+        id: None,
     }
 }
 

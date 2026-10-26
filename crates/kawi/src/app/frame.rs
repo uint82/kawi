@@ -69,7 +69,9 @@ impl App {
             })
             .collect();
         let search_status = self.editor.search_status_text();
-        let picker_items: Vec<String> = self
+        let symbol_items = self.symbol_picker_lines();
+        let symbol_preview = self.symbol_preview();
+        let picker_items: Vec<kawi_tui::frame::PickerLine<'_>> = self
             .picker
             .as_ref()
             .map(|session| {
@@ -77,13 +79,25 @@ impl App {
                     .picker()
                     .rows()
                     .iter()
-                    .map(|row| row.display.clone())
+                    .map(|row| kawi_tui::frame::PickerLine {
+                        primary: &row.display,
+                        detail: row.secondary.as_deref(),
+                        deprecated: row.deprecated,
+                    })
                     .collect()
             })
             .unwrap_or_default();
         let git_lines = self.git_status.view_lines();
+        let git_picker_lines: Vec<kawi_tui::frame::PickerLine<'_>> = git_lines
+            .iter()
+            .map(|line| kawi_tui::frame::PickerLine {
+                primary: line,
+                detail: None,
+                deprecated: false,
+            })
+            .collect();
         let picker = self
-            .picker
+            .symbol_picker
             .as_ref()
             .map(|session| {
                 let state = session.picker();
@@ -91,13 +105,31 @@ impl App {
                     title: state.title(),
                     query: state.query(),
                     cursor: state.cursor(),
-                    items: &picker_items,
+                    items: &symbol_items,
                     selected: state.selected(),
                     loading: state.loading(),
                     status: state.status(),
-                    replace_hint: state.kind() == PickerKind::Grep,
-                    file_hint: state.kind() == PickerKind::Files,
+                    replace_hint: false,
+                    file_hint: false,
+                    preview: symbol_preview,
                 }
+            })
+            .or_else(|| {
+                self.picker.as_ref().map(|session| {
+                    let state = session.picker();
+                    kawi_tui::frame::PickerMenu {
+                        title: state.title(),
+                        query: state.query(),
+                        cursor: state.cursor(),
+                        items: &picker_items,
+                        selected: state.selected(),
+                        loading: state.loading(),
+                        status: state.status(),
+                        replace_hint: state.kind() == PickerKind::Grep,
+                        file_hint: state.kind() == PickerKind::Files,
+                        preview: None,
+                    }
+                })
             })
             .or_else(|| {
                 self.git_status
@@ -106,12 +138,13 @@ impl App {
                         title: "Git status",
                         query: "",
                         cursor: 0,
-                        items: &git_lines,
+                        items: &git_picker_lines,
                         selected: self.git_status.view_selected(),
                         loading: false,
                         status: self.git_status.view_status(),
                         replace_hint: false,
                         file_hint: false,
+                        preview: None,
                     })
             });
         let replace_state = self.replace.as_ref();

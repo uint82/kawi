@@ -22,6 +22,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
+mod symbols;
+
+pub(crate) use symbols::SymbolEvent;
+
 #[derive(Default)]
 pub struct LspUi {
     service: Option<LspService>,
@@ -50,6 +54,7 @@ pub struct LspUi {
     rename_files: bool,
     delete_files: bool,
     file_operation: Option<FileOperationEvent>,
+    symbols: symbols::LspSymbols,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +72,7 @@ struct ProgressSnapshot {
 
 impl LspUi {
     pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
+        self.symbols = symbols::LspSymbols::default();
         self.rename_files = false;
         self.delete_files = false;
         self.file_operation = None;
@@ -524,8 +530,9 @@ impl LspUi {
     pub fn cancel_pending(&mut self) -> bool {
         let navigation = self.navigation.cancel(self.service.as_ref());
         let text = self.text.cancel_all(self.service.as_ref());
+        let symbols = self.symbols.cancel_all(self.service.as_ref());
         let Some(request) = self.rename_request.take() else {
-            return navigation || text;
+            return navigation || text || symbols;
         };
         if let Some(service) = self.service.as_ref() {
             service.cancel(request);
@@ -684,6 +691,22 @@ impl LspUi {
                     .insert(event.server.clone(), event);
                 true
             }
+            LspEvent::SymbolCapabilities(event) => {
+                self.symbols.apply_capabilities(event);
+                true
+            }
+            LspEvent::DocumentSymbols(event) => {
+                self.symbols.push_document(event);
+                true
+            }
+            LspEvent::WorkspaceSymbols(event) => {
+                self.symbols.push_workspace(event);
+                true
+            }
+            LspEvent::WorkspaceSymbolResolved(event) => {
+                self.symbols.push_resolved(event);
+                true
+            }
             LspEvent::FileOperationCapabilities(event) => {
                 self.rename_files |= event.rename;
                 self.delete_files |= event.delete;
@@ -712,6 +735,9 @@ impl LspUi {
                 true
             }
             LspEvent::RequestError { request, message } => {
+                if self.symbols.fail(request, &message) {
+                    return true;
+                }
                 if self.rename_request == Some(request) {
                     self.rename_request = None;
                     self.rename_ready = None;

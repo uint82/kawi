@@ -245,12 +245,29 @@ pub struct PickerMenu<'a> {
     pub title: &'a str,
     pub query: &'a str,
     pub cursor: usize,
-    pub items: &'a [String],
+    pub items: &'a [PickerLine<'a>],
     pub selected: Option<usize>,
     pub loading: bool,
     pub status: Option<&'a str>,
     pub replace_hint: bool,
     pub file_hint: bool,
+    pub preview: Option<PickerPreview<'a>>,
+}
+
+pub struct PickerLine<'a> {
+    pub primary: &'a str,
+    pub detail: Option<&'a str>,
+    pub deprecated: bool,
+}
+
+pub struct PickerPreview<'a> {
+    pub title: &'a str,
+    pub lines: &'a [String],
+    pub first_line: usize,
+    pub total_lines: usize,
+    pub focus_line: Option<usize>,
+    pub syntax_spans: &'a [SyntaxSpan],
+    pub tabstop: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
