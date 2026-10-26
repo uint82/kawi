@@ -8,7 +8,7 @@ pub const HIGHLIGHT_MATCH_STEP_BUDGET: usize = 4_096;
 pub const ACTION_MATCH_BOUND: usize = 1_048_576;
 pub const MAX_MATCH_LINE_CHARS: usize = 16_384;
 const LEXICAL_CONTEXT_BUDGET: usize = 65_536;
-const LEXICAL_CONTEXT_PADDING: usize = 4_096;
+pub(super) const LEXICAL_CONTEXT_PADDING: usize = 4_096;
 
 pub type Position = (usize, usize);
 
@@ -32,6 +32,10 @@ pub(crate) struct MatchResult {
     pub partner: Position,
     pub in_code: bool,
 }
+
+mod enclosing;
+
+pub use enclosing::find_enclosing;
 
 pub fn find_match(request: &MatchRequest<'_>) -> Option<Position> {
     find_match_result(request).map(|result| result.partner)
@@ -207,12 +211,12 @@ fn eligible(
     code == cursor_code && is_escaped(chars, index) == target_escaped
 }
 
-fn line_chars(buffer: &Buffer, row: usize) -> Option<Vec<char>> {
+pub(super) fn line_chars(buffer: &Buffer, row: usize) -> Option<Vec<char>> {
     let chars: Vec<char> = buffer.line_cow(row)?.chars().collect();
     (chars.len() <= MAX_MATCH_LINE_CHARS).then_some(chars)
 }
 
-fn context_start(buffer: &Buffer, row: usize, mut col: usize, budget: usize) -> usize {
+pub(super) fn context_start(buffer: &Buffer, row: usize, mut col: usize, budget: usize) -> usize {
     let mut remaining = budget;
     let mut row = row;
     while remaining > 0 && row > 0 {
@@ -230,7 +234,7 @@ fn context_start(buffer: &Buffer, row: usize, mut col: usize, budget: usize) -> 
     }
 }
 
-fn is_escaped(chars: &[char], index: usize) -> bool {
+pub(super) fn is_escaped(chars: &[char], index: usize) -> bool {
     let mut count = 0usize;
     let mut current = index;
     while current > 0 && chars.get(current.saturating_sub(1)) == Some(&'\\') {

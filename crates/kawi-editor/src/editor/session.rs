@@ -387,21 +387,15 @@ impl Editor {
     }
 
     pub(super) fn select_object(&mut self, inner: bool, object: Object) {
-        let (row, col) = (self.cursor.row(), self.cursor.col());
         let count = self.take_count();
+        if Self::is_bracket_object(object) {
+            if let Some(span) = self.bracket_object_range(object, inner, count) {
+                self.select_span(span);
+            }
+            return;
+        }
+        let (row, col) = (self.cursor.row(), self.cursor.col());
         let span = match object {
-            Object::Paren => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '(', ')', inner, count)
-            }
-            Object::Brace => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '{', '}', inner, count)
-            }
-            Object::Bracket => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '[', ']', inner, count)
-            }
-            Object::Angle => {
-                objects::brackets::bracket_range(&self.buffer, row, col, '<', '>', inner, count)
-            }
             Object::SingleQuote => {
                 objects::quotes::quote_range(&self.buffer, row, col, '\'', inner, count)
             }
@@ -414,10 +408,14 @@ impl Editor {
             Object::Paragraph => {
                 return self.select_paragraph(inner, count);
             }
+            _ => None,
         };
-        let Some(span) = span else {
-            return;
-        };
+        if let Some(span) = span {
+            self.select_span(span);
+        }
+    }
+
+    fn select_span(&mut self, span: words::WordSpan) {
         match span {
             words::WordSpan::Charwise { start, end } => {
                 self.selection = Some(Selection::from_ends(start, end));

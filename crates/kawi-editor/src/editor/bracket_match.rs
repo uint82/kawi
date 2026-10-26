@@ -1,4 +1,10 @@
-use crate::objects::bracket_match::{find_match, BracketMatch, MatchRequest, Position};
+use crate::actions::Object;
+use crate::editing::Pair;
+use crate::objects;
+use crate::objects::bracket_match::{
+    find_match, BracketMatch, MatchRequest, Position, ACTION_MATCH_BOUND,
+};
+use crate::words::WordSpan;
 
 use super::Editor;
 
@@ -33,6 +39,39 @@ impl Editor {
             }
         }
         None
+    }
+
+    pub(super) fn is_bracket_object(object: Object) -> bool {
+        Self::bracket_pair(object).is_some()
+    }
+
+    pub(super) fn bracket_object_range(
+        &self,
+        object: Object,
+        inner: bool,
+        count: usize,
+    ) -> Option<WordSpan> {
+        let pair = Self::bracket_pair(object)?;
+        let pairs = [pair];
+        let request = MatchRequest {
+            buffer: &self.buffer,
+            position: (self.cursor.row(), self.cursor.col()),
+            language: self.language_indent.language,
+            editing: &self.language_editing,
+            pairs: &pairs,
+            bound: ACTION_MATCH_BOUND,
+        };
+        objects::brackets::bracket_range(&request, pair, inner, count)
+    }
+
+    fn bracket_pair(object: Object) -> Option<Pair> {
+        match object {
+            Object::Paren => Some(Pair::new('(', ')')),
+            Object::Brace => Some(Pair::new('{', '}')),
+            Object::Bracket => Some(Pair::new('[', ']')),
+            Object::Angle => Some(Pair::new('<', '>')),
+            _ => None,
+        }
     }
 
     pub(crate) fn bracket_partner_at(&self, position: Position, bound: usize) -> Option<Position> {
