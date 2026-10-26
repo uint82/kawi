@@ -4,7 +4,7 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::{BracketMatch, Mode, Viewport, HIGHLIGHT_MATCH_STEP_BUDGET};
 use kawi_syntax::{SyntaxKey, SyntaxSpan};
-use kawi_tui::frame::{DiagnosticSpan, Rect, SearchSpan, Selection, Sign};
+use kawi_tui::frame::{DiagnosticSpan, Rect, SearchSpan, Selection, Sign, VirtualText};
 
 use super::{
     is_window_prefix, BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis,
@@ -21,6 +21,7 @@ pub(crate) struct PaneData<'a> {
     pub gutter: Vec<String>,
     pub signs: Option<Vec<Option<Sign>>>,
     pub diagnostic_spans: Vec<DiagnosticSpan>,
+    pub virtual_texts: Vec<Option<VirtualText>>,
     pub search_spans: Vec<SearchSpan>,
     pub preview_spans: Vec<SearchSpan>,
     pub syntax_spans: Cow<'a, [SyntaxSpan]>,
@@ -39,6 +40,7 @@ pub(crate) struct PaneData<'a> {
     pub empty_buffer: bool,
     pub mode: &'static str,
     pub lsp: Option<String>,
+    pub diagnostics: Option<String>,
     pub external: Option<&'static str>,
 }
 
@@ -473,11 +475,21 @@ impl App {
         } else {
             Vec::new()
         };
+        let path = self.problem_path();
+        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
+            path: path.as_deref(),
+            top,
+            height,
+            cursor_row: self.editor.row(),
+            cursor_column: self.editor.col(),
+            suppress: self.virtual_text_suppressed(),
+        });
         PaneData {
             rect,
             active: true,
             signs: self.view_signs(),
             diagnostic_spans: self.lsp.diagnostic_spans(&lines, top),
+            virtual_texts,
             lines,
             gutter,
             search_spans,
@@ -510,6 +522,7 @@ impl App {
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
             lsp: self.lsp.status().map(str::to_string),
+            diagnostics: self.diagnostic_status_text(self.problem_path().as_deref()),
             external: self.disk_status(self.editor.buffer_number()),
         }
     }
@@ -580,11 +593,20 @@ impl App {
             Vec::new()
         };
         let syntax_spans = self.inactive_syntax_spans(id, window.buffer, top, height);
+        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
+            path: self.buffer_problem_path(window.buffer).as_deref(),
+            top,
+            height,
+            cursor_row: row,
+            cursor_column: col,
+            suppress: false,
+        });
         PaneData {
             rect,
             active: false,
             signs: None,
             diagnostic_spans,
+            virtual_texts,
             lines,
             gutter,
             search_spans: Vec::new(),
@@ -615,6 +637,8 @@ impl App {
             empty_buffer: self.editor.buffer_is_empty(window.buffer).unwrap_or(false),
             mode: Mode::Normal.label(),
             lsp: None,
+            diagnostics: self
+                .diagnostic_status_text(self.buffer_problem_path(window.buffer).as_deref()),
             external: self.disk_status(window.buffer),
         }
     }

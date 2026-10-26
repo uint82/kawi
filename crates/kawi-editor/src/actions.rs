@@ -333,6 +333,7 @@ pub enum Action {
     GitPrevHunk,
     DiagnosticNext,
     DiagnosticPrev,
+    ShowDiagnostic,
     GotoDefinition,
     ShowReferences,
     Hover,
@@ -422,6 +423,7 @@ impl Action {
                 | Self::OpenWorkspaceSymbols
                 | Self::DiagnosticNext
                 | Self::DiagnosticPrev
+                | Self::ShowDiagnostic
                 | Self::GotoDefinition
                 | Self::ShowReferences
                 | Self::Hover

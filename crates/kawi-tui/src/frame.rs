@@ -116,6 +116,11 @@ pub struct TerminalCursor {
     pub style: CursorStyle,
 }
 
+pub struct VirtualText {
+    pub text: String,
+    pub severity: DiagnosticSeverity,
+}
+
 pub struct PaneFrame<'a> {
     pub rect: Rect,
     pub active: bool,
@@ -123,6 +128,7 @@ pub struct PaneFrame<'a> {
     pub gutter: &'a [String],
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
+    pub virtual_texts: &'a [Option<VirtualText>],
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
     pub syntax_spans: &'a [SyntaxSpan],
@@ -171,11 +177,18 @@ impl DiagnosticSeverity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticTag {
+    Unnecessary,
+    Deprecated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiagnosticSpan {
     pub row: usize,
     pub start: usize,
     pub end: usize,
     pub severity: DiagnosticSeverity,
+    pub tag: Option<DiagnosticTag>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

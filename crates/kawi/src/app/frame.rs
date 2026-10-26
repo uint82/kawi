@@ -41,6 +41,7 @@ impl App {
                 empty_buffer: pane.empty_buffer,
                 mode: pane.mode,
                 lsp: pane.lsp.as_deref(),
+                diagnostics: pane.diagnostics.as_deref(),
                 external: pane.external,
                 git,
             })
@@ -55,6 +56,7 @@ impl App {
                 gutter: &pane.gutter,
                 signs: pane.signs.as_deref(),
                 diagnostic_spans: &pane.diagnostic_spans,
+                virtual_texts: &pane.virtual_texts,
                 search_spans: &pane.search_spans,
                 preview_spans: &pane.preview_spans,
                 syntax_spans: pane.syntax_spans.as_ref(),

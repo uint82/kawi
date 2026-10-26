@@ -23,6 +23,7 @@ pub struct StatusInfo<'a> {
     pub empty_buffer: bool,
     pub mode: &'a str,
     pub lsp: Option<&'a str>,
+    pub diagnostics: Option<&'a str>,
     pub external: Option<&'a str>,
     pub git: Option<GitStatusInfo<'a>>,
 }
@@ -66,6 +67,10 @@ fn left_text(info: &StatusInfo) -> String {
     if let Some(lsp) = info.lsp {
         text.push_str("  ");
         text.push_str(lsp);
+    }
+    if let Some(diagnostics) = info.diagnostics {
+        text.push_str("  ");
+        text.push_str(diagnostics);
     }
     text
 }
@@ -170,6 +175,7 @@ mod tests {
             empty_buffer: false,
             mode,
             lsp: None,
+            diagnostics: None,
             external: None,
             git: None,
         }
@@ -209,6 +215,13 @@ mod tests {
         let mut status = info("a.rs", false, "NORMAL");
         status.lsp = Some("lsp: rust-analyzer not found in PATH");
         assert!(build_line(&status, 80).contains("lsp: rust-analyzer not found in PATH"));
+    }
+
+    #[test]
+    fn shows_diagnostic_counts() {
+        let mut status = info("a.rs", false, "NORMAL");
+        status.diagnostics = Some("E1 W2");
+        assert!(build_line(&status, 60).contains("E1 W2"));
     }
 
     #[test]

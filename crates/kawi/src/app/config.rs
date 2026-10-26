@@ -177,6 +177,12 @@ completion_docs_max_width = 50
 overlay_min_width = 24
 overlay_max_height_percent = 60
 overlay_margin = 4
+diagnostic_popup_max_width = 90
+diagnostic_virtual_text = "all"
+diagnostic_virtual_severity = "information"
+diagnostic_source = "always"
+diagnostic_counts = "all"
+diagnostic_workspace_counts = true
 
 [editor]
 shiftwidth = 2
@@ -207,6 +213,24 @@ undo_exclude = ["*.gpg"]
         assert_eq!(app.overlay_options.min_width, 24);
         assert_eq!(app.overlay_options.max_height_percent, 60);
         assert_eq!(app.overlay_options.margin, 4);
+        assert_eq!(app.overlay_options.diagnostic_popup_max_width, 90);
+        assert_eq!(
+            app.diagnostic_options.virtual_text,
+            super::super::diagnostic_ui::VirtualTextMode::All
+        );
+        assert_eq!(
+            app.diagnostic_options.virtual_severity,
+            super::super::diagnostic_ui::SeverityFilter::Information
+        );
+        assert_eq!(
+            app.diagnostic_options.source,
+            super::super::diagnostic_ui::SourceDisplay::Always
+        );
+        assert_eq!(
+            app.diagnostic_options.counts,
+            super::super::diagnostic_ui::CountsMode::All
+        );
+        assert!(app.diagnostic_options.workspace_counts);
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());

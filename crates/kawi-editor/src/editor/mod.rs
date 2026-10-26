@@ -521,6 +521,7 @@ impl Editor {
             | Action::GitDiff
             | Action::DiagnosticNext
             | Action::DiagnosticPrev
+            | Action::ShowDiagnostic
             | Action::GotoDefinition
             | Action::ShowReferences
             | Action::Hover

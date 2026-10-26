@@ -3,10 +3,12 @@ use kawi_lsp::MAX_SHIFTWIDTH;
 use kawi_tui::theme::Theme;
 use std::path::Path;
 
+use crate::app::diagnostic_ui::{CountsMode, SeverityFilter, SourceDisplay, VirtualTextMode};
 use crate::keymap::flavor_from_name;
 
 const MAX_NUMBERWIDTH: usize = 20;
 pub(crate) const HOVER_MAX_WIDTH_DEFAULT: usize = 64;
+pub(crate) const DIAGNOSTIC_POPUP_MAX_WIDTH_DEFAULT: usize = 72;
 pub(crate) const COMPLETION_DOCS_MAX_WIDTH_DEFAULT: usize = 42;
 pub(crate) const OVERLAY_MIN_WIDTH_DEFAULT: usize = 20;
 pub(crate) const OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT: usize = 50;
@@ -173,7 +175,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 26] = [
+pub(crate) const OPTIONS: [OptionSpec; 32] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -420,6 +422,60 @@ pub(crate) const OPTIONS: [OptionSpec; 26] = [
         config_key: "overlay_margin",
         default: OptionDefault::Int(OVERLAY_MARGIN_DEFAULT),
     },
+    OptionSpec {
+        name: "diagnostic_popup_max_width",
+        aliases: &[],
+        kind: OptionKind::Int { min: 20, max: 200 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_popup_max_width",
+        default: OptionDefault::Int(DIAGNOSTIC_POPUP_MAX_WIDTH_DEFAULT),
+    },
+    OptionSpec {
+        name: "diagnostic_virtual_text",
+        aliases: &[],
+        kind: OptionKind::Enum(valid_virtual_text),
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_virtual_text",
+        default: OptionDefault::Text("cursor_line"),
+    },
+    OptionSpec {
+        name: "diagnostic_virtual_severity",
+        aliases: &[],
+        kind: OptionKind::Enum(valid_severity_filter),
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_virtual_severity",
+        default: OptionDefault::Text("warning"),
+    },
+    OptionSpec {
+        name: "diagnostic_source",
+        aliases: &[],
+        kind: OptionKind::Enum(valid_source_display),
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_source",
+        default: OptionDefault::Text("if_many"),
+    },
+    OptionSpec {
+        name: "diagnostic_counts",
+        aliases: &[],
+        kind: OptionKind::Enum(valid_counts_mode),
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_counts",
+        default: OptionDefault::Text("errors_warnings"),
+    },
+    OptionSpec {
+        name: "diagnostic_workspace_counts",
+        aliases: &[],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_workspace_counts",
+        default: OptionDefault::Bool(false),
+    },
 ];
 
 pub(crate) fn lookup(name: &str) -> Option<&'static OptionSpec> {
@@ -543,6 +599,22 @@ fn valid_theme(name: &str, context: &OptionContext<'_>) -> bool {
         Some(theme_dir) => Theme::load(name, theme_dir).is_ok(),
         None => Theme::named(name).is_some(),
     }
+}
+
+fn valid_virtual_text(name: &str, _context: &OptionContext<'_>) -> bool {
+    VirtualTextMode::parse(name).is_some()
+}
+
+fn valid_severity_filter(name: &str, _context: &OptionContext<'_>) -> bool {
+    SeverityFilter::parse(name).is_some()
+}
+
+fn valid_source_display(name: &str, _context: &OptionContext<'_>) -> bool {
+    SourceDisplay::parse(name).is_some()
+}
+
+fn valid_counts_mode(name: &str, _context: &OptionContext<'_>) -> bool {
+    CountsMode::parse(name).is_some()
 }
 
 #[cfg(test)]

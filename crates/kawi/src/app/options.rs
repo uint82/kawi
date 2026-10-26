@@ -151,6 +151,10 @@ impl App {
             "completion_docs_max_width" => {
                 self.overlay_options.completion_docs_max_width = value.as_int().unwrap_or_default();
             }
+            "diagnostic_popup_max_width" => {
+                self.overlay_options.diagnostic_popup_max_width =
+                    value.as_int().unwrap_or_default();
+            }
             "overlay_min_width" => {
                 self.overlay_options.min_width = value.as_int().unwrap_or_default();
             }
@@ -159,6 +163,33 @@ impl App {
             }
             "overlay_margin" => {
                 self.overlay_options.margin = value.as_int().unwrap_or_default();
+            }
+            "diagnostic_virtual_text" => {
+                self.diagnostic_options.virtual_text = value
+                    .as_text()
+                    .and_then(super::diagnostic_ui::VirtualTextMode::parse)
+                    .unwrap_or_default();
+            }
+            "diagnostic_virtual_severity" => {
+                self.diagnostic_options.virtual_severity = value
+                    .as_text()
+                    .and_then(super::diagnostic_ui::SeverityFilter::parse)
+                    .unwrap_or_default();
+            }
+            "diagnostic_source" => {
+                self.diagnostic_options.source = value
+                    .as_text()
+                    .and_then(super::diagnostic_ui::SourceDisplay::parse)
+                    .unwrap_or_default();
+            }
+            "diagnostic_counts" => {
+                self.diagnostic_options.counts = value
+                    .as_text()
+                    .and_then(super::diagnostic_ui::CountsMode::parse)
+                    .unwrap_or_default();
+            }
+            "diagnostic_workspace_counts" => {
+                self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
             _ => {}
         }
@@ -290,11 +321,29 @@ impl App {
             "completion_docs_max_width" => {
                 OptionValue::Int(self.overlay_options.completion_docs_max_width)
             }
+            "diagnostic_popup_max_width" => {
+                OptionValue::Int(self.overlay_options.diagnostic_popup_max_width)
+            }
             "overlay_min_width" => OptionValue::Int(self.overlay_options.min_width),
             "overlay_max_height_percent" => {
                 OptionValue::Int(self.overlay_options.max_height_percent)
             }
             "overlay_margin" => OptionValue::Int(self.overlay_options.margin),
+            "diagnostic_virtual_text" => {
+                OptionValue::Text(self.diagnostic_options.virtual_text.name().to_string())
+            }
+            "diagnostic_virtual_severity" => {
+                OptionValue::Text(self.diagnostic_options.virtual_severity.name().to_string())
+            }
+            "diagnostic_source" => {
+                OptionValue::Text(self.diagnostic_options.source.name().to_string())
+            }
+            "diagnostic_counts" => {
+                OptionValue::Text(self.diagnostic_options.counts.name().to_string())
+            }
+            "diagnostic_workspace_counts" => {
+                OptionValue::Bool(self.diagnostic_options.workspace_counts)
+            }
             _ => spec.default_value(),
         }
     }
