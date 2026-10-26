@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::fuzzy::fuzzy_score;
 use crate::grep::GrepHit;
 use crate::input::TextInput;
-use crate::selection::{clamped_selection, selection_at};
+use crate::selection::{selection_at, wrapped_selection};
 
 const MAX_ROWS: usize = 2_000;
 const PAGE_ROWS: usize = 10;
@@ -297,7 +297,7 @@ impl Picker {
     }
 
     fn navigate(&mut self, forward: bool, amount: usize) -> PickerOutcome {
-        self.selected = clamped_selection(self.selected, self.rows.len(), forward, amount);
+        self.selected = wrapped_selection(self.selected, self.rows.len(), forward, amount);
         PickerOutcome::Consumed
     }
 
@@ -627,13 +627,15 @@ mod tests {
     }
 
     #[test]
-    fn navigation_clamps_at_the_edges() {
+    fn navigation_wraps_at_the_edges() {
         let mut picker = files();
         picker.handle_key(key(KeyCode::Down));
         assert_eq!(picker.selected(), Some(1));
         picker.handle_key(key(KeyCode::Down));
         assert_eq!(picker.selected(), Some(2));
         picker.handle_key(key(KeyCode::Down));
+        assert_eq!(picker.selected(), Some(0));
+        picker.handle_key(key(KeyCode::Up));
         assert_eq!(picker.selected(), Some(2));
         picker.handle_key(key(KeyCode::Up));
         assert_eq!(picker.selected(), Some(1));
@@ -656,6 +658,10 @@ mod tests {
         picker.handle_key(key(KeyCode::BackTab));
         assert_eq!(picker.selected(), Some(1));
         picker.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT));
+        assert_eq!(picker.selected(), Some(0));
+        picker.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT));
+        assert_eq!(picker.selected(), Some(2));
+        picker.handle_key(key(KeyCode::Tab));
         assert_eq!(picker.selected(), Some(0));
     }
 }
