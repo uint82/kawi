@@ -205,6 +205,8 @@ mod tests {
     use super::*;
     use crate::keymap::Flavor;
     use kawi_buffer::Buffer;
+    use kawi_editor::{BufferOptionDefaults, IndentRules, LanguageIndent};
+    use kawi_syntax::LanguageId;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -287,6 +289,40 @@ mod tests {
             &[key(KeyCode::Char('@')), key(KeyCode::Char('a'))],
         );
         assert_eq!(lines(&app), vec!["ab()()"]);
+    }
+
+    #[test]
+    fn macro_replay_uses_language_indent() {
+        let mut app = app_with("class Solution:\nif ready:");
+        app.editor.set_buffer_defaults(BufferOptionDefaults {
+            shiftwidth: Some(4),
+            expandtab: Some(true),
+            autoindent: true,
+        });
+        app.editor.set_language_indent(LanguageIndent {
+            language: Some(LanguageId::Python),
+            rules: IndentRules::new(vec![":".to_string()], Vec::new(), true),
+            ..LanguageIndent::default()
+        });
+        feed(
+            &mut app,
+            &[
+                key(KeyCode::Char('q')),
+                key(KeyCode::Char('b')),
+                key(KeyCode::Char('o')),
+            ],
+        );
+        feed_text(&mut app, "pass");
+        feed(&mut app, &[key(KeyCode::Esc), key(KeyCode::Char('q'))]);
+        feed(&mut app, &[key(KeyCode::Char('j'))]);
+        feed(
+            &mut app,
+            &[key(KeyCode::Char('@')), key(KeyCode::Char('b'))],
+        );
+        assert_eq!(
+            lines(&app),
+            vec!["class Solution:", "    pass", "if ready:", "    pass"]
+        );
     }
 
     #[test]

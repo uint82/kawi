@@ -41,10 +41,11 @@ impl Editor {
             return false;
         }
         let base = self.line_indent(row);
-        let width = self
+        let current_width = self
             .buffer
             .screen_col(row, base.chars().count(), self.tabstop());
-        let inner = self.indent_text(width + self.effective_indent().shift_unit());
+        let width = self.smart_indent_width(row, col, current_width);
+        let inner = self.indent_text(width);
         self.split_pair_line(&base, &inner);
         self.record_insert(InsertEdit::PairNewline { base, inner });
         true
