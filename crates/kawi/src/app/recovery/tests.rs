@@ -120,6 +120,61 @@ fn discarding_a_conflict_removes_only_that_snapshot() {
 }
 
 #[test]
+fn skip_advances_to_the_next_snapshot_and_restores_input() {
+    let root = temp_dir("skip_multiple");
+    let cwd = root.clone();
+    let alpha = write_file(&root, "alpha.txt", "alpha\nbeta\n");
+    let bravo = write_file(&root, "bravo.txt", "bravo\n");
+    let store = WorkspaceStore::create(&root, &cwd).unwrap();
+    store
+        .save(file_snapshot("alpha-id", &alpha, "alpha dirty\n", None))
+        .unwrap();
+    store
+        .save(file_snapshot("bravo-id", &bravo, "bravo dirty\n", None))
+        .unwrap();
+    let mut app = App::new(
+        Buffer::from_file(alpha.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    assert_eq!(app.start_recovery(&root, &cwd, false), None);
+    assert!(app.pager_lines().is_some());
+    app.handle_key(key(KeyCode::Char('s'))).expect("skip first");
+    assert!(app.pager_lines().is_some());
+    app.handle_key(key(KeyCode::Char('s')))
+        .expect("skip second");
+    assert!(app.pager_lines().is_none());
+    assert_eq!(store.load_all().0.len(), 2);
+    app.handle_key(key(KeyCode::Char('j'))).expect("move");
+    assert_eq!(app.cursor_position(), (1, 0));
+    command(&mut app, "qa!");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn enter_skips_the_snapshot_and_restores_input() {
+    let root = temp_dir("enter_skip");
+    let cwd = root.clone();
+    let alpha = write_file(&root, "alpha.txt", "alpha\nbeta\n");
+    let store = WorkspaceStore::create(&root, &cwd).unwrap();
+    store
+        .save(file_snapshot("alpha-id", &alpha, "alpha dirty\n", None))
+        .unwrap();
+    let mut app = App::new(
+        Buffer::from_file(alpha.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    assert_eq!(app.start_recovery(&root, &cwd, false), None);
+    app.handle_key(key(KeyCode::Enter)).expect("skip");
+    assert!(app.pager_lines().is_none());
+    assert!(app.recovery_prompt.is_none());
+    assert_eq!(store.load_all().0.len(), 1);
+    app.handle_key(key(KeyCode::Char('j'))).expect("move");
+    assert_eq!(app.cursor_position(), (1, 0));
+    command(&mut app, "qa!");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn file_argument_startup_only_offers_matching_snapshots() {
     let root = temp_dir("restricted");
     let cwd = root.clone();
