@@ -9,8 +9,6 @@ use std::time::Duration;
 const MAX_OUTPUT_LINES: usize = 10_000;
 const PANEL_MIN_HEIGHT: usize = 4;
 const PANEL_MAX_HEIGHT: usize = 12;
-pub(super) const PROJECT_TASKS: &str = ".kawi/tasks.toml";
-
 #[derive(Debug)]
 pub(super) struct TaskOutputLine {
     pub(super) text: String,

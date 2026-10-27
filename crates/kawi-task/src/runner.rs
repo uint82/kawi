@@ -62,7 +62,7 @@ impl TaskRunner {
         wake: Sender<()>,
         options: TaskOptions,
     ) -> Result<Self> {
-        let cwd = task_directory(spec, root);
+        let cwd = spec.directory(root);
         let mut command = Command::new(&spec.command);
         command
             .args(&spec.args)
@@ -147,14 +147,6 @@ impl Drop for TaskRunner {
         if let Some(monitor) = self.monitor.take() {
             let _ = monitor.join();
         }
-    }
-}
-
-fn task_directory(spec: &TaskSpec, root: &Path) -> PathBuf {
-    match spec.cwd.as_deref() {
-        Some(cwd) if cwd.is_absolute() => cwd.to_path_buf(),
-        Some(cwd) => root.join(cwd),
-        None => root.to_path_buf(),
     }
 }
 
