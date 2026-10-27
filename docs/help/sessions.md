@@ -5,7 +5,7 @@ related = ["configuration", "troubleshooting"]
 ---
 # Sessions and recovery
 
-Kawi stores workspace sessions and restores them when it starts without a file argument. Folds are stored per file separately, so they restore even when Kawi starts with a file argument.
+Kawi stores workspace sessions and restores them when it starts without a file argument. When the project explorer is enabled, its tree, width, visibility, and selection are part of the restored workspace. Folds are stored per file separately, so they restore even when Kawi starts with a file argument.
 
 Recovery snapshots protect unsaved changes. If a session crashes or exits unexpectedly, Kawi offers recovery on the next start.
 

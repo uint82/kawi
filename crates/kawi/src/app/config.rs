@@ -54,7 +54,7 @@ impl App {
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
-        self.task_root().join(kawi_task::PROJECT_TASKS)
+        self.project_root().join(kawi_task::PROJECT_TASKS)
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {

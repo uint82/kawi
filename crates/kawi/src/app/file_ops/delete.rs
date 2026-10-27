@@ -9,7 +9,7 @@ use super::trash::TrashDir;
 use super::{absolute_path, buffer_numbers_under, fs as file_fs, App};
 
 impl App {
-    pub(super) fn open_delete_prompt(&mut self, path: PathBuf, permanent: bool) {
+    pub(crate) fn open_delete_prompt(&mut self, path: PathBuf, permanent: bool) {
         let target = absolute_path(&path.to_string_lossy());
         let metadata = match fs::symlink_metadata(&target) {
             Ok(metadata) => metadata,
@@ -101,6 +101,7 @@ impl App {
         let numbers = buffer_numbers_under(self, target);
         self.undo.remove_prefix(target);
         self.problems.remove_paths(target);
+        self.explorer.remove_path(target);
         for number in numbers {
             if keep_dirty && self.editor.buffer_is_dirty(number).unwrap_or(false) {
                 self.editor.detach_buffer_path(number);

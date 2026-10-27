@@ -19,6 +19,7 @@ mod diagnostic_index;
 mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
 mod disk;
+mod explorer;
 mod file_ops;
 mod formatting;
 mod frame;
@@ -43,6 +44,7 @@ mod overlay_scroll;
 mod picker;
 mod preview;
 mod problems;
+mod project;
 mod quickfix;
 mod recovery;
 mod rename;
@@ -161,6 +163,7 @@ pub struct App {
     task: TaskSession,
     terminal: terminal_ui::TerminalUi,
     terminal_focus: bool,
+    explorer: explorer::ExplorerState,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
     file_views: Option<FileViewStore>,
@@ -253,6 +256,7 @@ impl App {
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
+            explorer: explorer::ExplorerState::default(),
             disk: disk::DiskState::default(),
             file_watch: None,
             file_views: None,
@@ -284,6 +288,7 @@ impl App {
             status_spinner: 0,
             statusline: kawi_tui::statusbar::StatusBarConfig::default(),
         };
+        app.explorer.set_wake(app.events.wake());
         app.refresh_command_completion();
         app
     }
@@ -382,6 +387,7 @@ impl App {
             self.sync_ipc();
             self.sync_git_status();
             self.poll_git_status();
+            self.poll_explorer();
             self.sync_lsp();
             self.poll_symbol_events();
             self.symbols_tick();
@@ -436,6 +442,7 @@ impl App {
             redraw |= self.sync_ipc();
             redraw |= self.sync_git_status();
             redraw |= self.poll_git_status();
+            redraw |= self.poll_explorer();
             redraw |= self.sync_task();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
@@ -759,6 +766,12 @@ impl App {
         if self.pager.is_some() {
             return self.handle_noop();
         }
+        if self.explorer_contains_mouse(&mouse) {
+            return self.handle_explorer_mouse(mouse);
+        }
+        if self.explorer.is_focused() {
+            self.explorer.focus_editor();
+        }
         let column = usize::from(mouse.column);
         let screen_row = usize::from(mouse.row);
         let Some((id, rect)) = self.pane_at(column, screen_row) else {
@@ -959,6 +972,9 @@ impl App {
         if let Some(result) = self.handle_signature_key(key) {
             return Ok(result);
         }
+        if self.explorer.is_focused() && !self.is_leader_input(key) {
+            return self.handle_explorer_key(key);
+        }
         if self.pager.is_none() && completion::is_completion_key(key) {
             return self.request_completion();
         }
@@ -974,6 +990,14 @@ impl App {
             self.macros.record_key(key);
             return Ok(false);
         }
+        self.handle_mapped_key(key)
+    }
+
+    fn is_leader_input(&self, key: KeyEvent) -> bool {
+        self.keymap.leader_path().is_some() || self.keymap.is_leader_prefix(key, self.editor.mode())
+    }
+
+    fn handle_mapped_key(&mut self, key: KeyEvent) -> Result<bool> {
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
         }
@@ -1229,6 +1253,18 @@ impl App {
             Action::QuickfixPrev => self.handle_quickfix_command(QuickfixCommand::Previous),
             Action::QuickfixOpen => self.handle_quickfix_command(QuickfixCommand::Open),
             Action::ToggleTerminal => self.toggle_terminal(),
+            Action::ToggleExplorer => {
+                self.toggle_explorer();
+                Ok(false)
+            }
+            Action::FocusExplorer => {
+                self.focus_explorer();
+                Ok(false)
+            }
+            Action::RevealInExplorer => {
+                self.reveal_current_in_explorer();
+                Ok(false)
+            }
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);
@@ -1755,6 +1791,7 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
+            Command::Explorer(command) => self.handle_explorer_command(command),
             Command::Terminal { command, vertical } => {
                 let layout = if vertical {
                     terminal_ui::TerminalLayout::Vertical

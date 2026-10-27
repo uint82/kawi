@@ -106,7 +106,7 @@ impl super::App {
 
     fn open_quickfix_picker(&mut self) -> anyhow::Result<bool> {
         self.lsp.request_workspace_diagnostics();
-        let root = self.task_root();
+        let root = self.project_root();
         let mut session = PickerSession::quickfix(root.clone(), Vec::new());
         self.refresh_quickfix_picker(&mut session);
         self.pager = None;

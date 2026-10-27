@@ -48,6 +48,7 @@ fn sample() -> Session {
             }),
         },
         active_window: 2,
+        explorer: None,
     }
 }
 
@@ -232,4 +233,58 @@ fn session_view_converts_both_ways() {
     };
     let view = SessionView::from(state);
     assert_eq!(ViewState::from(view), state);
+}
+
+fn explorer_session() -> SessionExplorer {
+    SessionExplorer {
+        visible: true,
+        width: 30,
+        root: Some("/tmp/kawi".to_string()),
+        show_hidden: false,
+        expanded: vec!["src".to_string()],
+        selected: Some("src/main.rs".to_string()),
+    }
+}
+
+#[test]
+fn valid_explorer_state_is_accepted() {
+    let mut session = sample();
+    session.explorer = Some(explorer_session());
+    assert_eq!(validate(&session), Ok(()));
+}
+
+#[test]
+fn explorer_width_must_be_positive() {
+    let mut session = sample();
+    let mut explorer = explorer_session();
+    explorer.width = 0;
+    session.explorer = Some(explorer);
+    assert_eq!(
+        validate(&session),
+        Err("explorer width is zero".to_string())
+    );
+}
+
+#[test]
+fn explorer_paths_must_stay_relative() {
+    let mut session = sample();
+    let mut explorer = explorer_session();
+    explorer.expanded = vec!["../outside".to_string()];
+    session.explorer = Some(explorer);
+    assert_eq!(
+        validate(&session),
+        Err("invalid explorer path ../outside".to_string())
+    );
+}
+
+#[test]
+fn explorer_root_must_not_be_empty() {
+    let mut session = sample();
+    let mut explorer = explorer_session();
+    explorer.root = Some(String::new());
+    session.explorer = Some(explorer);
+    assert_eq!(
+        validate(&session),
+        Err("explorer root is empty".to_string())
+    );
 }

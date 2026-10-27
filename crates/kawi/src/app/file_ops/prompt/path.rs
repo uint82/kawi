@@ -8,6 +8,7 @@ use kawi_tui::frame::PromptMenu;
 pub(crate) enum PathAction {
     Rename { source: PathBuf, force: bool },
     NewFile { root: PathBuf },
+    NewDirectory { root: PathBuf },
 }
 
 pub(crate) enum PathOutcome {
@@ -38,13 +39,27 @@ impl PathPrompt {
     }
 
     pub(crate) fn new_file(root: PathBuf) -> Self {
+        Self::new_path(root, "new file", |root| PathAction::NewFile { root })
+    }
+
+    pub(crate) fn new_directory(root: PathBuf) -> Self {
+        Self::new_path(root, "new directory", |root| PathAction::NewDirectory {
+            root,
+        })
+    }
+
+    fn new_path(
+        root: PathBuf,
+        label: &'static str,
+        action: impl FnOnce(PathBuf) -> PathAction,
+    ) -> Self {
         let text = directory_text(&root);
         let mut input = TextInput::new();
         input.set_text(&text);
         Self {
-            label: "new file",
+            label,
             input,
-            action: PathAction::NewFile { root },
+            action: action(root),
         }
     }
 

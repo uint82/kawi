@@ -112,7 +112,7 @@ fn place_cursor(out: &mut Stdout, picker: &PickerMenu<'_>, rect: Rect) -> Result
     Ok(())
 }
 
-pub(super) fn write_padding(out: &mut Stdout, used: usize, width: usize) -> Result<()> {
+pub(super) fn write_padding<W: Write>(out: &mut W, used: usize, width: usize) -> Result<()> {
     let padding = width.saturating_sub(used);
     if padding == 0 {
         return Ok(());

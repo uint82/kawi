@@ -70,6 +70,27 @@ const CODE_COMMANDS: &[LeaderCommand] = &[
     },
 ];
 
+const EXPLORER_COMMANDS: &[LeaderCommand] = &[
+    LeaderCommand {
+        key: 'e',
+        aliases: &[],
+        label: "toggle explorer",
+        action: Action::ToggleExplorer,
+    },
+    LeaderCommand {
+        key: 'f',
+        aliases: &[],
+        label: "focus explorer",
+        action: Action::FocusExplorer,
+    },
+    LeaderCommand {
+        key: 'r',
+        aliases: &[],
+        label: "reveal current file",
+        action: Action::RevealInExplorer,
+    },
+];
+
 const DIAGNOSTIC_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'd',
@@ -205,6 +226,12 @@ pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[
         commands: DIAGNOSTIC_COMMANDS,
     },
     LeaderGroup {
+        key: 'e',
+        label: "explorer",
+        visual: false,
+        commands: EXPLORER_COMMANDS,
+    },
+    LeaderGroup {
         key: 'f',
         label: "find",
         visual: true,
@@ -265,7 +292,7 @@ mod tests {
     #[test]
     fn groups_cover_the_leader_prefixes() {
         let keys: Vec<char> = LEADER_GROUPS.iter().map(|group| group.key).collect();
-        assert_eq!(keys, ['c', 'd', 'f', 'r', 's', 't', 'v']);
+        assert_eq!(keys, ['c', 'd', 'e', 'f', 'r', 's', 't', 'v']);
     }
 
     #[test]
@@ -294,6 +321,14 @@ mod tests {
         assert_eq!(action(path, 'n'), Some(Action::DiagnosticNext));
         assert_eq!(action(path, 'p'), Some(Action::DiagnosticPrev));
         assert_eq!(action(path, 'l'), Some(Action::QuickfixOpen));
+    }
+
+    #[test]
+    fn explorer_commands_resolve() {
+        let path = LeaderPath::Group(group('e').expect("explorer group"));
+        assert_eq!(action(path, 'e'), Some(Action::ToggleExplorer));
+        assert_eq!(action(path, 'f'), Some(Action::FocusExplorer));
+        assert_eq!(action(path, 'r'), Some(Action::RevealInExplorer));
     }
 
     #[test]

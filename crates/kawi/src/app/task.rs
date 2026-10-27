@@ -3,7 +3,6 @@ use kawi_editor::TaskCommand;
 use kawi_task::{OutputStream, TaskEvent, TaskRunner, TaskSpec, TaskStatus, Tasks};
 use kawi_tui::frame::{Rect, TaskLine};
 use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const MAX_OUTPUT_LINES: usize = 10_000;
@@ -134,34 +133,23 @@ impl App {
         self.tasks = tasks;
     }
 
-    pub(super) fn task_root(&self) -> PathBuf {
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let cwd_root = kawi_picker::project_root(&cwd);
-        if !self.editor.has_file() {
-            return cwd_root;
-        }
-        let file_root = kawi_picker::project_root(Path::new(self.editor.filename()));
-        if file_root.join(".git").exists() {
-            file_root
-        } else {
-            cwd_root
-        }
-    }
-
     pub(super) fn task_panel_rect(&self) -> Option<Rect> {
         let height = self.task.panel_height(self.screen_height);
         if height == 0 {
             return None;
         }
         let terminal_height = self.terminal.panel_height(self.screen_height, height);
-        let terminal_width = self.terminal.panel_width(self.screen_width);
+        let terminal_width = self.terminal_panel_width();
+        let explorer_width = self.explorer_width();
         Some(Rect::new(
-            0,
+            explorer_width,
             self.screen_height
                 .saturating_sub(1)
                 .saturating_sub(terminal_height)
                 .saturating_sub(height),
-            self.screen_width.saturating_sub(terminal_width),
+            self.screen_width
+                .saturating_sub(explorer_width)
+                .saturating_sub(terminal_width),
             height,
         ))
     }
@@ -226,7 +214,7 @@ impl App {
             self.show_message(format!("E: Unknown task: {name}"));
             return Ok(false);
         };
-        let root = self.task_root();
+        let root = self.project_root();
         self.start_task_spec(spec, root, kawi_task::TaskOptions::default());
         Ok(false)
     }

@@ -213,6 +213,21 @@ impl App {
             "diagnostic_workspace_counts" => {
                 self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
+            "explorer_enabled" => {
+                self.explorer.set_enabled(value.as_bool().unwrap_or(false));
+                self.sync_terminal_panel_size();
+            }
+            "explorer_width" => {
+                self.explorer.set_width(
+                    value
+                        .as_int()
+                        .unwrap_or(crate::options::EXPLORER_WIDTH_DEFAULT),
+                );
+                self.sync_terminal_panel_size();
+            }
+            "explorer_show_hidden" => self
+                .explorer
+                .set_show_hidden(value.as_bool().unwrap_or(false)),
             "keyguide" => self.keyguide_enabled = value.as_bool().unwrap_or(true),
             "keyguide_delay" => {
                 self.keyguide_delay = std::time::Duration::from_millis(
@@ -385,6 +400,9 @@ impl App {
             "diagnostic_workspace_counts" => {
                 OptionValue::Bool(self.diagnostic_options.workspace_counts)
             }
+            "explorer_enabled" => OptionValue::Bool(self.explorer.is_enabled()),
+            "explorer_width" => OptionValue::Int(self.explorer.width()),
+            "explorer_show_hidden" => OptionValue::Bool(self.explorer.show_hidden()),
             "keyguide" => OptionValue::Bool(self.keyguide_enabled),
             "keyguide_delay" => OptionValue::Int(
                 usize::try_from(self.keyguide_delay.as_millis()).unwrap_or(usize::MAX),

@@ -552,7 +552,10 @@ impl Editor {
             | Action::QuickfixNext
             | Action::QuickfixPrev
             | Action::QuickfixOpen
-            | Action::ToggleTerminal => self.noop(),
+            | Action::ToggleTerminal
+            | Action::ToggleExplorer
+            | Action::FocusExplorer
+            | Action::RevealInExplorer => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

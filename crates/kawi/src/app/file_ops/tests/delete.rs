@@ -167,3 +167,22 @@ fn delete_does_not_report_its_own_watcher_events() {
     assert!(!message_text(&app).contains("Deleted on disk"));
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn delete_updates_an_open_explorer() {
+    let dir = temp_dir("delete_explorer");
+    let path = dir.join("a.txt");
+    let other = dir.join("b.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    fs::write(&other, "bravo\n").unwrap();
+    let mut app = app_for(&path);
+    app.explorer.set_enabled(true);
+    app.explorer.open(dir.clone());
+    app.explorer.select(path.clone());
+    command(&mut app, &format!("delete! {}", path.display()));
+    app.handle_key(key(KeyCode::Char('y'))).expect("confirm");
+    assert!(!path.exists());
+    assert!(app.explorer.rows().iter().all(|row| row.path != path));
+    assert!(app.explorer.rows().iter().any(|row| row.path == other));
+    let _ = fs::remove_dir_all(dir);
+}

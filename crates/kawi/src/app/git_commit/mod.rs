@@ -208,7 +208,7 @@ impl App {
     }
 
     pub(super) fn ensure_ipc(&mut self) {
-        let root = self.task_root();
+        let root = self.project_root();
         if self.ipc.is_some() && self.ipc_root.as_deref() == Some(root.as_path()) {
             return;
         }

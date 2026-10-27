@@ -21,6 +21,22 @@ pub struct Session {
     pub buffers: Vec<SessionBuffer>,
     pub windows: SessionWindow,
     pub active_window: u64,
+    #[serde(default)]
+    pub explorer: Option<SessionExplorer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionExplorer {
+    pub visible: bool,
+    pub width: usize,
+    #[serde(default)]
+    pub root: Option<String>,
+    #[serde(default)]
+    pub show_hidden: bool,
+    #[serde(default)]
+    pub expanded: Vec<String>,
+    #[serde(default)]
+    pub selected: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +141,7 @@ fn validate(session: &Session) -> Result<(), String> {
         return Err("session has no buffers".to_string());
     }
     validate_buffers(&session.buffers)?;
+    validate_explorer(session.explorer.as_ref())?;
     let mut ids = BTreeSet::new();
     validate_window(&session.windows, session.buffers.len(), 1, &mut ids)?;
     if !ids.contains(&session.active_window) {
@@ -147,6 +164,32 @@ fn validate_buffers(buffers: &[SessionBuffer]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn validate_explorer(explorer: Option<&SessionExplorer>) -> Result<(), String> {
+    let Some(explorer) = explorer else {
+        return Ok(());
+    };
+    if explorer.width == 0 {
+        return Err("explorer width is zero".to_string());
+    }
+    if explorer.root.as_deref() == Some("") {
+        return Err("explorer root is empty".to_string());
+    }
+    for path in explorer.expanded.iter().chain(explorer.selected.iter()) {
+        if !is_safe_relative(path) {
+            return Err(format!("invalid explorer path {path}"));
+        }
+    }
+    Ok(())
+}
+
+fn is_safe_relative(path: &str) -> bool {
+    !path.is_empty()
+        && !Path::new(path).is_absolute()
+        && Path::new(path)
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
 }
 
 fn validate_window(

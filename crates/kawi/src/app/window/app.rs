@@ -155,15 +155,20 @@ impl App {
     pub(crate) fn window_area(&self) -> Rect {
         let task_height = self.task.panel_height(self.screen_height);
         let terminal_height = self.terminal.panel_height(self.screen_height, task_height);
-        let terminal_width = self.terminal.panel_width(self.screen_width);
+        let terminal_width = self.terminal_panel_width();
+        let explorer_width = self.explorer_width();
         let height = self
             .screen_height
             .saturating_sub(1)
             .saturating_sub(task_height)
             .saturating_sub(terminal_height)
             .max(1);
-        let width = self.screen_width.saturating_sub(terminal_width).max(1);
-        Rect::new(0, 0, width, height)
+        let width = self
+            .screen_width
+            .saturating_sub(explorer_width)
+            .saturating_sub(terminal_width)
+            .max(1);
+        Rect::new(explorer_width, 0, width, height)
     }
 
     pub(crate) fn window_layout(&self) -> WindowLayout {
@@ -173,6 +178,7 @@ impl App {
     pub(crate) fn set_screen_size(&mut self, cols: u16, rows: u16) {
         self.screen_width = usize::from(cols).max(1);
         self.screen_height = usize::from(rows).max(2);
+        self.close_explorer_if_unfit();
         self.refresh_window_sizes();
     }
 

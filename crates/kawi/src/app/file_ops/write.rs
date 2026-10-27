@@ -66,6 +66,7 @@ impl App {
                 self.sync_language_settings();
                 self.sync_watched_files();
                 self.refresh_git_status();
+                self.explorer.refresh();
                 self.show_message(report);
             }
             Err(error) => self.show_message(super::super::file_error_message(error)),
@@ -113,6 +114,7 @@ impl App {
         match fs::create_directory(&target) {
             Ok(()) => {
                 self.refresh_git_status();
+                self.explorer.refresh();
                 self.show_message(format!("Created directory \"{}\"", target.display()));
             }
             Err(error) => {
@@ -133,6 +135,7 @@ impl App {
         self.sync_language_settings();
         self.sync_watched_files();
         self.refresh_git_status();
+        self.explorer.refresh();
         self.show_message(format!("Created \"{}\"", target.display()));
     }
 }

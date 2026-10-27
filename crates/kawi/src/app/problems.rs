@@ -304,6 +304,7 @@ pub(super) struct Problems {
     source_ranks: BTreeMap<String, usize>,
     next_source_rank: usize,
     index_cache: RefCell<IndexCache>,
+    revision: u64,
 }
 
 impl Problems {
@@ -554,6 +555,14 @@ impl Problems {
         self.index().workspace_counts()
     }
 
+    pub(super) fn path_counts(&self) -> BTreeMap<PathBuf, DiagnosticCounts> {
+        self.index().path_counts()
+    }
+
+    pub(super) fn revision(&self) -> u64 {
+        self.revision
+    }
+
     pub(super) fn navigate_lsp(
         &self,
         path: &Path,
@@ -575,6 +584,7 @@ impl Problems {
 
     fn invalidate_index(&mut self) {
         self.index_cache.get_mut().dirty = true;
+        self.revision = self.revision.saturating_add(1);
     }
 
     fn index(&self) -> std::cell::RefMut<'_, DiagnosticIndex> {

@@ -27,11 +27,16 @@ pub(super) struct GitStatusState {
     pending_open: bool,
     view: Option<view::GitStatusView>,
     last_error: Option<String>,
+    revision: u64,
 }
 
 impl GitStatusState {
     pub(super) fn status(&self) -> Option<&Status> {
         self.status.as_ref()
+    }
+
+    pub(super) fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub(super) fn has_view(&self) -> bool {
@@ -156,6 +161,7 @@ impl GitStatusState {
         self.last_error = None;
         self.update_view(&status);
         self.status = Some(status);
+        self.revision = self.revision.saturating_add(1);
     }
 
     fn update_view(&mut self, status: &Status) {
@@ -239,6 +245,9 @@ impl GitStatusState {
         self.watched_git_dir = None;
         self.pending_open = false;
         self.last_error = None;
+        if status_changed || view_changed {
+            self.revision = self.revision.saturating_add(1);
+        }
         status_changed || view_changed
     }
 }

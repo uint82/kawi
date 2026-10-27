@@ -15,7 +15,7 @@ const MIN_HEIGHT: usize = 6;
 const MAX_HEIGHT: usize = 18;
 const MIN_WIDTH: usize = 24;
 const MAX_WIDTH: usize = 100;
-const MIN_EDITOR_WIDTH: usize = 20;
+pub(super) const MIN_EDITOR_WIDTH: usize = 20;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TerminalLayout {

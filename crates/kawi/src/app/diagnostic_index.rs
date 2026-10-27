@@ -23,6 +23,27 @@ impl DiagnosticCounts {
             ProblemSeverity::Hint => self.hints = self.hints.saturating_add(1),
         }
     }
+
+    pub(super) fn merge(&mut self, other: Self) {
+        self.errors = self.errors.saturating_add(other.errors);
+        self.warnings = self.warnings.saturating_add(other.warnings);
+        self.information = self.information.saturating_add(other.information);
+        self.hints = self.hints.saturating_add(other.hints);
+    }
+
+    pub(super) fn highest(self) -> Option<ProblemSeverity> {
+        if self.errors > 0 {
+            Some(ProblemSeverity::Error)
+        } else if self.warnings > 0 {
+            Some(ProblemSeverity::Warning)
+        } else if self.information > 0 {
+            Some(ProblemSeverity::Information)
+        } else if self.hints > 0 {
+            Some(ProblemSeverity::Hint)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -104,6 +125,10 @@ impl DiagnosticIndex {
 
     pub(super) fn workspace_counts(&self) -> DiagnosticCounts {
         self.workspace_counts
+    }
+
+    pub(super) fn path_counts(&self) -> BTreeMap<PathBuf, DiagnosticCounts> {
+        self.buffer_counts.clone()
     }
 
     pub(super) fn navigate_lsp(
