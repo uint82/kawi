@@ -18,7 +18,7 @@ impl App {
                 lines: layout.lines,
                 scroll: popup.scroll().min(layout.max_scroll),
             }),
-            leader: None,
+            key_menu: None,
         })
     }
 

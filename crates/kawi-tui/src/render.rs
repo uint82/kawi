@@ -23,7 +23,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 use crate::display;
 
 mod bracket;
-mod leader;
+mod keymenu;
 mod menu;
 mod picker;
 mod selection;
@@ -1179,8 +1179,8 @@ fn draw_overlay(out: &mut Stdout, frame: &Frame) -> Result<()> {
     if let Some(panel) = overlay.panel.as_ref() {
         draw_overlay_panel(out, frame, panel)?;
     }
-    if let Some(menu) = overlay.leader.as_ref() {
-        leader::draw(out, frame, menu)?;
+    if let Some(menu) = overlay.key_menu.as_ref() {
+        keymenu::draw(out, frame, menu)?;
     }
     Ok(())
 }

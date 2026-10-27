@@ -247,7 +247,9 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 36] = [
+pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
+
+pub(crate) const OPTIONS: [OptionSpec; 38] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -627,6 +629,26 @@ pub(crate) const OPTIONS: [OptionSpec; 36] = [
         section: ConfigSection::Ui,
         config_key: "diagnostic_workspace_counts",
         default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "keyguide",
+        aliases: &["kg"],
+        description: "Show key sequence guidance.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "keyguide",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "keyguide_delay",
+        aliases: &["kgd"],
+        description: "Delay before showing key sequence guidance in milliseconds.",
+        kind: OptionKind::Int { min: 0, max: 5_000 },
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "keyguide_delay",
+        default: OptionDefault::Int(KEYGUIDE_DELAY_DEFAULT),
     },
 ];
 

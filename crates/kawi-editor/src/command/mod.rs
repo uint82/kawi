@@ -265,6 +265,8 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "history",
     "hover_max_width",
     "ignorecase",
+    "keyguide",
+    "keyguide_delay",
     "keymap",
     "match_brackets",
     "number",

@@ -213,6 +213,15 @@ impl App {
             "diagnostic_workspace_counts" => {
                 self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
+            "keyguide" => self.keyguide_enabled = value.as_bool().unwrap_or(true),
+            "keyguide_delay" => {
+                self.keyguide_delay = std::time::Duration::from_millis(
+                    value
+                        .as_int()
+                        .unwrap_or(crate::options::KEYGUIDE_DELAY_DEFAULT)
+                        as u64,
+                );
+            }
             _ => {}
         }
         if spec.scope == options::OptionScope::Window {
@@ -376,6 +385,10 @@ impl App {
             "diagnostic_workspace_counts" => {
                 OptionValue::Bool(self.diagnostic_options.workspace_counts)
             }
+            "keyguide" => OptionValue::Bool(self.keyguide_enabled),
+            "keyguide_delay" => OptionValue::Int(
+                usize::try_from(self.keyguide_delay.as_millis()).unwrap_or(usize::MAX),
+            ),
             _ => spec.default_value(),
         }
     }
@@ -507,6 +520,25 @@ mod tests {
         assert!(!app.git_signs);
         execute(&mut app, "set signcolumn=never");
         assert_eq!(app.editor.signcolumn_width(), 0);
+    }
+
+    #[test]
+    fn keyguide_options_apply_and_query() {
+        let mut app = app();
+        assert!(app.keyguide_enabled);
+        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(250));
+        execute(&mut app, "set keyguide_delay=0");
+        assert_eq!(app.keyguide_delay, std::time::Duration::ZERO);
+        execute(&mut app, "set kgd?");
+        assert_eq!(app.last_message(), Some("keyguide_delay=0"));
+        execute(&mut app, "set nokeyguide");
+        assert!(!app.keyguide_enabled);
+        execute(&mut app, "set keyguide?");
+        assert_eq!(app.last_message(), Some("nokeyguide"));
+        execute(&mut app, "set keyguide&");
+        execute(&mut app, "set keyguide_delay&");
+        assert!(app.keyguide_enabled);
+        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(250));
     }
 
     #[test]

@@ -1,22 +1,23 @@
 use super::Rect;
 use crate::text::char_width;
 
-pub struct LeaderMenu<'a> {
+pub struct KeyMenu<'a> {
     pub rect: Rect,
     pub title: &'a str,
-    pub group: Option<char>,
-    pub rows: &'a [LeaderRow<'a>],
-    pub columns: &'a [LeaderColumn],
+    pub breadcrumb: &'a str,
+    pub hint: Option<&'a str>,
+    pub rows: &'a [KeyRow<'a>],
+    pub columns: &'a [KeyColumn],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LeaderRow<'a> {
+pub struct KeyRow<'a> {
     pub key: char,
     pub aliases: &'a [char],
     pub description: &'a str,
 }
 
-impl LeaderRow<'_> {
+impl KeyRow<'_> {
     pub fn key_label(&self) -> String {
         let mut label = self.key.to_string();
         for alias in self.aliases {
@@ -36,7 +37,7 @@ impl LeaderRow<'_> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LeaderColumn {
+pub struct KeyColumn {
     pub start: usize,
     pub len: usize,
     pub offset: usize,

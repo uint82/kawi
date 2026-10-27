@@ -39,6 +39,16 @@ The leader key is Space or Backslash.
 - `zd` delete the manual fold at the cursor
 - `zf` create a manual fold from a visual selection
 
+## Key guidance
+
+Pending key sequences show an overlay with available followups. The overlay waits 250 milliseconds by default so fast sequences do not flash.
+
+- `:set keyguide` enables the overlay.
+- `:set nokeyguide` disables the overlay without disabling mappings.
+- `:set keyguide_delay=0` shows the overlay immediately.
+
+See [Configuration](help:configuration) for details.
+
 ## Pickers
 
 - `<leader> f p` project files
