@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 
 use super::super::super::lsp_menu::{menu_key, MenuKey};
 use super::{CompletionOutcome, CompletionSession};
@@ -33,7 +33,6 @@ impl CompletionSession {
                 CompletionOutcome::Consumed
             }
             MenuKey::Accept => CompletionOutcome::Accept,
-            MenuKey::Other if key.code == KeyCode::Tab => CompletionOutcome::Accept,
             MenuKey::Other => CompletionOutcome::Fallthrough,
         }
     }

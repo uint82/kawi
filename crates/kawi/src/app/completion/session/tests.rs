@@ -286,3 +286,4 @@ fn docs_scroll_only_applies_with_documentation() {
 }
 
 mod documentation;
+mod navigation;

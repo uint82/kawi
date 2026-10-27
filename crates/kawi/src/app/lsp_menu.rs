@@ -47,6 +47,9 @@ pub(super) fn menu_key(key: KeyEvent) -> MenuKey {
         KeyCode::PageDown => MenuKey::Move(10),
         KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => MenuKey::Move(-1),
         KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => MenuKey::Move(1),
+        KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => MenuKey::Move(-1),
+        KeyCode::BackTab => MenuKey::Move(-1),
+        KeyCode::Tab => MenuKey::Move(1),
         KeyCode::Enter => MenuKey::Accept,
         _ => MenuKey::Other,
     }
@@ -80,5 +83,21 @@ mod tests {
                 _ => panic!("expected move"),
             }
         }
+    }
+
+    #[test]
+    fn tab_and_shift_tab_move_the_selection() {
+        assert!(matches!(
+            menu_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)),
+            MenuKey::Move(1)
+        ));
+        assert!(matches!(
+            menu_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE)),
+            MenuKey::Move(-1)
+        ));
+        assert!(matches!(
+            menu_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT)),
+            MenuKey::Move(-1)
+        ));
     }
 }
