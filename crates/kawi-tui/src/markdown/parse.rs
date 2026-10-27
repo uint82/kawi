@@ -95,7 +95,11 @@ fn list_line<'a>(trimmed: &'a str, line: &'a str) -> String {
 
 fn styled_line(text: String, style: MarkdownStyle) -> MarkdownLine {
     MarkdownLine {
-        spans: vec![MarkdownSpan { text, style }],
+        spans: vec![MarkdownSpan {
+            text,
+            style,
+            link: None,
+        }],
         code: false,
     }
 }
@@ -104,6 +108,7 @@ fn normal_span(text: String) -> MarkdownSpan {
     MarkdownSpan {
         text,
         style: MarkdownStyle::Normal,
+        link: None,
     }
 }
 
@@ -111,6 +116,7 @@ fn code_line(line: &str) -> MarkdownLine {
     MarkdownLine::code(vec![MarkdownSpan {
         text: sanitize(line),
         style: MarkdownStyle::Code,
+        link: None,
     }])
 }
 
@@ -185,28 +191,47 @@ fn inline_spans(text: &str) -> Vec<MarkdownSpan> {
     while index < chars.len() {
         match chars[index] {
             '`' => {
-                push_span(&mut spans, &mut current, style);
-                style = toggle(style, MarkdownStyle::Code);
+                if let Some(end) = chars[index + 1..].iter().position(|ch| *ch == '`') {
+                    let end = index + 1 + end;
+                    push_span(&mut spans, &mut current, style);
+                    let text: String = chars[index + 1..end].iter().collect();
+                    spans.push(MarkdownSpan {
+                        text: sanitize(&text),
+                        style: MarkdownStyle::Code,
+                        link: None,
+                    });
+                    index = end + 1;
+                    continue;
+                }
+                current.push('`');
                 index += 1;
             }
-            '*' | '_' if chars.get(index + 1) == Some(&chars[index]) => {
+            '*' | '_' if emphasis_delimiter(&chars, index) => {
+                let strong = chars.get(index + 1) == Some(&chars[index]);
                 push_span(&mut spans, &mut current, style);
-                style = toggle(style, MarkdownStyle::Strong);
-                index += 2;
-            }
-            '*' | '_' => {
-                push_span(&mut spans, &mut current, style);
-                style = toggle(style, MarkdownStyle::Emphasis);
-                index += 1;
+                style = toggle(
+                    style,
+                    if strong {
+                        MarkdownStyle::Strong
+                    } else {
+                        MarkdownStyle::Emphasis
+                    },
+                );
+                index += if strong { 2 } else { 1 };
             }
             '[' => {
                 if let Some(close) = chars[index + 1..].iter().position(|ch| *ch == ']') {
                     let close = index + 1 + close;
                     if chars.get(close + 1) == Some(&'(') {
                         if let Some(end) = chars[close + 2..].iter().position(|ch| *ch == ')') {
-                            for character in &chars[index + 1..close] {
-                                current.push(*character);
-                            }
+                            push_span(&mut spans, &mut current, style);
+                            let text: String = chars[index + 1..close].iter().collect();
+                            let target: String = chars[close + 2..close + 2 + end].iter().collect();
+                            spans.push(MarkdownSpan {
+                                text: sanitize(&text),
+                                style,
+                                link: Some(sanitize(&target)),
+                            });
                             index = close + 2 + end + 1;
                             continue;
                         }
@@ -225,6 +250,16 @@ fn inline_spans(text: &str) -> Vec<MarkdownSpan> {
     spans
 }
 
+fn emphasis_delimiter(chars: &[char], index: usize) -> bool {
+    if chars[index] != '_' {
+        return true;
+    }
+    let previous = index.checked_sub(1).and_then(|value| chars.get(value));
+    let next = chars.get(index + 1);
+    !previous.is_some_and(|value| value.is_alphanumeric())
+        || !next.is_some_and(|value| value.is_alphanumeric())
+}
+
 fn toggle(style: MarkdownStyle, next: MarkdownStyle) -> MarkdownStyle {
     if style == next {
         MarkdownStyle::Normal
@@ -238,6 +273,7 @@ fn push_span(spans: &mut Vec<MarkdownSpan>, current: &mut String, style: Markdow
         spans.push(MarkdownSpan {
             text: std::mem::take(current),
             style,
+            link: None,
         });
     }
 }

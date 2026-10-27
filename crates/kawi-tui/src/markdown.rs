@@ -17,6 +17,7 @@ pub fn render_spans(spans: &[MarkdownSpan], width: usize) -> Vec<MarkdownLine> {
         .map(|span| MarkdownSpan {
             text: sanitize(&span.text),
             style: span.style,
+            link: span.link.clone(),
         })
         .collect();
     let mut lines = Vec::new();
@@ -40,6 +41,7 @@ pub fn render_document(document: &MarkdownDocument, width: usize) -> Vec<Markdow
                 &[MarkdownSpan {
                     text: "-".repeat(width.min(20)),
                     style: MarkdownStyle::Quote,
+                    link: None,
                 }],
                 width,
                 false,
@@ -67,9 +69,9 @@ fn push_wrapped(lines: &mut Vec<MarkdownLine>, spans: &[MarkdownSpan], width: us
     for span in spans {
         for character in span.text.chars() {
             if character == '\t' {
-                writer.push_tab(span.style);
+                writer.push_tab(span.style, span.link.as_deref());
             } else {
-                writer.push_char(character, span.style);
+                writer.push_char(character, span.style, span.link.as_deref());
             }
         }
     }
@@ -98,6 +100,7 @@ impl<'a> WrappedLine<'a> {
             current: MarkdownSpan {
                 text: String::new(),
                 style,
+                link: None,
             },
             used: 0,
             width,
@@ -105,24 +108,31 @@ impl<'a> WrappedLine<'a> {
         }
     }
 
-    fn push_tab(&mut self, style: MarkdownStyle) {
+    fn push_tab(&mut self, style: MarkdownStyle, link: Option<&str>) {
         let spaces = TAB_WIDTH.saturating_sub(self.used % TAB_WIDTH);
         for _ in 0..spaces {
-            self.push_cell(' ', style, 1);
+            self.push_cell(' ', style, link, 1);
         }
     }
 
-    fn push_char(&mut self, character: char, style: MarkdownStyle) {
-        self.push_cell(character, style, char_width(character));
+    fn push_char(&mut self, character: char, style: MarkdownStyle, link: Option<&str>) {
+        self.push_cell(character, style, link, char_width(character));
     }
 
-    fn push_cell(&mut self, character: char, style: MarkdownStyle, cells: usize) {
+    fn push_cell(
+        &mut self,
+        character: char,
+        style: MarkdownStyle,
+        link: Option<&str>,
+        cells: usize,
+    ) {
         if self.needs_wrap(cells) {
-            self.wrap(style);
+            self.wrap(style, link);
         }
-        if self.current.style != style {
+        if self.current.style != style || self.current.link.as_deref() != link {
             self.flush_current();
             self.current.style = style;
+            self.current.link = link.map(str::to_string);
         }
         self.current.text.push(character);
         self.used = self.used.saturating_add(cells);
@@ -132,13 +142,14 @@ impl<'a> WrappedLine<'a> {
         self.used >= self.width || (self.used > 0 && self.used.saturating_add(cells) > self.width)
     }
 
-    fn wrap(&mut self, style: MarkdownStyle) {
+    fn wrap(&mut self, style: MarkdownStyle, link: Option<&str>) {
         self.flush_current();
         self.lines.push(MarkdownLine {
             spans: std::mem::take(&mut self.spans),
             code: self.code,
         });
         self.current.style = style;
+        self.current.link = link.map(str::to_string);
         self.used = 0;
     }
 
@@ -155,6 +166,7 @@ impl<'a> WrappedLine<'a> {
             self.spans.push(MarkdownSpan {
                 text: std::mem::take(&mut self.current.text),
                 style: self.current.style,
+                link: self.current.link.take(),
             });
         }
     }

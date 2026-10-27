@@ -23,6 +23,45 @@ fn strips_inline_markers_and_keeps_styles() {
 }
 
 #[test]
+fn links_keep_their_targets() {
+    let lines = render(&markdown("[Options](help:options)"), 80);
+    assert_eq!(lines[0].text(), "Options");
+    assert_eq!(lines[0].spans[0].link.as_deref(), Some("help:options"));
+}
+
+#[test]
+fn code_spans_keep_underscores_and_emphasis_skips_words() {
+    let lines = render(
+        &markdown("`diagnostic_virtual_text` diagnostic_virtual_text"),
+        80,
+    );
+    assert_eq!(
+        lines[0].text(),
+        "diagnostic_virtual_text diagnostic_virtual_text"
+    );
+}
+
+#[test]
+fn wrapped_spans_keep_link_targets() {
+    let lines = render_spans(
+        &[MarkdownSpan {
+            text: "options".to_string(),
+            style: MarkdownStyle::Normal,
+            link: Some("help:options".to_string()),
+        }],
+        3,
+    );
+    assert_eq!(
+        lines.iter().map(MarkdownLine::text).collect::<Vec<_>>(),
+        ["opt", "ion", "s"]
+    );
+    assert!(lines.iter().all(|line| line
+        .spans
+        .iter()
+        .all(|span| span.link.as_deref() == Some("help:options"))));
+}
+
+#[test]
 fn renders_fenced_code_without_markers() {
     let lines = render(&markdown("```rust\nfn main()\n```"), 80);
     assert_eq!(lines[0].text(), "fn main()");
@@ -56,6 +95,7 @@ fn styled_spans_are_not_parsed_as_markdown() {
         &[MarkdownSpan {
             text: "fn value(x: *const u8)".to_string(),
             style: MarkdownStyle::Normal,
+            link: None,
         }],
         80,
     );
@@ -70,10 +110,12 @@ fn styled_spans_wrap_and_keep_styles() {
             MarkdownSpan {
                 text: "ab".to_string(),
                 style: MarkdownStyle::Normal,
+                link: None,
             },
             MarkdownSpan {
                 text: "cd".to_string(),
                 style: MarkdownStyle::Strong,
+                link: None,
             },
         ],
         2,
@@ -187,6 +229,7 @@ fn expands_tabs_at_the_standard_tab_stop() {
         &[MarkdownSpan {
             text: "a\tb".to_string(),
             style: MarkdownStyle::Normal,
+            link: None,
         }],
         80,
     );
@@ -198,6 +241,7 @@ fn wraps_wide_characters_by_display_width() {
     let spans = [MarkdownSpan {
         text: "中文".to_string(),
         style: MarkdownStyle::Normal,
+        link: None,
     }];
     assert_eq!(
         render_spans(&spans, 4)

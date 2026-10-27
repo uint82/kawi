@@ -142,6 +142,7 @@ fn push_span(spans: &mut Vec<MarkdownSpan>, text: &mut String, style: Option<Mar
         spans.push(MarkdownSpan {
             text: std::mem::take(text),
             style,
+            link: None,
         });
     }
 }
@@ -161,6 +162,7 @@ mod tests {
             spans: vec![MarkdownSpan {
                 text: text.to_string(),
                 style: MarkdownStyle::Code,
+                link: None,
             }],
             code: true,
         }

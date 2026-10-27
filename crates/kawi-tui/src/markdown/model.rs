@@ -15,6 +15,7 @@ pub enum MarkdownStyle {
 pub struct MarkdownSpan {
     pub text: String,
     pub style: MarkdownStyle,
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
