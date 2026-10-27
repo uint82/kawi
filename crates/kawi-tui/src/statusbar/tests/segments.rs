@@ -34,15 +34,11 @@ fn default_layout_contains_the_documented_elements() {
     assert_eq!(
         texts,
         vec![
-            "NORMAL",
+            "-- NORMAL --",
             "src/main.rs",
             "[+]",
-            "E1 W2",
             "main +1 -2",
-            "lsp: rust-analyzer",
             "rust",
-            "4 spaces",
-            "42%",
             "1:1",
         ]
     );
@@ -55,8 +51,18 @@ fn visual_and_recording_states_add_transient_elements() {
     status.mode_kind = ModeKind::Visual;
     status.selection = Some("3 lines");
     status.macro_recording = Some('q');
-    let texts = line_texts(&status, 120, &StatusBarConfig::default());
-    assert!(texts.contains(&"VISUAL".to_string()));
+    let config = StatusBarConfig {
+        right: vec![
+            SegmentId::Selection,
+            SegmentId::Macro,
+            SegmentId::FileType,
+            SegmentId::Encoding,
+            SegmentId::Position,
+        ],
+        ..StatusBarConfig::default()
+    };
+    let texts = line_texts(&status, 120, &config);
+    assert!(texts.contains(&"-- VISUAL --".to_string()));
     assert!(texts.contains(&"3 lines".to_string()));
     assert!(texts.contains(&"recording @q".to_string()));
 }
@@ -118,7 +124,7 @@ fn disabling_colors_keeps_labels_without_badges() {
         .iter()
         .find(|segment| segment.id == SegmentId::Mode)
         .expect("mode");
-    assert_eq!(mode.text, "NORMAL");
+    assert_eq!(mode.text, "-- NORMAL --");
     assert_eq!(mode.padding, 0);
 }
 
@@ -130,7 +136,7 @@ fn element_lists_control_order_and_visibility() {
         ..StatusBarConfig::default()
     };
     let texts = line_texts(&info("a.txt"), 80, &config);
-    assert_eq!(texts, vec!["a.txt", "NORMAL", "1:1"]);
+    assert_eq!(texts, vec!["a.txt", "-- NORMAL --", "1:1"]);
 }
 
 #[test]
@@ -152,5 +158,5 @@ fn insert_mode_shows_the_insert_badge() {
     status.mode = "INSERT";
     status.mode_kind = ModeKind::Insert;
     let texts = line_texts(&status, 80, &StatusBarConfig::default());
-    assert_eq!(texts.first().map(String::as_str), Some("INSERT"));
+    assert_eq!(texts.first().map(String::as_str), Some("-- INSERT --"));
 }

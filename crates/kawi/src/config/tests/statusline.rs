@@ -64,6 +64,6 @@ wat = "W"
             loaded.config.statusline().left,
             vec![kawi_tui::statusbar::SegmentId::Mode]
         );
-        assert!(loaded.config.statusline().color_modes);
+        assert!(!loaded.config.statusline().color_modes);
         assert_eq!(loaded.warnings.len(), 4);
     }

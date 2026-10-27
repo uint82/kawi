@@ -71,19 +71,19 @@ The status line is built from element lists for the left, center, and right sect
 
 ```toml
 [ui.statusline]
-left = ["mode", "file", "modified", "readonly", "diagnostics", "git", "lsp"]
+left = ["mode", "file", "modified", "readonly", "git"]
 center = []
-right = ["selection", "macro", "filetype", "indent", "encoding", "eol", "percent", "position"]
+right = ["filetype", "encoding", "position"]
 separator = " "
-color_modes = true
+color_modes = false
 
 [ui.statusline.mode]
-normal = "NORMAL"
-insert = "INSERT"
-replace = "REPLACE"
-visual = "VISUAL"
-command = "COMMAND"
-search = "SEARCH"
+normal = "-- NORMAL --"
+insert = "-- INSERT --"
+replace = "-- REPLACE --"
+visual = "-- VISUAL --"
+command = "-- COMMAND --"
+search = "-- SEARCH --"
 ```
 
 Available elements:
@@ -99,4 +99,4 @@ The `file` element is flexible and truncates from the left when space is short, 
 
 `diagnostics` follows `diagnostic_counts`. `workspace_diagnostics` is opt-in and follows `diagnostic_workspace_counts`. `position` shows the line and character column, adding the display column when it differs. `encoding` and `eol` render only when the buffer uses a non-default value. `percent` is the cursor position through the file.
 
-Set `color_modes = false` to render every status line segment without a background badge. The separator is sanitized before rendering, so control characters and escape sequences never reach the terminal.
+`color_modes` defaults to `false`. Set it to `true` to render colored segments with a background badge. The separator is sanitized before rendering, so control characters and escape sequences never reach the terminal.

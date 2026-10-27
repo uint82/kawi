@@ -11,19 +11,12 @@ const DEFAULT_LEFT: &[SegmentId] = &[
     SegmentId::File,
     SegmentId::Modified,
     SegmentId::ReadOnly,
-    SegmentId::Diagnostics,
     SegmentId::Git,
-    SegmentId::Lsp,
 ];
 
 const DEFAULT_RIGHT: &[SegmentId] = &[
-    SegmentId::Selection,
-    SegmentId::Macro,
     SegmentId::FileType,
-    SegmentId::Indent,
     SegmentId::Encoding,
-    SegmentId::Eol,
-    SegmentId::Percent,
     SegmentId::Position,
 ];
 
@@ -218,8 +211,19 @@ impl Default for StatusBarConfig {
             center: Vec::new(),
             right: DEFAULT_RIGHT.to_vec(),
             separator: " ".to_string(),
-            color_modes: true,
-            mode_labels: BTreeMap::new(),
+            color_modes: false,
+            mode_labels: default_mode_labels(),
         }
     }
+}
+
+fn default_mode_labels() -> BTreeMap<ModeKind, String> {
+    BTreeMap::from([
+        (ModeKind::Normal, "-- NORMAL --".to_string()),
+        (ModeKind::Insert, "-- INSERT --".to_string()),
+        (ModeKind::Replace, "-- REPLACE --".to_string()),
+        (ModeKind::Visual, "-- VISUAL --".to_string()),
+        (ModeKind::Command, "-- COMMAND --".to_string()),
+        (ModeKind::Search, "-- SEARCH --".to_string()),
+    ])
 }

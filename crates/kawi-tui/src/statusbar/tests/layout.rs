@@ -257,7 +257,10 @@ fn layout_is_independent_of_theme() {
 
 #[test]
 fn badges_get_horizontal_padding_when_space_allows() {
-    let config = StatusBarConfig::default();
+    let config = StatusBarConfig {
+        color_modes: true,
+        ..StatusBarConfig::default()
+    };
     let mut status = info("a.txt");
     status.git = Some(super::super::GitStatusInfo {
         branch: "main",
@@ -286,7 +289,10 @@ fn badges_get_horizontal_padding_when_space_allows() {
 
 #[test]
 fn padding_is_removed_before_badge_text_is_shortened() {
-    let config = StatusBarConfig::default();
+    let config = StatusBarConfig {
+        color_modes: true,
+        ..StatusBarConfig::default()
+    };
     let segments = build_segments(&info("a.txt"), true, &config);
     let line = layout(&segments, 10, &config.separator);
     let mode = line
@@ -295,5 +301,5 @@ fn padding_is_removed_before_badge_text_is_shortened() {
         .find(|span| span.id == Some(SegmentId::Mode))
         .expect("mode");
     assert_eq!(mode.padding, 0);
-    assert_eq!(mode.text, "N");
+    assert_eq!(mode.text, "-");
 }
