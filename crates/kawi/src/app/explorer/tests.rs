@@ -155,3 +155,16 @@ fn opening_the_explorer_reveals_the_current_file() {
     assert_eq!(row_names(&app), ["src", "main.rs"]);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn explorer_closes_when_the_screen_is_too_narrow() {
+    let dir = temp_dir("explorer_narrow");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.set_screen_size(80, 24);
+    app.explorer.open(dir.clone());
+    assert!(app.explorer.is_visible());
+    app.set_screen_size(39, 24);
+    assert!(!app.explorer.is_visible());
+    fs::remove_dir_all(dir).unwrap();
+}

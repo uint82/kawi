@@ -178,6 +178,7 @@ impl App {
     pub(crate) fn set_screen_size(&mut self, cols: u16, rows: u16) {
         self.screen_width = usize::from(cols).max(1);
         self.screen_height = usize::from(rows).max(2);
+        self.close_explorer_if_unfit();
         self.refresh_window_sizes();
     }
 

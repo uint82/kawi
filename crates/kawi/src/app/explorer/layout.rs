@@ -19,6 +19,12 @@ impl App {
             .min(available)
     }
 
+    pub(crate) fn close_explorer_if_unfit(&mut self) {
+        if self.explorer.is_visible() && self.explorer_width() == 0 {
+            self.explorer.close();
+        }
+    }
+
     pub(crate) fn explorer_rect(&self) -> Option<Rect> {
         let width = self.explorer_width();
         if width == 0 {

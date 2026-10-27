@@ -9,6 +9,8 @@ The project explorer shows the repository tree next to the editor. It marks Git 
 
 Opening the explorer roots the tree at the current file's project and reveals the file, expanding its parent directories. Without an open file, the tree uses the working directory.
 
+The explorer closes automatically when the terminal cannot leave its minimum width for the editor.
+
 ## Commands
 
 - `<leader> e e` toggle the explorer

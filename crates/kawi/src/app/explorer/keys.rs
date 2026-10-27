@@ -46,6 +46,12 @@ impl App {
         self.cancel_pending_editor_input();
         self.explorer.open(root);
         self.sync_terminal_panel_size();
+        if self.explorer_width() == 0 {
+            self.explorer.close();
+            self.sync_terminal_panel_size();
+            self.show_message("Explorer needs more space".to_string());
+            return;
+        }
         self.reveal_editor_file();
     }
 
