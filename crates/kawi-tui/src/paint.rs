@@ -5,11 +5,11 @@ use crossterm::{
         Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor, SetUnderlineColor,
     },
 };
-use std::io::{Stdout, Write};
+use std::io::Write;
 
 use crate::theme::{MatchColors, Theme};
 
-pub fn apply_base(out: &mut Stdout, theme: &Theme) -> Result<()> {
+pub fn apply_base<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
     apply_colors(
         out,
         theme.base.foreground,
@@ -22,7 +22,7 @@ pub fn apply_match<W: Write>(out: &mut W, colors: &MatchColors) -> Result<()> {
     apply_colors(out, colors.foreground, colors.background, "tint span")
 }
 
-pub fn apply_underline(out: &mut Stdout, color: Color) -> Result<()> {
+pub fn apply_underline<W: Write>(out: &mut W, color: Color) -> Result<()> {
     execute!(
         out,
         SetAttribute(Attribute::Underlined),
@@ -32,13 +32,13 @@ pub fn apply_underline(out: &mut Stdout, color: Color) -> Result<()> {
     Ok(())
 }
 
-pub fn apply_faded_text(out: &mut Stdout, color: Color) -> Result<()> {
+pub fn apply_faded_text<W: Write>(out: &mut W, color: Color) -> Result<()> {
     execute!(out, SetForegroundColor(color), SetAttribute(Attribute::Dim))
         .context("apply faded diagnostic text")?;
     Ok(())
 }
 
-pub fn apply_struck_text(out: &mut Stdout, color: Color) -> Result<()> {
+pub fn apply_struck_text<W: Write>(out: &mut W, color: Color) -> Result<()> {
     execute!(
         out,
         SetForegroundColor(color),
@@ -48,12 +48,12 @@ pub fn apply_struck_text(out: &mut Stdout, color: Color) -> Result<()> {
     Ok(())
 }
 
-pub fn clear_decorations(out: &mut Stdout) -> Result<()> {
+pub fn clear_decorations<W: Write>(out: &mut W) -> Result<()> {
     execute!(out, SetAttribute(Attribute::Reset)).context("clear diagnostic decorations")?;
     Ok(())
 }
 
-pub fn clear_underline(out: &mut Stdout) -> Result<()> {
+pub fn clear_underline<W: Write>(out: &mut W) -> Result<()> {
     execute!(
         out,
         SetAttribute(Attribute::NoUnderline),
