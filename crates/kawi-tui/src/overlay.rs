@@ -1,5 +1,6 @@
 use crate::frame::Rect;
 
+pub const COMPLETION_MAX_ROWS: usize = 10;
 pub const PANEL_BORDER: usize = 2;
 pub const PANEL_PADDING: usize = 1;
 const GAP: usize = 1;

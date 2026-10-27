@@ -1,6 +1,6 @@
 use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
 use kawi_tui::markdown::{self, MarkdownLine};
-use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size};
+use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size, COMPLETION_MAX_ROWS};
 
 use self::size::{
     cursor_vertical_capacity, side_vertical_capacity, size_panel, PanelLimits, SizedPanel,
@@ -248,7 +248,11 @@ impl App {
 
 fn list_size(width: usize, items: usize, area: Rect) -> Size {
     let width = width.min(MAX_LIST_WIDTH).min(area.width).max(1);
-    let height = items.saturating_add(2).min(area.height).max(1);
+    let height = items
+        .saturating_add(2)
+        .min(COMPLETION_MAX_ROWS.saturating_add(2))
+        .min(area.height)
+        .max(1);
     Size::new(width, height)
 }
 
@@ -275,6 +279,13 @@ mod tests {
         let area = Rect::new(0, 0, 40, 10);
         assert_eq!(list_size(80, 20, area), Size::new(40, 10));
         assert_eq!(list_size(12, 3, area), Size::new(12, 5));
+    }
+
+    #[test]
+    fn list_size_caps_completion_rows() {
+        let area = Rect::new(0, 0, 40, 30);
+        assert_eq!(list_size(80, 20, area), Size::new(40, 12));
+        assert_eq!(list_size(80, COMPLETION_MAX_ROWS, area), Size::new(40, 12));
     }
 
     #[test]

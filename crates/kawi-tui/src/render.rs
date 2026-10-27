@@ -23,6 +23,7 @@ use crate::display;
 
 mod bracket;
 mod leader;
+mod menu;
 mod picker;
 mod selection;
 mod terminal;
@@ -65,7 +66,7 @@ fn draw_surface(out: &mut Stdout, frame: &Frame) -> Result<()> {
         Some(lines) => draw_pager(out, frame, lines)?,
         None => draw_message_row(out, frame)?,
     }
-    draw_completion(out, frame)?;
+    menu::draw_completion(out, frame)?;
     draw_overlay(out, frame)?;
     Ok(())
 }
@@ -1163,47 +1164,6 @@ fn write_segment<W: Write>(out: &mut W, text: &str) -> Result<()> {
     Ok(())
 }
 
-fn draw_completion(out: &mut Stdout, frame: &Frame) -> Result<()> {
-    let Some(menu) = frame.completion.as_ref() else {
-        return Ok(());
-    };
-    if menu.items.is_empty() {
-        return Ok(());
-    }
-    let Some(pane) = frame.panes.iter().find(|pane| pane.active) else {
-        return Ok(());
-    };
-    let height = pane.rect.height.saturating_sub(1);
-    let shown = menu.items.len().min(height);
-    if shown == 0 {
-        return Ok(());
-    }
-    let start = menu_start(shown, menu.selected);
-    for offset in 0..shown {
-        let index = start + offset;
-        let row = pane
-            .rect
-            .y
-            .saturating_add(height.saturating_sub(shown))
-            .saturating_add(offset);
-        execute!(out, MoveTo(saturate_u16(pane.rect.x), saturate_u16(row)))
-            .context("move to completion row")?;
-        if menu.selected == Some(index) {
-            paint::apply_match(out, &frame.theme.selection)?;
-        }
-        write_padded(out, &menu.items[index], pane.rect.width)?;
-        paint::restore_base(out, frame.theme)?;
-    }
-    Ok(())
-}
-
-fn menu_start(shown: usize, selected: Option<usize>) -> usize {
-    match selected {
-        Some(index) if index >= shown => index.saturating_add(1).saturating_sub(shown),
-        _ => 0,
-    }
-}
-
 fn draw_overlay(out: &mut Stdout, frame: &Frame) -> Result<()> {
     let Some(overlay) = frame.overlay.as_ref() else {
         return Ok(());
@@ -1232,7 +1192,7 @@ fn draw_overlay_list(
     if width == 0 || height == 0 {
         return Ok(());
     }
-    let start = menu_start(height, list.selected);
+    let start = menu::visible_start(height, list.selected);
     for offset in 0..height {
         let index = start.saturating_add(offset);
         let row = list.rect.y.saturating_add(offset).saturating_add(1);
