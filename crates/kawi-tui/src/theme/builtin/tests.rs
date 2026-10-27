@@ -243,6 +243,62 @@ fn cobalt_uses_a_deep_blue_palette() {
 }
 
 #[test]
+fn classic_uses_the_dos_vga_palette() {
+    let theme = Theme::named("classic").expect("theme");
+    assert_eq!(theme.base.background, Color::Rgb { r: 0, g: 0, b: 170 });
+    assert_eq!(
+        theme.base.foreground,
+        Color::Rgb {
+            r: 170,
+            g: 170,
+            b: 170
+        }
+    );
+    assert_eq!(theme.selection.background, Color::Rgb { r: 0, g: 0, b: 85 });
+    assert_eq!(
+        theme.status.background,
+        Color::Rgb {
+            r: 170,
+            g: 170,
+            b: 170
+        }
+    );
+    assert_eq!(
+        theme.bracket_match.foreground,
+        Color::Rgb {
+            r: 255,
+            g: 255,
+            b: 85
+        }
+    );
+    assert_eq!(
+        theme.bracket_match.background,
+        Color::Rgb { r: 0, g: 0, b: 255 }
+    );
+    for (name, expected) in [
+        ("keyword", (255, 255, 255)),
+        ("string", (255, 255, 85)),
+        ("function", (85, 255, 255)),
+        ("comment", (85, 170, 170)),
+    ] {
+        let foreground = theme
+            .syntax
+            .named(name)
+            .and_then(|style| style.foreground)
+            .expect("syntax color");
+        assert_eq!(
+            foreground,
+            Color::Rgb {
+                r: expected.0,
+                g: expected.1,
+                b: expected.2
+            },
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn one_dark_preserves_the_previous_default() {
     let theme = Theme::named("one-dark").expect("theme");
     assert_eq!(

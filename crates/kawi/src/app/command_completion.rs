@@ -98,7 +98,7 @@ mod tests {
         let mut app = app();
         type_command(&mut app, "set theme ");
         complete(&mut app);
-        assert_eq!(app.editor.command_text(), "set theme cobalt");
+        assert_eq!(app.editor.command_text(), "set theme classic");
     }
 
     #[test]

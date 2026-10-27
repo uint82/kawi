@@ -73,12 +73,11 @@ fn default_ui_meets_contrast() {
 fn bracket_match_is_subtle_and_readable_in_every_theme() {
     for name in Theme::names() {
         let theme = Theme::named(name).expect("theme");
-        assert_eq!(
-            theme.bracket_match.foreground, theme.base.foreground,
-            "{name}"
-        );
         assert!(
-            contrast_ratio(theme.base.foreground, theme.bracket_match.background) >= 4.5,
+            contrast_ratio(
+                theme.bracket_match.foreground,
+                theme.bracket_match.background
+            ) >= 4.5,
             "{name} bracket match text is below 4.5:1 contrast"
         );
         let tint = contrast_ratio(theme.bracket_match.background, theme.base.background);

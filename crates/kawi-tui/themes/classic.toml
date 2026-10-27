@@ -1,0 +1,116 @@
+float_background = "#0000AA"
+code_background = "#0000AA"
+
+[base]
+foreground = "#AAAAAA"
+background = "#0000AA"
+
+[search_match]
+foreground = "#000000"
+background = "#FFFF55"
+
+[search_current]
+foreground = "#000000"
+background = "#FF5555"
+
+[substitute]
+foreground = "#000000"
+background = "#FFFF55"
+
+[selection]
+foreground = "#FFFFFF"
+background = "#000055"
+
+[bracket.match]
+foreground = "#FFFF55"
+background = "#0000FF"
+
+[status]
+foreground = "#000000"
+background = "#AAAAAA"
+
+[gutter]
+line_number = "#55FFFF"
+non_text = "#55AAAA"
+
+[git]
+add = "#55FF55"
+change = "#FFFF55"
+delete = "#FF5555"
+staged_add = "#00AA00"
+staged_change = "#AA5500"
+staged_delete = "#AA0000"
+
+[diagnostics]
+error = "#FF5555"
+warning = "#FFFF55"
+information = "#55FFFF"
+hint = "#55FF55"
+
+[palette]
+bg = "#0000AA"
+fg = "#AAAAAA"
+white = "#FFFFFF"
+yellow = "#FFFF55"
+cyan = "#55FFFF"
+green = "#55FF55"
+magenta = "#FF55FF"
+red = "#FF5555"
+comment = "#55AAAA"
+dimmer = "#55AAAA"
+dark = "#000055"
+bracket = "#0000FF"
+surface = "#AAAAAA"
+red_bg = "#AA0000"
+
+[syntax]
+comment = { fg = "comment" }
+"comment.documentation" = { fg = "comment" }
+keyword = { fg = "white", bold = true }
+"keyword.control" = { fg = "white", bold = true }
+"keyword.function" = { fg = "white", bold = true }
+"keyword.import" = { fg = "cyan", bold = true }
+"keyword.operator" = { fg = "white", bold = true }
+"keyword.return" = { fg = "white", bold = true }
+"keyword.storage" = { fg = "yellow", bold = true }
+function = { fg = "cyan", bold = true }
+"function.builtin" = { fg = "yellow" }
+"function.call" = { fg = "cyan", bold = true }
+"function.macro" = { fg = "green" }
+"function.method" = { fg = "cyan", bold = true }
+type = { fg = "green" }
+"type.builtin" = { fg = "green" }
+"type.definition" = { fg = "green" }
+constructor = { fg = "green" }
+namespace = { fg = "fg" }
+module = { fg = "fg" }
+label = { fg = "yellow" }
+string = { fg = "yellow" }
+"string.escape" = { fg = "cyan" }
+"string.regexp" = { fg = "yellow" }
+"string.special" = { fg = "cyan" }
+"string.special.key" = { fg = "cyan" }
+constant = { fg = "magenta" }
+"constant.builtin" = { fg = "magenta" }
+"constant.macro" = { fg = "green" }
+number = { fg = "green" }
+boolean = { fg = "magenta" }
+character = { fg = "yellow" }
+variable = { fg = "fg" }
+"variable.builtin" = { fg = "magenta" }
+"variable.member" = { fg = "cyan" }
+"variable.parameter" = { fg = "cyan" }
+property = { fg = "cyan" }
+"property.builtin" = { fg = "cyan" }
+operator = { fg = "fg" }
+punctuation = { fg = "fg" }
+"punctuation.bracket" = { fg = "fg" }
+"punctuation.delimiter" = { fg = "fg" }
+"punctuation.special" = { fg = "yellow" }
+attribute = { fg = "green" }
+decorator = { fg = "green" }
+tag = { fg = "magenta" }
+"tag.attribute" = { fg = "cyan" }
+"tag.delimiter" = { fg = "fg" }
+invalid = { fg = "white", bg = "red_bg", bold = true }
+special = { fg = "yellow" }
