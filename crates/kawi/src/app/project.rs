@@ -3,6 +3,15 @@ use std::path::{Path, PathBuf};
 use super::App;
 
 impl App {
+    pub(super) fn explorer_root(&self) -> PathBuf {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        if !self.editor.has_file() {
+            return kawi_picker::project_root(&cwd);
+        }
+        let path = kawi_editor::paths::absolute(self.editor.filename(), &cwd);
+        kawi_picker::project_root(&path)
+    }
+
     pub(super) fn project_root(&self) -> PathBuf {
         let cwd = std::env::current_dir().unwrap_or_default();
         let cwd_root = kawi_picker::project_root(&cwd);

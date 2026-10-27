@@ -118,3 +118,40 @@ fn explorer_reserves_width_next_to_the_editor() {
     assert_eq!(app.window_area().width, 40);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn explorer_root_follows_the_current_file() {
+    let dir = temp_dir("explorer_root");
+    let file = dir.join("main.rs");
+    fs::write(&file, "").unwrap();
+    let app = App::new(
+        Buffer::from_file(file.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    assert_eq!(
+        app.explorer_root(),
+        dir.canonicalize().expect("canonical root")
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn opening_the_explorer_reveals_the_current_file() {
+    let dir = temp_dir("explorer_reveal");
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let file = dir.join("src/main.rs");
+    fs::write(&file, "").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(file.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    app.set_screen_size(80, 24);
+    app.open_explorer_at(dir.clone());
+    assert!(app.explorer.is_visible());
+    assert_eq!(
+        app.explorer.selected_row().map(|row| row.path.as_path()),
+        Some(file.as_path())
+    );
+    assert_eq!(row_names(&app), ["src", "main.rs"]);
+    fs::remove_dir_all(dir).unwrap();
+}

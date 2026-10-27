@@ -15,12 +15,12 @@ impl App {
             self.sync_terminal_panel_size();
             return;
         }
-        self.open_explorer_at(self.project_root());
+        self.open_explorer_at(self.explorer_root());
     }
 
     pub(crate) fn focus_explorer(&mut self) {
         if !self.explorer.is_visible() {
-            self.open_explorer_at(self.project_root());
+            self.open_explorer_at(self.explorer_root());
             return;
         }
         self.cancel_pending_editor_input();
@@ -32,25 +32,21 @@ impl App {
             self.focus_explorer();
             return;
         }
-        let path = kawi_editor::paths::absolute(
-            self.editor.filename(),
-            &std::env::current_dir().unwrap_or_default(),
-        );
-        let root = self.project_root();
+        let root = self.explorer_root();
         if self.explorer.root() != Some(root.as_path()) {
             self.open_explorer_at(root);
-        } else {
-            self.cancel_pending_editor_input();
-            self.explorer.focus();
+            return;
         }
-        self.explorer.reveal_path(&path);
-        self.explorer.ensure_visible(self.explorer_content_height());
+        self.cancel_pending_editor_input();
+        self.explorer.focus();
+        self.reveal_editor_file();
     }
 
     pub(crate) fn open_explorer_at(&mut self, root: PathBuf) {
         self.cancel_pending_editor_input();
         self.explorer.open(root);
         self.sync_terminal_panel_size();
+        self.reveal_editor_file();
     }
 
     pub(crate) fn poll_explorer(&mut self) -> bool {
@@ -239,6 +235,18 @@ impl App {
         self.explorer.set_show_hidden(!self.explorer.show_hidden());
     }
 
+    fn reveal_editor_file(&mut self) {
+        if !self.editor.has_file() {
+            return;
+        }
+        let path = kawi_editor::paths::absolute(
+            self.editor.filename(),
+            &std::env::current_dir().unwrap_or_default(),
+        );
+        self.explorer.reveal_path(&path);
+        self.explorer.ensure_visible(self.explorer_content_height());
+    }
+
     fn explorer_target_directory(&self) -> PathBuf {
         if let Some(row) = self.explorer.selected_row() {
             if matches!(row.kind, ExplorerRowKind::Directory { .. }) {
@@ -251,7 +259,7 @@ impl App {
         self.explorer
             .root()
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| self.project_root())
+            .unwrap_or_else(|| self.explorer_root())
     }
 
     fn cancel_pending_editor_input(&mut self) {

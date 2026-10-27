@@ -7,6 +7,8 @@ related = ["keybindings", "configuration", "sessions"]
 
 The project explorer shows the repository tree next to the editor. It marks Git changes and diagnostics, highlights the active buffer, and supports file management without leaving the editor.
 
+Opening the explorer roots the tree at the current file's project and reveals the file, expanding its parent directories. Without an open file, the tree uses the working directory.
+
 ## Commands
 
 - `<leader> e e` toggle the explorer
