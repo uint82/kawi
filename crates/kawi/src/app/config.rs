@@ -43,6 +43,7 @@ impl App {
         self.set_tasks(tasks);
         self.undo.configure(paths.undo.clone());
         self.apply_config(&loaded.config);
+        self.refresh_command_completion();
         self.undo.spawn_prune();
         if let Some(flavor) = cli_flavor {
             let _ = self.apply_cli_flavor(flavor);

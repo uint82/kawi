@@ -2,7 +2,7 @@ use kawi_buffer::Buffer;
 use ropey::Rope;
 
 use crate::actions::{Action, CaseMotion, ShiftMotion};
-use crate::command::CommandLine;
+use crate::command::{CommandCompletion, CommandLine};
 use crate::cursor::Cursor;
 use crate::editing::LanguageEditing;
 use crate::jumps::Jumps;
@@ -133,6 +133,7 @@ pub struct Editor {
     search_last: String,
     search_view_top: usize,
     completion: Option<cmd_complete::CompletionState>,
+    command_completion: CommandCompletion,
     autoindent: bool,
     pending_autoindent: Option<(usize, String)>,
     buffers: buffers::Buffers,
@@ -835,6 +836,7 @@ impl Editor {
             search_last: String::new(),
             search_view_top: 0,
             completion: None,
+            command_completion: CommandCompletion::default(),
             autoindent: true,
             pending_autoindent: None,
             buffers: buffers::Buffers::new(),
@@ -962,6 +964,10 @@ impl Editor {
     pub fn completion_view(&self) -> Option<(&[String], Option<usize>)> {
         let state = self.completion.as_ref()?;
         Some((state.items(), state.selected()))
+    }
+
+    pub fn set_command_completion(&mut self, completion: CommandCompletion) {
+        self.command_completion = completion;
     }
 
     pub fn search_status_text(&self) -> Option<String> {
