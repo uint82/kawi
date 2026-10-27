@@ -9,7 +9,7 @@ Kawi reads configuration from the XDG config directory, normally `~/.config/kawi
 
 ## Sections
 
-- `[ui]` for keymap, theme, overlays, diagnostics, and completion
+- `[ui]` for keymap, theme, overlays, diagnostics, completion, and the status line
 - `[editor]` for indentation, line numbers, sign column, matching, and autosave
 - `[history]` for undo history and persistence
 
@@ -64,3 +64,39 @@ To show Git changes while keeping the column compact:
 signcolumn = "auto"
 git_signs = true
 ```
+
+## Status line
+
+The status line is built from element lists for the left, center, and right sections. Elements render only when they have content, and empty elements do not leave separators.
+
+```toml
+[ui.statusline]
+left = ["mode", "file", "modified", "readonly", "diagnostics", "git", "lsp"]
+center = []
+right = ["selection", "macro", "filetype", "indent", "encoding", "eol", "percent", "position"]
+separator = " "
+color_modes = true
+
+[ui.statusline.mode]
+normal = "NORMAL"
+insert = "INSERT"
+replace = "REPLACE"
+visual = "VISUAL"
+command = "COMMAND"
+search = "SEARCH"
+```
+
+Available elements:
+
+- `mode`, `file`, `modified`, `readonly`
+- `diagnostics`, `workspace_diagnostics`
+- `git`, `lsp`
+- `selection`, `macro`
+- `filetype`, `indent`, `encoding`, `eol`
+- `percent`, `position`
+
+The `file` element is flexible and truncates from the left when space is short, keeping the end of the path. `mode` and `position` are the last elements to survive. Inactive windows show only the file and modified state.
+
+`diagnostics` follows `diagnostic_counts`. `workspace_diagnostics` is opt-in and follows `diagnostic_workspace_counts`. `position` shows the line and character column, adding the display column when it differs. `encoding` and `eol` render only when the buffer uses a non-default value. `percent` is the cursor position through the file.
+
+Set `color_modes = false` to render the mode badge without its background color. The separator is sanitized before rendering, so control characters and escape sequences never reach the terminal.
