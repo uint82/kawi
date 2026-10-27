@@ -183,6 +183,8 @@ pub struct App {
     window_defaults: WindowOptions,
     last_frame: Instant,
     last_input: Instant,
+    keyguide_enabled: bool,
+    keyguide_delay: Duration,
     status_spinner: usize,
     statusline: kawi_tui::statusbar::StatusBarConfig,
 }
@@ -270,6 +272,8 @@ impl App {
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
             last_input: Instant::now(),
+            keyguide_enabled: true,
+            keyguide_delay: Duration::from_millis(crate::options::KEYGUIDE_DELAY_DEFAULT as u64),
             status_spinner: 0,
             statusline: kawi_tui::statusbar::StatusBarConfig::default(),
         };

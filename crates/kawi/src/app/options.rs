@@ -213,6 +213,15 @@ impl App {
             "diagnostic_workspace_counts" => {
                 self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
+            "keyguide" => self.keyguide_enabled = value.as_bool().unwrap_or(true),
+            "keyguide_delay" => {
+                self.keyguide_delay = std::time::Duration::from_millis(
+                    value
+                        .as_int()
+                        .unwrap_or(crate::options::KEYGUIDE_DELAY_DEFAULT)
+                        as u64,
+                );
+            }
             _ => {}
         }
         if spec.scope == options::OptionScope::Window {
@@ -376,6 +385,10 @@ impl App {
             "diagnostic_workspace_counts" => {
                 OptionValue::Bool(self.diagnostic_options.workspace_counts)
             }
+            "keyguide" => OptionValue::Bool(self.keyguide_enabled),
+            "keyguide_delay" => OptionValue::Int(
+                usize::try_from(self.keyguide_delay.as_millis()).unwrap_or(usize::MAX),
+            ),
             _ => spec.default_value(),
         }
     }
