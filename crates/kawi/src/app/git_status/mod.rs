@@ -66,6 +66,9 @@ impl GitStatusState {
 
     pub(super) fn display(&self) -> Option<GitStatusInfo<'_>> {
         let status = self.status.as_ref()?;
+        if self.root.as_deref() != Some(status.root.as_path()) {
+            return None;
+        }
         let branch = match &status.branch {
             BranchStatus::Named { name, .. } => {
                 if name.is_empty() {
@@ -86,6 +89,12 @@ impl GitStatusState {
     }
 
     pub(super) fn refresh(&mut self, root: PathBuf, wake: Sender<()>) {
+        if self.root.as_deref() != Some(root.as_path()) {
+            self.status = None;
+            self.watcher = None;
+            self.watched_git_dir = None;
+            self.last_error = None;
+        }
         self.root = Some(root.clone());
         self.generation = self.generation.saturating_add(1);
         if self.loading {
@@ -225,6 +234,23 @@ impl GitStatusState {
     pub(super) fn error(&self) -> Option<&str> {
         self.last_error.as_deref()
     }
+
+    pub(super) fn clear(&mut self) {
+        self.generation = self.generation.saturating_add(1);
+        self.status = None;
+        self.root = None;
+        self.pending_root = None;
+        self.watcher = None;
+        self.watched_git_dir = None;
+        self.last_error = None;
+        self.view = None;
+        self.pending_open = false;
+    }
+}
+
+fn git_root_for(path: &Path) -> Option<PathBuf> {
+    let root = kawi_picker::project_root(path);
+    root.join(".git").exists().then_some(root)
 }
 
 fn is_relevant(path: &Path, git_dir: &Path) -> bool {
@@ -250,8 +276,27 @@ fn is_relevant(path: &Path, git_dir: &Path) -> bool {
 
 impl App {
     pub(super) fn refresh_git_status(&mut self) {
-        let root = self.task_root();
-        self.git_status.refresh(root, self.events.wake());
+        let path = self
+            .editor
+            .has_file()
+            .then(|| PathBuf::from(self.editor.filename()));
+        self.git_status_path = path.clone();
+        let root = path.as_deref().and_then(git_root_for);
+        self.apply_git_status_root(root);
+    }
+
+    pub(super) fn sync_git_status_path(&mut self, path: Option<&Path>) {
+        if path == self.git_status_path.as_deref() {
+            return;
+        }
+        self.refresh_git_status();
+    }
+
+    fn apply_git_status_root(&mut self, root: Option<PathBuf>) {
+        match root {
+            Some(root) => self.git_status.refresh(root, self.events.wake()),
+            None => self.git_status.clear(),
+        }
     }
 
     pub(super) fn sync_git_status(&mut self) -> bool {

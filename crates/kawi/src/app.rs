@@ -144,6 +144,7 @@ pub struct App {
     code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
+    git_status_path: Option<PathBuf>,
     git_error: Option<String>,
     git_signs: bool,
     signcolumn: SignColumnMode,
@@ -228,6 +229,7 @@ impl App {
             code_actions: None,
             git: None,
             git_path: None,
+            git_status_path: None,
             git_error: None,
             git_signs: false,
             signcolumn: SignColumnMode::Never,
@@ -1473,6 +1475,11 @@ impl App {
     }
 
     fn sync_git(&mut self) {
+        let path = self
+            .editor
+            .has_file()
+            .then(|| PathBuf::from(self.editor.filename()));
+        self.sync_git_status_path(path.as_deref());
         if self.editor.current_buffer_is_readonly() {
             self.git = None;
             self.git_error = None;
@@ -1480,10 +1487,6 @@ impl App {
             self.git_path = None;
             return;
         }
-        let path = self
-            .editor
-            .has_file()
-            .then(|| PathBuf::from(self.editor.filename()));
         if path.as_deref() != self.git_path.as_deref() {
             self.git = None;
             self.git_error = None;
