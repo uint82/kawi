@@ -857,8 +857,46 @@ impl Editor {
         number
     }
 
+    pub fn open_internal_buffer(&mut self, name: &str, text: &str) -> usize {
+        self.store_current();
+        let number = self.buffers.allocate_number();
+        let mut buffer = Buffer::from_string(text);
+        buffer.path = Some(name.to_string());
+        buffer.set_readonly(true);
+        buffer.set_internal(true);
+        buffer.mark_clean();
+        self.load_fresh(buffer);
+        self.reset_buffer_options();
+        self.buffers.set_current(number);
+        self.buffers.current_listed = false;
+        number
+    }
+
+    pub fn replace_internal_buffer(&mut self, number: usize, name: &str, text: &str) -> bool {
+        if number == self.buffers.current() {
+            return self.buffer.replace_internal_text(name, text);
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        entry.state.buffer.replace_internal_text(name, text)
+    }
+
     pub fn buffer_is_readonly(&self, number: usize) -> Option<bool> {
         self.buffer_at(number).map(Buffer::is_readonly)
+    }
+
+    pub fn buffer_is_internal(&self, number: usize) -> Option<bool> {
+        self.buffer_at(number).map(Buffer::is_internal)
+    }
+
+    pub fn current_buffer_is_internal(&self) -> bool {
+        self.buffer.is_internal()
     }
 
     pub fn buffer_source_hash(&self, number: usize) -> Option<[u8; 32]> {

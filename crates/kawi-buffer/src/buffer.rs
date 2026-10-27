@@ -23,6 +23,7 @@ pub struct Buffer {
     line_changes: u64,
     adjustments: Vec<LineAdjust>,
     readonly: bool,
+    internal: bool,
     source_hash: Option<[u8; 32]>,
 }
 
@@ -41,6 +42,7 @@ impl Buffer {
             line_changes: 0,
             adjustments: Vec::new(),
             readonly: false,
+            internal: false,
             source_hash: None,
         }
     }
@@ -139,6 +141,28 @@ impl Buffer {
 
     pub fn set_readonly(&mut self, readonly: bool) {
         self.readonly = readonly;
+    }
+
+    pub fn is_internal(&self) -> bool {
+        self.internal
+    }
+
+    pub fn set_internal(&mut self, internal: bool) {
+        self.internal = internal;
+    }
+
+    pub fn replace_internal_text(&mut self, name: &str, text: &str) -> bool {
+        if !self.internal {
+            return false;
+        }
+        self.path = Some(name.to_string());
+        self.rope = Rope::from_str(text);
+        self.history = History::new();
+        self.revision = self.revision.wrapping_add(1);
+        self.line_changes = 0;
+        self.adjustments.clear();
+        self.source_hash = None;
+        true
     }
 
     pub fn has_path(&self) -> bool {
@@ -745,6 +769,9 @@ impl Buffer {
     }
 
     pub fn save(&mut self, force: bool) -> Result<()> {
+        if self.internal {
+            anyhow::bail!("E382: Cannot write, internal buffer");
+        }
         if self.readonly {
             anyhow::bail!("E45: 'readonly' option is set (add ! to override)");
         }
@@ -758,6 +785,9 @@ impl Buffer {
     }
 
     pub fn write_to(&self, path: &str, force: bool) -> Result<[u8; 32]> {
+        if self.internal {
+            anyhow::bail!("E382: Cannot write, internal buffer");
+        }
         let mut hasher = Sha256::new();
         write::write(Path::new(path), force, |out| {
             let mut writer = HashingWriter::new(BufWriter::new(out), &mut hasher);
@@ -1676,6 +1706,26 @@ mod tests {
         assert!(!buffer.redo_keep_cursor(0, 0));
         assert_eq!(buffer.snapshot().to_string(), "one\ntwo\n");
         assert_eq!(buffer.revision(), revision);
+    }
+
+    #[test]
+    fn internal_buffers_replace_text_and_reject_writes() {
+        let mut buffer = Buffer::from_string("old");
+        buffer.path = Some("help:index".to_string());
+        buffer.set_readonly(true);
+        buffer.set_internal(true);
+        assert!(buffer.replace_internal_text("help:topic", "new"));
+        assert_eq!(buffer.line_text(0), "new");
+        assert_eq!(buffer.path.as_deref(), Some("help:topic"));
+        assert!(buffer.save(false).is_err());
+        assert!(buffer.write_to("/tmp/kawi_internal_help", false).is_err());
+    }
+
+    #[test]
+    fn internal_text_replacement_requires_an_internal_buffer() {
+        let mut buffer = Buffer::from_string("old");
+        assert!(!buffer.replace_internal_text("help:index", "new"));
+        assert_eq!(buffer.line_text(0), "old");
     }
 
     #[test]
