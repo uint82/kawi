@@ -2,13 +2,21 @@ use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-pub fn find_command(command: &str) -> Option<PathBuf> {
+pub fn find_executable(command: &str) -> Option<PathBuf> {
+    find_executable_in(command, Path::new("."))
+}
+
+pub fn find_executable_in(command: &str, directory: &Path) -> Option<PathBuf> {
     if command.trim().is_empty() {
         return None;
     }
     let path = Path::new(command);
-    if path.components().count() > 1 {
+    if path.is_absolute() {
         return is_executable(path).then(|| path.to_path_buf());
+    }
+    if path.components().count() > 1 {
+        let candidate = directory.join(path);
+        return is_executable(&candidate).then_some(candidate);
     }
     find_in_paths(command, env::var_os("PATH").as_deref()?)
 }
@@ -53,7 +61,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let id = NEXT.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("kawi_lsp_binary_{name}_{stamp}_{id}"));
+        let dir = std::env::temp_dir().join(format!("kawi_process_{name}_{stamp}_{id}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("dir");
         dir
@@ -101,11 +109,19 @@ mod tests {
         let dir = temp_dir("absolute");
         let file = dir.join("server");
         executable(&file);
-        assert_eq!(find_command(file.to_str().unwrap()), Some(file));
+        assert_eq!(find_executable(file.to_str().unwrap()), Some(file));
+    }
+
+    #[test]
+    fn resolves_a_relative_command_from_the_working_directory() {
+        let dir = temp_dir("relative");
+        let file = dir.join("server");
+        executable(&file);
+        assert_eq!(find_executable_in("./server", &dir), Some(file));
     }
 
     #[test]
     fn rejects_an_empty_command() {
-        assert_eq!(find_command(""), None);
+        assert_eq!(find_executable(""), None);
     }
 }

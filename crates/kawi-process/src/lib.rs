@@ -1,3 +1,7 @@
+mod executable;
+
+pub use executable::{find_executable, find_executable_in};
+
 use std::io;
 use std::process::{Child, Command};
 

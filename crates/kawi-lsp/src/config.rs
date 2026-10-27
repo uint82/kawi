@@ -1,5 +1,5 @@
 use crate::editing::{BlockCommentConfig, PairConfig};
-use crate::{binary, defaults, file, LanguageWarning};
+use crate::{defaults, file, LanguageWarning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -310,7 +310,7 @@ fn available_servers(servers: &BTreeMap<String, ServerConfig>) -> BTreeMap<Strin
         .iter()
         .filter(|(_, server)| server.enabled)
         .filter_map(|(name, server)| {
-            binary::find_command(&server.command).map(|path| (name.clone(), path))
+            kawi_process::find_executable(&server.command).map(|path| (name.clone(), path))
         })
         .collect()
 }
