@@ -41,6 +41,10 @@ fn is_space_leader(key: KeyEvent) -> bool {
     key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key)
 }
 
+fn is_backslash_leader(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key)
+}
+
 fn insert_control_action(key: KeyEvent) -> Option<Action> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -296,7 +300,7 @@ impl VimKeymap {
             self.leader_space = true;
             return Action::Noop;
         }
-        if key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key) {
+        if is_backslash_leader(key) {
             self.pending.push('\\');
             return Action::Noop;
         }
@@ -1275,7 +1279,7 @@ impl VimKeymap {
             self.leader_space = true;
             return Action::Noop;
         }
-        if key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key) {
+        if is_backslash_leader(key) {
             self.pending.push('\\');
             return Action::Noop;
         }
@@ -1689,6 +1693,10 @@ impl Keymap for VimKeymap {
 
     fn leader_path(&self) -> Option<LeaderPath> {
         self.pending_leader_path()
+    }
+
+    fn is_leader_prefix(&self, key: KeyEvent, mode: Mode) -> bool {
+        mode.is_normal_state() && (is_space_leader(key) || is_backslash_leader(key))
     }
 
     fn reset_pending(&mut self) {
@@ -3846,6 +3854,15 @@ mod tests {
             Action::CancelPending
         );
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn leader_prefixes_require_normal_or_visual_mode() {
+        let map = VimKeymap::new();
+        assert!(map.is_leader_prefix(plain(KeyCode::Char(' ')), Mode::Normal));
+        assert!(map.is_leader_prefix(plain(KeyCode::Char('\\')), Mode::Visual));
+        assert!(!map.is_leader_prefix(plain(KeyCode::Char(' ')), Mode::Insert));
+        assert!(!map.is_leader_prefix(ctrl(KeyCode::Char(' ')), Mode::Normal));
     }
 
     #[test]

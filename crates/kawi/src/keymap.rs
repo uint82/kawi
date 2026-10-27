@@ -28,6 +28,10 @@ pub trait Keymap {
         None
     }
 
+    fn is_leader_prefix(&self, _key: KeyEvent, _mode: Mode) -> bool {
+        false
+    }
+
     fn reset_pending(&mut self) {}
 }
 
@@ -108,6 +112,13 @@ impl Keymap for ActiveKeymap {
         match self {
             Self::Vim(inner) => inner.leader_path(),
             Self::Helix(inner) => inner.leader_path(),
+        }
+    }
+
+    fn is_leader_prefix(&self, key: KeyEvent, mode: Mode) -> bool {
+        match self {
+            Self::Vim(inner) => inner.is_leader_prefix(key, mode),
+            Self::Helix(inner) => inner.is_leader_prefix(key, mode),
         }
     }
 
