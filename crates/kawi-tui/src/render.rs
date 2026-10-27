@@ -13,7 +13,7 @@ use crate::frame::{
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
-use crate::statusbar::draw_status;
+use crate::statusbar::{draw_status, StatusArea};
 use crate::text::{count_label, display_width, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
@@ -85,11 +85,14 @@ fn draw_pane(out: &mut Stdout, frame: &Frame, pane: &PaneFrame<'_>) -> Result<()
     draw_status(
         out,
         pane.status,
-        pane.rect.x,
-        row,
-        pane.rect.width,
-        pane.active,
+        StatusArea {
+            x: pane.rect.x,
+            y: row,
+            width: pane.rect.width,
+            active: pane.active,
+        },
         frame.theme,
+        frame.statusline,
     )
 }
 
