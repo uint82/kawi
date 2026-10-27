@@ -1,5 +1,5 @@
 use anyhow::Result;
-use kawi_editor::{SetValue, WindowOptions};
+use kawi_editor::{FoldMethod, SetValue, WindowOptions};
 
 use super::App;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor};
@@ -123,6 +123,15 @@ impl App {
             "autoindent" => self
                 .editor
                 .set_autoindent(value.as_bool().unwrap_or_default()),
+            "foldmethod" => self.editor.set_fold_method(
+                value
+                    .as_text()
+                    .and_then(FoldMethod::parse)
+                    .unwrap_or_default(),
+            ),
+            "foldcolumn" => self
+                .editor
+                .set_fold_column(value.as_int().unwrap_or_default()),
             "auto_pairs" => self
                 .editor
                 .set_auto_pairs(value.as_bool().unwrap_or_default()),
@@ -323,6 +332,8 @@ impl App {
             "ignorecase" => OptionValue::Bool(self.editor.ignorecase()),
             "smartcase" => OptionValue::Bool(self.editor.smartcase()),
             "autoindent" => OptionValue::Bool(self.editor.autoindent()),
+            "foldmethod" => OptionValue::Text(self.editor.fold_method().name().to_string()),
+            "foldcolumn" => OptionValue::Int(self.editor.fold_column()),
             "auto_pairs" => OptionValue::Bool(self.editor.auto_pairs()),
             "match_brackets" => OptionValue::Bool(self.editor.match_brackets()),
             "format_on_save" => OptionValue::Bool(self.format_on_save),
@@ -496,6 +507,21 @@ mod tests {
         assert!(!app.git_signs);
         execute(&mut app, "set signcolumn=never");
         assert_eq!(app.editor.signcolumn_width(), 0);
+    }
+
+    #[test]
+    fn fold_options_apply_and_query() {
+        let mut app = app();
+        execute(&mut app, "set foldmethod=indent");
+        assert_eq!(app.editor.fold_method(), kawi_editor::FoldMethod::Indent);
+        execute(&mut app, "set fdm?");
+        assert_eq!(app.last_message(), Some("foldmethod=indent"));
+        execute(&mut app, "set fdc=0");
+        assert_eq!(app.editor.fold_column(), 0);
+        execute(&mut app, "set foldcolumn?");
+        assert_eq!(app.last_message(), Some("foldcolumn=0"));
+        execute(&mut app, "set foldmethod&");
+        assert_eq!(app.editor.fold_method(), kawi_editor::FoldMethod::Manual);
     }
 
     #[test]

@@ -49,7 +49,7 @@ impl Editor {
         let max = self.buffer.max_cursor_row();
         for _ in 0..count {
             let before = self.cursor.row();
-            let row = before.saturating_add(1).min(max);
+            let row = self.next_visible_row(before).min(max);
             self.cursor.set_row(row);
             if row == before {
                 break;
@@ -86,9 +86,7 @@ impl Editor {
         self.track_insert_move();
         let count = self.take_count();
         let row = self
-            .cursor
-            .row()
-            .saturating_add(count.saturating_sub(1))
+            .visible_row_after(self.cursor.row(), count.saturating_sub(1))
             .min(self.buffer.max_cursor_row());
         let end = self.max_col_for_row(row);
         self.cursor.set_position(row, end);
@@ -112,8 +110,8 @@ impl Editor {
         let count = self.take_count();
         let mut row = self.cursor.row();
         for _ in 0..count {
-            let next = row.saturating_add(1);
-            if next > self.buffer.max_cursor_row() {
+            let next = self.next_visible_row(row);
+            if next > self.buffer.max_cursor_row() || next == row {
                 break;
             }
             row = next;
@@ -134,7 +132,7 @@ impl Editor {
 
     pub(super) fn move_to_prev_line_start(&mut self) {
         let count = self.take_count();
-        let row = self.cursor.row().saturating_sub(count);
+        let row = self.visible_row_before(self.cursor.row(), count);
         self.jump_to_line_start(row);
     }
 
@@ -216,7 +214,7 @@ impl Editor {
         let count = self.take_count();
         for _ in 0..count {
             let before = self.cursor.row();
-            let row = before.saturating_sub(1);
+            let row = self.previous_visible_row(before);
             self.cursor.set_row(row);
             if row == before {
                 break;

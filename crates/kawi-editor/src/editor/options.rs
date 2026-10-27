@@ -48,6 +48,7 @@ use kawi_syntax::LanguageId;
 impl Editor {
     pub fn set_buffer_defaults(&mut self, defaults: BufferOptionDefaults) {
         self.buffer_defaults = defaults;
+        self.refresh_folds();
     }
 
     pub fn buffer_defaults(&self) -> BufferOptionDefaults {
@@ -58,6 +59,7 @@ impl Editor {
         if self.language_indent != indent {
             self.language_indent = indent;
             self.bump_language_generation();
+            self.refresh_folds();
         }
     }
 
@@ -102,6 +104,7 @@ impl Editor {
         self.set_language_indent(LanguageIndent::default());
         self.set_language_editing(LanguageEditing::default());
         self.autoindent = self.buffer_defaults.autoindent;
+        self.refresh_folds();
     }
 
     pub fn shiftwidth(&self) -> usize {

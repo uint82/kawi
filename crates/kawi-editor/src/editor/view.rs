@@ -15,7 +15,7 @@ impl Editor {
             row: self.cursor.row(),
             col: self.cursor.col(),
             desired: self.cursor.desired(),
-            top: self.viewport.top(),
+            top: self.visible_top(),
             leftcol: self.viewport.leftcol(),
         }
     }
@@ -27,12 +27,17 @@ impl Editor {
         self.clamp_row();
         self.clamp_col();
         self.viewport.place_top(state.top, self.buffer.line_count());
+        self.normalize_view();
+        self.reveal_hidden_cursor();
         self.viewport.set_leftcol(state.leftcol);
     }
 
     pub fn clamp_view_state(&self, buffer: usize, state: ViewState) -> ViewState {
-        let rows = self.buffer_line_count(buffer).unwrap_or(1).max(1);
-        let row = state.row.min(rows.saturating_sub(1));
+        let rows = self.buffer_visible_line_count(buffer).unwrap_or(1).max(1);
+        let row = self
+            .buffer_visible_top(buffer, state.row)
+            .unwrap_or(0)
+            .min(rows.saturating_sub(1));
         let width = self.buffer_line_len(buffer, row).unwrap_or(0);
         let max_col = width.saturating_sub(1);
         let max_leftcol = self
@@ -43,7 +48,10 @@ impl Editor {
             row,
             col: state.col.min(max_col),
             desired: state.desired.min(max_col),
-            top: state.top.min(rows.saturating_sub(1)),
+            top: self
+                .buffer_visible_top(buffer, state.top)
+                .unwrap_or(0)
+                .min(rows.saturating_sub(1)),
             leftcol: state.leftcol.min(max_leftcol),
         }
     }

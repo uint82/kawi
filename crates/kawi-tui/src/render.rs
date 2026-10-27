@@ -5,6 +5,7 @@ use crossterm::{
     style::{Attribute, Color, SetAttribute, SetForegroundColor},
     terminal::{BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
+use std::borrow::Cow;
 use std::io::{Stdout, Write};
 
 use crate::frame::{
@@ -528,7 +529,7 @@ pub struct HighlightSpan {
 
 pub struct SpanView<'a> {
     pub window: &'a [String],
-    pub top: usize,
+    pub rows: Cow<'a, [usize]>,
     pub viewport: &'a Viewport,
     pub gutter: usize,
     pub leftcol: usize,
@@ -594,7 +595,9 @@ fn block_spans(
     let right_edge = view.leftcol.saturating_add(view.text_width());
     let mut spans = Vec::new();
     for screen_row in 0..view.window.len().min(view.viewport.height()) {
-        let buffer_row = view.top.saturating_add(screen_row);
+        let Some(buffer_row) = view.rows.get(screen_row).copied() else {
+            continue;
+        };
         if buffer_row < block_top || buffer_row > block_bottom {
             continue;
         }
@@ -640,7 +643,9 @@ fn collect_row_spans(
     let Some(text) = view.window.get(screen_row) else {
         return;
     };
-    let buffer_row = view.top.saturating_add(screen_row);
+    let Some(buffer_row) = view.rows.get(screen_row).copied() else {
+        return;
+    };
     let cell = cursor
         .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
     for (from, to) in selected_cells(buffer_row, text, range, cell, view.tabstop) {
@@ -786,10 +791,7 @@ pub(super) fn span_segment_at(
     view: &SpanView,
     tint: Tint,
 ) -> Option<HighlightSpan> {
-    if row < view.top {
-        return None;
-    }
-    let screen_row = row.saturating_sub(view.top);
+    let screen_row = view.rows.binary_search(&row).ok()?;
     let text = view.window.get(screen_row)?;
     if screen_row >= view.viewport.height() {
         return None;
@@ -810,7 +812,7 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     let gutter_width = gutter_width(pane);
     let view = SpanView {
         window: pane.lines,
-        top: pane.viewport.top(),
+        rows: Cow::Borrowed(pane.rows),
         viewport: &pane.viewport,
         gutter: gutter_width,
         leftcol: pane.viewport.leftcol(),
@@ -1729,17 +1731,17 @@ fn place_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {
         return Ok(());
     };
     let height = pane.rect.height.saturating_sub(1);
-    if pane.row < pane.viewport.top() || pane.row >= pane.viewport.top().saturating_add(height) {
+    let Some(screen_row) = pane.cursor_screen_row else {
+        return Ok(());
+    };
+    if screen_row >= height {
         return Ok(());
     }
     let x = pane
         .rect
         .x
         .saturating_add(pane.cursor_col.min(pane.rect.width.saturating_sub(1)));
-    let y = pane
-        .rect
-        .y
-        .saturating_add(pane.row.saturating_sub(pane.viewport.top()));
+    let y = pane.rect.y.saturating_add(screen_row);
     execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("place cursor")?;
     Ok(())
 }
@@ -1851,7 +1853,7 @@ mod tests {
     fn span_view<'a>(lines: &'a [String], viewport: &'a Viewport) -> SpanView<'a> {
         SpanView {
             window: lines,
-            top: 0,
+            rows: Cow::Owned((0..lines.len()).collect()),
             viewport,
             gutter: 0,
             leftcol: 0,
@@ -1868,13 +1870,31 @@ mod tests {
     ) -> Vec<HighlightSpan> {
         let view = SpanView {
             window: lines,
-            top,
+            rows: Cow::Owned((top..top.saturating_add(lines.len())).collect()),
             viewport,
             gutter: 0,
             leftcol: 0,
             tabstop: 8,
         };
         highlight_spans(&view, selection, cursor)
+    }
+
+    #[test]
+    fn spans_map_visible_rows_to_screen_rows() {
+        let lines = lines_of("one\ntwo\nthree");
+        let viewport = viewport();
+        let view = SpanView {
+            window: &lines,
+            rows: Cow::Owned(vec![0, 2]),
+            viewport: &viewport,
+            gutter: 0,
+            leftcol: 0,
+            tabstop: 8,
+        };
+        assert!(span_segment_at(1, 0, 1, &view, Tint::Selection).is_none());
+        let span = span_segment_at(2, 0, 1, &view, Tint::Selection).expect("visible span");
+        assert_eq!(span.screen_row, 1);
+        assert_eq!(span.text, "t");
     }
 
     #[test]

@@ -8,6 +8,7 @@ use super::repeat::RepeatChange;
 use super::session::InsertEdit;
 use super::SearchStatus;
 use crate::cursor::Cursor;
+use crate::folds::FoldState;
 use crate::mode::Mode;
 use crate::paths;
 
@@ -92,6 +93,7 @@ pub(super) struct ParkedState {
     language_editing: crate::editing::LanguageEditing,
     autoindent: bool,
     viewport_top: usize,
+    folds: FoldState,
     last_change: Option<RepeatChange>,
     undone_change: Option<RepeatChange>,
     insert_repeat: Option<usize>,
@@ -169,6 +171,42 @@ impl Buffers {
 
     fn entry(&self, number: usize) -> Option<&BufferEntry> {
         self.parked.iter().find(|entry| entry.number == number)
+    }
+
+    pub(super) fn buffer_ref(&self, number: usize) -> Option<&Buffer> {
+        self.entry(number).map(|entry| &entry.state.buffer)
+    }
+
+    pub(super) fn fold_state(&self, number: usize) -> Option<&FoldState> {
+        self.entry(number).map(|entry| &entry.state.folds)
+    }
+
+    pub(super) fn parked_fold_state_mut(&mut self, number: usize) -> Option<&mut FoldState> {
+        self.parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+            .map(|entry| &mut entry.state.folds)
+    }
+
+    pub(super) fn refresh_parked_folds(&mut self, number: usize) -> bool {
+        let Some(entry) = self.parked.iter_mut().find(|entry| entry.number == number) else {
+            return false;
+        };
+        entry.state.folds.refresh(&entry.state.buffer);
+        true
+    }
+
+    pub(super) fn set_fold_column(&mut self, column: usize) {
+        for entry in &mut self.parked {
+            entry.state.folds.set_column(column);
+        }
+    }
+
+    pub(super) fn set_fold_method(&mut self, method: crate::folds::FoldMethod) {
+        for entry in &mut self.parked {
+            entry.state.folds.set_method(method);
+            entry.state.folds.refresh(&entry.state.buffer);
+        }
     }
 
     pub(super) fn line_count(&self, number: usize) -> Option<usize> {
@@ -342,6 +380,7 @@ impl Editor {
             .ok_or(BufferError::Missing(number))
             .map_err(|_| EditError::NoName)?;
         let state = &mut entry.state;
+        let previous_hash = state.buffer.content_hash();
         let row = state.cursor.row();
         let col = state.cursor.col();
         state.buffer.checkpoint(row, col);
@@ -354,6 +393,7 @@ impl Editor {
         let col = col.min(state.buffer.line_len(row).saturating_sub(1));
         state.cursor.set_position(row, col);
         state.cursor.set_desired(col);
+        self.revalidate_folds_after_change(number, Some(previous_hash));
         Ok(())
     }
 
@@ -591,9 +631,13 @@ impl Editor {
     }
 
     pub fn restore_buffer_text(&mut self, number: usize, text: &str) -> bool {
+        let Some(previous_hash) = self.buffer_content_hash(number) else {
+            return false;
+        };
         if number == self.buffers.current() {
             self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
             self.buffer.replace_all(text);
+            self.revalidate_folds_after_change(number, Some(previous_hash));
             return true;
         }
         let Some(entry) = self
@@ -608,6 +652,7 @@ impl Editor {
         let col = entry.state.cursor.col();
         entry.state.buffer.checkpoint(row, col);
         entry.state.buffer.replace_all(text);
+        self.revalidate_folds_after_change(number, Some(previous_hash));
         true
     }
 
@@ -757,11 +802,13 @@ impl Editor {
     }
 
     pub fn discard_current_changes(&mut self) {
+        let previous_hash = self.buffer.content_hash();
         if self.buffer.path.is_some() {
             let _ = self.buffer.reload_from_disk();
         } else {
             self.buffer.replace_all("");
         }
+        self.revalidate_folds_after_change(self.buffers.current(), Some(previous_hash));
         self.buffer.reset_history();
         self.buffer.mark_clean();
         self.clamp_row();
@@ -825,11 +872,13 @@ impl Editor {
             return Err(EditError::NoWrite);
         }
         let (row, col) = (self.cursor.row(), self.cursor.col());
+        let previous_hash = self.buffer.content_hash();
         self.buffer.checkpoint(row, col);
         self.buffer
             .reload_from_disk()
             .map_err(|error| EditError::Io(error.to_string()))?;
         self.buffer.mark_clean();
+        self.revalidate_folds_after_change(self.buffers.current(), Some(previous_hash));
         self.normalize_cursor();
         self.remember_wanted_column();
         self.reveal_cursor();
@@ -1012,6 +1061,7 @@ impl Editor {
             self.restore_state(state);
         }
         self.buffers.set_current(number);
+        self.refresh_folds();
         self.buffers.set_alternate(Some(previous));
         self.remember_wanted_column();
         self.reveal_cursor();
@@ -1041,7 +1091,8 @@ impl Editor {
             language_indent: std::mem::take(&mut self.language_indent),
             language_editing: std::mem::take(&mut self.language_editing),
             autoindent: std::mem::replace(&mut self.autoindent, self.buffer_defaults.autoindent),
-            viewport_top: self.viewport.top(),
+            viewport_top: self.visible_top(),
+            folds: std::mem::take(&mut self.folds),
             last_change: self.last_change.take(),
             undone_change: self.undone_change.take(),
             insert_repeat: self.insert_repeat.take(),
@@ -1065,8 +1116,12 @@ impl Editor {
         self.language_indent = state.language_indent;
         self.language_editing = state.language_editing;
         self.autoindent = state.autoindent;
+        self.folds = state.folds;
+        self.folds.set_method(self.fold_method);
+        self.folds.set_column(self.fold_column);
         self.viewport
             .place_top(state.viewport_top, self.buffer.line_count());
+        self.normalize_view();
         self.last_change = state.last_change;
         self.undone_change = state.undone_change;
         self.insert_repeat = state.insert_repeat;
@@ -1085,6 +1140,9 @@ impl Editor {
         self.buffer = buffer;
         self.cursor = Cursor::default();
         self.viewport.place_top(0, self.buffer.line_count());
+        self.folds = FoldState::default();
+        self.folds.set_method(self.fold_method);
+        self.folds.set_column(self.fold_column);
         self.last_change = None;
         self.undone_change = None;
         self.insert_repeat = None;

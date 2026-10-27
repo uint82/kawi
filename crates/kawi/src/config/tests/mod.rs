@@ -55,6 +55,8 @@ autoindent = false
 auto_pairs = false
 autosave = "focus"
 autosave_delay = 250
+foldmethod = "indent"
+foldcolumn = 0
 
 [history]
 limit = 25
@@ -72,6 +74,11 @@ undo_exclude = ["/tmp/*", "*.gpg", "*/.ssh/*"]
         Some(&OptionValue::Text("gruvbox-dark".to_string()))
     );
     assert_eq!(loaded.config.get("shiftwidth"), Some(&OptionValue::Int(2)));
+    assert_eq!(
+        loaded.config.get("foldmethod"),
+        Some(&OptionValue::Text("indent".to_string()))
+    );
+    assert_eq!(loaded.config.get("foldcolumn"), Some(&OptionValue::Int(0)));
     assert_eq!(
         loaded.config.get("expandtab"),
         Some(&OptionValue::Bool(true))
@@ -121,9 +128,14 @@ fn rejects_invalid_undo_exclusions() {
 
 #[test]
 fn accepts_aliases_in_editor_section() {
-    let loaded = load_text("[editor]\nsw = 2\net = true\n");
+    let loaded = load_text("[editor]\nsw = 2\net = true\nfdm = \"indent\"\nfdc = 0\n");
     assert!(loaded.warnings.is_empty());
     assert_eq!(loaded.config.get("shiftwidth"), Some(&OptionValue::Int(2)));
+    assert_eq!(
+        loaded.config.get("foldmethod"),
+        Some(&OptionValue::Text("indent".to_string()))
+    );
+    assert_eq!(loaded.config.get("foldcolumn"), Some(&OptionValue::Int(0)));
     assert_eq!(
         loaded.config.get("expandtab"),
         Some(&OptionValue::Bool(true))

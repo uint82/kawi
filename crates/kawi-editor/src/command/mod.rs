@@ -258,6 +258,8 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "diagnostic_virtual_text",
     "diagnostic_workspace_counts",
     "expandtab",
+    "foldcolumn",
+    "foldmethod",
     "format_on_save",
     "git_signs",
     "history",

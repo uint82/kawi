@@ -257,6 +257,14 @@ impl Buffer {
         self.rope.clone()
     }
 
+    pub fn content_hash(&self) -> u64 {
+        let mut hasher = crate::hash::ContentHasher::new();
+        for chunk in self.rope.chunks() {
+            hasher.write(chunk.as_bytes());
+        }
+        hasher.finish()
+    }
+
     pub fn char_index_of(&self, row: usize, col: usize) -> usize {
         self.position_to_char(row, col)
     }

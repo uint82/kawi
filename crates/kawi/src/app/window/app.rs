@@ -20,6 +20,7 @@ pub(crate) struct PaneData<'a> {
     pub rect: Rect,
     pub active: bool,
     pub lines: Vec<String>,
+    pub rows: Vec<usize>,
     pub gutter: Vec<String>,
     pub signs: Option<Vec<Option<Sign>>>,
     pub diagnostic_spans: Vec<DiagnosticSpan>,
@@ -32,6 +33,7 @@ pub(crate) struct PaneData<'a> {
     pub bracket_match: Option<BracketMatch>,
     pub viewport: Viewport,
     pub cursor_col: usize,
+    pub cursor_screen_row: Option<usize>,
     pub row: usize,
     pub tabstop: usize,
     pub filename: String,
@@ -486,12 +488,8 @@ impl App {
             .collect()
     }
 
-    fn active_syntax_spans(&self) -> Cow<'_, [SyntaxSpan]> {
+    fn active_syntax_spans(&self, top: usize, end: usize) -> Cow<'_, [SyntaxSpan]> {
         let buffer = self.editor.buffer_number();
-        let top = self.editor.view_top();
-        let end = top
-            .saturating_add(self.editor.view_height())
-            .min(self.editor.line_count());
         let Some(key) = self.syntax_key else {
             return Cow::Owned(Vec::new());
         };
@@ -505,25 +503,28 @@ impl App {
 
     fn active_pane_data<'a>(&'a self, rect: Rect) -> PaneData<'a> {
         let height = pane_content_height(rect);
-        let top = self.editor.view_top();
-        let lines = self.editor.visible_lines(top, height);
-        let gutter = self.editor.gutter_lines(top, height);
+        let top = self.editor.visible_top();
+        let window = self.editor.visible_window(top, height);
+        let rows = window.rows;
+        let lines = window.lines;
+        let end = rows.last().map(|row| row.saturating_add(1)).unwrap_or(top);
+        let search_height = end.saturating_sub(top).max(1);
+        let gutter = self.editor.gutter_lines_at(&rows);
         let preview_active = self.editor.command_preview_active();
         let search_spans = if preview_active {
             Vec::new()
         } else {
-            frame_search_spans(&self.editor.search_spans(top, height))
+            frame_search_spans(&self.editor.search_spans(top, search_height))
         };
         let preview_spans = if preview_active {
-            frame_search_spans(&self.editor.preview_spans(top, height))
+            frame_search_spans(&self.editor.preview_spans(top, search_height))
         } else {
             Vec::new()
         };
         let path = self.problem_path();
         let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
             path: path.as_deref(),
-            top,
-            height,
+            rows: &rows,
             cursor_row: self.editor.row(),
             cursor_column: self.editor.col(),
             suppress: self.virtual_text_suppressed(),
@@ -531,14 +532,14 @@ impl App {
         PaneData {
             rect,
             active: true,
-            signs: self.view_signs(),
-            diagnostic_spans: self.lsp.diagnostic_spans(&lines, top),
+            signs: self.view_signs_for_rows(&rows),
+            diagnostic_spans: self.lsp.diagnostic_spans(&lines, &rows),
             virtual_texts,
             lines,
             gutter,
             search_spans,
             preview_spans,
-            syntax_spans: self.active_syntax_spans(),
+            syntax_spans: self.active_syntax_spans(top, end),
             rulers: self.commit_rulers(self.editor.buffer_number()),
             selection: self.frame_selection(),
             bracket_match: self
@@ -548,14 +549,16 @@ impl App {
                 .and_then(|cache| cache.matched),
             viewport: pane_viewport(
                 rect,
-                top,
+                self.editor.display_row(top),
                 self.editor.view_leftcol(),
-                self.editor.line_count(),
+                self.editor.visible_line_count(),
             ),
             cursor_col: self
                 .editor
                 .cursor_wcol()
                 .saturating_sub(self.editor.view_leftcol()),
+            cursor_screen_row: self.editor.cursor_screen_row(),
+            rows,
             row: self.editor.row(),
             tabstop: self.editor.tabstop(),
             filename: self.editor.filename().to_string(),
@@ -586,12 +589,9 @@ impl App {
         id: WindowId,
         buffer: usize,
         top: usize,
-        height: usize,
+        end: usize,
     ) -> Cow<'a, [SyntaxSpan]> {
         let revision = self.editor.buffer_revision_at(buffer);
-        let end = top
-            .saturating_add(height)
-            .min(self.editor.buffer_line_count(buffer).unwrap_or(0));
         if let Some(key) = self.syntax_key {
             if syntax_key_matches(key, buffer, revision)
                 && syntax_window_covers(&self.syntax_window, top, end)
@@ -623,34 +623,48 @@ impl App {
             .copied()
             .expect("pane windows carry a view");
         let height = pane_content_height(rect);
-        let line_count = self
+        let buffer_lines = self
             .editor
             .buffer_line_count(window.buffer)
             .unwrap_or(1)
             .max(1);
-        let row = window.view.row.min(line_count.saturating_sub(1));
-        let top = window.view.top.min(line_count.saturating_sub(1));
+        let line_count = self
+            .editor
+            .buffer_visible_line_count(window.buffer)
+            .unwrap_or(1)
+            .max(1);
+        let top = self
+            .editor
+            .buffer_visible_top(window.buffer, window.view.top)
+            .unwrap_or(0);
+        let window_data = self
+            .editor
+            .buffer_visible_window(window.buffer, top, height)
+            .unwrap_or_default();
+        let rows = window_data.rows;
+        let lines = window_data.lines;
+        let end = rows.last().map(|row| row.saturating_add(1)).unwrap_or(top);
+        let row = self
+            .editor
+            .buffer_visible_top(window.buffer, window.view.row)
+            .unwrap_or(0)
+            .min(buffer_lines.saturating_sub(1));
         let line_len = self.editor.buffer_line_len(window.buffer, row).unwrap_or(0);
         let col = window.view.col.min(line_len.saturating_sub(1));
-        let lines = self
-            .editor
-            .buffer_window_lines(window.buffer, top, height)
-            .unwrap_or_default();
         let gutter = self
             .editor
-            .buffer_gutter_lines(window.buffer, top, height, row, height, window.options)
+            .buffer_gutter_lines_for_rows(window.buffer, &rows, row, height, window.options)
             .unwrap_or_default();
         let shared_document = window.buffer == self.editor.buffer_number();
         let diagnostic_spans = if shared_document {
-            self.lsp.diagnostic_spans(&lines, top)
+            self.lsp.diagnostic_spans(&lines, &rows)
         } else {
             Vec::new()
         };
-        let syntax_spans = self.inactive_syntax_spans(id, window.buffer, top, height);
+        let syntax_spans = self.inactive_syntax_spans(id, window.buffer, top, end);
         let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
             path: self.buffer_problem_path(window.buffer).as_deref(),
-            top,
-            height,
+            rows: &rows,
             cursor_row: row,
             cursor_column: col,
             suppress: false,
@@ -669,8 +683,17 @@ impl App {
             rulers: self.commit_rulers(window.buffer),
             selection: None,
             bracket_match: None,
-            viewport: pane_viewport(rect, top, window.view.leftcol, line_count),
+            viewport: pane_viewport(
+                rect,
+                self.editor
+                    .buffer_display_row(window.buffer, top)
+                    .unwrap_or(0),
+                window.view.leftcol,
+                line_count,
+            ),
             cursor_col: 0,
+            cursor_screen_row: None,
+            rows,
             row,
             tabstop: self
                 .editor

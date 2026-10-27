@@ -5,6 +5,7 @@ use crate::actions::{Action, CaseMotion, ShiftMotion};
 use crate::command::{CommandCompletion, CommandLine};
 use crate::cursor::Cursor;
 use crate::editing::LanguageEditing;
+use crate::folds::{FoldMethod, FoldState};
 use crate::jumps::Jumps;
 use crate::marks::Marks;
 use crate::mode::Mode;
@@ -23,6 +24,7 @@ mod cmd_complete;
 mod comment;
 mod copy_char;
 mod file_paths;
+mod fold;
 mod gutter;
 mod hscroll;
 mod indent;
@@ -44,6 +46,7 @@ mod registers;
 mod repeat;
 mod replace;
 mod replace_mode;
+mod reveal;
 mod scroll;
 mod search_mode;
 mod sent_ops;
@@ -62,6 +65,7 @@ use session::InsertEdit;
 
 pub use buffers::{BufferError, EditError, WriteOutcome};
 pub use file_paths::PathAdoption;
+pub use fold::VisibleWindow;
 pub use indent::IndentRules;
 pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
@@ -111,6 +115,9 @@ pub struct Editor {
     replace_entries: Vec<replace_mode::ReplaceEntry>,
     block_insert: Option<visual_block::BlockInsertPlan>,
     viewport: Viewport,
+    folds: FoldState,
+    fold_method: FoldMethod,
+    fold_column: usize,
     jumps: Jumps,
     marks: Marks,
     change_list: Vec<(usize, usize)>,
@@ -208,6 +215,15 @@ impl Editor {
             Action::MoveToViewportTop => self.move_to_viewport_top(),
             Action::MoveToViewportMiddle => self.move_to_viewport_middle(),
             Action::MoveToViewportBottom => self.move_to_viewport_bottom(),
+            Action::FoldToggle => self.toggle_fold(),
+            Action::FoldOpen => self.open_fold(),
+            Action::FoldClose => self.close_fold(),
+            Action::FoldOpenAll => self.open_all_folds(),
+            Action::FoldCloseAll => self.close_all_folds(),
+            Action::FoldNext => self.next_fold(),
+            Action::FoldPrevious => self.previous_fold(),
+            Action::FoldCreate => self.create_fold(),
+            Action::FoldDelete => self.delete_fold(),
             Action::SetMark(name) => self.set_mark(name),
             Action::JumpToMark { name, line_wise } => {
                 let _ = self.jump_to_mark(name, line_wise);
@@ -559,11 +575,13 @@ impl Editor {
             self.set_pcmark_at(jump_before);
         }
         self.apply_line_adjustments();
+        self.refresh_folds();
         self.refresh_wanted_column(action);
         self.reveal_cursor();
         if !matches!(action, Action::ScrollCursorStart | Action::ScrollCursorEnd) {
             self.reveal_cursor_horizontally();
         }
+        self.normalize_view();
         let buffer_changed = self.buffer.revision() != revision;
         if was_insert && Self::breaks_insert_run(action) {
             self.insert_run_active = false;
@@ -689,6 +707,7 @@ impl Editor {
 
     pub fn set_shiftwidth(&mut self, width: usize) {
         self.runtime_shiftwidth = Some(width);
+        self.refresh_folds();
     }
 
     pub fn set_expandtab(&mut self, expandtab: bool) {
@@ -814,6 +833,9 @@ impl Editor {
             replace_entries: Vec::new(),
             block_insert: None,
             viewport: Viewport::new(FALLBACK_HEIGHT, FALLBACK_WIDTH),
+            folds: FoldState::default(),
+            fold_method: FoldMethod::default(),
+            fold_column: crate::folds::DEFAULT_FOLD_COLUMN,
             jumps: Jumps::new(),
             marks: Marks::new(),
             change_list: Vec::new(),
@@ -1013,17 +1035,7 @@ impl Editor {
     }
 
     pub fn visible_lines(&self, top: usize, height: usize) -> Vec<String> {
-        let mut lines = self.buffer.window_lines(top, height);
-        if let Some(preview) = self.command_preview.as_ref() {
-            for (row, text) in &preview.lines {
-                if *row >= top && *row < top.saturating_add(height) {
-                    if let Some(line) = lines.get_mut(row - top) {
-                        *line = text.clone();
-                    }
-                }
-            }
-        }
-        lines
+        self.visible_window(top, height).lines
     }
 }
 

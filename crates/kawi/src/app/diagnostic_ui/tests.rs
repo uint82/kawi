@@ -32,10 +32,14 @@ fn request<'a>(
     cursor_row: usize,
     suppress: bool,
 ) -> VirtualTextRequest<'a> {
+    let rows: &'static [usize] = Box::leak(
+        (top..top.saturating_add(height))
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+    );
     VirtualTextRequest {
         path: Some(path),
-        top,
-        height,
+        rows,
         cursor_row,
         cursor_column: 0,
         suppress,
@@ -178,8 +182,7 @@ fn virtual_text_does_not_change_cursor_selection_search_or_horizontal_scroll() {
     );
     let texts = app.virtual_texts(VirtualTextRequest {
         path: Some(&path),
-        top: 0,
-        height: 1,
+        rows: &[0],
         cursor_row: app.editor.row(),
         cursor_column: app.editor.col(),
         suppress: false,

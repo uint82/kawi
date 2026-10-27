@@ -109,7 +109,7 @@ fn spans_clip_to_visible_lines_and_extend_zero_width_diagnostics() {
         ..DiagnosticState::default()
     };
     let window = ["abcd".to_string(), String::new(), "ef".to_string()];
-    let spans = state.spans(&window, 0);
+    let spans = state.spans(&window, &[0, 1, 2]);
     assert!(spans.contains(&DiagnosticSpan {
         row: 0,
         start: 1,
@@ -147,7 +147,7 @@ fn tags_map_to_diagnostic_decorations() {
         items: vec![unnecessary, deprecated],
         ..DiagnosticState::default()
     };
-    let spans = state.spans(&["one".to_string(), "two".to_string()], 0);
+    let spans = state.spans(&["one".to_string(), "two".to_string()], &[0, 1]);
     assert_eq!(spans[0].tag, Some(UiDiagnosticTag::Unnecessary));
     assert_eq!(spans[1].tag, Some(UiDiagnosticTag::Deprecated));
 }

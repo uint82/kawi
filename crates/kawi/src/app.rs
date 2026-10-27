@@ -1,9 +1,10 @@
+use crate::file_views::FileViewStore;
 use anyhow::{anyhow, Result};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use kawi_buffer::Buffer;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::stdout;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -59,6 +60,7 @@ mod undo_commands;
 #[cfg(test)]
 mod undo_test_support;
 mod undo_tree;
+mod views;
 mod window;
 mod workspace_edit;
 
@@ -160,6 +162,8 @@ pub struct App {
     terminal_focus: bool,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
+    file_views: Option<FileViewStore>,
+    loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
     pending_save: Option<save::PendingSave>,
     format_on_save: bool,
@@ -245,6 +249,8 @@ impl App {
             terminal_focus: false,
             disk: disk::DiskState::default(),
             file_watch: None,
+            file_views: None,
+            loaded_views: BTreeSet::new(),
             conflict: None,
             pending_save: None,
             format_on_save: false,
@@ -699,8 +705,9 @@ impl App {
                 Ok(false)
             }
         };
-        self.sync_active_window();
         self.sync_language_settings();
+        self.sync_file_view();
+        self.sync_active_window();
         result
     }
 
@@ -805,7 +812,10 @@ impl App {
         let local_row = screen_row
             .saturating_sub(rect.y)
             .min(rect.height.saturating_sub(2));
-        let row = self.editor.view_top().saturating_add(local_row);
+        let row = self
+            .editor
+            .buffer_row_at_screen(local_row)
+            .unwrap_or_else(|| self.editor.view_top());
         let screen_col = column.saturating_sub(rect.x);
         let col = self.editor.buffer_col_at_screen(row, screen_col);
         (row, col)
@@ -2258,7 +2268,7 @@ mod tests {
         app.handle_mouse(press(5, 0)).expect("press");
         app.handle_mouse(drag(8, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
-        assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+        assert_eq!(app.editor_selection(), Some(((0, 0), (1, 3))));
     }
 
     #[test]
@@ -3338,10 +3348,14 @@ mod tests {
     fn numbers_show_by_default() {
         let app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
         assert!(app.editor.number());
-        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(app.editor.gutter_width(), 5);
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                "   2 ".to_string(),
+                "   3 ".to_string()
+            ]
         );
     }
 
@@ -3349,14 +3363,18 @@ mod tests {
     fn set_number_command_shows_gutter() {
         let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
         type_command(&mut app, "set nonumber");
-        assert_eq!(app.editor.gutter_width(), 0);
+        assert_eq!(app.editor.gutter_width(), 1);
         type_command(&mut app, "set number");
-        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(app.editor.gutter_width(), 5);
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                "   2 ".to_string(),
+                "   3 ".to_string()
+            ]
         );
-        assert_eq!(app.editor.cursor_wcol(), 4);
+        assert_eq!(app.editor.cursor_wcol(), 5);
     }
 
     #[test]
@@ -3367,7 +3385,11 @@ mod tests {
         assert!(app.editor.number());
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "2   ".to_string(), "  1 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                " 2   ".to_string(),
+                "   1 ".to_string()
+            ]
         );
     }
 
@@ -3395,7 +3417,7 @@ mod tests {
         type_command(&mut app, "set number");
         app.handle_mouse(press(3, 0)).expect("click gutter");
         assert_eq!(app.cursor_position(), (0, 0));
-        app.handle_mouse(press(12, 0)).expect("click past tab");
+        app.handle_mouse(press(13, 0)).expect("click past tab");
         assert_eq!(app.cursor_position(), (0, 1));
         app.handle_mouse(press(4, 0)).expect("click tab start");
         assert_eq!(app.cursor_position(), (0, 0));

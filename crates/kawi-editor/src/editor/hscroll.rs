@@ -96,14 +96,13 @@ impl Editor {
 
     fn longest_visible_line(&self) -> Option<usize> {
         let cursor_row = self.cursor.row();
-        let top = self.viewport.top();
-        let end = self.viewport.visible_end().min(self.buffer.line_count());
-        if cursor_row < top || cursor_row >= end {
+        let rows = self.visible_rows(self.visible_top(), self.view_height());
+        if !rows.contains(&cursor_row) {
             return None;
         }
         let mut best = None;
         let mut width = 0;
-        for row in top..end {
+        for row in rows {
             let len = self.scroll_line_len(row);
             if len > width {
                 width = len;
@@ -222,6 +221,7 @@ mod tests {
     fn view(text: &str) -> Editor {
         let mut editor = editor_with(text);
         editor.set_view_size(20, 5);
+        editor.set_fold_column(0);
         editor
     }
 

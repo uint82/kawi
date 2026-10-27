@@ -4,11 +4,12 @@ use crate::state::StatePaths;
 use std::path::Path;
 
 pub(crate) fn check(paths: &StatePaths) -> Check {
-    let mut targets = Vec::with_capacity(4);
+    let mut targets = Vec::with_capacity(5);
     if let Some(state) = paths.sessions.parent() {
         targets.push(("state", state));
     }
     targets.push(("sessions", paths.sessions.as_path()));
+    targets.push(("views", paths.views.as_path()));
     targets.push(("recovery", paths.recovery.as_path()));
     targets.push(("undo", paths.undo.as_path()));
     let mut details = Vec::with_capacity(targets.len());

@@ -17,6 +17,7 @@ pub mod words;
 
 mod case_map;
 pub mod clipboard;
+mod folds;
 mod jumps;
 mod marks;
 mod paragraphs;
@@ -37,6 +38,7 @@ pub use editor::{
     LanguageIndent, PathAdoption, ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT,
     MAX_HISTORY_LIMIT,
 };
+pub use folds::{Fold, FoldMethod, FoldSnapshot, FoldState, DEFAULT_FOLD_COLUMN, MAX_FOLD_COLUMN};
 pub use mode::Mode;
 pub use objects::bracket_match::{BracketMatch, HIGHLIGHT_MATCH_STEP_BUDGET};
 pub use register::{Register, RegisterKind};

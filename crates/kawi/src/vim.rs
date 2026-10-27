@@ -76,6 +76,20 @@ fn scroll_action(key: KeyEvent) -> Option<Action> {
     }
 }
 
+fn fold_action(pushed: char) -> Option<Action> {
+    match pushed {
+        'a' => Some(Action::FoldToggle),
+        'o' => Some(Action::FoldOpen),
+        'c' => Some(Action::FoldClose),
+        'R' => Some(Action::FoldOpenAll),
+        'M' => Some(Action::FoldCloseAll),
+        'j' => Some(Action::FoldNext),
+        'k' => Some(Action::FoldPrevious),
+        'd' => Some(Action::FoldDelete),
+        _ => None,
+    }
+}
+
 fn place_action(pushed: char) -> Option<Action> {
     match pushed {
         'z' => Some(Action::PlaceCenter),
@@ -708,7 +722,7 @@ impl VimKeymap {
         if pushed.is_ascii_digit() {
             return self.push_digit(pushed);
         }
-        let Some(action) = place_action(pushed) else {
+        let Some(action) = fold_action(pushed).or_else(|| place_action(pushed)) else {
             return self.cancel_sequence();
         };
         self.clear_pending();
@@ -1754,7 +1768,11 @@ impl VimKeymap {
             }
         }
         if self.stripped_pending() == "z" {
-            if let Some(action) = place_action(pushed) {
+            if pushed == 'f' {
+                self.clear_pending();
+                return Action::FoldCreate;
+            }
+            if let Some(action) = fold_action(pushed).or_else(|| place_action(pushed)) {
                 self.clear_pending();
                 return action;
             }
@@ -5805,6 +5823,42 @@ mod tests {
             assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Visual), action);
             assert_eq!(map.pending_text(), None);
         }
+    }
+
+    #[test]
+    fn fold_sequences_resolve() {
+        for (key, action) in [
+            ('a', Action::FoldToggle),
+            ('o', Action::FoldOpen),
+            ('c', Action::FoldClose),
+            ('R', Action::FoldOpenAll),
+            ('M', Action::FoldCloseAll),
+            ('j', Action::FoldNext),
+            ('k', Action::FoldPrevious),
+            ('d', Action::FoldDelete),
+        ] {
+            let mut map = VimKeymap::new();
+            assert_eq!(
+                map.map(plain(KeyCode::Char('z')), Mode::Normal),
+                Action::Noop
+            );
+            assert_eq!(map.map(plain(KeyCode::Char(key)), Mode::Normal), action);
+            assert_eq!(map.pending_text(), None);
+        }
+    }
+
+    #[test]
+    fn visual_fold_sequence_creates_a_fold() {
+        let mut map = VimKeymap::new();
+        assert_eq!(
+            map.map(plain(KeyCode::Char('z')), Mode::Visual),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Visual),
+            Action::FoldCreate
+        );
+        assert_eq!(map.pending_text(), None);
     }
 
     #[test]
