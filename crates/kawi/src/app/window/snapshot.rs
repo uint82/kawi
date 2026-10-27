@@ -59,12 +59,21 @@ fn snapshot_node(
             ratio,
             first,
             second,
-        } => Some(SessionWindow::Split {
-            direction: session_direction(*direction),
-            ratio: *ratio,
-            first: Box::new(snapshot_node(first, buffer_indices, windows, depth + 1)?),
-            second: Box::new(snapshot_node(second, buffer_indices, windows, depth + 1)?),
-        }),
+        } => {
+            let first = snapshot_node(first, buffer_indices, windows, depth + 1);
+            let second = snapshot_node(second, buffer_indices, windows, depth + 1);
+            match (first, second) {
+                (Some(first), Some(second)) => Some(SessionWindow::Split {
+                    direction: session_direction(*direction),
+                    ratio: *ratio,
+                    first: Box::new(first),
+                    second: Box::new(second),
+                }),
+                (Some(first), None) => Some(first),
+                (None, Some(second)) => Some(second),
+                (None, None) => None,
+            }
+        }
     }
 }
 
@@ -172,6 +181,16 @@ mod tests {
         assert_eq!(restored.view(right), windows.view(right));
         assert_eq!(restored.view(bottom), windows.view(bottom));
         assert_eq!(restored.view(1), windows.view(1));
+    }
+
+    #[test]
+    fn unlisted_buffers_are_pruned_from_the_snapshot() {
+        let mut windows = Windows::new(1, view(0, 0));
+        windows.split_active(SplitDirection::Vertical, WindowView::new(2, view(0, 0)));
+        let mut indices = BTreeMap::new();
+        indices.insert(1, 0);
+        let snapshot = windows.snapshot(&indices).expect("snapshot");
+        assert!(matches!(snapshot, SessionWindow::Leaf { buffer: 0, .. }));
     }
 
     #[test]
