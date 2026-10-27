@@ -89,6 +89,7 @@ fn push_plain(lines: &mut Vec<MarkdownLine>, text: &str, width: usize) {
         &[MarkdownSpan {
             text: text.to_string(),
             style: MarkdownStyle::Normal,
+            link: None,
         }],
         width,
     ));

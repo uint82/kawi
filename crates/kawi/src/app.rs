@@ -24,6 +24,7 @@ mod git;
 mod git_branch;
 mod git_commit;
 mod git_status;
+mod help;
 mod hover;
 mod language;
 mod lsp;
@@ -155,6 +156,7 @@ pub struct App {
     signature: Option<signature::SignatureSession>,
     hover: Option<hover::HoverSession>,
     diagnostic_popup: Option<diagnostic_popup::DiagnosticPopup>,
+    help: Option<help::HelpSession>,
     code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
@@ -234,6 +236,7 @@ impl App {
             signature: None,
             hover: None,
             diagnostic_popup: None,
+            help: None,
             code_actions: None,
             git: None,
             git_path: None,
@@ -1144,6 +1147,9 @@ impl App {
         if self.pager.is_some() {
             return self.handle_pager_key(key);
         }
+        if self.handle_help_key(key)? {
+            return Ok(false);
+        }
         if key.code == KeyCode::Esc
             && self.editor.mode() == kawi_editor::Mode::Normal
             && self.lsp.cancel_pending()
@@ -1755,6 +1761,7 @@ impl App {
                 self.open_terminal(command, layout)
             }
             Command::Conflict => self.handle_conflict_command(),
+            Command::Help { topic } => self.handle_help(topic.as_deref()),
             Command::Undo(command) => self.handle_undo_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
@@ -1980,7 +1987,13 @@ impl App {
     }
 
     fn reconcile_unlisted_buffers(&mut self) {
-        let listed = self.editor.buffer_numbers();
+        let mut listed = self.editor.buffer_numbers();
+        listed.extend(
+            self.editor
+                .all_buffer_numbers()
+                .into_iter()
+                .filter(|number| self.editor.buffer_is_internal(*number).unwrap_or(false)),
+        );
         if self
             .git_commit
             .editor_buffer()

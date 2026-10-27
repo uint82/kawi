@@ -73,6 +73,7 @@ fn signature_spans(marker: &str, label: &str, range: Option<(usize, usize)>) -> 
         MarkdownSpan {
             text: chars[start..end].iter().collect(),
             style: MarkdownStyle::Strong,
+            link: None,
         },
         normal_span(chars[end..].iter().collect()),
     ]
@@ -82,6 +83,7 @@ fn normal_span(text: String) -> MarkdownSpan {
     MarkdownSpan {
         text,
         style: MarkdownStyle::Normal,
+        link: None,
     }
 }
 

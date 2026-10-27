@@ -90,6 +90,7 @@ mod tests {
             spans: vec![MarkdownSpan {
                 text: text.to_string(),
                 style: MarkdownStyle::Normal,
+                link: None,
             }],
             code: false,
         }
@@ -109,6 +110,7 @@ mod tests {
                 &[MarkdownSpan {
                     text: text.to_string(),
                     style: MarkdownStyle::Normal,
+                    link: None,
                 }],
                 width,
             )

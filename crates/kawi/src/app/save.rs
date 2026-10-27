@@ -43,9 +43,9 @@ impl App {
             return false;
         }
         let number = self.editor.buffer_number();
-        if self.editor.buffer_is_readonly(number).unwrap_or(false) {
+        if let Some(message) = self.buffer_write_error(number) {
             if visible {
-                self.show_message("E45: 'readonly' option is set".to_string());
+                self.show_message(message.to_string());
             }
             return false;
         }
@@ -167,6 +167,16 @@ impl App {
         );
     }
 
+    fn buffer_write_error(&self, number: usize) -> Option<&'static str> {
+        if self.editor.buffer_is_internal(number).unwrap_or(false) {
+            return Some("E382: Cannot write, internal buffer");
+        }
+        self.editor
+            .buffer_is_readonly(number)
+            .unwrap_or(false)
+            .then_some("E45: 'readonly' option is set")
+    }
+
     fn save_buffer_now(
         &mut self,
         number: usize,
@@ -175,9 +185,9 @@ impl App {
         visible: bool,
         suffix: Option<&str>,
     ) -> bool {
-        if self.editor.buffer_is_readonly(number).unwrap_or(false) {
+        if let Some(message) = self.buffer_write_error(number) {
             if visible {
-                self.show_message("E45: 'readonly' option is set".to_string());
+                self.show_message(message.to_string());
             }
             return false;
         }
