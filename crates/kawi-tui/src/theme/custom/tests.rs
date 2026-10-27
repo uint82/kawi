@@ -285,3 +285,19 @@ fn rejects_invalid_colors() {
     let error = Theme::from_toml("personal", &text).unwrap_err();
     assert!(error.to_string().contains("base.background"));
 }
+
+#[test]
+fn validates_custom_and_builtin_themes() {
+    let dir = temp_dir("validation");
+    fs::write(dir.join("personal.toml"), theme_text()).unwrap();
+    assert_eq!(Theme::validate("personal", &dir), Ok(()));
+    assert_eq!(Theme::validate("default", &dir), Ok(()));
+    assert!(Theme::validate("missing", &dir).is_err());
+}
+
+#[test]
+fn validation_rejects_an_invalid_custom_builtin_override() {
+    let dir = temp_dir("invalid_builtin");
+    fs::write(dir.join("default.toml"), "not valid toml").unwrap();
+    assert!(Theme::validate("default", &dir).is_err());
+}
