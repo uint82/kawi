@@ -31,6 +31,10 @@ impl App {
         self.file_ops = Some(FileOpSession::Path(prompt::PathPrompt::new_file(root)));
     }
 
+    pub(super) fn open_new_directory_prompt(&mut self, root: PathBuf) {
+        self.file_ops = Some(FileOpSession::Path(prompt::PathPrompt::new_directory(root)));
+    }
+
     pub(super) fn handle_file_op_key(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
         let Some(mut session) = self.file_ops.take() else {
             return Ok(false);
@@ -84,6 +88,9 @@ impl App {
         match action {
             PathAction::Rename { source, force } => self.rename_file(&source, text, force),
             PathAction::NewFile { root } => self.create_new_path(&root, text),
+            PathAction::NewDirectory { root } => {
+                self.create_new_path(&root, &directory_path_text(text))
+            }
         }
     }
 
@@ -176,6 +183,14 @@ pub(super) fn absolute_path(path: &str) -> PathBuf {
 
 pub(super) fn is_directory_text(text: &str) -> bool {
     text.ends_with(['/', '\\'])
+}
+
+fn directory_path_text(text: &str) -> String {
+    if is_directory_text(text) {
+        text.to_string()
+    } else {
+        format!("{text}{}", std::path::MAIN_SEPARATOR)
+    }
 }
 
 pub(super) fn path_under(path: &Path, root: &Path) -> bool {

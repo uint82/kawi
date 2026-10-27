@@ -179,3 +179,21 @@ fn rename_onto_itself_is_refused() {
     assert!(path.exists());
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn rename_updates_an_open_explorer() {
+    let dir = temp_dir("rename_explorer");
+    let source = dir.join("a.txt");
+    let target = dir.join("b.txt");
+    fs::write(&source, "alpha\n").unwrap();
+    let mut app = app_for(&source);
+    app.explorer.open(dir.clone());
+    app.explorer.select(source.clone());
+    command(&mut app, &format!("rename {}", target.display()));
+    assert_eq!(
+        app.explorer.selected_row().map(|row| row.path.as_path()),
+        Some(target.as_path())
+    );
+    assert!(app.explorer.rows().iter().any(|row| row.path == target));
+    let _ = fs::remove_dir_all(dir);
+}
