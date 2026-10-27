@@ -205,8 +205,11 @@ fn segment_spec(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig) 
 }
 
 fn segment_style(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig) -> SegmentStyle {
+    if !config.color_modes {
+        return SegmentStyle::Default;
+    }
     match id {
-        SegmentId::Mode if config.color_modes => SegmentStyle::Mode(info.mode_kind),
+        SegmentId::Mode => SegmentStyle::Mode(info.mode_kind),
         SegmentId::Modified => SegmentStyle::Modified,
         SegmentId::ReadOnly => SegmentStyle::ReadOnly,
         SegmentId::Diagnostics => info
@@ -225,6 +228,6 @@ fn segment_style(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig)
         SegmentId::Eol => SegmentStyle::Eol,
         SegmentId::Percent => SegmentStyle::Percent,
         SegmentId::Position => SegmentStyle::Position,
-        SegmentId::Mode | SegmentId::File => SegmentStyle::Default,
+        SegmentId::File => SegmentStyle::Default,
     }
 }

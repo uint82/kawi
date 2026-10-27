@@ -92,18 +92,34 @@ fn configured_mode_labels_replace_the_keymap_label() {
 }
 
 #[test]
-fn disabling_mode_colors_keeps_the_label() {
+fn disabling_colors_keeps_labels_without_badges() {
     let config = StatusBarConfig {
         color_modes: false,
         ..StatusBarConfig::default()
     };
-    let segments = build_segments(&info("a.txt"), true, &config);
+    let mut status = info("a.txt");
+    status.dirty = true;
+    status.readonly = true;
+    status.diagnostics = Some("E1");
+    status.diagnostics_severity = Some(super::super::DiagnosticSeverity::Error);
+    status.git = Some(GitStatusInfo {
+        branch: "main",
+        operation: None,
+        ahead: 0,
+        behind: 0,
+    });
+    status.selection = Some("1 char");
+    status.macro_recording = Some('q');
+    let segments = build_segments(&status, true, &config);
+    assert!(segments
+        .iter()
+        .all(|segment| segment.style == super::super::SegmentStyle::Default));
     let mode = segments
         .iter()
         .find(|segment| segment.id == SegmentId::Mode)
         .expect("mode");
-    assert_eq!(mode.style, super::super::SegmentStyle::Default);
     assert_eq!(mode.text, "NORMAL");
+    assert_eq!(mode.padding, 0);
 }
 
 #[test]

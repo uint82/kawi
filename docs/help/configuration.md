@@ -99,4 +99,4 @@ The `file` element is flexible and truncates from the left when space is short, 
 
 `diagnostics` follows `diagnostic_counts`. `workspace_diagnostics` is opt-in and follows `diagnostic_workspace_counts`. `position` shows the line and character column, adding the display column when it differs. `encoding` and `eol` render only when the buffer uses a non-default value. `percent` is the cursor position through the file.
 
-Set `color_modes = false` to render the mode badge without its background color. The separator is sanitized before rendering, so control characters and escape sequences never reach the terminal.
+Set `color_modes = false` to render every status line segment without a background badge. The separator is sanitized before rendering, so control characters and escape sequences never reach the terminal.
