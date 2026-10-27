@@ -217,6 +217,21 @@ impl App {
                 self.explorer.set_enabled(value.as_bool().unwrap_or(false));
                 self.sync_terminal_panel_size();
             }
+            "directory_show_hidden" => {
+                self.directory_options.show_hidden = value.as_bool().unwrap_or(false);
+            }
+            "directory_confirm" => {
+                self.directory_options.confirm = value.as_bool().unwrap_or(true);
+            }
+            "directory_trash" => {
+                self.directory_options.trash = value.as_bool().unwrap_or(true);
+            }
+            "directory_sort" => {
+                self.directory_options.sort = value
+                    .as_text()
+                    .and_then(super::directory::SortMode::parse)
+                    .unwrap_or_default();
+            }
             "explorer_width" => {
                 self.explorer.set_width(
                     value
@@ -403,6 +418,10 @@ impl App {
             "explorer_enabled" => OptionValue::Bool(self.explorer.is_enabled()),
             "explorer_width" => OptionValue::Int(self.explorer.width()),
             "explorer_show_hidden" => OptionValue::Bool(self.explorer.show_hidden()),
+            "directory_show_hidden" => OptionValue::Bool(self.directory_options.show_hidden),
+            "directory_confirm" => OptionValue::Bool(self.directory_options.confirm),
+            "directory_trash" => OptionValue::Bool(self.directory_options.trash),
+            "directory_sort" => OptionValue::Text(self.directory_options.sort.name().to_string()),
             "keyguide" => OptionValue::Bool(self.keyguide_enabled),
             "keyguide_delay" => OptionValue::Int(
                 usize::try_from(self.keyguide_delay.as_millis()).unwrap_or(usize::MAX),

@@ -326,6 +326,35 @@ undo_exclude = ["*.gpg"]
     }
 
     #[test]
+    fn explorer_config_section_applies_directory_options() {
+        let dir = temp_dir("explorer_section");
+        let path = dir.join("config.toml");
+        fs::write(
+            &path,
+            r#"
+[explorer]
+show_hidden = true
+confirm = false
+trash = false
+sort = "name"
+"#,
+        )
+        .unwrap();
+        let loaded = config::load(&path);
+        assert!(loaded.warnings.is_empty());
+        let mut app = app();
+        app.apply_config(&loaded.config);
+        assert!(app.directory_options.show_hidden);
+        assert!(!app.directory_options.confirm);
+        assert!(!app.directory_options.trash);
+        assert_eq!(
+            app.directory_options.sort,
+            crate::app::directory::SortMode::Name
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn warning_summary_mentions_the_log() {
         assert_eq!(
             config_warning_message(3, std::path::Path::new("state/kawi/config.log")),
