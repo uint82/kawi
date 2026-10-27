@@ -28,7 +28,7 @@ The leader key is Space or Backslash.
 - `]q` and `[q` next and previous quickfix entry
 - `Ctrl-w` window prefix
 - `Ctrl-t` return from a help link
-- `-` open the parent directory of the current file or directory buffer
+- `<leader> e -` open the parent directory of the current file or directory buffer
 
 ## Folds
 

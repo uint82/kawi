@@ -54,7 +54,7 @@ impl App {
         true
     }
 
-    pub(super) fn open_directory_parent(&mut self) -> bool {
+    pub(in crate::app) fn open_directory_parent(&mut self) -> bool {
         if !self.editor.has_file() {
             self.show_message(NO_NAME.to_string());
             return true;

@@ -128,6 +128,20 @@ fn minus_opens_the_parent_and_restores_the_cursor() {
 }
 
 #[test]
+fn parent_action_opens_parent_from_a_file() {
+    let (dir, mut app) = setup("directory_file_parent_action", &["alpha.txt"], &[]);
+    app.editor
+        .open_file_buffer(dir.join("alpha.txt").to_string_lossy().as_ref())
+        .unwrap();
+    assert!(!app
+        .dispatch_action(kawi_editor::Action::OpenParentDirectory)
+        .unwrap());
+    assert_eq!(app.editor.filename(), dir.to_string_lossy().as_ref());
+    assert_eq!(listing(&app)[app.editor.row()], "alpha.txt");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn hidden_entries_can_be_toggled_when_the_buffer_is_clean() {
     let (dir, mut app) = setup("directory_hidden", &[".secret", "alpha.txt"], &[]);
     assert_eq!(listing(&app), ["alpha.txt"]);
@@ -189,14 +203,16 @@ fn sessions_restore_directory_buffers() {
 }
 
 #[test]
-fn minus_from_a_file_opens_its_parent_directory() {
+fn minus_in_a_file_buffer_is_left_to_vim() {
     let (dir, mut app) = setup("directory_file_parent", &["alpha.txt"], &[]);
     app.editor
         .open_file_buffer(dir.join("alpha.txt").to_string_lossy().as_ref())
         .unwrap();
-    assert!(app.handle_directory_key(key(KeyCode::Char('-'))).unwrap());
-    assert_eq!(app.editor.filename(), dir.to_string_lossy().as_ref());
-    assert_eq!(listing(&app)[app.editor.row()], "alpha.txt");
+    assert!(!app.handle_directory_key(key(KeyCode::Char('-'))).unwrap());
+    assert_eq!(
+        app.editor.filename(),
+        dir.join("alpha.txt").to_string_lossy().as_ref()
+    );
     let _ = fs::remove_dir_all(dir);
 }
 

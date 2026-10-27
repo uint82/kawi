@@ -1277,6 +1277,10 @@ impl App {
                 self.reveal_current_in_explorer();
                 Ok(false)
             }
+            Action::OpenParentDirectory => {
+                self.open_directory_parent();
+                Ok(false)
+            }
             Action::Noop => self.handle_noop(),
             Action::StartMacroRecording(register) => {
                 self.start_macro_recording(register);

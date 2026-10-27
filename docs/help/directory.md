@@ -7,7 +7,7 @@ related = ["explorer", "keybindings", "configuration", "sessions"]
 
 A directory buffer lists a directory as editable text. The buffer is an intent: editing lines does not touch the filesystem until you write. This follows the oil.nvim and wdired model.
 
-Open a directory with `kawi .`, `:e dir/`, or `-` in a file or directory buffer. `-` opens the parent directory and places the cursor on the entry you came from.
+Open a directory with `kawi .`, `:e dir/`, or `-` in a directory buffer. From a file buffer, `<leader> e -` opens the parent directory and places the cursor on the file you came from. `-` keeps its normal Vim motion in file buffers.
 
 ## Editing
 
@@ -40,7 +40,8 @@ The directory is checked again before applying. If entries changed since the buf
 
 - `:e dir/` open a directory buffer
 - `kawi .` start in the current directory
-- `-` open the parent directory
+- `-` open the parent directory from a directory buffer
+- `<leader> e -` open the parent directory from any buffer
 - `Enter` open the entry under the cursor
 - `.` toggle hidden entries when the buffer is clean
 - `:w` apply pending changes

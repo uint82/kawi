@@ -28,13 +28,11 @@ impl App {
         {
             return Ok(false);
         }
-        if key.code == KeyCode::Char('-') {
-            return Ok(self.open_directory_parent());
-        }
         if self.directory_buffer_number().is_none() {
             return Ok(false);
         }
         match key.code {
+            KeyCode::Char('-') => Ok(self.open_directory_parent()),
             KeyCode::Enter => Ok(self.open_directory_entry()),
             KeyCode::Char('.') => Ok(self.toggle_directory_hidden()),
             _ => Ok(false),

@@ -89,6 +89,12 @@ const EXPLORER_COMMANDS: &[LeaderCommand] = &[
         label: "reveal current file",
         action: Action::RevealInExplorer,
     },
+    LeaderCommand {
+        key: '-',
+        aliases: &[],
+        label: "open parent directory",
+        action: Action::OpenParentDirectory,
+    },
 ];
 
 const DIAGNOSTIC_COMMANDS: &[LeaderCommand] = &[
@@ -329,6 +335,7 @@ mod tests {
         assert_eq!(action(path, 'e'), Some(Action::ToggleExplorer));
         assert_eq!(action(path, 'f'), Some(Action::FocusExplorer));
         assert_eq!(action(path, 'r'), Some(Action::RevealInExplorer));
+        assert_eq!(action(path, '-'), Some(Action::OpenParentDirectory));
     }
 
     #[test]
