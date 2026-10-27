@@ -74,7 +74,7 @@ const DIAGNOSTIC_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'd',
         aliases: &[],
-        label: "show diagnostic",
+        label: "show diagnostic at cursor",
         action: Action::ShowDiagnostic,
     },
     LeaderCommand {
@@ -92,7 +92,7 @@ const DIAGNOSTIC_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'l',
         aliases: &[],
-        label: "list diagnostics",
+        label: "open diagnostics list",
         action: Action::QuickfixOpen,
     },
 ];
@@ -135,13 +135,13 @@ const TASK_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'o',
         aliases: &[],
-        label: "task output",
+        label: "show task output",
         action: Action::TaskOutput,
     },
     LeaderCommand {
         key: 'q',
         aliases: &[],
-        label: "open quickfix",
+        label: "open quickfix list",
         action: Action::QuickfixOpen,
     },
     LeaderCommand {
@@ -162,7 +162,7 @@ const GIT_COMMANDS: &[LeaderCommand] = &[
     LeaderCommand {
         key: 'd',
         aliases: &[],
-        label: "show diff",
+        label: "show buffer diff",
         action: Action::GitDiff,
     },
     LeaderCommand {
@@ -194,7 +194,7 @@ const GIT_COMMANDS: &[LeaderCommand] = &[
 pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[
     LeaderGroup {
         key: 'c',
-        label: "code",
+        label: "code tools",
         visual: true,
         commands: CODE_COMMANDS,
     },
@@ -224,13 +224,13 @@ pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[
     },
     LeaderGroup {
         key: 't',
-        label: "tasks",
+        label: "tasks and terminal",
         visual: false,
         commands: TASK_COMMANDS,
     },
     LeaderGroup {
         key: 'v',
-        label: "git",
+        label: "git actions",
         visual: false,
         commands: GIT_COMMANDS,
     },

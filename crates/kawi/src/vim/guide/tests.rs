@@ -9,6 +9,18 @@ fn has_key(prefix: &str, mode: Mode, key: char) -> bool {
     guide(prefix, mode).is_some_and(|guide| keys(&guide).contains(&key))
 }
 
+fn description(prefix: &str, mode: Mode, key: char) -> &'static str {
+    guide(prefix, mode)
+        .and_then(|guide| {
+            guide
+                .rows
+                .into_iter()
+                .find(|row| row.key == key)
+                .map(|row| row.description)
+        })
+        .expect("guide row")
+}
+
 #[test]
 fn operator_guide_lists_motions_and_objects() {
     assert!(has_key("d", Mode::Normal, 'w'));
@@ -16,7 +28,29 @@ fn operator_guide_lists_motions_and_objects() {
     assert!(has_key("d", Mode::Normal, 'a'));
     assert!(has_key("di", Mode::Normal, 'w'));
     assert!(has_key("di", Mode::Normal, '('));
+    assert!(has_key("dg", Mode::Normal, 'g'));
+    assert!(has_key("dg", Mode::Normal, 'E'));
     assert!(!has_key("caw", Mode::Normal, 'w'));
+}
+
+#[test]
+fn operator_labels_name_the_action() {
+    assert_eq!(description("d", Mode::Normal, 'w'), "delete word");
+    assert_eq!(description("c", Mode::Normal, 'w'), "change word");
+    assert_eq!(description("y", Mode::Normal, 'w'), "yank word");
+    assert_eq!(description(">", Mode::Normal, '>'), "indent line");
+    assert_eq!(description("<", Mode::Normal, '<'), "unindent line");
+    assert_eq!(description("=", Mode::Normal, '='), "reindent line");
+}
+
+#[test]
+fn object_labels_name_the_scope() {
+    assert_eq!(description("di", Mode::Normal, 'w'), "inner word");
+    assert_eq!(description("da", Mode::Normal, 'w'), "around word");
+    assert_eq!(description("di", Mode::Normal, '('), "inner parentheses");
+    assert_eq!(description("da", Mode::Normal, '('), "around parentheses");
+    assert_eq!(description("i", Mode::Visual, 'w'), "inner word");
+    assert_eq!(description("a", Mode::Visual, 'w'), "around word");
 }
 
 #[test]
@@ -45,6 +79,13 @@ fn z_and_bracket_guides_list_followups() {
     assert!(has_key("z", Mode::Visual, 'f'));
     assert!(has_key("[", Mode::Normal, 'c'));
     assert!(has_key("]", Mode::Normal, 'd'));
+    assert_eq!(description("z", Mode::Normal, 'a'), "toggle fold");
+    assert_eq!(description("z", Mode::Normal, 'o'), "open fold");
+    assert_eq!(description("z", Mode::Normal, 'c'), "close fold");
+    assert_eq!(description("z", Mode::Normal, 'R'), "open all folds");
+    assert_eq!(description("z", Mode::Normal, 'M'), "close all folds");
+    assert_eq!(description("[", Mode::Normal, 'c'), "previous hunk");
+    assert_eq!(description("]", Mode::Normal, 'c'), "next hunk");
 }
 
 #[test]
@@ -120,7 +161,9 @@ fn sequence_tables_match_lookup_functions() {
 
 #[test]
 fn guide_rows_are_unique() {
-    for prefix in ["d", "c", "y", "g", "g~", "gc", "z", "["] {
+    for prefix in [
+        "d", "c", "y", "di", "dg", "g", "g~", "gc", "gci", "z", ">", ">g", "[", "]",
+    ] {
         let Some(guide) = guide(prefix, Mode::Normal) else {
             continue;
         };

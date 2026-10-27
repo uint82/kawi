@@ -13,7 +13,7 @@ pub(super) use sequences::{is_sequence_prefix, sequence_action};
 
 use commands::{
     BRACKET_COMMANDS, CASE_G_MOTIONS, CASE_MOTIONS, COMMENT_MOTIONS, FOLD_COMMANDS, G_COMMANDS,
-    PLACE_COMMANDS, VISUAL_G_COMMANDS,
+    OPERATOR_G_MOTIONS, PLACE_COMMANDS, VISUAL_G_COMMANDS,
 };
 use objects::OBJECT_TARGETS;
 use sequences::OPERATOR_SEQUENCES;
@@ -75,7 +75,8 @@ fn visual_guide(prefix: &str) -> Option<Guide> {
     match prefix {
         "g" => Some(rows_guide(command_rows(VISUAL_G_COMMANDS))),
         "z" => z_guide(prefix, true),
-        "i" | "a" => Some(rows_guide(object_rows())),
+        "i" => Some(rows_guide(object_rows(true))),
+        "a" => Some(rows_guide(object_rows(false))),
         _ => None,
     }
 }
@@ -91,7 +92,13 @@ fn operator_guide(prefix: &str) -> Option<Guide> {
         return Some(rows_guide(operator_rows(operator)));
     }
     if matches!(operator, 'd' | 'c' | 'y') && matches!(rest, "i" | "a") {
-        return Some(rows_guide(object_rows()));
+        return Some(rows_guide(object_rows(rest == "i")));
+    }
+    if matches!(operator, 'd' | 'c' | 'y') && rest == "g" {
+        return Some(rows_guide(label_rows(OPERATOR_G_MOTIONS)));
+    }
+    if matches!(operator, '>' | '<' | '=') && rest == "g" {
+        return Some(rows_guide(label_rows(CASE_G_MOTIONS)));
     }
     None
 }
@@ -101,9 +108,8 @@ fn g_guide(prefix: &str) -> Option<Guide> {
         "g" => Some(rows_guide(command_rows(G_COMMANDS))),
         "g~" | "gu" | "gU" => Some(rows_guide(case_motion_rows(prefix))),
         "gc" => Some(rows_guide(label_rows(COMMENT_MOTIONS))),
-        "g~i" | "g~a" | "gui" | "gua" | "gUi" | "gUa" | "gci" | "gca" => {
-            Some(rows_guide(object_rows()))
-        }
+        "g~i" | "gui" | "gUi" | "gci" => Some(rows_guide(object_rows(true))),
+        "g~a" | "gua" | "gUa" | "gca" => Some(rows_guide(object_rows(false))),
         "g~g" | "gug" | "gUg" | "gcg" => Some(rows_guide(label_rows(CASE_G_MOTIONS))),
         _ => None,
     }
@@ -126,9 +132,17 @@ fn bracket_guide(prefix: &str) -> Option<Guide> {
     if !matches!(prefix, "[" | "]") {
         return None;
     }
+    let forward = prefix == "]";
     let rows = BRACKET_COMMANDS
         .iter()
-        .map(|command| row(command.key, command.label))
+        .map(|command| {
+            let label = if forward {
+                command.forward_label
+            } else {
+                command.backward_label
+            };
+            row(command.key, label)
+        })
         .collect();
     Some(rows_guide(rows))
 }
@@ -174,19 +188,24 @@ fn operator_rows(operator: char) -> Vec<GuideRow> {
 
 fn grouped_operator_label(key: char) -> &'static str {
     match key {
-        'g' => "g motions",
-        'i' => "inner object",
-        'a' => "around object",
+        'g' => "more motions",
+        'i' => "inner text object",
+        'a' => "around text object",
         _ => "motion",
     }
 }
 
-fn object_rows() -> Vec<GuideRow> {
-    let mut rows = vec![row('w', "word")];
+fn object_rows(inner: bool) -> Vec<GuideRow> {
+    let word = if inner { "inner word" } else { "around word" };
+    let mut rows = vec![row('w', word)];
     rows.extend(OBJECT_TARGETS.iter().map(|target| GuideRow {
         key: target.key,
         aliases: target.aliases,
-        description: target.label,
+        description: if inner {
+            target.inner_label
+        } else {
+            target.around_label
+        },
     }));
     rows
 }
@@ -200,7 +219,7 @@ fn case_motion_rows(prefix: &str) -> Vec<GuideRow> {
         rows.push(row(motion.key, motion.label));
     }
     if let Some(line_key) = prefix.chars().nth(1) {
-        rows.push(row(line_key, "line"));
+        rows.push(row(line_key, "current line"));
     }
     rows
 }

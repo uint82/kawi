@@ -29,13 +29,13 @@ fn items(app: &App) -> Vec<String> {
 
 fn root_items() -> [&'static str; 7] {
     [
-        "c  code",
+        "c  code tools",
         "d  diagnostics",
         "f  find",
         "r  rename",
         "s  symbols",
-        "t  tasks",
-        "v  git",
+        "t  tasks and terminal",
+        "v  git actions",
     ]
 }
 
@@ -93,7 +93,7 @@ fn visual_menu_only_lists_supported_groups() {
     let mut app = app();
     app.handle_key(key(KeyCode::Char('v'))).expect("visual");
     app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-    assert_eq!(items(&app), ["c  code", "f  find"]);
+    assert_eq!(items(&app), ["c  code tools", "f  find"]);
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn pressing_space_again_keeps_visual_mode() {
     let mut app = app();
     app.handle_key(key(KeyCode::Char('v'))).expect("visual");
     app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-    assert_eq!(items(&app), ["c  code", "f  find"]);
+    assert_eq!(items(&app), ["c  code tools", "f  find"]);
     app.handle_key(key(KeyCode::Char(' '))).expect("toggle");
     assert!(app.overlay_data().is_none());
     assert_eq!(app.editor_mode(), Mode::Visual);
@@ -164,9 +164,9 @@ fn operator_prefix_lists_followups() {
         "c"
     );
     let items = items(&app);
-    assert!(items.contains(&"w  word".to_string()));
-    assert!(items.contains(&"i  inner object".to_string()));
-    assert!(items.contains(&"a  around object".to_string()));
+    assert!(items.contains(&"w  change word".to_string()));
+    assert!(items.contains(&"i  inner text object".to_string()));
+    assert!(items.contains(&"a  around text object".to_string()));
 }
 
 #[test]
@@ -194,8 +194,8 @@ fn second_key_updates_the_guide() {
         "c i"
     );
     let items = items(&app);
-    assert!(items.contains(&"w  word".to_string()));
-    assert!(items.contains(&"(/)  parentheses".to_string()));
+    assert!(items.contains(&"w  inner word".to_string()));
+    assert!(items.contains(&"(/)  inner parentheses".to_string()));
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn visual_object_prefix_lists_objects() {
     app.handle_key(key(KeyCode::Char('v'))).expect("visual");
     app.handle_key(key(KeyCode::Char('i'))).expect("object");
     let items = items(&app);
-    assert!(items.contains(&"w  word".to_string()));
+    assert!(items.contains(&"w  inner word".to_string()));
 }
 
 #[test]
