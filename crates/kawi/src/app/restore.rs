@@ -31,6 +31,7 @@ impl App {
             buffers,
             windows,
             active_window: self.windows.active(),
+            explorer: Some(self.explorer.snapshot()),
         })
     }
 
@@ -57,6 +58,8 @@ impl App {
         self.windows.set_all_options(self.window_defaults);
         self.window_syntax.clear();
         self.window_prefix = false;
+        self.explorer
+            .restore(Path::new(&session.cwd), session.explorer.as_ref());
         self.refresh_window_sizes();
         self.editor.restore_view_state(view);
         self.editor.set_window_options(self.window_defaults);

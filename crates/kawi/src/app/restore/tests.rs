@@ -8,6 +8,8 @@ use std::path::Path;
 use crate::keymap::Flavor;
 use crate::session::{SessionDirection, SessionView, SessionWindow};
 
+mod explorer;
+
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("kawi_restore_{}_{}", std::process::id(), name));
     let _ = fs::remove_dir_all(&dir);
@@ -67,6 +69,7 @@ fn session(buffers: Vec<SessionBuffer>, windows: SessionWindow, active: u64) -> 
         buffers,
         windows,
         active_window: active,
+        explorer: None,
     }
 }
 
