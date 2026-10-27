@@ -34,16 +34,34 @@ impl App {
             .map(|pane| StatusInfo {
                 filename: &pane.filename,
                 dirty: pane.dirty,
+                readonly: pane.readonly,
                 row: pane.row,
                 col: pane.col,
                 virtcol: pane.virtcol,
                 line_empty: pane.line_empty,
                 empty_buffer: pane.empty_buffer,
                 mode: pane.mode,
+                mode_kind: pane.mode_kind,
                 lsp: pane.lsp.as_deref(),
-                diagnostics: pane.diagnostics.as_deref(),
+                diagnostics: pane.diagnostics.as_ref().map(|value| value.text.as_str()),
+                diagnostics_severity: pane.diagnostics.as_ref().map(|value| value.severity),
+                workspace_diagnostics: pane
+                    .workspace_diagnostics
+                    .as_ref()
+                    .map(|value| value.text.as_str()),
+                workspace_diagnostics_severity: pane
+                    .workspace_diagnostics
+                    .as_ref()
+                    .map(|value| value.severity),
                 external: pane.external,
                 git,
+                filetype: pane.filetype,
+                indent: pane.indent.as_deref(),
+                encoding: pane.encoding,
+                eol: pane.eol,
+                selection: pane.selection_status.as_deref(),
+                macro_recording: pane.macro_recording,
+                percent: pane.percent,
             })
             .collect();
         let panes: Vec<PaneFrame<'_>> = data
@@ -235,6 +253,7 @@ impl App {
             showcmd: self.showcmd_text(),
             cursor_style: cursor_style_for(self.editor.mode()),
             theme: &self.theme,
+            statusline: &self.statusline,
         };
         render::draw(out, &frame)
     }

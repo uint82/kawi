@@ -151,6 +151,7 @@ impl Default for DiagnosticOptions {
 }
 
 impl DiagnosticOptions {
+    #[cfg(test)]
     pub(super) fn counts_text(
         self,
         buffer: DiagnosticCounts,

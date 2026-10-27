@@ -50,6 +50,7 @@ mod restore;
 mod save;
 mod signature;
 mod signcolumn;
+mod status;
 mod symbols;
 mod task;
 mod terminal_ui;
@@ -177,6 +178,8 @@ pub struct App {
     window_defaults: WindowOptions,
     last_frame: Instant,
     last_input: Instant,
+    status_spinner: usize,
+    statusline: kawi_tui::statusbar::StatusBarConfig,
 }
 
 impl App {
@@ -259,6 +262,8 @@ impl App {
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
             last_input: Instant::now(),
+            status_spinner: 0,
+            statusline: kawi_tui::statusbar::StatusBarConfig::default(),
         };
         app.refresh_command_completion();
         app
@@ -445,10 +450,16 @@ impl App {
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
             let diagnostic_timeout = self.diagnostic_idle_wait_timeout();
             let timeout = shortest_timeout(timeout, diagnostic_timeout);
+            let spinner_timeout = self.status_spinner_timeout();
+            let timeout = shortest_timeout(timeout, spinner_timeout);
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
+                    if spinner_timeout.is_some_and(|spinner| spinner <= timeout) {
+                        self.advance_status_spinner();
+                        return Ok(Redraw::Redraw);
+                    }
                     if diagnostic_timeout.is_some_and(|diagnostic| diagnostic <= timeout) {
                         return Ok(Redraw::Redraw);
                     }
@@ -599,16 +610,28 @@ impl App {
         kawi_tui::statusbar::StatusInfo {
             filename: self.editor.filename(),
             dirty: self.editor.is_dirty(),
+            readonly: self.editor.current_buffer_is_readonly(),
             row: self.editor.row(),
             col: self.editor.col(),
             virtcol: self.editor.virtcol(),
             line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
+            mode_kind: self.editor.mode().into(),
             lsp: self.lsp.status(),
             diagnostics: None,
+            diagnostics_severity: None,
+            workspace_diagnostics: None,
+            workspace_diagnostics_severity: None,
             external: self.disk_status(self.editor.buffer_number()),
             git: self.git_status.display(),
+            filetype: None,
+            indent: None,
+            encoding: None,
+            eol: None,
+            selection: None,
+            macro_recording: None,
+            percent: None,
         }
     }
 
