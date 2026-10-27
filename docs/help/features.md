@@ -7,7 +7,7 @@ related = ["getting-started", "lsp", "pickers", "tasks"]
 
 - Vim and Helix keymaps.
 - Multiple windows and splits.
-- Project explorer with file management, Git markers, and diagnostics.
+- Opt-in project explorer with file management, Git markers, and diagnostics.
 - Language server support for completion, hover, diagnostics, symbols, rename, formatting, and code actions.
 - Fuzzy file, buffer, grep, replace, and symbol pickers with previews.
 - Project-wide diagnostics and quickfix navigation.

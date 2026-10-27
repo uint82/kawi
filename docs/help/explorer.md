@@ -7,6 +7,8 @@ related = ["keybindings", "configuration", "sessions"]
 
 The project explorer shows the repository tree next to the editor. It marks Git changes and diagnostics, highlights the active buffer, and supports file management without leaving the editor.
 
+The explorer is opt-in. It is disabled by default; set `explorer_enabled` to enable it. While disabled, explorer commands report that the feature is disabled.
+
 Opening the explorer roots the tree at the current file's project and reveals the file, expanding its parent directories. Without an open file, the tree uses the working directory.
 
 The explorer closes automatically when the terminal cannot leave its minimum width for the editor.
@@ -54,13 +56,15 @@ Hidden dotfiles are filtered by default. Version control directories are always 
 
 ```toml
 [ui]
+explorer_enabled = true
 explorer_width = 30
 explorer_show_hidden = false
 ```
 
+- `explorer_enabled` enables the explorer and defaults to `false`.
 - `explorer_width` sets the panel width from 20 to 60 columns.
 - `explorer_show_hidden` includes hidden files and directories.
 
-Use `:set explorer_width=40` and `:set explorer_show_hidden` at runtime. The explorer tree, width, visibility, and selection are restored with the workspace session.
+Use `:set explorer_enabled`, `:set explorer_width=40`, and `:set explorer_show_hidden` at runtime. When enabled, the explorer tree, width, visibility, and selection are restored with the workspace session.
 
 See [Keybindings](help:keybindings) and [Sessions](help:sessions) for related behavior.

@@ -52,6 +52,8 @@ See [Configuration](help:configuration) for details.
 
 ## Explorer
 
+The explorer is opt-in and disabled by default. Set `explorer_enabled` to enable it.
+
 - `<leader> e e` toggle the explorer
 - `<leader> e f` focus the explorer
 - `<leader> e r` reveal the current file
