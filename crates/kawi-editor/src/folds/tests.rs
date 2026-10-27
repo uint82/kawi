@@ -102,3 +102,61 @@ fn inserting_lines_shifts_manual_folds() {
         }]
     );
 }
+
+#[test]
+fn snapshot_round_trips_manual_and_closed_folds() {
+    let mut folds = manual(1, 4, 6);
+    folds.close_all();
+    let snapshot = folds.snapshot();
+    let mut restored = FoldState::default();
+    restored.restore(snapshot, 6);
+    assert_eq!(restored.folds(), folds.folds());
+    assert!(restored.is_closed(1));
+}
+
+#[test]
+fn restore_drops_invalid_manual_folds() {
+    let snapshot = FoldSnapshot {
+        manual: vec![Fold::manual(3, 9), Fold::manual(2, 2)],
+        closed: vec![9],
+    };
+    let mut folds = FoldState::default();
+    folds.restore(snapshot, 5);
+    assert!(folds.folds().is_empty());
+    assert!(!folds.is_closed(9));
+}
+
+#[test]
+fn restore_keeps_indent_closed_starts_until_refresh() {
+    let mut folds = FoldState::default();
+    folds.set_indent(4, 8);
+    folds.set_method(FoldMethod::Indent);
+    folds.restore(
+        FoldSnapshot {
+            manual: Vec::new(),
+            closed: vec![1],
+        },
+        5,
+    );
+    assert!(folds.is_closed(1));
+    folds.refresh(&Buffer::from_string("a\n    b\n    c\nd\n"));
+    assert!(folds.is_closed(1));
+}
+
+#[test]
+fn dropping_manual_folds_clears_manual_closed_starts() {
+    let mut folds = manual(1, 3, 6);
+    folds.close_all();
+    folds.drop_manual();
+    assert!(folds.folds().is_empty());
+    assert!(!folds.is_closed(1));
+}
+
+#[test]
+fn revalidate_drops_folds_past_the_line_count() {
+    let mut folds = manual(1, 4, 6);
+    folds.close_all();
+    folds.revalidate(3);
+    assert!(folds.folds().is_empty());
+    assert!(!folds.is_closed(1));
+}

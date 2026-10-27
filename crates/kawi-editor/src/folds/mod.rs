@@ -1,9 +1,12 @@
 mod indent;
+mod snapshot;
 mod visible;
 
 use std::collections::BTreeSet;
 
 use kawi_buffer::{Buffer, LineAdjust};
+
+pub use snapshot::FoldSnapshot;
 
 pub const DEFAULT_FOLD_COLUMN: usize = 1;
 pub const MAX_FOLD_COLUMN: usize = 1;
@@ -46,6 +49,10 @@ pub struct Fold {
 impl Fold {
     fn new(start: usize, end: usize, depth: usize) -> Self {
         Self { start, end, depth }
+    }
+
+    pub fn manual(start: usize, end: usize) -> Self {
+        Self::new(start, end, MANUAL_FOLD_DEPTH)
     }
 
     fn contains(self, row: usize) -> bool {
@@ -211,7 +218,7 @@ impl FoldState {
         }
         self.manual
             .retain(|fold| fold.start != start || fold.end != end);
-        self.manual.push(Fold::new(start, end, MANUAL_FOLD_DEPTH));
+        self.manual.push(Fold::manual(start, end));
         self.manual.sort_by_key(|fold| (fold.start, fold.end));
         self.closed.insert(start);
     }
