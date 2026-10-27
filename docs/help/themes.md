@@ -8,6 +8,7 @@ related = ["configuration"]
 Kawi includes these themes:
 
 - `default`
+- `classic`
 - `cobalt`
 - `one-dark`
 - `gruvbox-dark`
