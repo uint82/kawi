@@ -1,6 +1,6 @@
 use crossterm::style::Color;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -90,6 +90,22 @@ struct DiagnosticsFile {
 }
 
 impl Theme {
+    pub fn available(themes_dir: &Path) -> Vec<String> {
+        let mut names: BTreeSet<String> = Self::names()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect();
+        if let Ok(entries) = fs::read_dir(themes_dir) {
+            names.extend(
+                entries
+                    .flatten()
+                    .filter_map(|entry| custom_theme_name(&entry)),
+            );
+            names.retain(|name| Self::validate(name, themes_dir).is_ok());
+        }
+        names.into_iter().collect()
+    }
+
     pub(super) fn from_file(name: &str, themes_dir: &Path) -> Result<Self, ThemeError> {
         let path = theme_path(name, themes_dir)?;
         let text = fs::read_to_string(&path).map_err(|error| {
@@ -157,14 +173,26 @@ impl Theme {
 }
 
 fn theme_path(name: &str, themes_dir: &Path) -> Result<PathBuf, ThemeError> {
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-    {
+    if !valid_theme_name(name) {
         return Err(ThemeError::invalid(format!("invalid theme name {name:?}")));
     }
     Ok(themes_dir.join(format!("{name}.toml")))
+}
+
+fn custom_theme_name(entry: &fs::DirEntry) -> Option<String> {
+    let path = entry.path();
+    if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("toml") {
+        return None;
+    }
+    let name = path.file_stem()?.to_str()?;
+    valid_theme_name(name).then(|| name.to_string())
+}
+
+fn valid_theme_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
 }
 
 fn error_line(error: &toml::de::Error, text: &str) -> Option<usize> {

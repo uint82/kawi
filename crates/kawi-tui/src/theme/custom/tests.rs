@@ -287,6 +287,24 @@ fn rejects_invalid_colors() {
 }
 
 #[test]
+fn lists_builtin_and_custom_themes() {
+    let dir = temp_dir("available");
+    fs::write(dir.join("personal.toml"), theme_text()).unwrap();
+    fs::write(dir.join("broken.toml"), "invalid").unwrap();
+    fs::write(dir.join("invalid name.toml"), "").unwrap();
+    fs::write(dir.join("notes.txt"), "").unwrap();
+    let names = Theme::available(&dir);
+    assert!(names.contains(&"default".to_string()));
+    assert!(names.contains(&"personal".to_string()));
+    assert!(!names.contains(&"broken".to_string()));
+    assert!(!names.contains(&"invalid name".to_string()));
+    assert!(!names.contains(&"notes".to_string()));
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted);
+}
+
+#[test]
 fn validates_custom_and_builtin_themes() {
     let dir = temp_dir("validation");
     fs::write(dir.join("personal.toml"), theme_text()).unwrap();
