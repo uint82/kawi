@@ -70,6 +70,8 @@ Directory buffers use normal editing keys for the listing.
 - `-` open the parent directory and restore the cursor
 - `.` show or hide hidden entries when the buffer is clean
 - `:w` apply the edited listing
+- `:bd` close the directory buffer and keep Kawi open
+- `:bd!` discard pending listing edits and close the directory buffer
 
 See [Directory buffers](help:directory) for the diff rules and safety behavior.
 

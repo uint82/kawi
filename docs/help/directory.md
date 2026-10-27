@@ -24,7 +24,7 @@ Names are stored as `OsString` values. Unchanged lines are never renamed, so nam
 
 `Enter` opens the entry under the cursor. `.` toggles hidden entries when the buffer has no unsaved changes.
 
-The buffer is a normal modified buffer. `:q` with pending changes is refused like any other buffer. After a successful write the listing reloads from disk and the text undo history is cleared.
+The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. After a successful write the listing reloads from disk and the text undo history is cleared.
 
 ## Safety
 
@@ -45,6 +45,8 @@ The directory is checked again before applying. If entries changed since the buf
 - `.` toggle hidden entries when the buffer is clean
 - `:w` apply pending changes
 - `:w!` apply without the directory confirmation prompt
+- `:bd` close the directory buffer and keep Kawi open
+- `:bd!` discard pending listing edits and close the directory buffer
 
 Open buffers whose paths are renamed are retargeted, buffers under deleted paths are closed, and LSP rename notifications are sent after a successful apply.
 
