@@ -16,6 +16,7 @@ kawi-git = { path = "../kawi-git" }
 kawi-help = { path = "../kawi-help" }
 kawi-lsp = { path = "../kawi-lsp" }
 kawi-picker = { path = "../kawi-picker" }
+kawi-process = { path = "../kawi-process" }
 kawi-syntax = { path = "../kawi-syntax" }
 kawi-task = { path = "../kawi-task" }
 kawi-terminal = { path = "../kawi-terminal" }

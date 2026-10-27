@@ -1,4 +1,3 @@
-mod binary;
 mod client;
 mod config;
 mod defaults;

@@ -62,6 +62,14 @@ impl Theme {
         }
     }
 
+    pub fn validate(name: &str, themes_dir: &Path) -> Result<(), ThemeError> {
+        match Self::from_file(name, themes_dir) {
+            Ok(_) => Ok(()),
+            Err(error) if error.is_not_found() => Self::named(name).map(|_| ()).ok_or(error),
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn sign_color(&self, sign: crate::frame::Sign) -> Color {
         match sign {
             crate::frame::Sign::Git(sign) => self.git_sign_color(sign),

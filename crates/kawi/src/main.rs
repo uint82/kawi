@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod doctor;
 mod event;
 mod helix;
 mod ipc;
@@ -25,8 +26,20 @@ use keymap::Flavor;
 use state::StatePaths;
 use std::path::Path;
 
+const USAGE: &str = "\
+Usage:
+  kawi [--helix] [FILE]
+  kawi doctor [OPTIONS]
+  kawi --version
+  kawi --help
+
+Run \"kawi doctor --help\" for diagnostics.";
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if run_utility(&args)? {
+        return Ok(());
+    }
     if args.iter().any(|arg| is_wait_flag(arg)) {
         return run_wait_editor(&args);
     }
@@ -47,6 +60,27 @@ fn main() -> Result<()> {
     save_workspace_session(&mut app, restore_workspace, paths.as_ref(), &cwd);
     app.save_state();
     outcome
+}
+
+fn run_utility(args: &[String]) -> Result<bool> {
+    if let Some(exit_code) = doctor::run_cli(args)? {
+        std::process::exit(exit_code);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
+        println!("{USAGE}");
+        return Ok(true);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "-V" | "--version"))
+    {
+        println!("kawi {}", env!("CARGO_PKG_VERSION"));
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn is_wait_flag(arg: &str) -> bool {
@@ -136,13 +170,28 @@ fn parse_cli(args: Vec<String>) -> (Option<String>, Option<Flavor>) {
 }
 
 fn select_flavor(args: &[String]) -> Option<Flavor> {
-    args.iter()
-        .any(|arg| arg == "--helix")
-        .then_some(Flavor::Helix)
+    for arg in args {
+        if arg == "--" {
+            break;
+        }
+        if arg == "--helix" {
+            return Some(Flavor::Helix);
+        }
+    }
+    None
 }
 
 fn select_path(args: Vec<String>) -> Option<String> {
-    args.into_iter().find(|arg| arg != "--helix")
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            return args.next();
+        }
+        if arg != "--helix" {
+            return Some(arg);
+        }
+    }
+    None
 }
 
 fn load_buffer(path: Option<String>) -> Result<Buffer> {
@@ -222,6 +271,14 @@ mod tests {
         assert_eq!(
             parse_cli(vec!["notes.txt".to_string(), "--helix".to_string()]),
             (Some("notes.txt".to_string()), Some(Flavor::Helix))
+        );
+    }
+
+    #[test]
+    fn separator_treats_flags_as_file_names() {
+        assert_eq!(
+            parse_cli(vec!["--".to_string(), "--helix".to_string()]),
+            (Some("--helix".to_string()), None)
         );
     }
 }

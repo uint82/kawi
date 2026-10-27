@@ -5,6 +5,12 @@ related = ["configuration", "lsp", "sessions"]
 ---
 # Troubleshooting
 
+## Run the doctor
+
+Run `kawi doctor` to check configuration, language servers, tasks, Git, sessions, and state directories.
+
+Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict` to fail on warnings. Inspect another project with `kawi doctor --path PATH`.
+
 ## A language server does not start
 
 Check `~/.config/kawi/languages.toml`, then confirm the server command exists and the project root marker matches.

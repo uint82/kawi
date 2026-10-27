@@ -1,5 +1,5 @@
 use crate::editing::{BlockCommentConfig, PairConfig};
-use crate::{binary, defaults, file, LanguageWarning};
+use crate::{defaults, file, LanguageWarning};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -212,6 +212,22 @@ impl Languages {
         self.servers.get(name)
     }
 
+    pub fn servers(&self) -> impl Iterator<Item = (&str, &ServerConfig)> {
+        self.servers
+            .iter()
+            .map(|(name, server)| (name.as_str(), server))
+    }
+
+    pub fn server_path(&self, name: &str) -> Option<&Path> {
+        self.available.get(name).map(PathBuf::as_path)
+    }
+
+    pub fn server_is_used(&self, name: &str) -> bool {
+        self.languages.iter().any(|language| {
+            language.enabled && language.servers.iter().any(|server| server == name)
+        })
+    }
+
     pub fn missing_binary_status(&self, path: Option<&Path>) -> Option<String> {
         let path = path?;
         let language = self.language_for_path(path)?;
@@ -310,7 +326,7 @@ fn available_servers(servers: &BTreeMap<String, ServerConfig>) -> BTreeMap<Strin
         .iter()
         .filter(|(_, server)| server.enabled)
         .filter_map(|(name, server)| {
-            binary::find_command(&server.command).map(|path| (name.clone(), path))
+            kawi_process::find_executable(&server.command).map(|path| (name.clone(), path))
         })
         .collect()
 }
@@ -689,6 +705,25 @@ mod tests {
             languages.missing_binary_status(Some(Path::new("src/main.rs"))),
             None
         );
+    }
+
+    #[test]
+    fn server_accessors_report_configuration_and_usage() {
+        let mut available = BTreeMap::new();
+        available.insert(
+            "rust-analyzer".to_string(),
+            PathBuf::from("/bin/rust-analyzer"),
+        );
+        let languages = Languages::from_parts(server(), vec![rust()], available);
+        assert!(languages.server_is_used("rust-analyzer"));
+        assert!(!languages.server_is_used("pyright"));
+        assert_eq!(
+            languages.server_path("rust-analyzer"),
+            Some(Path::new("/bin/rust-analyzer"))
+        );
+        assert!(languages
+            .servers()
+            .any(|(name, config)| name == "rust-analyzer" && config.enabled));
     }
 
     #[test]

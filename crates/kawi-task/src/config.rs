@@ -18,6 +18,16 @@ pub struct TaskSpec {
     pub parser: ParserSpec,
 }
 
+impl TaskSpec {
+    pub fn directory(&self, root: &Path) -> PathBuf {
+        match self.cwd.as_deref() {
+            Some(cwd) if cwd.is_absolute() => cwd.to_path_buf(),
+            Some(cwd) => root.join(cwd),
+            None => root.to_path_buf(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Tasks {
     tasks: BTreeMap<String, TaskSpec>,
@@ -481,6 +491,10 @@ severity = "warning"
         let check = loaded.tasks.get("check").unwrap();
         assert_eq!(check.args, ["check", "--message-format=json"]);
         assert_eq!(check.cwd, Some(PathBuf::from("crates/kawi")));
+        assert_eq!(
+            check.directory(Path::new("/repo")),
+            Path::new("/repo/crates/kawi")
+        );
         assert_eq!(check.env.get("RUSTFLAGS").unwrap(), "-D warnings");
         assert!(matches!(check.parser, ParserSpec::Cargo));
         assert!(matches!(
