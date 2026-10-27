@@ -23,6 +23,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Syntax highlighting.** Tree-sitter parsing for Rust, Python, JavaScript, TypeScript, JSON, TOML, and Bash.
 - **Fuzzy search.** Pickers for files, buffers, live grep, replace, and symbols, with previews where supported.
 - **Project explorer.** Opt-in file tree with file management, Git markers, diagnostics, and session restore.
+- **Directory buffers.** Edit a directory listing and apply renames, copies, creates, and trash deletes on write.
 - **Diagnostics.** Project-wide diagnostics, quickfix navigation, and configurable display.
 - **Git integration.** Status, staging, commits, branches, hunk navigation, and optional gutter signs.
 - **Tasks and terminals.** Project task runner, task output, cancellation, and horizontal or vertical terminal panels.
