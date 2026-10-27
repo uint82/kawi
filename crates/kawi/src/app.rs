@@ -972,7 +972,7 @@ impl App {
         if let Some(result) = self.handle_signature_key(key) {
             return Ok(result);
         }
-        if self.explorer.is_focused() {
+        if self.explorer.is_focused() && !self.is_leader_input(key) {
             return self.handle_explorer_key(key);
         }
         if self.pager.is_none() && completion::is_completion_key(key) {
@@ -990,6 +990,14 @@ impl App {
             self.macros.record_key(key);
             return Ok(false);
         }
+        self.handle_mapped_key(key)
+    }
+
+    fn is_leader_input(&self, key: KeyEvent) -> bool {
+        self.keymap.leader_path().is_some() || self.keymap.is_leader_prefix(key, self.editor.mode())
+    }
+
+    fn handle_mapped_key(&mut self, key: KeyEvent) -> Result<bool> {
         if !self.stops_macro_recording(key) {
             self.macros.record_key(key);
         }

@@ -16,6 +16,7 @@ The explorer closes automatically when the terminal cannot leave its minimum wid
 - `<leader> e e` toggle the explorer
 - `<leader> e f` focus the explorer
 - `<leader> e r` reveal the current file in the explorer
+- `<leader>` shortcuts remain available while the explorer is focused
 - `:explorer` toggle the explorer
 - `:explorer focus` focus the explorer
 - `:explorer reveal` reveal the current file

@@ -65,6 +65,19 @@ fn q_closes_the_explorer() {
 }
 
 #[test]
+fn leader_toggle_closes_the_focused_explorer() {
+    let dir = temp_dir("explorer_leader_close");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    press(&mut app, KeyCode::Char(' '));
+    press(&mut app, KeyCode::Char('e'));
+    press(&mut app, KeyCode::Char('e'));
+    assert!(!app.explorer.is_visible());
+    assert!(!app.explorer.is_focused());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn directory_keys_move_and_collapse_the_selection() {
     let dir = temp_dir("explorer_motion");
     fs::create_dir_all(dir.join("src")).unwrap();
