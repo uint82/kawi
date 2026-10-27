@@ -199,6 +199,8 @@ autosave = "idle"
 autosave_delay = 250
 signcolumn = "always"
 git_signs = true
+keyguide = false
+keyguide_delay = 0
 
 [history]
 limit = 25
@@ -247,6 +249,8 @@ undo_exclude = ["*.gpg"]
         assert_eq!(app.autosave.delay_millis(), 250);
         assert_eq!(app.signcolumn, crate::options::SignColumnMode::Always);
         assert!(app.git_signs);
+        assert!(!app.keyguide_enabled);
+        assert_eq!(app.keyguide_delay, std::time::Duration::ZERO);
         assert_eq!(app.editor.signcolumn_width(), 1);
         assert_eq!(app.editor.history_limit(), 25);
         assert!(!app.undo.enabled());
