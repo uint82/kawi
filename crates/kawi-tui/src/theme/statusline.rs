@@ -1,3 +1,4 @@
+use crossterm::style::Color;
 use serde::Deserialize;
 
 use crate::frame::DiagnosticSeverity;
@@ -163,10 +164,6 @@ impl Theme {
             };
         }
         let base = self.status.clone();
-        let tinted = |color| MatchColors {
-            foreground: color,
-            background: base.background,
-        };
         match style {
             SegmentStyle::Default => base,
             SegmentStyle::Mode(kind) => self
@@ -177,36 +174,36 @@ impl Theme {
                 .statusline
                 .modified
                 .clone()
-                .unwrap_or_else(|| tinted(self.diagnostic_warning)),
+                .unwrap_or_else(|| badge(self, self.diagnostic_warning)),
             SegmentStyle::ReadOnly => self
                 .statusline
                 .readonly
                 .clone()
-                .unwrap_or_else(|| tinted(self.diagnostic_information)),
+                .unwrap_or_else(|| badge(self, self.diagnostic_information)),
             SegmentStyle::Diagnostic(severity) => self
                 .statusline
                 .diagnostic(severity)
-                .unwrap_or_else(|| tinted(self.diagnostic_color(severity))),
+                .unwrap_or_else(|| badge(self, self.diagnostic_color(severity))),
             SegmentStyle::Git => self
                 .statusline
                 .git
                 .clone()
-                .unwrap_or_else(|| tinted(self.git_change)),
+                .unwrap_or_else(|| badge(self, self.git_change)),
             SegmentStyle::Lsp => self
                 .statusline
                 .lsp
                 .clone()
-                .unwrap_or_else(|| tinted(self.diagnostic_information)),
+                .unwrap_or_else(|| badge(self, self.diagnostic_information)),
             SegmentStyle::Selection => self
                 .statusline
                 .selection
                 .clone()
-                .unwrap_or_else(|| tinted(self.search_match.background)),
+                .unwrap_or_else(|| badge(self, self.search_match.background)),
             SegmentStyle::Macro => self
                 .statusline
                 .macro_recording
                 .clone()
-                .unwrap_or_else(|| tinted(self.diagnostic_error)),
+                .unwrap_or_else(|| badge(self, self.diagnostic_error)),
             SegmentStyle::FileType => self.statusline.filetype.clone().unwrap_or(base),
             SegmentStyle::Indent => self.statusline.indent.clone().unwrap_or(base),
             SegmentStyle::Encoding => self.statusline.encoding.clone().unwrap_or(base),
@@ -214,6 +211,13 @@ impl Theme {
             SegmentStyle::Percent => self.statusline.percent.clone().unwrap_or(base),
             SegmentStyle::Position => self.statusline.position.clone().unwrap_or(base),
         }
+    }
+}
+
+fn badge(theme: &Theme, background: Color) -> MatchColors {
+    MatchColors {
+        foreground: theme.base.background,
+        background,
     }
 }
 

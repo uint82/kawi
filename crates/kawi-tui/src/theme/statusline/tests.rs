@@ -58,7 +58,7 @@ fn defaults_follow_theme_colors() {
     assert_eq!(
         theme
             .statusline_colors(SegmentStyle::Diagnostic(DiagnosticSeverity::Warning), true)
-            .foreground,
+            .background,
         theme.diagnostic_warning
     );
 }
