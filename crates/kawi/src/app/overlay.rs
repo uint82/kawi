@@ -17,7 +17,7 @@ pub(super) mod options;
 mod signature;
 mod size;
 
-const MAX_LIST_WIDTH: usize = 60;
+const MAX_LIST_WIDTH: usize = 50;
 
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
@@ -279,6 +279,12 @@ mod tests {
         let area = Rect::new(0, 0, 40, 10);
         assert_eq!(list_size(80, 20, area), Size::new(40, 10));
         assert_eq!(list_size(12, 3, area), Size::new(12, 5));
+    }
+
+    #[test]
+    fn list_size_caps_the_width() {
+        let area = Rect::new(0, 0, 80, 30);
+        assert_eq!(list_size(80, 3, area), Size::new(MAX_LIST_WIDTH, 5));
     }
 
     #[test]

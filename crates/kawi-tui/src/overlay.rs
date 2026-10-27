@@ -3,7 +3,8 @@ use crate::frame::Rect;
 pub const COMPLETION_MAX_ROWS: usize = 10;
 pub const PANEL_BORDER: usize = 2;
 pub const PANEL_PADDING: usize = 1;
-const GAP: usize = 1;
+const SIDE_GAP: usize = 0;
+const BELOW_GAP: usize = 1;
 const MIN_DOCS_WIDTH: usize = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +109,7 @@ fn docs_side_order(preferred: Option<DocsSide>) -> [DocsSide; 3] {
 }
 
 fn place_right(area: Rect, list: Rect, size: Size) -> Option<Rect> {
-    let x = list.right().saturating_add(GAP);
+    let x = list.right().saturating_add(SIDE_GAP);
     let available = area.right().saturating_sub(x);
     let width = size.width.min(available);
     if width < MIN_DOCS_WIDTH {
@@ -121,11 +122,11 @@ fn place_right(area: Rect, list: Rect, size: Size) -> Option<Rect> {
 fn place_left(area: Rect, list: Rect, size: Size) -> Option<Rect> {
     let width = size
         .width
-        .min(list.x.saturating_sub(area.x).saturating_sub(GAP));
+        .min(list.x.saturating_sub(area.x).saturating_sub(SIDE_GAP));
     if width < MIN_DOCS_WIDTH {
         return None;
     }
-    let x = list.x.saturating_sub(GAP).saturating_sub(width);
+    let x = list.x.saturating_sub(SIDE_GAP).saturating_sub(width);
     let rect = side_rect(area, list, x, width, size.height);
     (rect.height > 0).then_some(rect)
 }
@@ -136,7 +137,7 @@ fn side_rect(area: Rect, list: Rect, x: usize, width: usize, height: usize) -> R
 }
 
 fn place_below(area: Rect, list: Rect, size: Size) -> Option<Rect> {
-    let y = list.bottom().saturating_add(GAP);
+    let y = list.bottom().saturating_add(BELOW_GAP);
     let height = size.height.min(area.bottom().saturating_sub(y));
     if height == 0 {
         return None;
@@ -213,7 +214,7 @@ mod tests {
     fn docs_prefer_the_right_side() {
         let placement = place(input(Size::new(24, 5), Some(Size::new(30, 10))));
         assert_eq!(placement.docs_side, Some(DocsSide::Right));
-        assert_eq!(placement.docs, Some(Rect::new(35, 11, 30, 10)));
+        assert_eq!(placement.docs, Some(Rect::new(34, 11, 30, 10)));
     }
 
     #[test]
@@ -228,7 +229,7 @@ mod tests {
         value.anchor = (90, 10);
         let placement = place(value);
         assert_eq!(placement.docs_side, Some(DocsSide::Left));
-        assert!(placement.docs.expect("docs").right() < placement.list.x);
+        assert_eq!(placement.docs.expect("docs").right(), placement.list.x);
     }
 
     #[test]
