@@ -212,6 +212,22 @@ impl Languages {
         self.servers.get(name)
     }
 
+    pub fn servers(&self) -> impl Iterator<Item = (&str, &ServerConfig)> {
+        self.servers
+            .iter()
+            .map(|(name, server)| (name.as_str(), server))
+    }
+
+    pub fn server_path(&self, name: &str) -> Option<&Path> {
+        self.available.get(name).map(PathBuf::as_path)
+    }
+
+    pub fn server_is_used(&self, name: &str) -> bool {
+        self.languages.iter().any(|language| {
+            language.enabled && language.servers.iter().any(|server| server == name)
+        })
+    }
+
     pub fn missing_binary_status(&self, path: Option<&Path>) -> Option<String> {
         let path = path?;
         let language = self.language_for_path(path)?;
@@ -689,6 +705,25 @@ mod tests {
             languages.missing_binary_status(Some(Path::new("src/main.rs"))),
             None
         );
+    }
+
+    #[test]
+    fn server_accessors_report_configuration_and_usage() {
+        let mut available = BTreeMap::new();
+        available.insert(
+            "rust-analyzer".to_string(),
+            PathBuf::from("/bin/rust-analyzer"),
+        );
+        let languages = Languages::from_parts(server(), vec![rust()], available);
+        assert!(languages.server_is_used("rust-analyzer"));
+        assert!(!languages.server_is_used("pyright"));
+        assert_eq!(
+            languages.server_path("rust-analyzer"),
+            Some(Path::new("/bin/rust-analyzer"))
+        );
+        assert!(languages
+            .servers()
+            .any(|(name, config)| name == "rust-analyzer" && config.enabled));
     }
 
     #[test]
