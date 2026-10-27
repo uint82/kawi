@@ -54,7 +54,7 @@ Folds collapse ranges of lines into a single visible line. Set `foldmethod` to `
 - `manual` uses folds created with `zf` in visual mode.
 - `indent` derives folds from indentation and the effective `shiftwidth`.
 - `foldcolumn` controls the fold marker column width. Set it to `0` to hide the column. The column is reserved even when no fold is present, so the layout does not shift when folds appear.
-- Folds are saved per buffer in the workspace session. Manual folds restore when the file content matches. Closed indentation folds restore when their fold starts still exist.
+- Folds are saved per file in the state directory and restore regardless of how Kawi starts. Manual folds restore when the file content matches. Closed indentation folds restore when their fold starts still exist.
 
 ```toml
 [editor]
