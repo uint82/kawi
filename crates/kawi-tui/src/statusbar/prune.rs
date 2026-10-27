@@ -82,6 +82,16 @@ fn find_file_mut<'a>(left: &'a mut [Segment], right: &'a mut [Segment]) -> Optio
     right.get_mut(index)
 }
 
+pub(super) fn remove_padding(left: &mut [Segment], center: &mut [Segment], right: &mut [Segment]) {
+    for segment in left
+        .iter_mut()
+        .chain(center.iter_mut())
+        .chain(right.iter_mut())
+    {
+        segment.padding = 0;
+    }
+}
+
 pub(super) fn shorten_mode(left: &mut [Segment], center: &mut [Segment], right: &mut [Segment]) {
     if let Some(segment) = find_mut(left, center, right, SegmentId::Mode) {
         segment.text = segment

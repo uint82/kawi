@@ -4,6 +4,7 @@ use kawi_editor::Mode;
 
 use crate::frame::DiagnosticSeverity;
 pub const REQUIRED_PRIORITY: u8 = u8::MAX;
+pub const BADGE_PADDING: usize = 1;
 
 const DEFAULT_LEFT: &[SegmentId] = &[
     SegmentId::Mode,
@@ -166,6 +167,22 @@ pub enum SegmentStyle {
     Position,
 }
 
+impl SegmentStyle {
+    pub fn is_badge(self) -> bool {
+        matches!(
+            self,
+            Self::Mode(_)
+                | Self::Modified
+                | Self::ReadOnly
+                | Self::Diagnostic(_)
+                | Self::Git
+                | Self::Lsp
+                | Self::Selection
+                | Self::Macro
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     pub id: SegmentId,
@@ -175,6 +192,7 @@ pub struct Segment {
     pub section: Section,
     pub flex: bool,
     pub min_width: usize,
+    pub padding: usize,
 }
 
 impl Segment {

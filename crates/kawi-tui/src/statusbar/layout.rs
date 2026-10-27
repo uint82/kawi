@@ -9,6 +9,7 @@ pub struct PlacedSegment {
     pub width: usize,
     pub text: String,
     pub style: SegmentStyle,
+    pub padding: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +40,9 @@ pub fn layout(segments: &[Segment], width: usize, separator: &str) -> StatusLine
     prune::drop_until_fits(&mut left, &mut right, width, separator_width);
     if total_width(&left, &right, separator_width) > width {
         prune::truncate_file(&mut left, &mut right, width, separator_width);
+    }
+    if total_width(&left, &right, separator_width) > width {
+        prune::remove_padding(&mut left, &mut center, &mut right);
     }
     if total_width(&left, &right, separator_width) > width {
         prune::shorten_mode(&mut left, &mut center, &mut right);
@@ -85,7 +89,9 @@ pub(super) fn section_width(segments: &[Segment], separator_width: usize) -> usi
         if segment.text.is_empty() {
             continue;
         }
-        width = width.saturating_add(text::display_width(&segment.text));
+        width = width
+            .saturating_add(text::display_width(&segment.text))
+            .saturating_add(segment.padding.saturating_mul(2));
         count += 1;
     }
     width.saturating_add(separator_width.saturating_mul(count.saturating_sub(1)))
@@ -173,16 +179,23 @@ fn place_section(
                     width: separator_width,
                     text: separator.to_string(),
                     style: SegmentStyle::Default,
+                    padding: 0,
                 });
             }
             x = x.saturating_add(separator_width);
         }
         let remaining = limit.saturating_sub(x);
-        if remaining == 0 {
+        let padding = if remaining > segment.padding.saturating_mul(2) {
+            segment.padding
+        } else {
+            0
+        };
+        let text_budget = remaining.saturating_sub(padding.saturating_mul(2));
+        if text_budget == 0 {
             break;
         }
-        let text = text::truncate_right(&segment.text, remaining);
-        let width = text::display_width(&text);
+        let text = text::truncate_right(&segment.text, text_budget);
+        let width = text::display_width(&text).saturating_add(padding.saturating_mul(2));
         if width == 0 {
             continue;
         }
@@ -192,6 +205,7 @@ fn place_section(
             width,
             text,
             style: segment.style,
+            padding,
         });
         x = x.saturating_add(width);
         first = false;

@@ -26,7 +26,7 @@ Press Tab after `:set theme` to discover every built-in and custom theme that is
 
 ## Status line colors
 
-Status line segments derive their colors from `status`, `diagnostics`, `git`, `selection`, and the base palette. Colored segments use a filled background badge, with the base background as the default foreground. Override individual segments with a `[statusline]` table:
+Status line segments derive their colors from `status`, `diagnostics`, `git`, `selection`, and the base palette. Colored segments use a filled background badge with horizontal padding, and the base background as the default foreground. Padding is dropped before the mode label is shortened. Override individual segments with a `[statusline]` table:
 
 ```toml
 [statusline.mode.normal]

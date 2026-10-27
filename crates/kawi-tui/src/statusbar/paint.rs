@@ -29,7 +29,13 @@ pub fn draw_line(
             MoveTo(saturate_u16(x.saturating_add(span.x)), saturate_u16(y))
         )
         .context("move to status segment")?;
+        for _ in 0..span.padding {
+            write!(out, " ").context("write status segment padding")?;
+        }
         write!(out, "{}", span.text).context("write status segment")?;
+        for _ in 0..span.padding {
+            write!(out, " ").context("write status segment padding")?;
+        }
         cursor = span.x.saturating_add(span.width);
     }
     if cursor < line.width {

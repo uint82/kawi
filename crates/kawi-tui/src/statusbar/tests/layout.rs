@@ -43,6 +43,7 @@ fn random_segments(rng: &mut Rng) -> Vec<Segment> {
                 section,
                 flex: id == SegmentId::File,
                 min_width: 4,
+                padding: 0,
             }
         })
         .collect()
@@ -57,7 +58,10 @@ fn assert_inside(line: &super::super::StatusLine, width: usize) {
             span.x.saturating_add(span.width) <= width,
             "span escapes the bar"
         );
-        assert_eq!(text::display_width(&span.text), span.width);
+        assert_eq!(
+            text::display_width(&span.text).saturating_add(span.padding.saturating_mul(2)),
+            span.width
+        );
         assert!(!span.text.chars().any(char::is_control));
         assert!(!span.text.contains('\u{1b}'));
         previous_end = span.x + span.width;
@@ -227,6 +231,7 @@ fn segment(id: SegmentId, text: &str, priority: u8, section: Section) -> Segment
         section,
         flex: id == SegmentId::File,
         min_width: 4,
+        padding: 0,
     }
 }
 
@@ -248,4 +253,47 @@ fn layout_is_independent_of_theme() {
     let first = layout(&segments, 40, " ");
     let second = layout(&segments, 40, " ");
     assert_eq!(first, second);
+}
+
+#[test]
+fn badges_get_horizontal_padding_when_space_allows() {
+    let config = StatusBarConfig::default();
+    let mut status = info("a.txt");
+    status.git = Some(super::super::GitStatusInfo {
+        branch: "main",
+        operation: None,
+        ahead: 0,
+        behind: 0,
+    });
+    let segments = build_segments(&status, true, &config);
+    let line = layout(&segments, 80, &config.separator);
+    for id in [SegmentId::Mode, SegmentId::Git] {
+        let span = line
+            .spans
+            .iter()
+            .find(|span| span.id == Some(id))
+            .expect("badge");
+        assert_eq!(span.padding, 1);
+        assert_eq!(span.width, text::display_width(&span.text) + 2);
+    }
+    let file = line
+        .spans
+        .iter()
+        .find(|span| span.id == Some(SegmentId::File))
+        .expect("file");
+    assert_eq!(file.padding, 0);
+}
+
+#[test]
+fn padding_is_removed_before_badge_text_is_shortened() {
+    let config = StatusBarConfig::default();
+    let segments = build_segments(&info("a.txt"), true, &config);
+    let line = layout(&segments, 10, &config.separator);
+    let mode = line
+        .spans
+        .iter()
+        .find(|span| span.id == Some(SegmentId::Mode))
+        .expect("mode");
+    assert_eq!(mode.padding, 0);
+    assert_eq!(mode.text, "N");
 }

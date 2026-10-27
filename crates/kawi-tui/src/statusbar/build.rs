@@ -1,5 +1,5 @@
 use super::segment::{
-    Section, Segment, SegmentId, SegmentStyle, StatusBarConfig, REQUIRED_PRIORITY,
+    Section, Segment, SegmentId, SegmentStyle, StatusBarConfig, BADGE_PADDING, REQUIRED_PRIORITY,
 };
 use super::{GitStatusInfo, StatusInfo};
 
@@ -78,6 +78,11 @@ fn push_section(
             continue;
         }
         let spec = segment_spec(*id, info, config);
+        let padding = if spec.style.is_badge() {
+            BADGE_PADDING
+        } else {
+            0
+        };
         segments.push(Segment {
             id: *id,
             text,
@@ -86,6 +91,7 @@ fn push_section(
             section,
             flex: spec.flex,
             min_width: spec.min_width,
+            padding,
         });
     }
 }
