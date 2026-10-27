@@ -10,7 +10,7 @@ Kawi reads configuration from the XDG config directory, normally `~/.config/kawi
 ## Sections
 
 - `[ui]` for keymap, theme, overlays, diagnostics, completion, and the status line
-- `[editor]` for indentation, line numbers, sign column, matching, and autosave
+- `[editor]` for indentation, line numbers, sign column, matching, autosave, and key guidance
 - `[history]` for undo history and persistence
 
 Example:
@@ -46,6 +46,24 @@ Press Tab in command mode to complete commands, option names, option values, and
 - `:help <Tab>` lists help topics.
 - `:help option <Tab>` lists options.
 - `:help option <name>` shows one option, including its description and values.
+
+## Key guidance
+
+Kawi shows a transient overlay for pending key sequences. The overlay lists the available followups and updates after each key.
+
+- `keyguide` controls the overlay and defaults to `true`.
+- `keyguide_delay` sets the delay in milliseconds and defaults to `150`. Set it to `0` for immediate display.
+- The overlay covers leader menus and Vim sequences such as `dd`, `gg`, `ciw`, `g~`, `z`, and `[`.
+- Dynamic prefixes show a hint instead of a list, such as a target character for `f` or a register for `"`.
+- Disabling the overlay does not disable the leader key or any key mappings.
+
+```toml
+[editor]
+keyguide = true
+keyguide_delay = 150
+```
+
+Helix has no leader or multi-key sequences, so the overlay does not appear there.
 
 ## Folding
 

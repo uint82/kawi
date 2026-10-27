@@ -15,6 +15,7 @@ related = ["getting-started", "lsp", "pickers", "tasks"]
 - Git status, staging, commits, branches, and diffs.
 - Autosave, sessions, recovery, macros, undo history, and persistent undo.
 - Manual and indentation folding with a fold column.
+- Key sequence guidance for leader menus and pending Vim sequences.
 - Configurable themes, overlays, and diagnostic presentation.
 
 Use `:help <topic>` to open the guide for a feature.
