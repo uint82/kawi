@@ -101,6 +101,17 @@ impl App {
             "numberwidth" => self
                 .editor
                 .set_numberwidth(value.as_int().unwrap_or_default()),
+            "signcolumn" => {
+                self.signcolumn = value
+                    .as_text()
+                    .and_then(options::SignColumnMode::parse)
+                    .unwrap_or_default();
+                self.update_signcolumn_width();
+            }
+            "git_signs" => {
+                self.git_signs = value.as_bool().unwrap_or(false);
+                self.update_signcolumn_width();
+            }
             "ignorecase" => self
                 .editor
                 .set_ignorecase(value.as_bool().unwrap_or_default()),
@@ -299,6 +310,8 @@ impl App {
             "number" => OptionValue::Bool(self.editor.number()),
             "relativenumber" => OptionValue::Bool(self.editor.relativenumber()),
             "numberwidth" => OptionValue::Int(self.editor.numberwidth()),
+            "signcolumn" => OptionValue::Text(self.signcolumn.name().to_string()),
+            "git_signs" => OptionValue::Bool(self.git_signs),
             "ignorecase" => OptionValue::Bool(self.editor.ignorecase()),
             "smartcase" => OptionValue::Bool(self.editor.smartcase()),
             "autoindent" => OptionValue::Bool(self.editor.autoindent()),
@@ -436,6 +449,27 @@ mod tests {
         execute(&mut app, "set keymap helix");
         execute(&mut app, "set keymap?");
         assert_eq!(app.last_message(), Some("keymap=helix"));
+    }
+
+    #[test]
+    fn signcolumn_and_git_signs_options_apply_and_query() {
+        let mut app = app();
+        execute(&mut app, "set signcolumn=always");
+        assert_eq!(app.signcolumn, crate::options::SignColumnMode::Always);
+        assert_eq!(app.editor.signcolumn_width(), 1);
+        execute(&mut app, "set scl?");
+        assert_eq!(app.last_message(), Some("signcolumn=always"));
+        execute(&mut app, "set scl=auto");
+        assert_eq!(app.signcolumn, crate::options::SignColumnMode::Auto);
+        assert_eq!(app.editor.signcolumn_width(), 0);
+        execute(&mut app, "set git_sign");
+        assert!(app.git_signs);
+        execute(&mut app, "set git_signs?");
+        assert_eq!(app.last_message(), Some("git_signs"));
+        execute(&mut app, "set git_signs=false");
+        assert!(!app.git_signs);
+        execute(&mut app, "set signcolumn=never");
+        assert_eq!(app.editor.signcolumn_width(), 0);
     }
 
     #[test]

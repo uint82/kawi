@@ -5,7 +5,7 @@ related = ["lsp", "configuration", "keybindings"]
 ---
 # Diagnostics
 
-Language server diagnostics appear as underlines, gutter signs, status counts, virtual text, and entries in the problems list.
+Language server diagnostics appear as underlines, status counts, virtual text, and entries in the problems list. Gutter signs appear when the sign column is visible.
 
 ## Keys
 
@@ -17,6 +17,8 @@ Language server diagnostics appear as underlines, gutter signs, status counts, v
 - `]q` and `[q` next and previous quickfix entry
 
 ## Display
+
+The sign column is disabled by default. Set `signcolumn` to `auto` or `always` to show diagnostic signs.
 
 Virtual text is enabled for all lines by default. Set `diagnostic_virtual_text` to `off`, `cursor_line`, or `all`.
 

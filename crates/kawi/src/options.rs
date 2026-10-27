@@ -52,6 +52,41 @@ impl AutosaveMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum SignColumnMode {
+    #[default]
+    Never,
+    Auto,
+    Always,
+}
+
+impl SignColumnMode {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        match name {
+            "never" => Some(Self::Never),
+            "auto" => Some(Self::Auto),
+            "always" => Some(Self::Always),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Auto => "auto",
+            Self::Always => "always",
+        }
+    }
+
+    pub(crate) fn is_visible(self, has_signs: bool) -> bool {
+        match self {
+            Self::Never => false,
+            Self::Auto => has_signs,
+            Self::Always => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OptionScope {
     Global,
@@ -175,7 +210,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 32] = [
+pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -244,6 +279,24 @@ pub(crate) const OPTIONS: [OptionSpec; 32] = [
         section: ConfigSection::Editor,
         config_key: "numberwidth",
         default: OptionDefault::Int(4),
+    },
+    OptionSpec {
+        name: "signcolumn",
+        aliases: &["scl"],
+        kind: OptionKind::Enum(valid_signcolumn),
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "signcolumn",
+        default: OptionDefault::Text("never"),
+    },
+    OptionSpec {
+        name: "git_signs",
+        aliases: &["git_sign"],
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "git_signs",
+        default: OptionDefault::Bool(false),
     },
     OptionSpec {
         name: "ignorecase",
@@ -590,6 +643,10 @@ fn valid_autosave(name: &str, _context: &OptionContext<'_>) -> bool {
     AutosaveMode::parse(name).is_some()
 }
 
+fn valid_signcolumn(name: &str, _context: &OptionContext<'_>) -> bool {
+    SignColumnMode::parse(name).is_some()
+}
+
 fn valid_keymap(name: &str, _context: &OptionContext<'_>) -> bool {
     flavor_from_name(name).is_some()
 }
@@ -639,6 +696,8 @@ mod tests {
         assert_eq!(canonical_name("sw"), Some("shiftwidth"));
         assert_eq!(canonical_name("number"), Some("number"));
         assert_eq!(canonical_name("nu"), Some("number"));
+        assert_eq!(canonical_name("scl"), Some("signcolumn"));
+        assert_eq!(canonical_name("git_sign"), Some("git_signs"));
         assert_eq!(canonical_name("nope"), None);
     }
 
@@ -729,6 +788,16 @@ mod tests {
         assert_eq!(scope("number"), OptionScope::Window);
         assert_eq!(scope("relativenumber"), OptionScope::Window);
         assert_eq!(scope("numberwidth"), OptionScope::Window);
+        assert_eq!(scope("signcolumn"), OptionScope::Global);
+        assert_eq!(scope("git_signs"), OptionScope::Global);
+        assert_eq!(
+            lookup("signcolumn").unwrap().default_value(),
+            OptionValue::Text("never".to_string())
+        );
+        assert_eq!(
+            lookup("git_signs").unwrap().default_value(),
+            OptionValue::Bool(false)
+        );
         assert_eq!(
             lookup("shiftwidth").unwrap().default_value(),
             OptionValue::Int(8)

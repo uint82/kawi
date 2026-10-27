@@ -48,6 +48,7 @@ mod replace_apply;
 mod restore;
 mod save;
 mod signature;
+mod signcolumn;
 mod symbols;
 mod task;
 mod terminal_ui;
@@ -80,29 +81,10 @@ struct SyntaxCache {
     key: SyntaxKey,
 }
 
-fn preferred_sign(
-    git: Option<kawi_tui::frame::Sign>,
-    diagnostic: Option<kawi_tui::frame::DiagnosticSeverity>,
-) -> Option<kawi_tui::frame::Sign> {
-    diagnostic.map(kawi_tui::frame::Sign::Diagnostic).or(git)
-}
-
-fn ui_diagnostic_severity(
-    severity: kawi_lsp::DiagnosticSeverity,
-) -> kawi_tui::frame::DiagnosticSeverity {
-    match severity {
-        kawi_lsp::DiagnosticSeverity::Error => kawi_tui::frame::DiagnosticSeverity::Error,
-        kawi_lsp::DiagnosticSeverity::Warning => kawi_tui::frame::DiagnosticSeverity::Warning,
-        kawi_lsp::DiagnosticSeverity::Information => {
-            kawi_tui::frame::DiagnosticSeverity::Information
-        }
-        kawi_lsp::DiagnosticSeverity::Hint => kawi_tui::frame::DiagnosticSeverity::Hint,
-    }
-}
-
 use crate::event::EventQueue;
 use crate::keymap::{ActiveKeymap, Flavor, Keymap};
 use crate::mouse::{horizontal_wheel_delta, wheel_delta};
+use crate::options::SignColumnMode;
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
@@ -161,6 +143,8 @@ pub struct App {
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
     git_error: Option<String>,
+    git_signs: bool,
+    signcolumn: SignColumnMode,
     git_status: git_status::GitStatusState,
     git_commit: git_commit::GitCommitState,
     git_branch: git_branch::GitBranchState,
@@ -241,6 +225,8 @@ impl App {
             git: None,
             git_path: None,
             git_error: None,
+            git_signs: false,
+            signcolumn: SignColumnMode::Never,
             git_status: git_status::GitStatusState::default(),
             git_commit: git_commit::GitCommitState::default(),
             git_branch: git_branch::GitBranchState::default(),
@@ -570,42 +556,6 @@ impl App {
         changed
     }
 
-    fn view_signs(&self) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
-        let top = self.editor.view_top();
-        let height = self.editor.view_height();
-        let git = self.git_view_signs(top, height);
-        if git.is_none() && !self.lsp.has_diagnostics() {
-            return None;
-        }
-        let mut signs = git.unwrap_or_else(|| vec![None; height]);
-        self.apply_diagnostic_signs(&mut signs, top);
-        Some(signs)
-    }
-
-    fn git_view_signs(
-        &self,
-        top: usize,
-        height: usize,
-    ) -> Option<Vec<Option<kawi_tui::frame::Sign>>> {
-        self.git.as_ref().map(|session| {
-            session
-                .visible_signs(top, height)
-                .into_iter()
-                .map(|sign| sign.map(kawi_tui::frame::Sign::Git))
-                .collect()
-        })
-    }
-
-    fn apply_diagnostic_signs(&self, signs: &mut [Option<kawi_tui::frame::Sign>], top: usize) {
-        for (offset, sign) in signs.iter_mut().enumerate() {
-            let diagnostic = self
-                .lsp
-                .diagnostic_severity(top.saturating_add(offset))
-                .map(ui_diagnostic_severity);
-            *sign = preferred_sign(*sign, diagnostic);
-        }
-    }
-
     fn showcmd_text(&self) -> Option<String> {
         let pending = if self.window_prefix {
             Some("^W")
@@ -703,11 +653,6 @@ impl App {
         self.handle_formatting_result();
         self.sync_rename();
         self.handle_file_operation_result();
-    }
-
-    fn update_signcolumn_width(&mut self) {
-        let width = usize::from(self.git.is_some() || self.lsp.has_diagnostics());
-        self.editor.set_signcolumn_width(width);
     }
 
     fn update(&mut self, event: Event) -> Result<bool> {
@@ -1542,10 +1487,15 @@ impl App {
             return;
         };
         let buffer_no_final_newline = !self.editor.text_has_final_newline();
-        if session.revision() != revision
+        let changed = if session.revision() != revision
             || session.buffer_no_final_newline() != buffer_no_final_newline
         {
-            session.update(&self.editor.text_lines(), revision, buffer_no_final_newline);
+            session.update(&self.editor.text_lines(), revision, buffer_no_final_newline)
+        } else {
+            false
+        };
+        if changed {
+            self.update_signcolumn_width();
         }
     }
 
@@ -3201,19 +3151,6 @@ mod tests {
         assert_eq!(app.editor.filename(), alpha);
         type_command(&mut app, "b zzz");
         assert_eq!(app.last_message(), Some("E94: No matching buffer for zzz"));
-    }
-
-    #[test]
-    fn diagnostics_take_priority_over_git_signs() {
-        let git = Some(kawi_tui::frame::Sign::Git(kawi_tui::frame::GitSign::Change));
-        let diagnostic = Some(kawi_tui::frame::DiagnosticSeverity::Error);
-        assert_eq!(
-            preferred_sign(git, diagnostic),
-            Some(kawi_tui::frame::Sign::Diagnostic(
-                kawi_tui::frame::DiagnosticSeverity::Error
-            ))
-        );
-        assert_eq!(preferred_sign(git, None), git);
     }
 
     #[test]
