@@ -19,4 +19,10 @@ Language servers provide:
 - formatting
 - workspace edits and file operations
 
+## Completion
+
+Use Tab to move down and Shift-Tab to move up. Up and Down, Ctrl-N and Ctrl-P, PageUp and PageDown also navigate the completion list. Selection wraps at both ends.
+
+Press Enter to accept the selected item and Esc to dismiss the list. The menu shows at most ten items and scrolls the selection into view.
+
 Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:diagnostics) for diagnostic navigation and display.
