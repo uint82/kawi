@@ -24,6 +24,7 @@ use crate::display;
 mod bracket;
 mod leader;
 mod picker;
+mod selection;
 mod terminal;
 
 use terminal::{draw_terminal_panel, place_terminal_cursor};
@@ -539,6 +540,7 @@ impl SpanView<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
     Selection,
+    SelectionSyntax(SyntaxHighlight),
     BracketMatch,
     SearchMatch,
     SearchCurrent,
@@ -810,8 +812,9 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
         leftcol: pane.viewport.leftcol(),
         tabstop: pane.tabstop,
     };
-    for span in syntax_highlight_spans(pane.syntax_spans, &view) {
-        paint_span(out, pane, &span, gutter_width, theme)?;
+    let syntax_spans = syntax_highlight_spans(pane.syntax_spans, &view);
+    for span in &syntax_spans {
+        paint_span(out, pane, span, gutter_width, theme)?;
     }
     for span in search_highlight_spans(pane.search_spans, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
@@ -819,19 +822,32 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     for span in preview_highlight_spans(pane.preview_spans, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    let selection_spans = highlight_spans(
-        &view,
-        pane.selection,
-        visual_cursor_cell(pane, gutter_width),
+    let selection_spans = selection::split_by_syntax(
+        highlight_spans(
+            &view,
+            pane.selection,
+            visual_cursor_cell(pane, gutter_width),
+        ),
+        &syntax_spans,
+        pane.tabstop,
     );
     for span in &selection_spans {
         paint_span(out, pane, span, gutter_width, theme)?;
     }
+    paint::restore_base(out, theme)?;
     for span in bracket::bracket_match_spans(pane.bracket_match, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
     for span in diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
-        paint_diagnostic_span(out, pane, &span, gutter_width, theme, &selection_spans)?;
+        paint_diagnostic_span(
+            out,
+            pane,
+            &span,
+            gutter_width,
+            theme,
+            &selection_spans,
+            &syntax_spans,
+        )?;
     }
     Ok(())
 }
@@ -843,6 +859,7 @@ fn paint_diagnostic_span(
     gutter_width: usize,
     theme: &Theme,
     selection_spans: &[HighlightSpan],
+    syntax_spans: &[HighlightSpan],
 ) -> Result<()> {
     let Tint::Diagnostic { severity, tag } = span.tint else {
         return Ok(());
@@ -851,8 +868,10 @@ fn paint_diagnostic_span(
         severity,
         tag,
         selected: false,
+        syntax: None,
     };
-    let Some(segments) = diagnostic_segments(span, selection_spans, pane.tabstop) else {
+    let Some(segments) = diagnostic_segments(span, selection_spans, syntax_spans, pane.tabstop)
+    else {
         return paint_span(out, pane, span, gutter_width, theme);
     };
     let x = pane.rect.x.saturating_add(gutter_width);
@@ -867,6 +886,7 @@ fn paint_diagnostic_span(
             &segment.text,
             DiagnosticPaint {
                 selected: segment.selected,
+                syntax: segment.syntax,
                 ..paint
             },
             theme,
@@ -879,16 +899,18 @@ struct DiagnosticSegment {
     from: usize,
     text: String,
     selected: bool,
+    syntax: Option<SyntaxHighlight>,
 }
 
 fn diagnostic_segments(
     span: &HighlightSpan,
     selection_spans: &[HighlightSpan],
+    syntax_spans: &[HighlightSpan],
     tabstop: usize,
 ) -> Option<Vec<DiagnosticSegment>> {
     let start = span.from;
     let end = start.saturating_add(display_width(&span.text));
-    let ranges: Vec<(usize, usize)> = selection_spans
+    let ranges: Vec<(usize, usize, ())> = selection_spans
         .iter()
         .filter(|selection| selection.screen_row == span.screen_row)
         .map(|selection| {
@@ -897,39 +919,67 @@ fn diagnostic_segments(
                 selection
                     .from
                     .saturating_add(display_width(&selection.text)),
+                (),
             )
         })
-        .filter(|(from, to)| *from < end && *to > start)
+        .filter(|(from, to, _)| *from < end && *to > start)
         .collect();
     if ranges.is_empty() {
         return None;
     }
-    let mut cuts = vec![start, end];
-    for (from, to) in &ranges {
-        cuts.push((*from).max(start));
-        cuts.push((*to).min(end));
-    }
-    cuts.sort_unstable();
-    cuts.dedup();
     let mut segments = Vec::new();
-    for pair in cuts.windows(2) {
-        let (from, to) = (pair[0], pair[1]);
-        if from >= to {
+    for (from, to, selected) in selection::split_ranges(start, end, &ranges) {
+        let text = display::slice_screen(&span.text, from - start, to - start, tabstop);
+        if text.is_empty() {
             continue;
         }
-        let selected = ranges
-            .iter()
-            .any(|(start, end)| *start <= from && to <= *end);
-        let text = display::slice_screen(&span.text, from - start, to - start, tabstop);
-        if !text.is_empty() {
+        if selected.is_none() {
             segments.push(DiagnosticSegment {
                 from,
                 text,
-                selected,
+                selected: false,
+                syntax: None,
             });
+            continue;
         }
+        push_selected_segments(
+            &mut segments,
+            span.screen_row,
+            from,
+            text,
+            syntax_spans,
+            tabstop,
+        );
     }
     Some(segments)
+}
+
+fn push_selected_segments(
+    segments: &mut Vec<DiagnosticSegment>,
+    screen_row: usize,
+    from: usize,
+    text: String,
+    syntax_spans: &[HighlightSpan],
+    tabstop: usize,
+) {
+    let span = HighlightSpan {
+        screen_row,
+        from,
+        text,
+        tint: Tint::Selection,
+    };
+    for part in selection::split_by_syntax(vec![span], syntax_spans, tabstop) {
+        let syntax = match part.tint {
+            Tint::SelectionSyntax(highlight) => Some(highlight),
+            _ => None,
+        };
+        segments.push(DiagnosticSegment {
+            from: part.from,
+            text: part.text,
+            selected: true,
+            syntax,
+        });
+    }
 }
 
 fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<HighlightSpan> {
@@ -972,8 +1022,8 @@ fn paint_span(
     )
 }
 
-fn paint_span_at(
-    out: &mut Stdout,
+fn paint_span_at<W: Write>(
+    out: &mut W,
     span: &HighlightSpan,
     x: usize,
     y: usize,
@@ -986,7 +1036,14 @@ fn paint_span_at(
         y.saturating_add(span.screen_row),
     )?;
     match span.tint {
-        Tint::Selection => paint_tinted(out, &span.text, &theme.selection, theme, background),
+        Tint::Selection => selection::paint_plain(out, &span.text, theme, background),
+        Tint::SelectionSyntax(highlight) => paint_syntax(
+            out,
+            &span.text,
+            highlight,
+            theme,
+            theme.selection.background,
+        ),
         Tint::BracketMatch => bracket::paint_bracket_match(out, &span.text, theme),
         Tint::SearchMatch => paint_tinted(out, &span.text, &theme.search_match, theme, background),
         Tint::SearchCurrent => {
@@ -1001,6 +1058,7 @@ fn paint_span_at(
                 severity,
                 tag,
                 selected: false,
+                syntax: None,
             },
             theme,
         ),
@@ -1012,6 +1070,7 @@ struct DiagnosticPaint {
     severity: crate::frame::DiagnosticSeverity,
     tag: Option<crate::frame::DiagnosticTag>,
     selected: bool,
+    syntax: Option<SyntaxHighlight>,
 }
 
 fn paint_diagnostic<W: Write>(
@@ -1049,7 +1108,17 @@ fn paint_selected_diagnostic<W: Write>(
     paint: DiagnosticPaint,
     theme: &Theme,
 ) -> Result<()> {
-    paint::apply_match(out, &theme.selection)?;
+    match paint.syntax {
+        Some(highlight) => {
+            apply_syntax_style(out, highlight, theme, theme.selection.background)?;
+        }
+        None => paint::apply_colors(
+            out,
+            theme.base.foreground,
+            theme.selection.background,
+            "apply selected diagnostic colors",
+        )?,
+    }
     match paint.tag {
         Some(crate::frame::DiagnosticTag::Unnecessary) => {
             execute!(out, SetAttribute(Attribute::Dim)).context("apply faded diagnostic text")?;
@@ -1061,16 +1130,12 @@ fn paint_selected_diagnostic<W: Write>(
         None => paint::apply_underline(out, theme.diagnostic_color(paint.severity))?,
     }
     write_segment(out, text)?;
-    if paint.tag.is_some() {
-        paint::clear_decorations(out)?;
-    } else {
-        paint::clear_underline(out)?;
-    }
+    paint::clear_decorations(out)?;
     paint::restore_base(out, theme)
 }
 
-fn paint_tinted(
-    out: &mut Stdout,
+fn paint_tinted<W: Write>(
+    out: &mut W,
     text: &str,
     colors: &MatchColors,
     theme: &Theme,
@@ -1087,7 +1152,7 @@ fn paint_tinted(
     Ok(())
 }
 
-fn move_to_segment(out: &mut Stdout, col: usize, screen_row: usize) -> Result<()> {
+fn move_to_segment<W: Write>(out: &mut W, col: usize, screen_row: usize) -> Result<()> {
     execute!(out, MoveTo(saturate_u16(col), saturate_u16(screen_row)))
         .context("move to segment")?;
     Ok(())
@@ -1407,9 +1472,26 @@ fn markdown_style(
     }
 }
 
-fn paint_syntax(
-    out: &mut Stdout,
+fn paint_syntax<W: Write>(
+    out: &mut W,
     text: &str,
+    highlight: SyntaxHighlight,
+    theme: &Theme,
+    background: Color,
+) -> Result<()> {
+    apply_syntax_style(out, highlight, theme, background)?;
+    write_segment(out, text)?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax attributes")?;
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        background,
+        "restore syntax background",
+    )
+}
+
+fn apply_syntax_style<W: Write>(
+    out: &mut W,
     highlight: SyntaxHighlight,
     theme: &Theme,
     background: Color,
@@ -1422,18 +1504,15 @@ fn paint_syntax(
         style.background.unwrap_or(background),
         "apply syntax colors",
     )?;
-    apply_attributes(out, style.bold, style.italic, style.underline)?;
-    write_segment(out, text)?;
-    execute!(out, SetAttribute(Attribute::Reset)).context("reset syntax attributes")?;
-    paint::apply_colors(
-        out,
-        theme.base.foreground,
-        background,
-        "restore syntax background",
-    )
+    apply_attributes(out, style.bold, style.italic, style.underline)
 }
 
-fn apply_attributes(out: &mut Stdout, bold: bool, italic: bool, underline: bool) -> Result<()> {
+fn apply_attributes<W: Write>(
+    out: &mut W,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+) -> Result<()> {
     if bold {
         execute!(out, SetAttribute(Attribute::Bold)).context("apply bold")?;
     }
@@ -2462,13 +2541,40 @@ mod tests {
             text: "de".to_string(),
             tint: Tint::Selection,
         };
-        let segments = diagnostic_segments(&diagnostic, &[selection], 8).expect("segments");
+        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8).expect("segments");
         assert_eq!(
             segments
                 .iter()
                 .map(|segment| (segment.from, segment.text.as_str(), segment.selected))
                 .collect::<Vec<_>>(),
             [(2, "c", false), (3, "de", true), (5, "f", false)]
+        );
+    }
+
+    #[test]
+    fn diagnostic_segments_clip_selection_to_the_diagnostic() {
+        let diagnostic = HighlightSpan {
+            screen_row: 0,
+            from: 2,
+            text: "cd".to_string(),
+            tint: Tint::Diagnostic {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+            },
+        };
+        let selection = HighlightSpan {
+            screen_row: 0,
+            from: 0,
+            text: "abcdef".to_string(),
+            tint: Tint::Selection,
+        };
+        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8).expect("segments");
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| (segment.from, segment.text.as_str(), segment.selected))
+                .collect::<Vec<_>>(),
+            [(2, "cd", true)]
         );
     }
 
@@ -2483,16 +2589,16 @@ mod tests {
                 tag: None,
             },
         };
-        assert!(diagnostic_segments(&diagnostic, &[], 8).is_none());
+        assert!(diagnostic_segments(&diagnostic, &[], &[], 8).is_none());
     }
 
     #[test]
-    fn selected_diagnostics_keep_selection_colors_and_underline() {
+    fn selected_diagnostics_keep_selection_background_and_underline() {
         let theme = Theme::default();
         let mut expected = Vec::new();
         execute!(
             expected,
-            SetForegroundColor(theme.selection.foreground),
+            SetForegroundColor(theme.base.foreground),
             crossterm::style::SetBackgroundColor(theme.selection.background)
         )
         .unwrap();
@@ -2504,6 +2610,7 @@ mod tests {
                 severity: crate::frame::DiagnosticSeverity::Error,
                 tag: None,
                 selected: true,
+                syntax: None,
             },
             &theme,
         )
@@ -2512,6 +2619,127 @@ mod tests {
         assert!(output.starts_with(&String::from_utf8(expected).unwrap()));
         assert!(output.contains("\u{1b}[4m"));
         assert!(output.contains('x'));
+    }
+
+    #[test]
+    fn selected_diagnostics_keep_syntax_and_selection_background() {
+        let theme = Theme::default();
+        let keyword = highlight_named("keyword");
+        let mut expected_foreground = Vec::new();
+        execute!(
+            expected_foreground,
+            SetForegroundColor(theme.syntax.named("keyword").unwrap().foreground.unwrap())
+        )
+        .unwrap();
+        let mut expected_background = Vec::new();
+        execute!(
+            expected_background,
+            crossterm::style::SetBackgroundColor(theme.selection.background)
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        paint_diagnostic(
+            &mut out,
+            "fn",
+            DiagnosticPaint {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+                selected: true,
+                syntax: Some(keyword),
+            },
+            &theme,
+        )
+        .unwrap();
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains(&String::from_utf8(expected_foreground).unwrap()));
+        assert!(output.contains(&String::from_utf8(expected_background).unwrap()));
+        assert!(output.contains("\u{1b}[4m"));
+        assert!(output.contains("fn"));
+    }
+
+    #[test]
+    fn selection_syntax_paints_syntax_foreground_and_selection_background() {
+        let theme = Theme::default();
+        let keyword = highlight_named("keyword");
+        let span = HighlightSpan {
+            screen_row: 0,
+            from: 0,
+            text: "fn".to_string(),
+            tint: Tint::SelectionSyntax(keyword),
+        };
+        let mut out = Vec::new();
+        paint_span_at(&mut out, &span, 0, 0, &theme, theme.base.background).unwrap();
+        let output = String::from_utf8(out).unwrap();
+        let mut foreground = Vec::new();
+        execute!(
+            foreground,
+            SetForegroundColor(theme.syntax.named("keyword").unwrap().foreground.unwrap())
+        )
+        .unwrap();
+        let mut background = Vec::new();
+        execute!(
+            background,
+            crossterm::style::SetBackgroundColor(theme.selection.background)
+        )
+        .unwrap();
+        assert!(output.contains(&String::from_utf8(foreground).unwrap()));
+        assert!(output.contains(&String::from_utf8(background).unwrap()));
+        assert!(output.contains("fn"));
+    }
+
+    #[test]
+    fn selected_diagnostics_split_by_syntax() {
+        let diagnostic = HighlightSpan {
+            screen_row: 0,
+            from: 0,
+            text: "fn main".to_string(),
+            tint: Tint::Diagnostic {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+            },
+        };
+        let selection = HighlightSpan {
+            screen_row: 0,
+            from: 0,
+            text: "fn main".to_string(),
+            tint: Tint::Selection,
+        };
+        let keyword = highlight_named("keyword");
+        let function = highlight_named("function");
+        let syntax = vec![
+            HighlightSpan {
+                screen_row: 0,
+                from: 0,
+                text: "fn".to_string(),
+                tint: Tint::Syntax(keyword),
+            },
+            HighlightSpan {
+                screen_row: 0,
+                from: 3,
+                text: "main".to_string(),
+                tint: Tint::Syntax(function),
+            },
+        ];
+        let segments =
+            diagnostic_segments(&diagnostic, &[selection], &syntax, 8).expect("segments");
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| {
+                    (
+                        segment.from,
+                        segment.text.as_str(),
+                        segment.selected,
+                        segment.syntax,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            [
+                (0, "fn", true, Some(keyword)),
+                (2, " ", true, None),
+                (3, "main", true, Some(function)),
+            ]
+        );
     }
 
     #[test]
