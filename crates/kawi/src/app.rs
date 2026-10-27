@@ -2261,7 +2261,7 @@ mod tests {
         app.handle_mouse(press(5, 0)).expect("press");
         app.handle_mouse(drag(8, 1)).expect("drag");
         assert_eq!(app.editor_mode(), Mode::Visual);
-        assert_eq!(app.editor_selection(), Some(((0, 1), (1, 4))));
+        assert_eq!(app.editor_selection(), Some(((0, 0), (1, 3))));
     }
 
     #[test]
@@ -3341,10 +3341,14 @@ mod tests {
     fn numbers_show_by_default() {
         let app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
         assert!(app.editor.number());
-        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(app.editor.gutter_width(), 5);
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                "   2 ".to_string(),
+                "   3 ".to_string()
+            ]
         );
     }
 
@@ -3352,14 +3356,18 @@ mod tests {
     fn set_number_command_shows_gutter() {
         let mut app = App::new(Buffer::from_string("abc\ndef\nghi"), Flavor::Vim);
         type_command(&mut app, "set nonumber");
-        assert_eq!(app.editor.gutter_width(), 0);
+        assert_eq!(app.editor.gutter_width(), 1);
         type_command(&mut app, "set number");
-        assert_eq!(app.editor.gutter_width(), 4);
+        assert_eq!(app.editor.gutter_width(), 5);
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "  2 ".to_string(), "  3 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                "   2 ".to_string(),
+                "   3 ".to_string()
+            ]
         );
-        assert_eq!(app.editor.cursor_wcol(), 4);
+        assert_eq!(app.editor.cursor_wcol(), 5);
     }
 
     #[test]
@@ -3370,7 +3378,11 @@ mod tests {
         assert!(app.editor.number());
         assert_eq!(
             app.editor.gutter_lines(0, 3),
-            vec!["  1 ".to_string(), "2   ".to_string(), "  1 ".to_string()]
+            vec![
+                "   1 ".to_string(),
+                " 2   ".to_string(),
+                "   1 ".to_string()
+            ]
         );
     }
 
@@ -3398,7 +3410,7 @@ mod tests {
         type_command(&mut app, "set number");
         app.handle_mouse(press(3, 0)).expect("click gutter");
         assert_eq!(app.cursor_position(), (0, 0));
-        app.handle_mouse(press(12, 0)).expect("click past tab");
+        app.handle_mouse(press(13, 0)).expect("click past tab");
         assert_eq!(app.cursor_position(), (0, 1));
         app.handle_mouse(press(4, 0)).expect("click tab start");
         assert_eq!(app.cursor_position(), (0, 0));

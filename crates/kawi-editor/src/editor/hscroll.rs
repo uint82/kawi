@@ -221,6 +221,7 @@ mod tests {
     fn view(text: &str) -> Editor {
         let mut editor = editor_with(text);
         editor.set_view_size(20, 5);
+        editor.set_fold_column(0);
         editor
     }
 

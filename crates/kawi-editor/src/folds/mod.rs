@@ -133,11 +133,7 @@ impl FoldState {
     }
 
     pub fn column_width(&self) -> usize {
-        if self.column == 0 || !self.has_folds() {
-            0
-        } else {
-            self.column.min(MAX_FOLD_COLUMN)
-        }
+        self.column.min(MAX_FOLD_COLUMN)
     }
 
     pub fn is_closed(&self, start: usize) -> bool {
