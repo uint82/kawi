@@ -25,7 +25,11 @@ impl FoldState {
     pub fn restore(&mut self, snapshot: FoldSnapshot, line_count: usize) {
         self.manual = normalize_manual(snapshot.manual, line_count);
         self.closed = normalize_closed(snapshot.closed, line_count);
-        self.retain_closed_if_ready();
+        if self.method == FoldMethod::Manual {
+            self.retain_closed();
+        } else {
+            self.indent_revision = None;
+        }
     }
 
     pub fn drop_manual(&mut self) {
