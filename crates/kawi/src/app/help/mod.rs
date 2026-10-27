@@ -7,8 +7,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use view::{HelpLink, HelpView};
 
 const HELP_PREFIX: &str = "help:";
-const OPTIONS_TOPIC: &str = "options";
-const COMMANDS_TOPIC: &str = "commands";
+pub(super) const OPTIONS_TOPIC: &str = "options";
+pub(super) const OPTION_TOPIC: &str = "option";
+pub(super) const COMMANDS_TOPIC: &str = "commands";
 const OPTION_TOPIC_PREFIX: &str = "option ";
 
 #[cfg(test)]

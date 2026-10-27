@@ -87,8 +87,11 @@ pub enum SetValue {
     Negate,
 }
 
+mod completion;
 mod file_ops;
 mod undo;
+
+pub use completion::CommandCompletion;
 
 pub use undo::UndoCommand;
 

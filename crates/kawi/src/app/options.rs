@@ -3,7 +3,9 @@ use kawi_editor::{SetValue, WindowOptions};
 
 use super::App;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor};
-use crate::options::{self, AutosaveMode, OptionError, OptionInput, OptionSpec, OptionValue};
+use crate::options::{
+    self, AutosaveMode, OptionContext, OptionError, OptionInput, OptionSpec, OptionValue,
+};
 use kawi_tui::theme::Theme;
 
 impl App {
@@ -299,6 +301,12 @@ impl App {
         self.show_message(option_query(spec, &value));
     }
 
+    pub(super) fn option_context(&self) -> OptionContext<'_> {
+        OptionContext {
+            theme_dir: self.theme_dir.as_deref(),
+        }
+    }
+
     pub(super) fn option_value(&self, spec: &OptionSpec) -> OptionValue {
         match spec.name {
             "keymap" => OptionValue::Text(self.flavor.name().to_string()),
@@ -449,6 +457,24 @@ mod tests {
         execute(&mut app, "set keymap helix");
         execute(&mut app, "set keymap?");
         assert_eq!(app.last_message(), Some("keymap=helix"));
+    }
+
+    #[test]
+    fn option_metadata_values_apply_without_errors() {
+        let mut app = app();
+        let theme_dir = app.theme_dir.clone();
+        let context = OptionContext {
+            theme_dir: theme_dir.as_deref(),
+        };
+        for spec in &crate::options::OPTIONS {
+            for value in spec.values(&context) {
+                let input = options::OptionInput::Text(&value);
+                let validated = options::validate_spec(spec, input, &context).unwrap();
+                app.message = None;
+                app.apply_option(spec, validated).unwrap();
+                assert_eq!(app.last_message(), None, "{}={value}", spec.name);
+            }
+        }
     }
 
     #[test]

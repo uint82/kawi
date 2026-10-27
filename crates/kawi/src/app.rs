@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 mod autosave;
 mod code_action;
+mod command_completion;
 mod completion;
 mod config;
 mod conflict;
@@ -184,7 +185,7 @@ impl App {
         let mut editor = Editor::new(buffer);
         editor.set_clipboard(Box::new(kawi_tui::clipboard::SystemClipboard::new()));
         let windows = Windows::new(editor.buffer_number(), editor.view_state());
-        Self {
+        let mut app = Self {
             editor,
             keymap: ActiveKeymap::for_flavor(flavor),
             flavor,
@@ -258,7 +259,9 @@ impl App {
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
             last_input: Instant::now(),
-        }
+        };
+        app.refresh_command_completion();
+        app
     }
 
     pub fn run(&mut self) -> Result<()> {

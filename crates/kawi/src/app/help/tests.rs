@@ -126,3 +126,40 @@ fn help_buffers_reject_writes() {
         Some("E382: Cannot write, internal buffer")
     );
 }
+
+#[test]
+fn help_option_alias_opens_the_option_reference() {
+    let mut app = app();
+    execute(&mut app, "help option");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    assert!(text.contains("Options"));
+    assert!(text.contains("diagnostic_virtual_text"));
+}
+
+#[test]
+fn generated_option_help_shows_description_and_values() {
+    let mut app = app();
+    execute(&mut app, "help option signcolumn");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    assert!(text.contains("Gutter sign column visibility."));
+    assert!(text.contains("values: never, auto, always"));
+}
+
+#[test]
+fn themes_help_lists_builtin_and_custom_discovery() {
+    let mut app = app();
+    execute(&mut app, "help themes");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    assert!(text.contains("gruvbox-dark"));
+    assert!(text.contains("~/.config/kawi/themes"));
+    assert!(text.contains("Press Tab"));
+}
