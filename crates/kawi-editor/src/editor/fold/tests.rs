@@ -1,3 +1,5 @@
+use std::fs;
+
 use kawi_buffer::Buffer;
 
 use super::*;
@@ -148,4 +150,47 @@ fn fold_column_can_be_hidden() {
     editor.set_fold_column(0);
     assert_eq!(editor.fold_column_width(), 0);
     assert_eq!(editor.gutter_lines_at(&[0, 1]), vec!["  1 ", "  2 "]);
+}
+
+fn manual_fold_editor(name: &str) -> (std::path::PathBuf, Editor) {
+    let dir =
+        std::env::temp_dir().join(format!("kawi_fold_reload_{}_{}", std::process::id(), name));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("folds.txt");
+    fs::write(&path, "one\ntwo\nthree\nfour\nfive\n").unwrap();
+    let mut editor = editor("");
+    editor
+        .edit_file(Some(path.to_str().unwrap()), false)
+        .unwrap();
+    editor.apply(Action::JumpTo(1, 0));
+    editor.apply(Action::EnterVisualLine);
+    editor.apply(Action::JumpTo(3, 0));
+    editor.apply(Action::FoldCreate);
+    (path, editor)
+}
+
+#[test]
+fn reload_with_unchanged_content_keeps_manual_folds() {
+    let (path, mut editor) = manual_fold_editor("unchanged");
+    let number = editor.buffer_number();
+    editor.reload_buffer(number).unwrap();
+    let folds = editor.buffer_fold_snapshot(number).expect("folds");
+    assert_eq!(folds.manual.len(), 1);
+    assert_eq!(folds.closed, vec![1]);
+    assert_eq!(editor.fold_marker(1), '+');
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn reload_with_changed_content_drops_manual_folds() {
+    let (path, mut editor) = manual_fold_editor("changed");
+    fs::write(&path, "one\ntwo\nthree\nfour\nfive\nsix\n").unwrap();
+    let number = editor.buffer_number();
+    editor.reload_buffer(number).unwrap();
+    let folds = editor.buffer_fold_snapshot(number).expect("folds");
+    assert!(folds.manual.is_empty());
+    assert!(folds.closed.is_empty());
+    assert_eq!(editor.visible_rows(0, 10), vec![0, 1, 2, 3, 4, 5]);
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }

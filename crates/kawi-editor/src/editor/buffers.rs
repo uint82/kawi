@@ -181,6 +181,21 @@ impl Buffers {
         self.entry(number).map(|entry| &entry.state.folds)
     }
 
+    pub(super) fn parked_fold_state_mut(&mut self, number: usize) -> Option<&mut FoldState> {
+        self.parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+            .map(|entry| &mut entry.state.folds)
+    }
+
+    pub(super) fn refresh_parked_folds(&mut self, number: usize) -> bool {
+        let Some(entry) = self.parked.iter_mut().find(|entry| entry.number == number) else {
+            return false;
+        };
+        entry.state.folds.refresh(&entry.state.buffer);
+        true
+    }
+
     pub(super) fn set_fold_column(&mut self, column: usize) {
         for entry in &mut self.parked {
             entry.state.folds.set_column(column);
@@ -365,6 +380,7 @@ impl Editor {
             .ok_or(BufferError::Missing(number))
             .map_err(|_| EditError::NoName)?;
         let state = &mut entry.state;
+        let previous_hash = state.buffer.content_hash();
         let row = state.cursor.row();
         let col = state.cursor.col();
         state.buffer.checkpoint(row, col);
@@ -377,6 +393,7 @@ impl Editor {
         let col = col.min(state.buffer.line_len(row).saturating_sub(1));
         state.cursor.set_position(row, col);
         state.cursor.set_desired(col);
+        self.revalidate_folds_after_change(number, Some(previous_hash));
         Ok(())
     }
 
@@ -614,9 +631,13 @@ impl Editor {
     }
 
     pub fn restore_buffer_text(&mut self, number: usize, text: &str) -> bool {
+        let Some(previous_hash) = self.buffer_content_hash(number) else {
+            return false;
+        };
         if number == self.buffers.current() {
             self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
             self.buffer.replace_all(text);
+            self.revalidate_folds_after_change(number, Some(previous_hash));
             return true;
         }
         let Some(entry) = self
@@ -631,6 +652,7 @@ impl Editor {
         let col = entry.state.cursor.col();
         entry.state.buffer.checkpoint(row, col);
         entry.state.buffer.replace_all(text);
+        self.revalidate_folds_after_change(number, Some(previous_hash));
         true
     }
 
@@ -780,11 +802,13 @@ impl Editor {
     }
 
     pub fn discard_current_changes(&mut self) {
+        let previous_hash = self.buffer.content_hash();
         if self.buffer.path.is_some() {
             let _ = self.buffer.reload_from_disk();
         } else {
             self.buffer.replace_all("");
         }
+        self.revalidate_folds_after_change(self.buffers.current(), Some(previous_hash));
         self.buffer.reset_history();
         self.buffer.mark_clean();
         self.clamp_row();
@@ -848,11 +872,13 @@ impl Editor {
             return Err(EditError::NoWrite);
         }
         let (row, col) = (self.cursor.row(), self.cursor.col());
+        let previous_hash = self.buffer.content_hash();
         self.buffer.checkpoint(row, col);
         self.buffer
             .reload_from_disk()
             .map_err(|error| EditError::Io(error.to_string()))?;
         self.buffer.mark_clean();
+        self.revalidate_folds_after_change(self.buffers.current(), Some(previous_hash));
         self.normalize_cursor();
         self.remember_wanted_column();
         self.reveal_cursor();
