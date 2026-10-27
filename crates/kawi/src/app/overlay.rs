@@ -231,14 +231,14 @@ impl App {
             .panes
             .iter()
             .find(|(id, _)| *id == self.windows.active())?;
-        let row = self.editor.row();
-        let top = self.editor.view_top();
         let x = rect.x.saturating_add(
             self.editor
                 .cursor_wcol()
                 .saturating_sub(self.editor.view_leftcol()),
         );
-        let y = rect.y.saturating_add(row.saturating_sub(top));
+        let y = rect
+            .y
+            .saturating_add(self.editor.cursor_screen_row().unwrap_or(0));
         Some((
             x.min(area.right().saturating_sub(1)).max(area.x),
             y.min(area.bottom().saturating_sub(1)).max(area.y),

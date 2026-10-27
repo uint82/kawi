@@ -69,10 +69,10 @@ impl DiagnosticState {
             .min()
     }
 
-    pub(super) fn spans(&self, window: &[String], top: usize) -> Vec<DiagnosticSpan> {
+    pub(super) fn spans(&self, window: &[String], rows: &[usize]) -> Vec<DiagnosticSpan> {
         let mut spans = Vec::new();
         for diagnostic in &self.items {
-            collect_spans(&mut spans, diagnostic, window, top);
+            collect_spans(&mut spans, diagnostic, window, rows);
         }
         spans
     }
@@ -104,22 +104,14 @@ fn collect_spans(
     spans: &mut Vec<DiagnosticSpan>,
     diagnostic: &Diagnostic,
     window: &[String],
-    top: usize,
+    rows: &[usize],
 ) {
-    if window.is_empty() {
-        return;
-    }
     let start_line = usize::try_from(diagnostic.range.start.line).unwrap_or(usize::MAX);
     let end_line = usize::try_from(diagnostic.range.end.line).unwrap_or(usize::MAX);
-    let first = start_line.max(top);
-    let last = end_line.min(top.saturating_add(window.len()).saturating_sub(1));
-    if first > last {
-        return;
-    }
-    for row in first..=last {
-        let Some(text) = window.get(row.saturating_sub(top)) else {
+    for (text, row) in window.iter().zip(rows.iter().copied()) {
+        if row < start_line || row > end_line {
             continue;
-        };
+        }
         let line_len = text.chars().count();
         let Some((start, end)) = columns(diagnostic, row, line_len) else {
             continue;

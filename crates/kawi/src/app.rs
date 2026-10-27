@@ -805,7 +805,10 @@ impl App {
         let local_row = screen_row
             .saturating_sub(rect.y)
             .min(rect.height.saturating_sub(2));
-        let row = self.editor.view_top().saturating_add(local_row);
+        let row = self
+            .editor
+            .buffer_row_at_screen(local_row)
+            .unwrap_or_else(|| self.editor.view_top());
         let screen_col = column.saturating_sub(rect.x);
         let col = self.editor.buffer_col_at_screen(row, screen_col);
         (row, col)

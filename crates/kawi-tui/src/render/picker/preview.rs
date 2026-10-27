@@ -141,7 +141,7 @@ fn draw_highlights(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) 
     viewport.place_top(top, view.preview.total_lines.max(1));
     let span_view = SpanView {
         window: view.lines,
-        top: viewport.top(),
+        rows: std::borrow::Cow::Owned((top..top.saturating_add(view.lines.len())).collect()),
         viewport: &viewport,
         gutter: view.gutter_width,
         leftcol: 0,

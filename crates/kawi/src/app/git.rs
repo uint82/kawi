@@ -76,9 +76,14 @@ impl GitSession {
         self.buffer_no_final_newline
     }
 
+    pub fn sign_at(&self, row: usize) -> Option<GitSign> {
+        self.signs.get(row).copied().flatten()
+    }
+
+    #[cfg(test)]
     pub fn visible_signs(&self, top: usize, height: usize) -> Vec<Option<GitSign>> {
         (top..top.saturating_add(height))
-            .map(|row| self.signs.get(row).copied().flatten())
+            .map(|row| self.sign_at(row))
             .collect()
     }
 

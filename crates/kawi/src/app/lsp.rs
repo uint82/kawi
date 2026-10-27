@@ -594,8 +594,8 @@ impl LspUi {
         self.diagnostics.severity_at(row)
     }
 
-    pub fn diagnostic_spans(&self, window: &[String], top: usize) -> Vec<DiagnosticSpan> {
-        self.diagnostics.spans(window, top)
+    pub fn diagnostic_spans(&self, window: &[String], rows: &[usize]) -> Vec<DiagnosticSpan> {
+        self.diagnostics.spans(window, rows)
     }
 
     pub fn take_message(&mut self) -> Option<String> {

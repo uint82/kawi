@@ -192,8 +192,7 @@ impl DiagnosticOptions {
 
 pub(super) struct VirtualTextRequest<'a> {
     pub(super) path: Option<&'a Path>,
-    pub(super) top: usize,
-    pub(super) height: usize,
+    pub(super) rows: &'a [usize],
     pub(super) cursor_row: usize,
     pub(super) cursor_column: usize,
     pub(super) suppress: bool,
@@ -236,7 +235,10 @@ fn build_virtual_texts(
     if options.virtual_text == VirtualTextMode::Off || request.suppress {
         return Vec::new();
     }
-    (request.top..request.top.saturating_add(request.height))
+    request
+        .rows
+        .iter()
+        .copied()
         .map(|row| {
             if options.virtual_text == VirtualTextMode::CursorLine && row != request.cursor_row {
                 return None;

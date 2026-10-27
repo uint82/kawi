@@ -292,7 +292,7 @@ pub(super) fn is_window_prefix(key: KeyEvent, mode: Mode) -> bool {
 mod tests {
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use kawi_buffer::Buffer;
-    use kawi_editor::Action;
+    use kawi_editor::{Action, FoldMethod};
 
     use super::*;
     use crate::app::App;
@@ -378,6 +378,24 @@ mod tests {
         let panes = app.frame_panes(&layout);
         assert_eq!(panes.len(), 2);
         assert!(panes.iter().all(|pane| !pane.syntax_spans.is_empty()));
+    }
+
+    #[test]
+    fn folded_pane_reports_visible_rows() {
+        let buffer = Buffer::from_string(
+            "def main():\n    a = 1\n    if True:\n        b = 2\n    c = 3\nd = 4\n",
+        );
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.editor.set_shiftwidth(4);
+        app.editor.set_fold_method(FoldMethod::Indent);
+        app.editor.close_all_folds();
+        let layout = app.window_layout();
+        let panes = app.frame_panes(&layout);
+        let pane = panes.iter().find(|pane| pane.active).expect("active pane");
+        assert_eq!(pane.rows, vec![0, 1, 5]);
+        assert_eq!(pane.lines.len(), pane.rows.len());
+        assert_eq!(pane.cursor_screen_row, Some(0));
+        assert!(pane.gutter[1].starts_with('+'));
     }
 
     #[test]

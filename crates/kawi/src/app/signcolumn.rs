@@ -16,16 +16,21 @@ impl App {
         self.editor.set_signcolumn_width(width);
     }
 
+    #[cfg(test)]
     pub(super) fn view_signs(&self) -> Option<Vec<Option<Sign>>> {
+        let top = self.editor.visible_top();
+        let rows = self.editor.visible_rows(top, self.editor.view_height());
+        self.view_signs_for_rows(&rows)
+    }
+
+    pub(super) fn view_signs_for_rows(&self, rows: &[usize]) -> Option<Vec<Option<Sign>>> {
         if !self.signcolumn.is_visible(self.has_signs()) {
             return None;
         }
-        let top = self.editor.view_top();
-        let height = self.editor.view_height();
         let mut signs = self
-            .git_view_signs(top, height)
-            .unwrap_or_else(|| vec![None; height]);
-        self.apply_diagnostic_signs(&mut signs, top);
+            .git_signs_for_rows(rows)
+            .unwrap_or_else(|| vec![None; rows.len()]);
+        self.apply_diagnostic_signs(&mut signs, rows);
         Some(signs)
     }
 
@@ -34,24 +39,22 @@ impl App {
             || (self.git_signs && self.git.as_ref().is_some_and(|session| session.has_signs()))
     }
 
-    fn git_view_signs(&self, top: usize, height: usize) -> Option<Vec<Option<Sign>>> {
+    fn git_signs_for_rows(&self, rows: &[usize]) -> Option<Vec<Option<Sign>>> {
         if !self.git_signs {
             return None;
         }
         self.git.as_ref().map(|session| {
-            session
-                .visible_signs(top, height)
-                .into_iter()
-                .map(|sign| sign.map(Sign::Git))
+            rows.iter()
+                .map(|row| session.sign_at(*row).map(Sign::Git))
                 .collect()
         })
     }
 
-    fn apply_diagnostic_signs(&self, signs: &mut [Option<Sign>], top: usize) {
-        for (offset, sign) in signs.iter_mut().enumerate() {
+    fn apply_diagnostic_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        for (sign, row) in signs.iter_mut().zip(rows) {
             let diagnostic = self
                 .lsp
-                .diagnostic_severity(top.saturating_add(offset))
+                .diagnostic_severity(*row)
                 .map(ui_diagnostic_severity);
             *sign = preferred_sign(*sign, diagnostic);
         }
