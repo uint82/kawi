@@ -24,9 +24,23 @@ impl App {
     pub(crate) fn draw_frame(&mut self, out: &mut Stdout) -> Result<()> {
         self.refresh_bracket_match();
         self.prepare_completion_overlay();
+        self.sync_explorer_marks();
         let overlay_data = self.overlay_data();
         let overlay = overlay_data.as_ref().map(|data| data.view());
         let layout = self.window_layout();
+        let explorer_view = self.explorer_view();
+        let explorer = explorer_view
+            .as_ref()
+            .map(|view| kawi_tui::frame::ExplorerPanel {
+                rect: view.rect,
+                title: view.title,
+                status: &view.status,
+                focused: view.focused,
+                rows: &view.rows,
+                selected: view.selected,
+                offset: view.offset,
+                error: view.error,
+            });
         let data = self.frame_panes(&layout);
         let git = self.git_status.display();
         let statuses: Vec<StatusInfo> = data
@@ -64,12 +78,13 @@ impl App {
                 percent: pane.percent,
             })
             .collect();
+        let explorer_focused = self.explorer.is_focused();
         let panes: Vec<PaneFrame<'_>> = data
             .iter()
             .zip(statuses.iter())
             .map(|(pane, status)| PaneFrame {
                 rect: pane.rect,
-                active: pane.active,
+                active: pane.active && !explorer_focused,
                 lines: &pane.lines,
                 rows: &pane.rows,
                 gutter: &pane.gutter,
@@ -236,6 +251,7 @@ impl App {
             overlay,
             picker,
             replace,
+            explorer,
             task,
             terminal,
             viewport: &viewport,

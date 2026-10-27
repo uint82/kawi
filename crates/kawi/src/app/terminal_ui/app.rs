@@ -16,15 +16,16 @@ impl App {
                 if height == 0 {
                     return None;
                 }
+                let explorer_width = self.explorer_width();
                 Some(Rect::new(
-                    0,
+                    explorer_width,
                     self.screen_height.saturating_sub(1).saturating_sub(height),
-                    self.screen_width,
+                    self.screen_width.saturating_sub(explorer_width),
                     height,
                 ))
             }
             TerminalLayout::Vertical => {
-                let width = self.terminal.panel_width(self.screen_width);
+                let width = self.terminal_panel_width();
                 if width == 0 {
                     return None;
                 }
@@ -87,7 +88,7 @@ impl App {
             return Ok(false);
         };
         let options = spawn_options(
-            self.task_root(),
+            self.project_root(),
             rows,
             cols,
             command,
@@ -121,11 +122,15 @@ impl App {
                 }
                 Some((
                     height.saturating_sub(1).max(1) as u16,
-                    self.screen_width.max(1) as u16,
+                    self.screen_width
+                        .saturating_sub(self.explorer_width())
+                        .max(1) as u16,
                 ))
             }
             TerminalLayout::Vertical => {
-                let width = TerminalUi::desired_panel_width(self.screen_width);
+                let width = TerminalUi::desired_panel_width(
+                    self.screen_width.saturating_sub(self.explorer_width()),
+                );
                 if width == 0 {
                     return None;
                 }

@@ -10,6 +10,9 @@ pub(crate) const COMPLETION_DOCS_MAX_WIDTH_DEFAULT: usize = 42;
 pub(crate) const OVERLAY_MIN_WIDTH_DEFAULT: usize = 20;
 pub(crate) const OVERLAY_MAX_HEIGHT_PERCENT_DEFAULT: usize = 50;
 pub(crate) const OVERLAY_MARGIN_DEFAULT: usize = 2;
+pub(crate) const EXPLORER_WIDTH_DEFAULT: usize = 30;
+pub(crate) const EXPLORER_WIDTH_MIN: usize = 20;
+pub(crate) const EXPLORER_WIDTH_MAX: usize = 60;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum AutosaveMode {
@@ -249,7 +252,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 38] = [
+pub(crate) const OPTIONS: [OptionSpec; 40] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -629,6 +632,29 @@ pub(crate) const OPTIONS: [OptionSpec; 38] = [
         section: ConfigSection::Ui,
         config_key: "diagnostic_workspace_counts",
         default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "explorer_show_hidden",
+        aliases: &["exh"],
+        description: "Show hidden files in the project explorer.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "explorer_show_hidden",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "explorer_width",
+        aliases: &["exw"],
+        description: "Project explorer width in columns.",
+        kind: OptionKind::Int {
+            min: EXPLORER_WIDTH_MIN,
+            max: EXPLORER_WIDTH_MAX,
+        },
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "explorer_width",
+        default: OptionDefault::Int(EXPLORER_WIDTH_DEFAULT),
     },
     OptionSpec {
         name: "keyguide",
