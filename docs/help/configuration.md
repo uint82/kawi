@@ -53,7 +53,7 @@ Folds collapse ranges of lines into a single visible line. Set `foldmethod` to `
 
 - `manual` uses folds created with `zf` in visual mode.
 - `indent` derives folds from indentation and the effective `shiftwidth`.
-- `foldcolumn` controls the fold marker column width. Set it to `0` to hide the column.
+- `foldcolumn` controls the fold marker column width. Set it to `0` to hide the column. The column is reserved even when no fold is present, so the layout does not shift when folds appear.
 
 ```toml
 [editor]
