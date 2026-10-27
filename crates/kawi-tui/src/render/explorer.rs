@@ -3,9 +3,8 @@ use crossterm::{
     cursor::MoveTo,
     execute,
     style::{Color, SetForegroundColor},
-    terminal::{Clear, ClearType},
 };
-use std::io::{Stdout, Write};
+use std::io::Write;
 
 use super::picker::write_padding;
 use super::{paint, saturate_u16};
@@ -15,27 +14,26 @@ use crate::frame::{
 use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 
-pub(super) fn draw_explorer_panel(out: &mut Stdout, frame: &crate::frame::Frame) -> Result<()> {
+pub(super) fn draw_explorer_panel<W: Write>(
+    out: &mut W,
+    frame: &crate::frame::Frame,
+) -> Result<()> {
     let Some(panel) = frame.explorer.as_ref() else {
         return Ok(());
     };
-    draw_header(out, frame, panel)?;
-    draw_rows(out, frame, panel)?;
+    draw_header(out, frame.theme, panel)?;
+    draw_rows(out, frame.theme, panel)?;
     Ok(())
 }
 
-fn draw_header(
-    out: &mut Stdout,
-    frame: &crate::frame::Frame,
-    panel: &ExplorerPanel<'_>,
-) -> Result<()> {
-    clear_line(out, panel.rect.x, panel.rect.y)?;
+fn draw_header<W: Write>(out: &mut W, theme: &Theme, panel: &ExplorerPanel<'_>) -> Result<()> {
+    line_start(out, panel.rect.x, panel.rect.y)?;
     let colors = if panel.focused {
-        frame.theme.status.clone()
+        theme.status.clone()
     } else {
         MatchColors {
-            foreground: frame.theme.non_text,
-            background: frame.theme.base.background,
+            foreground: theme.non_text,
+            background: theme.base.background,
         }
     };
     paint::apply_match(out, &colors)?;
@@ -43,15 +41,17 @@ fn draw_header(
     let header = truncate_to_display_width(&header, panel.rect.width);
     write!(out, "{header}").context("write explorer header")?;
     write_padding(out, display_width(header), panel.rect.width)?;
-    paint::restore_base(out, frame.theme)?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 
-fn draw_rows(
-    out: &mut Stdout,
-    frame: &crate::frame::Frame,
-    panel: &ExplorerPanel<'_>,
-) -> Result<()> {
+struct RowSlot<'a> {
+    entry: &'a ExplorerRow<'a>,
+    index: usize,
+    y: usize,
+}
+
+fn draw_rows<W: Write>(out: &mut W, theme: &Theme, panel: &ExplorerPanel<'_>) -> Result<()> {
     let error_rows = usize::from(panel.error.is_some());
     let rows_height = panel
         .rect
@@ -61,39 +61,49 @@ fn draw_rows(
     for offset in 0..rows_height {
         let index = panel.offset.saturating_add(offset);
         let row = panel.rect.y.saturating_add(offset).saturating_add(1);
-        clear_line(out, panel.rect.x, row)?;
         if let Some(entry) = panel.rows.get(index) {
-            draw_row(out, frame, panel, entry, index)?;
+            draw_row(
+                out,
+                theme,
+                panel,
+                RowSlot {
+                    entry,
+                    index,
+                    y: row,
+                },
+            )?;
+        } else {
+            blank_line(out, panel.rect.x, row, panel.rect.width)?;
         }
     }
     if rows_height == 0 && panel.error.is_none() {
         return Ok(());
     }
     if panel.rows.is_empty() && panel.error.is_none() {
-        draw_empty(out, frame, panel)?;
+        draw_empty(out, theme, panel)?;
     }
     if let Some(error) = panel.error {
-        draw_error(out, frame, panel, error)?;
+        draw_error(out, theme, panel, error)?;
     }
     Ok(())
 }
 
-fn draw_row(
-    out: &mut Stdout,
-    frame: &crate::frame::Frame,
+fn draw_row<W: Write>(
+    out: &mut W,
+    theme: &Theme,
     panel: &ExplorerPanel<'_>,
-    row: &ExplorerRow<'_>,
-    index: usize,
+    slot: RowSlot<'_>,
 ) -> Result<()> {
-    let selected = panel.selected == Some(index);
+    line_start(out, panel.rect.x, slot.y)?;
+    let selected = panel.selected == Some(slot.index);
     if selected {
-        paint::apply_match(out, &frame.theme.selection)?;
+        paint::apply_match(out, &theme.selection)?;
     } else {
-        paint::apply_base(out, frame.theme)?;
-        apply_label_color(out, frame.theme, row)?;
+        paint::apply_base(out, theme)?;
+        apply_label_color(out, theme, slot.entry)?;
     }
-    let label = row_label(row);
-    let markers = row_markers(frame.theme, row);
+    let label = row_label(slot.entry);
+    let markers = row_markers(theme, slot.entry);
     let marker_width = markers.len();
     let gap = usize::from(marker_width > 0);
     let label_width = panel
@@ -107,7 +117,7 @@ fn draw_row(
         write!(out, " ").context("write explorer marker gap")?;
         write_markers(out, &markers)?;
     }
-    paint::restore_base(out, frame.theme)?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 
@@ -122,7 +132,7 @@ fn row_label(row: &ExplorerRow<'_>) -> String {
     format!("{indent}{marker}{}", row.name)
 }
 
-fn apply_label_color(out: &mut Stdout, theme: &Theme, row: &ExplorerRow<'_>) -> Result<()> {
+fn apply_label_color<W: Write>(out: &mut W, theme: &Theme, row: &ExplorerRow<'_>) -> Result<()> {
     let color = if row.hidden || matches!(row.kind, ExplorerRowKind::Symlink) {
         theme.non_text
     } else if matches!(row.kind, ExplorerRowKind::Directory { .. }) {
@@ -173,7 +183,7 @@ fn git_marker(theme: &Theme, git: ExplorerGit) -> (char, Color) {
     (git.code, color)
 }
 
-fn write_markers(out: &mut Stdout, markers: &[(char, Color)]) -> Result<()> {
+fn write_markers<W: Write>(out: &mut W, markers: &[(char, Color)]) -> Result<()> {
     for (character, color) in markers {
         execute!(out, SetForegroundColor(*color)).context("apply explorer marker color")?;
         write!(out, "{character}").context("write explorer marker")?;
@@ -181,23 +191,20 @@ fn write_markers(out: &mut Stdout, markers: &[(char, Color)]) -> Result<()> {
     Ok(())
 }
 
-fn draw_empty(
-    out: &mut Stdout,
-    frame: &crate::frame::Frame,
-    panel: &ExplorerPanel<'_>,
-) -> Result<()> {
+fn draw_empty<W: Write>(out: &mut W, theme: &Theme, panel: &ExplorerPanel<'_>) -> Result<()> {
     let row = panel.rect.y.saturating_add(1);
-    clear_line(out, panel.rect.x, row)?;
-    execute!(out, SetForegroundColor(frame.theme.non_text))
-        .context("apply empty explorer color")?;
-    write!(out, "(empty)").context("write empty explorer")?;
-    paint::restore_base(out, frame.theme)?;
+    line_start(out, panel.rect.x, row)?;
+    execute!(out, SetForegroundColor(theme.non_text)).context("apply empty explorer color")?;
+    let label = "(empty)";
+    write!(out, "{label}").context("write empty explorer")?;
+    write_padding(out, display_width(label), panel.rect.width)?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 
-fn draw_error(
-    out: &mut Stdout,
-    frame: &crate::frame::Frame,
+fn draw_error<W: Write>(
+    out: &mut W,
+    theme: &Theme,
     panel: &ExplorerPanel<'_>,
     error: &str,
 ) -> Result<()> {
@@ -205,70 +212,24 @@ fn draw_error(
         .rect
         .y
         .saturating_add(panel.rect.height.saturating_sub(1));
-    clear_line(out, panel.rect.x, row)?;
-    execute!(out, SetForegroundColor(frame.theme.diagnostic_error))
+    line_start(out, panel.rect.x, row)?;
+    execute!(out, SetForegroundColor(theme.diagnostic_error))
         .context("apply explorer error color")?;
     let error = truncate_to_display_width(error, panel.rect.width);
     write!(out, "{error}").context("write explorer error")?;
     write_padding(out, display_width(error), panel.rect.width)?;
-    paint::restore_base(out, frame.theme)?;
+    paint::restore_base(out, theme)?;
     Ok(())
 }
 
-fn clear_line(out: &mut Stdout, x: usize, y: usize) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(x), saturate_u16(y)),
-        Clear(ClearType::UntilNewLine)
-    )
-    .context("clear explorer line")
+fn line_start<W: Write>(out: &mut W, x: usize, y: usize) -> Result<()> {
+    execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to explorer line")
+}
+
+fn blank_line<W: Write>(out: &mut W, x: usize, y: usize, width: usize) -> Result<()> {
+    line_start(out, x, y)?;
+    write_padding(out, 0, width)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn row(kind: ExplorerRowKind) -> ExplorerRow<'static> {
-        ExplorerRow {
-            depth: 1,
-            name: "src",
-            kind,
-            hidden: false,
-            active: false,
-            dirty: false,
-            git: None,
-            diagnostic: None,
-        }
-    }
-
-    #[test]
-    fn row_labels_show_depth_and_directory_state() {
-        assert_eq!(
-            row_label(&row(ExplorerRowKind::Directory { expanded: true })),
-            "  \u{25be} src"
-        );
-        assert_eq!(
-            row_label(&row(ExplorerRowKind::Directory { expanded: false })),
-            "  \u{25b8} src"
-        );
-        assert_eq!(row_label(&row(ExplorerRowKind::File)), "    src");
-        assert_eq!(row_label(&row(ExplorerRowKind::Symlink)), "  @ src");
-    }
-
-    #[test]
-    fn row_markers_order_dirty_diagnostic_and_git_state() {
-        let theme = Theme::default();
-        let mut entry = row(ExplorerRowKind::File);
-        entry.dirty = true;
-        entry.diagnostic = Some(DiagnosticSeverity::Warning);
-        entry.git = Some(ExplorerGit {
-            code: 'M',
-            kind: ExplorerGitKind::Change,
-        });
-        let markers: Vec<char> = row_markers(&theme, &entry)
-            .iter()
-            .map(|(marker, _)| *marker)
-            .collect();
-        assert_eq!(markers, ['*', 'W', 'M']);
-    }
-}
+mod tests;
