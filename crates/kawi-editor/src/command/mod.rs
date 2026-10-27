@@ -69,6 +69,9 @@ pub enum Command {
         vertical: bool,
     },
     Conflict,
+    Help {
+        topic: Option<String>,
+    },
     Undo(UndoCommand),
     SetError(String),
     Substitute(SubstituteCommand),
@@ -182,6 +185,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "edit",
     "files",
     "git",
+    "h",
+    "help",
     "later",
     "ls",
     "new",
@@ -357,6 +362,9 @@ fn parse_named(text: &str) -> Command {
             vertical: true,
         },
         ("conflict", []) => Command::Conflict,
+        ("h" | "help", rest) => Command::Help {
+            topic: (!rest.is_empty()).then(|| rest.join(" ")),
+        },
         ("u" | "undo", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
         ("u" | "undo", [arg]) => undo::jump_command(arg),
         ("earlier", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
@@ -1080,6 +1088,24 @@ mod tests {
             Command::Terminal {
                 command: Some("echo hello".to_string()),
                 vertical: true
+            }
+        );
+    }
+
+    #[test]
+    fn parses_help_commands() {
+        assert_eq!(parse("help"), Command::Help { topic: None });
+        assert_eq!(parse("h"), Command::Help { topic: None });
+        assert_eq!(
+            parse("help option diagnostic_virtual_text"),
+            Command::Help {
+                topic: Some("option diagnostic_virtual_text".to_string())
+            }
+        );
+        assert_eq!(
+            parse("help getting started"),
+            Command::Help {
+                topic: Some("getting started".to_string())
             }
         );
     }

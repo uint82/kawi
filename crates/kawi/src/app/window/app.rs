@@ -186,6 +186,21 @@ impl App {
         self.complete_split(false)
     }
 
+    pub(crate) fn open_internal_window(&mut self, name: &str, text: &str) -> Result<usize> {
+        self.begin_split();
+        let number = self.editor.open_internal_buffer(name, text);
+        self.complete_split(false)?;
+        Ok(number)
+    }
+
+    pub(crate) fn open_buffer_window(&mut self, number: usize) -> Result<bool> {
+        self.begin_split();
+        if !self.editor.buffer_select(number) {
+            return Ok(false);
+        }
+        self.complete_split(false)
+    }
+
     fn open_split(
         &mut self,
         vertical: bool,
@@ -310,6 +325,15 @@ impl App {
             return Ok(false);
         }
         self.window_syntax.remove(&closing);
+        if self
+            .help
+            .as_ref()
+            .is_some_and(|help| help.window == Some(closing))
+        {
+            if let Some(help) = self.help.as_mut() {
+                help.window = None;
+            }
+        }
         self.restore_active_window();
         Ok(false)
     }
@@ -317,6 +341,14 @@ impl App {
     pub(crate) fn only_window(&mut self) -> Result<bool> {
         self.windows.only_active();
         self.window_syntax.clear();
+        if let Some(help) = self.help.as_mut() {
+            help.window = self
+                .windows
+                .active_view()
+                .buffer
+                .eq(&help.buffer)
+                .then_some(self.windows.active());
+        }
         self.refresh_window_sizes();
         self.reveal_cursor();
         Ok(false)

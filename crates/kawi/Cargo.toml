@@ -13,6 +13,7 @@ kawi-buffer = { path = "../kawi-buffer" }
 kawi-completion = { path = "../kawi-completion" }
 kawi-editor = { path = "../kawi-editor" }
 kawi-git = { path = "../kawi-git" }
+kawi-help = { path = "../kawi-help" }
 kawi-lsp = { path = "../kawi-lsp" }
 kawi-picker = { path = "../kawi-picker" }
 kawi-syntax = { path = "../kawi-syntax" }

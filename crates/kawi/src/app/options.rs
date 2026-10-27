@@ -288,7 +288,7 @@ impl App {
         self.show_message(option_query(spec, &value));
     }
 
-    fn option_value(&self, spec: &'static OptionSpec) -> OptionValue {
+    pub(super) fn option_value(&self, spec: &OptionSpec) -> OptionValue {
         match spec.name {
             "keymap" => OptionValue::Text(self.flavor.name().to_string()),
             "theme" => OptionValue::Text(self.theme.name.to_string()),
