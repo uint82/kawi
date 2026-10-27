@@ -1,13 +1,17 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+pub(crate) mod guide;
 mod leader;
 
+use self::guide::{
+    bracket_action, fold_action, g_action, is_sequence_prefix, object_target, place_action,
+    sequence_action, visual_g_action,
+};
 use crate::keymap::{has_ctrl_or_alt, normalize_interrupt, Keymap};
 use crate::leader::{group, LeaderPath};
 use kawi_editor::Action;
 use kawi_editor::CaseMotion;
 use kawi_editor::Mode;
-use kawi_editor::Object;
 use kawi_editor::ShiftMotion;
 
 fn is_register_name(name: char) -> bool {
@@ -76,126 +80,6 @@ fn scroll_action(key: KeyEvent) -> Option<Action> {
     }
 }
 
-fn fold_action(pushed: char) -> Option<Action> {
-    match pushed {
-        'a' => Some(Action::FoldToggle),
-        'o' => Some(Action::FoldOpen),
-        'c' => Some(Action::FoldClose),
-        'R' => Some(Action::FoldOpenAll),
-        'M' => Some(Action::FoldCloseAll),
-        'j' => Some(Action::FoldNext),
-        'k' => Some(Action::FoldPrevious),
-        'd' => Some(Action::FoldDelete),
-        _ => None,
-    }
-}
-
-fn place_action(pushed: char) -> Option<Action> {
-    match pushed {
-        'z' => Some(Action::PlaceCenter),
-        't' => Some(Action::PlaceTop),
-        'b' => Some(Action::PlaceBottom),
-        'h' => Some(Action::ScrollLeft),
-        'l' => Some(Action::ScrollRight),
-        'H' => Some(Action::ScrollHalfLeft),
-        'L' => Some(Action::ScrollHalfRight),
-        's' => Some(Action::ScrollCursorStart),
-        'e' => Some(Action::ScrollCursorEnd),
-        _ => None,
-    }
-}
-
-const OPERATOR_SEQUENCES: &[(&str, Action)] = &[
-    ("dd", Action::DeleteLine),
-    ("dw", Action::DeleteWord),
-    ("db", Action::DeleteWordBackward),
-    ("de", Action::DeleteWordEnd),
-    ("d0", Action::DeleteToStart),
-    ("d^", Action::DeleteToFirstNonBlank),
-    ("d$", Action::DeleteToEnd),
-    ("d%", Action::DeleteToMatch),
-    ("d(", Action::DeleteToPrevSentence),
-    ("d)", Action::DeleteToNextSentence),
-    ("d{", Action::DeleteToPrevParagraph),
-    ("d}", Action::DeleteToNextParagraph),
-    ("dG", Action::DeleteToLastLine),
-    ("dgg", Action::DeleteToFirstLine),
-    ("dH", Action::DeleteToViewportTop),
-    ("dM", Action::DeleteToViewportMiddle),
-    ("dL", Action::DeleteToViewportBottom),
-    ("dge", Action::DeleteWordEndBackward),
-    (">>", Action::ShiftRight),
-    ("<<", Action::ShiftLeft),
-    ("==", Action::Reindent),
-    ("diw", Action::DeleteInnerWord),
-    ("daw", Action::DeleteAroundWord),
-    ("cc", Action::ChangeLine),
-    ("cw", Action::ChangeWord),
-    ("cb", Action::ChangeWordBackward),
-    ("ce", Action::ChangeWordEnd),
-    ("c0", Action::ChangeToStart),
-    ("c^", Action::ChangeToFirstNonBlank),
-    ("c$", Action::ChangeToEnd),
-    ("c%", Action::ChangeToMatch),
-    ("c(", Action::ChangeToPrevSentence),
-    ("c)", Action::ChangeToNextSentence),
-    ("c{", Action::ChangeToPrevParagraph),
-    ("c}", Action::ChangeToNextParagraph),
-    ("cG", Action::ChangeToLastLine),
-    ("cgg", Action::ChangeToFirstLine),
-    ("cH", Action::ChangeToViewportTop),
-    ("cM", Action::ChangeToViewportMiddle),
-    ("cL", Action::ChangeToViewportBottom),
-    ("cge", Action::ChangeWordEndBackward),
-    ("ciw", Action::ChangeInnerWord),
-    ("caw", Action::ChangeAroundWord),
-    ("yy", Action::YankLine),
-    ("y0", Action::YankToStart),
-    ("y^", Action::YankToFirstNonBlank),
-    ("y$", Action::YankToEnd),
-    ("y%", Action::YankToMatch),
-    ("y(", Action::YankToPrevSentence),
-    ("y)", Action::YankToNextSentence),
-    ("y{", Action::YankToPrevParagraph),
-    ("y}", Action::YankToNextParagraph),
-    ("yG", Action::YankToLastLine),
-    ("ygg", Action::YankToFirstLine),
-    ("yH", Action::YankToViewportTop),
-    ("yM", Action::YankToViewportMiddle),
-    ("yL", Action::YankToViewportBottom),
-    ("yge", Action::YankWordEndBackward),
-    ("yiw", Action::YankInnerWord),
-    ("yaw", Action::YankAroundWord),
-    ("yw", Action::YankWord),
-    ("yb", Action::YankWordBackward),
-    ("ye", Action::YankWordEnd),
-    ("yW", Action::YankBigWord),
-    ("yB", Action::YankBigWordBackward),
-    ("yE", Action::YankBigWordEnd),
-    ("ygE", Action::YankBigWordEndBackward),
-    ("dW", Action::DeleteBigWord),
-    ("dB", Action::DeleteBigWordBackward),
-    ("dE", Action::DeleteBigWordEnd),
-    ("dgE", Action::DeleteBigWordEndBackward),
-    ("cW", Action::ChangeBigWord),
-    ("cB", Action::ChangeBigWordBackward),
-    ("cE", Action::ChangeBigWordEnd),
-    ("cgE", Action::ChangeBigWordEndBackward),
-];
-
-fn sequence_action(sequence: &str) -> Option<Action> {
-    let found = OPERATOR_SEQUENCES
-        .iter()
-        .find(|(keys, _)| *keys == sequence);
-    found.map(|(_, action)| *action)
-}
-
-fn is_sequence_prefix(sequence: &str) -> bool {
-    OPERATOR_SEQUENCES
-        .iter()
-        .any(|(keys, _)| *keys != sequence && keys.starts_with(sequence))
-}
-
 fn arms_pending(pushed: char) -> bool {
     matches!(
         pushed,
@@ -231,16 +115,6 @@ fn is_visual_motion_key(pushed: char) -> bool {
     )
 }
 
-fn display_motion_action(pushed: char) -> Option<Action> {
-    match pushed {
-        'j' => Some(Action::MoveDown),
-        'k' => Some(Action::MoveUp),
-        '0' => Some(Action::MoveToLineStart),
-        '$' => Some(Action::MoveToLineEnd),
-        _ => None,
-    }
-}
-
 fn object_action(sequence: &str) -> Option<Action> {
     let mut chars = sequence.chars();
     let operator = chars.next()?;
@@ -259,6 +133,18 @@ fn object_action(sequence: &str) -> Option<Action> {
         'c' => Action::ChangeObject { inner, object },
         _ => Action::YankObject { inner, object },
     })
+}
+
+fn visual_object_action(pushed: char, inner: bool) -> Option<Action> {
+    if pushed == 'w' {
+        return Some(if inner {
+            Action::SelectInnerWord
+        } else {
+            Action::SelectAroundWord
+        });
+    }
+    let object = object_target(pushed)?;
+    Some(Action::SelectObject { inner, object })
 }
 
 fn mark_sequence_action(sequence: &str) -> Option<Action> {
@@ -281,20 +167,6 @@ fn mark_sequence_action(sequence: &str) -> Option<Action> {
         'c' => Action::ChangeToMark { name, line_wise },
         _ => Action::YankToMark { name, line_wise },
     })
-}
-
-fn object_target(target: char) -> Option<Object> {
-    match target {
-        '(' | ')' => Some(Object::Paren),
-        '{' | '}' => Some(Object::Brace),
-        '[' | ']' => Some(Object::Bracket),
-        '<' | '>' => Some(Object::Angle),
-        '\'' => Some(Object::SingleQuote),
-        '"' => Some(Object::DoubleQuote),
-        '`' => Some(Object::Backtick),
-        'p' => Some(Object::Paragraph),
-        _ => None,
-    }
 }
 
 enum LineMotionProgress {
@@ -756,89 +628,18 @@ impl VimKeymap {
     }
 
     fn complete_g_prefix(&mut self, pushed: char, body: &str) -> Action {
-        if body == "g" && matches!(pushed, '~' | 'u' | 'U') {
+        if body != "g" {
+            return self.cancel_sequence();
+        }
+        if matches!(pushed, '~' | 'u' | 'U' | 'c') {
             self.pending.push(pushed);
             return Action::BeginSequence;
         }
-        if body == "g" && pushed == 'c' {
-            self.pending.push(pushed);
-            return Action::BeginSequence;
-        }
-        if body == "g" && pushed == 'g' {
-            self.clear_pending();
-            return Action::GotoFirstLine;
-        }
-        if body == "g" && pushed == 'd' {
-            self.clear_pending();
-            return Action::GotoDefinition;
-        }
-        if body == "g" && pushed == 'v' {
-            self.clear_pending();
-            return Action::ReselectVisual;
-        }
-        if body == "g" && pushed == 'J' {
-            self.clear_pending();
-            return Action::JoinLinesNoSpace;
-        }
-        if body == "g" && pushed == '-' {
-            self.clear_pending();
-            return Action::UndoOlder;
-        }
-        if body == "g" && pushed == '+' {
-            self.clear_pending();
-            return Action::UndoNewer;
-        }
-        if body == "g" && pushed == ';' {
-            self.clear_pending();
-            return Action::OlderChange;
-        }
-        if body == "g" && pushed == ',' {
-            self.clear_pending();
-            return Action::NewerChange;
-        }
-        if body == "g" && pushed == 'p' {
-            self.clear_pending();
-            return Action::PasteAfterAdvance;
-        }
-        if body == "g" && pushed == 'P' {
-            self.clear_pending();
-            return Action::PasteBeforeAdvance;
-        }
-        if body == "g" && pushed == 'i' {
-            self.clear_pending();
-            return Action::InsertAtLast;
-        }
-        if body == "g" && pushed == 'I' {
-            self.clear_pending();
-            return Action::InsertAtColumnStart;
-        }
-        if body == "g" && pushed == 'e' {
-            self.clear_pending();
-            return Action::MoveToPrevWordEnd;
-        }
-        if body == "g" && pushed == 'r' {
-            self.clear_pending();
-            return Action::ShowReferences;
-        }
-        if body == "g" && pushed == 'E' {
-            self.clear_pending();
-            return Action::MoveToPrevBigWordEnd;
-        }
-        if body == "g" && pushed == '*' {
-            self.clear_pending();
-            return Action::SearchBareWordForward;
-        }
-        if body == "g" && pushed == '#' {
-            self.clear_pending();
-            return Action::SearchBareWordBackward;
-        }
-        if body == "g" {
-            if let Some(action) = display_motion_action(pushed) {
-                self.clear_pending();
-                return action;
-            }
-        }
-        self.cancel_sequence()
+        let Some(action) = g_action(pushed) else {
+            return self.cancel_sequence();
+        };
+        self.clear_pending();
+        action
     }
 
     fn complete_case_operator(&mut self, operator: &str, rest: &str, pushed: char) -> Action {
@@ -1282,34 +1083,15 @@ impl VimKeymap {
     }
 
     fn complete_bracket(&mut self, key: KeyEvent) -> Action {
+        let Some(character) = plain_char(key) else {
+            return self.cancel_sequence();
+        };
         let forward = self.pending.ends_with(']');
-        match key.code {
-            KeyCode::Char('c') if !has_ctrl_or_alt(key) => {
-                self.clear_pending();
-                if forward {
-                    Action::GitNextHunk
-                } else {
-                    Action::GitPrevHunk
-                }
-            }
-            KeyCode::Char('d') if !has_ctrl_or_alt(key) => {
-                self.clear_pending();
-                if forward {
-                    Action::DiagnosticNext
-                } else {
-                    Action::DiagnosticPrev
-                }
-            }
-            KeyCode::Char('q') if !has_ctrl_or_alt(key) => {
-                self.clear_pending();
-                if forward {
-                    Action::QuickfixNext
-                } else {
-                    Action::QuickfixPrev
-                }
-            }
-            _ => self.cancel_sequence(),
-        }
+        let Some(action) = bracket_action(character, forward) else {
+            return self.cancel_sequence();
+        };
+        self.clear_pending();
+        action
     }
 
     fn sequence_key(&mut self, pushed: char) -> Action {
@@ -1742,27 +1524,7 @@ impl VimKeymap {
             return Action::ReplaceSelection(pushed);
         }
         if self.stripped_pending() == "g" {
-            if pushed == 'g' {
-                self.clear_pending();
-                return Action::GotoFirstLine;
-            }
-            if pushed == 'v' {
-                self.clear_pending();
-                return Action::ReselectVisual;
-            }
-            if pushed == 'e' {
-                self.clear_pending();
-                return Action::MoveToPrevWordEnd;
-            }
-            if pushed == 'c' {
-                self.clear_pending();
-                return Action::CommentLines;
-            }
-            if pushed == 'E' {
-                self.clear_pending();
-                return Action::MoveToPrevBigWordEnd;
-            }
-            if let Some(action) = display_motion_action(pushed) {
+            if let Some(action) = visual_g_action(pushed) {
                 self.clear_pending();
                 return action;
             }
@@ -1792,9 +1554,6 @@ impl VimKeymap {
             return action;
         }
         if let Some(action) = self.complete_visual_object(pushed) {
-            return action;
-        }
-        if let Some(action) = self.complete_visual_g(pushed) {
             return action;
         }
         if matches!(pushed, 'D' | 'Y') && self.only_digits_pending() {
@@ -1881,18 +1640,6 @@ impl VimKeymap {
         })
     }
 
-    fn complete_visual_g(&mut self, pushed: char) -> Option<Action> {
-        if self.stripped_pending() != "g" {
-            return None;
-        }
-        let action = match pushed {
-            '~' | 'u' | 'U' => self.case_action(pushed),
-            _ => return None,
-        };
-        self.clear_pending();
-        Some(action)
-    }
-
     fn case_action(&self, pushed: char) -> Action {
         match pushed {
             '~' => Action::ToggleCase,
@@ -1906,49 +1653,7 @@ impl VimKeymap {
         if stripped.len() != 1 || !matches!(stripped.as_str(), "i" | "a") {
             return None;
         }
-        let inner = stripped == "i";
-        let action = match pushed {
-            'w' => {
-                if inner {
-                    Action::SelectInnerWord
-                } else {
-                    Action::SelectAroundWord
-                }
-            }
-            '(' | ')' => Action::SelectObject {
-                inner,
-                object: Object::Paren,
-            },
-            '{' | '}' => Action::SelectObject {
-                inner,
-                object: Object::Brace,
-            },
-            '[' | ']' => Action::SelectObject {
-                inner,
-                object: Object::Bracket,
-            },
-            '<' | '>' => Action::SelectObject {
-                inner,
-                object: Object::Angle,
-            },
-            '\'' => Action::SelectObject {
-                inner,
-                object: Object::SingleQuote,
-            },
-            '"' => Action::SelectObject {
-                inner,
-                object: Object::DoubleQuote,
-            },
-            '`' => Action::SelectObject {
-                inner,
-                object: Object::Backtick,
-            },
-            'p' => Action::SelectObject {
-                inner,
-                object: Object::Paragraph,
-            },
-            _ => return None,
-        };
+        let action = visual_object_action(pushed, stripped == "i")?;
         self.clear_pending();
         Some(action)
     }
@@ -2004,6 +1709,7 @@ impl Default for VimKeymap {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
+    use kawi_editor::Object;
 
     fn plain(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)

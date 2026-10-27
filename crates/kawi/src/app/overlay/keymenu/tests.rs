@@ -5,6 +5,8 @@ use kawi_editor::Mode;
 
 use crate::keymap::Flavor;
 
+mod layout;
+
 fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
@@ -12,6 +14,7 @@ fn key(code: KeyCode) -> KeyEvent {
 fn app() -> App {
     let mut app = App::new(Buffer::from_string("value\n"), Flavor::Vim);
     app.set_screen_size(80, 24);
+    app.keyguide_delay = std::time::Duration::ZERO;
     app
 }
 
@@ -143,84 +146,121 @@ fn canceling_and_unknown_keys_dismiss_the_menu() {
     assert!(app.overlay_data().is_none());
 
     app.handle_key(key(KeyCode::Char(' '))).expect("leader");
-    app.handle_key(key(KeyCode::Char('z'))).expect("unknown");
+    app.handle_key(key(KeyCode::Char('Q'))).expect("unknown");
     assert!(app.overlay_data().is_none());
 }
 
 #[test]
-fn short_menus_use_one_column() {
-    let rows: Vec<KeyRow> = ('a'..='j')
-        .map(|key| KeyRow {
-            key,
-            aliases: &[],
-            description: "item",
-        })
-        .collect();
-    let columns = leader_columns(&rows, 58);
-    assert_eq!(columns.len(), 1);
-    assert_eq!(columns[0].len, 10);
+fn operator_prefix_lists_followups() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('c'))).expect("operator");
+    assert_eq!(
+        app.overlay_data()
+            .expect("overlay")
+            .key_menu
+            .as_ref()
+            .expect("key menu")
+            .breadcrumb,
+        "c"
+    );
+    let items = items(&app);
+    assert!(items.contains(&"w  word".to_string()));
+    assert!(items.contains(&"i  inner object".to_string()));
+    assert!(items.contains(&"a  around object".to_string()));
 }
 
 #[test]
-fn growing_menus_use_two_columns() {
-    let rows: Vec<KeyRow> = ('a'..='k')
-        .map(|key| KeyRow {
-            key,
-            aliases: &[],
-            description: "item",
-        })
-        .collect();
-    let columns = leader_columns(&rows, 58);
-    assert_eq!(columns.len(), 2);
-    assert_eq!(columns[0].start, 0);
-    assert_eq!(columns[0].len, 6);
-    assert_eq!(columns[1].start, 6);
-    assert_eq!(columns[1].len, 5);
+fn large_operator_menu_uses_two_columns() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('d'))).expect("operator");
+    let data = app.overlay_data().expect("overlay");
+    let menu = data.key_menu.as_ref().expect("key menu");
+    assert_eq!(menu.columns.len(), 2);
+    assert!(menu.rect.height < 24);
 }
 
 #[test]
-fn wide_two_column_menus_fall_back_to_one_column() {
-    let rows: Vec<KeyRow> = ('a'..='k')
-        .map(|key| KeyRow {
-            key,
-            aliases: &[],
-            description: "abcdefghijklmnopqrstuvwxyz1234",
-        })
-        .collect();
-    let columns = leader_columns(&rows, 58);
-    assert_eq!(columns.len(), 1);
+fn second_key_updates_the_guide() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('c'))).expect("operator");
+    app.handle_key(key(KeyCode::Char('i'))).expect("scope");
+    assert_eq!(
+        app.overlay_data()
+            .expect("overlay")
+            .key_menu
+            .as_ref()
+            .expect("key menu")
+            .breadcrumb,
+        "c i"
+    );
+    let items = items(&app);
+    assert!(items.contains(&"w  word".to_string()));
+    assert!(items.contains(&"(/)  parentheses".to_string()));
 }
 
 #[test]
-fn menu_is_right_aligned_above_the_bottom_edge() {
-    let rows = [
-        KeyRow {
-            key: 'f',
-            aliases: &[],
-            description: "find",
-        },
-        KeyRow {
-            key: 'v',
-            aliases: &[],
-            description: "git",
-        },
-    ];
-    let columns = leader_columns(&rows, 58);
-    let rect = leader_rect(Rect::new(0, 0, 80, 24), "", &columns);
-    assert_eq!(rect.width, 9);
-    assert_eq!(rect.height, 5);
-    assert_eq!(rect.x, 70);
-    assert_eq!(rect.y, 18);
+fn completing_a_sequence_dismisses_the_guide() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('d'))).expect("operator");
+    assert!(app.overlay_data().is_some());
+    app.handle_key(key(KeyCode::Char('d'))).expect("line");
+    assert!(app.overlay_data().is_none());
 }
 
 #[test]
-fn aliases_widen_the_key_column() {
-    let rows = [KeyRow {
-        key: 'f',
-        aliases: &['p'],
-        description: "project files",
-    }];
-    let columns = leader_columns(&rows, 58);
-    assert_eq!(columns[0].key_width, 3);
-    assert_eq!(columns[0].description_offset, 5);
+fn counts_do_not_change_the_guide() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('2'))).expect("count");
+    assert!(app.overlay_data().is_none());
+    app.handle_key(key(KeyCode::Char('d'))).expect("operator");
+    assert_eq!(
+        app.overlay_data()
+            .expect("overlay")
+            .key_menu
+            .as_ref()
+            .expect("key menu")
+            .breadcrumb,
+        "d"
+    );
+}
+
+#[test]
+fn dynamic_prefix_shows_a_hint() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('f'))).expect("find");
+    let data = app.overlay_data().expect("overlay");
+    let menu = data.key_menu.as_ref().expect("key menu");
+    assert_eq!(menu.breadcrumb, "f");
+    assert_eq!(menu.hint, Some("target character"));
+    assert!(menu.rows.is_empty());
+}
+
+#[test]
+fn visual_object_prefix_lists_objects() {
+    let mut app = app();
+    app.handle_key(key(KeyCode::Char('v'))).expect("visual");
+    app.handle_key(key(KeyCode::Char('i'))).expect("object");
+    let items = items(&app);
+    assert!(items.contains(&"w  word".to_string()));
+}
+
+#[test]
+fn keyguide_can_be_disabled() {
+    let mut app = app();
+    app.keyguide_enabled = false;
+    app.handle_key(key(KeyCode::Char('c'))).expect("operator");
+    assert!(app.overlay_data().is_none());
+    app.handle_key(key(KeyCode::Char(' '))).expect("leader");
+    assert!(app.overlay_data().is_none());
+}
+
+#[test]
+fn keyguide_waits_for_the_delay() {
+    let mut app = app();
+    app.keyguide_delay = std::time::Duration::from_millis(500);
+    app.handle_key(key(KeyCode::Char('c'))).expect("operator");
+    assert!(app.overlay_data().is_none());
+    app.keyguide_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+    app.sync_keyguide();
+    assert!(app.overlay_data().is_some());
 }

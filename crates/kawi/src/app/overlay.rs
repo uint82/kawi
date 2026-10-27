@@ -12,7 +12,7 @@ pub(super) mod code;
 mod diagnostic;
 pub(crate) mod document;
 mod hover;
-mod leader;
+pub(super) mod keymenu;
 pub(super) mod options;
 mod signature;
 mod size;
@@ -22,7 +22,7 @@ const MAX_LIST_WIDTH: usize = 50;
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
     panel: Option<PanelData>,
-    key_menu: Option<leader::KeyMenuData>,
+    key_menu: Option<keymenu::KeyMenuData>,
 }
 
 struct ListData<'a> {
@@ -66,7 +66,7 @@ impl OverlayData<'_> {
                 lines: &panel.lines,
                 scroll: panel.scroll,
             }),
-            key_menu: self.key_menu.as_ref().map(leader::KeyMenuData::view),
+            key_menu: self.key_menu.as_ref().map(keymenu::KeyMenuData::view),
         }
     }
 }
@@ -95,8 +95,13 @@ impl App {
     }
 
     pub(super) fn overlay_data(&self) -> Option<OverlayData<'_>> {
-        if let Some(overlay) = self.leader_overlay() {
-            return Some(overlay);
+        if self.keyguide_visible {
+            if let Some(overlay) = self.leader_overlay() {
+                return Some(overlay);
+            }
+            if let Some(overlay) = self.keyguide_overlay() {
+                return Some(overlay);
+            }
         }
         if self.completion.is_some() {
             return self.completion_overlay();

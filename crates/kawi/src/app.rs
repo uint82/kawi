@@ -28,6 +28,7 @@ mod git_commit;
 mod git_status;
 mod help;
 mod hover;
+mod keyguide;
 mod language;
 mod lsp;
 mod lsp_diagnostics;
@@ -185,6 +186,9 @@ pub struct App {
     last_input: Instant,
     keyguide_enabled: bool,
     keyguide_delay: Duration,
+    keyguide_since: Option<Instant>,
+    keyguide_visible: bool,
+    keyguide_cache: Option<keyguide::KeyGuideCache>,
     status_spinner: usize,
     statusline: kawi_tui::statusbar::StatusBarConfig,
 }
@@ -274,6 +278,9 @@ impl App {
             last_input: Instant::now(),
             keyguide_enabled: true,
             keyguide_delay: Duration::from_millis(crate::options::KEYGUIDE_DELAY_DEFAULT as u64),
+            keyguide_since: None,
+            keyguide_visible: false,
+            keyguide_cache: None,
             status_spinner: 0,
             statusline: kawi_tui::statusbar::StatusBarConfig::default(),
         };
@@ -415,6 +422,7 @@ impl App {
                 }
                 redraw |= needs_redraw;
             }
+            redraw |= self.sync_keyguide();
             redraw |= self.lsp.sync_editor(&self.editor);
             redraw |= self.lsp.poll_events(&self.editor);
             redraw |= self.poll_symbol_events();
@@ -465,6 +473,7 @@ impl App {
             let spinner_timeout = self.status_spinner_timeout();
             let timeout = shortest_timeout(timeout, spinner_timeout);
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -887,6 +896,7 @@ impl App {
         self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
         self.sync_active_window();
+        self.sync_keyguide();
         result
     }
 
