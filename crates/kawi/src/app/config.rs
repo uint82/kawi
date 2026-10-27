@@ -195,6 +195,8 @@ ignorecase = true
 format_on_save = true
 autosave = "idle"
 autosave_delay = 250
+signcolumn = "always"
+git_signs = true
 
 [history]
 limit = 25
@@ -241,6 +243,9 @@ undo_exclude = ["*.gpg"]
         assert!(app.format_on_save);
         assert_eq!(app.autosave.mode(), crate::options::AutosaveMode::Idle);
         assert_eq!(app.autosave.delay_millis(), 250);
+        assert_eq!(app.signcolumn, crate::options::SignColumnMode::Always);
+        assert!(app.git_signs);
+        assert_eq!(app.editor.signcolumn_width(), 1);
         assert_eq!(app.editor.history_limit(), 25);
         assert!(!app.undo.enabled());
         assert_eq!(app.undo.exclusions(), ["*.gpg"]);

@@ -22,6 +22,7 @@ pub struct GitSession {
     hunks: Vec<Hunk>,
     staged_hunks: Vec<Hunk>,
     signs: Vec<Option<GitSign>>,
+    signs_present: bool,
     revision: u64,
     buffer_no_final_newline: bool,
     undo: Option<UndoStage>,
@@ -48,6 +49,7 @@ impl GitSession {
             hunks: Vec::new(),
             staged_hunks: Vec::new(),
             signs: Vec::new(),
+            signs_present: false,
             revision: revision.wrapping_sub(1),
             buffer_no_final_newline,
             undo: None,
@@ -78,6 +80,10 @@ impl GitSession {
         (top..top.saturating_add(height))
             .map(|row| self.signs.get(row).copied().flatten())
             .collect()
+    }
+
+    pub fn has_signs(&self) -> bool {
+        self.signs_present
     }
 
     pub fn revision(&self) -> u64 {
@@ -204,6 +210,7 @@ impl GitSession {
             lines.len(),
             self.file.untracked,
         );
+        self.signs_present = self.signs.iter().any(Option::is_some);
         self.revision = revision;
     }
 
