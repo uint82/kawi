@@ -247,7 +247,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const OPTIONS: [OptionSpec; 34] = [
+pub(crate) const OPTIONS: [OptionSpec; 36] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -449,6 +449,29 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
         section: ConfigSection::History,
         config_key: "undo_persist",
         default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "foldmethod",
+        aliases: &["fdm"],
+        description: "Fold method.",
+        kind: OptionKind::Enum(OptionValues::Static(&["manual", "indent"])),
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "foldmethod",
+        default: OptionDefault::Text("manual"),
+    },
+    OptionSpec {
+        name: "foldcolumn",
+        aliases: &["fdc"],
+        description: "Fold marker column visibility.",
+        kind: OptionKind::Int {
+            min: 0,
+            max: kawi_editor::MAX_FOLD_COLUMN,
+        },
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "foldcolumn",
+        default: OptionDefault::Int(kawi_editor::DEFAULT_FOLD_COLUMN),
     },
     OptionSpec {
         name: "auto_completion",
