@@ -11,11 +11,15 @@ use crate::keymap::Keymap;
 impl App {
     pub(crate) fn toggle_explorer(&mut self) {
         if self.explorer.is_visible() {
-            self.explorer.close();
-            self.sync_terminal_panel_size();
+            self.close_explorer();
             return;
         }
         self.open_explorer_at(self.explorer_root());
+    }
+
+    pub(crate) fn close_explorer(&mut self) {
+        self.explorer.close();
+        self.sync_terminal_panel_size();
     }
 
     pub(crate) fn focus_explorer(&mut self) {
@@ -72,7 +76,7 @@ impl App {
     }
 
     pub(crate) fn handle_explorer_key(&mut self, key: KeyEvent) -> anyhow::Result<bool> {
-        if is_explorer_cancel_key(key) {
+        if is_explorer_return_key(key) {
             self.explorer.focus_editor();
             return Ok(false);
         }
@@ -110,6 +114,7 @@ impl App {
             KeyCode::Char('A') => self.new_explorer_directory(),
             KeyCode::Char('r') => self.rename_explorer_selected(),
             KeyCode::Char('d') => self.delete_explorer_selected(),
+            KeyCode::Char('q') => self.close_explorer(),
             KeyCode::Char('R') => self.explorer.refresh_and_watch(),
             KeyCode::Char('.') => self.toggle_explorer_hidden(),
             _ => {}
@@ -274,8 +279,7 @@ impl App {
     }
 }
 
-fn is_explorer_cancel_key(key: KeyEvent) -> bool {
+fn is_explorer_return_key(key: KeyEvent) -> bool {
     key.code == KeyCode::Esc
-        || key.code == KeyCode::Char('q')
         || (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c'))
 }

@@ -54,6 +54,17 @@ fn enter_expands_directories_and_escape_returns_to_the_editor() {
 }
 
 #[test]
+fn q_closes_the_explorer() {
+    let dir = temp_dir("explorer_close");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    press(&mut app, KeyCode::Char('q'));
+    assert!(!app.explorer.is_visible());
+    assert!(!app.explorer.is_focused());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn directory_keys_move_and_collapse_the_selection() {
     let dir = temp_dir("explorer_motion");
     fs::create_dir_all(dir.join("src")).unwrap();
