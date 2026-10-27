@@ -7,9 +7,11 @@ mod builtin;
 mod color;
 mod custom;
 mod error;
+mod statusline;
 mod style;
 
 pub use error::ThemeError;
+pub use statusline::StatusLineTheme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseColors {
@@ -47,6 +49,7 @@ pub struct Theme {
     pub diagnostic_warning: Color,
     pub diagnostic_information: Color,
     pub diagnostic_hint: Color,
+    pub statusline: StatusLineTheme,
     pub syntax: SyntaxStyles,
 }
 

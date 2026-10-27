@@ -183,6 +183,7 @@ impl super::App {
         Some(kawi_editor::paths::absolute(path, &cwd))
     }
 
+    #[cfg(test)]
     pub(super) fn diagnostic_status_text(&self, path: Option<&Path>) -> Option<String> {
         let path = path?;
         self.diagnostic_options.counts_text(

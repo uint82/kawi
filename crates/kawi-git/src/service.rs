@@ -18,7 +18,7 @@ pub struct StatusService {
 
 struct Request {
     generation: u64,
-    root: PathBuf,
+    path: PathBuf,
     wake: Sender<()>,
 }
 
@@ -37,13 +37,13 @@ impl StatusService {
         })
     }
 
-    pub fn request(&self, generation: u64, root: PathBuf, wake: Sender<()>) -> Result<()> {
+    pub fn request(&self, generation: u64, path: PathBuf, wake: Sender<()>) -> Result<()> {
         self.requests
             .as_ref()
             .context("git status service closed")?
             .send(Request {
                 generation,
-                root,
+                path,
                 wake,
             })
             .context("send git status request")
@@ -68,7 +68,7 @@ fn run(requests: Receiver<Request>, events: Sender<StatusEvent>) {
         while let Ok(next) = requests.try_recv() {
             request = next;
         }
-        let result = Status::load(&request.root);
+        let result = Status::load(&request.path);
         if events
             .send(StatusEvent {
                 generation: request.generation,

@@ -570,6 +570,22 @@ impl LspUi {
         self.display.as_deref()
     }
 
+    pub fn has_progress(&self) -> bool {
+        !self.progress.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_progress_for_test(&mut self) {
+        self.progress.insert(
+            ("test".to_string(), "token".to_string()),
+            ProgressSnapshot {
+                title: Some("Indexing".to_string()),
+                message: None,
+                percentage: Some(50),
+            },
+        );
+    }
+
     pub fn has_diagnostics(&self) -> bool {
         self.diagnostics.has_diagnostics()
     }

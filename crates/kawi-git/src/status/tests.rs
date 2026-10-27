@@ -130,6 +130,18 @@ fn loads_a_real_repository() {
 }
 
 #[test]
+fn loads_from_a_file_inside_a_repository() {
+    let dir = repo("file");
+    let nested = dir.join("nested");
+    fs::create_dir(&nested).unwrap();
+    let file = nested.join("a.txt");
+    fs::write(&file, "one\n").unwrap();
+    let status = Status::load(&file).unwrap().unwrap();
+    assert_eq!(status.root, fs::canonicalize(&dir).unwrap());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn loads_unborn_and_empty_repository() {
     let dir = repo("unborn");
     let status = Status::load(&dir).unwrap().unwrap();

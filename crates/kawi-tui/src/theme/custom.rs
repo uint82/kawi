@@ -27,26 +27,28 @@ struct ThemeFile {
     git: GitFile,
     diagnostics: DiagnosticsFile,
     #[serde(default)]
+    statusline: Option<super::statusline::StatusLineFile>,
+    #[serde(default)]
     palette: BTreeMap<String, String>,
     syntax: BTreeMap<String, StyleValue>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ColorPair {
+pub(super) struct ColorPair {
     foreground: String,
     background: String,
 }
 
 impl ColorPair {
-    fn colors(&self, section: &str) -> Result<(Color, Color), ThemeError> {
+    pub(super) fn colors(&self, section: &str) -> Result<(Color, Color), ThemeError> {
         Ok((
             parse_color(&format!("{section}.foreground"), &self.foreground)?,
             parse_color(&format!("{section}.background"), &self.background)?,
         ))
     }
 
-    fn match_colors(&self, section: &str) -> Result<MatchColors, ThemeError> {
+    pub(super) fn match_colors(&self, section: &str) -> Result<MatchColors, ThemeError> {
         let (foreground, background) = self.colors(section)?;
         Ok(MatchColors {
             foreground,
@@ -167,6 +169,7 @@ impl Theme {
                 &file.diagnostics.information,
             )?,
             diagnostic_hint: parse_color("diagnostics.hint", &file.diagnostics.hint)?,
+            statusline: super::statusline::parse(file.statusline)?,
             syntax: parse_styles(file.syntax, file.palette)?,
         })
     }

@@ -1,5 +1,5 @@
 use crate::markdown::MarkdownLine;
-use crate::statusbar::StatusInfo;
+use crate::statusbar::{StatusBarConfig, StatusInfo};
 use crate::theme::Theme;
 use kawi_editor::{BracketMatch, Viewport};
 use kawi_syntax::SyntaxSpan;
@@ -59,6 +59,7 @@ pub struct Frame<'a> {
     pub showcmd: Option<String>,
     pub cursor_style: CursorStyle,
     pub theme: &'a Theme,
+    pub statusline: &'a StatusBarConfig,
 }
 
 pub struct TaskPanel<'a> {
@@ -157,7 +158,7 @@ impl Sign {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiagnosticSeverity {
     Error,
     Warning,

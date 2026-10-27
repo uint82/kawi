@@ -1,16 +1,18 @@
 mod actions;
+mod display;
+mod integration;
+mod path;
 mod view;
+mod watcher;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
-use kawi_git::{BranchStatus, Status, StatusService};
-use kawi_tui::statusbar::GitStatusInfo;
+use kawi_git::{Status, StatusEvent, StatusService};
 use kawi_watch::WatchService;
 
-use super::App;
-
-const SHORT_OID: usize = 7;
+use path::status_matches_path;
+use watcher::is_relevant;
 
 #[derive(Default)]
 pub(super) struct GitStatusState {
@@ -18,8 +20,8 @@ pub(super) struct GitStatusState {
     status: Option<Status>,
     generation: u64,
     loading: bool,
-    pending_root: Option<PathBuf>,
-    root: Option<PathBuf>,
+    pending_path: Option<PathBuf>,
+    path: Option<PathBuf>,
     watcher: Option<WatchService>,
     watched_git_dir: Option<PathBuf>,
     pending_open: bool,
@@ -64,38 +66,20 @@ impl GitStatusState {
         self.pending_open = false;
     }
 
-    pub(super) fn display(&self) -> Option<GitStatusInfo<'_>> {
-        let status = self.status.as_ref()?;
-        let branch = match &status.branch {
-            BranchStatus::Named { name, .. } => {
-                if name.is_empty() {
-                    "HEAD"
-                } else {
-                    name
-                }
-            }
-            BranchStatus::Detached { oid } => &oid[..oid.len().min(SHORT_OID)],
-        };
-        let upstream = status.upstream();
-        Some(GitStatusInfo {
-            branch,
-            operation: status.operation.label(),
-            ahead: upstream.map_or(0, |upstream| upstream.ahead),
-            behind: upstream.map_or(0, |upstream| upstream.behind),
-        })
-    }
-
-    pub(super) fn refresh(&mut self, root: PathBuf, wake: Sender<()>) {
-        self.root = Some(root.clone());
+    pub(super) fn refresh(&mut self, path: PathBuf, wake: Sender<()>) {
+        if self.path.as_deref() != Some(path.as_path()) {
+            self.discard_status();
+        }
+        self.path = Some(path.clone());
         self.generation = self.generation.saturating_add(1);
         if self.loading {
-            self.pending_root = Some(root);
+            self.pending_path = Some(path);
             return;
         }
-        self.start_request(root, wake);
+        self.start_request(path, wake);
     }
 
-    fn start_request(&mut self, root: PathBuf, wake: Sender<()>) {
+    fn start_request(&mut self, path: PathBuf, wake: Sender<()>) {
         if self.service.is_none() {
             match StatusService::new() {
                 Ok(service) => self.service = Some(service),
@@ -109,7 +93,7 @@ impl GitStatusState {
         let Some(service) = self.service.as_ref() else {
             return;
         };
-        if let Err(error) = service.request(generation, root, wake) {
+        if let Err(error) = service.request(generation, path, wake) {
             self.last_error = Some(error.to_string());
             return;
         }
@@ -118,59 +102,74 @@ impl GitStatusState {
 
     pub(super) fn sync(&mut self, wake: Sender<()>) -> bool {
         let mut changed = false;
-        let mut events = Vec::new();
-        if let Some(service) = self.service.as_ref() {
-            while let Some(event) = service.try_recv() {
-                events.push(event);
-            }
+        for event in self.drain_events() {
+            changed |= self.apply_event(event, &wake);
         }
-        for event in events {
-            self.loading = false;
-            if event.generation != self.generation {
-                continue;
-            }
-            match event.result {
-                Ok(Some(status)) => {
-                    self.apply_status(status, &wake);
-                    changed = true;
-                }
-                Ok(None) => {
-                    if self.status.take().is_some() {
-                        changed = true;
-                    }
-                    self.watcher = None;
-                    self.watched_git_dir = None;
-                    self.last_error = None;
-                }
-                Err(error) => {
-                    self.last_error = Some(error.to_string());
-                    changed = true;
-                }
-            }
-        }
-        if !self.loading {
-            if let Some(root) = self.pending_root.take() {
-                self.start_request(root, wake);
-            }
-        }
+        self.start_pending(wake);
         changed
     }
 
+    fn drain_events(&self) -> Vec<StatusEvent> {
+        let Some(service) = self.service.as_ref() else {
+            return Vec::new();
+        };
+        let mut events = Vec::new();
+        while let Some(event) = service.try_recv() {
+            events.push(event);
+        }
+        events
+    }
+
+    fn apply_event(&mut self, event: StatusEvent, wake: &Sender<()>) -> bool {
+        self.loading = false;
+        if event.generation != self.generation {
+            return false;
+        }
+        match event.result {
+            Ok(Some(status)) => {
+                self.apply_status(status, wake);
+                true
+            }
+            Ok(None) => self.discard_status(),
+            Err(error) => {
+                self.last_error = Some(error.to_string());
+                true
+            }
+        }
+    }
+
+    fn start_pending(&mut self, wake: Sender<()>) {
+        if self.loading {
+            return;
+        }
+        if let Some(path) = self.pending_path.take() {
+            self.start_request(path, wake);
+        }
+    }
+
     fn apply_status(&mut self, status: Status, wake: &Sender<()>) {
+        if !status_matches_path(self.path.as_deref(), &status) {
+            self.discard_status();
+            return;
+        }
         self.ensure_watcher(&status.git_dir, wake);
         self.last_error = None;
+        self.update_view(&status);
+        self.status = Some(status);
+    }
+
+    fn update_view(&mut self, status: &Status) {
         let selected = self
             .view
             .as_ref()
             .and_then(view::GitStatusView::selected_key);
         if self.view.is_some() {
-            self.view = Some(view::GitStatusView::new(&status, selected));
+            self.view = Some(view::GitStatusView::new(status, selected));
         }
         if self.pending_open {
-            self.view = Some(view::GitStatusView::new(&status, None));
+            self.view = Some(view::GitStatusView::new(status, None));
             self.pending_open = false;
         }
-        self.status = Some(status);
     }
 
     fn ensure_watcher(&mut self, git_dir: &Path, wake: &Sender<()>) {
@@ -201,8 +200,8 @@ impl GitStatusState {
         if !paths.iter().any(|path| is_relevant(path, git_dir)) {
             return false;
         }
-        if let Some(root) = self.root.clone() {
-            self.refresh(root, wake);
+        if let Some(path) = self.path.clone() {
+            self.refresh(path, wake);
         }
         false
     }
@@ -217,67 +216,30 @@ impl GitStatusState {
             return;
         }
         self.pending_open = true;
-        if let Some(root) = self.root.clone() {
-            self.refresh(root, wake);
+        if let Some(path) = self.path.clone() {
+            self.refresh(path, wake);
         }
     }
 
     pub(super) fn error(&self) -> Option<&str> {
         self.last_error.as_deref()
     }
-}
 
-fn is_relevant(path: &Path, git_dir: &Path) -> bool {
-    if path == git_dir {
-        return true;
-    }
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    matches!(
-        name,
-        "HEAD"
-            | "index"
-            | "FETCH_HEAD"
-            | "packed-refs"
-            | "ORIG_HEAD"
-            | "MERGE_HEAD"
-            | "CHERRY_PICK_HEAD"
-            | "REVERT_HEAD"
-            | "BISECT_LOG"
-    )
-}
-
-impl App {
-    pub(super) fn refresh_git_status(&mut self) {
-        let root = self.task_root();
-        self.git_status.refresh(root, self.events.wake());
+    pub(super) fn clear(&mut self) {
+        self.discard_status();
+        self.path = None;
+        self.pending_path = None;
+        self.generation = self.generation.saturating_add(1);
     }
 
-    pub(super) fn sync_git_status(&mut self) -> bool {
-        let wake = self.events.wake();
-        self.git_status.sync(wake)
-    }
-
-    pub(super) fn poll_git_status(&mut self) -> bool {
-        let wake = self.events.wake();
-        self.git_status.poll(wake)
-    }
-
-    pub(super) fn open_git_status(&mut self) {
-        if self
-            .git_status
-            .status()
-            .is_some_and(|status| status.entries.is_empty())
-        {
-            self.show_message("Working tree clean".to_string());
-            return;
-        }
-        let wake = self.events.wake();
-        self.git_status.open(wake);
-        if let Some(error) = self.git_status.error() {
-            self.show_message(format!("Git status unavailable: {error}"));
-        }
+    fn discard_status(&mut self) -> bool {
+        let status_changed = self.status.take().is_some();
+        let view_changed = self.view.take().is_some();
+        self.watcher = None;
+        self.watched_git_dir = None;
+        self.pending_open = false;
+        self.last_error = None;
+        status_changed || view_changed
     }
 }
 

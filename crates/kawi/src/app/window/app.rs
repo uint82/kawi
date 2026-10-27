@@ -5,6 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::{BracketMatch, Mode, Viewport, HIGHLIGHT_MATCH_STEP_BUDGET};
 use kawi_syntax::{SyntaxKey, SyntaxSpan};
 use kawi_tui::frame::{DiagnosticSpan, Rect, SearchSpan, Selection, Sign, VirtualText};
+use kawi_tui::statusbar::ModeKind;
 
 use super::{
     is_window_prefix, BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis,
@@ -12,6 +13,7 @@ use super::{
 };
 use crate::keymap::Keymap;
 
+use super::super::status::StatusDiagnostic;
 use super::super::{frame_search_spans, App};
 
 pub(crate) struct PaneData<'a> {
@@ -34,14 +36,24 @@ pub(crate) struct PaneData<'a> {
     pub tabstop: usize,
     pub filename: String,
     pub dirty: bool,
+    pub readonly: bool,
     pub col: usize,
     pub virtcol: usize,
     pub line_empty: bool,
     pub empty_buffer: bool,
     pub mode: &'static str,
+    pub mode_kind: ModeKind,
     pub lsp: Option<String>,
-    pub diagnostics: Option<String>,
+    pub diagnostics: Option<StatusDiagnostic>,
+    pub workspace_diagnostics: Option<StatusDiagnostic>,
     pub external: Option<&'static str>,
+    pub filetype: Option<&'static str>,
+    pub indent: Option<String>,
+    pub encoding: Option<&'static str>,
+    pub eol: Option<&'static str>,
+    pub selection_status: Option<String>,
+    pub macro_recording: Option<char>,
+    pub percent: Option<usize>,
 }
 
 impl App {
@@ -548,14 +560,24 @@ impl App {
             tabstop: self.editor.tabstop(),
             filename: self.editor.filename().to_string(),
             dirty: self.editor.is_dirty(),
+            readonly: self.editor.current_buffer_is_readonly(),
             col: self.editor.col(),
             virtcol: self.editor.virtcol(),
             line_empty: !self.editor.mode().is_insert() && self.editor.cursor_line_empty(),
             empty_buffer: self.editor.is_empty(),
             mode: self.keymap.mode_label(self.editor.mode()),
-            lsp: self.lsp.status().map(str::to_string),
-            diagnostics: self.diagnostic_status_text(self.problem_path().as_deref()),
+            mode_kind: self.status_mode_kind(),
+            lsp: self.status_lsp(),
+            diagnostics: self.status_diagnostics(self.problem_path().as_deref()),
+            workspace_diagnostics: self.status_workspace_diagnostics(),
             external: self.disk_status(self.editor.buffer_number()),
+            filetype: self.status_filetype(),
+            indent: Some(self.status_indent()),
+            encoding: None,
+            eol: None,
+            selection_status: self.status_selection(),
+            macro_recording: self.macros.recording_register(),
+            percent: self.status_percent(),
         }
     }
 
@@ -660,6 +682,10 @@ impl App {
                 .unwrap_or("[No Name]")
                 .to_string(),
             dirty: self.editor.buffer_is_dirty(window.buffer).unwrap_or(false),
+            readonly: self
+                .editor
+                .buffer_is_readonly(window.buffer)
+                .unwrap_or(false),
             col,
             virtcol: self
                 .editor
@@ -668,10 +694,23 @@ impl App {
             line_empty: line_len == 0,
             empty_buffer: self.editor.buffer_is_empty(window.buffer).unwrap_or(false),
             mode: Mode::Normal.label(),
+            mode_kind: ModeKind::Normal,
             lsp: None,
             diagnostics: self
-                .diagnostic_status_text(self.buffer_problem_path(window.buffer).as_deref()),
+                .status_diagnostics(self.buffer_problem_path(window.buffer).as_deref()),
+            workspace_diagnostics: None,
             external: self.disk_status(window.buffer),
+            filetype: self
+                .editor
+                .buffer_name(window.buffer)
+                .and_then(kawi_syntax::LanguageId::from_path)
+                .map(|language| language.name()),
+            indent: None,
+            encoding: None,
+            eol: None,
+            selection_status: None,
+            macro_recording: None,
+            percent: None,
         }
     }
 }

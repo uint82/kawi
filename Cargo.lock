@@ -564,6 +564,7 @@ dependencies = [
  "kawi-syntax",
  "serde",
  "toml",
+ "unicode-segmentation",
  "unicode-width",
 ]
 
