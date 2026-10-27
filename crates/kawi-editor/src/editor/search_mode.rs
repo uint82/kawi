@@ -85,7 +85,7 @@ impl Editor {
 
     pub(super) fn enter_search(&mut self, forward: bool) {
         self.search_prompt_forward = forward;
-        self.search_view_top = self.viewport.top();
+        self.search_view_top = self.view_top();
         self.search_origin = Some((self.cursor.row(), self.cursor.col()));
         self.search.clear();
         self.search_history.reset_browse();

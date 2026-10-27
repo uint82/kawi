@@ -21,6 +21,7 @@ impl Editor {
         for adjust in self.buffer.take_line_adjustments() {
             self.jumps.adjust(buffer, adjust);
             self.marks.adjust(buffer, path.as_deref(), adjust);
+            self.folds.adjust(adjust);
         }
     }
 

@@ -13,8 +13,11 @@ impl Editor {
             return None;
         }
         let top = self.view_top();
-        let end = top
-            .saturating_add(self.view_height())
+        let end = self
+            .visible_rows(top, self.view_height())
+            .last()
+            .map(|row| row.saturating_add(1))
+            .unwrap_or(top)
             .min(self.buffer.line_count());
         if top >= end {
             return None;
