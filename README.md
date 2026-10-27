@@ -22,6 +22,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Language servers.** Completion, hover, diagnostics, symbols, rename, formatting, and code actions.
 - **Syntax highlighting.** Tree-sitter parsing for Rust, Python, JavaScript, TypeScript, JSON, TOML, and Bash.
 - **Fuzzy search.** Pickers for files, buffers, live grep, replace, and symbols, with previews where supported.
+- **Project explorer.** File tree with file management, Git markers, diagnostics, and session restore.
 - **Diagnostics.** Project-wide diagnostics, quickfix navigation, and configurable display.
 - **Git integration.** Status, staging, commits, branches, hunk navigation, and optional gutter signs.
 - **Tasks and terminals.** Project task runner, task output, cancellation, and horizontal or vertical terminal panels.
@@ -77,6 +78,7 @@ Kawi currently uses a Vim-style keymap. Helix and Emacs keymaps are in progress 
 | `:` | Open the command line |
 | `/` | Search |
 | `K` | Show hover information |
+| `<Space> e e` | Toggle the project explorer |
 | `<Space> f p` | Find project files |
 | `<Space> f s` | Live grep |
 | `]d` and `[d` | Next and previous diagnostic |

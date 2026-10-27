@@ -11,6 +11,7 @@ The leader key is Space or Backslash.
 
 - `c` code actions and formatting
 - `d` diagnostics
+- `e` explorer
 - `f` files, buffers, replace, and grep
 - `r` rename
 - `s` symbols
@@ -48,6 +49,15 @@ Pending key sequences show an overlay with available followups. The overlay wait
 - `:set keyguide_delay=0` shows the overlay immediately.
 
 See [Configuration](help:configuration) for details.
+
+## Explorer
+
+- `<leader> e e` toggle the explorer
+- `<leader> e f` focus the explorer
+- `<leader> e r` reveal the current file
+- `:explorer`, `:explorer focus`, and `:explorer reveal` work from the command line
+
+See [Project explorer](help:explorer) for explorer keys, markers, and options.
 
 ## Pickers
 
