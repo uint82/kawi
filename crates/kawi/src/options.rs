@@ -3,9 +3,6 @@ use kawi_lsp::MAX_SHIFTWIDTH;
 use kawi_tui::theme::Theme;
 use std::path::Path;
 
-use crate::app::diagnostic_ui::{CountsMode, SeverityFilter, SourceDisplay, VirtualTextMode};
-use crate::keymap::flavor_from_name;
-
 const MAX_NUMBERWIDTH: usize = 20;
 pub(crate) const HOVER_MAX_WIDTH_DEFAULT: usize = 64;
 pub(crate) const DIAGNOSTIC_POPUP_MAX_WIDTH_DEFAULT: usize = 72;
@@ -105,8 +102,39 @@ pub(crate) enum ConfigSection {
 pub(crate) enum OptionKind {
     Bool,
     Int { min: usize, max: usize },
-    Enum(fn(&str, &OptionContext<'_>) -> bool),
+    Enum(OptionValues),
     Text,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum OptionValues {
+    Static(&'static [&'static str]),
+    Themes,
+}
+
+impl OptionValues {
+    fn accepts(self, value: &str, context: &OptionContext<'_>) -> bool {
+        match self {
+            Self::Static(values) => values.contains(&value),
+            Self::Themes => match context.theme_dir {
+                Some(theme_dir) => Theme::validate(value, theme_dir).is_ok(),
+                None => Theme::named(value).is_some(),
+            },
+        }
+    }
+
+    fn values(self, context: &OptionContext<'_>) -> Vec<String> {
+        match self {
+            Self::Static(values) => values.iter().map(|value| (*value).to_string()).collect(),
+            Self::Themes => match context.theme_dir {
+                Some(theme_dir) => Theme::available(theme_dir),
+                None => Theme::names()
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -174,6 +202,7 @@ impl OptionValue {
 pub(crate) struct OptionSpec {
     pub(crate) name: &'static str,
     pub(crate) aliases: &'static [&'static str],
+    pub(crate) description: &'static str,
     pub(crate) kind: OptionKind,
     pub(crate) scope: OptionScope,
     pub(crate) section: ConfigSection,
@@ -184,6 +213,14 @@ pub(crate) struct OptionSpec {
 impl OptionSpec {
     pub(crate) fn default_value(self) -> OptionValue {
         self.default.value()
+    }
+
+    pub(crate) fn values(self, context: &OptionContext<'_>) -> Vec<String> {
+        match self.kind {
+            OptionKind::Bool => vec!["true".to_string(), "false".to_string()],
+            OptionKind::Enum(values) => values.values(context),
+            OptionKind::Int { .. } | OptionKind::Text => Vec::new(),
+        }
     }
 }
 
@@ -214,7 +251,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
-        kind: OptionKind::Enum(valid_keymap),
+        description: "Editing keymap.",
+        kind: OptionKind::Enum(OptionValues::Static(&["vim", "helix"])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "keymap",
@@ -223,7 +261,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "theme",
         aliases: &[],
-        kind: OptionKind::Enum(valid_theme),
+        description: "Color theme name.",
+        kind: OptionKind::Enum(OptionValues::Themes),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "theme",
@@ -232,6 +271,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "shiftwidth",
         aliases: &["sw"],
+        description: "Spaces per indentation level.",
         kind: OptionKind::Int {
             min: 0,
             max: MAX_SHIFTWIDTH,
@@ -244,6 +284,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "expandtab",
         aliases: &["et"],
+        description: "Insert spaces instead of tabs.",
         kind: OptionKind::Bool,
         scope: OptionScope::Buffer,
         section: ConfigSection::Editor,
@@ -253,6 +294,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "number",
         aliases: &["nu"],
+        description: "Show absolute line numbers.",
         kind: OptionKind::Bool,
         scope: OptionScope::Window,
         section: ConfigSection::Editor,
@@ -262,6 +304,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "relativenumber",
         aliases: &["rnu"],
+        description: "Show relative line numbers.",
         kind: OptionKind::Bool,
         scope: OptionScope::Window,
         section: ConfigSection::Editor,
@@ -271,6 +314,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "numberwidth",
         aliases: &["nuw"],
+        description: "Minimum line number width.",
         kind: OptionKind::Int {
             min: 1,
             max: MAX_NUMBERWIDTH,
@@ -283,7 +327,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "signcolumn",
         aliases: &["scl"],
-        kind: OptionKind::Enum(valid_signcolumn),
+        description: "Gutter sign column visibility.",
+        kind: OptionKind::Enum(OptionValues::Static(&["never", "auto", "always"])),
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
         config_key: "signcolumn",
@@ -292,6 +337,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "git_signs",
         aliases: &["git_sign"],
+        description: "Show Git changes in the sign column.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -301,6 +347,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "ignorecase",
         aliases: &["ic"],
+        description: "Ignore case in search patterns.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -310,6 +357,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "smartcase",
         aliases: &["scs"],
+        description: "Use case-sensitive search when the pattern has uppercase.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -319,6 +367,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "autoindent",
         aliases: &["ai"],
+        description: "Continue indentation on new lines.",
         kind: OptionKind::Bool,
         scope: OptionScope::Buffer,
         section: ConfigSection::Editor,
@@ -328,6 +377,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "auto_pairs",
         aliases: &[],
+        description: "Insert matching bracket and quote pairs.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -337,6 +387,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "match_brackets",
         aliases: &[],
+        description: "Highlight matching brackets.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -346,6 +397,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "format_on_save",
         aliases: &[],
+        description: "Format the buffer before saving.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -355,7 +407,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "autosave",
         aliases: &[],
-        kind: OptionKind::Enum(valid_autosave),
+        description: "Save automatically after changes.",
+        kind: OptionKind::Enum(OptionValues::Static(&["off", "idle", "focus", "all"])),
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
         config_key: "autosave",
@@ -364,6 +417,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "autosave_delay",
         aliases: &[],
+        description: "Idle delay before autosave in milliseconds.",
         kind: OptionKind::Int {
             min: 100,
             max: 60_000,
@@ -376,6 +430,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "history",
         aliases: &[],
+        description: "Maximum undo history entries.",
         kind: OptionKind::Int {
             min: 0,
             max: MAX_HISTORY_LIMIT,
@@ -388,6 +443,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "undo_persist",
         aliases: &[],
+        description: "Persist undo history across sessions.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::History,
@@ -397,6 +453,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "auto_completion",
         aliases: &[],
+        description: "Open completion automatically while typing.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -406,6 +463,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "signature_help",
         aliases: &[],
+        description: "Show signature help while typing arguments.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -415,6 +473,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "completion_docs_up",
         aliases: &[],
+        description: "Key that scrolls completion documentation up.",
         kind: OptionKind::Text,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -424,6 +483,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "completion_docs_down",
         aliases: &[],
+        description: "Key that scrolls completion documentation down.",
         kind: OptionKind::Text,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
@@ -433,6 +493,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "hover_max_width",
         aliases: &[],
+        description: "Maximum hover popup width.",
         kind: OptionKind::Int { min: 20, max: 200 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -442,6 +503,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "completion_docs_max_width",
         aliases: &[],
+        description: "Maximum completion documentation width.",
         kind: OptionKind::Int { min: 20, max: 200 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -451,6 +513,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "overlay_min_width",
         aliases: &[],
+        description: "Minimum overlay width.",
         kind: OptionKind::Int { min: 8, max: 200 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -460,6 +523,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "overlay_max_height_percent",
         aliases: &[],
+        description: "Maximum overlay height as terminal percentage.",
         kind: OptionKind::Int { min: 10, max: 100 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -469,6 +533,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "overlay_margin",
         aliases: &[],
+        description: "Overlay margin from window edges.",
         kind: OptionKind::Int { min: 0, max: 40 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -478,6 +543,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_popup_max_width",
         aliases: &[],
+        description: "Maximum diagnostic popup width.",
         kind: OptionKind::Int { min: 20, max: 200 },
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -487,7 +553,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_virtual_text",
         aliases: &[],
-        kind: OptionKind::Enum(valid_virtual_text),
+        description: "When diagnostic virtual text is shown.",
+        kind: OptionKind::Enum(OptionValues::Static(&["off", "cursor_line", "all"])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "diagnostic_virtual_text",
@@ -496,7 +563,13 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_virtual_severity",
         aliases: &[],
-        kind: OptionKind::Enum(valid_severity_filter),
+        description: "Minimum severity for diagnostic virtual text.",
+        kind: OptionKind::Enum(OptionValues::Static(&[
+            "error",
+            "warning",
+            "information",
+            "hint",
+        ])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "diagnostic_virtual_severity",
@@ -505,7 +578,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_source",
         aliases: &[],
-        kind: OptionKind::Enum(valid_source_display),
+        description: "When diagnostic source names are shown.",
+        kind: OptionKind::Enum(OptionValues::Static(&["always", "if_many"])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "diagnostic_source",
@@ -514,7 +588,8 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_counts",
         aliases: &[],
-        kind: OptionKind::Enum(valid_counts_mode),
+        description: "Severity counts shown in the status line.",
+        kind: OptionKind::Enum(OptionValues::Static(&["errors_warnings", "all"])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "diagnostic_counts",
@@ -523,6 +598,7 @@ pub(crate) const OPTIONS: [OptionSpec; 34] = [
     OptionSpec {
         name: "diagnostic_workspace_counts",
         aliases: &[],
+        description: "Show workspace diagnostic counts.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
@@ -549,7 +625,7 @@ pub(crate) fn validate_spec(
     match spec.kind {
         OptionKind::Bool => parse_bool(input),
         OptionKind::Int { min, max } => parse_int(input, min, max),
-        OptionKind::Enum(valid) => parse_enum(input, valid, context),
+        OptionKind::Enum(values) => parse_enum(input, values, context),
         OptionKind::Text => parse_text(input),
     }
 }
@@ -618,11 +694,11 @@ fn parse_int(input: OptionInput<'_>, min: usize, max: usize) -> Result<OptionVal
 
 fn parse_enum(
     input: OptionInput<'_>,
-    valid: fn(&str, &OptionContext<'_>) -> bool,
+    values: OptionValues,
     context: &OptionContext<'_>,
 ) -> Result<OptionValue, OptionError> {
     match input {
-        OptionInput::Text(value) if valid(value, context) => {
+        OptionInput::Text(value) if values.accepts(value, context) => {
             Ok(OptionValue::Text(value.to_string()))
         }
         OptionInput::Text(value) => Err(OptionError::InvalidValue {
@@ -637,41 +713,6 @@ fn parse_enum(
             value: value.to_string(),
         }),
     }
-}
-
-fn valid_autosave(name: &str, _context: &OptionContext<'_>) -> bool {
-    AutosaveMode::parse(name).is_some()
-}
-
-fn valid_signcolumn(name: &str, _context: &OptionContext<'_>) -> bool {
-    SignColumnMode::parse(name).is_some()
-}
-
-fn valid_keymap(name: &str, _context: &OptionContext<'_>) -> bool {
-    flavor_from_name(name).is_some()
-}
-
-fn valid_theme(name: &str, context: &OptionContext<'_>) -> bool {
-    match context.theme_dir {
-        Some(theme_dir) => Theme::load(name, theme_dir).is_ok(),
-        None => Theme::named(name).is_some(),
-    }
-}
-
-fn valid_virtual_text(name: &str, _context: &OptionContext<'_>) -> bool {
-    VirtualTextMode::parse(name).is_some()
-}
-
-fn valid_severity_filter(name: &str, _context: &OptionContext<'_>) -> bool {
-    SeverityFilter::parse(name).is_some()
-}
-
-fn valid_source_display(name: &str, _context: &OptionContext<'_>) -> bool {
-    SourceDisplay::parse(name).is_some()
-}
-
-fn valid_counts_mode(name: &str, _context: &OptionContext<'_>) -> bool {
-    CountsMode::parse(name).is_some()
 }
 
 #[cfg(test)]
@@ -778,6 +819,7 @@ mod tests {
     #[test]
     fn registry_declares_scopes_and_defaults() {
         let scope = |name| lookup(name).unwrap().scope;
+        assert!(OPTIONS.iter().all(|spec| !spec.description.is_empty()));
         assert_eq!(scope("ignorecase"), OptionScope::Global);
         assert_eq!(scope("smartcase"), OptionScope::Global);
         assert_eq!(scope("expandtab"), OptionScope::Buffer);
@@ -822,6 +864,20 @@ mod tests {
             lookup("completion_docs_down").unwrap().default_value(),
             OptionValue::Text("ctrl-f".to_string())
         );
+    }
+
+    #[test]
+    fn option_values_are_accepted() {
+        let context = OptionContext::default();
+        for spec in &OPTIONS {
+            for value in spec.values(&context) {
+                assert!(
+                    validate_spec(spec, OptionInput::Text(&value), &context).is_ok(),
+                    "{}={value}",
+                    spec.name
+                );
+            }
+        }
     }
 
     #[test]

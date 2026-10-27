@@ -2,8 +2,8 @@ use kawi_completion::Documentation;
 use kawi_help::{HelpIndex, HelpPage};
 use kawi_tui::markdown::{self, MarkdownBlock, MarkdownLine};
 
-use super::{App, COMMANDS_TOPIC, OPTIONS_TOPIC, OPTION_TOPIC_PREFIX};
-use crate::options::{ConfigSection, OptionKind, OptionScope};
+use super::{App, COMMANDS_TOPIC, OPTIONS_TOPIC, OPTION_TOPIC, OPTION_TOPIC_PREFIX};
+use crate::options::{ConfigSection, OptionContext, OptionKind, OptionScope, OptionSpec};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +22,7 @@ pub(super) struct HelpView {
 
 impl App {
     pub(super) fn help_view(&self, topic: &str) -> Option<HelpView> {
-        if topic.eq_ignore_ascii_case(OPTIONS_TOPIC) {
+        if topic.eq_ignore_ascii_case(OPTIONS_TOPIC) || topic.eq_ignore_ascii_case(OPTION_TOPIC) {
             return Some(self.options_view());
         }
         if topic.eq_ignore_ascii_case(COMMANDS_TOPIC) {
@@ -42,23 +42,10 @@ impl App {
                 .to_string(),
             String::new(),
         ];
+        let context = self.option_context();
         for spec in crate::options::OPTIONS {
             lines.push(spec.name.to_string());
-            lines.push(format!(
-                "  default: {}  current: {}  scope: {}",
-                spec.default_value().display(),
-                self.option_value(&spec).display(),
-                scope_name(spec.scope)
-            ));
-            lines.push(format!(
-                "  config: [{}] {}  type: {}",
-                section_name(spec.section),
-                spec.config_key,
-                kind_name(&spec.kind)
-            ));
-            if !spec.aliases.is_empty() {
-                lines.push(format!("  aliases: {}", spec.aliases.join(", ")));
-            }
+            push_option_details(&mut lines, &spec, &self.option_value(&spec), &context);
             lines.push(String::new());
         }
         plain_view(OPTIONS_TOPIC, lines)
@@ -66,25 +53,44 @@ impl App {
 
     fn option_view(&self, name: &str) -> Option<HelpView> {
         let spec = crate::options::lookup(name)?;
-        let mut lines = vec![
-            format!("Option {}", spec.name),
-            String::new(),
-            format!("default: {}", spec.default_value().display()),
-            format!("current: {}", self.option_value(spec).display()),
-            format!("scope: {}", scope_name(spec.scope)),
-            format!("type: {}", kind_name(&spec.kind)),
-            format!(
-                "config: [{}] {}",
-                section_name(spec.section),
-                spec.config_key
-            ),
-        ];
-        if !spec.aliases.is_empty() {
-            lines.push(format!("aliases: {}", spec.aliases.join(", ")));
-        }
+        let mut lines = vec![format!("Option {}", spec.name), String::new()];
+        push_option_details(
+            &mut lines,
+            spec,
+            &self.option_value(spec),
+            &self.option_context(),
+        );
         lines.push(String::new());
         lines.push(format!("Set with :set {}=<value>", spec.name));
         Some(plain_view(&format!("option {}", spec.name), lines))
+    }
+}
+
+fn push_option_details(
+    lines: &mut Vec<String>,
+    spec: &OptionSpec,
+    current: &crate::options::OptionValue,
+    context: &OptionContext<'_>,
+) {
+    lines.push(format!("  {}", spec.description));
+    lines.push(format!(
+        "  default: {}  current: {}  scope: {}",
+        spec.default_value().display(),
+        current.display(),
+        scope_name(spec.scope)
+    ));
+    lines.push(format!(
+        "  config: [{}] {}  type: {}",
+        section_name(spec.section),
+        spec.config_key,
+        kind_name(&spec.kind)
+    ));
+    let values = spec.values(context);
+    if !values.is_empty() {
+        lines.push(format!("  values: {}", values.join(", ")));
+    }
+    if !spec.aliases.is_empty() {
+        lines.push(format!("  aliases: {}", spec.aliases.join(", ")));
     }
 }
 fn page_view(page: HelpPage) -> HelpView {
