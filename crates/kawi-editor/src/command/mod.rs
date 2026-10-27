@@ -267,6 +267,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "diagnostic_virtual_text",
     "diagnostic_workspace_counts",
     "expandtab",
+    "explorer_enabled",
     "explorer_show_hidden",
     "explorer_width",
     "foldcolumn",

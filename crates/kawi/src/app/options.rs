@@ -213,6 +213,10 @@ impl App {
             "diagnostic_workspace_counts" => {
                 self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
+            "explorer_enabled" => {
+                self.explorer.set_enabled(value.as_bool().unwrap_or(false));
+                self.sync_terminal_panel_size();
+            }
             "explorer_width" => {
                 self.explorer.set_width(
                     value
@@ -396,6 +400,7 @@ impl App {
             "diagnostic_workspace_counts" => {
                 OptionValue::Bool(self.diagnostic_options.workspace_counts)
             }
+            "explorer_enabled" => OptionValue::Bool(self.explorer.is_enabled()),
             "explorer_width" => OptionValue::Int(self.explorer.width()),
             "explorer_show_hidden" => OptionValue::Bool(self.explorer.show_hidden()),
             "keyguide" => OptionValue::Bool(self.keyguide_enabled),

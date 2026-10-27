@@ -252,7 +252,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 40] = [
+pub(crate) const OPTIONS: [OptionSpec; 41] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -634,6 +634,16 @@ pub(crate) const OPTIONS: [OptionSpec; 40] = [
         default: OptionDefault::Bool(false),
     },
     OptionSpec {
+        name: "explorer_enabled",
+        aliases: &["ex"],
+        description: "Enable the project explorer.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "explorer_enabled",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
         name: "explorer_show_hidden",
         aliases: &["exh"],
         description: "Show hidden files in the project explorer.",
@@ -790,6 +800,13 @@ fn parse_enum(
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn explorer_is_opt_in() {
+        let spec = lookup("explorer_enabled").expect("explorer option");
+        assert_eq!(spec.default_value(), OptionValue::Bool(false));
+        assert_eq!(canonical_name("ex"), Some("explorer_enabled"));
+    }
 
     #[test]
     fn names_and_aliases_are_unique() {

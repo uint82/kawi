@@ -22,6 +22,7 @@ pub(crate) struct ExplorerRow {
 
 pub(crate) struct ExplorerState {
     pub(super) root: Option<PathBuf>,
+    pub(super) enabled: bool,
     pub(super) visible: bool,
     pub(super) focused: bool,
     pub(super) width: usize,
@@ -45,6 +46,7 @@ impl Default for ExplorerState {
     fn default() -> Self {
         Self {
             root: None,
+            enabled: false,
             visible: false,
             focused: false,
             width: EXPLORER_WIDTH_DEFAULT,
@@ -89,6 +91,20 @@ impl ExplorerState {
         }
         self.show_hidden = show_hidden;
         self.refresh_and_watch();
+    }
+
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled == enabled {
+            return;
+        }
+        self.enabled = enabled;
+        if !enabled {
+            self.close();
+        }
     }
 
     pub(crate) fn is_visible(&self) -> bool {
