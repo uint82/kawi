@@ -15,7 +15,7 @@ const DATE_PREFIX: &str = "DeletionDate=";
 const TOP_TRASH: &str = ".Trash";
 
 #[derive(Debug)]
-pub(super) enum TrashError {
+pub(in crate::app) enum TrashError {
     Unavailable(String),
     Io(io::Error),
 }
@@ -35,13 +35,13 @@ impl From<io::Error> for TrashError {
     }
 }
 
-pub(super) struct TrashDir {
+pub(in crate::app) struct TrashDir {
     root: PathBuf,
     topdir: Option<PathBuf>,
 }
 
 impl TrashDir {
-    pub(super) fn for_target(target: &Path) -> Option<Self> {
+    pub(in crate::app) fn for_target(target: &Path) -> Option<Self> {
         let home = Self::from_env();
         if let Some(home) = home {
             if same_device(target, &home.root) && is_writable_location(&home.root) {
@@ -71,11 +71,11 @@ impl TrashDir {
         Self { root, topdir: None }
     }
 
-    pub(super) fn can_trash(&self, target: &Path) -> bool {
+    pub(in crate::app) fn can_trash(&self, target: &Path) -> bool {
         same_device(target, &self.root) && is_writable_location(&self.root)
     }
 
-    pub(super) fn trash(&self, target: &Path) -> Result<PathBuf, TrashError> {
+    pub(in crate::app) fn trash(&self, target: &Path) -> Result<PathBuf, TrashError> {
         self.ensure()?;
         if !same_device(target, &self.files_dir()) {
             return Err(TrashError::Unavailable(

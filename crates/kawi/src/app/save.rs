@@ -43,6 +43,9 @@ impl App {
             return false;
         }
         let number = self.editor.buffer_number();
+        if self.directory.contains(number) {
+            return self.request_directory_save(number, force, after, visible);
+        }
         if let Some(message) = self.buffer_write_error(number) {
             if visible {
                 self.show_message(message.to_string());
@@ -238,7 +241,7 @@ impl App {
         }
     }
 
-    fn complete_save(&mut self, after: SaveAfter) {
+    pub(super) fn complete_save(&mut self, after: SaveAfter) {
         if after != SaveAfter::Quit {
             return;
         }

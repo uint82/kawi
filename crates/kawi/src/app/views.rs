@@ -15,7 +15,9 @@ impl App {
         let numbers = self.editor.all_buffer_numbers();
         let mut loaded = false;
         for number in numbers {
-            loaded |= self.load_file_view(number);
+            if !self.directory.contains(number) {
+                loaded |= self.load_file_view(number);
+            }
         }
         if loaded {
             self.reveal_cursor();
@@ -24,6 +26,9 @@ impl App {
 
     pub(crate) fn sync_file_view(&mut self) {
         let number = self.editor.buffer_number();
+        if self.directory.contains(number) {
+            return;
+        }
         if self.load_file_view(number) {
             self.reveal_cursor();
         }
@@ -33,6 +38,9 @@ impl App {
         let numbers = self.editor.all_buffer_numbers();
         let mut first_error = None;
         for number in numbers {
+            if self.directory.contains(number) {
+                continue;
+            }
             if let Err(error) = self.save_file_view(number) {
                 first_error.get_or_insert(error);
             }

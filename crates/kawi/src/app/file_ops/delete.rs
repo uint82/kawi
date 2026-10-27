@@ -102,6 +102,7 @@ impl App {
         self.undo.remove_prefix(target);
         self.problems.remove_paths(target);
         self.explorer.remove_path(target);
+        self.directory.remove_under(target);
         for number in numbers {
             if keep_dirty && self.editor.buffer_is_dirty(number).unwrap_or(false) {
                 self.editor.detach_buffer_path(number);

@@ -1,12 +1,12 @@
 mod delete;
-mod fs;
+pub(super) mod fs;
 mod pending;
 mod prompt;
 mod rename;
-mod trash;
+pub(super) mod trash;
 mod write;
 
-pub(crate) use pending::PendingFileOp;
+pub(crate) use pending::{PendingDirectoryOp, PendingFileOp};
 
 #[cfg(test)]
 mod tests;

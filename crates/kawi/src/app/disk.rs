@@ -415,6 +415,7 @@ impl App {
             .all_buffer_numbers()
             .into_iter()
             .filter(|number| !self.editor.buffer_is_readonly(*number).unwrap_or(false))
+            .filter(|number| !self.directory.contains(*number))
             .filter_map(|number| {
                 let path = self.editor.buffer_path(number)?;
                 Some((number, absolute_path(Path::new(path))))

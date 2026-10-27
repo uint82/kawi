@@ -318,6 +318,7 @@ impl App {
         self.editor
             .all_buffer_numbers()
             .into_iter()
+            .filter(|number| !self.directory.contains(*number))
             .filter_map(|number| {
                 Some(BufferObservation {
                     number,

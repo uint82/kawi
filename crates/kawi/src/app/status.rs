@@ -23,6 +23,9 @@ impl App {
     }
 
     pub(super) fn status_filetype(&self) -> Option<&'static str> {
+        if self.directory.contains(self.editor.buffer_number()) {
+            return Some("directory");
+        }
         self.editor.language_id().map(|language| language.name())
     }
 

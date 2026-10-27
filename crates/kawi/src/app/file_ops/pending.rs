@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::super::directory::PendingApply;
 use super::prompt::DeleteRequest;
 use super::App;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -7,6 +8,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub(crate) enum PendingFileOp {
     Rename(RenamePending),
     Delete(DeletePending),
+    Directory(PendingDirectoryOp),
+}
+
+pub(crate) struct PendingDirectoryOp {
+    pub(crate) request: u64,
+    pub(crate) apply: PendingApply,
 }
 
 pub(crate) struct RenamePending {
@@ -28,6 +35,7 @@ impl PendingFileOp {
         match self {
             Self::Rename(pending) => pending.request,
             Self::Delete(pending) => pending.request,
+            Self::Directory(pending) => pending.request,
         }
     }
 
@@ -40,6 +48,16 @@ impl PendingFileOp {
                 pending.directory,
             ),
             Self::Delete(pending) => app.finish_delete(pending.delete, pending.keep_dirty),
+            Self::Directory(pending) => {
+                let apply = pending.apply;
+                app.apply_directory_changes(
+                    apply.number,
+                    apply.changes,
+                    apply.plan,
+                    apply.after,
+                    apply.visible,
+                );
+            }
         }
     }
 
@@ -47,6 +65,7 @@ impl PendingFileOp {
         match self {
             Self::Rename(_) => "Rename",
             Self::Delete(_) => "Delete",
+            Self::Directory(_) => "Directory",
         }
     }
 }

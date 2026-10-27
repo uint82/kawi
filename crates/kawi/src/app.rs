@@ -18,6 +18,7 @@ mod conflict;
 mod diagnostic_index;
 mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
+mod directory;
 mod disk;
 mod explorer;
 mod file_ops;
@@ -164,6 +165,8 @@ pub struct App {
     terminal: terminal_ui::TerminalUi,
     terminal_focus: bool,
     explorer: explorer::ExplorerState,
+    directory: directory::DirectoryBuffers,
+    directory_options: directory::DirectoryOptions,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
     file_views: Option<FileViewStore>,
@@ -257,6 +260,8 @@ impl App {
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
             explorer: explorer::ExplorerState::default(),
+            directory: directory::DirectoryBuffers::default(),
+            directory_options: directory::DirectoryOptions::default(),
             disk: disk::DiskState::default(),
             file_watch: None,
             file_views: None,
@@ -908,6 +913,7 @@ impl App {
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
+        self.sync_current_directory();
         self.sync_active_window();
         self.sync_keyguide();
         result
@@ -931,6 +937,9 @@ impl App {
         }
         if self.pending_file_op.is_some() {
             return self.handle_pending_file_op_key(key);
+        }
+        if self.directory.has_pending() {
+            return self.handle_directory_confirm_key(key);
         }
         if self.branch_prompt.is_some() {
             return self.handle_branch_prompt_key(key);
@@ -974,6 +983,9 @@ impl App {
         }
         if self.explorer.is_focused() && !self.is_leader_input(key) {
             return self.handle_explorer_key(key);
+        }
+        if self.handle_directory_key(key)? {
+            return Ok(false);
         }
         if self.pager.is_none() && completion::is_completion_key(key) {
             return self.request_completion();
@@ -1882,6 +1894,10 @@ impl App {
             self.show_message("Resolve disk conflicts before saving all".to_string());
             return Ok(false);
         }
+        if self.has_dirty_directory() {
+            self.show_message("Directory buffers must be saved individually with :w".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
                 self.persist_clean_undos();
@@ -1902,6 +1918,10 @@ impl App {
             self.show_message("Resolve disk conflicts before saving all".to_string());
             return Ok(false);
         }
+        if self.has_dirty_directory() {
+            self.show_message("Directory buffers must be saved individually with :w".to_string());
+            return Ok(false);
+        }
         match self.editor.write_all() {
             Ok(()) => {
                 self.persist_clean_undos();
@@ -1920,6 +1940,20 @@ impl App {
     fn handle_edit(&mut self, name: Option<String>, force: bool) -> Result<bool> {
         if name.as_deref() == Some("#") {
             return self.handle_alternate();
+        }
+        if let Some(name) = name.as_deref() {
+            let target = file_ops::absolute_path(name);
+            if target.is_dir() {
+                self.open_directory_path(&target, true);
+                self.reveal_cursor();
+                return Ok(false);
+            }
+        } else if let Some(number) = self.directory_buffer_number() {
+            if let Err(message) = self.reload_directory(number) {
+                self.show_message(message);
+            }
+            self.reveal_cursor();
+            return Ok(false);
         }
         match self.editor.edit_file(name.as_deref(), force) {
             Ok(()) => {

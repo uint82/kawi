@@ -729,11 +729,14 @@ impl App {
                 .status_diagnostics(self.buffer_problem_path(window.buffer).as_deref()),
             workspace_diagnostics: None,
             external: self.disk_status(window.buffer),
-            filetype: self
-                .editor
-                .buffer_name(window.buffer)
-                .and_then(kawi_syntax::LanguageId::from_path)
-                .map(|language| language.name()),
+            filetype: if self.directory.contains(window.buffer) {
+                Some("directory")
+            } else {
+                self.editor
+                    .buffer_name(window.buffer)
+                    .and_then(kawi_syntax::LanguageId::from_path)
+                    .map(|language| language.name())
+            },
             indent: None,
             encoding: None,
             eol: None,

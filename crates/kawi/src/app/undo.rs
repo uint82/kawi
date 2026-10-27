@@ -202,7 +202,8 @@ impl App {
     }
 
     fn skip_undo_buffer(&self, number: usize, path: &str) -> bool {
-        if self.editor.buffer_is_readonly(number).unwrap_or(true)
+        if self.directory.contains(number)
+            || self.editor.buffer_is_readonly(number).unwrap_or(true)
             || self.editor.buffer_is_dirty(number).unwrap_or(true)
             || self.git_commit.editor_buffer() == Some(number)
             || is_commit_message_path(Path::new(path))
