@@ -819,7 +819,9 @@ impl Editor {
 
     pub fn write_all(&mut self) -> Result<(), EditError> {
         for number in self.buffers.numbers() {
-            if self.buffer_at(number).is_some_and(Buffer::is_dirty) {
+            if self.buffer_at(number).is_some_and(Buffer::is_dirty)
+                && !self.buffer_is_directory(number).unwrap_or(false)
+            {
                 self.save_buffer(number, false)?;
             }
         }
@@ -906,6 +908,75 @@ impl Editor {
         number
     }
 
+    pub fn open_directory_buffer(&mut self, name: &str, text: &str, reuse_empty: bool) -> usize {
+        let mut buffer = Buffer::from_string(text);
+        buffer.path = Some(name.to_string());
+        buffer.set_directory(true);
+        buffer.mark_clean();
+        if reuse_empty && self.buffer_reusable() {
+            let number = self.buffers.current();
+            self.jumps.record(self.current_jump());
+            self.load_fresh(buffer);
+            self.reset_buffer_options();
+            self.place_open_cursor();
+            self.buffers.set_alternate(Some(number));
+            return number;
+        }
+        let number = self.buffers.allocate_number();
+        let previous = self.buffers.current();
+        self.jumps.record(self.current_jump());
+        self.store_current();
+        self.load_fresh(buffer);
+        self.reset_buffer_options();
+        self.place_open_cursor();
+        self.buffers.set_current(number);
+        self.buffers.set_alternate(Some(previous));
+        number
+    }
+
+    pub fn replace_directory_listing(&mut self, number: usize, name: &str, text: &str) -> bool {
+        if number == self.buffers.current() {
+            self.buffer.set_path(Some(name), None);
+            self.buffer.set_directory(true);
+            self.buffer.replace_all(text);
+            self.buffer.reset_history();
+            self.buffer.mark_clean();
+            self.normalize_cursor();
+            self.remember_wanted_column();
+            self.reveal_cursor();
+            return true;
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        let state = &mut entry.state;
+        state.buffer.set_path(Some(name), None);
+        state.buffer.set_directory(true);
+        state.buffer.replace_all(text);
+        state.buffer.reset_history();
+        state.buffer.mark_clean();
+        let row = state
+            .cursor
+            .row()
+            .min(state.buffer.line_count().saturating_sub(1));
+        let col = state
+            .cursor
+            .col()
+            .min(state.buffer.line_len(row).saturating_sub(1));
+        state.cursor.set_position(row, col);
+        state.cursor.set_desired(col);
+        true
+    }
+
+    pub fn mark_current_clean(&mut self) {
+        self.buffer.mark_clean();
+    }
+
     pub fn open_internal_buffer(&mut self, name: &str, text: &str) -> usize {
         self.store_current();
         let number = self.buffers.allocate_number();
@@ -946,6 +1017,14 @@ impl Editor {
 
     pub fn current_buffer_is_internal(&self) -> bool {
         self.buffer.is_internal()
+    }
+
+    pub fn buffer_is_directory(&self, number: usize) -> Option<bool> {
+        self.buffer_at(number).map(Buffer::is_directory)
+    }
+
+    pub fn current_buffer_is_directory(&self) -> bool {
+        self.buffer.is_directory()
     }
 
     pub fn buffer_source_hash(&self, number: usize) -> Option<[u8; 32]> {

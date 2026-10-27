@@ -24,6 +24,7 @@ pub struct Buffer {
     adjustments: Vec<LineAdjust>,
     readonly: bool,
     internal: bool,
+    directory: bool,
     source_hash: Option<[u8; 32]>,
 }
 
@@ -43,6 +44,7 @@ impl Buffer {
             adjustments: Vec::new(),
             readonly: false,
             internal: false,
+            directory: false,
             source_hash: None,
         }
     }
@@ -149,6 +151,14 @@ impl Buffer {
 
     pub fn set_internal(&mut self, internal: bool) {
         self.internal = internal;
+    }
+
+    pub fn is_directory(&self) -> bool {
+        self.directory
+    }
+
+    pub fn set_directory(&mut self, directory: bool) {
+        self.directory = directory;
     }
 
     pub fn replace_internal_text(&mut self, name: &str, text: &str) -> bool {
@@ -780,6 +790,9 @@ impl Buffer {
         if self.internal {
             anyhow::bail!("E382: Cannot write, internal buffer");
         }
+        if self.directory {
+            anyhow::bail!("E382: Cannot write, directory buffer");
+        }
         if self.readonly {
             anyhow::bail!("E45: 'readonly' option is set (add ! to override)");
         }
@@ -795,6 +808,9 @@ impl Buffer {
     pub fn write_to(&self, path: &str, force: bool) -> Result<[u8; 32]> {
         if self.internal {
             anyhow::bail!("E382: Cannot write, internal buffer");
+        }
+        if self.directory {
+            anyhow::bail!("E382: Cannot write, directory buffer");
         }
         let mut hasher = Sha256::new();
         write::write(Path::new(path), force, |out| {
