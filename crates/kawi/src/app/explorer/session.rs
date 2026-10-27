@@ -24,6 +24,9 @@ impl ExplorerState {
     }
 
     pub(crate) fn restore(&mut self, cwd: &Path, session: Option<&SessionExplorer>) {
+        if !self.enabled {
+            return;
+        }
         let Some(session) = session else {
             return;
         };
@@ -88,18 +91,24 @@ mod tests {
     use super::*;
     use crate::test_support::temp_dir;
 
+    fn enabled_state() -> ExplorerState {
+        let mut state = ExplorerState::default();
+        state.set_enabled(true);
+        state
+    }
+
     #[test]
     fn snapshot_and_restore_round_trip_tree_state() {
         let dir = temp_dir("explorer_session");
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/main.rs"), "").unwrap();
         std::fs::write(dir.join("README.md"), "").unwrap();
-        let mut state = ExplorerState::default();
+        let mut state = enabled_state();
         state.open(dir.clone());
         state.expand_directory(&dir.join("src"));
         state.select(dir.join("src/main.rs"));
         let snapshot = state.snapshot();
-        let mut restored = ExplorerState::default();
+        let mut restored = enabled_state();
         restored.restore(&dir, Some(&snapshot));
         assert!(restored.is_visible());
         assert_eq!(restored.width(), state.width());
@@ -108,6 +117,26 @@ mod tests {
             Some(dir.join("src/main.rs").as_path())
         );
         assert_eq!(restored.rows().len(), 3);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn disabled_explorer_ignores_open_and_restore() {
+        let dir = temp_dir("explorer_disabled");
+        std::fs::write(dir.join("a.txt"), "").unwrap();
+        let session = SessionExplorer {
+            visible: true,
+            width: 30,
+            root: Some(dir.to_string_lossy().into_owned()),
+            show_hidden: false,
+            expanded: Vec::new(),
+            selected: None,
+        };
+        let mut state = ExplorerState::default();
+        state.open(dir.clone());
+        state.restore(&dir, Some(&session));
+        assert!(!state.is_visible());
+        assert!(state.rows().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -123,7 +152,7 @@ mod tests {
             expanded: Vec::new(),
             selected: None,
         };
-        let mut state = ExplorerState::default();
+        let mut state = enabled_state();
         state.restore(&dir, Some(&session));
         assert_eq!(state.root(), Some(dir.as_path()));
         std::fs::remove_dir_all(dir).unwrap();
@@ -141,7 +170,7 @@ mod tests {
             expanded: vec!["../outside".to_string()],
             selected: Some("/tmp/outside".to_string()),
         };
-        let mut state = ExplorerState::default();
+        let mut state = enabled_state();
         state.restore(&dir, Some(&session));
         assert!(state.rows().iter().all(|row| row.path.starts_with(&dir)));
         assert!(state.selected_row().is_some());
@@ -160,7 +189,7 @@ mod tests {
             expanded: Vec::new(),
             selected: None,
         };
-        let mut state = ExplorerState::default();
+        let mut state = enabled_state();
         state.restore(&dir, Some(&session));
         assert_eq!(state.width(), EXPLORER_WIDTH_MAX);
         std::fs::remove_dir_all(dir).unwrap();

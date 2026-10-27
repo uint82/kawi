@@ -187,6 +187,7 @@ fn rename_updates_an_open_explorer() {
     let target = dir.join("b.txt");
     fs::write(&source, "alpha\n").unwrap();
     let mut app = app_for(&source);
+    app.explorer.set_enabled(true);
     app.explorer.open(dir.clone());
     app.explorer.select(source.clone());
     command(&mut app, &format!("rename {}", target.display()));

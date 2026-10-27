@@ -176,6 +176,7 @@ fn delete_updates_an_open_explorer() {
     fs::write(&path, "alpha\n").unwrap();
     fs::write(&other, "bravo\n").unwrap();
     let mut app = app_for(&path);
+    app.explorer.set_enabled(true);
     app.explorer.open(dir.clone());
     app.explorer.select(path.clone());
     command(&mut app, &format!("delete! {}", path.display()));

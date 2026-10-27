@@ -12,6 +12,7 @@ use crate::test_support::temp_dir;
 fn app_with_explorer(dir: &std::path::Path) -> App {
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.set_screen_size(80, 24);
+    app.explorer.set_enabled(true);
     app.explorer.open(dir.to_path_buf());
     app
 }
@@ -129,6 +130,7 @@ fn explorer_reserves_width_next_to_the_editor() {
     fs::write(dir.join("a.txt"), "").unwrap();
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.set_screen_size(100, 30);
+    app.explorer.set_enabled(true);
     app.explorer.open(dir.clone());
     let rect = app.explorer_rect().expect("explorer rect");
     assert_eq!(rect.width, 30);
@@ -170,6 +172,7 @@ fn opening_the_explorer_reveals_the_current_file() {
         Flavor::Vim,
     );
     app.set_screen_size(80, 24);
+    app.explorer.set_enabled(true);
     app.open_explorer_at(dir.clone());
     assert!(app.explorer.is_visible());
     assert_eq!(
@@ -181,11 +184,40 @@ fn opening_the_explorer_reveals_the_current_file() {
 }
 
 #[test]
+fn explorer_is_disabled_by_default() {
+    let dir = temp_dir("explorer_opt_in");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.set_screen_size(80, 24);
+    assert!(!app.explorer.is_enabled());
+    app.open_explorer_at(dir.clone());
+    assert!(!app.explorer.is_visible());
+    assert_eq!(app.last_message(), Some("Project explorer is disabled"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn enabling_the_explorer_allows_it_to_open() {
+    let dir = temp_dir("explorer_enabled");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.set_screen_size(80, 24);
+    let spec = crate::options::lookup("explorer_enabled").expect("option");
+    app.apply_option(spec, crate::options::OptionValue::Bool(true))
+        .expect("enable explorer");
+    app.open_explorer_at(dir.clone());
+    assert!(app.explorer.is_visible());
+    assert!(app.explorer.is_focused());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn explorer_closes_when_the_screen_is_too_narrow() {
     let dir = temp_dir("explorer_narrow");
     fs::write(dir.join("a.txt"), "").unwrap();
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.set_screen_size(80, 24);
+    app.explorer.set_enabled(true);
     app.explorer.open(dir.clone());
     assert!(app.explorer.is_visible());
     app.set_screen_size(39, 24);

@@ -47,6 +47,10 @@ impl App {
     }
 
     pub(crate) fn open_explorer_at(&mut self, root: PathBuf) {
+        if !self.explorer.is_enabled() {
+            self.show_message("Project explorer is disabled".to_string());
+            return;
+        }
         self.cancel_pending_editor_input();
         self.explorer.open(root);
         self.sync_terminal_panel_size();

@@ -120,6 +120,9 @@ impl ExplorerState {
     }
 
     pub(crate) fn open(&mut self, root: PathBuf) {
+        if !self.enabled {
+            return;
+        }
         if self.root.as_deref() != Some(root.as_path()) {
             self.root = Some(root);
             self.expanded.clear();
@@ -139,6 +142,9 @@ impl ExplorerState {
     }
 
     pub(crate) fn focus(&mut self) {
+        if !self.enabled {
+            return;
+        }
         self.visible = true;
         self.focused = true;
         self.sync_watch();

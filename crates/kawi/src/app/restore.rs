@@ -31,7 +31,7 @@ impl App {
             buffers,
             windows,
             active_window: self.windows.active(),
-            explorer: Some(self.explorer.snapshot()),
+            explorer: self.explorer.is_enabled().then(|| self.explorer.snapshot()),
         })
     }
 

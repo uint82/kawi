@@ -6,7 +6,7 @@ use crate::options::{EXPLORER_WIDTH_MAX, EXPLORER_WIDTH_MIN};
 
 impl App {
     pub(crate) fn explorer_width(&self) -> usize {
-        if !self.explorer.is_visible() {
+        if !self.explorer.is_enabled() || !self.explorer.is_visible() {
             return 0;
         }
         let available = self.screen_width.saturating_sub(MIN_EDITOR_WIDTH);
