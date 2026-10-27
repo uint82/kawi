@@ -16,6 +16,7 @@ pub struct StatePaths {
     pub queries: PathBuf,
     pub history: PathBuf,
     pub sessions: PathBuf,
+    pub views: PathBuf,
     pub recovery: PathBuf,
     pub undo: PathBuf,
 }
@@ -33,6 +34,7 @@ impl StatePaths {
             queries: config.join("kawi/queries"),
             history: state.join("kawi/history"),
             sessions: state.join("kawi/sessions"),
+            views: state.join("kawi/views"),
             recovery: state.join("kawi/recovery"),
             undo: state.join("kawi/undo"),
         })
@@ -114,6 +116,7 @@ mod tests {
             queries: dir.join("queries"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
+            views: dir.join("views"),
             recovery: dir.join("recovery"),
             undo: dir.join("undo"),
         }

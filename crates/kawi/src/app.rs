@@ -1,9 +1,10 @@
+use crate::file_views::FileViewStore;
 use anyhow::{anyhow, Result};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use kawi_buffer::Buffer;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::stdout;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -59,6 +60,7 @@ mod undo_commands;
 #[cfg(test)]
 mod undo_test_support;
 mod undo_tree;
+mod views;
 mod window;
 mod workspace_edit;
 
@@ -160,6 +162,8 @@ pub struct App {
     terminal_focus: bool,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
+    file_views: Option<FileViewStore>,
+    loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
     pending_save: Option<save::PendingSave>,
     format_on_save: bool,
@@ -245,6 +249,8 @@ impl App {
             terminal_focus: false,
             disk: disk::DiskState::default(),
             file_watch: None,
+            file_views: None,
+            loaded_views: BTreeSet::new(),
             conflict: None,
             pending_save: None,
             format_on_save: false,
@@ -699,8 +705,9 @@ impl App {
                 Ok(false)
             }
         };
-        self.sync_active_window();
         self.sync_language_settings();
+        self.sync_file_view();
+        self.sync_active_window();
         result
     }
 

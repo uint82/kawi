@@ -39,6 +39,7 @@ pub(super) fn paths(root: &Path) -> StatePaths {
         queries: root.join("queries"),
         history: root.join("state/history"),
         sessions: root.join("state/sessions"),
+        views: root.join("state/views"),
         recovery: root.join("state/recovery"),
         undo: root.join("state/undo"),
     }

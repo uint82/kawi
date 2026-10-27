@@ -92,6 +92,13 @@ impl Editor {
         true
     }
 
+    pub fn refresh_buffer_fold_state(&mut self, number: usize) -> bool {
+        if !self.refresh_buffer_folds(number) {
+            return false;
+        }
+        self.revalidate_buffer_folds(number)
+    }
+
     pub(crate) fn revalidate_folds_after_change(
         &mut self,
         number: usize,

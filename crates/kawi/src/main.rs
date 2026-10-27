@@ -2,6 +2,8 @@ mod app;
 mod config;
 mod doctor;
 mod event;
+mod file_views;
+mod fold_view;
 mod helix;
 mod ipc;
 mod keymap;
@@ -19,6 +21,7 @@ mod vim;
 mod workspace;
 use anyhow::Result;
 use app::App;
+use file_views::FileViewStore;
 use kawi_buffer::Buffer;
 use kawi_editor::paths;
 use kawi_tui::terminal;
@@ -54,9 +57,16 @@ fn main() -> Result<()> {
     let buffer = load_buffer(path)?;
     let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
     app.load_state(cli_flavor);
+    if let Some(paths) = paths.as_ref() {
+        app.attach_file_views(FileViewStore::new(paths.views.clone()));
+    }
     apply_startup_session(&mut app, session.as_ref(), warning);
+    app.load_file_views();
     apply_startup_recovery(&mut app, paths.as_ref(), &cwd, !restore_workspace);
     let outcome = run_app(&mut app);
+    if let Err(error) = app.save_file_views() {
+        eprintln!("kawi: {error}");
+    }
     save_workspace_session(&mut app, restore_workspace, paths.as_ref(), &cwd);
     app.save_state();
     outcome
@@ -250,6 +260,7 @@ mod tests {
             queries: dir.join("queries"),
             history: dir.join("history"),
             sessions: dir.join("sessions"),
+            views: dir.join("views"),
             recovery: dir.join("recovery"),
             undo: dir.join("undo"),
         };
