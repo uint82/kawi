@@ -26,6 +26,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Git integration.** Status, staging, commits, branches, hunk navigation, and optional gutter signs.
 - **Tasks and terminals.** Project task runner, task output, cancellation, and horizontal or vertical terminal panels.
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
+- **Folding.** Manual folds, indentation folds, fold navigation, and a configurable fold column.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.
 
@@ -99,6 +100,8 @@ expandtab = true
 number = true
 signcolumn = "auto"
 git_signs = true
+foldmethod = "manual"
+foldcolumn = 1
 autosave = "off"
 ```
 

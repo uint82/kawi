@@ -28,6 +28,17 @@ The leader key is Space or Backslash.
 - `Ctrl-w` window prefix
 - `Ctrl-t` return from a help link
 
+## Folds
+
+- `za` toggle the fold at the cursor
+- `zo` open the fold at the cursor
+- `zc` close the fold at the cursor
+- `zR` open all folds
+- `zM` close all folds
+- `zj` and `zk` next and previous fold
+- `zd` delete the manual fold at the cursor
+- `zf` create a manual fold from a visual selection
+
 ## Pickers
 
 - `<leader> f p` project files

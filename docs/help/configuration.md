@@ -27,6 +27,8 @@ expandtab = true
 number = true
 signcolumn = "auto"
 git_signs = true
+foldmethod = "manual"
+foldcolumn = 1
 ```
 
 Options can also be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
@@ -44,6 +46,22 @@ Press Tab in command mode to complete commands, option names, option values, and
 - `:help <Tab>` lists help topics.
 - `:help option <Tab>` lists options.
 - `:help option <name>` shows one option, including its description and values.
+
+## Folding
+
+Folds collapse ranges of lines into a single visible line. Set `foldmethod` to `manual` or `indent`.
+
+- `manual` uses folds created with `zf` in visual mode.
+- `indent` derives folds from indentation and the effective `shiftwidth`.
+- `foldcolumn` controls the fold marker column width. Set it to `0` to hide the column.
+
+```toml
+[editor]
+foldmethod = "indent"
+foldcolumn = 1
+```
+
+Use `za` to toggle a fold, `zo` and `zc` to open and close, `zR` and `zM` to open or close all folds, and `zj` and `zk` to move between fold starts. Use `zf` in visual mode to create a manual fold and `zd` to delete one.
 
 ## Sign column
 
