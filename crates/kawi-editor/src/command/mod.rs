@@ -64,6 +64,7 @@ pub enum Command {
     Git(GitCommand),
     Task(TaskCommand),
     Quickfix(QuickfixCommand),
+    Explorer(ExplorerCommand),
     Terminal {
         command: Option<String>,
         vertical: bool,
@@ -121,6 +122,13 @@ pub enum QuickfixCommand {
     Next,
     Previous,
     Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplorerCommand {
+    Toggle,
+    Focus,
+    Reveal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,6 +194,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "e",
     "earlier",
     "edit",
+    "explorer",
     "files",
     "git",
     "h",
@@ -258,6 +267,8 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "diagnostic_virtual_text",
     "diagnostic_workspace_counts",
     "expandtab",
+    "explorer_show_hidden",
+    "explorer_width",
     "foldcolumn",
     "foldmethod",
     "format_on_save",
@@ -362,6 +373,9 @@ fn parse_named(text: &str) -> Command {
         ("git", rest) => parse_git_command(rest),
         ("task", rest) => parse_task_command(rest),
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
+        ("explorer", []) => Command::Explorer(ExplorerCommand::Toggle),
+        ("explorer", ["focus"]) => Command::Explorer(ExplorerCommand::Focus),
+        ("explorer", ["reveal"]) => Command::Explorer(ExplorerCommand::Reveal),
         ("term" | "terminal", rest) => Command::Terminal {
             command: terminal_command(rest),
             vertical: false,
@@ -1060,6 +1074,23 @@ mod tests {
         assert_eq!(parse("task close"), Command::Task(TaskCommand::Close));
         assert_eq!(parse("task run"), Command::Unknown);
         assert_eq!(parse("task a b"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_explorer_commands() {
+        assert_eq!(
+            parse("explorer"),
+            Command::Explorer(ExplorerCommand::Toggle)
+        );
+        assert_eq!(
+            parse("explorer focus"),
+            Command::Explorer(ExplorerCommand::Focus)
+        );
+        assert_eq!(
+            parse("explorer reveal"),
+            Command::Explorer(ExplorerCommand::Reveal)
+        );
+        assert_eq!(parse("explorer unknown"), Command::Unknown);
     }
 
     #[test]

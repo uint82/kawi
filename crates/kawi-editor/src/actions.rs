@@ -362,6 +362,9 @@ pub enum Action {
     QuickfixPrev,
     QuickfixOpen,
     ToggleTerminal,
+    ToggleExplorer,
+    FocusExplorer,
+    RevealInExplorer,
     Noop,
 }
 
@@ -447,6 +450,9 @@ impl Action {
                 | Self::QuickfixPrev
                 | Self::QuickfixOpen
                 | Self::ToggleTerminal
+                | Self::ToggleExplorer
+                | Self::FocusExplorer
+                | Self::RevealInExplorer
                 | Self::CommentLines
                 | Self::CommentAt { .. }
                 | Self::SurroundSelection { .. }
