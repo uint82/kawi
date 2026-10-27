@@ -23,10 +23,11 @@ impl App {
                 if row <= rect.y {
                     return Ok(false);
                 }
-                let index = row
-                    .saturating_sub(rect.y)
-                    .saturating_sub(1)
-                    .saturating_add(self.explorer.offset());
+                let relative = row.saturating_sub(rect.y).saturating_sub(1);
+                if relative >= height {
+                    return Ok(false);
+                }
+                let index = relative.saturating_add(self.explorer.offset());
                 let Some(entry) = self.explorer.rows().get(index) else {
                     return Ok(false);
                 };
