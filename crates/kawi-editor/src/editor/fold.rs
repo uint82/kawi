@@ -36,12 +36,6 @@ impl Editor {
         self.folds.column_width()
     }
 
-    pub fn refresh_fold_state(&mut self) {
-        self.refresh_folds();
-        self.folds.revalidate(self.buffer.line_count());
-        self.normalize_view();
-    }
-
     pub fn visible_top(&self) -> usize {
         self.folds
             .visible_top(self.viewport.top(), self.buffer.line_count())

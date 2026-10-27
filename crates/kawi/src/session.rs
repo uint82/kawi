@@ -10,10 +10,6 @@ use crate::persist::write_atomically;
 use crate::text::one_line;
 use crate::workspace;
 
-mod folds;
-
-pub use folds::{SessionFold, SessionFoldMethod, SessionFolds};
-
 pub(crate) const SESSION_VERSION: u32 = 2;
 pub(crate) const MIN_SESSION_VERSION: u32 = 1;
 pub(crate) const MAX_WINDOW_DEPTH: usize = 128;
@@ -32,8 +28,6 @@ pub struct SessionBuffer {
     pub path: Option<String>,
     #[serde(default)]
     pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub folds: Option<SessionFolds>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,9 +136,6 @@ fn validate(session: &Session) -> Result<(), String> {
 fn validate_buffers(buffers: &[SessionBuffer]) -> Result<(), String> {
     let mut ids = BTreeSet::new();
     for buffer in buffers {
-        if let Some(folds) = &buffer.folds {
-            folds.validate()?;
-        }
         let Some(id) = buffer.id.as_deref() else {
             continue;
         };

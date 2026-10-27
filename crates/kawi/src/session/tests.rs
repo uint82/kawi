@@ -27,12 +27,10 @@ fn sample() -> Session {
             SessionBuffer {
                 path: Some("/tmp/kawi/a.txt".to_string()),
                 id: Some("first".to_string()),
-                folds: None,
             },
             SessionBuffer {
                 path: None,
                 id: Some("second".to_string()),
-                folds: None,
             },
         ],
         windows: SessionWindow::Split {
@@ -64,48 +62,16 @@ fn session_round_trips_through_json() {
 }
 
 #[test]
-fn session_folds_round_trip_through_json() {
-    let dir = temp_dir("fold_roundtrip");
-    let path = dir.join("session.json");
-    let mut session = sample();
-    session.buffers[0].folds = Some(SessionFolds {
-        method: SessionFoldMethod::Indent,
-        content_hash: 42,
-        manual: vec![SessionFold { start: 1, end: 3 }],
-        closed: vec![1],
-    });
-    save(&path, &session).unwrap();
-    assert_eq!(load(&path), Ok(Some(session)));
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn sessions_without_folds_load() {
-    let dir = temp_dir("without_folds");
-    let path = dir.join("session.json");
+fn unknown_buffer_fields_are_ignored() {
     let mut value = serde_json::to_value(sample()).unwrap();
-    for buffer in value["buffers"].as_array_mut().unwrap() {
-        buffer.as_object_mut().unwrap().remove("folds");
-    }
-    fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
-    let loaded = load(&path).unwrap().expect("session");
-    assert!(loaded.buffers.iter().all(|buffer| buffer.folds.is_none()));
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn invalid_fold_ranges_are_rejected() {
-    let mut session = sample();
-    session.buffers[0].folds = Some(SessionFolds {
-        method: SessionFoldMethod::Manual,
-        content_hash: 7,
-        manual: vec![SessionFold { start: 3, end: 2 }],
-        closed: Vec::new(),
+    value["buffers"][0]["folds"] = serde_json::json!({
+        "method": "manual",
+        "content_hash": 7,
+        "manual": [{"start": 1, "end": 3}],
+        "closed": [1],
     });
-    assert_eq!(
-        validate(&session),
-        Err("fold range is empty or reversed".to_string())
-    );
+    let session: Session = serde_json::from_value(value).unwrap();
+    assert_eq!(session.buffers[0].path.as_deref(), Some("/tmp/kawi/a.txt"));
 }
 
 #[test]

@@ -7,8 +7,6 @@ use super::window::Windows;
 use super::App;
 use crate::session::{Session, SessionBuffer, SESSION_VERSION};
 
-mod folds;
-
 impl App {
     pub(crate) fn session_snapshot(&mut self) -> Option<Session> {
         self.sync_active_window();
@@ -24,7 +22,6 @@ impl App {
             buffers.push(SessionBuffer {
                 path: path.map(path_text),
                 id: self.editor.buffer_id(number).map(str::to_string),
-                folds: folds::snapshot(&self.editor, number),
             });
         }
         let windows = self.windows.snapshot(&indices)?;
@@ -63,10 +60,9 @@ impl App {
         self.refresh_window_sizes();
         self.editor.restore_view_state(view);
         self.editor.set_window_options(self.window_defaults);
-        self.sync_language_settings();
-        self.editor.refresh_fold_state();
         self.reveal_cursor();
         self.sync_active_window();
+        self.sync_language_settings();
         session_warnings(warnings)
     }
 
@@ -95,7 +91,6 @@ impl App {
                         Ok(()) => {
                             let number = self.editor.buffer_number();
                             restore_buffer_id(&mut self.editor, number, buffer.id.as_deref());
-                            restore_folds(&mut self.editor, number, buffer);
                             numbers.push(Some(number));
                             used_initial = true;
                         }
@@ -113,7 +108,6 @@ impl App {
                         self.editor.buffer_number()
                     };
                     restore_buffer_id(&mut self.editor, number, buffer.id.as_deref());
-                    restore_folds(&mut self.editor, number, buffer);
                     numbers.push(Some(number));
                     used_initial = true;
                 }
@@ -139,12 +133,6 @@ impl App {
 fn restore_buffer_id(editor: &mut kawi_editor::Editor, number: usize, id: Option<&str>) {
     if let Some(id) = id {
         editor.set_buffer_id(number, id.to_string());
-    }
-}
-
-fn restore_folds(editor: &mut kawi_editor::Editor, number: usize, buffer: &SessionBuffer) {
-    if let Some(folds) = buffer.folds.as_ref() {
-        folds::restore(editor, number, folds);
     }
 }
 

@@ -1,14 +1,12 @@
 use super::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
-use kawi_editor::{paths, Action, FoldMethod};
+use kawi_editor::{paths, Action};
 use std::fs;
 use std::path::Path;
 
 use crate::keymap::Flavor;
-use crate::session::{
-    SessionDirection, SessionFold, SessionFoldMethod, SessionView, SessionWindow,
-};
+use crate::session::{SessionDirection, SessionView, SessionWindow};
 
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("kawi_restore_{}_{}", std::process::id(), name));
@@ -77,19 +75,6 @@ fn press(app: &mut App, code: KeyCode) {
         .expect("key");
 }
 
-fn create_manual_fold(app: &mut App) {
-    app.editor.apply(Action::JumpTo(1, 0));
-    app.editor.apply(Action::EnterVisualLine);
-    app.editor.apply(Action::JumpTo(3, 0));
-    app.editor.apply(Action::FoldCreate);
-}
-
-fn create_indent_folds(app: &mut App) {
-    app.editor.set_shiftwidth(4);
-    app.editor.set_fold_method(FoldMethod::Indent);
-    app.editor.close_all_folds();
-}
-
 #[test]
 fn snapshot_captures_buffers_windows_and_views() {
     let dir = temp_dir("snapshot");
@@ -124,94 +109,6 @@ fn snapshot_captures_buffers_windows_and_views() {
 }
 
 #[test]
-fn session_restores_manual_folds_when_content_matches() {
-    let dir = temp_dir("fold_restore");
-    let alpha = write_file(&dir, "alpha.txt", "one\ntwo\nthree\nfour\nfive\n");
-    let mut app = empty_app();
-    app.editor.edit_file(Some(&alpha), false).unwrap();
-    create_manual_fold(&mut app);
-    let session = app.session_snapshot().expect("snapshot");
-    let folds = session.buffers[0].folds.as_ref().expect("folds");
-    assert_eq!(folds.method, SessionFoldMethod::Manual);
-    assert_eq!(folds.manual, vec![SessionFold { start: 1, end: 3 }]);
-    assert_eq!(folds.closed, vec![1]);
-    let mut restored = empty_app();
-    assert_eq!(restored.restore_session(&session), None);
-    assert_eq!(restored.editor.visible_rows(0, 10), vec![0, 1, 4]);
-    assert_eq!(restored.editor.fold_marker(1), '+');
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn session_drops_manual_folds_when_content_changed() {
-    let dir = temp_dir("fold_changed");
-    let alpha = write_file(&dir, "alpha.txt", "one\ntwo\nthree\nfour\nfive\n");
-    let mut app = empty_app();
-    app.editor.edit_file(Some(&alpha), false).unwrap();
-    create_manual_fold(&mut app);
-    let session = app.session_snapshot().expect("snapshot");
-    fs::write(&alpha, "one\ntwo\nthree\nfour\nfive\nsix\n").unwrap();
-    let mut restored = empty_app();
-    assert_eq!(restored.restore_session(&session), None);
-    assert_eq!(restored.editor.visible_rows(0, 10), vec![0, 1, 2, 3, 4, 5]);
-    assert_eq!(restored.editor.fold_marker(1), ' ');
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn session_keeps_indent_folds_when_content_changes() {
-    let dir = temp_dir("fold_indent_changed");
-    let alpha = write_file(
-        &dir,
-        "alpha.py",
-        "def main():\n    a = 1\n    b = 2\nd = 4\n",
-    );
-    let mut app = empty_app();
-    app.editor.edit_file(Some(&alpha), false).unwrap();
-    create_indent_folds(&mut app);
-    let session = app.session_snapshot().expect("snapshot");
-    let saved = session.buffers[0].folds.as_ref().expect("folds");
-    assert_eq!(saved.method, SessionFoldMethod::Indent);
-    assert_eq!(saved.closed, vec![1]);
-    fs::write(
-        &alpha,
-        "def main():\n    a = 1\n    b = 2\n    c = 3\nd = 5\n",
-    )
-    .unwrap();
-    let mut restored = empty_app();
-    restored.editor.set_shiftwidth(4);
-    restored.editor.set_fold_method(FoldMethod::Indent);
-    assert_eq!(restored.restore_session(&session), None);
-    assert_eq!(restored.editor.fold_method(), FoldMethod::Indent);
-    let after = restored
-        .editor
-        .buffer_fold_snapshot(restored.editor.buffer_number())
-        .expect("restored folds");
-    assert_eq!(after.closed, vec![1]);
-    assert_eq!(restored.editor.visible_rows(0, 10), vec![0, 1, 4]);
-    assert_eq!(restored.editor.fold_marker(1), '+');
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn session_ignores_closed_starts_from_another_fold_method() {
-    let dir = temp_dir("fold_method_changed");
-    let alpha = write_file(
-        &dir,
-        "alpha.py",
-        "def main():\n    a = 1\n    b = 2\nd = 4\n",
-    );
-    let mut app = empty_app();
-    app.editor.edit_file(Some(&alpha), false).unwrap();
-    create_indent_folds(&mut app);
-    let session = app.session_snapshot().expect("snapshot");
-    let mut restored = empty_app();
-    assert_eq!(restored.restore_session(&session), None);
-    assert_eq!(restored.editor.visible_rows(0, 10), vec![0, 1, 2, 3]);
-    fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
 fn restore_rebuilds_windows_and_per_window_views() {
     let dir = temp_dir("restore");
     let alpha = write_file(&dir, "alpha.txt", "alpha\nbeta\ngamma\n");
@@ -221,12 +118,10 @@ fn restore_rebuilds_windows_and_per_window_views() {
             SessionBuffer {
                 path: Some(alpha.clone()),
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(bravo.clone()),
                 id: None,
-                folds: None,
             },
         ],
         split(leaf(1, 0, 2, 3), leaf(2, 1, 1, 2)),
@@ -254,12 +149,10 @@ fn restore_skips_missing_buffers_and_repairs_focus() {
             SessionBuffer {
                 path: Some(missing),
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(alpha.clone()),
                 id: None,
-                folds: None,
             },
         ],
         split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
@@ -293,12 +186,10 @@ fn restore_clamps_out_of_range_views() {
             SessionBuffer {
                 path: Some(alpha.clone()),
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(bravo.clone()),
                 id: None,
-                folds: None,
             },
         ],
         split(
@@ -351,17 +242,14 @@ fn restore_collapses_nested_missing_leaves() {
             SessionBuffer {
                 path: Some(alpha.clone()),
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(missing),
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(bravo),
                 id: None,
-                folds: None,
             },
         ],
         windows,
@@ -389,7 +277,6 @@ fn restore_adopts_stored_buffer_ids() {
         vec![SessionBuffer {
             path: Some(alpha),
             id: Some("stable-id".to_string()),
-            folds: None,
         }],
         leaf(1, 0, 0, 0),
         1,
@@ -412,12 +299,10 @@ fn restore_keeps_an_empty_unnamed_buffer() {
             SessionBuffer {
                 path: None,
                 id: None,
-                folds: None,
             },
             SessionBuffer {
                 path: Some(alpha.clone()),
                 id: None,
-                folds: None,
             },
         ],
         split(leaf(1, 0, 0, 0), leaf(2, 1, 0, 0)),
@@ -482,7 +367,6 @@ fn restore_with_only_missing_buffers_falls_back_to_one_window() {
         vec![SessionBuffer {
             path: Some(missing),
             id: None,
-            folds: None,
         }],
         leaf(1, 0, 0, 0),
         1,
