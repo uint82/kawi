@@ -526,7 +526,7 @@ mod tests {
     fn keyguide_options_apply_and_query() {
         let mut app = app();
         assert!(app.keyguide_enabled);
-        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(150));
+        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(250));
         execute(&mut app, "set keyguide_delay=0");
         assert_eq!(app.keyguide_delay, std::time::Duration::ZERO);
         execute(&mut app, "set kgd?");
@@ -538,7 +538,7 @@ mod tests {
         execute(&mut app, "set keyguide&");
         execute(&mut app, "set keyguide_delay&");
         assert!(app.keyguide_enabled);
-        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(150));
+        assert_eq!(app.keyguide_delay, std::time::Duration::from_millis(250));
     }
 
     #[test]

@@ -41,7 +41,7 @@ The leader key is Space or Backslash.
 
 ## Key guidance
 
-Pending key sequences show an overlay with available followups. The overlay waits 150 milliseconds by default so fast sequences do not flash.
+Pending key sequences show an overlay with available followups. The overlay waits 250 milliseconds by default so fast sequences do not flash.
 
 - `:set keyguide` enables the overlay.
 - `:set nokeyguide` disables the overlay without disabling mappings.

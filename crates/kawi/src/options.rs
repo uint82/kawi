@@ -247,7 +247,7 @@ pub(crate) enum OptionError {
     },
 }
 
-pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 150;
+pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
 pub(crate) const OPTIONS: [OptionSpec; 38] = [
     OptionSpec {

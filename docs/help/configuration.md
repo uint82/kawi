@@ -52,7 +52,7 @@ Press Tab in command mode to complete commands, option names, option values, and
 Kawi shows a transient overlay for pending key sequences. The overlay lists the available followups and updates after each key.
 
 - `keyguide` controls the overlay and defaults to `true`.
-- `keyguide_delay` sets the delay in milliseconds and defaults to `150`. Set it to `0` for immediate display.
+- `keyguide_delay` sets the delay in milliseconds and defaults to `250`. Set it to `0` for immediate display.
 - The overlay covers leader menus and Vim sequences such as `dd`, `gg`, `ciw`, `g~`, `z`, and `[`.
 - Dynamic prefixes show a hint instead of a list, such as a target character for `f` or a register for `"`.
 - Disabling the overlay does not disable the leader key or any key mappings.
@@ -60,7 +60,7 @@ Kawi shows a transient overlay for pending key sequences. The overlay lists the 
 ```toml
 [editor]
 keyguide = true
-keyguide_delay = 150
+keyguide_delay = 250
 ```
 
 Helix has no leader or multi-key sequences, so the overlay does not appear there.

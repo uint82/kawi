@@ -105,7 +105,7 @@ foldmethod = "manual"
 foldcolumn = 1
 autosave = "off"
 keyguide = true
-keyguide_delay = 150
+keyguide_delay = 250
 ```
 
 Options can be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
