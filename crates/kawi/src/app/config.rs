@@ -58,6 +58,7 @@ impl App {
     }
 
     fn apply_config(&mut self, config: &crate::config::Config) {
+        self.statusline = config.statusline().clone();
         for (name, value) in config.values() {
             if matches!(*name, "shiftwidth" | "expandtab") {
                 continue;
