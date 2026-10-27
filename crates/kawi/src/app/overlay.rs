@@ -22,7 +22,7 @@ const MAX_LIST_WIDTH: usize = 50;
 pub(super) struct OverlayData<'a> {
     list: Option<ListData<'a>>,
     panel: Option<PanelData>,
-    leader: Option<leader::LeaderData>,
+    key_menu: Option<leader::KeyMenuData>,
 }
 
 struct ListData<'a> {
@@ -66,7 +66,7 @@ impl OverlayData<'_> {
                 lines: &panel.lines,
                 scroll: panel.scroll,
             }),
-            leader: self.leader.as_ref().map(leader::LeaderData::view),
+            key_menu: self.key_menu.as_ref().map(leader::KeyMenuData::view),
         }
     }
 }
@@ -130,7 +130,7 @@ impl App {
         Some(OverlayData {
             list: Some(list),
             panel,
-            leader: None,
+            key_menu: None,
         })
     }
 

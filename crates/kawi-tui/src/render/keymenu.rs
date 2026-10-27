@@ -6,10 +6,10 @@ use crossterm::{
 };
 use std::io::{Stdout, Write};
 
-use crate::frame::{LeaderColumn, LeaderMenu, LeaderRow};
+use crate::frame::{KeyColumn, KeyMenu, KeyRow};
 use crate::overlay::PANEL_BORDER;
 use crate::paint;
-use crate::text::{char_width, display_width, truncate_to_display_width};
+use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::Theme;
 
 use super::{clear_overlay_rect, draw_rounded_box, saturate_u16};
@@ -17,7 +17,7 @@ use super::{clear_overlay_rect, draw_rounded_box, saturate_u16};
 pub(super) fn draw(
     out: &mut Stdout,
     frame: &crate::frame::Frame,
-    menu: &LeaderMenu<'_>,
+    menu: &KeyMenu<'_>,
 ) -> Result<()> {
     clear_overlay_rect(out, menu.rect, frame.theme)?;
     draw_rounded_box(out, menu.rect, frame.theme)?;
@@ -37,7 +37,7 @@ pub(super) fn draw(
 
 struct LeaderSurface<'a> {
     theme: &'a Theme,
-    menu: &'a LeaderMenu<'a>,
+    menu: &'a KeyMenu<'a>,
     width: usize,
     height: usize,
 }
@@ -50,19 +50,34 @@ impl LeaderSurface<'_> {
             width: self.width,
         };
         title.draw(out)?;
+        let hint_rows = self.draw_hint(out)?;
         let columns = ColumnsRenderer {
             theme: self.theme,
             menu: self.menu,
             width: self.width,
-            height: self.height.saturating_sub(1),
+            height: self.height.saturating_sub(1).saturating_sub(hint_rows),
+            top: hint_rows,
         };
         columns.draw(out)
+    }
+
+    fn draw_hint(&self, out: &mut Stdout) -> Result<usize> {
+        let Some(hint) = self.menu.hint else {
+            return Ok(0);
+        };
+        let renderer = HintRenderer {
+            theme: self.theme,
+            menu: self.menu,
+            width: self.width,
+        };
+        renderer.draw(out, hint)?;
+        Ok(1)
     }
 }
 
 struct TitleRenderer<'a> {
     theme: &'a Theme,
-    menu: &'a LeaderMenu<'a>,
+    menu: &'a KeyMenu<'a>,
     width: usize,
 }
 
@@ -71,7 +86,7 @@ impl TitleRenderer<'_> {
         self.move_to(out)?;
         self.apply_style(out)?;
         let used = self.write_title(out)?;
-        execute!(out, SetAttribute(Attribute::Reset)).context("reset leader title")?;
+        execute!(out, SetAttribute(Attribute::Reset)).context("reset key menu title")?;
         self.apply_style(out)?;
         write_spaces(out, self.width.saturating_sub(used))?;
         paint::restore_base(out, self.theme)
@@ -80,7 +95,7 @@ impl TitleRenderer<'_> {
     fn move_to(&self, out: &mut Stdout) -> Result<()> {
         let x = self.menu.rect.x.saturating_add(PANEL_BORDER / 2);
         let y = self.menu.rect.y.saturating_add(PANEL_BORDER / 2);
-        execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to leader title")
+        execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to key menu title")
     }
 
     fn apply_style(&self, out: &mut Stdout) -> Result<()> {
@@ -88,39 +103,44 @@ impl TitleRenderer<'_> {
             out,
             self.theme.base.foreground,
             self.theme.float_background,
-            "apply leader title",
+            "apply key menu title",
         )?;
-        execute!(out, SetAttribute(Attribute::Bold)).context("apply leader title style")
+        execute!(out, SetAttribute(Attribute::Bold)).context("apply key menu title style")
     }
 
     fn write_title(&self, out: &mut Stdout) -> Result<usize> {
         let title = truncate_to_display_width(self.menu.title, self.width);
-        write!(out, "{title}").context("write leader title")?;
+        write!(out, "{title}").context("write key menu title")?;
         let used = display_width(title);
-        let Some(group) = self.menu.group else {
-            return Ok(used);
-        };
-        let group_width = char_width(group);
-        if used.saturating_add(1).saturating_add(group_width) > self.width {
+        if self.menu.breadcrumb.is_empty() {
             return Ok(used);
         }
-        write!(out, " ").context("write leader title gap")?;
+        let breadcrumb = truncate_to_display_width(
+            self.menu.breadcrumb,
+            self.width.saturating_sub(used.saturating_add(1)),
+        );
+        let breadcrumb_width = display_width(breadcrumb);
+        if breadcrumb_width == 0 {
+            return Ok(used);
+        }
+        write!(out, " ").context("write key menu title gap")?;
         paint::apply_colors(
             out,
-            leader_key_color(self.theme),
+            key_color(self.theme),
             self.theme.float_background,
-            "apply leader breadcrumb key",
+            "apply key menu breadcrumb",
         )?;
-        write!(out, "{group}").context("write leader breadcrumb key")?;
-        Ok(used.saturating_add(1).saturating_add(group_width))
+        write!(out, "{breadcrumb}").context("write key menu breadcrumb")?;
+        Ok(used.saturating_add(1).saturating_add(breadcrumb_width))
     }
 }
 
 struct ColumnsRenderer<'a> {
     theme: &'a Theme,
-    menu: &'a LeaderMenu<'a>,
+    menu: &'a KeyMenu<'a>,
     width: usize,
     height: usize,
+    top: usize,
 }
 
 impl ColumnsRenderer<'_> {
@@ -131,7 +151,7 @@ impl ColumnsRenderer<'_> {
         Ok(())
     }
 
-    fn draw_column(&self, out: &mut Stdout, column: &LeaderColumn) -> Result<()> {
+    fn draw_column(&self, out: &mut Stdout, column: &KeyColumn) -> Result<()> {
         let remaining = self.width.saturating_sub(column.offset);
         if remaining == 0 {
             return Ok(());
@@ -141,6 +161,7 @@ impl ColumnsRenderer<'_> {
             menu: self.menu,
             column,
             width: column.width.min(remaining),
+            top: self.top,
         };
         renderer.draw(out, self.height)
     }
@@ -148,9 +169,10 @@ impl ColumnsRenderer<'_> {
 
 struct ColumnRenderer<'a> {
     theme: &'a Theme,
-    menu: &'a LeaderMenu<'a>,
-    column: &'a LeaderColumn,
+    menu: &'a KeyMenu<'a>,
+    column: &'a KeyColumn,
     width: usize,
+    top: usize,
 }
 
 impl ColumnRenderer<'_> {
@@ -165,6 +187,7 @@ impl ColumnRenderer<'_> {
                 menu: self.menu,
                 column: self.column,
                 width: self.width,
+                top: self.top,
             };
             renderer.draw(out, *row, offset)?;
         }
@@ -174,13 +197,14 @@ impl ColumnRenderer<'_> {
 
 struct RowRenderer<'a> {
     theme: &'a Theme,
-    menu: &'a LeaderMenu<'a>,
-    column: &'a LeaderColumn,
+    menu: &'a KeyMenu<'a>,
+    column: &'a KeyColumn,
     width: usize,
+    top: usize,
 }
 
 impl RowRenderer<'_> {
-    fn draw(&self, out: &mut Stdout, row: LeaderRow<'_>, offset: usize) -> Result<()> {
+    fn draw(&self, out: &mut Stdout, row: KeyRow<'_>, offset: usize) -> Result<()> {
         self.move_to(out, offset)?;
         self.write_key(out, row)?;
         self.write_description(out, row.description)?;
@@ -200,24 +224,25 @@ impl RowRenderer<'_> {
             .y
             .saturating_add(PANEL_BORDER / 2)
             .saturating_add(1)
+            .saturating_add(self.top)
             .saturating_add(offset);
-        execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to leader row")
+        execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to key menu row")
     }
 
-    fn write_key(&self, out: &mut Stdout, row: LeaderRow<'_>) -> Result<()> {
+    fn write_key(&self, out: &mut Stdout, row: KeyRow<'_>) -> Result<()> {
         paint::apply_colors(
             out,
-            leader_key_color(self.theme),
+            key_color(self.theme),
             self.theme.float_background,
-            "apply leader key",
+            "apply key menu key",
         )?;
-        execute!(out, SetAttribute(Attribute::Bold)).context("apply leader key style")?;
+        execute!(out, SetAttribute(Attribute::Bold)).context("apply key menu key style")?;
         let label = row.key_label();
         let label = truncate_to_display_width(&label, self.width);
-        write!(out, "{label}").context("write leader key")?;
+        write!(out, "{label}").context("write key menu key")?;
         let description_offset = self.column.description_offset.min(self.width);
         write_spaces(out, description_offset.saturating_sub(display_width(label)))?;
-        execute!(out, SetAttribute(Attribute::Reset)).context("reset leader key")
+        execute!(out, SetAttribute(Attribute::Reset)).context("reset key menu key")
     }
 
     fn write_description(&self, out: &mut Stdout, description: &str) -> Result<()> {
@@ -225,23 +250,60 @@ impl RowRenderer<'_> {
             out,
             self.theme.base.foreground,
             self.theme.float_background,
-            "apply leader description",
+            "apply key menu description",
         )?;
         let description_offset = self.column.description_offset.min(self.width);
         let width = self.width.saturating_sub(description_offset);
         let text = truncate_to_display_width(description, width);
-        write!(out, "{text}").context("write leader description")?;
+        write!(out, "{text}").context("write key menu description")?;
         let used = description_offset.saturating_add(display_width(text));
         write_spaces(out, self.width.saturating_sub(used))
     }
 }
 
+struct HintRenderer<'a> {
+    theme: &'a Theme,
+    menu: &'a KeyMenu<'a>,
+    width: usize,
+}
+
+impl HintRenderer<'_> {
+    fn draw(&self, out: &mut Stdout, hint: &str) -> Result<()> {
+        self.move_to(out)?;
+        self.apply_style(out)?;
+        let text = truncate_to_display_width(hint, self.width);
+        write!(out, "{text}").context("write key menu hint")?;
+        write_spaces(out, self.width.saturating_sub(display_width(text)))?;
+        paint::restore_base(out, self.theme)
+    }
+
+    fn move_to(&self, out: &mut Stdout) -> Result<()> {
+        let x = self.menu.rect.x.saturating_add(PANEL_BORDER / 2);
+        let y = self
+            .menu
+            .rect
+            .y
+            .saturating_add(PANEL_BORDER / 2)
+            .saturating_add(1);
+        execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to key menu hint")
+    }
+
+    fn apply_style(&self, out: &mut Stdout) -> Result<()> {
+        paint::apply_colors(
+            out,
+            self.theme.base.foreground,
+            self.theme.float_background,
+            "apply key menu hint",
+        )
+    }
+}
+
 fn write_spaces(out: &mut Stdout, width: usize) -> Result<()> {
-    write!(out, "{}", " ".repeat(width)).context("write leader padding")?;
+    write!(out, "{}", " ".repeat(width)).context("write key menu padding")?;
     Ok(())
 }
 
-fn leader_key_color(theme: &Theme) -> Color {
+fn key_color(theme: &Theme) -> Color {
     theme
         .syntax
         .named("keyword")
@@ -261,7 +323,7 @@ mod tests {
             .named("keyword")
             .and_then(|style| style.foreground)
             .expect("keyword color");
-        assert_eq!(leader_key_color(&theme), expected);
-        assert_ne!(leader_key_color(&theme), theme.base.foreground);
+        assert_eq!(key_color(&theme), expected);
+        assert_ne!(key_color(&theme), theme.base.foreground);
     }
 }

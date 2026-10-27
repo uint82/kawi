@@ -17,9 +17,8 @@ fn app() -> App {
 
 fn items(app: &App) -> Vec<String> {
     let data = app.overlay_data().expect("overlay");
-    let leader = data.leader.as_ref().expect("leader");
-    leader
-        .rows
+    let menu = data.key_menu.as_ref().expect("key menu");
+    menu.rows
         .iter()
         .map(|row| format!("{}  {}", row.key_label(), row.description))
         .collect()
@@ -68,21 +67,21 @@ fn breadcrumb_tracks_the_active_group() {
     assert_eq!(
         app.overlay_data()
             .expect("overlay")
-            .leader
+            .key_menu
             .as_ref()
-            .expect("leader")
-            .group,
-        None
+            .expect("key menu")
+            .breadcrumb,
+        ""
     );
     app.handle_key(key(KeyCode::Char('f'))).expect("group");
     assert_eq!(
         app.overlay_data()
             .expect("overlay")
-            .leader
+            .key_menu
             .as_ref()
-            .expect("leader")
-            .group,
-        Some('f')
+            .expect("key menu")
+            .breadcrumb,
+        "f"
     );
 }
 
@@ -150,8 +149,8 @@ fn canceling_and_unknown_keys_dismiss_the_menu() {
 
 #[test]
 fn short_menus_use_one_column() {
-    let rows: Vec<LeaderRow> = ('a'..='j')
-        .map(|key| LeaderRow {
+    let rows: Vec<KeyRow> = ('a'..='j')
+        .map(|key| KeyRow {
             key,
             aliases: &[],
             description: "item",
@@ -164,8 +163,8 @@ fn short_menus_use_one_column() {
 
 #[test]
 fn growing_menus_use_two_columns() {
-    let rows: Vec<LeaderRow> = ('a'..='k')
-        .map(|key| LeaderRow {
+    let rows: Vec<KeyRow> = ('a'..='k')
+        .map(|key| KeyRow {
             key,
             aliases: &[],
             description: "item",
@@ -181,8 +180,8 @@ fn growing_menus_use_two_columns() {
 
 #[test]
 fn wide_two_column_menus_fall_back_to_one_column() {
-    let rows: Vec<LeaderRow> = ('a'..='k')
-        .map(|key| LeaderRow {
+    let rows: Vec<KeyRow> = ('a'..='k')
+        .map(|key| KeyRow {
             key,
             aliases: &[],
             description: "abcdefghijklmnopqrstuvwxyz1234",
@@ -195,19 +194,19 @@ fn wide_two_column_menus_fall_back_to_one_column() {
 #[test]
 fn menu_is_right_aligned_above_the_bottom_edge() {
     let rows = [
-        LeaderRow {
+        KeyRow {
             key: 'f',
             aliases: &[],
             description: "find",
         },
-        LeaderRow {
+        KeyRow {
             key: 'v',
             aliases: &[],
             description: "git",
         },
     ];
     let columns = leader_columns(&rows, 58);
-    let rect = leader_rect(Rect::new(0, 0, 80, 24), None, &columns);
+    let rect = leader_rect(Rect::new(0, 0, 80, 24), "", &columns);
     assert_eq!(rect.width, 9);
     assert_eq!(rect.height, 5);
     assert_eq!(rect.x, 70);
@@ -216,7 +215,7 @@ fn menu_is_right_aligned_above_the_bottom_edge() {
 
 #[test]
 fn aliases_widen_the_key_column() {
-    let rows = [LeaderRow {
+    let rows = [KeyRow {
         key: 'f',
         aliases: &['p'],
         description: "project files",

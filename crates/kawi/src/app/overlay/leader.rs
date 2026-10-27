@@ -1,6 +1,6 @@
-use kawi_tui::frame::{LeaderColumn, LeaderMenu, LeaderRow, Rect};
+use kawi_tui::frame::{KeyColumn, KeyMenu, KeyRow, Rect};
 use kawi_tui::overlay::PANEL_BORDER;
-use kawi_tui::text::{char_width, display_width};
+use kawi_tui::text::display_width;
 
 use super::super::App;
 use super::{OverlayData, MAX_LIST_WIDTH};
@@ -14,19 +14,20 @@ const RIGHT_MARGIN: usize = 1;
 const BOTTOM_MARGIN: usize = 1;
 const TITLE: &str = "Leader";
 
-pub(super) struct LeaderData {
+pub(super) struct KeyMenuData {
     rect: Rect,
-    group: Option<char>,
-    rows: Vec<LeaderRow<'static>>,
-    columns: Vec<LeaderColumn>,
+    breadcrumb: String,
+    rows: Vec<KeyRow<'static>>,
+    columns: Vec<KeyColumn>,
 }
 
-impl LeaderData {
-    pub(super) fn view(&self) -> LeaderMenu<'_> {
-        LeaderMenu {
+impl KeyMenuData {
+    pub(super) fn view(&self) -> KeyMenu<'_> {
+        KeyMenu {
             rect: self.rect,
             title: TITLE,
-            group: self.group,
+            breadcrumb: &self.breadcrumb,
+            hint: None,
             rows: &self.rows,
             columns: &self.columns,
         }
@@ -38,16 +39,16 @@ impl App {
         let path = self.keymap.leader_path()?;
         let visual = self.editor.mode().is_visual();
         let rows = leader_rows(path, visual);
-        let group = leader_group(path);
+        let breadcrumb = leader_breadcrumb(path);
         let area = self.window_area();
         let columns = leader_columns(&rows, leader_width_limit(area));
-        let rect = leader_rect(area, group, &columns);
+        let rect = leader_rect(area, &breadcrumb, &columns);
         Some(OverlayData {
             list: None,
             panel: None,
-            leader: Some(LeaderData {
+            key_menu: Some(KeyMenuData {
                 rect,
-                group,
+                breadcrumb,
                 rows,
                 columns,
             }),
@@ -55,7 +56,7 @@ impl App {
     }
 }
 
-fn leader_rows(path: LeaderPath, visual: bool) -> Vec<LeaderRow<'static>> {
+fn leader_rows(path: LeaderPath, visual: bool) -> Vec<KeyRow<'static>> {
     match path {
         LeaderPath::Root => leader::groups(visual)
             .map(|group| leader_row(group.key, &[], group.label))
@@ -68,26 +69,22 @@ fn leader_rows(path: LeaderPath, visual: bool) -> Vec<LeaderRow<'static>> {
     }
 }
 
-fn leader_group(path: LeaderPath) -> Option<char> {
+fn leader_breadcrumb(path: LeaderPath) -> String {
     match path {
-        LeaderPath::Root => None,
-        LeaderPath::Group(group) => Some(group.key),
+        LeaderPath::Root => String::new(),
+        LeaderPath::Group(group) => group.key.to_string(),
     }
 }
 
-fn leader_row(
-    key: char,
-    aliases: &'static [char],
-    description: &'static str,
-) -> LeaderRow<'static> {
-    LeaderRow {
+fn leader_row(key: char, aliases: &'static [char], description: &'static str) -> KeyRow<'static> {
+    KeyRow {
         key,
         aliases,
         description,
     }
 }
 
-fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn> {
+fn leader_columns(rows: &[KeyRow<'_>], max_width: usize) -> Vec<KeyColumn> {
     let key_width = leader_key_width(rows);
     let single = build_columns(rows, 1, key_width);
     if rows.len() <= SINGLE_COLUMN_LIMIT {
@@ -101,15 +98,11 @@ fn leader_columns(rows: &[LeaderRow<'_>], max_width: usize) -> Vec<LeaderColumn>
     }
 }
 
-fn leader_key_width(rows: &[LeaderRow<'_>]) -> usize {
-    rows.iter()
-        .map(LeaderRow::key_width)
-        .max()
-        .unwrap_or(1)
-        .max(1)
+fn leader_key_width(rows: &[KeyRow<'_>]) -> usize {
+    rows.iter().map(KeyRow::key_width).max().unwrap_or(1).max(1)
 }
 
-fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<LeaderColumn> {
+fn build_columns(rows: &[KeyRow<'_>], count: usize, key_width: usize) -> Vec<KeyColumn> {
     let per_column = rows.len().div_ceil(count).max(1);
     let description_offset = key_width.saturating_add(KEY_DESCRIPTION_GAP);
     let mut offset = 0;
@@ -122,7 +115,7 @@ fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<
                 .max()
                 .unwrap_or(0);
             let width = description_offset.saturating_add(description_width);
-            let column = LeaderColumn {
+            let column = KeyColumn {
                 start: index.saturating_mul(per_column),
                 len: chunk.len(),
                 offset,
@@ -136,7 +129,7 @@ fn build_columns(rows: &[LeaderRow<'_>], count: usize, key_width: usize) -> Vec<
         .collect()
 }
 
-fn leader_content_width(columns: &[LeaderColumn]) -> usize {
+fn leader_content_width(columns: &[KeyColumn]) -> usize {
     columns
         .last()
         .map(|column| column.offset.saturating_add(column.width))
@@ -150,10 +143,11 @@ fn leader_width_limit(area: Rect) -> usize {
         .max(1)
 }
 
-fn leader_rect(area: Rect, group: Option<char>, columns: &[LeaderColumn]) -> Rect {
-    let title_width = display_width(TITLE).saturating_add(match group {
-        Some(key) => char_width(key).saturating_add(1),
-        None => 0,
+fn leader_rect(area: Rect, breadcrumb: &str, columns: &[KeyColumn]) -> Rect {
+    let title_width = display_width(TITLE).saturating_add(if breadcrumb.is_empty() {
+        0
+    } else {
+        display_width(breadcrumb).saturating_add(1)
     });
     let content_width = leader_content_width(columns).max(title_width);
     let rows_height = columns.iter().map(|column| column.len).max().unwrap_or(0);
