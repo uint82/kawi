@@ -9,7 +9,7 @@ Kawi supports process plugins that communicate over JSON-RPC 2.0. Plugins are tr
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
 
-Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes; network scopes and older ABI filesystem scopes remain advisory until the WebAssembly runtime ships.
+Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes. A feature-gated WebAssembly runtime adds component inspection, manifest-bound component hashes, and a deny-by-default WIT contract. Network scopes and older ABI filesystem scopes remain advisory until WebAssembly execution is enabled.
 
 Each plugin lives in its own directory:
 
@@ -68,6 +68,7 @@ The plugin name is the namespace. The command above is `example.format`, and you
 - `:plugin restart` restarts every plugin process.
 - `:plugin restart example` restarts one plugin and clears its crash backoff.
 - `:plugin logs` shows all plugin logs.
+- `:plugin inspect <plugin>` shows the runtime, component hash, request hash, requested capabilities, and WASM imports when the `wasm` feature is enabled.
 - `:plugin logs example` shows one plugin's log.
 
 Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
