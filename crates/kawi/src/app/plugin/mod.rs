@@ -1,3 +1,4 @@
+mod coalesce;
 mod commands;
 mod diagnostics;
 mod events;
@@ -6,7 +7,7 @@ mod invoke;
 mod load;
 mod notify;
 
-use self::notify::PendingBufferEvent;
+use self::coalesce::PendingBufferEvent;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc::Receiver;
