@@ -69,19 +69,13 @@ impl App {
                 return Ok(Some(false));
             }
         };
-        let Some(none) = self.commands.find("none") else {
-            return Ok(Some(false));
-        };
         for keys in sequences {
-            let existing = self.keymaps.has_binding(mode, &keys);
-            self.keymaps.unbind(mode, &keys);
-            self.keymaps
-                .bind(Binding::new(none, mode, keys.clone(), BindingSource::User));
-            if existing {
-                self.show_message(format!("unmapped {} {}", mode.name(), keys));
-            } else {
-                self.show_message(format!("disabled built-in {} {}", mode.name(), keys));
+            if !self.keymaps.has_binding(mode, &keys) {
+                self.show_message(format!("E31: No such mapping: {} {}", mode.name(), keys));
+                continue;
             }
+            self.keymaps.unbind(mode, &keys);
+            self.show_message(format!("unmapped {} {}", mode.name(), keys));
         }
         Ok(Some(false))
     }

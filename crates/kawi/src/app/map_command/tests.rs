@@ -198,12 +198,7 @@ fn runtime_leader_mapping_covers_every_leader() {
     execute(&mut app, "nmap <leader>gz picker.files");
     assert_eq!(app.keymaps.bindings().len(), 2);
     execute(&mut app, "nunmap <leader>gz");
-    assert_eq!(app.keymaps.bindings().len(), 2);
-    assert!(app
-        .keymaps
-        .bindings()
-        .iter()
-        .all(|binding| binding.command == command(&app, "none")));
+    assert!(app.keymaps.bindings().is_empty());
 }
 
 #[test]
@@ -260,7 +255,7 @@ fn registers_survive_mapping_passthrough() {
 #[test]
 fn none_suppresses_the_builtin_leader() {
     let mut app = app();
-    execute(&mut app, "nunmap <leader>ff");
+    execute(&mut app, "nmap <leader>ff none");
     app.handle_key(key(' ')).unwrap();
     app.handle_key(key('f')).unwrap();
     app.handle_key(key('f')).unwrap();
@@ -276,7 +271,7 @@ fn unmap_reports_user_and_builtin_mappings() {
     execute(&mut app, "nunmap <leader>ff");
     assert!(app
         .last_message()
-        .is_some_and(|message| message.contains("disabled built-in")));
+        .is_some_and(|message| message.contains("No such mapping")));
 }
 
 #[test]
