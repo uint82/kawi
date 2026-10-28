@@ -45,6 +45,18 @@ def main():
         elif method == "invoke_command":
             params = message.get("params", {})
             name = (params.get("args") or {}).get("name", "world")
+            if params.get("command") == "hello":
+                host_id = 900
+                write_message({
+                    "jsonrpc": "2.0",
+                    "id": host_id,
+                    "method": "ui.message",
+                    "params": {"message": f"pong {name}"},
+                })
+                while True:
+                    reply = read_message()
+                    if reply is None or reply.get("id") == host_id:
+                        break
             write_message({
                 "jsonrpc": "2.0",
                 "id": message["id"],

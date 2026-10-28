@@ -12,3 +12,11 @@ description = "Return a pong message"
 
 [commands.keybindings]
 normal = ["<leader>pp"]
+
+[[commands]]
+id = "hello"
+title = "Say hello"
+description = "Show a message through the host"
+
+[commands.keybindings]
+normal = ["<leader>ph"]
