@@ -37,14 +37,6 @@ fn plain_char(key: KeyEvent) -> Option<char> {
     }
 }
 
-fn is_space_leader(key: KeyEvent) -> bool {
-    key.code == KeyCode::Char(' ') && !has_ctrl_or_alt(key)
-}
-
-fn is_backslash_leader(key: KeyEvent) -> bool {
-    key.code == KeyCode::Char('\\') && !has_ctrl_or_alt(key)
-}
-
 fn insert_control_action(key: KeyEvent) -> Option<Action> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -199,19 +191,32 @@ pub struct VimKeymap {
     insert_register: bool,
     register_display: Option<String>,
     showcmd: Option<String>,
-    leader_space: bool,
+    leaders: Vec<crate::keymap::KeyChord>,
+    leader_pending: bool,
+    leader_group: Option<char>,
 }
 
 impl VimKeymap {
     pub fn new() -> Self {
+        Self::with_leaders(crate::keymap::default_leaders())
+    }
+
+    pub fn with_leaders(leaders: Vec<crate::keymap::KeyChord>) -> Self {
         Self {
             pending: String::new(),
             last_find: None,
             insert_register: false,
             register_display: None,
             showcmd: None,
-            leader_space: false,
+            leaders,
+            leader_pending: false,
+            leader_group: None,
         }
+    }
+
+    fn is_leader_key(&self, key: KeyEvent) -> bool {
+        self.leaders
+            .contains(&crate::keymap::KeyChord::from_event(key))
     }
 
     fn map_insert(&mut self, key: KeyEvent) -> Action {
@@ -267,18 +272,20 @@ impl VimKeymap {
     }
 
     fn map_normal(&mut self, key: KeyEvent) -> Action {
-        if self.leader_space {
-            self.leader_space = false;
-            if is_space_leader(key) {
+        if self.leader_pending {
+            self.leader_pending = false;
+            if self.is_leader_key(key) {
                 return self.cancel_sequence();
             }
             if let Some(prefix) = plain_char(key) {
                 if group(prefix).is_some() {
-                    self.pending.push(' ');
-                    self.pending.push(prefix);
+                    self.leader_group = Some(prefix);
                     return Action::Noop;
                 }
             }
+        }
+        if self.leader_group.is_some() {
+            return self.resolve_leader_pending(key);
         }
         if let Some(action) = jump_action(key) {
             self.clear_pending();
@@ -296,12 +303,8 @@ impl VimKeymap {
     }
 
     fn map_normal_fresh(&mut self, key: KeyEvent) -> Action {
-        if is_space_leader(key) {
-            self.leader_space = true;
-            return Action::Noop;
-        }
-        if is_backslash_leader(key) {
-            self.pending.push('\\');
+        if self.is_leader_key(key) {
+            self.leader_pending = true;
             return Action::Noop;
         }
         if key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -436,7 +439,8 @@ impl VimKeymap {
 
     fn clear_pending(&mut self) {
         self.pending.clear();
-        self.leader_space = false;
+        self.leader_pending = false;
+        self.leader_group = None;
     }
 
     fn pending_key(&self) -> Option<&str> {
@@ -1251,18 +1255,20 @@ impl VimKeymap {
     }
 
     fn map_visual_mode(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if self.leader_space {
-            self.leader_space = false;
-            if is_space_leader(key) {
+        if self.leader_pending {
+            self.leader_pending = false;
+            if self.is_leader_key(key) {
                 return self.cancel_sequence();
             }
             if let Some(prefix) = plain_char(key) {
                 if group(prefix).is_some_and(|group| group.visual) {
-                    self.pending.push(' ');
-                    self.pending.push(prefix);
+                    self.leader_group = Some(prefix);
                     return Action::Noop;
                 }
             }
+        }
+        if self.leader_group.is_some() {
+            return self.resolve_leader_pending(key);
         }
         if let Some(action) = scroll_action(key) {
             self.clear_pending();
@@ -1275,12 +1281,8 @@ impl VimKeymap {
     }
 
     fn map_visual_fresh(&mut self, key: KeyEvent, mode: Mode) -> Action {
-        if is_space_leader(key) {
-            self.leader_space = true;
-            return Action::Noop;
-        }
-        if is_backslash_leader(key) {
-            self.pending.push('\\');
+        if self.is_leader_key(key) {
+            self.leader_pending = true;
             return Action::Noop;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -1696,14 +1698,25 @@ impl Keymap for VimKeymap {
     }
 
     fn is_leader_prefix(&self, key: KeyEvent, mode: Mode) -> bool {
-        mode.is_normal_state() && (is_space_leader(key) || is_backslash_leader(key))
+        mode.is_normal_state() && self.is_leader_key(key)
+    }
+
+    fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+            || self.insert_register
+            || self.leader_pending
+            || self.leader_group.is_some()
+    }
+
+    fn set_leaders(&mut self, leaders: Vec<crate::keymap::KeyChord>) {
+        self.leaders = leaders;
+        self.clear_pending();
     }
 
     fn reset_pending(&mut self) {
         self.clear_pending();
         self.register_display = None;
         self.showcmd = None;
-        self.leader_space = false;
     }
 }
 
@@ -3854,6 +3867,26 @@ mod tests {
             Action::CancelPending
         );
         assert_eq!(map.pending_text(), None);
+    }
+
+    #[test]
+    fn custom_leader_runs_leader_actions() {
+        let comma = crate::keymap::KeyChord::from_event(plain(KeyCode::Char(',')));
+        let mut map = VimKeymap::with_leaders(vec![comma]);
+        assert!(!map.is_leader_prefix(plain(KeyCode::Char(' ')), Mode::Normal));
+        assert_eq!(
+            map.map(plain(KeyCode::Char(',')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(map.leader_path(), Some(LeaderPath::Root));
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::Noop
+        );
+        assert_eq!(
+            map.map(plain(KeyCode::Char('f')), Mode::Normal),
+            Action::OpenFilePicker
+        );
     }
 
     #[test]

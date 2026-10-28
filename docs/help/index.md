@@ -1,7 +1,7 @@
 ---
 title = "Kawi Help"
 aliases = ["home"]
-related = ["getting-started", "features", "keybindings", "configuration", "themes"]
+related = ["getting-started", "features", "keybindings", "keymaps", "configuration", "themes"]
 ---
 # Kawi Help
 
@@ -12,6 +12,7 @@ Kawi is a terminal editor built around modal editing, language servers, fast pic
 - [Getting started](help:getting-started)
 - [Features](help:features)
 - [Keybindings](help:keybindings)
+- [Keymaps](help:keymaps)
 - [Project explorer](help:explorer)
 - [Directory buffers](help:directory)
 - [Configuration](help:configuration)

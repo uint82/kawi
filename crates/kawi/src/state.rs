@@ -10,6 +10,7 @@ use crate::persist::write_atomically;
 pub struct StatePaths {
     pub config: PathBuf,
     pub config_log: PathBuf,
+    pub keymaps: PathBuf,
     pub languages: PathBuf,
     pub tasks: PathBuf,
     pub themes: PathBuf,
@@ -28,6 +29,7 @@ impl StatePaths {
         Some(Self {
             config: config.join("kawi/config.toml"),
             config_log: state.join("kawi/config.log"),
+            keymaps: config.join("kawi/keymaps.toml"),
             languages: config.join("kawi/languages.toml"),
             tasks: config.join("kawi/tasks.toml"),
             themes: config.join("kawi/themes"),
@@ -110,6 +112,7 @@ mod tests {
         StatePaths {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
+            keymaps: dir.join("keymaps.toml"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

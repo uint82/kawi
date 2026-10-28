@@ -2,7 +2,7 @@ use kawi_editor::{BufferOptionDefaults, WindowOptions};
 use kawi_lsp::LanguageWarning;
 
 use super::App;
-use crate::keymap::Flavor;
+use crate::keymap::{Flavor, Keymap};
 use crate::options::OptionValue;
 use crate::state::{self, StatePaths};
 
@@ -14,16 +14,16 @@ impl App {
         self.theme_dir = Some(paths.themes.clone());
         kawi_syntax::set_user_query_dir(paths.queries.clone());
         let loaded = crate::config::load(&paths.config);
+        let keymap_load = crate::keymap::config::load(&paths.keymaps, &self.commands);
+        self.keymaps_path = Some(paths.keymaps.clone());
         let language_warnings = self.lsp.load(&paths.languages, self.events.wake());
         let task_load = kawi_task::load(&paths.tasks);
         let mut tasks = task_load.tasks;
         let mut warnings = startup_warning_lines(
-            &loaded.warnings,
-            &paths.config,
-            &language_warnings,
-            &paths.languages,
-            &task_load.warnings,
-            &paths.tasks,
+            (&loaded.warnings, &paths.config),
+            (&keymap_load.warnings, &paths.keymaps),
+            (&language_warnings, &paths.languages),
+            (&task_load.warnings, &paths.tasks),
         );
         let project_tasks = self.project_tasks_path();
         if project_tasks != paths.tasks {
@@ -42,6 +42,7 @@ impl App {
         }
         self.set_tasks(tasks);
         self.undo.configure(paths.undo.clone());
+        self.apply_keymaps(keymap_load);
         self.apply_config(&loaded.config);
         self.refresh_command_completion();
         self.undo.spawn_prune();
@@ -51,6 +52,13 @@ impl App {
         state::load(&mut self.editor, &paths);
         self.sync_language_settings();
         self.sync_undo_histories();
+    }
+
+    pub(super) fn apply_keymaps(&mut self, load: crate::keymap::config::KeymapLoad) {
+        self.leaders = load.leader.clone();
+        self.keymap.set_leaders(load.leader);
+        self.keymaps.set_timeout(load.timeout);
+        self.keymaps.set_bindings(load.bindings);
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
@@ -111,27 +119,24 @@ fn default_int(name: &str) -> usize {
 }
 
 fn startup_warning_lines(
-    config_warnings: &[crate::config::ConfigWarning],
-    config_path: &std::path::Path,
-    language_warnings: &[LanguageWarning],
-    language_path: &std::path::Path,
-    task_warnings: &[kawi_task::TaskWarning],
-    task_path: &std::path::Path,
+    config: (&[crate::config::ConfigWarning], &std::path::Path),
+    keymaps: (&[crate::config::ConfigWarning], &std::path::Path),
+    languages: (&[LanguageWarning], &std::path::Path),
+    tasks: (&[kawi_task::TaskWarning], &std::path::Path),
 ) -> Vec<String> {
-    let mut lines = config_warnings
+    let mut lines = config
+        .0
         .iter()
-        .map(|warning| warning.format(config_path))
+        .map(|warning| warning.format(config.1))
         .collect::<Vec<_>>();
+    lines.extend(keymaps.0.iter().map(|warning| warning.format(keymaps.1)));
     lines.extend(
-        language_warnings
+        languages
+            .0
             .iter()
-            .map(|warning| warning.format(language_path)),
+            .map(|warning| warning.format(languages.1)),
     );
-    lines.extend(
-        task_warnings
-            .iter()
-            .map(|warning| warning.format(task_path)),
-    );
+    lines.extend(tasks.0.iter().map(|warning| warning.format(tasks.1)));
     lines
 }
 
@@ -300,28 +305,31 @@ undo_exclude = ["*.gpg"]
     fn startup_warnings_include_every_configuration_source() {
         let dir = temp_dir("warning_lines");
         let config_path = dir.join("config.toml");
+        let keymaps_path = dir.join("keymaps.toml");
         let languages_path = dir.join("languages.toml");
         let tasks_path = dir.join("tasks.toml");
         fs::write(&config_path, "[editor]\nshiftwidth = \"wide\"\n").unwrap();
+        fs::write(&keymaps_path, "[normal]\n\"gx\" = \"missing.command\"\n").unwrap();
         fs::write(&tasks_path, "[task.bad]\nargs = [\"x\"]\n").unwrap();
         let loaded = config::load(&config_path);
+        let keymap_load =
+            crate::keymap::config::load(&keymaps_path, &crate::command::CommandRegistry::new());
         let language_warnings =
             vec![
                 LanguageWarning::new("language rust: expandtab must be a boolean").at_line(Some(3)),
             ];
         let task_load = kawi_task::load(&tasks_path);
         let lines = startup_warning_lines(
-            &loaded.warnings,
-            &config_path,
-            &language_warnings,
-            &languages_path,
-            &task_load.warnings,
-            &tasks_path,
+            (&loaded.warnings, &config_path),
+            (&keymap_load.warnings, &keymaps_path),
+            (&language_warnings, &languages_path),
+            (&task_load.warnings, &tasks_path),
         );
-        assert_eq!(lines.len(), 3);
+        assert_eq!(lines.len(), 4);
         assert!(lines[0].starts_with(&config_path.display().to_string()));
-        assert!(lines[1].starts_with(&format!("{}:3:", languages_path.display())));
-        assert!(lines[2].contains("rejected missing command"));
+        assert!(lines[1].contains("unknown command"));
+        assert!(lines[2].starts_with(&format!("{}:3:", languages_path.display())));
+        assert!(lines[3].contains("rejected missing command"));
         let _ = fs::remove_dir_all(dir);
     }
 

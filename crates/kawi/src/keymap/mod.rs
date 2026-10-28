@@ -1,3 +1,14 @@
+mod binding;
+mod chord;
+pub(crate) mod config;
+mod resolver;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use binding::{Binding, BindingSource, KeyContext};
+pub(crate) use chord::{KeyChord, KeyCodeSpec, KeySequence};
+pub(crate) use resolver::{KeymapResolver, ResolveOutcome};
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use kawi_editor::Action;
@@ -33,6 +44,22 @@ pub trait Keymap {
     }
 
     fn reset_pending(&mut self) {}
+
+    fn has_pending(&self) -> bool {
+        false
+    }
+
+    fn set_leaders(&mut self, _leaders: Vec<KeyChord>) {}
+}
+
+pub(crate) fn default_leaders() -> Vec<KeyChord> {
+    [
+        KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE),
+    ]
+    .into_iter()
+    .map(KeyChord::from_event)
+    .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +155,20 @@ impl Keymap for ActiveKeymap {
             Self::Helix(inner) => inner.reset_pending(),
         }
     }
+
+    fn has_pending(&self) -> bool {
+        match self {
+            Self::Vim(inner) => inner.has_pending(),
+            Self::Helix(inner) => inner.has_pending(),
+        }
+    }
+
+    fn set_leaders(&mut self, leaders: Vec<KeyChord>) {
+        match self {
+            Self::Vim(inner) => inner.set_leaders(leaders),
+            Self::Helix(inner) => inner.set_leaders(leaders),
+        }
+    }
 }
 
 pub fn normalize_interrupt(key: KeyEvent) -> KeyEvent {
@@ -195,36 +236,4 @@ fn map_search_char(key: KeyEvent, c: char) -> Action {
         return Action::Noop;
     }
     Action::PushSearchChar(c)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn names_resolve_flavors() {
-        assert_eq!(flavor_from_name("vim"), Some(Flavor::Vim));
-        assert_eq!(flavor_from_name("helix"), Some(Flavor::Helix));
-    }
-
-    #[test]
-    fn unknown_name_resolves_none() {
-        assert_eq!(flavor_from_name("personal"), None);
-        assert_eq!(flavor_from_name(""), None);
-    }
-
-    #[test]
-    fn interrupt_becomes_plain_esc() {
-        let interrupt = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(
-            normalize_interrupt(interrupt),
-            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
-        );
-    }
-
-    #[test]
-    fn other_keys_pass_through() {
-        let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
-        assert_eq!(normalize_interrupt(key), key);
-    }
 }

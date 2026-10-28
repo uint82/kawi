@@ -6,27 +6,16 @@ use crate::leader::{self, LeaderPath};
 
 impl VimKeymap {
     pub(super) fn leader_prefix_armed(&self) -> bool {
-        self.pending_leader_path().is_some()
+        self.leader_pending || self.leader_group.is_some()
     }
 
     pub(super) fn pending_leader_path(&self) -> Option<LeaderPath> {
-        if self.leader_space {
+        if self.leader_pending {
             return Some(LeaderPath::Root);
         }
-        let mut pending = self.pending.chars();
-        if !matches!(pending.next(), Some(' ' | '\\')) {
-            return None;
-        }
-        let rest = pending.as_str();
-        if rest.is_empty() {
-            return Some(LeaderPath::Root);
-        }
-        let mut group = rest.chars();
-        let key = group.next()?;
-        if group.next().is_some() {
-            return None;
-        }
-        leader::group(key).map(LeaderPath::Group)
+        self.leader_group
+            .and_then(leader::group)
+            .map(LeaderPath::Group)
     }
 
     pub(super) fn resolve_leader_pending(&mut self, key: KeyEvent) -> Action {
@@ -52,11 +41,8 @@ impl VimKeymap {
         if leader::group(key).is_none() {
             return self.cancel_sequence();
         }
-        if self.leader_space {
-            self.leader_space = false;
-            self.pending.push(' ');
-        }
-        self.pending.push(key);
+        self.leader_pending = false;
+        self.leader_group = Some(key);
         Action::Noop
     }
 }

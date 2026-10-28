@@ -29,6 +29,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Tasks and terminals.** Project task runner, task output, cancellation, and horizontal or vertical terminal panels.
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
+- **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.
@@ -86,7 +87,7 @@ Kawi currently uses a Vim-style keymap. Helix and Emacs keymaps are in progress 
 | `Ctrl-w` | Window prefix |
 | `Ctrl-t` | Return from a help link |
 
-The leader key is Space or Backslash. See the [keybindings guide](docs/help/keybindings.md) for leader groups and additional commands.
+The default leader keys are Space and Backslash. Change them or add your own mappings in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. See the [keybindings guide](docs/help/keybindings.md) and the [keymap guide](docs/help/keymaps.md) for details.
 
 ## Configuration
 
@@ -113,7 +114,7 @@ keyguide_delay = 250
 
 Options can be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
 
-Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom themes belong in `$XDG_CONFIG_HOME/kawi/themes`.
+Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Custom themes belong in `$XDG_CONFIG_HOME/kawi/themes`.
 
 See the [configuration guide](docs/help/configuration.md) and [theme guide](docs/help/themes.md) for details.
 
@@ -122,6 +123,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Getting started](docs/help/getting-started.md)
 - [Features](docs/help/features.md)
 - [Keybindings](docs/help/keybindings.md)
+- [Keymaps](docs/help/keymaps.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
 - [Troubleshooting](docs/help/troubleshooting.md)

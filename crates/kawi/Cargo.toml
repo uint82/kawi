@@ -27,6 +27,7 @@ serde_json.workspace = true
 sha2.workspace = true
 ropey = "1.6.1"
 similar = "2"
+toml.workspace = true
 toml_edit.workspace = true
 anyhow.workspace = true
 crossterm.workspace = true
