@@ -2398,6 +2398,7 @@ fn file_error_message(error: kawi_editor::EditError) -> String {
         kawi_editor::EditError::MarkNotSet => "E20: Mark not set".to_string(),
         kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
         kawi_editor::EditError::InvalidEdit => "E474: Invalid text edit".to_string(),
+        kawi_editor::EditError::StaleRevision => "E474: Stale buffer revision".to_string(),
     }
 }
 
