@@ -38,11 +38,23 @@ impl KeyContext {
     }
 }
 
+#[allow(dead_code)]
+// TODO: construct these sources when built-in and plugin bindings are loaded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum BindingSource {
     Default,
     Plugin,
     User,
+}
+
+impl BindingSource {
+    pub(crate) fn priority(self) -> u8 {
+        match self {
+            Self::Default => 0,
+            Self::Plugin => 1,
+            Self::User => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

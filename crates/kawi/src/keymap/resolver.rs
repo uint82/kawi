@@ -51,7 +51,7 @@ impl KeymapResolver {
             .iter()
             .position(|item| item.mode == binding.mode && item.keys == binding.keys)
         {
-            if self.bindings[index].source > binding.source {
+            if self.bindings[index].source.priority() > binding.source.priority() {
                 return;
             }
             self.bindings[index] = binding;
@@ -67,11 +67,6 @@ impl KeymapResolver {
         self.clear_pending();
     }
 
-    pub(crate) fn clear_bindings(&mut self) {
-        self.bindings.clear();
-        self.clear_pending();
-    }
-
     pub(crate) fn feed(
         &mut self,
         key: KeyChord,
@@ -84,11 +79,12 @@ impl KeymapResolver {
         let mut candidate = self.pending.clone();
         candidate.push(key);
         if !self.has_prefix(context, &candidate) {
-            self.clear_pending();
-            if candidate.len() == 1 {
+            if self.pending.is_empty() {
                 return ResolveOutcome::Passthrough;
             }
-            return ResolveOutcome::Fallback(candidate);
+            let keys = std::mem::take(&mut self.pending);
+            self.clear_pending();
+            return ResolveOutcome::Fallback(keys);
         }
         self.pending_context = Some(context);
         let exact = self.exact_binding(context, &candidate).cloned();
@@ -143,7 +139,7 @@ impl KeymapResolver {
         self.bindings
             .iter()
             .rev()
-            .find(|binding| binding.mode == context && binding.keys.chords() == keys)
+            .find(|binding| binding.matches(context, keys))
     }
 
     fn has_prefix(&self, context: KeyContext, keys: &[KeyChord]) -> bool {

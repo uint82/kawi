@@ -5,7 +5,6 @@ use kawi_editor::Mode;
 
 use super::super::*;
 use super::{binding, plain, registry};
-use crate::command::CommandRegistry;
 
 #[test]
 fn resolver_prefers_complete_matches() {
@@ -60,9 +59,8 @@ fn resolver_replays_mismatched_prefixes() {
     );
     match outcome {
         ResolveOutcome::Fallback(keys) => {
-            assert_eq!(keys.len(), 2);
+            assert_eq!(keys.len(), 1);
             assert_eq!(keys[0].code, KeyCodeSpec::Char('g'));
-            assert_eq!(keys[1].code, KeyCodeSpec::Char('z'));
         }
         other => panic!("unexpected outcome: {other:?}"),
     }
@@ -183,7 +181,7 @@ fn resolver_clears_bindings() {
         "gx",
         BindingSource::User,
     ));
-    resolver.clear_bindings();
+    resolver.set_bindings(Vec::new());
     assert!(resolver.bindings().is_empty());
 }
 

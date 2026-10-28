@@ -81,6 +81,9 @@ impl KeyChord {
     pub(super) fn new(code: KeyCodeSpec, ctrl: bool, alt: bool, shift: bool) -> Self {
         let (code, shift) = if shift {
             match code {
+                KeyCodeSpec::Char(character) if character.is_ascii_lowercase() => {
+                    (KeyCodeSpec::Char(character.to_ascii_uppercase()), false)
+                }
                 KeyCodeSpec::Char(_) | KeyCodeSpec::BackTab => (code, false),
                 KeyCodeSpec::Tab => (KeyCodeSpec::BackTab, false),
                 _ => (code, true),

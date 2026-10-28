@@ -1,3 +1,4 @@
+mod config;
 mod resolver;
 
 use super::*;
@@ -86,4 +87,12 @@ fn sequence_round_trips_through_display() {
     let text = keys.to_string();
     let parsed = KeySequence::parse(&text, &[]).expect("sequence");
     assert_eq!(keys, parsed);
+}
+
+#[test]
+fn canonicalizes_shifted_lowercase_characters() {
+    let event = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::SHIFT);
+    let chord = KeyChord::from_event(event);
+    assert_eq!(chord.code, KeyCodeSpec::Char('A'));
+    assert!(!chord.shift);
 }
