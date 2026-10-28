@@ -202,6 +202,8 @@ Event names:
 
 `origin` is one of `user`, `undo`, `plugin:<name>`, or `external_reload`. A plugin does not receive its own `plugin:<name>` edits by default.
 
+`diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision.
+
 Events are post-hoc notifications. They never wait for a plugin response. Kawi does not implement `will_save` in version 1. Use `file_saved` and invoke a command for format-on-save behavior.
 
 Notifications and requests share one ordered pipe per plugin. Ordering is guaranteed per plugin and per event type. `editor.get_state` always returns live state and includes the current revision.
