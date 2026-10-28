@@ -1,9 +1,18 @@
 use std::fmt;
 
+mod events;
+
+pub use events::{
+    event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent,
+    DiagnosticSummary, DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, ModeChangedEvent,
+    EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD, ORIGIN_UNDO, ORIGIN_USER,
+};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const PROTOCOL_VERSION: u64 = 1;
+pub const PROTOCOL_MINOR: u64 = 1;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
 pub const HOST_METHODS: [&str; 3] = ["editor.get_state", "editor.apply_edit", "ui.message"];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
@@ -85,10 +94,12 @@ pub struct InvokeParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeParams {
     pub protocol_version: u64,
+    pub protocol_minor: u64,
     pub host: HostInfo,
     pub position_encoding: String,
     pub host_capabilities: Vec<String>,
     pub plugin_capabilities: Vec<String>,
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,10 +111,14 @@ pub struct HostInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeResult {
     pub protocol_version: u64,
+    #[serde(default)]
+    pub protocol_minor: u64,
     pub name: String,
     pub version: String,
     pub plugin_capabilities: Vec<String>,
     pub host_capabilities: Vec<String>,
+    #[serde(default)]
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

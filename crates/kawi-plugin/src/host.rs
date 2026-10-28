@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::error::PluginError;
 use crate::manifest::PluginCatalog;
-use crate::process::{start_worker, WorkerCommand, WorkerHandle};
+use crate::process::{start_worker, NotifyOutcome, WorkerCommand, WorkerHandle};
 use crate::protocol::{InvocationContext, RpcError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ impl PluginHost {
         events: Sender<PluginHostEvent>,
         wake: Sender<()>,
     ) -> Self {
-        let workers = catalog
+        let workers: HashMap<String, WorkerHandle> = catalog
             .plugins
             .iter()
             .cloned()
@@ -64,10 +64,43 @@ impl PluginHost {
                 (name, worker)
             })
             .collect();
+        for plugin in &catalog.plugins {
+            if plugin
+                .manifest
+                .activation_events
+                .iter()
+                .any(|event| event.event == "on_startup")
+            {
+                if let Some(worker) = workers.get(&plugin.manifest.name) {
+                    let _ = worker.activate();
+                }
+            }
+        }
         Self {
             workers,
             next_request: AtomicU64::new(1),
         }
+    }
+
+    pub fn notify(
+        &self,
+        plugin: &str,
+        event: &str,
+        payload: Value,
+    ) -> Result<NotifyOutcome, PluginError> {
+        let worker = self
+            .workers
+            .get(plugin)
+            .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        Ok(worker.notify(event, payload))
+    }
+
+    pub fn activate(&self, plugin: &str) -> Result<(), PluginError> {
+        let worker = self
+            .workers
+            .get(plugin)
+            .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        worker.activate()
     }
 
     pub fn invoke(

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -25,6 +26,7 @@ pub(super) struct Worker {
     wake: Sender<()>,
     writer: WriterSlot,
     status: Arc<Mutex<PluginStatus>>,
+    event_filter: Arc<Mutex<BTreeSet<String>>>,
     timeout: Duration,
     connection: Option<Connection>,
     backoff: Backoff,
@@ -37,6 +39,7 @@ impl Worker {
         wake: Sender<()>,
         writer: WriterSlot,
         status: Arc<Mutex<PluginStatus>>,
+        event_filter: Arc<Mutex<BTreeSet<String>>>,
     ) -> Self {
         let timeout = Duration::from_millis(plugin.manifest.timeout_ms);
         Self {
@@ -45,6 +48,7 @@ impl Worker {
             wake,
             writer,
             status,
+            event_filter,
             timeout,
             connection: None,
             backoff: Backoff::new(),
@@ -54,6 +58,7 @@ impl Worker {
     pub(super) fn run(mut self, commands: std::sync::mpsc::Receiver<WorkerCommand>) {
         while let Ok(command) = commands.recv() {
             match command {
+                WorkerCommand::Activate => self.activate(),
                 WorkerCommand::Invoke {
                     request,
                     command,
@@ -70,6 +75,24 @@ impl Worker {
             }
         }
         self.shutdown();
+    }
+
+    fn activate(&mut self) {
+        if self.connection.is_some() {
+            return;
+        }
+        if let Err(error) = self.start_connection() {
+            self.backoff.record_failure();
+            self.update_status(&Err(error.clone()));
+            send_event(
+                &self.events,
+                &self.wake,
+                PluginHostEvent::Log {
+                    plugin: self.plugin.manifest.name.clone(),
+                    line: error.to_string(),
+                },
+            );
+        }
     }
 
     fn handle_invocation(&mut self, job: InvocationJob) {
@@ -120,6 +143,7 @@ impl Worker {
             &self.wake,
             Arc::clone(&self.writer),
             self.timeout,
+            Arc::clone(&self.event_filter),
         )?;
         if let Err(error) = connection.initialize() {
             connection.shutdown();

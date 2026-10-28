@@ -16,6 +16,7 @@ use crate::manifest::LoadedPlugin;
 use crate::protocol::{error_response_value, response_value, InvocationContext, RpcError};
 
 pub(crate) enum WorkerCommand {
+    Activate,
     Invoke {
         request: u64,
         command: String,
@@ -30,9 +31,49 @@ pub(crate) struct WorkerHandle {
     pub(crate) commands: Sender<WorkerCommand>,
     writer: WriterSlot,
     status: Arc<Mutex<PluginStatus>>,
+    event_filter: Arc<Mutex<std::collections::BTreeSet<String>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotifyOutcome {
+    Queued,
+    NotRunning,
+    NotSubscribed,
+    Overflow,
 }
 
 impl WorkerHandle {
+    pub(crate) fn activate(&self) -> Result<(), PluginError> {
+        self.commands
+            .send(WorkerCommand::Activate)
+            .map_err(|_| PluginError::ProcessExited)
+    }
+
+    pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
+        if !crate::protocol::EVENT_NAMES.contains(&event)
+            || !self
+                .event_filter
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .contains(event)
+        {
+            return NotifyOutcome::NotSubscribed;
+        }
+        let writer = self
+            .writer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let Some(writer) = writer else {
+            return NotifyOutcome::NotRunning;
+        };
+        match writer.try_send(crate::protocol::event_value(event, payload)) {
+            Ok(()) => NotifyOutcome::Queued,
+            Err(std::sync::mpsc::TrySendError::Full(_)) => NotifyOutcome::Overflow,
+            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => NotifyOutcome::NotRunning,
+        }
+    }
+
     pub(crate) fn respond(
         &self,
         id: Value,
@@ -48,7 +89,7 @@ impl WorkerHandle {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
             .ok_or(PluginError::ProcessExited)?;
-        writer.send(message).map_err(|_| PluginError::ProcessExited)
+        writer.try_send(message).map_err(|_| PluginError::QueueFull)
     }
 
     pub(crate) fn status(&self) -> PluginStatus {
@@ -67,10 +108,14 @@ pub(crate) fn start_worker(
     let (commands, receiver) = mpsc::channel();
     let writer = Arc::new(Mutex::new(None));
     let status = Arc::new(Mutex::new(PluginStatus::Stopped));
+    let event_filter = Arc::new(Mutex::new(
+        plugin.manifest.subscribes.iter().cloned().collect(),
+    ));
     let handle = WorkerHandle {
         commands,
         writer: Arc::clone(&writer),
         status: Arc::clone(&status),
+        event_filter: Arc::clone(&event_filter),
     };
     let name = plugin.manifest.name.clone();
     let error_events = events.clone();
@@ -79,7 +124,7 @@ pub(crate) fn start_worker(
     let spawn = thread::Builder::new()
         .name(format!("kawi-plugin-{name}"))
         .spawn(move || {
-            Worker::new(plugin, events, wake, writer, status).run(receiver);
+            Worker::new(plugin, events, wake, writer, status, event_filter).run(receiver);
         });
     if let Err(error) = spawn {
         set_status(
