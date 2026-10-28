@@ -26,6 +26,13 @@ impl CapabilityRegistry {
             .unwrap_or_default()
     }
 
+    pub fn snapshot(&self) -> BTreeMap<String, EffectiveCapabilities> {
+        self.grants
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+
     pub fn has(&self, plugin: &str, capability: Capability) -> bool {
         self.grants
             .read()

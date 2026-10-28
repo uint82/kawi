@@ -278,11 +278,16 @@ impl App {
     }
 
     fn completion_menu(&self) -> Option<CompletionMenu<'_>> {
-        self.conflict
-            .as_ref()
-            .map(|session| CompletionMenu {
-                items: session.items(),
-                selected: session.selected(),
+        self.grant_prompt_items()
+            .map(|(items, selected)| CompletionMenu {
+                items,
+                selected: Some(selected),
+            })
+            .or_else(|| {
+                self.conflict.as_ref().map(|session| CompletionMenu {
+                    items: session.items(),
+                    selected: session.selected(),
+                })
             })
             .or_else(|| {
                 self.code_actions.as_ref().map(|session| CompletionMenu {
@@ -296,7 +301,6 @@ impl App {
                     .map(|(items, selected)| CompletionMenu { items, selected })
             })
     }
-
     pub(crate) fn frame_selection(&self) -> Option<Selection> {
         if self.editor.mode() == Mode::VisualBlock {
             let (top, left, bottom, right, ragged) = self.editor.block_bounds()?;

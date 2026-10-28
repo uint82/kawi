@@ -19,9 +19,12 @@ impl PluginRuntime {
     pub(super) fn sync_plugin_state(
         &mut self,
         editor: &mut kawi_editor::Editor,
-        problems: &crate::app::problems::Problems,
+        problems: &mut crate::app::problems::Problems,
     ) {
-        self.sync_open_buffers(editor);
+        let closed = self.sync_open_buffers(editor);
+        for path in closed {
+            problems.clear_plugin_paths(&path);
+        }
         self.sync_mode(editor);
         self.sync_diagnostics(editor, problems);
         let changes = editor.take_buffer_changes();
@@ -72,7 +75,7 @@ impl PluginRuntime {
         );
     }
 
-    fn sync_open_buffers(&mut self, editor: &kawi_editor::Editor) {
+    fn sync_open_buffers(&mut self, editor: &kawi_editor::Editor) -> Vec<std::path::PathBuf> {
         let infos = editor.buffer_infos();
         let mut current = BTreeMap::new();
         for info in infos {
@@ -88,7 +91,11 @@ impl PluginRuntime {
             .filter(|(number, _)| !current.contains_key(number))
             .map(|(number, info)| (*number, info.path.clone()))
             .collect::<Vec<_>>();
+        let mut closed_paths = Vec::new();
         for (number, path) in closed {
+            if let Some(path) = path.as_deref() {
+                closed_paths.push(std::path::PathBuf::from(path));
+            }
             self.notify_event(
                 "buffer_closed",
                 serde_json::to_value(BufferClosedEvent {
@@ -99,6 +106,7 @@ impl PluginRuntime {
             );
         }
         self.known_buffers = current;
+        closed_paths
     }
 
     fn publish_buffer_opened(&mut self, info: &BufferInfo) {

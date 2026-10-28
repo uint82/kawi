@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use kawi_buffer::Buffer;
 use kawi_editor::Action;
 use kawi_plugin::{
-    ApplyEditParams, GetStateParams, Position, ProtocolTextEdit, INVALID_POSITION, STALE_REVISION,
+    ApplyEditParams, DiagnosticSummary, GetStateParams, Position, ProtocolTextEdit,
+    SetDiagnosticsParams, INVALID_PARAMS, INVALID_POSITION, STALE_REVISION,
 };
 use serde_json::json;
 
@@ -77,7 +78,7 @@ fn get_state_uses_utf8_byte_columns() {
     app.editor.apply(Action::MoveRight);
     let params = serde_json::to_value(GetStateParams { include_text: true }).unwrap();
     let value = app
-        .handle_plugin_request("editor.get_state", params)
+        .handle_plugin_request("test", "editor.get_state", params)
         .unwrap();
     assert_eq!(value["text"], "héllo");
     assert_eq!(value["cursor"]["line"], 0);
@@ -105,7 +106,11 @@ fn applies_edits_at_the_current_revision() {
         }],
     };
     let value = app
-        .handle_plugin_request("editor.apply_edit", serde_json::to_value(params).unwrap())
+        .handle_plugin_request(
+            "test",
+            "editor.apply_edit",
+            serde_json::to_value(params).unwrap(),
+        )
         .unwrap();
     assert_eq!(app.editor.text_lines(), vec!["hillo"]);
     assert_eq!(value["revision"], revision + 1);
@@ -120,7 +125,11 @@ fn rejects_stale_revisions_and_split_code_points() {
         edits: Vec::new(),
     };
     let error = app
-        .handle_plugin_request("editor.apply_edit", serde_json::to_value(stale).unwrap())
+        .handle_plugin_request(
+            "test",
+            "editor.apply_edit",
+            serde_json::to_value(stale).unwrap(),
+        )
         .unwrap_err();
     assert_eq!(error.code, STALE_REVISION);
     assert_eq!(app.editor.text_lines(), vec!["alpha"]);
@@ -132,6 +141,7 @@ fn rejects_stale_revisions_and_split_code_points() {
     };
     let error = app
         .handle_plugin_request(
+            "test",
             "editor.apply_edit",
             serde_json::to_value(wrong_buffer).unwrap(),
         )
@@ -158,7 +168,11 @@ fn rejects_stale_revisions_and_split_code_points() {
             }],
         };
         let error = app
-            .handle_plugin_request("editor.apply_edit", serde_json::to_value(split).unwrap())
+            .handle_plugin_request(
+                "test",
+                "editor.apply_edit",
+                serde_json::to_value(split).unwrap(),
+            )
             .unwrap_err();
         assert_eq!(error.code, INVALID_POSITION, "{text}");
         assert_eq!(app.editor.text_lines(), vec![text], "{text}");
@@ -184,7 +198,7 @@ fn broken_manifest_warns_and_keeps_good_plugins() {
 fn returns_method_not_found_for_unknown_host_methods() {
     let mut app = app();
     let error = app
-        .handle_plugin_request("editor.unknown", json!({}))
+        .handle_plugin_request("test", "editor.unknown", json!({}))
         .unwrap_err();
     assert_eq!(error.code, kawi_plugin::METHOD_NOT_FOUND);
 }
@@ -265,4 +279,320 @@ fn trim_plugin_applies_a_real_edit() {
     }
     assert_eq!(app.editor.document_snapshot().to_string(), "alpha\nbeta\n");
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn publishes_scoped_diagnostics_for_the_current_revision() {
+    let dir = temp_dir("diagnostics");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\nbeta\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    let revision = app.editor.buffer_revision();
+    let params = SetDiagnosticsParams {
+        buffer: app.editor.buffer_number() as u64,
+        revision,
+        diagnostics: vec![DiagnosticSummary {
+            start: Position {
+                line: 0,
+                byte_column: 0,
+            },
+            end: Position {
+                line: 0,
+                byte_column: 5,
+            },
+            severity: "warning".to_string(),
+            message: "check this".to_string(),
+            source: Some("spoofed".to_string()),
+            code: Some("W1".to_string()),
+        }],
+    };
+    app.handle_plugin_request(
+        "lint",
+        "editor.set_diagnostics",
+        serde_json::to_value(params).unwrap(),
+    )
+    .unwrap();
+    let published = app.problems.problems_for_path(&path);
+    assert_eq!(published.len(), 1);
+    assert_eq!(published[0].source, "plugin:lint");
+    assert_eq!(published[0].provider.as_deref(), Some("lint"));
+    assert_eq!(published[0].message, "check this");
+
+    app.handle_plugin_request(
+        "lint",
+        "editor.set_diagnostics",
+        json!({
+            "buffer": app.editor.buffer_number(),
+            "revision": app.editor.buffer_revision(),
+            "diagnostics": []
+        }),
+    )
+    .unwrap();
+    assert!(app.problems.problems_for_path(&path).is_empty());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rejects_unknown_diagnostic_severities_and_stale_revisions() {
+    let dir = temp_dir("diagnostics_invalid");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    let params = json!({
+        "buffer": app.editor.buffer_number(),
+        "revision": app.editor.buffer_revision(),
+        "diagnostics": [{
+            "start": {"line": 0, "byte_column": 0},
+            "end": {"line": 0, "byte_column": 1},
+            "severity": "fatal",
+            "message": "bad",
+            "source": null,
+            "code": null
+        }]
+    });
+    let error = app
+        .handle_plugin_request("lint", "editor.set_diagnostics", params.clone())
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
+
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            json!({
+                "buffer": app.editor.buffer_number(),
+                "revision": 999,
+                "diagnostics": []
+            }),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, STALE_REVISION);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn plugin_diagnostics_are_scoped_to_their_source() {
+    let dir = temp_dir("diagnostics_scope");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    publish_diagnostic(&mut app, "one", 0, 0, 0, 1);
+    publish_diagnostic(&mut app, "two", 0, 0, 0, 1);
+    assert_eq!(app.problems.problems_for_path(&path).len(), 2);
+    clear_diagnostics(&mut app, "one");
+    let remaining = app.problems.problems_for_path(&path);
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].source, "plugin:two");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn diagnostics_reject_invalid_positions_and_oversized_messages() {
+    let dir = temp_dir("diagnostics_limits");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "aé\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            json!({
+                "buffer": app.editor.buffer_number(),
+                "revision": app.editor.buffer_revision(),
+                "diagnostics": [{
+                    "start": {"line": 0, "byte_column": 2},
+                    "end": {"line": 0, "byte_column": 3},
+                    "severity": "error",
+                    "message": "split",
+                    "source": null,
+                    "code": null
+                }]
+            }),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_POSITION);
+
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            json!({
+                "buffer": app.editor.buffer_number(),
+                "revision": app.editor.buffer_revision(),
+                "diagnostics": [{
+                    "start": {"line": 99, "byte_column": 0},
+                    "end": {"line": 99, "byte_column": 1},
+                    "severity": "error",
+                    "message": "out of range",
+                    "source": null,
+                    "code": null
+                }]
+            }),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_POSITION);
+
+    let too_many = (0..1_001)
+        .map(|_| {
+            json!({
+                "start": {"line": 0, "byte_column": 0},
+                "end": {"line": 0, "byte_column": 1},
+                "severity": "error",
+                "message": "many",
+                "source": null,
+                "code": null
+            })
+        })
+        .collect::<Vec<_>>();
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            diagnostics_params(&app, too_many),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
+
+    let message = "x".repeat(4_097);
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            json!({
+                "buffer": app.editor.buffer_number(),
+                "revision": app.editor.buffer_revision(),
+                "diagnostics": [{
+                    "start": {"line": 0, "byte_column": 0},
+                    "end": {"line": 0, "byte_column": 1},
+                    "severity": "error",
+                    "message": message,
+                    "source": null,
+                    "code": null
+                }]
+            }),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn diagnostic_publish_calls_are_rate_limited() {
+    let dir = temp_dir("diagnostics_rate");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    for _ in 0..20 {
+        assert!(clear_diagnostics(&mut app, "lint"));
+    }
+    let error = app
+        .handle_plugin_request(
+            "lint",
+            "editor.set_diagnostics",
+            diagnostics_params(&app, Vec::new()),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn closing_a_buffer_clears_plugin_diagnostics() {
+    let dir = temp_dir("diagnostics_close");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    app.poll_plugins();
+    publish_diagnostic(&mut app, "lint", 0, 0, 0, 1);
+    assert_eq!(app.problems.problems_for_path(&path).len(), 1);
+    let number = app.editor.buffer_number();
+    app.editor.close_buffer(number, true).unwrap();
+    app.poll_plugins();
+    assert!(app.problems.problems_for_path(&path).is_empty());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+fn publish_diagnostic(
+    app: &mut App,
+    plugin: &str,
+    start_column: u64,
+    end_column: u64,
+    line: u64,
+    end_line: u64,
+) {
+    let params = json!({
+        "buffer": app.editor.buffer_number(),
+        "revision": app.editor.buffer_revision(),
+        "diagnostics": [{
+            "start": {"line": line, "byte_column": start_column},
+            "end": {"line": end_line, "byte_column": end_column},
+            "severity": "warning",
+            "message": "check",
+            "source": null,
+            "code": null
+        }]
+    });
+    app.handle_plugin_request(plugin, "editor.set_diagnostics", params)
+        .unwrap();
+}
+
+fn clear_diagnostics(app: &mut App, plugin: &str) -> bool {
+    app.handle_plugin_request(
+        plugin,
+        "editor.set_diagnostics",
+        diagnostics_params(app, Vec::new()),
+    )
+    .is_ok()
+}
+
+fn diagnostics_params(app: &App, diagnostics: Vec<serde_json::Value>) -> serde_json::Value {
+    json!({
+        "buffer": app.editor.buffer_number(),
+        "revision": app.editor.buffer_revision(),
+        "diagnostics": diagnostics
+    })
+}
+
+#[test]
+fn stopping_a_plugin_clears_its_diagnostics() {
+    let dir = temp_dir("diagnostics_stop");
+    let path = dir.join("alpha.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    publish_diagnostic(&mut app, "lint", 0, 0, 0, 1);
+    assert_eq!(app.problems.problems_for_path(&path).len(), 1);
+    for status in [
+        kawi_plugin::PluginStatus::Stopped,
+        kawi_plugin::PluginStatus::Disabled,
+        kawi_plugin::PluginStatus::Error("crashed".to_string()),
+    ] {
+        publish_diagnostic(&mut app, "lint", 0, 0, 0, 1);
+        app.handle_plugin_event(kawi_plugin::PluginHostEvent::StatusChanged {
+            plugin: "lint".to_string(),
+            status,
+        });
+        assert!(app.problems.problems_for_path(&path).is_empty());
+    }
+    fs::remove_dir_all(dir).unwrap();
 }

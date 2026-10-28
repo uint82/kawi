@@ -28,6 +28,8 @@ pub struct EffectiveCapabilities {
     pub stale: Vec<Capability>,
     pub warnings: Vec<String>,
     pub changed: bool,
+    pub changed_requests: Vec<String>,
+    pub changed_capabilities: Vec<Capability>,
 }
 
 impl EffectiveCapabilities {
@@ -91,6 +93,9 @@ pub fn effective(
         .is_some_and(|hash| hash != &requests.request_hash())
     {
         result.changed = true;
+        let (labels, capabilities) = changed_requests(requests, &grants);
+        result.changed_requests = labels;
+        result.changed_capabilities = capabilities;
         result
             .warnings
             .push("request hash changed; grants withheld".to_string());
@@ -132,6 +137,33 @@ pub fn effective(
     result.missing.sort_by_key(|capability| capability.name());
     result.stale.sort_by_key(|capability| capability.name());
     result
+}
+
+fn changed_requests(
+    requests: &CapabilityRequests,
+    grants: &BTreeMap<Capability, Scope>,
+) -> (Vec<String>, Vec<Capability>) {
+    let mut labels = Vec::new();
+    let mut capabilities = Vec::new();
+    for (capability, requested) in requests.iter() {
+        if capability.is_default() {
+            continue;
+        }
+        match grants.get(&capability) {
+            None => {
+                labels.push(format!("{} added", capability.name()));
+                capabilities.push(capability);
+            }
+            Some(granted) => match intersect_scope(requested, granted) {
+                Some(scope) if !scope_is_partial(requested, &scope) => {}
+                _ => {
+                    labels.push(format!("{} widened", capability.name()));
+                    capabilities.push(capability);
+                }
+            },
+        }
+    }
+    (labels, capabilities)
 }
 
 fn withhold_grants(

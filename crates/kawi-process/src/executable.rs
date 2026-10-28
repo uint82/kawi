@@ -1,5 +1,7 @@
 use std::env;
 use std::ffi::OsStr;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 pub fn find_executable(command: &str) -> Option<PathBuf> {
@@ -43,6 +45,89 @@ fn is_executable(path: &Path) -> bool {
     {
         true
     }
+}
+
+#[cfg(unix)]
+pub fn executable_interpreter(path: &Path) -> Option<PathBuf> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut ident = [0u8; 16];
+    file.read_exact(&mut ident).ok()?;
+    if &ident[..4] != b"\x7fELF" || ident[5] != 1 {
+        return None;
+    }
+    match ident[4] {
+        1 => elf32_interpreter(&mut file),
+        2 => elf64_interpreter(&mut file),
+        _ => None,
+    }
+}
+
+#[cfg(not(unix))]
+pub fn executable_interpreter(_path: &Path) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(unix)]
+fn elf64_interpreter(file: &mut std::fs::File) -> Option<PathBuf> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut header = [0u8; 64];
+    file.seek(SeekFrom::Start(0)).ok()?;
+    file.read_exact(&mut header).ok()?;
+    let phoff = u64::from_le_bytes(header[32..40].try_into().ok()?);
+    let phentsize = u16::from_le_bytes(header[54..56].try_into().ok()?);
+    let phnum = u16::from_le_bytes(header[56..58].try_into().ok()?);
+    read_interpreter(file, phoff, phentsize, phnum, 8)
+}
+
+#[cfg(unix)]
+fn elf32_interpreter(file: &mut std::fs::File) -> Option<PathBuf> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut header = [0u8; 52];
+    file.seek(SeekFrom::Start(0)).ok()?;
+    file.read_exact(&mut header).ok()?;
+    let phoff = u64::from(u32::from_le_bytes(header[28..32].try_into().ok()?));
+    let phentsize = u16::from_le_bytes(header[42..44].try_into().ok()?);
+    let phnum = u16::from_le_bytes(header[44..46].try_into().ok()?);
+    read_interpreter(file, phoff, phentsize, phnum, 4)
+}
+
+#[cfg(unix)]
+fn read_interpreter(
+    file: &mut std::fs::File,
+    phoff: u64,
+    phentsize: u16,
+    phnum: u16,
+    offset_size: usize,
+) -> Option<PathBuf> {
+    use std::io::{Read, Seek, SeekFrom};
+    const PT_INTERP: u32 = 3;
+    let mut entry = vec![0u8; phentsize as usize];
+    for index in 0..phnum as u64 {
+        file.seek(SeekFrom::Start(phoff + index * phentsize as u64))
+            .ok()?;
+        file.read_exact(&mut entry).ok()?;
+        let kind = u32::from_le_bytes(entry[0..4].try_into().ok()?);
+        if kind != PT_INTERP {
+            continue;
+        }
+        let (offset, size) = match offset_size {
+            8 => (
+                u64::from_le_bytes(entry[8..16].try_into().ok()?),
+                u64::from_le_bytes(entry[32..40].try_into().ok()?),
+            ),
+            _ => (
+                u64::from(u32::from_le_bytes(entry[4..8].try_into().ok()?)),
+                u64::from(u32::from_le_bytes(entry[16..20].try_into().ok()?)),
+            ),
+        };
+        let mut bytes = vec![0u8; usize::try_from(size).ok()?];
+        file.seek(SeekFrom::Start(offset)).ok()?;
+        file.read_exact(&mut bytes).ok()?;
+        let text = bytes.split(|byte| *byte == 0).next()?;
+        return Some(PathBuf::from(std::ffi::OsStr::from_bytes(text)));
+    }
+    None
 }
 
 #[cfg(test)]

@@ -115,6 +115,8 @@ fn handle_invoke(
             }
         }
         "host-call" => host_call(message, reader, stdout)?,
+        "read-file" => read_file(message, stdout)?,
+        "exec" => exec_command(message, stdout)?,
         _ => respond(stdout, message, json!({"echo": message.get("params")}))?,
     }
     Ok(())
@@ -148,6 +150,34 @@ fn host_call(
         );
     }
     Ok(())
+}
+
+fn read_file(message: &Value, stdout: &mut impl Write) -> Result<()> {
+    let path = message
+        .get("params")
+        .and_then(|params| params.get("args"))
+        .and_then(|args| args.get("path"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("missing path"))?;
+    let result = match std::fs::read_to_string(path) {
+        Ok(content) => json!({"content": content}),
+        Err(error) => json!({"error": error.to_string()}),
+    };
+    respond(stdout, message, result)
+}
+
+fn exec_command(message: &Value, stdout: &mut impl Write) -> Result<()> {
+    let path = message
+        .get("params")
+        .and_then(|params| params.get("args"))
+        .and_then(|args| args.get("path"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("missing path"))?;
+    let result = match std::process::Command::new(path).status() {
+        Ok(status) => json!({"success": status.success()}),
+        Err(error) => json!({"error": error.to_string()}),
+    };
+    respond(stdout, message, result)
 }
 
 fn marker_exists(name: &str) -> bool {

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use kawi_plugin::{load_catalog, NotifyOutcome, PluginHost, PluginStatus};
+use kawi_plugin::{load_catalog, HostEnvironment, NotifyOutcome, PluginHost, PluginStatus};
 
 use super::common::*;
 
@@ -100,7 +100,8 @@ fn activation_starts_a_plugin_without_a_command() {
     assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
     let (event_tx, _events) = mpsc::channel();
     let (wake, _wake_rx) = mpsc::channel();
-    let host = PluginHost::start(&catalog, registry(), event_tx, wake);
+    let environment = HostEnvironment::from_paths(Some(root.clone()), None);
+    let host = PluginHost::start(&catalog, registry(), environment, event_tx, wake);
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     while host.status("fake") != Some(PluginStatus::Ready) && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(10));

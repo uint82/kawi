@@ -1,5 +1,6 @@
 pub mod capability;
 
+mod environment;
 mod error;
 mod host;
 mod manifest;
@@ -11,6 +12,7 @@ pub use capability::{
     is_event_allowed, is_host_method_allowed, load_permission_state, Capability,
     CapabilityRegistry, EffectiveCapabilities, MethodCapability, PermissionState, Scope,
 };
+pub use environment::HostEnvironment;
 pub use error::PluginError;
 pub use host::{PluginHost, PluginHostEvent, PluginStatus};
 pub use manifest::{
@@ -23,9 +25,9 @@ pub use protocol::{
     BufferClosedEvent, BufferOpenedEvent, DiagnosticSummary, DiagnosticsChangedEvent,
     FileOpenedEvent, FileSavedEvent, GetStateParams, GetStateResult, InitializeParams,
     InitializeResult, InvocationContext, InvokeParams, ModeChangedEvent, Position,
-    ProtocolTextEdit, RpcError, Selection, UiMessageParams, CAPABILITY_DENIED, EVENT_NAMES,
-    HOST_METHODS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_POSITION, INVALID_REQUEST,
-    METHOD_NOT_FOUND, ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER, PARSE_ERROR,
-    PLUGIN_ERROR, PLUGIN_UNAVAILABLE, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
-    REQUEST_CANCELED, STALE_REVISION,
+    ProtocolTextEdit, RpcError, Selection, SetDiagnosticsParams, UiMessageParams,
+    CAPABILITY_DENIED, EVENT_NAMES, HOST_METHODS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_POSITION,
+    INVALID_REQUEST, METHOD_NOT_FOUND, ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO,
+    ORIGIN_USER, PARSE_ERROR, PLUGIN_ERROR, PLUGIN_UNAVAILABLE, POSITION_ENCODING, PROTOCOL_MINOR,
+    PROTOCOL_VERSION, REQUEST_CANCELED, STALE_REVISION,
 };

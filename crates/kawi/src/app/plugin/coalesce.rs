@@ -198,6 +198,7 @@ impl PluginRuntime {
 
     pub(super) fn clear_plugin_state(&mut self, plugin: &str) {
         self.pending_activation_events.remove(plugin);
+        self.diagnostic_windows.remove(plugin);
         self.pending.retain(|(name, _), _| name.as_str() != plugin);
         self.last_delivered
             .retain(|(name, _), _| name.as_str() != plugin);

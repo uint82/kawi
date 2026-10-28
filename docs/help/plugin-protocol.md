@@ -5,11 +5,11 @@ related = ["plugins", "plugin-capabilities", "configuration", "keymaps"]
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins will implement the same contract in a later release.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its granted events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins will implement the same contract in a later release.
 
 ## Trust model
 
-Process plugins run with the full permissions of the user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities; see [Plugin capabilities](help:plugin-capabilities).
+Process plugins run as your user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to granted scopes; see [Plugin capabilities](help:plugin-capabilities).
 
 Each plugin lives in its own directory:
 
@@ -99,8 +99,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 1,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "ui.message"],
+    "protocol_minor": 2,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.set_diagnostics", "ui.message"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -115,11 +115,11 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 1,
+    "protocol_minor": 2,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "ui.message"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.set_diagnostics", "ui.message"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -210,7 +210,7 @@ Notifications and requests share one ordered pipe per plugin. Ordering is guaran
 
 Each plugin has a bounded event queue. Kawi coalesces or debounces `buffer_changed`; other events are dropped with a log line when the queue is full. An overflow marks the buffer for resync, so the next delivered change has `full_resync: true`. A crash or restart clears queued events and forces resync.
 
-Kawi currently sends diagnostics to plugins. Plugin-published diagnostics are reserved for a future minor version as `editor.set_diagnostics`, scoped by plugin name.
+Kawi sends diagnostics to plugins and accepts plugin-published diagnostics through `editor.set_diagnostics`, scoped by plugin name.
 
 ## Positions
 
@@ -274,6 +274,31 @@ Result:
 ```
 
 Edits are applied atomically. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010` and leaves the buffer unchanged. Edits must not overlap.
+
+### editor.set_diagnostics
+
+Request params:
+
+```json
+{
+  "buffer": 1,
+  "revision": 12,
+  "diagnostics": [
+    {
+      "start": {"line": 4, "byte_column": 0},
+      "end": {"line": 4, "byte_column": 5},
+      "severity": "warning",
+      "message": "unused binding",
+      "source": null,
+      "code": "W1"
+    }
+  ]
+}
+```
+
+Result is `null`.
+
+`buffer` must be the current buffer and `revision` must match its current revision; otherwise Kawi returns `-32010`. The buffer must have a file path. Kawi replaces that plugin's diagnostics for the buffer; an empty array clears them. Severity is `error`, `warning`, `information`, or `hint`. Kawi ignores the supplied `source` and derives the displayed source from the plugin name, so a plugin cannot spoof another provider. Kawi accepts at most 1000 diagnostics per call, messages up to 4096 bytes, and codes up to 256 bytes. Publishing is limited to 20 calls per plugin per second.
 
 ### ui.message
 

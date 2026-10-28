@@ -12,6 +12,7 @@ use super::file_ops::{path_under, rewrite_path};
 const MAX_PROBLEMS: usize = 10_000;
 const TASK_PREFIX: &str = "task:";
 const LSP_PREFIX: &str = "lsp:";
+const PLUGIN_PREFIX: &str = "plugin:";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum ProblemSeverity {
@@ -386,6 +387,24 @@ impl Problems {
         self.clear_source(&lsp_source(server));
     }
 
+    pub(super) fn clear_plugin(&mut self, plugin: &str) {
+        self.clear_source(&plugin_source(plugin));
+    }
+
+    pub(super) fn clear_plugin_paths(&mut self, path: &Path) {
+        self.groups
+            .retain(|key, _| !key.source.starts_with(PLUGIN_PREFIX) || key.path != path);
+    }
+
+    pub(super) fn replace_plugin(&mut self, plugin: &str, path: &Path, problems: Vec<Problem>) {
+        let key = GroupKey {
+            source: plugin_source(plugin),
+            path: path.to_path_buf(),
+        };
+        self.ensure_source_rank(&key.source);
+        self.replace_group(key, problems);
+    }
+
     pub(super) fn replace_lsp(&mut self, server: &str, path: &Path, diagnostics: Vec<Diagnostic>) {
         let key = GroupKey {
             source: lsp_source(server),
@@ -619,6 +638,10 @@ pub(super) fn task_source(task_name: &str) -> String {
 
 fn lsp_source(server: &str) -> String {
     format!("{LSP_PREFIX}{server}")
+}
+
+pub(super) fn plugin_source(plugin: &str) -> String {
+    format!("{PLUGIN_PREFIX}{plugin}")
 }
 
 pub(super) fn source_label(source: &str) -> &str {

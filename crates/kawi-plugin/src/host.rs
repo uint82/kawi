@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use crate::capability::{is_event_allowed, CapabilityRegistry};
+use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::manifest::PluginCatalog;
 use crate::process::{start_worker, NotifyOutcome, WorkerCommand, WorkerHandle};
@@ -42,6 +43,9 @@ pub enum PluginHostEvent {
         plugin: String,
         status: PluginStatus,
     },
+    SandboxApplied {
+        plugin: String,
+    },
 }
 
 pub struct PluginHost {
@@ -54,6 +58,7 @@ impl PluginHost {
     pub fn start(
         catalog: &PluginCatalog,
         capabilities: CapabilityRegistry,
+        environment: HostEnvironment,
         events: Sender<PluginHostEvent>,
         wake: Sender<()>,
     ) -> Self {
@@ -63,8 +68,13 @@ impl PluginHost {
             .cloned()
             .map(|plugin| {
                 let name = plugin.manifest.name.clone();
-                let worker =
-                    start_worker(plugin, capabilities.clone(), events.clone(), wake.clone());
+                let worker = start_worker(
+                    plugin,
+                    capabilities.clone(),
+                    environment.clone(),
+                    events.clone(),
+                    wake.clone(),
+                );
                 (name, worker)
             })
             .collect();
@@ -153,15 +163,12 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
-        worker
-            .commands
-            .send(WorkerCommand::Restart)
-            .map_err(|_| PluginError::ProcessExited)
+        worker.restart()
     }
 
     pub fn restart_all(&self) {
         for worker in self.workers.values() {
-            let _ = worker.commands.send(WorkerCommand::Restart);
+            let _ = worker.restart();
         }
     }
 

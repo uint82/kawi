@@ -65,14 +65,15 @@ pub(super) fn load_plugins_with_permissions(
     permissions: &str,
 ) -> Vec<String> {
     fs::write(root.join("permissions.toml"), permissions).unwrap();
-    app.plugins.load(
-        root,
-        &root.join("permissions.toml"),
-        &mut app.commands,
-        &mut app.keymaps,
-        &app.leaders,
-        app.events.wake(),
-    )
+    app.plugins.load(crate::app::plugin::PluginLoadContext {
+        dir: root,
+        permissions: &root.join("permissions.toml"),
+        workspace: root,
+        commands: &mut app.commands,
+        keymaps: &mut app.keymaps,
+        leaders: &app.leaders,
+        wake: app.events.wake(),
+    })
 }
 
 pub(super) fn grant_all(root: &std::path::Path) {
@@ -192,6 +193,7 @@ pub(super) fn method_capability(method: &str) -> &'static str {
     match method {
         "editor.get_state" => "editor.read",
         "editor.apply_edit" => "editor.write",
+        "editor.set_diagnostics" => "diagnostics.publish",
         "ui.message" => "ui.message",
         other => panic!("unexpected method: {other}"),
     }

@@ -1,7 +1,9 @@
 mod backoff;
 mod connection;
+mod sandbox;
 mod worker;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -9,8 +11,9 @@ use std::thread;
 use serde_json::Value;
 
 use self::connection::WriterSlot;
-use self::worker::Worker;
+use self::worker::{Worker, WorkerContext};
 use crate::capability::CapabilityRegistry;
+use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
@@ -33,6 +36,7 @@ pub(crate) struct WorkerHandle {
     writer: WriterSlot,
     status: Arc<Mutex<PluginStatus>>,
     event_filter: Arc<Mutex<std::collections::BTreeSet<String>>>,
+    restart: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,11 +104,20 @@ impl WorkerHandle {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
     }
+
+    pub(crate) fn restart(&self) -> Result<(), PluginError> {
+        self.restart
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.commands
+            .send(WorkerCommand::Restart)
+            .map_err(|_| PluginError::ProcessExited)
+    }
 }
 
 pub(crate) fn start_worker(
     plugin: LoadedPlugin,
     capabilities: CapabilityRegistry,
+    environment: HostEnvironment,
     events: Sender<PluginHostEvent>,
     wake: Sender<()>,
 ) -> WorkerHandle {
@@ -112,11 +125,13 @@ pub(crate) fn start_worker(
     let writer = Arc::new(Mutex::new(None));
     let status = Arc::new(Mutex::new(PluginStatus::Stopped));
     let event_filter = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
+    let restart = Arc::new(AtomicBool::new(false));
     let handle = WorkerHandle {
         commands,
         writer: Arc::clone(&writer),
         status: Arc::clone(&status),
         event_filter: Arc::clone(&event_filter),
+        restart: Arc::clone(&restart),
     };
     let name = plugin.manifest.name.clone();
     let error_events = events.clone();
@@ -127,12 +142,16 @@ pub(crate) fn start_worker(
         .spawn(move || {
             Worker::new(
                 plugin,
-                events,
-                wake,
-                writer,
-                status,
-                event_filter,
-                capabilities,
+                WorkerContext {
+                    events,
+                    wake,
+                    writer,
+                    status,
+                    event_filter,
+                    capabilities,
+                    environment,
+                    restart,
+                },
             )
             .run(receiver);
         });

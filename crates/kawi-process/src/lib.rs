@@ -1,6 +1,10 @@
 mod executable;
+#[cfg(target_os = "linux")]
+mod landlock;
+mod sandbox;
 
-pub use executable::{find_executable, find_executable_in};
+pub use executable::{executable_interpreter, find_executable, find_executable_in};
+pub use sandbox::{configure_sandbox, sandbox_status, SandboxPolicy, SandboxStatus};
 
 use std::io;
 use std::process::{Child, Command};

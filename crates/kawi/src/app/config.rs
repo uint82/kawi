@@ -40,14 +40,16 @@ impl App {
         self.undo.configure(paths.undo.clone());
         self.apply_keymaps(keymap_load);
         self.apply_config(&loaded.config);
-        let plugin_warnings = self.plugins.load(
-            &paths.plugins,
-            &paths.permissions,
-            &mut self.commands,
-            &mut self.keymaps,
-            &self.leaders,
-            self.events.wake(),
-        );
+        let workspace = self.project_root();
+        let plugin_warnings = self.plugins.load(crate::app::plugin::PluginLoadContext {
+            dir: &paths.plugins,
+            permissions: &paths.permissions,
+            workspace: &workspace,
+            commands: &mut self.commands,
+            keymaps: &mut self.keymaps,
+            leaders: &self.leaders,
+            wake: self.events.wake(),
+        });
         warnings.extend(plugin_warnings);
         let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
         if !warnings.is_empty() {
