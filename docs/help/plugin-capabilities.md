@@ -175,11 +175,17 @@ Scope narrowing examples:
 | `mode_changed` | `editor.read` |
 | `diagnostics_changed` | `diagnostics.read` |
 
-Kawi checks that a method exists before checking a capability. Unknown methods return `-32601`. Known methods without an effective grant return `CAPABILITY_DENIED`.
+Kawi authorizes a host method before reading its parameters, looking up a buffer, or comparing revisions. A plugin without `editor.read` cannot use `-32010` stale-revision errors to probe buffer existence or revision numbers. Unknown methods return `-32601`; known methods without an effective grant return `CAPABILITY_DENIED`.
 
-Events are filtered before they enter the plugin queue. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability.
+Host requests are checked against the current grants on every call. A JSON-RPC notification has no id, so a denied notification is dropped and recorded in `:plugin logs` instead of receiving an error response.
 
-The existing `host_capabilities` field in `initialize` remains method negotiation. Kawi advertises only methods covered by the effective grant. Capability enforcement is independent and still applies.
+Events are filtered before they enter the plugin queue and are checked against the current grants on every delivery. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability.
+
+The `host_capabilities` and `events` fields in `initialize` are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so revocation applies to the next message without restarting the plugin.
+
+The `invoke_command` context is editor state. Without `editor.read`, Kawi replaces it with an empty context: buffer and revision `0`, no path or language, normal mode, cursor at the origin, and no selection. Command arguments are caller-supplied command input from configuration or keybindings, not editor state, and are passed through.
+
+Interactive grant prompts are not implemented yet. Denial records use the exact TOML that a later prompt can reuse.
 
 ## Failure behavior
 
@@ -191,9 +197,12 @@ Missing capability:
   "id": 7,
   "error": {
     "code": -32012,
-    "message": "capability denied: editor.write",
+    "message": "capability denied: fs.write",
     "data": {
-      "capability": "editor.write"
+      "capability": "fs.write",
+      "scope": {
+        "paths": ["$WORKSPACE/src"]
+      }
     }
   }
 }
@@ -207,6 +216,12 @@ An unmet request:
 - Appears in `kawi doctor`.
 - Appears in `:plugin list`.
 - Does not prevent the plugin from running with its granted subset.
+
+The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
+
+Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` and run `:plugin reload` to revoke or narrow grants without restarting plugins. The next host call or event delivery uses the new grants.
+
+`ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and the first one is recorded in `:plugin logs`.
 
 ## Advisory status
 
@@ -231,7 +246,7 @@ Landlock will make `fs.read` and `fs.write` real for process plugins on Linux. N
 - Subscriptions that cannot receive events.
 - Advisory grants for process plugins.
 
-`:plugin list` shows effective and missing capabilities:
+`:plugin list` shows effective, missing, and stale capabilities without spawning the plugin:
 
 ```text
 gitsigns 0.2.0 ready

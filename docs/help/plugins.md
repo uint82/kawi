@@ -62,7 +62,8 @@ The plugin name is the namespace. The command above is `example.format`, and you
 
 ## Commands
 
-- `:plugin list` shows installed plugins, versions, status, and commands.
+- `:plugin list` shows installed plugins, versions, status, effective capabilities, and commands.
+- `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event.
 - `:plugin restart` restarts every plugin process.
 - `:plugin restart example` restarts one plugin and clears its crash backoff.
 - `:plugin logs` shows all plugin logs.
