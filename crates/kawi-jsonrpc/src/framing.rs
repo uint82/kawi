@@ -23,6 +23,9 @@ pub fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
 
 pub fn write_message(writer: &mut impl Write, message: &Value) -> Result<()> {
     let body = serde_json::to_vec(message).context("serialize jsonrpc message")?;
+    if body.len() > MAX_MESSAGE_BYTES {
+        bail!("jsonrpc message exceeds {MAX_MESSAGE_BYTES} bytes");
+    }
     write!(writer, "Content-Length: {}\r\n\r\n", body.len()).context("write jsonrpc header")?;
     writer.write_all(&body).context("write lsp body")?;
     writer.flush().context("flush jsonrpc message")?;
@@ -141,5 +144,13 @@ mod tests {
         let header = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
         let mut reader = Cursor::new(header.into_bytes());
         assert!(read_message(&mut reader).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_outgoing_messages() {
+        let message = Value::String("x".repeat(MAX_MESSAGE_BYTES));
+        let mut buffer = Vec::new();
+        assert!(write_message(&mut buffer, &message).is_err());
+        assert!(buffer.is_empty());
     }
 }
