@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use super::super::save::SaveAfter;
 use super::diff::Change;
+use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
 
@@ -15,6 +16,9 @@ pub(in crate::app) struct PendingSaveAll {
 
 impl App {
     pub(in crate::app) fn start_directory_save_all(&mut self, after: SaveAfter) -> bool {
+        if self.reject_running_permission_check(true) {
+            return false;
+        }
         let numbers = self.dirty_directory_numbers();
         if let Some(message) = self.loading_directory_message(&numbers) {
             self.show_message(message);
@@ -210,11 +214,8 @@ impl App {
             visible: true,
             save_files: true,
         };
-        if !self.directory_options.confirm || !apply.plan.needs_confirmation() {
-            self.begin_directory_apply(apply);
-            return;
-        }
-        self.confirm_directory_apply(apply);
+        let confirm = self.directory_options.confirm && apply.plan.needs_confirmation();
+        self.start_permission_check(apply, PermissionPhase::Plan, confirm);
     }
 
     fn dirty_directory_numbers(&self) -> Vec<usize> {

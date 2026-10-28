@@ -156,9 +156,10 @@ pub(super) fn message_text(app: &App) -> String {
 
 pub(super) fn settle(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(5);
-    while app.directory_loading.has_loads() {
+    while app.directory_loading.has_loads() || app.has_pending_permission_check() {
         app.poll_directory_loads();
-        if app.directory_loading.has_loads() {
+        app.poll_permission_check();
+        if app.directory_loading.has_loads() || app.has_pending_permission_check() {
             assert!(Instant::now() < deadline, "directory load timed out");
             std::thread::sleep(Duration::from_millis(1));
         }
