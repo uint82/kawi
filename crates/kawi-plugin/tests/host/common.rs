@@ -7,8 +7,8 @@ use std::time::Duration;
 use serde_json::Value;
 
 use kawi_plugin::{
-    load_catalog, Capability, CapabilityRegistry, EffectiveCapabilities, InvocationContext,
-    PluginHost, PluginHostEvent, PluginStatus, Position, Scope,
+    load_catalog, Capability, CapabilityRegistry, EffectiveCapabilities, HostEnvironment,
+    InvocationContext, PluginHost, PluginHostEvent, PluginStatus, Position, Scope,
 };
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -37,7 +37,8 @@ impl TestHost {
         assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
         let (event_tx, events) = mpsc::channel();
         let (wake, wake_rx) = mpsc::channel();
-        let host = PluginHost::start(&catalog, capabilities, event_tx, wake);
+        let environment = HostEnvironment::from_paths(Some(root.clone()), None);
+        let host = PluginHost::start(&catalog, capabilities, environment, event_tx, wake);
         Self {
             host,
             events,

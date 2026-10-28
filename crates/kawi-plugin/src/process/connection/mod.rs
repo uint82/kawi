@@ -15,6 +15,7 @@ use self::channel::{fail_pending, remove_pending, PendingMap, ReaderContext, Wri
 use self::read::spawn_reader;
 use self::write::{spawn_stderr, spawn_writer};
 use crate::capability::{advertised_events, advertised_host_methods, CapabilityRegistry};
+use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::PluginHostEvent;
 use crate::manifest::LoadedPlugin;
@@ -28,6 +29,13 @@ pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
 const INITIALIZE_REQUEST_ID: u64 = 0;
 const SUPERVISOR_QUEUE_CAPACITY: usize = 1024;
 
+pub(super) struct ConnectionConfig {
+    pub(super) timeout: Duration,
+    pub(super) event_filter: Arc<Mutex<BTreeSet<String>>>,
+    pub(super) capabilities: CapabilityRegistry,
+    pub(super) environment: HostEnvironment,
+}
+
 pub(super) struct Connection {
     child: Child,
     writer: SyncSender<Value>,
@@ -39,6 +47,7 @@ pub(super) struct Connection {
     plugin_name: String,
     writer_slot: WriterSlot,
     timeout: Duration,
+    sandboxed: bool,
 }
 
 impl Connection {
@@ -47,10 +56,14 @@ impl Connection {
         events: &Sender<PluginHostEvent>,
         wake: &Sender<()>,
         writer_slot: WriterSlot,
-        timeout: Duration,
-        event_filter: Arc<Mutex<BTreeSet<String>>>,
-        capabilities: CapabilityRegistry,
+        config: ConnectionConfig,
     ) -> Result<Self, PluginError> {
+        let ConnectionConfig {
+            timeout,
+            event_filter,
+            capabilities,
+            environment,
+        } = config;
         let command = plugin.resolved_command();
         let executable = command
             .first()
@@ -63,6 +76,8 @@ impl Connection {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         kawi_process::configure(&mut process);
+        let sandbox = super::sandbox::policy(plugin, &capabilities, &environment);
+        let sandboxed = kawi_process::configure_sandbox(&mut process, &sandbox);
         let mut child = process
             .spawn()
             .map_err(|error| PluginError::Spawn(error.to_string()))?;
@@ -124,6 +139,7 @@ impl Connection {
             plugin_name: plugin.manifest.name.clone(),
             writer_slot,
             timeout,
+            sandboxed,
         })
     }
 
@@ -180,6 +196,10 @@ impl Connection {
 
     pub(super) fn is_alive(&self) -> bool {
         self.alive.load(Ordering::SeqCst)
+    }
+
+    pub(super) fn is_sandboxed(&self) -> bool {
+        self.sandboxed
     }
 
     pub(super) fn shutdown(&mut self) {

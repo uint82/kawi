@@ -4,7 +4,12 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use kawi_plugin::{load_catalog, Capability, PluginHost, PluginHostEvent, PluginStatus};
+use std::collections::BTreeMap;
+
+use kawi_plugin::{
+    load_catalog, Capability, EffectiveCapabilities, HostEnvironment, PluginHost, PluginHostEvent,
+    PluginStatus, Scope,
+};
 
 use super::common::*;
 
@@ -147,9 +152,11 @@ fn runs_the_example_plugin_as_a_real_process() {
     assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
     let (event_tx, events) = mpsc::channel();
     let (wake, _wake_rx) = mpsc::channel();
+    let environment = HostEnvironment::from_paths(Some(root.parent().unwrap().to_path_buf()), None);
     let host = PluginHost::start(
         &catalog,
         registry_for("echo", &[Capability::UiMessage]),
+        environment,
         event_tx,
         wake,
     );
@@ -194,4 +201,66 @@ fn preserves_invocation_context_with_editor_read() {
     assert_eq!(context["buffer"], 1);
     assert_eq!(context["revision"], 7);
     assert_eq!(context["path"], "/tmp/test.rs");
+}
+
+#[test]
+fn landlock_limits_filesystem_reads_to_the_granted_scope() {
+    if !kawi_process::sandbox_supported() {
+        return;
+    }
+    let denied = TestHost::start_with("read-file", 5_000, registry());
+    let secret = denied.root.join("secret.txt");
+    std::fs::write(&secret, "outside").unwrap();
+    let request = denied.invoke_with(json!({"path": secret}));
+    let result = denied.finish(request).expect("result");
+    assert!(result.get("error").is_some(), "{result}");
+
+    let allowed = TestHost::start_with("read-file", 5_000, registry_with_fs_read());
+    let secret = allowed.root.join("secret.txt");
+    std::fs::write(&secret, "outside").unwrap();
+    let request = allowed.invoke_with(json!({"path": secret}));
+    let result = allowed.finish(request).expect("result");
+    assert_eq!(result["content"], "outside", "{result}");
+}
+
+#[test]
+fn landlock_limits_process_execution_to_the_granted_scope() {
+    if !kawi_process::sandbox_supported() {
+        return;
+    }
+    let denied = TestHost::start_with("exec", 5_000, registry());
+    let request = denied.invoke_with(json!({"path": "/bin/true"}));
+    let result = denied.finish(request).expect("result");
+    assert!(result.get("error").is_some(), "{result}");
+
+    let allowed = TestHost::start_with("exec", 5_000, registry_with_process_spawn());
+    let request = allowed.invoke_with(json!({"path": "/bin/true"}));
+    let result = allowed.finish(request).expect("result");
+    assert_eq!(result["success"], true, "{result}");
+}
+
+fn registry_with_process_spawn() -> kawi_plugin::CapabilityRegistry {
+    registry_with_scope(
+        Capability::ProcessSpawn,
+        Scope::Commands(vec!["/bin/true".to_string()]),
+    )
+}
+
+fn registry_with_fs_read() -> kawi_plugin::CapabilityRegistry {
+    registry_with_scope(
+        Capability::FsRead,
+        Scope::Paths(vec!["$WORKSPACE".to_string()]),
+    )
+}
+
+fn registry_with_scope(capability: Capability, scope: Scope) -> kawi_plugin::CapabilityRegistry {
+    let registry = kawi_plugin::CapabilityRegistry::default();
+    registry.replace(BTreeMap::from([(
+        "fake".to_string(),
+        EffectiveCapabilities {
+            granted: BTreeMap::from([(capability, scope)]),
+            ..EffectiveCapabilities::default()
+        },
+    )]));
+    registry
 }

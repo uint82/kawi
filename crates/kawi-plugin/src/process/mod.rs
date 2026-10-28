@@ -1,5 +1,6 @@
 mod backoff;
 mod connection;
+mod sandbox;
 mod worker;
 
 use std::sync::mpsc::{self, Sender};
@@ -9,8 +10,9 @@ use std::thread;
 use serde_json::Value;
 
 use self::connection::WriterSlot;
-use self::worker::Worker;
+use self::worker::{Worker, WorkerContext};
 use crate::capability::CapabilityRegistry;
+use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
@@ -105,6 +107,7 @@ impl WorkerHandle {
 pub(crate) fn start_worker(
     plugin: LoadedPlugin,
     capabilities: CapabilityRegistry,
+    environment: HostEnvironment,
     events: Sender<PluginHostEvent>,
     wake: Sender<()>,
 ) -> WorkerHandle {
@@ -127,12 +130,15 @@ pub(crate) fn start_worker(
         .spawn(move || {
             Worker::new(
                 plugin,
-                events,
-                wake,
-                writer,
-                status,
-                event_filter,
-                capabilities,
+                WorkerContext {
+                    events,
+                    wake,
+                    writer,
+                    status,
+                    event_filter,
+                    capabilities,
+                    environment,
+                },
             )
             .run(receiver);
         });
