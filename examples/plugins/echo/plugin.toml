@@ -1,0 +1,14 @@
+name = "echo"
+version = "0.1.0"
+protocol = 1
+description = "Example Kawi plugin"
+command = ["python3", "${plugin_dir}/plugin.py"]
+timeout_ms = 5000
+
+[[commands]]
+id = "ping"
+title = "Ping the plugin"
+description = "Return a pong message"
+
+[commands.keybindings]
+normal = ["<leader>pp"]
