@@ -1,6 +1,19 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxStatus {
+    Unavailable,
+    Partial,
+    Enforced,
+}
+
+impl SandboxStatus {
+    pub fn is_enforced(self) -> bool {
+        self == Self::Enforced
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SandboxPolicy {
     pub read_only: Vec<PathBuf>,
@@ -8,24 +21,18 @@ pub struct SandboxPolicy {
     pub execute: Vec<PathBuf>,
 }
 
-impl SandboxPolicy {
-    pub fn is_empty(&self) -> bool {
-        self.read_only.is_empty() && self.read_write.is_empty() && self.execute.is_empty()
-    }
-}
-
-pub fn sandbox_supported() -> bool {
+pub fn sandbox_status() -> SandboxStatus {
     #[cfg(target_os = "linux")]
     {
-        crate::landlock::supported()
+        crate::landlock::status()
     }
     #[cfg(not(target_os = "linux"))]
     {
-        false
+        SandboxStatus::Unavailable
     }
 }
 
-pub fn configure_sandbox(command: &mut Command, policy: &SandboxPolicy) -> bool {
+pub fn configure_sandbox(command: &mut Command, policy: &SandboxPolicy) -> SandboxStatus {
     #[cfg(target_os = "linux")]
     {
         crate::landlock::configure(command, policy)
@@ -33,6 +40,6 @@ pub fn configure_sandbox(command: &mut Command, policy: &SandboxPolicy) -> bool 
     #[cfg(not(target_os = "linux"))]
     {
         let _ = (command, policy);
-        false
+        SandboxStatus::Unavailable
     }
 }

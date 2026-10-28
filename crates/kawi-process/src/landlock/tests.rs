@@ -20,7 +20,7 @@ fn handled_access_tracks_the_supported_abi() {
 #[test]
 #[cfg(target_os = "linux")]
 fn denies_reads_outside_the_policy() {
-    if !supported() {
+    if !status().is_enforced() {
         return;
     }
     let dir = std::env::temp_dir().join(format!("kawi-landlock-{}", std::process::id()));
@@ -55,7 +55,7 @@ fn run_shell(shell: &std::path::Path, path: &std::path::Path, policy: &SandboxPo
         .arg("-c")
         .arg(format!("read value < {}", path.display()))
         .stderr(Stdio::null());
-    assert!(super::configure(&mut command, policy));
+    assert!(super::configure(&mut command, policy).is_enforced());
     command.status().expect("shell").success()
 }
 

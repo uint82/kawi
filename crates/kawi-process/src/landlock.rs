@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use crate::sandbox::SandboxPolicy;
+use crate::sandbox::{SandboxPolicy, SandboxStatus};
 
 const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
 const LANDLOCK_RULE_PATH_BENEATH: u32 = 1;
@@ -42,19 +42,27 @@ struct PathBeneathAttr {
     parent_fd: i32,
 }
 
-pub(super) fn supported() -> bool {
-    abi().is_some()
+pub(super) fn status() -> SandboxStatus {
+    match abi() {
+        Some(abi) if is_fully_supported(abi) => SandboxStatus::Enforced,
+        Some(_) => SandboxStatus::Partial,
+        None => SandboxStatus::Unavailable,
+    }
 }
 
-pub(super) fn configure(command: &mut Command, policy: &SandboxPolicy) -> bool {
+pub(super) fn configure(command: &mut Command, policy: &SandboxPolicy) -> SandboxStatus {
     let Some(abi) = abi() else {
-        return false;
+        return SandboxStatus::Unavailable;
     };
     let rules = rules(policy, abi);
     unsafe {
         command.pre_exec(move || restrict(abi, &rules));
     }
-    true
+    status()
+}
+
+fn is_fully_supported(abi: i32) -> bool {
+    abi >= ABI_TRUNCATE
 }
 
 fn abi() -> Option<i32> {
