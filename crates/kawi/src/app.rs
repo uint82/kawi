@@ -39,6 +39,7 @@ mod lsp_navigation;
 mod lsp_text;
 mod macro_codec;
 mod macro_ops;
+mod map_command;
 mod options;
 mod overlay;
 mod overlay_scroll;
@@ -90,8 +91,11 @@ struct SyntaxCache {
     key: SyntaxKey,
 }
 
+use crate::command::{CommandHandler, CommandRegistry};
 use crate::event::EventQueue;
-use crate::keymap::{ActiveKeymap, Flavor, Keymap};
+use crate::keymap::{
+    ActiveKeymap, Flavor, KeyChord, KeyContext, KeySequence, Keymap, KeymapResolver, ResolveOutcome,
+};
 use crate::mouse::{horizontal_wheel_delta, wheel_delta};
 use crate::options::SignColumnMode;
 use crate::state::{self, StatePaths};
@@ -114,6 +118,11 @@ use window::Windows;
 pub struct App {
     editor: Editor,
     keymap: ActiveKeymap,
+    commands: CommandRegistry,
+    keymaps: KeymapResolver,
+    keymaps_path: Option<PathBuf>,
+    leaders: Vec<KeyChord>,
+    send_keys_depth: usize,
     flavor: Flavor,
     theme: Theme,
     theme_dir: Option<PathBuf>,
@@ -213,6 +222,11 @@ impl App {
         let mut app = Self {
             editor,
             keymap: ActiveKeymap::for_flavor(flavor),
+            commands: CommandRegistry::new(),
+            keymaps: KeymapResolver::new(),
+            keymaps_path: None,
+            leaders: crate::keymap::default_leaders(),
+            send_keys_depth: 0,
             flavor,
             theme: Theme::default(),
             theme_dir: None,
@@ -447,6 +461,12 @@ impl App {
                 redraw |= needs_redraw;
             }
             redraw |= self.sync_keyguide();
+            if let Some(quit) = self.flush_mapping_timeout()? {
+                if quit {
+                    return Ok(Redraw::Quit);
+                }
+                redraw = true;
+            }
             redraw |= self.lsp.sync_editor(&self.editor);
             redraw |= self.lsp.poll_events(&self.editor);
             redraw |= self.poll_symbol_events();
@@ -502,6 +522,7 @@ impl App {
             let timeout = shortest_timeout(timeout, spinner_timeout);
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -621,11 +642,13 @@ impl App {
 
     fn showcmd_text(&self) -> Option<String> {
         let pending = if self.window_prefix {
-            Some("^W")
+            Some("^W".to_string())
         } else {
-            self.keymap.pending_text()
+            self.keymaps
+                .pending_text()
+                .or_else(|| self.keymap.pending_text().map(str::to_string))
         };
-        match (self.macros.recording_register(), pending) {
+        match (self.macros.recording_register(), pending.as_deref()) {
             (Some(register), Some(pending)) => Some(format!("recording @{register} {pending}")),
             (Some(register), None) => Some(format!("recording @{register}")),
             (None, pending) => pending.map(str::to_string),
@@ -1209,8 +1232,113 @@ impl App {
             self.consume_macro_stop();
             return Ok(false);
         }
-        let action = self.keymap.map(key, self.editor.mode());
-        self.dispatch_action(action)
+        self.handle_keymap_input(key)
+    }
+
+    fn handle_keymap_input(&mut self, key: KeyEvent) -> Result<bool> {
+        let mode = self.editor.mode();
+        let Some(context) = KeyContext::from_mode(mode) else {
+            self.keymaps.clear_pending();
+            let action = self.keymap.map(key, mode);
+            return self.dispatch_action(action);
+        };
+        if self.keymap.has_pending() {
+            self.keymaps.clear_pending();
+            let action = self.keymap.map(key, mode);
+            return self.dispatch_action(action);
+        }
+        match self
+            .keymaps
+            .feed(KeyChord::from_event(key), context, Instant::now())
+        {
+            ResolveOutcome::Passthrough => {
+                let action = self.keymap.map(key, mode);
+                self.dispatch_action(action)
+            }
+            ResolveOutcome::Pending => Ok(false),
+            ResolveOutcome::Command(command) => {
+                self.dispatch_command_id(command.command, command.args)
+            }
+            ResolveOutcome::Fallback(keys) => {
+                if self.replay_keys(keys)? {
+                    return Ok(true);
+                }
+                self.handle_keymap_input(key)
+            }
+        }
+    }
+
+    fn replay_keys(&mut self, keys: Vec<KeyChord>) -> Result<bool> {
+        for chord in keys {
+            let action = self.keymap.map(chord.to_event(), self.editor.mode());
+            if self.dispatch_action(action)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn dispatch_command_id(
+        &mut self,
+        id: crate::command::CommandId,
+        args: Option<toml::Value>,
+    ) -> Result<bool> {
+        match self.commands.spec(id).map(|spec| spec.handler) {
+            Some(CommandHandler::Action(action)) => self.dispatch_action(action),
+            Some(CommandHandler::SendKeys) => self.handle_send_keys(args.as_ref()),
+            Some(CommandHandler::Noop) | None => Ok(false),
+        }
+    }
+
+    fn handle_send_keys(&mut self, args: Option<&toml::Value>) -> Result<bool> {
+        const MAX_SEND_KEYS: usize = 100;
+        const MAX_SEND_DEPTH: usize = 8;
+        if self.send_keys_depth >= MAX_SEND_DEPTH {
+            self.show_message("keys.send recursion limit reached".to_string());
+            return Ok(false);
+        }
+        let Some(text) = send_keys_text(args) else {
+            self.show_message("keys.send requires a keys argument".to_string());
+            return Ok(false);
+        };
+        let keys = match KeySequence::parse(&text, &self.leaders) {
+            Ok(keys) => keys,
+            Err(error) => {
+                self.show_message(format!("keys.send: {error}"));
+                return Ok(false);
+            }
+        };
+        if keys.len() > MAX_SEND_KEYS {
+            self.show_message("keys.send accepts at most 100 keys".to_string());
+            return Ok(false);
+        }
+        self.send_keys_depth += 1;
+        let result = self.send_key_chords(keys.chords());
+        self.send_keys_depth -= 1;
+        result
+    }
+
+    fn send_key_chords(&mut self, keys: &[KeyChord]) -> Result<bool> {
+        for chord in keys {
+            if self.handle_key_inner(chord.to_event())? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn mapping_wait_timeout(&self) -> Option<Duration> {
+        self.keymaps.timeout_in(Instant::now())
+    }
+
+    fn flush_mapping_timeout(&mut self) -> Result<Option<bool>> {
+        match self.keymaps.take_timeout(Instant::now()) {
+            Some(ResolveOutcome::Command(command)) => self
+                .dispatch_command_id(command.command, command.args)
+                .map(Some),
+            Some(ResolveOutcome::Fallback(keys)) => self.replay_keys(keys).map(Some),
+            _ => Ok(None),
+        }
     }
 
     fn handle_pager_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -1852,6 +1980,10 @@ impl App {
                 self.show_message(message);
                 Ok(false)
             }
+            Command::Map { text } => {
+                let _ = self.handle_map_command(&text)?;
+                Ok(false)
+            }
             Command::Unknown => Ok(false),
         }
     }
@@ -2103,6 +2235,14 @@ fn event_needs_redraw(event: &Event) -> bool {
         Event::Key(_) | Event::Resize(_, _) | Event::Paste(_) => true,
         Event::FocusGained | Event::FocusLost => true,
         Event::Mouse(mouse) => !matches!(mouse.kind, MouseEventKind::Moved),
+    }
+}
+
+fn send_keys_text(args: Option<&toml::Value>) -> Option<String> {
+    match args? {
+        toml::Value::String(text) => Some(text.clone()),
+        toml::Value::Table(table) => table.get("keys")?.as_str().map(str::to_string),
+        _ => None,
     }
 }
 

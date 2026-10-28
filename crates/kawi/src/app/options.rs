@@ -2,7 +2,7 @@ use anyhow::Result;
 use kawi_editor::{FoldMethod, SetValue, WindowOptions};
 
 use super::App;
-use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor};
+use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::options::{
     self, AutosaveMode, OptionContext, OptionError, OptionInput, OptionSpec, OptionValue,
 };
@@ -336,6 +336,7 @@ impl App {
     pub(super) fn apply_flavor(&mut self, flavor: Flavor) -> Result<()> {
         self.flavor = flavor;
         self.keymap = ActiveKeymap::for_flavor(flavor);
+        self.keymap.set_leaders(self.leaders.clone());
         if flavor == Flavor::Vim {
             self.exit_visual_if_active();
         }

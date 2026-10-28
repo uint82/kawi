@@ -76,6 +76,9 @@ pub enum Command {
     Undo(UndoCommand),
     SetError(String),
     Substitute(SubstituteCommand),
+    Map {
+        text: String,
+    },
     Unknown,
 }
 
@@ -186,6 +189,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "clo",
     "close",
     "cnext",
+    "commands",
     "conflict",
     "copen",
     "cprev",
@@ -199,9 +203,14 @@ pub const COMMAND_NAMES: &[&str] = &[
     "git",
     "h",
     "help",
+    "imap",
+    "iunmap",
     "later",
     "ls",
+    "map",
     "new",
+    "nmap",
+    "nunmap",
     "on",
     "only",
     "pick",
@@ -235,9 +244,11 @@ pub const COMMAND_NAMES: &[&str] = &[
     "u",
     "undo",
     "undolist",
+    "vmap",
     "vnew",
     "vterm",
     "vterminal",
+    "vunmap",
     "vs",
     "vsplit",
     "w",
@@ -407,6 +418,11 @@ fn parse_named(text: &str) -> Command {
         ("cnext", []) => Command::Quickfix(QuickfixCommand::Next),
         ("cprev", []) => Command::Quickfix(QuickfixCommand::Previous),
         ("set", rest) => set::parse(rest),
+        ("nmap" | "imap" | "vmap" | "nunmap" | "iunmap" | "vunmap" | "map" | "commands", _) => {
+            Command::Map {
+                text: text.to_string(),
+            }
+        }
         _ => Command::Unknown,
     }
 }
