@@ -20,12 +20,12 @@ impl App {
         }
         self.plugins.flush_activation_events();
         self.plugins
-            .sync_plugin_state(&mut self.editor, &self.problems);
+            .sync_plugin_state(&mut self.editor, &mut self.problems);
         self.expire_plugin_grants();
         redraw
     }
 
-    fn handle_plugin_event(&mut self, event: PluginHostEvent) -> bool {
+    pub(super) fn handle_plugin_event(&mut self, event: PluginHostEvent) -> bool {
         match event {
             PluginHostEvent::HostRequest {
                 plugin,

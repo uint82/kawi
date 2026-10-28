@@ -391,6 +391,11 @@ impl Problems {
         self.clear_source(&plugin_source(plugin));
     }
 
+    pub(super) fn clear_plugin_paths(&mut self, path: &Path) {
+        self.groups
+            .retain(|key, _| !key.source.starts_with(PLUGIN_PREFIX) || key.path != path);
+    }
+
     pub(super) fn replace_plugin(&mut self, plugin: &str, path: &Path, problems: Vec<Problem>) {
         let key = GroupKey {
             source: plugin_source(plugin),

@@ -1,10 +1,13 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use kawi_plugin::{load_permission_state, Capability, RpcError, Scope};
 use kawi_watch::{Fingerprint, WatchService};
 
 use super::support::{changed_sandbox_plugins, denial_lines, describe_capabilities, same_path};
-use super::{PluginRuntime, MESSAGE_THROTTLE};
+use super::{DiagnosticWindow, PluginRuntime, MESSAGE_THROTTLE};
+
+const DIAGNOSTIC_RATE_WINDOW: Duration = Duration::from_secs(1);
+const MAX_DIAGNOSTIC_PUBLISHES: u32 = 20;
 
 impl PluginRuntime {
     pub(crate) fn mark_sandboxed(&mut self, plugin: &str) {
@@ -115,6 +118,26 @@ impl PluginRuntime {
             .entry((plugin.to_string(), capability))
             .or_default()
             .count += 1;
+    }
+
+    pub(crate) fn allow_diagnostic_publish(&mut self, plugin: &str) -> bool {
+        let now = Instant::now();
+        let window =
+            self.diagnostic_windows
+                .entry(plugin.to_string())
+                .or_insert(DiagnosticWindow {
+                    started: now,
+                    count: 0,
+                });
+        if now.duration_since(window.started) >= DIAGNOSTIC_RATE_WINDOW {
+            window.started = now;
+            window.count = 0;
+        }
+        if window.count >= MAX_DIAGNOSTIC_PUBLISHES {
+            return false;
+        }
+        window.count += 1;
+        true
     }
 
     pub(crate) fn allow_message(&mut self, plugin: &str) -> bool {

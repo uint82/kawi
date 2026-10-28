@@ -25,6 +25,12 @@ pub(crate) struct DenialRecord {
     pub(super) count: u64,
 }
 
+#[derive(Debug)]
+pub(super) struct DiagnosticWindow {
+    pub(super) started: Instant,
+    pub(super) count: u32,
+}
+
 #[derive(Default)]
 pub(crate) struct PluginRuntime {
     pub(super) host: Option<PluginHost>,
@@ -45,6 +51,7 @@ pub(crate) struct PluginRuntime {
     pub(super) denials: BTreeMap<(String, Capability), DenialRecord>,
     pub(super) last_message: BTreeMap<String, Instant>,
     pub(super) throttled_messages: BTreeMap<String, u64>,
+    pub(super) diagnostic_windows: BTreeMap<String, DiagnosticWindow>,
     pub(super) allow_once: BTreeSet<(String, Capability)>,
     pub(super) sandboxed: BTreeSet<String>,
     pub(super) permissions_watch: Option<WatchService>,
@@ -176,6 +183,8 @@ impl PluginRuntime {
         self.last_message
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.throttled_messages
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.diagnostic_windows
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.logs
             .retain(|plugin, _| known.contains(plugin.as_str()));

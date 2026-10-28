@@ -53,7 +53,7 @@ fn describe_capability(capability: kawi_plugin::Capability) -> String {
     if capability == kawi_plugin::Capability::NetConnect {
         return format!("{} (advisory)", capability.name());
     }
-    if capability.is_advisory() && kawi_process::sandbox_supported() {
+    if capability.is_advisory() && kawi_process::sandbox_status().is_enforced() {
         return format!("{} (enforced)", capability.name());
     }
     if capability.is_advisory() {

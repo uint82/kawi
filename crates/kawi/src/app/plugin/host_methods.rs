@@ -14,6 +14,8 @@ use super::super::problems::{plugin_source, Problem, ProblemSeverity};
 use super::super::App;
 
 const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
+const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
+const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
 
 impl App {
     pub(crate) fn handle_plugin_request(
@@ -51,6 +53,11 @@ impl App {
     }
 
     fn plugin_set_diagnostics(&mut self, plugin: &str, params: Value) -> Result<Value, RpcError> {
+        if !self.plugins.allow_diagnostic_publish(plugin) {
+            return Err(RpcError::invalid_params(
+                "diagnostic publish rate limit exceeded",
+            ));
+        }
         let params: SetDiagnosticsParams =
             serde_json::from_value(params).map_err(invalid_params)?;
         if params.diagnostics.len() > MAX_PLUGIN_DIAGNOSTICS {
@@ -71,6 +78,7 @@ impl App {
                 "editor.set_diagnostics requires a named buffer",
             ));
         }
+        validate_diagnostic_sizes(&params.diagnostics)?;
         let path = PathBuf::from(self.editor.filename());
         let snapshot = self.editor.document_snapshot();
         let diagnostics = params
@@ -225,6 +233,26 @@ fn mode_name(mode: Mode) -> &'static str {
 
 fn invalid_params(error: serde_json::Error) -> RpcError {
     RpcError::invalid_params(error.to_string())
+}
+
+fn validate_diagnostic_sizes(diagnostics: &[DiagnosticSummary]) -> Result<(), RpcError> {
+    for diagnostic in diagnostics {
+        if diagnostic.message.len() > MAX_DIAGNOSTIC_MESSAGE_BYTES {
+            return Err(RpcError::invalid_params(format!(
+                "diagnostic message exceeds {MAX_DIAGNOSTIC_MESSAGE_BYTES} bytes"
+            )));
+        }
+        if diagnostic
+            .code
+            .as_ref()
+            .is_some_and(|code| code.len() > MAX_DIAGNOSTIC_CODE_BYTES)
+        {
+            return Err(RpcError::invalid_params(format!(
+                "diagnostic code exceeds {MAX_DIAGNOSTIC_CODE_BYTES} bytes"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn plugin_problem(

@@ -641,7 +641,7 @@ fn plugin_messages_cannot_overwrite_a_grant_prompt() {
 #[test]
 #[cfg(target_os = "linux")]
 fn sandboxed_plugins_are_labeled_enforced_after_spawn() {
-    if !kawi_process::sandbox_supported() {
+    if !kawi_process::sandbox_status().is_enforced() {
         return;
     }
     let root = temp_dir("sandbox_label");
@@ -693,5 +693,251 @@ title = "Ping"
         .capability_lines("sandboxed")
         .iter()
         .any(|line| line.contains("fs.read (enforced)")));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn narrowing_a_filesystem_scope_restarts_the_plugin() {
+    if !kawi_process::sandbox_status().is_enforced() {
+        return;
+    }
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("narrow_scope");
+    let dir = root.join("sandbox");
+    fs::create_dir_all(&dir).unwrap();
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/app/plugin/test_data/sandbox_plugin.py");
+    fs::copy(source, dir.join("sandbox_plugin.py")).unwrap();
+    fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "sandbox"
+version = "0.1.0"
+protocol = 1
+command = ["python3", "${plugin_dir}/sandbox_plugin.py"]
+timeout_ms = 5000
+
+[capabilities]
+"fs.read" = { paths = ["$WORKSPACE"] }
+
+[[commands]]
+id = "probe"
+title = "Probe"
+"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("open")).unwrap();
+    fs::write(root.join("open/public.txt"), "public").unwrap();
+    let secret = root.join("secret.txt");
+    fs::write(&secret, "secret").unwrap();
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.sandbox.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE\"] }\n",
+    );
+    let (first, first_pid) = run_sandbox_probe(&mut app, &secret);
+    assert_eq!(first["content"], "secret");
+
+    fs::write(
+        root.join("permissions.toml"),
+        "[plugins.sandbox.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE/open\"] }\n",
+    )
+    .unwrap();
+    app.plugins.reload_permissions();
+    let (second, second_pid) = run_sandbox_probe(&mut app, &secret);
+    assert_eq!(second["ok"], false, "{second}");
+    assert!(second["error"]
+        .as_str()
+        .is_some_and(|error| error.contains("Permission denied")));
+    assert_ne!(first_pid, second_pid);
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn run_sandbox_probe(app: &mut App, path: &std::path::Path) -> (serde_json::Value, String) {
+    let dir = app
+        .plugins
+        .plugins()
+        .iter()
+        .find(|plugin| plugin.manifest.name == "sandbox")
+        .expect("plugin")
+        .dir
+        .clone();
+    let command = app.commands.find("sandbox.probe").expect("command");
+    let target = match app.commands.spec(command).expect("spec").handler {
+        CommandHandler::Plugin(target) => target,
+        other => panic!("unexpected handler: {other:?}"),
+    };
+    let _ = fs::remove_file(dir.join("sandbox_result.json"));
+    app.run_plugin_command(
+        target,
+        Some(toml::Value::String(path.display().to_string())),
+    )
+    .unwrap();
+    let result_path = dir.join("sandbox_result.json");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !result_path.exists() && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let result = serde_json::from_str(&fs::read_to_string(result_path).unwrap()).unwrap();
+    let pid = fs::read_to_string(dir.join("sandbox.pid")).unwrap();
+    (result, pid)
+}
+
+#[test]
+fn macro_replay_cannot_answer_a_grant_prompt() {
+    let root = temp_dir("prompt_macro");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    app.handle_plugin_host_request("denied", json!(null), "editor.get_state", json!({}));
+    assert!(app.plugin_grants.is_active());
+    app.editor.store_macro_register('q', "<Enter>".to_string());
+    app.run_macro('q').unwrap();
+    assert!(app.plugin_grants.is_active());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn grant_writes_merge_concurrent_external_edits() {
+    let root = temp_dir("prompt_concurrent");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    app.handle_plugin_host_request("denied", json!(null), "editor.get_state", json!({}));
+    let permissions = root.join("permissions.toml");
+    fs::write(
+        &permissions,
+        "# keep this\n[plugins.other.grant]\n\"ui.message\" = true\n",
+    )
+    .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    let text = fs::read_to_string(&permissions).unwrap();
+    assert!(text.contains("# keep this"));
+    assert!(text.contains("[plugins.other.grant]"));
+    assert!(text.contains("\"editor.read\" = true"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn escaped_plugin_descriptions_are_sanitized() {
+    let root = temp_dir("sanitized_description");
+    let dir = root.join("evil");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "evil"
+version = "0.1.0"
+protocol = 1
+command = ["/bin/true"]
+
+[[commands]]
+id = "ping"
+title = "Ping"
+description = "bad\u001b[31mred\nline"
+"#,
+    )
+    .unwrap();
+    let mut app = app();
+    load_plugins(&mut app, &root);
+    let command = app.commands.find("evil.ping").expect("command");
+    assert_eq!(
+        app.commands.spec(command).expect("spec").description,
+        "badred line"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn plugin_messages_are_sanitized() {
+    let root = temp_dir("message_sanitize");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    app.handle_plugin_host_request(
+        "denied",
+        json!(null),
+        "ui.message",
+        json!({"message": "bad\u{1b}[31mred\nline"}),
+    );
+    assert_eq!(app.message.as_deref(), Some("badred line"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn atomic_permission_saves_are_detected() {
+    let root = temp_dir("permissions_atomic_save");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    std::thread::sleep(Duration::from_millis(150));
+    let staged = root.join("permissions.toml.tmp");
+    fs::write(&staged, "[plugins.denied.grant]\n\"editor.read\" = true\n").unwrap();
+    fs::rename(&staged, root.join("permissions.toml")).unwrap();
+    wait_for_grant(&mut app, true);
+    assert!(app
+        .plugins
+        .has_capability("denied", kawi_plugin::Capability::EditorRead));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn repeated_malformed_saves_restart_the_plugin_once() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("malformed_restart_once");
+    let dir = root.join("sandbox");
+    fs::create_dir_all(&dir).unwrap();
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/app/plugin/test_data/sandbox_plugin.py");
+    fs::copy(source, dir.join("sandbox_plugin.py")).unwrap();
+    fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "sandbox"
+version = "0.1.0"
+protocol = 1
+command = ["python3", "${plugin_dir}/sandbox_plugin.py"]
+timeout_ms = 5000
+
+[capabilities]
+"fs.read" = { paths = ["$WORKSPACE"] }
+
+[[commands]]
+id = "probe"
+title = "Probe"
+"#,
+    )
+    .unwrap();
+    let secret = root.join("secret.txt");
+    fs::write(&secret, "secret").unwrap();
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.sandbox.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE\"] }\n",
+    );
+    let (_, first_pid) = run_sandbox_probe(&mut app, &secret);
+    fs::write(root.join("permissions.toml"), "not toml").unwrap();
+    app.plugins.reload_permissions();
+    let (_, second_pid) = run_sandbox_probe(&mut app, &secret);
+    assert_ne!(first_pid, second_pid);
+    fs::write(root.join("permissions.toml"), "still not toml").unwrap();
+    app.plugins.reload_permissions();
+    let (_, third_pid) = run_sandbox_probe(&mut app, &secret);
+    assert_eq!(second_pid, third_pid);
     fs::remove_dir_all(root).unwrap();
 }
