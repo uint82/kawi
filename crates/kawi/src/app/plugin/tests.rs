@@ -284,3 +284,38 @@ fn invokes_a_plugin_and_serves_host_requests() {
     assert_eq!(app.plugins.status("echo"), Some(PluginStatus::Ready));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn trim_plugin_applies_a_real_edit() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("trim");
+    let dir = root.join("trim");
+    fs::create_dir_all(&dir).unwrap();
+    let source =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/trim");
+    fs::copy(source.join("plugin.toml"), dir.join("plugin.toml")).unwrap();
+    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
+    let mut app = App::new(Buffer::from_string("alpha  \nbeta\t\n"), Flavor::Vim);
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let command = app.commands.find("trim.trim").expect("trim command");
+    let target = match app.commands.spec(command).expect("spec").handler {
+        CommandHandler::Plugin(target) => target,
+        other => panic!("unexpected handler: {other:?}"),
+    };
+    app.run_plugin_command(target, None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.editor.document_snapshot().to_string() != "alpha\nbeta\n" && Instant::now() < deadline
+    {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.editor.document_snapshot().to_string(), "alpha\nbeta\n");
+    fs::remove_dir_all(root).unwrap();
+}
