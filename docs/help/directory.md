@@ -55,6 +55,8 @@ Plans with deletes or multiple changes ask for confirmation. A single rename or 
 
 The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload.
 
+`:wall` checks every dirty directory buffer and plans their changes together. When the combined plan needs confirmation, Kawi asks once before applying any directory change. If a listing changed on disk or any plan is invalid, no directory changes or file writes are applied. Nested dirty directory buffers must be saved separately.
+
 ## Commands and keys
 
 - `:e dir/` open a directory buffer
@@ -65,6 +67,8 @@ The directory is checked again before applying. If entries changed since the buf
 - `.` toggle hidden entries when the buffer is clean
 - `:w` apply pending changes
 - `:w!` apply without the directory confirmation prompt
+- `:wall` apply pending changes in all dirty directory buffers as one transaction
+- `:wqall` apply all pending changes and quit
 - `:bd` close the directory buffer and keep Kawi open
 - `:bd!` discard pending listing edits and close the directory buffer
 
