@@ -232,6 +232,12 @@ impl App {
                     .and_then(super::directory::SortMode::parse)
                     .unwrap_or_default();
             }
+            "directory_metadata" => {
+                self.directory_options.metadata = value
+                    .as_text()
+                    .and_then(super::directory::MetadataColumns::parse)
+                    .unwrap_or_default();
+            }
             "explorer_width" => {
                 self.explorer.set_width(
                     value
@@ -422,6 +428,7 @@ impl App {
             "directory_confirm" => OptionValue::Bool(self.directory_options.confirm),
             "directory_trash" => OptionValue::Bool(self.directory_options.trash),
             "directory_sort" => OptionValue::Text(self.directory_options.sort.name().to_string()),
+            "directory_metadata" => OptionValue::Text(self.directory_options.metadata.name()),
             "keyguide" => OptionValue::Bool(self.keyguide_enabled),
             "keyguide_delay" => OptionValue::Int(
                 usize::try_from(self.keyguide_delay.as_millis()).unwrap_or(usize::MAX),
@@ -557,6 +564,25 @@ mod tests {
         assert!(!app.git_signs);
         execute(&mut app, "set signcolumn=never");
         assert_eq!(app.editor.signcolumn_width(), 0);
+    }
+
+    #[test]
+    fn directory_metadata_option_parses_and_queries() {
+        let mut app = app();
+        execute(&mut app, "set directory_metadata=size,permissions");
+        assert_eq!(app.directory_options.metadata.name(), "permissions,size");
+        execute(&mut app, "set dmd?");
+        assert_eq!(
+            app.last_message(),
+            Some("directory_metadata=permissions,size")
+        );
+        execute(&mut app, "set dmd=none");
+        assert!(app.directory_options.metadata.is_empty());
+        execute(&mut app, "set dmd=owner");
+        assert_eq!(
+            app.last_message(),
+            Some("E474: Invalid argument: directory_metadata=owner")
+        );
     }
 
     #[test]

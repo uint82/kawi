@@ -337,6 +337,7 @@ show_hidden = true
 confirm = false
 trash = false
 sort = "name"
+metadata = ["permissions", "size"]
 "#,
         )
         .unwrap();
@@ -351,6 +352,7 @@ sort = "name"
             app.directory_options.sort,
             crate::app::directory::SortMode::Name
         );
+        assert_eq!(app.directory_options.metadata.name(), "permissions,size");
         let _ = fs::remove_dir_all(dir);
     }
 

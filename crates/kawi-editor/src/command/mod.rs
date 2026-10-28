@@ -267,6 +267,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "diagnostic_virtual_text",
     "diagnostic_workspace_counts",
     "directory_confirm",
+    "directory_metadata",
     "directory_show_hidden",
     "directory_sort",
     "directory_trash",

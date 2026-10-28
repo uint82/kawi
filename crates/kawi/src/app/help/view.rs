@@ -208,6 +208,7 @@ fn kind_name(kind: &OptionKind) -> String {
         OptionKind::Bool => "boolean".to_string(),
         OptionKind::Int { min, max } => format!("integer {min}..{max}"),
         OptionKind::Enum(_) => "enum".to_string(),
+        OptionKind::List(_) => "list".to_string(),
         OptionKind::Text => "text".to_string(),
     }
 }
