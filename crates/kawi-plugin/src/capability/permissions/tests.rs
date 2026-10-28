@@ -126,3 +126,86 @@ fn partial_grants_warn_but_still_grant_the_subset() {
         .iter()
         .any(|warning| warning.contains("partially")));
 }
+
+#[test]
+fn rejects_parent_and_relative_paths_and_normalizes_trailing_slashes() {
+    let granted = effective_for(
+        r#""fs.read" = { paths = ["/home/u/proj/"] }"#,
+        r#"
+[plugins.plugin.grant]
+"fs.read" = { paths = ["/home/u/proj/src/"] }
+"#,
+    );
+    assert_eq!(
+        granted.scope(Capability::FsRead),
+        Some(&Scope::Paths(vec!["/home/u/proj/src".to_string()]))
+    );
+
+    let parent = requests(r#""fs.read" = { paths = ["$WORKSPACE/../.ssh"] }"#);
+    assert!(!parent.contains(Capability::FsRead));
+
+    let relative = requests(r#""fs.read" = { paths = ["proj/src"] }"#);
+    assert!(!relative.contains(Capability::FsRead));
+}
+
+#[test]
+fn path_subsumption_uses_components_not_string_prefixes() {
+    let granted = effective_for(
+        r#""fs.read" = { paths = ["/home/u/proj"] }"#,
+        r#"
+[plugins.plugin.grant]
+"fs.read" = { paths = ["/home/u/proj-evil"] }
+"#,
+    );
+    assert!(!granted.has(Capability::FsRead));
+    assert_eq!(granted.missing, vec![Capability::FsRead]);
+}
+
+#[test]
+fn command_scopes_compare_canonical_strings() {
+    let granted = effective_for(
+        r#""process.spawn" = { commands = ["git"] }"#,
+        r#"
+[plugins.plugin.grant]
+"process.spawn" = { commands = ["/usr/bin/git"] }
+"#,
+    );
+    assert!(!granted.has(Capability::ProcessSpawn));
+}
+
+#[test]
+fn unknown_default_revocation_warns_and_keeps_the_default() {
+    let granted = effective_for(
+        r#""ui.message" = true"#,
+        r#"
+[plugins.plugin.grant]
+"ui.mesage" = false
+"#,
+    );
+    assert!(granted.has(Capability::UiMessage));
+    assert_eq!(granted.warnings.len(), 1);
+}
+
+#[test]
+fn host_wildcards_are_rejected_and_exact_hosts_do_not_suffix_match() {
+    let wildcard = requests(r#""net.connect" = { hosts = ["*.example.com:443"] }"#);
+    assert!(!wildcard.contains(Capability::NetConnect));
+
+    let sibling = effective_for(
+        r#""net.connect" = { hosts = ["api.example.com:443"] }"#,
+        r#"
+[plugins.plugin.grant]
+"net.connect" = { hosts = ["evil.com:443"] }
+"#,
+    );
+    assert!(!sibling.has(Capability::NetConnect));
+
+    let suffix = effective_for(
+        r#""net.connect" = { hosts = ["api.example.com:443"] }"#,
+        r#"
+[plugins.plugin.grant]
+"net.connect" = { hosts = ["example.com.evil.com:443"] }
+"#,
+    );
+    assert!(!suffix.has(Capability::NetConnect));
+}

@@ -62,8 +62,22 @@ fn hash_is_stable_under_reordering_and_changes_on_scope_widening() {
 "fs.read" = { paths = ["$WORKSPACE"] }
 "#,
     );
+    let (added, _) = requests(
+        r#"
+"editor.read" = true
+"fs.read" = { paths = ["$WORKSPACE/a", "$WORKSPACE/b"] }
+"ui.message" = true
+"#,
+    );
+    let (removed, _) = requests(
+        r#"
+"fs.read" = { paths = ["$WORKSPACE/a", "$WORKSPACE/b"] }
+"#,
+    );
     assert_eq!(first.request_hash(), second.request_hash());
     assert_ne!(first.request_hash(), wider.request_hash());
+    assert_ne!(first.request_hash(), added.request_hash());
+    assert_ne!(first.request_hash(), removed.request_hash());
     assert_eq!(
         first.canonical_json(),
         r#"{"capabilities":{"editor.read":true,"fs.read":{"paths":["$WORKSPACE/a","$WORKSPACE/b"]}}}"#

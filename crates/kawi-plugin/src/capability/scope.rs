@@ -196,6 +196,7 @@ pub fn intersect_scope(requested: &Scope, granted: &Scope) -> Option<Scope> {
 }
 
 fn intersect_commands(requested: &[String], granted: &[String]) -> Option<Scope> {
+    // TODO: resolve command names at spawn time before intersection.
     exact_values(requested, granted).map(Scope::Commands)
 }
 
