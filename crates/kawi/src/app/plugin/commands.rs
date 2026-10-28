@@ -9,9 +9,12 @@ impl App {
         let (name, rest) = split_command(text);
         match name {
             "list" => self.list_plugins(),
+            "reload" => self.reload_permissions(),
             "restart" => self.restart_plugins(rest),
             "logs" => self.show_plugin_logs(rest),
-            _ => self.show_message("Usage: plugin list | restart [name] | logs [name]".to_string()),
+            _ => self.show_message(
+                "Usage: plugin list | reload | restart [name] | logs [name]".to_string(),
+            ),
         }
     }
 
@@ -34,9 +37,10 @@ impl App {
                     .map(|command| plugin.command_name(command))
                     .collect::<Vec<_>>()
                     .join(", ");
+                let capabilities = self.plugins.capability_lines(name).join("; ");
                 format!(
-                    "{:<16} {:<8} {:<20} {}",
-                    name, plugin.manifest.version, status, commands
+                    "{:<16} {:<8} {:<20} {:<24} {}",
+                    name, plugin.manifest.version, status, capabilities, commands
                 )
             })
             .collect::<Vec<_>>();
@@ -44,6 +48,15 @@ impl App {
             self.show_message("No plugins installed".to_string());
         } else {
             self.show_pager(lines);
+        }
+    }
+
+    fn reload_permissions(&mut self) {
+        let warnings = self.plugins.reload_permissions();
+        if warnings.is_empty() {
+            self.show_message("Plugin permissions reloaded".to_string());
+        } else {
+            self.show_pager(warnings);
         }
     }
 

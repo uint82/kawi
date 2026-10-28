@@ -48,13 +48,29 @@ impl App {
         }
     }
 
-    fn handle_plugin_host_request(
+    pub(super) fn handle_plugin_host_request(
         &mut self,
         plugin: &str,
         id: serde_json::Value,
         method: &str,
         params: serde_json::Value,
     ) -> bool {
+        if let Some(capability) = self.plugins.denied_capability(plugin, method) {
+            self.plugins.record_denial(plugin, capability);
+            if !id.is_null() {
+                let error = self.plugins.capability_error(plugin, capability);
+                let _ = self.plugins.respond(plugin, id, Err(error));
+            }
+            return false;
+        }
+        if method == "ui.message" && !self.plugins.allow_message(plugin) {
+            if !id.is_null() {
+                let _ = self
+                    .plugins
+                    .respond(plugin, id, Ok(serde_json::Value::Null));
+            }
+            return false;
+        }
         let redraw = matches!(method, "editor.apply_edit" | "ui.message");
         if method == "editor.apply_edit" {
             self.editor
@@ -63,7 +79,9 @@ impl App {
         let result = self.handle_plugin_request(method, params);
         self.editor
             .set_change_origin(kawi_buffer::BufferChangeOrigin::User);
-        let _ = self.plugins.respond(plugin, id, result);
+        if !id.is_null() {
+            let _ = self.plugins.respond(plugin, id, result);
+        }
         redraw
     }
 }

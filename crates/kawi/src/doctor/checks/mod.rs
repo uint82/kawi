@@ -3,6 +3,7 @@ mod git;
 mod keymaps;
 mod languages;
 mod paths;
+mod permissions;
 mod probe;
 mod session;
 mod state;
@@ -24,6 +25,7 @@ pub(crate) fn collect(target: &Path, workspace: &Path, paths: Option<&StatePaths
         config::check(paths),
         keymaps::check(paths),
         languages::check(paths),
+        permissions::check(paths),
         tasks::check(paths, workspace),
         git::check(workspace),
         session::check(paths, super::working_directory(target)),

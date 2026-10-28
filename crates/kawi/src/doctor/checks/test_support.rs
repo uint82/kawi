@@ -35,6 +35,7 @@ pub(super) fn paths(root: &Path) -> StatePaths {
         config_log: root.join("state/config.log"),
         keymaps: root.join("keymaps.toml"),
         plugins: root.join("plugins"),
+        permissions: root.join("permissions.toml"),
         languages: root.join("languages.toml"),
         tasks: root.join("tasks.toml"),
         themes: root.join("themes"),

@@ -9,14 +9,16 @@ mod notify;
 
 use self::coalesce::PendingBufferEvent;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
+use std::time::{Duration, Instant};
 
 use crate::keymap::{Binding, KeymapResolver};
 use kawi_editor::BufferInfo;
 use kawi_plugin::{
-    InvocationContext, LoadedPlugin, PluginCatalog, PluginError, PluginHost, PluginHostEvent,
-    PluginStatus, RpcError,
+    load_permission_state, Capability, CapabilityRegistry, InvocationContext, LoadedPlugin,
+    PluginCatalog, PluginError, PluginHost, PluginHostEvent, PluginStatus, RpcError, Scope,
 };
 use serde_json::Value;
 
@@ -24,6 +26,12 @@ use serde_json::Value;
 mod tests;
 
 const MAX_LOG_LINES: usize = 200;
+const MESSAGE_THROTTLE: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Default)]
+struct DenialRecord {
+    count: u64,
+}
 
 #[derive(Default)]
 pub(super) struct PluginRuntime {
@@ -40,6 +48,11 @@ pub(super) struct PluginRuntime {
     last_diagnostics_revision: u64,
     resync_buffers: std::collections::BTreeSet<(String, u64)>,
     pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
+    permissions_path: Option<PathBuf>,
+    capabilities: CapabilityRegistry,
+    denials: BTreeMap<(String, Capability), DenialRecord>,
+    last_message: BTreeMap<String, Instant>,
+    throttled_messages: BTreeSet<String>,
 }
 
 pub(super) struct PluginCommandTarget {
@@ -115,10 +128,105 @@ impl PluginRuntime {
     }
 
     pub(super) fn logs(&self, plugin: &str) -> Vec<String> {
-        self.logs
+        let mut lines = self
+            .logs
             .get(plugin)
-            .map(|lines| lines.iter().cloned().collect())
-            .unwrap_or_default()
+            .map(|lines| lines.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for ((denied_plugin, capability), record) in &self.denials {
+            if denied_plugin == plugin && record.count > 1 {
+                lines.push(format!(
+                    "denied {} calls: {}",
+                    record.count,
+                    capability.name()
+                ));
+            }
+        }
+        lines
+    }
+
+    pub(super) fn request_scope(&self, plugin: &str, capability: Capability) -> Option<Scope> {
+        self.catalog
+            .plugins
+            .iter()
+            .find(|loaded| loaded.manifest.name == plugin)
+            .and_then(|loaded| loaded.manifest.capability_requests.get(capability))
+            .cloned()
+    }
+
+    pub(super) fn denied_capability(&self, plugin: &str, method: &str) -> Option<Capability> {
+        match kawi_plugin::host_method_capability(method) {
+            kawi_plugin::MethodCapability::Required(capability)
+                if !self.capabilities.has(plugin, capability) =>
+            {
+                Some(capability)
+            }
+            _ => None,
+        }
+    }
+
+    pub(super) fn capability_error(&self, plugin: &str, capability: Capability) -> RpcError {
+        let scope = self
+            .request_scope(plugin, capability)
+            .filter(|scope| !matches!(scope, Scope::Unscoped))
+            .map(|scope| Value::Object(scope.to_json_object()));
+        RpcError::capability_denied(capability.name(), scope)
+    }
+
+    pub(super) fn record_denial(&mut self, plugin: &str, capability: Capability) {
+        let first = self
+            .denials
+            .get(&(plugin.to_string(), capability))
+            .is_none_or(|record| record.count == 0);
+        if first {
+            for line in denial_lines(plugin, capability, self.request_scope(plugin, capability)) {
+                self.push_log(plugin, &line);
+            }
+        }
+        self.denials
+            .entry((plugin.to_string(), capability))
+            .or_default()
+            .count += 1;
+    }
+
+    pub(super) fn allow_message(&mut self, plugin: &str) -> bool {
+        let now = Instant::now();
+        if self
+            .last_message
+            .get(plugin)
+            .is_some_and(|last| now.duration_since(*last) < MESSAGE_THROTTLE)
+        {
+            if self.throttled_messages.insert(plugin.to_string()) {
+                self.push_log(plugin, "ui.message rate limited");
+            }
+            return false;
+        }
+        self.last_message.insert(plugin.to_string(), now);
+        true
+    }
+
+    pub(super) fn reload_permissions(&mut self) -> Vec<String> {
+        let Some(path) = self.permissions_path.as_deref() else {
+            return Vec::new();
+        };
+        let state = load_permission_state(&self.catalog, path);
+        self.capabilities.replace(state.grants);
+        state.warnings
+    }
+
+    pub(super) fn capability_lines(&self, plugin: &str) -> Vec<String> {
+        let effective = self.capabilities.get(plugin);
+        let granted = describe_capabilities(effective.granted.keys().copied());
+        let missing = describe_capabilities(effective.missing.iter().copied());
+        let mut lines = vec![format!("granted: {granted}")];
+        if missing != "none" {
+            lines.push(format!("ungranted: {missing}"));
+        }
+        let stale = describe_capabilities(effective.stale.iter().copied());
+        if stale != "none" {
+            lines.push(format!("stale: {stale}"));
+        }
+        lines
     }
 
     pub(super) fn restart(&self, plugin: Option<&str>) -> Result<(), PluginError> {
@@ -146,5 +254,37 @@ impl PluginRuntime {
             lines.pop_front();
         }
         lines.push_back(line.to_string());
+    }
+}
+
+fn describe_capabilities(capabilities: impl Iterator<Item = Capability>) -> String {
+    let names = capabilities
+        .map(|capability| capability.name())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        "none".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+fn denial_lines(plugin: &str, capability: Capability, scope: Option<Scope>) -> [String; 3] {
+    [
+        format!("denied {}", capability.name()),
+        format!("add to permissions.toml: [plugins.{plugin}.grant]"),
+        format!(
+            "\"{}\" = {}",
+            capability.name(),
+            grant_value(scope.as_ref())
+        ),
+    ]
+}
+
+fn grant_value(scope: Option<&Scope>) -> String {
+    match scope {
+        None | Some(Scope::Unscoped) => "true".to_string(),
+        Some(Scope::Paths(paths)) => format!("{{ paths = {paths:?} }}"),
+        Some(Scope::Commands(commands)) => format!("{{ commands = {commands:?} }}"),
+        Some(Scope::Hosts(hosts)) => format!("{{ hosts = {hosts:?} }}"),
     }
 }
