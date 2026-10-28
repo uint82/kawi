@@ -4,6 +4,13 @@ protocol = 1
 description = "Trim trailing whitespace"
 command = ["python3", "${plugin_dir}/plugin.py"]
 timeout_ms = 5000
+subscribes = ["file_saved"]
+
+[[activation_events]]
+event = "on_command"
+
+[[activation_events]]
+event = "on_file_open"
 
 [[commands]]
 id = "trim"

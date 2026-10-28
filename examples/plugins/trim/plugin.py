@@ -51,6 +51,7 @@ def initialize_result():
         "version": "0.1.0",
         "plugin_capabilities": ["invoke_command"],
         "host_capabilities": ["editor.get_state", "editor.apply_edit", "ui.message"],
+        "events": ["file_saved"],
     }
 
 
@@ -69,6 +70,26 @@ def trim_edits(state):
     return edits
 
 
+def trim_buffer(client):
+    state = client.request("editor.get_state", {"include_text": True})
+    if state is None:
+        return None
+    if "error" in state:
+        return {"error": state["error"]}
+    value = state["result"]
+    edits = trim_edits(value)
+    if not edits:
+        return {"message": "no trailing whitespace"}
+    response = client.request("editor.apply_edit", {
+        "buffer": value["buffer"],
+        "revision": value["revision"],
+        "edits": edits,
+    })
+    if response is None:
+        return None
+    return response.get("result") or {"error": response.get("error")}
+
+
 def main():
     client = Client()
     while True:
@@ -83,30 +104,19 @@ def main():
                 "result": initialize_result(),
             })
         elif method == "invoke_command":
-            state = client.request("editor.get_state", {"include_text": True})
-            if state is None:
+            result = trim_buffer(client)
+            if result is None:
                 return
-            if "error" in state:
-                result = {"error": state["error"]}
-            else:
-                value = state["result"]
-                edits = trim_edits(value)
-                if not edits:
-                    result = {"message": "no trailing whitespace"}
-                else:
-                    response = client.request("editor.apply_edit", {
-                        "buffer": value["buffer"],
-                        "revision": value["revision"],
-                        "edits": edits,
-                    })
-                    if response is None:
-                        return
-                    result = response.get("result") or {"error": response.get("error")}
             client.write({
                 "jsonrpc": "2.0",
                 "id": message["id"],
                 "result": result,
             })
+        elif method == "event":
+            params = message.get("params", {})
+            if params.get("event") == "file_saved":
+                if trim_buffer(client) is None:
+                    return
         elif method == "shutdown":
             return
 
