@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 
 use super::entry::{entry_kind, is_hidden, is_vcs_directory, Entry, EntryKind};
+use super::metadata::{EntryMetadata, MetadataColumns};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::app) enum SortMode {
@@ -72,6 +73,7 @@ pub(super) fn read_listing(
     show_hidden: bool,
     first_id: u64,
     sort: SortMode,
+    columns: MetadataColumns,
 ) -> io::Result<Listing> {
     let mut entries = Vec::new();
     let mut next_id = first_id;
@@ -79,7 +81,15 @@ pub(super) fn read_listing(
         let item = item?;
         let name = item.file_name();
         let hidden = is_hidden(&name);
-        let file_type = item.file_type()?;
+        let metadata = if columns.any() {
+            item.metadata().ok()
+        } else {
+            None
+        };
+        let file_type = match metadata.as_ref() {
+            Some(metadata) => metadata.file_type(),
+            None => item.file_type()?,
+        };
         let kind = entry_kind(file_type);
         if kind == EntryKind::Directory && is_vcs_directory(&name) {
             continue;
@@ -92,6 +102,9 @@ pub(super) fn read_listing(
             name,
             kind,
             hidden,
+            metadata: metadata
+                .as_ref()
+                .map(|metadata| EntryMetadata::read(metadata, kind)),
         });
         next_id = next_id.saturating_add(1);
     }
@@ -187,7 +200,8 @@ mod tests {
         let dir = temp_dir("directory_name_sort");
         fs::create_dir_all(dir.join("zdir")).unwrap();
         fs::write(dir.join("alpha.txt"), "").unwrap();
-        let listing = read_listing(&dir, false, 1, SortMode::Name).unwrap();
+        let listing =
+            read_listing(&dir, false, 1, SortMode::Name, MetadataColumns::default()).unwrap();
         let names: Vec<String> = listing.entries.iter().map(Entry::display_name).collect();
         assert_eq!(names, ["alpha.txt", "zdir/"]);
         fs::remove_dir_all(dir).unwrap();
@@ -201,11 +215,59 @@ mod tests {
         fs::write(dir.join(".hidden"), "").unwrap();
         fs::write(dir.join("beta10.txt"), "").unwrap();
         fs::write(dir.join("beta2.txt"), "").unwrap();
-        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst).unwrap();
+        let listing = read_listing(
+            &dir,
+            false,
+            1,
+            SortMode::DirectoriesFirst,
+            MetadataColumns::default(),
+        )
+        .unwrap();
         let names: Vec<String> = listing.entries.iter().map(Entry::display_name).collect();
         assert_eq!(names, ["zeta/", "alpha.txt", "beta2.txt", "beta10.txt"]);
-        let listing = read_listing(&dir, true, 1, SortMode::DirectoriesFirst).unwrap();
+        let listing = read_listing(
+            &dir,
+            true,
+            1,
+            SortMode::DirectoriesFirst,
+            MetadataColumns::default(),
+        )
+        .unwrap();
         assert!(listing.entries.iter().any(|entry| entry.name == ".hidden"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn metadata_is_read_only_when_columns_are_enabled() {
+        let dir = temp_dir("directory_metadata");
+        fs::write(dir.join("alpha.txt"), "hello").unwrap();
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        let listing = read_listing(
+            &dir,
+            false,
+            1,
+            SortMode::DirectoriesFirst,
+            MetadataColumns::default(),
+        )
+        .unwrap();
+        assert!(listing.entries.iter().all(|entry| entry.metadata.is_none()));
+        let columns = MetadataColumns::parse("permissions,size,modified").unwrap();
+        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let file = listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == "alpha.txt")
+            .unwrap();
+        let text = file.metadata.as_ref().unwrap().text(columns).unwrap();
+        assert!(text.starts_with('-'));
+        assert!(text.contains("5B"));
+        assert_eq!(text.len(), 35);
+        let directory = listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == "sub")
+            .unwrap();
+        let text = directory.metadata.as_ref().unwrap().text(columns).unwrap();
+        assert!(text.starts_with('d'));
         fs::remove_dir_all(dir).unwrap();
     }
 }

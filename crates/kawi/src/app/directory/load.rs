@@ -4,6 +4,7 @@ use super::diff::Change;
 use super::listing::Listing;
 use super::loader::LoadedListing;
 use super::loading::{LoadOutcome, LoadPurpose};
+use super::metadata::MetadataColumns;
 use crate::app::save::SaveAfter;
 use crate::app::App;
 
@@ -75,8 +76,13 @@ impl App {
             .get(number)
             .map(|state| (state.root.clone(), state.show_hidden, state.sort))
             .ok_or_else(|| "directory buffer is missing".to_string())?;
+        let columns = if purpose.needs_metadata() {
+            self.directory_options.metadata
+        } else {
+            MetadataColumns::default()
+        };
         self.directory_loading
-            .submit(number, root, show_hidden, sort, purpose)?;
+            .submit(number, root, show_hidden, sort, columns, purpose)?;
         self.editor.set_buffer_readonly(number, true);
         Ok(())
     }

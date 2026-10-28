@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -18,12 +18,14 @@ fn state() -> DirectoryBuffer {
                 name: OsString::from("a"),
                 kind: EntryKind::File,
                 hidden: false,
+                metadata: None,
             },
             Entry {
                 id: 2,
                 name: OsString::from("b"),
                 kind: EntryKind::File,
                 hidden: false,
+                metadata: None,
             },
         ],
         lines: vec![
@@ -39,6 +41,7 @@ fn state() -> DirectoryBuffer {
         next_id: 3,
         revision: 0,
         removed: BTreeMap::new(),
+        positions: HashMap::new(),
     }
 }
 
@@ -87,4 +90,14 @@ fn renamed_copies_keep_the_source_identity() {
     state.sync(vec!["a".to_string(), "b".to_string(), "a".to_string()], 1);
     state.sync(vec!["a".to_string(), "b".to_string(), "c".to_string()], 2);
     assert_eq!(state.lines[2].id, Some(1));
+}
+
+#[test]
+fn blank_lines_keep_row_alignment() {
+    let mut state = state();
+    state.sync(vec!["a".to_string(), String::new(), "b".to_string()], 1);
+    assert_eq!(state.lines.len(), 3);
+    assert_eq!(state.lines[0].id, Some(1));
+    assert_eq!(state.lines[1].id, None);
+    assert_eq!(state.lines[2].id, Some(2));
 }

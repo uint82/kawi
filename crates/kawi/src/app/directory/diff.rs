@@ -176,6 +176,7 @@ mod tests {
             name: OsString::from(name),
             kind,
             hidden: false,
+            metadata: None,
         }
     }
 

@@ -5,6 +5,7 @@ use std::sync::mpsc::Sender;
 use super::diff::Change;
 use super::listing::SortMode;
 use super::loader::{DirectoryLoader, LoadResult};
+use super::metadata::MetadataColumns;
 use crate::app::save::SaveAfter;
 
 #[derive(Default)]
@@ -35,6 +36,10 @@ pub(super) enum LoadPurpose {
 
 impl LoadPurpose {
     fn needs_text(&self) -> bool {
+        matches!(self, Self::Display { .. })
+    }
+
+    pub(super) fn needs_metadata(&self) -> bool {
         matches!(self, Self::Display { .. })
     }
 }
@@ -94,9 +99,16 @@ impl DirectoryLoading {
         root: PathBuf,
         show_hidden: bool,
         sort: SortMode,
+        columns: MetadataColumns,
         purpose: LoadPurpose,
     ) -> Result<(), String> {
-        let id = self.request_load(root.clone(), show_hidden, sort, purpose.needs_text())?;
+        let id = self.request_load(
+            root.clone(),
+            show_hidden,
+            sort,
+            columns,
+            purpose.needs_text(),
+        )?;
         self.track_load(number, root, purpose, id);
         Ok(())
     }
@@ -106,10 +118,11 @@ impl DirectoryLoading {
         root: PathBuf,
         show_hidden: bool,
         sort: SortMode,
+        columns: MetadataColumns,
         include_text: bool,
     ) -> Result<u64, String> {
         let loader = self.ensure_loader()?;
-        match loader.request(root, show_hidden, sort, include_text) {
+        match loader.request(root, show_hidden, sort, columns, include_text) {
             Ok(id) => Ok(id),
             Err(error) => {
                 self.loader = None;
