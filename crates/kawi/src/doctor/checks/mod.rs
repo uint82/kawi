@@ -1,5 +1,6 @@
 mod config;
 mod git;
+mod keymaps;
 mod languages;
 mod paths;
 mod probe;
@@ -21,6 +22,7 @@ pub(crate) fn collect(target: &Path, workspace: &Path, paths: Option<&StatePaths
     let checks = vec![
         paths_check,
         config::check(paths),
+        keymaps::check(paths),
         languages::check(paths),
         tasks::check(paths, workspace),
         git::check(workspace),

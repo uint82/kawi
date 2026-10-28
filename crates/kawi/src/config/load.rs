@@ -242,7 +242,7 @@ fn expected_type(spec: &OptionSpec) -> &'static str {
     }
 }
 
-pub(super) fn line_at(text: &str, span: Option<std::ops::Range<usize>>) -> Option<usize> {
+pub(crate) fn line_at(text: &str, span: Option<std::ops::Range<usize>>) -> Option<usize> {
     span.map(|span| {
         text[..span.start]
             .bytes()

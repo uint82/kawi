@@ -262,6 +262,7 @@ mod tests {
         let paths = StatePaths {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
+            keymaps: dir.join("keymaps.toml"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

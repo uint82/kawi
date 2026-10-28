@@ -1,5 +1,6 @@
 mod binding;
 mod chord;
+pub(crate) mod config;
 mod resolver;
 #[cfg(test)]
 mod tests;
@@ -43,6 +44,22 @@ pub trait Keymap {
     }
 
     fn reset_pending(&mut self) {}
+
+    fn has_pending(&self) -> bool {
+        false
+    }
+
+    fn set_leaders(&mut self, _leaders: Vec<KeyChord>) {}
+}
+
+pub(crate) fn default_leaders() -> Vec<KeyChord> {
+    [
+        KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE),
+    ]
+    .into_iter()
+    .map(KeyChord::from_event)
+    .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +153,20 @@ impl Keymap for ActiveKeymap {
         match self {
             Self::Vim(inner) => inner.reset_pending(),
             Self::Helix(inner) => inner.reset_pending(),
+        }
+    }
+
+    fn has_pending(&self) -> bool {
+        match self {
+            Self::Vim(inner) => inner.has_pending(),
+            Self::Helix(inner) => inner.has_pending(),
+        }
+    }
+
+    fn set_leaders(&mut self, leaders: Vec<KeyChord>) {
+        match self {
+            Self::Vim(inner) => inner.set_leaders(leaders),
+            Self::Helix(inner) => inner.set_leaders(leaders),
         }
     }
 }

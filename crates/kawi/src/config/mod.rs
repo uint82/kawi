@@ -8,8 +8,10 @@ use toml_edit::Document;
 
 mod load;
 mod statusline;
+
 use crate::persist::write_private_atomically;
 use crate::text::one_line;
+pub(crate) use load::line_at;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Config {
@@ -45,7 +47,7 @@ pub(crate) struct ConfigWarning {
 }
 
 impl ConfigWarning {
-    fn new(
+    pub(crate) fn new(
         line: Option<usize>,
         key: impl Into<String>,
         value: impl Into<String>,
