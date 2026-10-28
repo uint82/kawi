@@ -27,6 +27,7 @@ pub struct EffectiveCapabilities {
     pub missing: Vec<Capability>,
     pub stale: Vec<Capability>,
     pub warnings: Vec<String>,
+    pub changed: bool,
 }
 
 impl EffectiveCapabilities {
@@ -85,6 +86,17 @@ pub fn effective(
             }
         }
     }
+    if permissions
+        .and_then(|permissions| permissions.request_hash.as_ref())
+        .is_some_and(|hash| hash != &requests.request_hash())
+    {
+        result.changed = true;
+        result
+            .warnings
+            .push("request hash changed; grants withheld".to_string());
+        withhold_grants(requests, &revoked, &mut result);
+        return result;
+    }
     for (capability, requested) in requests.iter() {
         let granted = grants.get(&capability);
         if granted.is_none() && capability.is_default() && !revoked.contains(&capability) {
@@ -120,6 +132,21 @@ pub fn effective(
     result.missing.sort_by_key(|capability| capability.name());
     result.stale.sort_by_key(|capability| capability.name());
     result
+}
+
+fn withhold_grants(
+    requests: &CapabilityRequests,
+    revoked: &[Capability],
+    result: &mut EffectiveCapabilities,
+) {
+    for (capability, _) in requests.iter() {
+        if capability.is_default() && !revoked.contains(&capability) {
+            result.granted.insert(capability, Scope::Unscoped);
+        } else {
+            result.missing.push(capability);
+        }
+    }
+    result.missing.sort_by_key(|capability| capability.name());
 }
 
 #[cfg(test)]

@@ -209,3 +209,56 @@ fn host_wildcards_are_rejected_and_exact_hosts_do_not_suffix_match() {
     );
     assert!(!suffix.has(Capability::NetConnect));
 }
+
+#[test]
+fn request_hash_mismatch_withholds_grants_and_marks_changed() {
+    let requests = requests(
+        r#""editor.read" = true
+"ui.message" = true
+"#,
+    );
+    let hash = requests.request_hash();
+    let permissions = format!(
+        "[plugins.plugin]
+request_hash = \"{hash}\"
+\n[plugins.plugin.grant]\n\"editor.read\" = true\n"
+    );
+    let matching = effective_for(
+        r#""editor.read" = true
+"ui.message" = true
+"#,
+        &permissions,
+    );
+    assert!(matching.has(Capability::EditorRead));
+    assert!(!matching.changed);
+
+    let changed = effective_for(
+        r#""editor.read" = true
+"ui.message" = true
+"#,
+        "[plugins.plugin]\nrequest_hash = \"sha256:stale\"\n\n[plugins.plugin.grant]\n\"editor.read\" = true\n",
+    );
+    assert!(changed.changed);
+    assert!(!changed.has(Capability::EditorRead));
+    assert!(changed.has(Capability::UiMessage));
+    assert!(changed
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("request hash changed")));
+}
+
+#[test]
+fn added_widened_and_shrunk_requests_change_the_hash() {
+    let base = requests(r#""fs.read" = { paths = ["$WORKSPACE/src"] }"#);
+    let added = requests(
+        r#""fs.read" = { paths = ["$WORKSPACE/src"] }
+"editor.read" = true
+"#,
+    );
+    let widened = requests(r#""fs.read" = { paths = ["$WORKSPACE"] }"#);
+    let shrunk = requests(r#""fs.read" = { paths = ["$WORKSPACE/src/main.rs"] }"#);
+    let hash = base.request_hash();
+    assert_ne!(hash, added.request_hash());
+    assert_ne!(hash, widened.request_hash());
+    assert_ne!(hash, shrunk.request_hash());
+}
