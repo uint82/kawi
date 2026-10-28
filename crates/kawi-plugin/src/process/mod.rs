@@ -20,7 +20,7 @@ pub(crate) enum WorkerCommand {
         request: u64,
         command: String,
         args: Value,
-        context: InvocationContext,
+        context: Box<InvocationContext>,
     },
     Restart,
     Shutdown,

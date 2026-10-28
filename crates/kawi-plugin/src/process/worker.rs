@@ -16,7 +16,7 @@ pub(super) struct InvocationJob {
     pub(super) request: u64,
     pub(super) command: String,
     pub(super) args: Value,
-    pub(super) context: InvocationContext,
+    pub(super) context: Box<InvocationContext>,
 }
 
 pub(super) struct Worker {
@@ -107,7 +107,7 @@ impl Worker {
                 InvokeParams {
                     command: job.command,
                     args: job.args,
-                    context: job.context,
+                    context: *job.context,
                 },
             )
     }

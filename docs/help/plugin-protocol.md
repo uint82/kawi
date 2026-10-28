@@ -67,7 +67,7 @@ Content-Length: <bytes>\r\n
 4. Kawi sends `invoke_command`.
 5. The process exits when Kawi shuts down or the host sends `shutdown`.
 
-Kawi supports one in-flight invocation per plugin. Calls from the plugin to the host may happen while an invocation is running.
+Kawi supports one in-flight invocation per plugin. Calls from the plugin to the host may happen while an invocation is running. A timed-out invocation sends `$/cancelRequest` and restarts the process.
 
 ## Initialize
 
@@ -119,6 +119,7 @@ Host request:
     "command": "ping",
     "args": null,
     "context": {
+      "buffer": 1,
       "revision": 12,
       "path": "/home/user/project/src/main.rs",
       "language": "rust",
@@ -158,6 +159,7 @@ Result:
 
 ```json
 {
+  "buffer": 1,
   "revision": 12,
   "path": "/home/user/project/src/main.rs",
   "language": "rust",
@@ -168,7 +170,7 @@ Result:
 }
 ```
 
-`include_text` defaults to `false`. `revision` is the buffer revision. `text` is the exact document text when requested.
+`include_text` defaults to `false`. `buffer` is an opaque buffer identifier and `revision` is its revision. `text` is the exact document text when requested.
 
 ### editor.apply_edit
 
@@ -176,6 +178,7 @@ Request params:
 
 ```json
 {
+  "buffer": 1,
   "revision": 12,
   "edits": [
     {
@@ -193,7 +196,7 @@ Result:
 {"revision": 13}
 ```
 
-Edits are applied atomically. `revision` must match the current buffer revision. A stale revision returns `-32010` and leaves the buffer unchanged. Edits must not overlap.
+Edits are applied atomically. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010` and leaves the buffer unchanged. Edits must not overlap.
 
 ### ui.message
 

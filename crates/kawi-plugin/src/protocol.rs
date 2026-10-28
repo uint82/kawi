@@ -66,6 +66,7 @@ pub struct Selection {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InvocationContext {
+    pub buffer: u64,
     pub revision: u64,
     pub path: Option<String>,
     pub language: Option<String>,
@@ -113,6 +114,7 @@ pub struct GetStateParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetStateResult {
+    pub buffer: u64,
     pub revision: u64,
     pub path: Option<String>,
     pub language: Option<String>,
@@ -131,6 +133,7 @@ pub struct ProtocolTextEdit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyEditParams {
+    pub buffer: u64,
     pub revision: u64,
     pub edits: Vec<ProtocolTextEdit>,
 }
@@ -173,6 +176,13 @@ impl RpcError {
         Self::new(
             STALE_REVISION,
             format!("stale buffer revision: expected {expected}, current {actual}"),
+        )
+    }
+
+    pub fn stale_buffer(expected: u64, actual: u64) -> Self {
+        Self::new(
+            STALE_REVISION,
+            format!("stale buffer: expected {expected}, current {actual}"),
         )
     }
 

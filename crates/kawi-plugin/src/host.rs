@@ -88,7 +88,7 @@ impl PluginHost {
                 request,
                 command: command.to_string(),
                 args,
-                context,
+                context: Box::new(context),
             })
             .map_err(|_| PluginError::ProcessExited)?;
         Ok(request)

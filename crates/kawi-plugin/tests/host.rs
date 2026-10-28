@@ -102,6 +102,7 @@ fn write_manifest(root: &Path, name: &str, executable: &str, mode: &str, timeout
 
 fn context() -> InvocationContext {
     InvocationContext {
+        buffer: 1,
         revision: 7,
         path: Some("/tmp/test.rs".to_string()),
         language: Some("rust".to_string()),

@@ -48,12 +48,15 @@ impl Connection {
         let executable = command
             .first()
             .ok_or_else(|| PluginError::Spawn("empty command".to_string()))?;
-        let mut child = Command::new(executable)
+        let mut process = Command::new(executable);
+        process
             .args(&command[1..])
             .current_dir(&plugin.dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        kawi_process::configure(&mut process);
+        let mut child = process
             .spawn()
             .map_err(|error| PluginError::Spawn(error.to_string()))?;
         let Some(stdin) = child.stdin.take() else {
