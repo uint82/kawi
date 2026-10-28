@@ -9,7 +9,7 @@ Kawi supports process plugins that communicate over JSON-RPC 2.0. Plugins are tr
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
 
-Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Process plugins remain trusted; filesystem, network, and process scopes are advisory until Landlock or WebAssembly enforcement ships.
+Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux, Landlock enforces filesystem and process-execution scopes; network scopes remain advisory until the WebAssembly runtime ships.
 
 Each plugin lives in its own directory:
 
@@ -63,7 +63,8 @@ The plugin name is the namespace. The command above is `example.format`, and you
 ## Commands
 
 - `:plugin list` shows installed plugins, versions, status, effective capabilities, and commands.
-- `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event.
+- `:plugin grant <plugin> <capability>` opens the consent prompt for a requested capability.
+- `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event. Filesystem and execute scope changes restart the affected plugin so Landlock re-applies. Kawi also reloads the file automatically after a debounced external save.
 - `:plugin restart` restarts every plugin process.
 - `:plugin restart example` restarts one plugin and clears its crash backoff.
 - `:plugin logs` shows all plugin logs.
@@ -91,12 +92,13 @@ Kawi sends `buffer_changed`, `buffer_opened`, `file_opened`, `buffer_closed`, `f
 - Origins are `user`, `undo`, `plugin:<name>`, `external_reload`, and `mixed`. A plugin does not receive its own edits. Mixed origins force a resync instead of partial filtering.
 - `:plugin logs example` reports queue overflows. An overflow forces a resync on the next delivered change. Crashes and restarts clear queued events.
 
-Kawi sends diagnostics from LSP and tasks to plugins. Plugin-published diagnostics are reserved for a future minor version.
+Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics.publish` can publish diagnostics for the current named buffer through `editor.set_diagnostics`. Kawi prefixes the source with the plugin name, so plugins cannot spoof another provider. Publishing an empty list clears that plugin's diagnostics for the buffer.
 
 ## Host methods
 
 - `editor.get_state` returns the buffer identifier, revision, path, language, mode, cursor, selection, and optionally the full text.
 - `editor.apply_edit` applies text edits only when the supplied buffer identifier and revision match the current buffer. Stale edits are rejected and the buffer is unchanged.
+- `editor.set_diagnostics` replaces the plugin-published diagnostics for the current buffer. The buffer identifier and revision must match, and the buffer must have a file path.
 - `ui.message` shows a status message.
 
 Positions are zero-based and use line plus UTF-8 byte column. Kawi rejects byte columns inside a code point.

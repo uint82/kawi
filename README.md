@@ -30,7 +30,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
-- **Process plugins.** Extend Kawi with JSON-RPC plugins that contribute commands, default keybindings, and event subscriptions.
+- **Process plugins.** Extend Kawi with JSON-RPC plugins that contribute commands, default keybindings, event subscriptions, and plugin-published diagnostics. Deny-by-default capabilities include interactive consent prompts and Linux Landlock filesystem and process-execution scopes.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.

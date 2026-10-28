@@ -7,7 +7,7 @@ related = ["plugins", "plugin-protocol", "configuration", "troubleshooting"]
 
 Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else.
 
-Kawi enforces the `editor.*` and `ui.*` host methods and `diagnostics.read` events for process plugins. The `diagnostics.publish` mapping is ready for `editor.set_diagnostics`, but that host method is not advertised yet. Process plugins remain trusted code. Until Landlock or WebAssembly enforcement is available, `fs.*`, `net.*`, and `process.*` capabilities are advisory for process plugins.
+Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, and `diagnostics.read` events for process plugins. On Linux, Landlock enforces `fs.read`, `fs.write`, and `process.spawn` for process plugins. Landlock does not scope network destinations, so `net.connect` remains advisory until the WebAssembly runtime ships. On other platforms every filesystem, process, and network scope remains advisory.
 
 ## Capability list
 
@@ -17,7 +17,7 @@ Kawi enforces the `editor.*` and `ui.*` host methods and `diagnostics.read` even
 | `editor.write` | none | `editor.apply_edit` and future buffer mutations |
 | `ui.message` | none | Status messages. Default tier |
 | `diagnostics.read` | none | Host diagnostic events |
-| `diagnostics.publish` | none | Reserved for plugin-published diagnostics |
+| `diagnostics.publish` | none | `editor.set_diagnostics` for the current buffer |
 | `fs.read` | paths | Read files under the granted paths |
 | `fs.write` | paths | Write files under the granted paths |
 | `process.spawn` | commands | Spawn the granted executables |
@@ -38,9 +38,9 @@ Unscoped capabilities use `true` in both requests and grants. Scoped capabilitie
 - `$CONFIG`: `$XDG_CONFIG_HOME/kawi`
 - `$HOME`: the user home directory
 
-Other variables are rejected. Kawi expands variables for each enforcement call, so `$WORKSPACE` follows the active workspace. If no workspace is open, `$WORKSPACE` is unresolved: a requested `$WORKSPACE` is ungranted and a granted `$WORKSPACE` covers nothing. If several workspace roots are active, `$WORKSPACE` expands to each root.
+Other variables are rejected. Kawi expands variables when it builds the Landlock ruleset at spawn time. `$WORKSPACE` is the active project root, which falls back to the current directory when no project is open, captured for the life of the plugin process.
 
-Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant and requested paths are canonicalized for each call and symlinks are resolved before comparison, so a symlink that escapes a grant does not match. For a write target that does not exist, Kawi canonicalizes the nearest existing ancestor and appends the remaining components lexically.
+Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant paths are canonicalized when the sandbox is built and symlinks are resolved before the rule is installed, so a symlink that escapes a grant does not match. A grant path that does not exist is skipped until the path exists and the plugin restarts.
 
 Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. A grant for a file covers exactly that file. A grant never widens a request.
 
@@ -121,6 +121,8 @@ Rules:
 - An invalid scope in one entry drops that entry only. Other valid grants in the file still apply.
 - Kawi warns when the grant file is writable by group or other users.
 
+Kawi watches the parent directory of `permissions.toml` and reloads it after a debounced change. Reloads use the same atomic fail-closed swap as `:plugin reload`. A malformed save drops every plugin to the default tier and warns instead of keeping the previous grants. Kawi suppresses the reload triggered by its own grant writes. Revocation clears any one-shot allowances. Host-method grants apply to the next call; a change to an `fs.*` or `process.spawn` scope restarts the affected plugin so the kernel ruleset matches the new grants.
+
 `request_hash` is optional. When present, it is the SHA-256 of the canonical request set. The hash input is compact UTF-8 JSON with no whitespace:
 
 ```json
@@ -166,7 +168,7 @@ Scope narrowing examples:
 | `editor.get_state` | `editor.read` |
 | `editor.apply_edit` | `editor.write` |
 | `ui.message` | `ui.message` |
-| `editor.set_diagnostics` | `diagnostics.publish` (not advertised yet) |
+| `editor.set_diagnostics` | `diagnostics.publish` |
 | `buffer_changed` | `editor.read` |
 | `buffer_opened` | `editor.read` |
 | `file_opened` | `editor.read` |
@@ -181,11 +183,20 @@ Host requests are checked against the current grants on every call. A JSON-RPC n
 
 Events are checked when they enter the queue and again when the writer writes them to the plugin pipe. Revoking a grant therefore drops events already queued for a stalled plugin. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability. Event payloads that carry paths, including `buffer_opened`, `file_opened`, and `file_saved`, use the same gate.
 
-The `host_capabilities` and `events` fields in `initialize` are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so revocation applies to the next message without restarting the plugin.
+The `host_capabilities` and `events` fields in `initialize` are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so host-method revocation applies to the next message without restarting the plugin. Filesystem and execute scopes are fixed for the life of the process and change on restart.
 
 The `invoke_command` context is editor state. Without `editor.read`, Kawi replaces it with an empty context: buffer and revision `0`, no path or language, normal mode, cursor at the origin, and no selection. Command arguments are caller-supplied command input from configuration or keybindings, not editor state, and are passed through.
 
-Interactive grant prompts are not implemented yet. Denial records use the exact TOML that a later prompt can reuse.
+## Consent prompt
+
+A denial opens a host prompt with three choices: allow once, allow always, or deny. The prompt is the normal consent path. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
+
+- Only real keyboard input answers a prompt. Synthetic keys from `keys.send`, macro replay, mouse events, and pasted text are ignored while a prompt is open.
+- Plugin-originated messages cannot replace the prompt text.
+- Plugin names, changed-capability summaries, and other rendered values are stripped of control characters and terminal escape sequences. The host renders only its own labels and sanitized values.
+- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning.
+- On a request hash mismatch the prompt lists the added or widened requests. Allow always stores the current request hash and removes other changed grants so the plugin must be re-approved one capability at a time.
+- One prompt is active at a time, at most eight wait in the queue, duplicates are collapsed, and an unanswered prompt expires after 30 seconds as a denial.
 
 ## Failure behavior
 
@@ -219,7 +230,7 @@ An unmet request:
 
 The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
 
-Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` and run `:plugin reload` to revoke or narrow grants without restarting plugins. The next host call or event delivery uses the new grants.
+Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` or run `:plugin reload` to change host-method and event grants immediately. Kawi restarts a plugin when its filesystem or execute scope changes so Landlock re-applies the ruleset.
 
 `ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and counted in `:plugin logs`.
 
@@ -227,15 +238,17 @@ A malformed `permissions.toml` during `:plugin reload` is fail-closed. Kawi swap
 
 ## Advisory status
 
-For process plugins, capabilities are enforced only when the plugin calls Kawi:
+Process plugins call the host for editor and UI methods, and the kernel sandbox covers direct operating system access where the platform supports it:
 
-- Enforced: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`.
-- Mapped but not advertised yet: `diagnostics.publish` for `editor.set_diagnostics`.
-- Advisory: `fs.read`, `fs.write`, `process.spawn`, `net.connect`.
+- Enforced everywhere: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
+- Enforced on Linux with Landlock: `fs.read`, `fs.write`, and the execute half of `process.spawn`.
+- Advisory: `net.connect` on every platform, and `fs.*` and `process.spawn` off Linux.
 
-A process plugin can call the operating system directly, so Kawi cannot enforce filesystem, network, or process scopes for it. `:plugin list` and `kawi doctor` label advisory grants as `advisory`, not as a sandbox.
+Each spawned plugin receives a Landlock ruleset in the child between fork and exec, after `no_new_privs` is set. The ruleset is deny by default. The baseline read-only allowlist covers the runtime: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, the dynamic loader, the ELF interpreter, `/etc/ld.so.cache`, TLS and DNS configuration, `/proc/self`, and `/dev/urandom`. `/dev/null` and the plugin directory are writable. A plugin that needs any other file must request `fs.read` or `fs.write`; it must request `process.spawn` to execute anything beyond the interpreter named in its manifest.
 
-Landlock will make `fs.read` and `fs.write` real for process plugins on Linux. Network and process scopes require seccomp, WebAssembly, or another sandbox. WebAssembly plugins will enforce every capability through host imports.
+`process.spawn` grants are resolved to canonical executable paths at spawn time. Landlock allows `EXECUTE` on those paths, which closes the command-name race between grant checking and execution. Arguments are not scoped. `net.connect` cannot be enforced by Landlock because it scopes ports, not hostnames.
+
+The ruleset is best effort and follows the ABI the running kernel supports. If Landlock is unavailable, `fs.*` and `process.spawn` stay advisory. `:plugin list` marks a scope `enforced` only after a spawn actually applied the ruleset; until then it remains `advisory`. A spawn fails visibly if an available ruleset cannot be applied.
 
 ## Doctor and plugin list
 
@@ -247,13 +260,13 @@ Landlock will make `fs.read` and `fs.write` real for process plugins on Linux. N
 - Requests without grants, including unresolved `$WORKSPACE`.
 - Request hash mismatches, shown as changed with grants withheld.
 - Subscriptions that cannot receive events.
-- Advisory grants for process plugins, labeled `advisory`.
+- Advisory grants labeled `advisory` and Landlock-enforced grants labeled `enforced`.
 
-`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Advisory capabilities are labeled `(advisory)`:
+`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Scoped capabilities are labeled `(enforced)` only after a sandboxed spawn, and `(advisory)` otherwise. `net.connect` is always `(advisory)`:
 
 ```text
 gitsigns 0.2.0 ready
-  caps: editor.read, editor.write, process.spawn (advisory)
+  caps: editor.read, editor.write, process.spawn (enforced), net.connect (advisory)
   ungranted: fs.read
 ```
 
@@ -261,16 +274,15 @@ gitsigns 0.2.0 ready
 
 Enforcement is deny by default. A plugin with no `[capabilities]` table receives only the default tier. Existing plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
 
-Interactive grant prompts are out of scope for version 1. The grant file is the consent surface.
+The grant file remains the durable consent surface; the prompt is the interactive path that writes it.
 
 ## Follow-ups
 
-These two issues are reserved for the first enforcement follow-ups:
+The remaining enforcement follow-up:
 
-- `plugin: enforce filesystem scopes with Landlock on Linux`
 - `plugin: add WebAssembly component runtime`
 
 Other roadmap items:
 
-- Plugin-published diagnostics under `diagnostics.publish`, scoped by plugin name.
-- Interactive grant review in the TUI.
+- WebAssembly plugin runtime, which makes `net.connect` enforceable.
+- Re-approval review for several changed requests at once instead of one capability at a time.

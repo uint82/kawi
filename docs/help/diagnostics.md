@@ -5,7 +5,7 @@ related = ["lsp", "configuration", "keybindings"]
 ---
 # Diagnostics
 
-Language server diagnostics appear as underlines, status counts, virtual text, and entries in the problems list. Gutter signs appear when the sign column is visible.
+Language server and plugin diagnostics appear as underlines, status counts, virtual text, and entries in the problems list. A plugin with `diagnostics.publish` publishes through `editor.set_diagnostics`, and Kawi labels the source with the plugin name. Gutter signs appear when the sign column is visible.
 
 ## Keys
 
