@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::super::entry::EntryKind;
 
-const PERMISSION_WIDTH: usize = 10;
-const SIZE_WIDTH: usize = 7;
-const MODIFIED_WIDTH: usize = 16;
+pub(super) const PERMISSION_WIDTH: usize = 10;
+pub(super) const SIZE_WIDTH: usize = 7;
+pub(super) const MODIFIED_WIDTH: usize = 16;
 const SIZE_UNITS: [&str; 7] = ["B", "K", "M", "G", "T", "P", "E"];
 pub(super) const MISSING_MODIFIED: &str = "????????????????";
 pub(super) const TEXT_WIDTH: usize = PERMISSION_WIDTH + 1 + SIZE_WIDTH + 1 + MODIFIED_WIDTH;

@@ -7,7 +7,12 @@ use crate::options::{
 
 mod format;
 
-use format::{format_modified, format_permissions, format_size, MISSING_MODIFIED, TEXT_WIDTH};
+use format::{
+    format_modified, format_permissions, format_size, MISSING_MODIFIED, MODIFIED_WIDTH,
+    PERMISSION_WIDTH, SIZE_WIDTH, TEXT_WIDTH,
+};
+
+const ENTRY_GAP: usize = 2;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::app) struct MetadataColumns {
@@ -61,6 +66,29 @@ impl MetadataColumns {
             size: true,
             modified: true,
         }
+    }
+
+    pub(in crate::app) fn width(self) -> usize {
+        let mut width = 0usize;
+        let mut count = 0usize;
+        if self.permissions {
+            width += PERMISSION_WIDTH;
+            count += 1;
+        }
+        if self.size {
+            width += SIZE_WIDTH;
+            count += 1;
+        }
+        if self.modified {
+            width += MODIFIED_WIDTH;
+            count += 1;
+        }
+        if count == 0 {
+            return 0;
+        }
+        width
+            .saturating_add(count.saturating_sub(1))
+            .saturating_add(ENTRY_GAP)
     }
 
     pub(in crate::app) fn is_empty(self) -> bool {
@@ -138,6 +166,16 @@ mod tests {
         let columns = MetadataColumns::parse("modified,permissions").unwrap();
         assert_eq!(columns.name(), "permissions,modified");
         assert_eq!(MetadataColumns::default().name(), "none");
+    }
+
+    #[test]
+    fn columns_have_fixed_display_widths() {
+        assert_eq!(MetadataColumns::all().width(), 37);
+        assert_eq!(
+            MetadataColumns::parse("permissions,size").unwrap().width(),
+            20
+        );
+        assert_eq!(MetadataColumns::default().width(), 0);
     }
 
     #[test]

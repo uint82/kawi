@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use kawi_buffer::Buffer;
 use kawi_tui::frame::{VirtualTextKind, VirtualTextPlacement};
 
@@ -271,6 +271,26 @@ fn permanent_delete_removes_entries_when_trash_is_disabled() {
 }
 
 #[test]
+fn mouse_maps_metadata_prefix_to_entry_start() {
+    let (dir, mut app) = setup("directory_metadata_mouse", &["alpha.txt"], &[]);
+    app.sync_active_window();
+    let layout = app.window_layout();
+    let panes = app.frame_panes(&layout);
+    let pane = &panes[0];
+    assert_eq!(pane.left_width, 37);
+    let column = pane.rect.x.saturating_add(app.editor.gutter_width());
+    let click = MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: u16::try_from(column).unwrap(),
+        row: u16::try_from(pane.rect.y).unwrap(),
+        modifiers: KeyModifiers::NONE,
+    };
+    app.handle_mouse(click).expect("click filename");
+    assert_eq!(app.cursor_position(), (0, 0));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn write_quit_finishes_after_the_background_check() {
     let (dir, mut app) = setup("directory_write_quit", &["alpha.txt"], &[]);
     set_listing(&mut app, "beta.txt");
@@ -300,6 +320,8 @@ fn directory_metadata_loads_with_the_listing() {
     let texts = app.directory_metadata_texts(number, &[0]);
     let text = texts[0].as_ref().unwrap();
     assert_eq!(text.kind, VirtualTextKind::Metadata);
-    assert_eq!(text.placement, VirtualTextPlacement::RightEdge);
+    assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
+    let empty = app.directory_metadata_texts(number, &[100]);
+    assert_eq!(empty[0].as_ref().unwrap().text, " ".repeat(37));
     let _ = fs::remove_dir_all(dir);
 }
