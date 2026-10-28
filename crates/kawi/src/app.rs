@@ -1332,6 +1332,11 @@ impl App {
     }
 
     fn flush_mapping_timeout(&mut self) -> Result<Option<bool>> {
+        let context = KeyContext::from_mode(self.editor.mode());
+        if context != self.keymaps.pending_context() {
+            self.keymaps.clear_pending();
+            return Ok(None);
+        }
         match self.keymaps.take_timeout(Instant::now()) {
             Some(ResolveOutcome::Command(command)) => self
                 .dispatch_command_id(command.command, command.args)

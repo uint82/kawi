@@ -135,6 +135,16 @@ impl KeymapResolver {
         self.pending_since = None;
     }
 
+    pub(crate) fn pending_context(&self) -> Option<KeyContext> {
+        self.pending_context
+    }
+
+    pub(crate) fn has_binding(&self, mode: KeyContext, keys: &[KeyChord]) -> bool {
+        self.bindings
+            .iter()
+            .any(|binding| binding.matches(mode, keys))
+    }
+
     fn exact_binding(&self, context: KeyContext, keys: &[KeyChord]) -> Option<&Binding> {
         self.bindings
             .iter()

@@ -337,6 +337,7 @@ impl App {
         self.flavor = flavor;
         self.keymap = ActiveKeymap::for_flavor(flavor);
         self.keymap.set_leaders(self.leaders.clone());
+        self.keymaps.clear_pending();
         if flavor == Flavor::Vim {
             self.exit_visual_if_active();
         }
