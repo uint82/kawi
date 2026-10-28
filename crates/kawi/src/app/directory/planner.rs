@@ -144,6 +144,7 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
         let source = renamed_paths.get(&from).unwrap_or(&from).clone();
         operations.push(Operation::Copy { from: source, to });
     }
+    super::permissions::preflight(&changes, &operations, fs)?;
     Ok(Plan {
         operations,
         changes: count,

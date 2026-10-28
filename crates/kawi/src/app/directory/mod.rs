@@ -12,6 +12,7 @@ mod metadata;
 mod moves;
 mod open;
 mod options;
+mod permissions;
 mod planner;
 mod save;
 mod save_all;
@@ -22,6 +23,8 @@ mod verify;
 mod executor_tests;
 #[cfg(test)]
 mod load_tests;
+#[cfg(test)]
+mod permissions_tests;
 #[cfg(test)]
 mod planner_tests;
 #[cfg(test)]

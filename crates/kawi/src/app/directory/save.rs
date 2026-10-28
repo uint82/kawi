@@ -96,6 +96,10 @@ impl App {
     pub(in crate::app) fn apply_directory_changes(&mut self, apply: PendingApply) -> bool {
         let changes = all_changes(&apply.edits);
         let mut fs = RealFs::new(!self.directory_options.trash);
+        if let Err(error) = super::permissions::preflight(&changes, &apply.plan.operations, &fs) {
+            self.refresh_after_directory_change();
+            return self.finish_directory_apply_failure(&apply, error, 0);
+        }
         let outcome = execute(&apply.plan, &mut fs);
         let applied = &apply.plan.operations[..outcome.applied];
         for operation in applied {

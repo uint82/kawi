@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -20,6 +20,9 @@ pub(super) struct FakeFs {
     paths: BTreeMap<PathBuf, bool>,
     pub(super) calls: Vec<Call>,
     fail_at: Option<usize>,
+    denied_write: BTreeSet<PathBuf>,
+    denied_read: BTreeSet<PathBuf>,
+    denied_delete: BTreeSet<PathBuf>,
 }
 
 impl FakeFs {
@@ -31,11 +34,29 @@ impl FakeFs {
                 .collect(),
             calls: Vec::new(),
             fail_at: None,
+            denied_write: BTreeSet::new(),
+            denied_read: BTreeSet::new(),
+            denied_delete: BTreeSet::new(),
         }
     }
 
     pub(super) fn fail_at(mut self, index: usize) -> Self {
         self.fail_at = Some(index);
+        self
+    }
+
+    pub(super) fn deny_write(mut self, path: &str) -> Self {
+        self.denied_write.insert(PathBuf::from(path));
+        self
+    }
+
+    pub(super) fn deny_read(mut self, path: &str) -> Self {
+        self.denied_read.insert(PathBuf::from(path));
+        self
+    }
+
+    pub(super) fn deny_delete(mut self, path: &str) -> Self {
+        self.denied_delete.insert(PathBuf::from(path));
         self
     }
 
@@ -87,6 +108,18 @@ impl DirectoryFs for FakeFs {
 
     fn is_dir(&self, path: &Path) -> bool {
         self.paths.get(path).copied().unwrap_or(false)
+    }
+
+    fn can_modify_directory(&self, path: &Path) -> bool {
+        !self.denied_write.contains(path)
+    }
+
+    fn can_read(&self, path: &Path) -> bool {
+        !self.denied_read.contains(path)
+    }
+
+    fn can_delete(&self, path: &Path) -> bool {
+        !self.denied_delete.contains(path)
     }
 }
 

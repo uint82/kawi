@@ -153,29 +153,13 @@ fn is_writable_location(path: &Path) -> bool {
                 if !metadata.is_dir() || metadata.file_type().is_symlink() {
                     return false;
                 }
-                return is_writable(ancestor, &metadata);
+                return super::fs::can_modify_directory(ancestor);
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(_) => return false,
         }
     }
     false
-}
-
-#[cfg(unix)]
-fn is_writable(path: &Path, _metadata: &fs::Metadata) -> bool {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
-        return false;
-    };
-    unsafe { libc::access(path.as_ptr(), libc::W_OK) == 0 }
-}
-
-#[cfg(not(unix))]
-fn is_writable(_path: &Path, metadata: &fs::Metadata) -> bool {
-    !metadata.permissions().readonly()
 }
 
 fn write_info(path: &Path, encoded: &str) -> io::Result<()> {

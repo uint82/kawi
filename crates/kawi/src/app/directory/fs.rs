@@ -12,6 +12,9 @@ pub(super) trait DirectoryFs {
     fn create_dir(&mut self, path: &Path) -> io::Result<()>;
     fn exists(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
+    fn can_modify_directory(&self, path: &Path) -> bool;
+    fn can_read(&self, path: &Path) -> bool;
+    fn can_delete(&self, path: &Path) -> bool;
 }
 
 pub(super) struct RealFs {
@@ -60,5 +63,20 @@ impl DirectoryFs for RealFs {
     fn is_dir(&self, path: &Path) -> bool {
         std::fs::symlink_metadata(path)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+    }
+
+    fn can_modify_directory(&self, path: &Path) -> bool {
+        file_fs::can_modify_directory(path)
+    }
+
+    fn can_read(&self, path: &Path) -> bool {
+        file_fs::can_read(path)
+    }
+
+    fn can_delete(&self, path: &Path) -> bool {
+        if self.permanent_delete {
+            return file_fs::can_remove_tree(path);
+        }
+        TrashDir::for_target(path).is_some_and(|trash| trash.can_trash(path))
     }
 }

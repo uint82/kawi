@@ -2,9 +2,12 @@ use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 
+mod access;
 mod copy;
 
 use copy::copy_across_filesystems;
+
+pub(in crate::app) use access::{can_modify_directory, can_read, can_remove_tree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum RenameKind {
