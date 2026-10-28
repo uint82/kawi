@@ -63,7 +63,7 @@ mod workspace_edit;
 
 use session::InsertEdit;
 
-pub use buffers::{BufferError, EditError, WriteOutcome};
+pub use buffers::{BufferChanges, BufferError, BufferInfo, EditError, WriteOutcome};
 pub use file_paths::PathAdoption;
 pub use fold::VisibleWindow;
 pub use indent::IndentRules;

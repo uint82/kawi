@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use kawi_buffer::{apply_text_edits, content_hash, Buffer, PersistedHistory, TextEdit};
+use kawi_buffer::{
+    apply_text_edits, content_hash, Buffer, BufferChange, BufferChangeOrigin, PersistedHistory,
+    TextEdit,
+};
 use ropey::Rope;
 
 use super::indent::{self, IndentConfig};
@@ -42,6 +45,23 @@ pub enum BufferError {
     NotFound(String),
     Ambiguous(String),
     NoWrite(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferInfo {
+    pub number: usize,
+    pub path: Option<String>,
+    pub language: Option<String>,
+    pub revision: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferChanges {
+    pub number: usize,
+    pub path: Option<String>,
+    pub language: Option<String>,
+    pub revision: u64,
+    pub changes: Vec<BufferChange>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -637,7 +657,10 @@ impl Editor {
         };
         if number == self.buffers.current() {
             self.buffer.checkpoint(self.cursor.row(), self.cursor.col());
+            self.buffer
+                .set_change_origin(BufferChangeOrigin::ExternalReload);
             self.buffer.replace_all(text);
+            self.buffer.set_change_origin(BufferChangeOrigin::User);
             self.revalidate_folds_after_change(number, Some(previous_hash));
             return true;
         }
@@ -652,7 +675,15 @@ impl Editor {
         let row = entry.state.cursor.row();
         let col = entry.state.cursor.col();
         entry.state.buffer.checkpoint(row, col);
+        entry
+            .state
+            .buffer
+            .set_change_origin(BufferChangeOrigin::ExternalReload);
         entry.state.buffer.replace_all(text);
+        entry
+            .state
+            .buffer
+            .set_change_origin(BufferChangeOrigin::User);
         self.revalidate_folds_after_change(number, Some(previous_hash));
         true
     }
@@ -677,6 +708,69 @@ impl Editor {
     pub fn buffer_path(&self, number: usize) -> Option<&str> {
         self.buffer_at(number)
             .and_then(|buffer| buffer.path.as_deref())
+    }
+
+    pub fn buffer_infos(&self) -> Vec<BufferInfo> {
+        self.all_buffer_numbers()
+            .into_iter()
+            .filter_map(|number| {
+                let buffer = self.buffer_at(number)?;
+                Some(BufferInfo {
+                    number,
+                    path: buffer.path.clone(),
+                    language: (!buffer.is_directory())
+                        .then(|| {
+                            buffer
+                                .path
+                                .as_deref()
+                                .and_then(kawi_syntax::LanguageId::from_path)
+                        })
+                        .flatten()
+                        .map(|language| language.name().to_string()),
+                    revision: buffer.revision(),
+                })
+            })
+            .collect()
+    }
+
+    pub fn take_buffer_changes(&mut self) -> Vec<BufferChanges> {
+        let mut changes = Vec::new();
+        let current_changes = self.buffer.take_changes();
+        if !current_changes.is_empty() {
+            changes.push(BufferChanges {
+                number: self.buffers.current(),
+                path: self.buffer.path.clone(),
+                language: self
+                    .language_id()
+                    .map(|language| language.name().to_string()),
+                revision: self.buffer.revision(),
+                changes: current_changes,
+            });
+        }
+        for entry in &mut self.buffers.parked {
+            let buffer_changes = entry.state.buffer.take_changes();
+            if buffer_changes.is_empty() {
+                continue;
+            }
+            changes.push(BufferChanges {
+                number: entry.number,
+                path: entry.state.buffer.path.clone(),
+                language: entry
+                    .state
+                    .buffer
+                    .path
+                    .as_deref()
+                    .and_then(kawi_syntax::LanguageId::from_path)
+                    .map(|language| language.name().to_string()),
+                revision: entry.state.buffer.revision(),
+                changes: buffer_changes,
+            });
+        }
+        changes
+    }
+
+    pub fn set_change_origin(&mut self, origin: BufferChangeOrigin) {
+        self.buffer.set_change_origin(origin);
     }
 
     pub fn buffer_snapshot(&self, number: usize) -> Option<Rope> {
@@ -1371,7 +1465,11 @@ impl Editor {
         state
             .buffer
             .checkpoint(state.cursor.row(), state.cursor.col());
+        state
+            .buffer
+            .set_change_origin(BufferChangeOrigin::ExternalReload);
         state.buffer.replace_all(&updated.to_string());
+        state.buffer.set_change_origin(BufferChangeOrigin::User);
         state.cursor.set_position(cursor.0, cursor.1);
         state.cursor.set_desired(cursor.1);
         Ok(())
