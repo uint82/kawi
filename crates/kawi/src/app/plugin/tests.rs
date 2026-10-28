@@ -191,28 +191,45 @@ fn rejects_stale_revisions_and_split_code_points() {
     assert_eq!(error.code, STALE_REVISION);
     assert!(error.message.contains("stale buffer"));
 
-    let mut app = App::new(Buffer::from_string("é"), Flavor::Vim);
-    let revision = app.editor.buffer_revision();
-    let split = ApplyEditParams {
-        buffer: app.editor.buffer_number() as u64,
-        revision,
-        edits: vec![ProtocolTextEdit {
-            start: Position {
-                line: 0,
-                byte_column: 1,
-            },
-            end: Position {
-                line: 0,
-                byte_column: 2,
-            },
-            text: "x".to_string(),
-        }],
-    };
-    let error = app
-        .handle_plugin_request("editor.apply_edit", serde_json::to_value(split).unwrap())
-        .unwrap_err();
-    assert_eq!(error.code, INVALID_POSITION);
-    assert_eq!(app.editor.text_lines(), vec!["é"]);
+    for text in ["é", "中", "😀"] {
+        let mut app = App::new(Buffer::from_string(text), Flavor::Vim);
+        let revision = app.editor.buffer_revision();
+        let split = ApplyEditParams {
+            buffer: app.editor.buffer_number() as u64,
+            revision,
+            edits: vec![ProtocolTextEdit {
+                start: Position {
+                    line: 0,
+                    byte_column: 1,
+                },
+                end: Position {
+                    line: 0,
+                    byte_column: 2,
+                },
+                text: "x".to_string(),
+            }],
+        };
+        let error = app
+            .handle_plugin_request("editor.apply_edit", serde_json::to_value(split).unwrap())
+            .unwrap_err();
+        assert_eq!(error.code, INVALID_POSITION, "{text}");
+        assert_eq!(app.editor.text_lines(), vec![text], "{text}");
+    }
+}
+
+#[test]
+fn broken_manifest_warns_and_keeps_good_plugins() {
+    let root = temp_dir("bad_manifest");
+    manifest(&root);
+    let broken = root.join("broken");
+    fs::create_dir_all(&broken).unwrap();
+    fs::write(broken.join("plugin.toml"), "name = 7\nprotocol = true\n").unwrap();
+    let mut app = app();
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.iter().any(|warning| warning.contains("broken")));
+    assert!(app.commands.find("echo.ping").is_some());
+    assert_eq!(app.keymaps.bindings().len(), 2);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
