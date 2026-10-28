@@ -187,3 +187,17 @@ fn unknown_mapping_command_reports_error() {
         .last_message()
         .is_some_and(|message| message.contains("Unknown command")));
 }
+
+#[test]
+fn runtime_leader_mapping_covers_every_leader() {
+    let mut app = app();
+    execute(&mut app, "nmap <leader>gz picker.files");
+    assert_eq!(app.keymaps.bindings().len(), 2);
+    execute(&mut app, "nunmap <leader>gz");
+    assert_eq!(app.keymaps.bindings().len(), 2);
+    assert!(app
+        .keymaps
+        .bindings()
+        .iter()
+        .all(|binding| binding.command == command(&app, "none")));
+}

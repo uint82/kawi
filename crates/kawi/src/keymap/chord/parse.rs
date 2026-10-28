@@ -5,10 +5,10 @@ pub(super) fn parse_token(
     leaders: &[KeyChord],
 ) -> Result<Vec<KeyChord>, KeyParseError> {
     if token.eq_ignore_ascii_case("leader") {
-        if leaders.is_empty() {
+        let Some(leader) = leaders.first() else {
             return Err(KeyParseError::new("leader key is not configured"));
-        }
-        return Ok(leaders.to_vec());
+        };
+        return Ok(vec![*leader]);
     }
     let mut parts: Vec<&str> = token.split('-').collect();
     let name = parts.pop().unwrap_or_default();

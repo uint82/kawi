@@ -160,3 +160,15 @@ fn accepts_inline_mode_tables() {
     assert!(loaded.warnings.is_empty());
     assert_eq!(loaded.bindings.len(), 1);
 }
+
+#[test]
+fn expands_leader_to_each_configured_key() {
+    let loaded = load_text(
+        "default_leader",
+        "[normal]\n\"<leader>ff\" = \"picker.files\"\n",
+    );
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(loaded.bindings.len(), 2);
+    assert_eq!(loaded.bindings[0].keys.to_string(), "<Space>ff");
+    assert_eq!(loaded.bindings[1].keys.to_string(), "\\ff");
+}

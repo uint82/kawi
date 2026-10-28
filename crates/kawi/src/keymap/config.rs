@@ -151,17 +151,16 @@ impl<'a> Loader<'a> {
             self.warn(item, &warning_key, "ignored, expected a command or table");
             return;
         };
-        let keys = match KeySequence::parse(key, &self.load.leader) {
-            Ok(keys) => keys,
+        let sequences = match expand_sequences(key, &self.load.leader) {
+            Ok(sequences) => sequences,
             Err(error) => {
                 self.warn(item, &warning_key, error.to_string());
                 return;
             }
         };
-        if keys
-            .first()
-            .is_some_and(|chord| matches!(chord.code, KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"'))
-        {
+        if sequences.iter().any(|keys| {
+            keys.first().is_some_and(|chord| matches!(chord.code, KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"'))
+        }) {
             self.warn(item, &warning_key, "ignored, count and register prefixes are reserved");
             return;
         }
@@ -169,12 +168,14 @@ impl<'a> Loader<'a> {
             self.warn(item, &warning_key, "ignored, unknown command");
             return;
         };
-        self.load.bindings.push(
-            Binding::new(command, context, keys, BindingSource::User)
-                .with_args(expected.args)
-                .with_when(expected.when)
-                .with_description(expected.description),
-        );
+        for keys in sequences {
+            self.load.bindings.push(
+                Binding::new(command, context, keys, BindingSource::User)
+                    .with_args(expected.args.clone())
+                    .with_when(expected.when.clone())
+                    .with_description(expected.description.clone()),
+            );
+        }
     }
 
     fn warn(&mut self, item: &Item, key: &str, fallback: impl Into<String>) {
@@ -230,6 +231,24 @@ fn parse_leaders(item: &Item) -> Option<Vec<KeyChord>> {
         }
     }
     Some(leaders)
+}
+
+pub(crate) fn expand_sequences(
+    text: &str,
+    leaders: &[KeyChord],
+) -> Result<Vec<KeySequence>, super::chord::KeyParseError> {
+    if contains_leader(text) {
+        leaders
+            .iter()
+            .map(|leader| KeySequence::parse(text, std::slice::from_ref(leader)))
+            .collect()
+    } else {
+        KeySequence::parse(text, &[]).map(|keys| vec![keys])
+    }
+}
+
+fn contains_leader(text: &str) -> bool {
+    text.to_ascii_lowercase().contains("<leader>")
 }
 
 fn single_leader(text: &str) -> Option<Vec<KeyChord>> {

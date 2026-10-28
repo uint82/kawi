@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::keymap::{Binding, BindingSource, KeyCodeSpec, KeyContext, KeySequence};
+use crate::keymap::{Binding, BindingSource, KeyCodeSpec, KeyContext};
 
 use super::App;
 
@@ -28,15 +28,17 @@ impl App {
             return Ok(Some(false));
         }
         let (command, args) = split_mapping_target(command);
-        let keys = match KeySequence::parse(keys, &self.leaders) {
-            Ok(keys) => keys,
+        let sequences = match crate::keymap::config::expand_sequences(keys, &self.leaders) {
+            Ok(sequences) => sequences,
             Err(error) => {
                 self.show_message(format!("E474: {error}"));
                 return Ok(Some(false));
             }
         };
-        if keys.first().is_some_and(|chord| {
-            matches!(chord.code, KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"')
+        if sequences.iter().any(|keys| {
+            keys.first().is_some_and(|chord| {
+                matches!(chord.code, KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"')
+            })
         }) {
             self.show_message("E474: Count and register prefixes are reserved".to_string());
             return Ok(Some(false));
@@ -45,10 +47,12 @@ impl App {
             self.show_message(format!("E492: Unknown command: {command}"));
             return Ok(Some(false));
         };
-        let binding =
-            Binding::new(command, mode, keys.clone(), BindingSource::User).with_args(args);
-        self.keymaps.bind(binding);
-        self.show_message(format!("mapped {} {}", mode.name(), keys));
+        for keys in sequences {
+            let binding = Binding::new(command, mode, keys.clone(), BindingSource::User)
+                .with_args(args.clone());
+            self.keymaps.bind(binding);
+            self.show_message(format!("mapped {} {}", mode.name(), keys));
+        }
         Ok(Some(false))
     }
 
@@ -58,8 +62,8 @@ impl App {
             self.show_message("E474: Expected a key sequence".to_string());
             return Ok(Some(false));
         }
-        let keys = match KeySequence::parse(keys, &self.leaders) {
-            Ok(keys) => keys,
+        let sequences = match crate::keymap::config::expand_sequences(keys, &self.leaders) {
+            Ok(sequences) => sequences,
             Err(error) => {
                 self.show_message(format!("E474: {error}"));
                 return Ok(Some(false));
@@ -68,10 +72,12 @@ impl App {
         let Some(none) = self.commands.find("none") else {
             return Ok(Some(false));
         };
-        self.keymaps.unbind(mode, &keys);
-        self.keymaps
-            .bind(Binding::new(none, mode, keys.clone(), BindingSource::User));
-        self.show_message(format!("unmapped {} {}", mode.name(), keys));
+        for keys in sequences {
+            self.keymaps.unbind(mode, &keys);
+            self.keymaps
+                .bind(Binding::new(none, mode, keys.clone(), BindingSource::User));
+            self.show_message(format!("unmapped {} {}", mode.name(), keys));
+        }
         Ok(Some(false))
     }
 

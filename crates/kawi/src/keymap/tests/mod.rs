@@ -61,8 +61,8 @@ fn expands_leader() {
     let space = plain(KeyCode::Char(' '));
     let backslash = plain(KeyCode::Char('\\'));
     let keys = KeySequence::parse("<leader>ff", &[space, backslash]).expect("sequence");
-    assert_eq!(keys.chords()[..2], [space, backslash]);
-    assert_eq!(keys.len(), 4);
+    assert_eq!(keys.chords()[0], space);
+    assert_eq!(keys.len(), 3);
 }
 
 #[test]
