@@ -111,12 +111,16 @@ impl App {
             return Ok(Some(false));
         };
         let loaded = crate::keymap::config::load(&path, &self.commands);
-        let warnings = loaded.warnings.len();
+        let warnings: Vec<String> = loaded
+            .warnings
+            .iter()
+            .map(|warning| warning.format(&path))
+            .collect();
         self.apply_keymaps(loaded);
-        if warnings == 0 {
+        if warnings.is_empty() {
             self.show_message("Keymaps reloaded".to_string());
         } else {
-            self.show_message(format!("Keymaps reloaded with {warnings} warnings"));
+            self.show_pager(warnings);
         }
         Ok(Some(false))
     }
