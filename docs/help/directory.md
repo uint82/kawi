@@ -28,6 +28,23 @@ Names are stored as `OsString` values. Unchanged lines are never renamed, so nam
 
 The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. After a successful write the listing reloads from disk and the text undo history is cleared.
 
+## Metadata
+
+Directory metadata is display-only virtual text aligned to the right edge. It is not part of the buffer, so it does not affect editing, search, or writes.
+
+```toml
+[explorer]
+metadata = ["permissions", "size", "modified"]
+```
+
+- `permissions` shows Unix mode bits. Other platforms show unknown permissions.
+- `size` is human readable using powers of 1024. Directories show `-`.
+- `modified` shows local time as `YYYY-MM-DD HH:MM`.
+
+The default is `[]`. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`.
+
+Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata show no text.
+
 ## Safety
 
 Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, and directory moves into themselves. Rename cycles and swaps use temporary names.
@@ -61,14 +78,16 @@ show_hidden = false
 confirm = true
 trash = true
 sort = "directories"
+metadata = []
 ```
 
 - `show_hidden` includes dotfiles in new directory buffers.
 - `confirm` asks before deletes and multi-change plans.
 - `trash` sends deletes to the trash. Set it to `false` for permanent deletes.
 - `sort` is `directories` for directories first, or `name` for natural name order.
+- `metadata` lists the metadata columns to show.
 
-The runtime options are `directory_show_hidden`, `directory_confirm`, `directory_trash`, and `directory_sort`.
+The runtime options are `directory_show_hidden`, `directory_confirm`, `directory_trash`, `directory_sort`, and `directory_metadata`.
 
 Directory buffers restore in workspace sessions by path. Unsaved listing edits are not persisted across sessions.
 
