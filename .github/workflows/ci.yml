@@ -28,3 +28,17 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Lint WASM feature
+        run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
+      - name: Check WASM feature
+        run: cargo check -p kawi --features wasm
+      - name: Test WASM feature
+        run: cargo test -p kawi-plugin --features wasm
+      - name: Install supply chain tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-vet
+      - name: Deny
+        run: cargo deny check
+      - name: Vet
+        run: cargo vet
