@@ -69,6 +69,7 @@ impl PluginRuntime {
             self.events = Some(receiver);
         }
         self.catalog = catalog;
+        self.retain_known_plugin_state();
         warnings
     }
 }

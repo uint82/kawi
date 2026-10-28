@@ -80,6 +80,13 @@ impl Capability {
     pub fn is_default(self) -> bool {
         self == Self::UiMessage
     }
+
+    pub fn is_advisory(self) -> bool {
+        matches!(
+            self,
+            Self::FsRead | Self::FsWrite | Self::ProcessSpawn | Self::NetConnect
+        )
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

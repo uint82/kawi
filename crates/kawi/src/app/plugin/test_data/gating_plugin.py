@@ -47,7 +47,7 @@ def main():
                     "version": "0.1.0",
                     "plugin_capabilities": ["invoke_command"],
                     "host_capabilities": [],
-                    "events": ["buffer_changed", "buffer_opened", "file_opened"],
+                    "events": ["buffer_changed", "buffer_opened", "file_opened", "file_saved"],
                 },
             })
         elif method == "event":

@@ -44,6 +44,13 @@ impl App {
                 )
             })
             .collect::<Vec<_>>();
+        let mut lines = lines;
+        for plugin in self.plugins.plugins() {
+            let name = plugin.manifest.name.as_str();
+            for line in self.plugins.denial_records(name) {
+                lines.push(format!("{name}: {line}"));
+            }
+        }
         if lines.is_empty() {
             self.show_message("No plugins installed".to_string());
         } else {

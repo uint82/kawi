@@ -52,7 +52,7 @@ pub(super) struct PluginRuntime {
     capabilities: CapabilityRegistry,
     denials: BTreeMap<(String, Capability), DenialRecord>,
     last_message: BTreeMap<String, Instant>,
-    throttled_messages: BTreeSet<String>,
+    throttled_messages: BTreeMap<String, u64>,
 }
 
 pub(super) struct PluginCommandTarget {
@@ -142,6 +142,9 @@ impl PluginRuntime {
                 ));
             }
         }
+        if let Some(dropped) = self.throttled_messages.get(plugin) {
+            lines.push(format!("ui.message rate limited: {dropped} dropped"));
+        }
         lines
     }
 
@@ -173,7 +176,37 @@ impl PluginRuntime {
         RpcError::capability_denied(capability.name(), scope)
     }
 
+    pub(super) fn denial_records(&self, plugin: &str) -> Vec<String> {
+        let mut lines = Vec::new();
+        for ((denied_plugin, capability), record) in &self.denials {
+            if denied_plugin != plugin {
+                continue;
+            }
+            lines.extend(denial_lines(
+                plugin,
+                *capability,
+                self.request_scope(plugin, *capability),
+            ));
+            if record.count > 1 {
+                lines.push(format!(
+                    "denied {} calls: {}",
+                    record.count,
+                    capability.name()
+                ));
+            }
+        }
+        lines
+    }
+
     pub(super) fn record_denial(&mut self, plugin: &str, capability: Capability) {
+        if !self
+            .catalog
+            .plugins
+            .iter()
+            .any(|loaded| loaded.manifest.name == plugin)
+        {
+            return;
+        }
         let first = self
             .denials
             .get(&(plugin.to_string(), capability))
@@ -196,9 +229,10 @@ impl PluginRuntime {
             .get(plugin)
             .is_some_and(|last| now.duration_since(*last) < MESSAGE_THROTTLE)
         {
-            if self.throttled_messages.insert(plugin.to_string()) {
-                self.push_log(plugin, "ui.message rate limited");
-            }
+            *self
+                .throttled_messages
+                .entry(plugin.to_string())
+                .or_default() += 1;
             return false;
         }
         self.last_message.insert(plugin.to_string(), now);
@@ -221,6 +255,9 @@ impl PluginRuntime {
         let mut lines = vec![format!("granted: {granted}")];
         if missing != "none" {
             lines.push(format!("ungranted: {missing}"));
+        }
+        if effective.changed {
+            lines.push("changed: request hash mismatch".to_string());
         }
         let stale = describe_capabilities(effective.stale.iter().copied());
         if stale != "none" {
@@ -248,6 +285,23 @@ impl PluginRuntime {
         }
     }
 
+    fn retain_known_plugin_state(&mut self) {
+        let known = self
+            .catalog
+            .plugins
+            .iter()
+            .map(|plugin| plugin.manifest.name.as_str())
+            .collect::<BTreeSet<_>>();
+        self.denials
+            .retain(|(plugin, _), _| known.contains(plugin.as_str()));
+        self.last_message
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.throttled_messages
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.logs
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+    }
+
     fn push_log(&mut self, plugin: &str, line: &str) {
         let lines = self.logs.entry(plugin.to_string()).or_default();
         if lines.len() >= MAX_LOG_LINES {
@@ -259,7 +313,13 @@ impl PluginRuntime {
 
 fn describe_capabilities(capabilities: impl Iterator<Item = Capability>) -> String {
     let names = capabilities
-        .map(|capability| capability.name())
+        .map(|capability| {
+            if capability.is_advisory() {
+                format!("{} (advisory)", capability.name())
+            } else {
+                capability.name().to_string()
+            }
+        })
         .collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()

@@ -167,7 +167,7 @@ version = "0.1.0"
 protocol = 1
 command = ["python3", "${plugin_dir}/gating_plugin.py"]
 timeout_ms = 5000
-subscribes = ["buffer_changed", "buffer_opened", "file_opened"]
+subscribes = ["buffer_changed", "buffer_opened", "file_opened", "file_saved"]
 
 [capabilities]
 "editor.read" = true

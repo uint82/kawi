@@ -232,6 +232,7 @@ fn events_are_gated_without_editor_read() {
     let path = root.join("other.txt");
     fs::write(&path, "text\n").unwrap();
     app.editor.open_file_buffer(path.to_str().unwrap()).unwrap();
+    assert!(save_buffer(&mut app));
     app.poll_plugins();
     std::thread::sleep(Duration::from_millis(300));
     app.poll_plugins();
@@ -261,6 +262,8 @@ fn revoking_editor_read_stops_event_delivery() {
     let path = root.join("opened.txt");
     fs::write(&path, "text\n").unwrap();
     app.editor.open_file_buffer(path.to_str().unwrap()).unwrap();
+    app.editor.paste("s");
+    assert!(save_buffer(&mut app));
     let log = dir.join("gated.log");
     let deadline = Instant::now() + Duration::from_secs(5);
     while (!log.exists() || fs::read_to_string(&log).unwrap().lines().count() == 0)
@@ -274,8 +277,13 @@ fn revoking_editor_read_stops_event_delivery() {
     app.poll_plugins();
     let text = fs::read_to_string(&log).unwrap();
     let delivered = text.lines().count();
-    for event in ["buffer_changed", "buffer_opened", "file_opened"] {
-        assert_eq!(text.lines().filter(|line| *line == event).count(), 1);
+    for event in [
+        "buffer_changed",
+        "buffer_opened",
+        "file_opened",
+        "file_saved",
+    ] {
+        assert!(text.lines().any(|line| line == event));
     }
     fs::write(root.join("permissions.toml"), "").unwrap();
     let warnings = app.plugins.reload_permissions();

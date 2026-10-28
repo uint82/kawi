@@ -42,7 +42,13 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
 
 fn describe(capabilities: impl Iterator<Item = kawi_plugin::Capability>) -> String {
     let names = capabilities
-        .map(|capability| capability.name())
+        .map(|capability| {
+            if capability.is_advisory() {
+                format!("{} (advisory)", capability.name())
+            } else {
+                capability.name().to_string()
+            }
+        })
         .collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()
@@ -71,6 +77,30 @@ mod tests {
         fs::write(&paths.permissions, "not toml").unwrap();
         let check = check(&paths);
         assert_eq!(check.level, Level::Warn);
+    }
+
+    #[test]
+    fn reports_stale_request_hashes() {
+        let dir = TestDir::new("permissions_hash");
+        let paths = paths(&dir.path);
+        let plugin = paths.plugins.join("sample");
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(
+            plugin.join("plugin.toml"),
+            "name = \"sample\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n\n[capabilities]\n\"editor.read\" = true\n",
+        )
+        .unwrap();
+        fs::write(
+            &paths.permissions,
+            "[plugins.sample]\nrequest_hash = \"sha256:stale\"\n\n[plugins.sample.grant]\n\"editor.read\" = true\n",
+        )
+        .unwrap();
+        let check = check(&paths);
+        assert_eq!(check.level, Level::Warn);
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail.contains("request hash changed")));
     }
 
     #[test]
