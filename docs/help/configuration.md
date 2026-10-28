@@ -5,7 +5,7 @@ related = ["options", "keybindings", "themes"]
 ---
 # Configuration
 
-Kawi reads configuration from the XDG config directory, normally `~/.config/kawi/config.toml`.
+Kawi reads configuration from the XDG config directory, normally `~/.config/kawi/config.toml`. Custom key mappings live in a separate `keymaps.toml` file.
 
 ## Sections
 
@@ -33,6 +33,23 @@ foldcolumn = 1
 ```
 
 Options can also be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
+
+## Keymaps
+
+Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`.
+
+```toml
+leader = [" ", "\\"]
+timeout = 1000
+
+[normal]
+"<leader>ff" = "picker.files"
+
+[insert]
+"jk" = "mode.normal"
+```
+
+Use `:commands` to discover command names, `:map` to inspect mappings, and `:map reload` to reload the file. See [Keymaps](help:keymaps) for the complete reference.
 
 Directory buffer settings:
 

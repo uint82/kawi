@@ -5,7 +5,7 @@ related = ["getting-started", "pickers", "diagnostics"]
 ---
 # Keybindings
 
-The leader key is Space or Backslash.
+The default leader keys are Space and Backslash. You can change them in `keymaps.toml`.
 
 ## Leader groups
 
@@ -40,6 +40,22 @@ The leader key is Space or Backslash.
 - `zj` and `zk` next and previous fold
 - `zd` delete the manual fold at the cursor
 - `zf` create a manual fold from a visual selection
+
+## Custom mappings
+
+Create `$XDG_CONFIG_HOME/kawi/keymaps.toml` to bind key sequences to named commands:
+
+```toml
+[normal]
+"<leader>ff" = "picker.files"
+"gx" = "edit.delete_line"
+"Q" = { command = "keys.send", args = { keys = "gq" } }
+
+[insert]
+"jk" = "mode.normal"
+```
+
+Use `:commands` to list command names, `:map` to list configured mappings, and `:map reload` to reload the file. See [Keymaps](help:keymaps) for notation, precedence, timeouts, and limits.
 
 ## Key guidance
 
