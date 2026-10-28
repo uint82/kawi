@@ -7,20 +7,16 @@ fn registry() -> CommandRegistry {
 #[test]
 fn builtin_names_are_unique() {
     let mut names = Vec::new();
-    for builtin in BUILTINS {
+    for builtin in builtin::all() {
         names.push(builtin.name);
         names.extend(builtin.aliases.iter().copied());
     }
     names.sort_unstable();
     names.dedup();
-    assert_eq!(
-        names.len(),
-        BUILTINS.len()
-            + BUILTINS
-                .iter()
-                .map(|item| item.aliases.len())
-                .sum::<usize>()
-    );
+    let expected = builtin::all()
+        .map(|item| 1 + item.aliases.len())
+        .sum::<usize>();
+    assert_eq!(names.len(), expected);
 }
 
 #[test]

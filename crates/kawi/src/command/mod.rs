@@ -6,8 +6,6 @@ mod builtin;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use builtin::BUILTINS;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct CommandId(u32);
 
@@ -40,9 +38,9 @@ pub(crate) struct CommandRegistry {
 
 impl CommandRegistry {
     pub(crate) fn new() -> Self {
-        let mut specs = Vec::with_capacity(BUILTINS.len());
+        let mut specs = Vec::new();
         let mut index = HashMap::new();
-        for builtin in BUILTINS {
+        for builtin in builtin::all() {
             let id = CommandId(specs.len() as u32);
             insert_name(&mut index, builtin.name, id);
             for alias in builtin.aliases {
