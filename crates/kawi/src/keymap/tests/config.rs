@@ -143,3 +143,20 @@ fn default_leader_has_space_and_backslash() {
     assert_eq!(leaders[0].code, KeyCodeSpec::Char(' '));
     assert_eq!(leaders[1].code, KeyCodeSpec::Char('\\'));
 }
+
+#[test]
+fn warns_about_unknown_binding_fields() {
+    let loaded = load_text(
+        "unknown_field",
+        "[normal]\n\"gx\" = { command = \"file.save\", unknown = true }\n",
+    );
+    assert_eq!(loaded.warnings.len(), 1);
+    assert!(loaded.bindings.is_empty());
+}
+
+#[test]
+fn accepts_inline_mode_tables() {
+    let loaded = load_text("inline_mode", "normal = { \"gx\" = \"file.save\" }\n");
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(loaded.bindings.len(), 1);
+}

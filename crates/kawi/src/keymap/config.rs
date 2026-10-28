@@ -127,7 +127,7 @@ impl<'a> Loader<'a> {
             self.warn(item, name, "ignored");
             return;
         };
-        let Some(table) = item.as_table() else {
+        let Some(table) = item.as_table_like() else {
             self.warn(item, name, "ignored, expected a table");
             return;
         };
@@ -138,6 +138,15 @@ impl<'a> Loader<'a> {
 
     fn load_binding(&mut self, context: KeyContext, key: &str, item: &Item) {
         let warning_key = format!("{}.{}", context.name(), key);
+        if let Some(table) = item.as_table_like() {
+            for (field, field_item) in table.iter() {
+                if matches!(field, "command" | "args" | "when" | "desc") {
+                    continue;
+                }
+                self.warn(field_item, &warning_key, "ignored unknown field");
+                return;
+            }
+        }
         let Some(expected) = parse_binding_value(item) else {
             self.warn(item, &warning_key, "ignored, expected a command or table");
             return;
