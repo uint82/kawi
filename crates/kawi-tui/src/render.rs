@@ -10,7 +10,7 @@ use std::io::{Stdout, Write};
 
 use crate::frame::{
     CursorStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu, ReplaceMenu, ReplaceStage,
-    SearchSpan, Selection, TaskPanel, VirtualText,
+    SearchSpan, Selection, TaskPanel, VirtualText, VirtualTextKind, VirtualTextPlacement,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -432,9 +432,16 @@ fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> 
         )
     )
     .context("move to virtual text")?;
-    paint::apply_faded_text(out, draw.theme.diagnostic_color(text.severity))?;
+    paint::apply_faded_text(out, virtual_text_color(draw.theme, text.kind))?;
     write!(out, "{clipped}").context("write virtual text")?;
     paint::clear_decorations(out)
+}
+
+fn virtual_text_color(theme: &Theme, kind: VirtualTextKind) -> Color {
+    match kind {
+        VirtualTextKind::Diagnostic(severity) => theme.diagnostic_color(severity),
+        VirtualTextKind::Metadata => theme.non_text,
+    }
 }
 
 fn virtual_text_layout(
@@ -446,10 +453,34 @@ fn virtual_text_layout(
     if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
         return None;
     }
+    match text.placement {
+        VirtualTextPlacement::AfterLine => virtual_text_after_line(line_width, pane_width, text),
+        VirtualTextPlacement::RightEdge => virtual_text_at_right_edge(remaining, pane_width, text),
+    }
+}
+
+fn virtual_text_after_line(
+    line_width: usize,
+    pane_width: usize,
+    text: &VirtualText,
+) -> Option<(usize, &str)> {
     let column = line_width.saturating_add(VIRTUAL_TEXT_GAP);
     let text_width = pane_width.saturating_sub(column);
     let clipped = truncate_to_display_width(&text.text, text_width);
     (!clipped.is_empty()).then_some((column, clipped))
+}
+
+fn virtual_text_at_right_edge(
+    remaining: usize,
+    pane_width: usize,
+    text: &VirtualText,
+) -> Option<(usize, &str)> {
+    let available = remaining.saturating_sub(VIRTUAL_TEXT_GAP);
+    let text_width = display_width(&text.text);
+    if text_width == 0 || text_width > available {
+        return None;
+    }
+    Some((pane_width.saturating_sub(text_width), &text.text))
 }
 
 fn draw_rulers(
@@ -2430,15 +2461,10 @@ mod tests {
 
     #[test]
     fn virtual_text_sits_after_the_line_and_clips() {
-        let text = VirtualText {
-            text: "message".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Error,
-        };
+        let text = VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
         assert_eq!(virtual_text_layout(10, 30, &text), Some((11, "message")));
-        let long = VirtualText {
-            text: "abcdefghijklmnop".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Error,
-        };
+        let long =
+            VirtualText::diagnostic("abcdefghijklmnop", crate::frame::DiagnosticSeverity::Error);
         assert_eq!(
             virtual_text_layout(0, 14, &long),
             Some((1, "abcdefghijklm"))
@@ -2448,24 +2474,28 @@ mod tests {
 
     #[test]
     fn virtual_text_uses_display_width_for_tabs_and_wide_characters() {
-        let text = VirtualText {
-            text: "中abc".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Warning,
-        };
+        let text = VirtualText::diagnostic("中abc", crate::frame::DiagnosticSeverity::Warning);
         let line_width = crate::display::screen_len("a\tb", 8);
         assert_eq!(line_width, 9);
         assert_eq!(
             virtual_text_layout(line_width, 19, &text),
             Some((10, "中abc"))
         );
-        let wide = VirtualText {
-            text: "中中中中中".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Warning,
-        };
+        let wide = VirtualText::diagnostic("中中中中中", crate::frame::DiagnosticSeverity::Warning);
         assert_eq!(
             virtual_text_layout(line_width, 19, &wide),
             Some((10, "中中中中"))
         );
+    }
+
+    #[test]
+    fn metadata_virtual_text_aligns_to_the_right_edge() {
+        let text = VirtualText::metadata("-rw-r--r--    13 2026-10-28 14:32");
+        assert_eq!(
+            virtual_text_layout(4, 50, &text),
+            Some((17, "-rw-r--r--    13 2026-10-28 14:32"))
+        );
+        assert_eq!(virtual_text_layout(42, 50, &text), None);
     }
 
     #[test]

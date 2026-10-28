@@ -249,9 +249,8 @@ fn build_virtual_texts(
                 .filter(|problem| options.virtual_severity.includes(problem.severity))
                 .and_then(|problem| {
                     let text = virtual_text_line(&problem.message);
-                    (!text.is_empty()).then(|| VirtualText {
-                        text,
-                        severity: ui_severity(problem.severity.into()),
+                    (!text.is_empty()).then(|| {
+                        VirtualText::diagnostic(text, ui_severity(problem.severity.into()))
                     })
                 })
         })
