@@ -33,22 +33,33 @@ Unscoped capabilities use `true` in both requests and grants. Scoped capabilitie
 
 `fs.read` and `fs.write` take `paths`, an array of directories or files. Paths may start with these variables:
 
-- `$WORKSPACE`: the current project root
+- `$WORKSPACE`: the active workspace roots
 - `$PLUGIN_DIR`: the plugin directory
 - `$CONFIG`: `$XDG_CONFIG_HOME/kawi`
 - `$HOME`: the user home directory
 
-Other variables are rejected. Expanded paths must be absolute. A grant path covers a requested path only when the grant path is equal to or inside the requested path. A grant never widens a request.
+Other variables are rejected. Kawi expands variables for each enforcement call, so `$WORKSPACE` follows the active workspace. If no workspace is open, `$WORKSPACE` is unresolved: a requested `$WORKSPACE` is ungranted and a granted `$WORKSPACE` covers nothing. If several workspace roots are active, `$WORKSPACE` expands to each root.
 
-A path grants that subtree. If an existing path is a file, the grant covers only that file. Kawi resolves symlinks and rejects `..` segments before enforcement.
+Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant and requested paths are canonicalized for each call and symlinks are resolved before comparison, so a symlink that escapes a grant does not match. For a write target that does not exist, Kawi canonicalizes the nearest existing ancestor and appends the remaining components lexically.
+
+Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. A grant for a file covers exactly that file. A grant never widens a request.
 
 ### Commands
 
-`process.spawn` takes `commands`, an array of executable names or absolute paths. Kawi resolves names with the host PATH and compares resolved absolute paths. A grant entry covers only the same resolved executable. Arguments are not scoped.
+`process.spawn` takes `commands`, an array of executable names or absolute paths. Kawi resolves bare names with the host PATH at the time of the call. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
 
 ### Hosts
 
-`net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Hostnames are lowercased. Wildcards and port ranges are not supported in version 1.
+`net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
+
+### Subsumption summary
+
+| Scope | A grant covers a request when |
+| --- | --- |
+| none | both are unscoped |
+| paths | the granted canonical path is the requested path or a descendant component prefix |
+| commands | both resolve to the same canonical executable path |
+| hosts | host and port match exactly |
 
 ## Manifest request
 
@@ -89,34 +100,52 @@ Users grant capabilities in `$XDG_CONFIG_HOME/kawi/permissions.toml`:
 "process.spawn" = { commands = ["git"] }
 
 [plugins.example]
-deny = ["ui.message"]
 request_hash = "sha256:6f0f2b6e..."
+
+[plugins.example.grant]
+"ui.message" = false
 ```
 
-`grant` is a table with the same string-or-table shape as the manifest request. This keeps the format valid TOML and avoids heterogeneous arrays.
+`grant` is a table with the same string-or-table shape as the manifest request. `false` revokes a default-tier capability. This keeps the format valid TOML and avoids heterogeneous arrays.
 
 Rules:
 
 - The grant file lives in user configuration. Kawi never reads a grant file from a plugin directory and warns when one is present there.
-- Every entry in the `grant` table must be a request in the manifest. Unrequested grants warn and are ignored.
-- Grants for unknown plugins warn and are ignored.
+- Every entry in the `grant` table must be a request in the manifest. Unrequested grants add no access and are reported as stale by doctor.
+- Grants for unknown plugins add no access and are reported as stale by doctor.
 - A scoped grant must be equal to or narrower than the request scope.
 - Multiple grants for one capability are combined.
+- `false` is valid only for default-tier capabilities. It revokes that default. Using it for any other capability warns and is ignored.
 - A missing grant file grants only the default tier.
-- A malformed grant file grants only the default tier and produces a startup warning.
+- A malformed grant file fails closed: every plugin receives only the default tier, with a startup error and doctor output. Kawi does not grant everything and does not abort startup.
+- An invalid scope in one entry drops that entry only. Other valid grants in the file still apply.
 - Kawi warns when the grant file is writable by group or other users.
 
-`request_hash` is optional. When present, it is the SHA-256 of the canonical request set. Canonicalization sorts capability names and scope arrays, normalizes paths and hostnames, and serializes compact JSON. A mismatch warns that the plugin request changed. The hash is an audit signal, not consent. Changed requests remain ungranted until the user updates the grant file.
+`request_hash` is optional. When present, it is the SHA-256 of the canonical request set. The hash input is compact UTF-8 JSON with no whitespace:
+
+```json
+{"capabilities":{"editor.read":true,"fs.read":{"paths":["$WORKSPACE/src"]}}}
+```
+
+Canonicalization applies these rules:
+
+- Capability names and scope keys are sorted lexicographically.
+- Scope arrays are deduplicated and sorted after lexical normalization.
+- Paths reject `..` components and normalize `.` and duplicate separators. Hashing does not expand variables, resolve the PATH, or resolve symlinks.
+- Hostnames are lowercased. Command strings keep their case.
+- Unknown or invalid entries are omitted from the hash and reported separately.
+
+Reordering a manifest does not change the hash. Widening a scope does. A mismatch warns that the plugin request changed. The hash is an audit signal, not consent. Changed requests remain ungranted until the user updates the grant file.
 
 ## Effective grant
 
 The effective grant for a plugin is:
 
-1. The default tier, currently `ui.message`, unless the plugin entry sets `deny = ["ui.message"]`. Only default-tier capabilities may be denied.
+1. The default tier, currently `ui.message`, unless the grant table sets `"ui.message" = false`.
 2. The explicit `grant` table for that plugin.
 3. Intersected with the manifest request set.
 
-Request and grant are independent. A plugin update that adds a request never gains access because the new request is outside the existing grant. The plugin starts with the intersection and warns about the rest. Kawi stores no mutable grant state inside the plugin directory.
+Only default-tier capabilities may be revoked with `false`. A grant for a capability the plugin did not request adds no access. A plugin update that adds a request never gains access because the new request is outside the existing grant. The plugin starts with the intersection and warns about the rest. Kawi stores no mutable grant state inside the plugin directory.
 
 Scope narrowing examples:
 
@@ -195,8 +224,9 @@ Landlock will make `fs.read` and `fs.write` real for process plugins on Linux. N
 `kawi doctor` reports:
 
 - Parse errors in `permissions.toml`.
-- Unknown plugins and capabilities in grants.
-- Requests without grants.
+- Unknown plugins and stale grants.
+- Grants for capabilities the plugin does not request.
+- Requests without grants, including unresolved `$WORKSPACE`.
 - Request hash mismatches.
 - Subscriptions that cannot receive events.
 - Advisory grants for process plugins.
@@ -215,9 +245,14 @@ Enforcement is deny by default. A plugin with no `[capabilities]` table receives
 
 Interactive grant prompts are out of scope for version 1. The grant file is the consent surface.
 
-## Roadmap
+## Follow-ups
 
-- Landlock for enforced filesystem scopes on Linux.
-- WebAssembly with the component model and WIT interfaces for all scopes.
+These two issues are reserved for the first enforcement follow-ups:
+
+- `plugin: enforce filesystem scopes with Landlock on Linux`
+- `plugin: add WebAssembly component runtime`
+
+Other roadmap items:
+
 - Plugin-published diagnostics under `diagnostics.publish`, scoped by plugin name.
 - Interactive grant review in the TUI.
