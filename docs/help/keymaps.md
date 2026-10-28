@@ -90,18 +90,20 @@ The value is milliseconds and defaults to `1000`. A complete mapping wins after 
 - Literals: `<Space>`, `<lt>`, `<gt>`, `<bar>`, `<bslash>`
 - Leader: `<leader>`
 
-Use `:nmap`, `:imap`, and `:vmap` for runtime mappings. Use `:nunmap`, `:iunmap`, and `:vunmap` to disable a mapping and its built-in behavior.
+Use `:nmap`, `:imap`, and `:vmap` for runtime mappings. Use `:nunmap`, `:iunmap`, and `:vunmap` to remove a runtime mapping or suppress a built-in mapping. Unmapping an unbound key creates a no-op binding.
 
 ## Introspection
 
 - `:commands` lists command names, descriptions, and aliases.
 - `:map` lists every configured mapping.
 - `:map normal`, `:map insert`, and `:map visual` filter by mode.
-- `:map reload` reloads `keymaps.toml`.
+- `:map reload` reloads `keymaps.toml` and replaces all runtime mappings with the file contents.
 
 ## Precedence
 
-Configured mappings are checked before the built-in keymap. A complete match runs its command. A pending prefix waits for more input or the timeout. An unmatched sequence is replayed to the built-in keymap, so Vim operators, counts, registers, and leader menus keep working.
+Configured mappings are checked before the built-in keymap. A complete match runs its command. A pending prefix waits for more input or the timeout. An unmatched sequence is replayed to the built-in keymap, so Vim operators, counts, registers, and leader menus keep working. Counts and register prefixes are reserved and cannot start a mapping.
+
+Mappings are command-based and apply to every keymap preset. The preset controls the built-in keys; it does not filter user mappings.
 
 ## Limits
 
