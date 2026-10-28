@@ -7,6 +7,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::change::{BufferChange, BufferChangeOrigin, TextPosition};
+use crate::diff::diff_ropes;
 use crate::history::History;
 use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
@@ -22,6 +24,8 @@ pub struct Buffer {
     revision: u64,
     line_changes: u64,
     adjustments: Vec<LineAdjust>,
+    changes: Vec<BufferChange>,
+    origin: BufferChangeOrigin,
     readonly: bool,
     internal: bool,
     directory: bool,
@@ -42,6 +46,8 @@ impl Buffer {
             revision: 0,
             line_changes: 0,
             adjustments: Vec::new(),
+            changes: Vec::new(),
+            origin: BufferChangeOrigin::User,
             readonly: false,
             internal: false,
             directory: false,
@@ -124,7 +130,8 @@ impl Buffer {
         if self.readonly {
             return;
         }
-        self.rope = text;
+        let old = std::mem::replace(&mut self.rope, text);
+        self.record_rope_diff(&old);
         self.touch();
     }
 
@@ -172,8 +179,11 @@ impl Buffer {
         if !self.internal {
             return false;
         }
+        let old = std::mem::replace(&mut self.rope, Rope::from_str(text));
+        let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::ExternalReload);
+        self.record_rope_diff(&old);
+        self.origin = previous;
         self.path = Some(name.to_string());
-        self.rope = Rope::from_str(text);
         self.history = History::new();
         self.revision = self.revision.wrapping_add(1);
         self.line_changes = 0;
@@ -331,9 +341,13 @@ impl Buffer {
         if self.readonly {
             return None;
         }
+        let old = self.rope.clone();
+        let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::Undo);
         let (restored, adjust) = self
             .history
             .undo(&mut self.rope, row, col, self.line_changes)?;
+        self.record_rope_diff(&old);
+        self.origin = previous;
         self.push_adjustment(adjust);
         self.touch();
         Some(restored)
@@ -343,9 +357,13 @@ impl Buffer {
         if self.readonly {
             return None;
         }
+        let old = self.rope.clone();
+        let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::Undo);
         let (restored, adjust) = self
             .history
             .redo(&mut self.rope, row, col, self.line_changes)?;
+        self.record_rope_diff(&old);
+        self.origin = previous;
         self.push_adjustment(adjust);
         self.touch();
         Some(restored)
@@ -355,12 +373,17 @@ impl Buffer {
         if self.readonly {
             return false;
         }
+        let old = self.rope.clone();
+        let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::Undo);
         let Some((_, adjust)) = self
             .history
             .redo(&mut self.rope, row, col, self.line_changes)
         else {
+            self.origin = previous;
             return false;
         };
+        self.record_rope_diff(&old);
+        self.origin = previous;
         self.push_adjustment(adjust);
         self.touch();
         true
@@ -368,6 +391,57 @@ impl Buffer {
 
     pub fn take_line_adjustments(&mut self) -> Vec<LineAdjust> {
         std::mem::take(&mut self.adjustments)
+    }
+
+    pub fn take_changes(&mut self) -> Vec<BufferChange> {
+        std::mem::take(&mut self.changes)
+    }
+
+    pub fn set_change_origin(&mut self, origin: BufferChangeOrigin) {
+        self.origin = origin;
+    }
+
+    fn record_change(&mut self, start: usize, end: usize, text: &str) {
+        let start = self.text_position(start);
+        let end = self.text_position(end);
+        self.changes.push(BufferChange {
+            start,
+            end,
+            text: text.to_string(),
+            origin: self.origin.clone(),
+        });
+    }
+
+    fn text_position(&self, index: usize) -> TextPosition {
+        let index = index.min(self.rope.len_chars());
+        let line = self.rope.char_to_line(index);
+        TextPosition {
+            line,
+            byte_column: self.rope.char_to_byte(index) - self.rope.line_to_byte(line),
+        }
+    }
+
+    fn record_rope_diff(&mut self, old: &Rope) {
+        let Some(change) = diff_ropes(old, &self.rope) else {
+            return;
+        };
+        let text = self.rope.slice(change.start..change.new_end).to_string();
+        let start = old.char_to_line(change.start);
+        let end = old.char_to_line(change.old_end);
+        let start_position = TextPosition {
+            line: start,
+            byte_column: old.char_to_byte(change.start) - old.line_to_byte(start),
+        };
+        let end_position = TextPosition {
+            line: end,
+            byte_column: old.char_to_byte(change.old_end) - old.line_to_byte(end),
+        };
+        self.changes.push(BufferChange {
+            start: start_position,
+            end: end_position,
+            text,
+            origin: self.origin.clone(),
+        });
     }
 
     fn push_adjustment(&mut self, adjust: Option<LineAdjust>) {
@@ -915,6 +989,7 @@ impl Buffer {
             return;
         }
         self.push_adjustment(line_adjust::insertion(&self.rope, index, text));
+        self.record_change(index, index, text);
         self.rope.insert(index, text);
     }
 
@@ -923,6 +998,7 @@ impl Buffer {
             return;
         }
         self.push_adjustment(line_adjust::char_removal(&self.rope, start, end));
+        self.record_change(start, end, "");
         self.rope.remove(start..end);
     }
 
@@ -949,6 +1025,7 @@ impl Buffer {
                 start
             };
             self.push_adjustment(Some(line_adjust::row_removal(first, last)));
+            self.record_change(start, end, "");
             self.rope.remove(start..end);
             self.touch();
         }
@@ -958,8 +1035,12 @@ impl Buffer {
         if self.readonly {
             return;
         }
-        self.rope.remove(start..end.max(start));
-        self.rope.insert(start.min(self.rope.len_chars()), text);
+        let end = end.max(start);
+        self.record_change(start, end, "");
+        self.rope.remove(start..end);
+        let index = start.min(self.rope.len_chars());
+        self.record_change(index, index, text);
+        self.rope.insert(index, text);
     }
 
     fn delete_at_line_start(&mut self, row: usize) -> (usize, usize) {
