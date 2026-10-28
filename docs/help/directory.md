@@ -47,15 +47,15 @@ Metadata is read with the listing on the background worker. Changing the option 
 
 ## Safety
 
-Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, and directory moves into themselves. Rename cycles and swaps use temporary names.
+Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, directory moves into themselves, and moves into a directory that is being renamed. Rename cycles and swaps use temporary names.
 
 Deletes go to the freedesktop trash by default. Unlike symlinks, the link itself is renamed or removed and never followed. Copies preserve symlinks and metadata, and cross-device moves fall back to copy then delete.
 
-Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Execution stops at the first filesystem error, reports what was applied, and reloads the listing so the buffer matches disk.
+Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Execution stops at the first filesystem error and does not roll back operations already applied. The message lists what was applied, and the listing reloads from disk.
 
 The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload.
 
-`:wall` checks every dirty directory buffer and plans their changes together. When the combined plan needs confirmation, Kawi asks once before applying any directory change. If a listing changed on disk or any plan is invalid, no directory changes or file writes are applied. Nested dirty directory buffers must be saved separately.
+`:wall` checks every dirty directory buffer and plans their changes together. When the combined plan needs confirmation, Kawi asks once before applying any directory change. If a listing changed on disk or any plan is invalid, no directory changes or file writes are applied. Nested dirty directory buffers must be saved separately, and the refusal names both roots. A uniquely matching delete and create for the same name in different dirty directories is applied as a move. Other deletes follow the trash rule.
 
 ## Commands and keys
 

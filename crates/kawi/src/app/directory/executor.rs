@@ -45,3 +45,17 @@ fn describe(operation: &Operation) -> String {
         Operation::Trash(path) => format!("cannot delete {}", path.display()),
     }
 }
+
+pub(super) fn applied_description(operation: &Operation) -> String {
+    match operation {
+        Operation::Rename { from, to } => {
+            format!("renamed {} to {}", from.display(), to.display())
+        }
+        Operation::Copy { from, to } => {
+            format!("copied {} to {}", from.display(), to.display())
+        }
+        Operation::CreateDirectory(path) => format!("created directory {}", path.display()),
+        Operation::CreateFile(path) => format!("created {}", path.display()),
+        Operation::Trash(path) => format!("removed {}", path.display()),
+    }
+}

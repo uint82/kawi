@@ -9,7 +9,7 @@ use crate::app::App;
 use crate::keymap::Flavor;
 use crate::test_support::temp_dir;
 
-use super::test_support::settle;
+use super::test_support::{message_text, settle};
 
 mod metadata;
 mod wall;
@@ -254,6 +254,10 @@ fn partial_failures_reload_the_listing_from_disk() {
     assert!(!dir.join("alpha.txt").exists());
     assert_eq!(listing(&app), ["beta.txt", "new.txt"]);
     assert!(!app.editor.is_dirty());
+    let message = message_text(&app);
+    assert!(message.contains("applied 2 operation(s)"));
+    assert!(message.contains("beta.txt"));
+    assert!(message.contains("no rollback attempted"));
     let _ = fs::remove_dir_all(dir);
 }
 

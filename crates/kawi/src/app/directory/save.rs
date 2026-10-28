@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
-use super::executor::execute;
+use super::executor::{applied_description, execute};
 use super::fs::RealFs;
 use super::planner::Plan;
 use super::session::{DirectoryEdit, PendingApply};
@@ -109,26 +109,30 @@ impl App {
         }
         self.refresh_after_directory_change();
         match outcome.error {
-            Some(error) => {
-                self.finish_directory_apply_failure(&apply.edits, error, outcome.applied)
-            }
+            Some(error) => self.finish_directory_apply_failure(&apply, error, outcome.applied),
             None => self.finish_directory_apply_success(&apply),
         }
     }
 
     fn finish_directory_apply_failure(
         &mut self,
-        edits: &[DirectoryEdit],
+        apply: &PendingApply,
         error: String,
         applied: usize,
     ) -> bool {
-        let reload_error = self.reload_directories(edits);
-        let message = match reload_error {
-            Some(reload_error) => {
-                format!("{error}; applied {applied} operation(s); {reload_error}")
-            }
-            None => format!("{error}; applied {applied} operation(s)"),
+        let reload_error = self.reload_directories(&apply.edits);
+        let mut message = if applied == 0 {
+            format!("{error}; no operations were applied")
+        } else {
+            format!(
+                "{error}; applied {applied} operation(s): {}; no rollback attempted",
+                applied_operations(&apply.plan, applied)
+            )
         };
+        if let Some(reload_error) = reload_error {
+            message.push_str("; ");
+            message.push_str(&reload_error);
+        }
         self.show_message(message);
         false
     }
@@ -227,6 +231,15 @@ impl App {
         self.refresh_git_status();
         self.explorer.refresh();
     }
+}
+
+fn applied_operations(plan: &Plan, applied: usize) -> String {
+    plan.operations
+        .iter()
+        .take(applied)
+        .map(applied_description)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn rename_requests(edits: &[DirectoryEdit]) -> Vec<(PathBuf, PathBuf)> {
