@@ -17,7 +17,7 @@ impl Default for DirectoryOptions {
             confirm: true,
             trash: true,
             sort: SortMode::DirectoriesFirst,
-            metadata: MetadataColumns::default(),
+            metadata: MetadataColumns::all(),
         }
     }
 }

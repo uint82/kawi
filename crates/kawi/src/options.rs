@@ -749,7 +749,7 @@ pub(crate) const OPTIONS: [OptionSpec; 46] = [
         scope: OptionScope::Global,
         section: ConfigSection::Explorer,
         config_key: "metadata",
-        default: OptionDefault::Text("none"),
+        default: OptionDefault::Text("permissions,size,modified"),
     },
 ];
 

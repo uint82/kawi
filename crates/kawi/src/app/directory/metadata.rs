@@ -55,6 +55,14 @@ impl MetadataColumns {
         }
     }
 
+    pub(in crate::app) fn all() -> Self {
+        Self {
+            permissions: true,
+            size: true,
+            modified: true,
+        }
+    }
+
     pub(in crate::app) fn is_empty(self) -> bool {
         !self.permissions && !self.size && !self.modified
     }

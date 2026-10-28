@@ -569,6 +569,10 @@ mod tests {
     #[test]
     fn directory_metadata_option_parses_and_queries() {
         let mut app = app();
+        assert_eq!(
+            app.directory_options.metadata.name(),
+            "permissions,size,modified"
+        );
         execute(&mut app, "set directory_metadata=size,permissions");
         assert_eq!(app.directory_options.metadata.name(), "permissions,size");
         execute(&mut app, "set dmd?");

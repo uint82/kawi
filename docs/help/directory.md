@@ -41,7 +41,7 @@ metadata = ["permissions", "size", "modified"]
 - `size` is human readable using powers of 1024. Directories show `-`.
 - `modified` shows local time as `YYYY-MM-DD HH:MM`.
 
-The default is `[]`. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`.
+All three columns are shown by default. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`.
 
 Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata show no text.
 
@@ -78,7 +78,7 @@ show_hidden = false
 confirm = true
 trash = true
 sort = "directories"
-metadata = []
+metadata = ["permissions", "size", "modified"]
 ```
 
 - `show_hidden` includes dotfiles in new directory buffers.

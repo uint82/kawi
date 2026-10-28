@@ -291,6 +291,6 @@ fn directory_metadata_accepts_lists_and_rejects_unknown_columns() {
     assert_eq!(loaded.warnings.len(), 1);
     assert_eq!(
         loaded.config.get("directory_metadata"),
-        Some(&OptionValue::Text("none".to_string()))
+        Some(&OptionValue::Text("permissions,size,modified".to_string()))
     );
 }
