@@ -65,6 +65,33 @@ fn rename_targets_must_not_exist_unless_vacated() {
 }
 
 #[test]
+fn copies_follow_sources_when_ids_repeat_across_directories() {
+    let fs = FakeFs::new(&[("/one/a", false), ("/two/c", false)]);
+    let plan = plan(
+        vec![
+            rename(1, "/one/a", "/one/b"),
+            Change::Copy {
+                id: 1,
+                from: PathBuf::from("/two/c"),
+                to: PathBuf::from("/two/d"),
+                kind: EntryKind::File,
+            },
+        ],
+        &fs,
+    )
+    .unwrap();
+    let copy = plan
+        .operations
+        .iter()
+        .find(|operation| matches!(operation, Operation::Copy { .. }))
+        .unwrap();
+    assert!(matches!(
+        copy,
+        Operation::Copy { from, .. } if from == std::path::Path::new("/two/c")
+    ));
+}
+
+#[test]
 fn directories_cannot_move_into_themselves() {
     let fs = FakeFs::new(&[("/project/a", true)]);
     let change = Change::Rename {

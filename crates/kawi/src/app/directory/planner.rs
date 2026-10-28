@@ -116,17 +116,17 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
     operations.extend(directory_paths.into_iter().map(Operation::CreateDirectory));
     operations.extend(finals);
     operations.extend(files.into_iter().map(Operation::CreateFile));
-    let mut renamed_by_id = BTreeMap::new();
+    let mut renamed_paths = BTreeMap::new();
     for change in &changes {
-        if let Change::Rename { id, to, .. } = change {
-            renamed_by_id.insert(*id, to.clone());
+        if let Change::Rename { from, to, .. } = change {
+            renamed_paths.insert(from.clone(), to.clone());
         }
     }
     for change in copies {
-        let Change::Copy { id, from, to, .. } = change else {
+        let Change::Copy { from, to, .. } = change else {
             continue;
         };
-        let source = renamed_by_id.get(&id).cloned().unwrap_or(from);
+        let source = renamed_paths.get(&from).unwrap_or(&from).clone();
         operations.push(Operation::Copy { from: source, to });
     }
     Ok(Plan {
