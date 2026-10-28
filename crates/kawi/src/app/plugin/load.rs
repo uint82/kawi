@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc;
 
-use kawi_plugin::{load_catalog, LoadedPlugin, PluginCommand, PluginHost};
+use kawi_plugin::{load_catalog, load_permission_state, LoadedPlugin, PluginCommand, PluginHost};
 
 use super::{PluginCommandTarget, PluginRuntime};
 use crate::command::{CommandId, CommandRegistry};
@@ -12,17 +12,22 @@ impl PluginRuntime {
     pub(crate) fn load(
         &mut self,
         dir: &Path,
+        permissions: &Path,
         commands: &mut CommandRegistry,
         keymaps: &mut KeymapResolver,
         leaders: &[KeyChord],
         wake: std::sync::mpsc::Sender<()>,
     ) -> Vec<String> {
         let catalog = load_catalog(dir);
+        let permission_state = load_permission_state(&catalog, permissions);
         let mut warnings = catalog
             .warnings
             .iter()
             .map(ToString::to_string)
+            .chain(permission_state.warnings.iter().cloned())
             .collect::<Vec<_>>();
+        self.permissions_path = Some(permissions.to_path_buf());
+        self.capabilities.replace(permission_state.grants);
         let mut pending_bindings = Vec::new();
         for plugin in &catalog.plugins {
             for contribution in &plugin.manifest.commands {
@@ -55,10 +60,16 @@ impl PluginRuntime {
         self.bindings = pending_bindings;
         if !catalog.plugins.is_empty() {
             let (events, receiver) = mpsc::channel();
-            self.host = Some(PluginHost::start(&catalog, events, wake));
+            self.host = Some(PluginHost::start(
+                &catalog,
+                self.capabilities.clone(),
+                events,
+                wake,
+            ));
             self.events = Some(receiver);
         }
         self.catalog = catalog;
+        self.retain_known_plugin_state();
         warnings
     }
 }

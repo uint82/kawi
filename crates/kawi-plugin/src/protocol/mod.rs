@@ -25,6 +25,7 @@ pub const INTERNAL_ERROR: i64 = -32603;
 pub const PLUGIN_ERROR: i64 = -32000;
 pub const STALE_REVISION: i64 = -32010;
 pub const INVALID_POSITION: i64 = -32011;
+pub const CAPABILITY_DENIED: i64 = -32012;
 pub const REQUEST_CANCELED: i64 = -32020;
 pub const PLUGIN_UNAVAILABLE: i64 = -32030;
 
@@ -82,6 +83,23 @@ pub struct InvocationContext {
     pub mode: String,
     pub cursor: Position,
     pub selection: Option<Selection>,
+}
+
+impl InvocationContext {
+    pub fn redacted() -> Self {
+        Self {
+            buffer: 0,
+            revision: 0,
+            path: None,
+            language: None,
+            mode: "normal".to_string(),
+            cursor: Position {
+                line: 0,
+                byte_column: 0,
+            },
+            selection: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +221,23 @@ impl RpcError {
 
     pub fn invalid_position(message: impl Into<String>) -> Self {
         Self::new(INVALID_POSITION, message)
+    }
+
+    pub fn capability_denied(capability: &str, scope: Option<Value>) -> Self {
+        let mut error = Self::new(
+            CAPABILITY_DENIED,
+            format!("capability denied: {capability}"),
+        );
+        let mut data = serde_json::Map::new();
+        data.insert(
+            "capability".to_string(),
+            Value::String(capability.to_string()),
+        );
+        if let Some(scope) = scope {
+            data.insert("scope".to_string(), scope);
+        }
+        error.data = Some(Value::Object(data));
+        error
     }
 
     pub fn plugin(message: impl Into<String>) -> Self {

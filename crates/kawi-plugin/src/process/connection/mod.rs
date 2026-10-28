@@ -14,12 +14,13 @@ use serde_json::Value;
 use self::channel::{fail_pending, remove_pending, PendingMap, ReaderContext, WriterContext};
 use self::read::spawn_reader;
 use self::write::{spawn_stderr, spawn_writer};
+use crate::capability::{advertised_events, advertised_host_methods, CapabilityRegistry};
 use crate::error::PluginError;
 use crate::host::PluginHostEvent;
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
     notification_value, request_value, HostInfo, InitializeParams, InitializeResult, InvokeParams,
-    EVENT_NAMES, HOST_METHODS, PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
+    HOST_METHODS, PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
 
 pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
@@ -32,9 +33,10 @@ pub(super) struct Connection {
     writer: SyncSender<Value>,
     pending: PendingMap,
     alive: Arc<AtomicBool>,
-    allowed_host_methods: Arc<Mutex<BTreeSet<String>>>,
     event_filter: Arc<Mutex<BTreeSet<String>>>,
     subscribes: BTreeSet<String>,
+    capabilities: CapabilityRegistry,
+    plugin_name: String,
     writer_slot: WriterSlot,
     timeout: Duration,
 }
@@ -47,6 +49,7 @@ impl Connection {
         writer_slot: WriterSlot,
         timeout: Duration,
         event_filter: Arc<Mutex<BTreeSet<String>>>,
+        capabilities: CapabilityRegistry,
     ) -> Result<Self, PluginError> {
         let command = plugin.resolved_command();
         let executable = command
@@ -77,18 +80,11 @@ impl Connection {
         };
         let alive = Arc::new(AtomicBool::new(true));
         let pending = Arc::new(Mutex::new(HashMap::new()));
-        let allowed_host_methods = Arc::new(Mutex::new(
-            HOST_METHODS
-                .iter()
-                .map(|method| (*method).to_string())
-                .collect(),
-        ));
         let (writer, writer_rx) = mpsc::sync_channel(SUPERVISOR_QUEUE_CAPACITY);
         let plugin_name = plugin.manifest.name.clone();
         let reader_context = Arc::new(ReaderContext {
             alive: Arc::clone(&alive),
             pending: Arc::clone(&pending),
-            allowed_host_methods: Arc::clone(&allowed_host_methods),
             writer: writer.clone(),
             events: events.clone(),
             wake: wake.clone(),
@@ -100,6 +96,7 @@ impl Connection {
             events: events.clone(),
             wake: wake.clone(),
             plugin: plugin_name.clone(),
+            capabilities: capabilities.clone(),
         });
         if let Err(error) = spawn_writer(stdin, writer_rx, writer_context) {
             kawi_process::terminate(&mut child);
@@ -121,9 +118,10 @@ impl Connection {
             writer,
             pending,
             alive,
-            allowed_host_methods,
             event_filter,
             subscribes: plugin.manifest.subscribes.iter().cloned().collect(),
+            capabilities,
+            plugin_name: plugin.manifest.name.clone(),
             writer_slot,
             timeout,
         })
@@ -138,17 +136,17 @@ impl Connection {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             position_encoding: POSITION_ENCODING.to_string(),
-            host_capabilities: HOST_METHODS
-                .iter()
-                .map(|method| (*method).to_string())
+            host_capabilities: advertised_host_methods(&self.capabilities, &self.plugin_name)
+                .into_iter()
+                .map(str::to_string)
                 .collect(),
             plugin_capabilities: PLUGIN_METHODS
                 .iter()
                 .map(|method| (*method).to_string())
                 .collect(),
-            events: EVENT_NAMES
-                .iter()
-                .map(|event| (*event).to_string())
+            events: advertised_events(&self.capabilities, &self.plugin_name)
+                .into_iter()
+                .map(str::to_string)
                 .collect(),
         };
         let params = serde_json::to_value(params)
@@ -157,11 +155,6 @@ impl Connection {
         let result: InitializeResult = serde_json::from_value(value)
             .map_err(|error| PluginError::Initialize(error.to_string()))?;
         validate_initialize(&result)?;
-        *self
-            .allowed_host_methods
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) =
-            result.host_capabilities.iter().cloned().collect();
         let subscribed = self
             .subscribes
             .iter()

@@ -88,6 +88,7 @@ fn doctor_reports_the_workspace_without_creating_state() {
             "config",
             "keymaps",
             "languages",
+            "permissions",
             "tasks",
             "git",
             "session",

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::error::PluginError;
 use crate::manifest::PluginCatalog;
 use crate::process::{start_worker, NotifyOutcome, WorkerCommand, WorkerHandle};
@@ -45,12 +46,14 @@ pub enum PluginHostEvent {
 
 pub struct PluginHost {
     workers: HashMap<String, WorkerHandle>,
+    capabilities: CapabilityRegistry,
     next_request: AtomicU64,
 }
 
 impl PluginHost {
     pub fn start(
         catalog: &PluginCatalog,
+        capabilities: CapabilityRegistry,
         events: Sender<PluginHostEvent>,
         wake: Sender<()>,
     ) -> Self {
@@ -60,7 +63,8 @@ impl PluginHost {
             .cloned()
             .map(|plugin| {
                 let name = plugin.manifest.name.clone();
-                let worker = start_worker(plugin, events.clone(), wake.clone());
+                let worker =
+                    start_worker(plugin, capabilities.clone(), events.clone(), wake.clone());
                 (name, worker)
             })
             .collect();
@@ -78,6 +82,7 @@ impl PluginHost {
         }
         Self {
             workers,
+            capabilities,
             next_request: AtomicU64::new(1),
         }
     }
@@ -92,6 +97,9 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        if !is_event_allowed(&self.capabilities, plugin, event) {
+            return Ok(NotifyOutcome::Denied);
+        }
         Ok(worker.notify(event, payload))
     }
 

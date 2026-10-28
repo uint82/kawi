@@ -42,6 +42,7 @@ impl App {
         self.apply_config(&loaded.config);
         let plugin_warnings = self.plugins.load(
             &paths.plugins,
+            &paths.permissions,
             &mut self.commands,
             &mut self.keymaps,
             &self.leaders,

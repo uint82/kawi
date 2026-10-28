@@ -6,6 +6,11 @@ command = ["python3", "${plugin_dir}/plugin.py"]
 timeout_ms = 5000
 subscribes = ["file_saved"]
 
+[capabilities]
+"editor.read" = true
+"editor.write" = true
+"ui.message" = true
+
 [[activation_events]]
 event = "on_command"
 

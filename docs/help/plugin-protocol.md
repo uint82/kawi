@@ -125,7 +125,7 @@ Plugin response:
 }
 ```
 
-Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares a host capability that Kawi did not offer. Calling an undeclared host method returns `-32601`.
+Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares an unknown host capability. Calling an unknown method returns `-32601`; a known method without an effective capability grant returns `-32012`.
 
 Kawi sends only events present in both the manifest `subscribes` list and the plugin `events` list. A plugin that returns no `events` receives no notifications.
 
@@ -301,6 +301,7 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32000` | Plugin command error |
 | `-32010` | Stale buffer revision |
 | `-32011` | Invalid position |
+| `-32012` | Capability denied |
 | `-32020` | Request canceled |
 | `-32030` | Plugin unavailable |
 

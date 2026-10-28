@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::channel::{fail_pending, send_log, ReaderContext};
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
-use crate::protocol::{error_response_value, RpcError};
+use crate::protocol::{error_response_value, RpcError, HOST_METHODS};
 
 pub(super) fn spawn_reader(
     stdout: ChildStdout,
@@ -66,25 +66,21 @@ fn handle_request_or_notification(
     method: &str,
     context: &ReaderContext,
 ) -> Result<(), PluginError> {
-    let Some(id) = value.get("id").cloned() else {
-        send_log(
-            &context.events,
-            &context.wake,
-            &context.plugin,
-            format!("notification ignored: {method}"),
-        );
-        return Ok(());
-    };
-    let declared = context
-        .allowed_host_methods
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .contains(method);
-    if !declared {
-        let error = RpcError::method_not_found(method);
-        let _ = context.writer.try_send(error_response_value(id, &error));
+    if !HOST_METHODS.contains(&method) {
+        if let Some(id) = value.get("id").cloned() {
+            let error = RpcError::method_not_found(method);
+            let _ = context.writer.try_send(error_response_value(id, &error));
+        } else {
+            send_log(
+                &context.events,
+                &context.wake,
+                &context.plugin,
+                format!("notification ignored: {method}"),
+            );
+        }
         return Ok(());
     }
+    let id = value.get("id").cloned().unwrap_or(Value::Null);
     let params = value.get("params").cloned().unwrap_or(Value::Null);
     send_event(
         &context.events,
