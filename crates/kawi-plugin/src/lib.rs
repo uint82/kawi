@@ -6,6 +6,13 @@ mod host;
 mod manifest;
 mod process;
 mod protocol;
+mod wasm;
+
+#[cfg(feature = "wasm")]
+pub use wasm::{
+    import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,
+    ComponentInspection, ImportRule, WasiConfig, WasmRuntime, WASM_IMPORTS,
+};
 
 pub use capability::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
@@ -17,7 +24,7 @@ pub use error::PluginError;
 pub use host::{PluginHost, PluginHostEvent, PluginStatus};
 pub use manifest::{
     load_catalog, ActivationEvent, LoadedPlugin, PluginCatalog, PluginCommand, PluginManifest,
-    PluginWarning,
+    PluginRuntime, PluginWarning,
 };
 pub use process::NotifyOutcome;
 pub use protocol::{
