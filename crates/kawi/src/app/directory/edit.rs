@@ -8,15 +8,25 @@ const NO_NAME: &str = "E32: No file name";
 
 impl App {
     pub(in crate::app) fn sync_current_directory(&mut self) {
-        let number = self.editor.buffer_number();
-        let Some(state) = self.directory.get(number) else {
+        self.sync_directory_buffer(self.editor.buffer_number());
+    }
+
+    pub(super) fn sync_directory_buffer(&mut self, number: usize) {
+        let Some(revision) = self.editor.buffer_revision_at(number) else {
             return;
         };
-        let revision = self.editor.buffer_revision();
-        if state.revision == revision {
+        if self
+            .directory
+            .get(number)
+            .is_some_and(|state| state.revision == revision)
+        {
             return;
         }
-        let texts = self.editor.text_lines();
+        let count = self.editor.buffer_line_count(number).unwrap_or(0);
+        let texts = self
+            .editor
+            .buffer_window_lines(number, 0, count.saturating_add(1))
+            .unwrap_or_default();
         if let Some(state) = self.directory.get_mut(number) {
             state.sync(texts, revision);
         }
