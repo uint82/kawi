@@ -73,10 +73,15 @@ impl App {
             return Ok(Some(false));
         };
         for keys in sequences {
+            let existing = self.keymaps.has_binding(mode, &keys);
             self.keymaps.unbind(mode, &keys);
             self.keymaps
                 .bind(Binding::new(none, mode, keys.clone(), BindingSource::User));
-            self.show_message(format!("unmapped {} {}", mode.name(), keys));
+            if existing {
+                self.show_message(format!("unmapped {} {}", mode.name(), keys));
+            } else {
+                self.show_message(format!("disabled built-in {} {}", mode.name(), keys));
+            }
         }
         Ok(Some(false))
     }
