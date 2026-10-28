@@ -30,7 +30,7 @@ The buffer is a normal modified buffer. `:q` closes the window, so with one wind
 
 ## Metadata
 
-Directory metadata is display-only virtual text aligned to the right edge. It is not part of the buffer, so it does not affect editing, search, or writes.
+Directory metadata is display-only text before each entry name, in permissions, size, and modified order. It is not part of the buffer, so it does not affect editing, search, or writes.
 
 ```toml
 [explorer]
@@ -43,7 +43,7 @@ metadata = ["permissions", "size", "modified"]
 
 All three columns are shown by default. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`.
 
-Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata show no text.
+Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata keep their column space blank.
 
 ## Safety
 
