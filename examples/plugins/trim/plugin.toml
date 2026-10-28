@@ -9,6 +9,7 @@ subscribes = ["file_saved"]
 [capabilities]
 "editor.read" = true
 "editor.write" = true
+"ui.message" = true
 
 [[activation_events]]
 event = "on_command"

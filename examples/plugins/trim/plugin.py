@@ -75,7 +75,13 @@ def trim_buffer(client):
     if state is None:
         return None
     if "error" in state:
-        return {"error": state["error"]}
+        error = state["error"]
+        client.write({
+            "jsonrpc": "2.0",
+            "method": "ui.message",
+            "params": {"message": error.get("message", "capability denied")},
+        })
+        return {"error": error}
     value = state["result"]
     edits = trim_edits(value)
     if not edits:
