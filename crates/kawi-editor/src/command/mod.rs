@@ -79,6 +79,9 @@ pub enum Command {
     Map {
         text: String,
     },
+    Plugin {
+        text: String,
+    },
     Unknown,
 }
 
@@ -214,6 +217,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "on",
     "only",
     "pick",
+    "plugin",
     "q",
     "q!",
     "qa",
@@ -423,6 +427,9 @@ fn parse_named(text: &str) -> Command {
                 text: text.to_string(),
             }
         }
+        ("plugin", _) => Command::Plugin {
+            text: text.to_string(),
+        },
         _ => Command::Unknown,
     }
 }

@@ -421,6 +421,7 @@ dependencies = [
  "kawi-help",
  "kawi-lsp",
  "kawi-picker",
+ "kawi-plugin",
  "kawi-process",
  "kawi-syntax",
  "kawi-task",

@@ -131,7 +131,13 @@ impl App {
                 } else {
                     format!(" ({})", spec.aliases.join(", "))
                 };
-                format!("{:<28} {}{}", spec.name, spec.description, aliases)
+                format!(
+                    "{:<28} {}{}{}",
+                    spec.name,
+                    spec.description,
+                    aliases,
+                    spec.source.label()
+                )
             })
             .collect();
         lines.sort();

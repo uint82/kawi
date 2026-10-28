@@ -45,6 +45,7 @@ mod options;
 mod overlay;
 mod overlay_scroll;
 mod picker;
+mod plugin;
 mod preview;
 mod problems;
 mod project;
@@ -121,6 +122,7 @@ pub struct App {
     keymap: ActiveKeymap,
     commands: CommandRegistry,
     keymaps: KeymapResolver,
+    plugins: plugin::PluginRuntime,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
     send_keys_depth: usize,
@@ -225,6 +227,7 @@ impl App {
             keymap: ActiveKeymap::for_flavor(flavor),
             commands: CommandRegistry::new(),
             keymaps: KeymapResolver::new(),
+            plugins: plugin::PluginRuntime::default(),
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
             send_keys_depth: 0,
@@ -334,6 +337,7 @@ impl App {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.terminal_focus = false;
         self.terminal.close();
+        self.plugins.shutdown();
         self.abort_git_editor_on_exit();
         self.persist_clean_undos();
         match outcome {
@@ -484,6 +488,7 @@ impl App {
             redraw |= self.poll_explorer();
             redraw |= self.poll_directory_loads();
             redraw |= self.poll_permission_check();
+            redraw |= self.poll_plugins();
             redraw |= self.sync_task();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
@@ -1287,6 +1292,7 @@ impl App {
         match self.commands.spec(id).map(|spec| spec.handler) {
             Some(CommandHandler::Action(action)) => self.dispatch_action(action),
             Some(CommandHandler::SendKeys) => self.handle_send_keys(args.as_ref()),
+            Some(CommandHandler::Plugin(target)) => self.run_plugin_command(target, args),
             Some(CommandHandler::Noop) | None => Ok(false),
         }
     }
@@ -1988,6 +1994,10 @@ impl App {
             }
             Command::Map { text } => {
                 let _ = self.handle_map_command(&text)?;
+                Ok(false)
+            }
+            Command::Plugin { text } => {
+                self.handle_plugin_command(&text);
                 Ok(false)
             }
             Command::Unknown => Ok(false),

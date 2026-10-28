@@ -36,14 +36,22 @@ impl App {
             );
             tasks.merge(project_load.tasks);
         }
-        let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
-        if !warnings.is_empty() {
-            self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));
-        }
         self.set_tasks(tasks);
         self.undo.configure(paths.undo.clone());
         self.apply_keymaps(keymap_load);
         self.apply_config(&loaded.config);
+        let plugin_warnings = self.plugins.load(
+            &paths.plugins,
+            &mut self.commands,
+            &mut self.keymaps,
+            &self.leaders,
+            self.events.wake(),
+        );
+        warnings.extend(plugin_warnings);
+        let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
+        if !warnings.is_empty() {
+            self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));
+        }
         self.refresh_command_completion();
         self.undo.spawn_prune();
         if let Some(flavor) = cli_flavor {
@@ -59,6 +67,7 @@ impl App {
         self.keymap.set_leaders(load.leader);
         self.keymaps.set_timeout(load.timeout);
         self.keymaps.set_bindings(load.bindings);
+        self.plugins.apply_bindings(&mut self.keymaps);
     }
 
     fn project_tasks_path(&self) -> std::path::PathBuf {
