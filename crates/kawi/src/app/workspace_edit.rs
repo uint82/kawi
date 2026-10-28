@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kawi_buffer::{apply_text_edits, content_hash, validate_text_edits, Buffer};
+use kawi_buffer::{
+    apply_text_edits, content_hash, validate_text_edits, Buffer, BufferChangeOrigin,
+};
 use kawi_lsp::{RenameEvent, TextChange, WorkspaceEdit};
 
 use super::App;
@@ -31,7 +33,11 @@ impl App {
     pub(super) fn apply_workspace_edit(&mut self, edit: &WorkspaceEdit) -> Result<usize, String> {
         let prepared = self.prepare_documents(edit)?;
         self.write_closed_documents(&prepared)?;
-        self.apply_open_documents(&prepared)?;
+        self.editor
+            .set_change_origin(BufferChangeOrigin::ExternalReload);
+        let applied = self.apply_open_documents(&prepared);
+        self.editor.set_change_origin(BufferChangeOrigin::User);
+        applied?;
         self.exit_visual_if_active();
         Ok(prepared.len())
     }

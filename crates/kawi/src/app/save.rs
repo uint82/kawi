@@ -218,6 +218,11 @@ impl App {
                 let report = super::written_report(&name, outcome);
                 self.persist_undo(number);
                 self.record_saved_buffer_number(number);
+                self.plugins.file_saved(
+                    number,
+                    self.editor.buffer_path(number).map(str::to_string),
+                    self.editor.buffer_revision_at(number).unwrap_or_default(),
+                );
                 if number == self.editor.buffer_number() {
                     if let Some(path) = path {
                         self.lsp

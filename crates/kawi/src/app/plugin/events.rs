@@ -9,6 +9,8 @@ impl App {
         for event in events {
             redraw |= self.handle_plugin_event(event);
         }
+        self.plugins
+            .sync_plugin_state(&mut self.editor, &self.problems);
         redraw
     }
 
@@ -42,7 +44,13 @@ impl App {
         params: serde_json::Value,
     ) -> bool {
         let redraw = matches!(method, "editor.apply_edit" | "ui.message");
+        if method == "editor.apply_edit" {
+            self.editor
+                .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
+        }
         let result = self.handle_plugin_request(method, params);
+        self.editor
+            .set_change_origin(kawi_buffer::BufferChangeOrigin::User);
         let _ = self.plugins.respond(plugin, id, result);
         redraw
     }
