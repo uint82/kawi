@@ -47,11 +47,11 @@ Metadata is read with the listing on the background worker. Changing the option 
 
 ## Safety
 
-Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, directory moves into themselves, and moves into a directory that is being renamed. Rename cycles and swaps use temporary names.
+Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, directory moves into themselves, moves into a directory that is being renamed, and permissions for affected directories, copy sources, and deletes. Rename cycles and swaps use temporary names.
 
 Deletes go to the freedesktop trash by default. Unlike symlinks, the link itself is renamed or removed and never followed. Copies preserve symlinks and metadata, and cross-device moves fall back to copy then delete.
 
-Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Execution stops at the first filesystem error and does not roll back operations already applied. The message lists what was applied, and the listing reloads from disk.
+Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Permission checks run while planning and again immediately before execution. A failed check stops the plan before any operation. Checks are advisory and cannot prevent permission changes or other races after they run. Execution stops at the first filesystem error and does not roll back operations already applied. The message lists what was applied, and the listing reloads from disk.
 
 The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload.
 
