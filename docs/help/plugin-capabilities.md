@@ -7,7 +7,7 @@ related = ["plugins", "plugin-protocol", "configuration", "troubleshooting"]
 
 Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else.
 
-This document specifies the permission model before enforcement ships. Process plugins remain trusted code. Until Landlock or WebAssembly enforcement is available, filesystem, network, and process capabilities are advisory for process plugins.
+Kawi enforces `editor.*`, `ui.*`, and `diagnostics.*` for process plugins. Process plugins remain trusted code. Until Landlock or WebAssembly enforcement is available, `fs.*`, `net.*`, and `process.*` capabilities are advisory for process plugins.
 
 ## Capability list
 
@@ -135,7 +135,7 @@ Canonicalization applies these rules:
 - Hostnames are lowercased. Command strings keep their case.
 - Unknown or invalid entries are omitted from the hash and reported separately.
 
-Reordering a manifest does not change the hash. Widening a scope does. A mismatch warns that the plugin request changed. The hash is an audit signal, not consent. Changed requests remain ungranted until the user updates the grant file.
+Reordering a manifest does not change the hash. Widening a scope does. A mismatch warns that the plugin request changed and withholds all grants except the default tier until the user updates the grant file. This is conservative because the permissions file stores only one hash, so Kawi cannot identify which individual request changed. Adding, widening, or shrinking a request re-flags the plugin as changed.
 
 ## Effective grant
 
@@ -179,7 +179,7 @@ Kawi authorizes a host method before reading its parameters, looking up a buffer
 
 Host requests are checked against the current grants on every call. A JSON-RPC notification has no id, so a denied notification is dropped and recorded in `:plugin logs` instead of receiving an error response.
 
-Events are filtered before they enter the plugin queue and are checked against the current grants on every delivery. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability.
+Events are checked when they enter the queue and again when the writer writes them to the plugin pipe. Revoking a grant therefore drops events already queued for a stalled plugin. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability. Event payloads that carry paths, including `buffer_opened`, `file_opened`, and `file_saved`, use the same gate.
 
 The `host_capabilities` and `events` fields in `initialize` are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so revocation applies to the next message without restarting the plugin.
 
@@ -221,7 +221,9 @@ The first denial for each plugin and capability records a log entry with the mis
 
 Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` and run `:plugin reload` to revoke or narrow grants without restarting plugins. The next host call or event delivery uses the new grants.
 
-`ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and the first one is recorded in `:plugin logs`.
+`ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and counted in `:plugin logs`.
+
+A malformed `permissions.toml` during `:plugin reload` is fail-closed. Kawi swaps in the default tier and warns instead of keeping the previous grants or granting everything. The registry swap is one atomic replacement, so no call sees a partially loaded grant set.
 
 ## Advisory status
 
@@ -242,11 +244,11 @@ Landlock will make `fs.read` and `fs.write` real for process plugins on Linux. N
 - Unknown plugins and stale grants.
 - Grants for capabilities the plugin does not request.
 - Requests without grants, including unresolved `$WORKSPACE`.
-- Request hash mismatches.
+- Request hash mismatches, shown as changed with grants withheld.
 - Subscriptions that cannot receive events.
-- Advisory grants for process plugins.
+- Advisory grants for process plugins, labeled `advisory`.
 
-`:plugin list` shows effective, missing, and stale capabilities without spawning the plugin:
+`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Advisory capabilities are labeled `(advisory)`:
 
 ```text
 gitsigns 0.2.0 ready
@@ -256,7 +258,7 @@ gitsigns 0.2.0 ready
 
 ## Migration
 
-Enforcement is deny by default. A plugin with no `[capabilities]` table receives only the default tier. Existing plugins must add a request section and users must grant it. The bundled examples will be updated with their requests when enforcement ships.
+Enforcement is deny by default. A plugin with no `[capabilities]` table receives only the default tier. Existing plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
 
 Interactive grant prompts are out of scope for version 1. The grant file is the consent surface.
 
