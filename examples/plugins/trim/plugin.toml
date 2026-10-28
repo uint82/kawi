@@ -1,0 +1,14 @@
+name = "trim"
+version = "0.1.0"
+protocol = 1
+description = "Trim trailing whitespace"
+command = ["python3", "${plugin_dir}/plugin.py"]
+timeout_ms = 5000
+
+[[commands]]
+id = "trim"
+title = "Trim trailing whitespace"
+description = "Remove trailing whitespace from every line"
+
+[commands.keybindings]
+normal = ["<leader>pt"]
