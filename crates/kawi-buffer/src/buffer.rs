@@ -117,7 +117,14 @@ impl Buffer {
         if self.readonly {
             return;
         }
-        self.rope = Rope::from_str(text);
+        self.replace_rope(Rope::from_str(text));
+    }
+
+    pub fn replace_rope(&mut self, text: Rope) {
+        if self.readonly {
+            return;
+        }
+        self.rope = text;
         self.touch();
     }
 
@@ -1725,11 +1732,22 @@ mod tests {
         buffer.delete_backward(1, 0);
         buffer.delete_forward(0, 0);
         buffer.replace_all("other");
+        buffer.replace_rope(Rope::from_str("other"));
         buffer.paste_after(0, 0, "tail");
         assert!(buffer.undo(0, 0).is_none());
         assert!(!buffer.redo_keep_cursor(0, 0));
         assert_eq!(buffer.snapshot().to_string(), "one\ntwo\n");
         assert_eq!(buffer.revision(), revision);
+    }
+
+    #[test]
+    fn replace_rope_swaps_text_and_updates_the_revision() {
+        let mut buffer = Buffer::from_string("old");
+        let revision = buffer.revision();
+        buffer.replace_rope(Rope::from_str("new\ntext"));
+        assert_eq!(buffer.line_text(0), "new");
+        assert_eq!(buffer.line_text(1), "text");
+        assert_ne!(buffer.revision(), revision);
     }
 
     #[test]

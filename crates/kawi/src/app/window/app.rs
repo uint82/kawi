@@ -62,10 +62,13 @@ impl App {
     pub(crate) fn sync_active_window(&mut self) {
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
+        let preserve_view = self.directory_loading.is_loading(buffer);
         let options = self.editor.window_options();
         let window = self.windows.active_view_mut();
         window.buffer = buffer;
-        window.view = view;
+        if !preserve_view {
+            window.view = view;
+        }
         window.options = options;
     }
 

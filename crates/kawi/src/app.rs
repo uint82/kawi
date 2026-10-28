@@ -166,6 +166,7 @@ pub struct App {
     terminal_focus: bool,
     explorer: explorer::ExplorerState,
     directory: directory::DirectoryBuffers,
+    directory_loading: directory::DirectoryLoading,
     directory_options: directory::DirectoryOptions,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
@@ -261,6 +262,7 @@ impl App {
             terminal_focus: false,
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
+            directory_loading: directory::DirectoryLoading::default(),
             directory_options: directory::DirectoryOptions::default(),
             disk: disk::DiskState::default(),
             file_watch: None,
@@ -294,6 +296,7 @@ impl App {
             statusline: kawi_tui::statusbar::StatusBarConfig::default(),
         };
         app.explorer.set_wake(app.events.wake());
+        app.directory_loading.set_wake(app.events.wake());
         app.refresh_command_completion();
         app
     }
@@ -393,6 +396,7 @@ impl App {
             self.sync_git_status();
             self.poll_git_status();
             self.poll_explorer();
+            self.poll_directory_loads();
             self.sync_lsp();
             self.poll_symbol_events();
             self.symbols_tick();
@@ -448,6 +452,7 @@ impl App {
             redraw |= self.sync_git_status();
             redraw |= self.poll_git_status();
             redraw |= self.poll_explorer();
+            redraw |= self.poll_directory_loads();
             redraw |= self.sync_task();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
@@ -1953,7 +1958,7 @@ impl App {
                 return Ok(false);
             }
         } else if let Some(number) = self.directory_buffer_number() {
-            if let Err(message) = self.reload_directory(number) {
+            if let Err(message) = self.start_directory_reload(number) {
                 self.show_message(message);
             }
             self.reveal_cursor();
@@ -2057,6 +2062,11 @@ impl App {
             Ok(()) => {
                 self.persist_clean_undos();
                 self.reconcile_unlisted_buffers();
+                let listed = self.editor.buffer_numbers();
+                let cancelled = self.directory_loading.retain_listed(&listed);
+                for number in cancelled {
+                    self.editor.set_buffer_readonly(number, false);
+                }
                 self.reveal_cursor();
             }
             Err(error) => self.show_message(buffer_error_message(error)),

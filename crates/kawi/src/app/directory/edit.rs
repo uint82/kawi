@@ -80,26 +80,38 @@ impl App {
             name
         };
         if self.open_directory_path(parent, true) {
-            self.focus_directory_line(&focus);
+            let number = self.editor.buffer_number();
+            if self.directory_loading.is_loading(number) {
+                self.directory_loading.defer_focus(number, focus);
+            } else {
+                self.focus_directory_line(number, &focus);
+            }
         }
         true
     }
 
-    fn focus_directory_line(&mut self, text: &str) {
-        let number = self.editor.buffer_number();
+    pub(super) fn focus_directory_line(&mut self, number: usize, text: &str) -> bool {
+        if number != self.editor.buffer_number() {
+            return false;
+        }
         let Some(row) = self
             .directory
             .get(number)
             .and_then(|state| state.lines.iter().position(|line| line.text == text))
         else {
-            return;
+            return false;
         };
         self.editor.apply(Action::JumpTo(row, 0));
         self.reveal_cursor();
+        true
     }
 
     pub(super) fn toggle_directory_hidden(&mut self) -> bool {
         let number = self.editor.buffer_number();
+        if self.directory_loading.is_loading(number) {
+            self.show_message("Directory is still loading".to_string());
+            return true;
+        }
         if self.editor.buffer_is_dirty(number).unwrap_or(false) {
             self.show_message("Save or undo changes before toggling hidden files".to_string());
             return true;
@@ -109,7 +121,10 @@ impl App {
         };
         state.show_hidden = !state.show_hidden;
         let hidden = state.show_hidden;
-        if let Err(message) = self.reload_directory(number) {
+        if let Err(message) = self.start_directory_reload(number) {
+            if let Some(state) = self.directory.get_mut(number) {
+                state.show_hidden = !state.show_hidden;
+            }
             self.show_message(message);
             return true;
         }

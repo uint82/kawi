@@ -28,11 +28,20 @@ impl App {
         {
             return Ok(false);
         }
-        if self.directory_buffer_number().is_none() {
+        let Some(number) = self.directory_buffer_number() else {
+            return Ok(false);
+        };
+        if key.code == KeyCode::Char('-') {
+            return Ok(self.open_directory_parent());
+        }
+        if self.directory_loading.is_loading(number) {
+            if matches!(key.code, KeyCode::Enter | KeyCode::Char('.')) {
+                self.show_message("Directory is still loading".to_string());
+                return Ok(true);
+            }
             return Ok(false);
         }
         match key.code {
-            KeyCode::Char('-') => Ok(self.open_directory_parent()),
             KeyCode::Enter => Ok(self.open_directory_entry()),
             KeyCode::Char('.') => Ok(self.toggle_directory_hidden()),
             _ => Ok(false),

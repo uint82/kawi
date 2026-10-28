@@ -50,6 +50,10 @@ impl DirectoryBuffers {
         self.states.contains_key(&number)
     }
 
+    pub(super) fn remove(&mut self, number: usize) {
+        self.states.remove(&number);
+    }
+
     pub(super) fn numbers(&self) -> impl Iterator<Item = usize> + '_ {
         self.states.keys().copied()
     }

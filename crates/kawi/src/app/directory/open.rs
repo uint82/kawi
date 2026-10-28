@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::super::file_ops::absolute_path;
-use super::listing::{read_listing, Listing};
+use super::listing::Listing;
 use super::session::DirectoryBuffer;
 use crate::app::App;
 
@@ -26,23 +26,32 @@ impl App {
             return Err(format!("E484: Not a directory: {}", root.display()));
         }
         if let Some(number) = self.directory.find_root(&root) {
-            if !self.editor.buffer_is_dirty(number).unwrap_or(false) {
-                self.reload_directory(number)?;
+            if !self.editor.buffer_is_dirty(number).unwrap_or(false)
+                && !self.directory_loading.is_loading(number)
+            {
+                self.start_directory_reload(number)?;
             }
             self.editor.buffer_select(number);
             return Ok(number);
         }
         let options = self.directory_options;
-        let listing = read_listing(&root, options.show_hidden, 1, options.sort)
-            .map_err(|error| format!("Cannot read {}: {error}", root.display()))?;
-        let text = listing_text(&listing);
         let number = self
             .editor
-            .open_directory_buffer(&root.to_string_lossy(), &text, reuse_empty);
+            .open_directory_buffer(&root.to_string_lossy(), "", reuse_empty);
         let revision = self.editor.buffer_revision_at(number).unwrap_or_default();
-        let state =
-            DirectoryBuffer::new(root, listing, options.show_hidden, options.sort, revision);
+        let state = DirectoryBuffer::new(
+            root,
+            Listing::empty(),
+            options.show_hidden,
+            options.sort,
+            revision,
+        );
         self.directory.insert(number, state);
+        if let Err(message) = self.start_directory_initial_load(number) {
+            self.directory.remove(number);
+            let _ = self.editor.close_buffer(number, true);
+            return Err(message);
+        }
         self.after_directory_open();
         Ok(number)
     }
@@ -58,54 +67,10 @@ impl App {
             .any(|number| self.editor.buffer_is_dirty(number).unwrap_or(false))
     }
 
-    pub(in crate::app) fn reload_directory(&mut self, number: usize) -> Result<(), String> {
-        let (root, show_hidden, sort) = {
-            let state = self
-                .directory
-                .get(number)
-                .ok_or_else(|| "directory buffer is missing".to_string())?;
-            (state.root.clone(), state.show_hidden, state.sort)
-        };
-        let listing = read_listing(&root, show_hidden, 1, sort)
-            .map_err(|error| format!("Cannot read {}: {error}", root.display()))?;
-        let text = listing_text(&listing);
-        self.editor
-            .replace_directory_listing(number, &root.to_string_lossy(), &text);
-        let revision = self.editor.buffer_revision_at(number).unwrap_or_default();
-        if let Some(state) = self.directory.get_mut(number) {
-            state.reset_listing(listing, revision);
-        }
-        if number == self.editor.buffer_number() {
-            self.reveal_cursor();
-        }
-        Ok(())
-    }
-
     fn after_directory_open(&mut self) {
         self.sync_language_settings();
         self.sync_watched_files();
         self.refresh_git_status();
         self.reveal_cursor();
     }
-}
-
-fn listing_text(listing: &Listing) -> String {
-    listing
-        .entries
-        .iter()
-        .map(|entry| entry.line_text())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-pub(super) fn directory_changed(state: &DirectoryBuffer) -> bool {
-    let Ok(listing) = read_listing(&state.root, state.show_hidden, 1, state.sort) else {
-        return true;
-    };
-    state.original.len() != listing.entries.len()
-        || state
-            .original
-            .iter()
-            .zip(&listing.entries)
-            .any(|(old, new)| old.name != new.name || old.kind != new.kind)
 }

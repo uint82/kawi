@@ -45,8 +45,13 @@ impl App {
             self.reset_windows();
             return session_warnings(warnings);
         };
-        let editor = &self.editor;
-        windows.clamp_views(|buffer, view| editor.clamp_view_state(buffer, view));
+        windows.clamp_views(|buffer, view| {
+            if self.directory_loading.is_loading(buffer) {
+                view
+            } else {
+                self.editor.clamp_view_state(buffer, view)
+            }
+        });
         let buffer = windows.active_view().buffer;
         let view = windows.active_view().view;
         if self.editor.buffer_number() != buffer && !self.editor.buffer_select(buffer) {

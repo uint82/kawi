@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use super::fs::DirectoryFs;
+use crate::app::App;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Call {
@@ -85,5 +87,16 @@ impl DirectoryFs for FakeFs {
 
     fn is_dir(&self, path: &Path) -> bool {
         self.paths.get(path).copied().unwrap_or(false)
+    }
+}
+
+pub(super) fn settle(app: &mut App) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.directory_loading.has_loads() {
+        app.poll_directory_loads();
+        if app.directory_loading.has_loads() {
+            assert!(Instant::now() < deadline, "directory load timed out");
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 }

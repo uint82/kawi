@@ -34,6 +34,39 @@ pub(super) struct Listing {
     pub(super) next_id: u64,
 }
 
+impl Listing {
+    pub(super) fn empty() -> Self {
+        Self {
+            entries: Vec::new(),
+            next_id: 1,
+        }
+    }
+}
+
+pub(super) fn listing_text(listing: &Listing) -> String {
+    let capacity: usize = listing
+        .entries
+        .iter()
+        .map(|entry| entry.name.len().saturating_add(2))
+        .sum();
+    let mut text = String::with_capacity(capacity);
+    for (index, entry) in listing.entries.iter().enumerate() {
+        if index > 0 {
+            text.push('\n');
+        }
+        text.push_str(&entry.line_text());
+    }
+    text
+}
+
+pub(super) fn listing_unchanged(original: &[Entry], current: &Listing) -> bool {
+    original.len() == current.entries.len()
+        && original
+            .iter()
+            .zip(&current.entries)
+            .all(|(old, new)| old.name == new.name && old.kind == new.kind)
+}
+
 pub(super) fn read_listing(
     root: &Path,
     show_hidden: bool,
