@@ -1,0 +1,165 @@
+package kawi:plugin@0.1.0;
+
+interface types {
+  record position {
+    line: u32,
+    byte-column: u32,
+  }
+
+  record selection {
+    start: position,
+    end: position,
+  }
+
+  record state {
+    buffer: u64,
+    revision: u64,
+    path: option<string>,
+    language: option<string>,
+    mode: string,
+    cursor: position,
+    selection: option<selection>,
+    text: option<string>,
+  }
+
+  record edit {
+    start: position,
+    end: position,
+    text: string,
+  }
+
+  enum severity {
+    error,
+    warning,
+    information,
+    hint,
+  }
+
+  record diagnostic {
+    start: position,
+    end: position,
+    severity: severity,
+    message: string,
+    source: option<string>,
+    code: option<string>,
+  }
+
+  record error {
+    code: s32,
+    message: string,
+    capability: option<string>,
+  }
+
+  variant argument {
+    null,
+    boolean(bool),
+    integer(s64),
+    float(f64),
+    text(string),
+  }
+
+  record process-output {
+    success: bool,
+    code: option<s32>,
+    stdout: string,
+    stderr: string,
+  }
+
+  record buffer-changed {
+    buffer: u64,
+    revision: u64,
+    previous-revision: u64,
+    origin: string,
+    full-resync: bool,
+    changes: list<edit>,
+  }
+
+  record buffer-opened {
+    buffer: u64,
+    path: option<string>,
+    language: option<string>,
+    revision: u64,
+  }
+
+  record file-opened {
+    buffer: u64,
+    path: string,
+    language: option<string>,
+    revision: u64,
+  }
+
+  record buffer-closed {
+    buffer: u64,
+    path: option<string>,
+  }
+
+  record file-saved {
+    buffer: u64,
+    path: option<string>,
+    revision: u64,
+  }
+
+  record mode-changed {
+    buffer: u64,
+    previous: string,
+    next: string,
+  }
+
+  record diagnostics-changed {
+    buffer: option<u64>,
+    path: string,
+    revision: u64,
+    diagnostics: list<diagnostic>,
+  }
+
+  variant event {
+    buffer-changed(buffer-changed),
+    buffer-opened(buffer-opened),
+    file-opened(file-opened),
+    buffer-closed(buffer-closed),
+    file-saved(file-saved),
+    mode-changed(mode-changed),
+    diagnostics-changed(diagnostics-changed),
+  }
+}
+
+interface editor-read {
+  use types.{state, error};
+  get-state: func(include-text: bool) -> result<state, error>;
+}
+
+interface editor-write {
+  use types.{edit, error};
+  apply-edit: func(buffer: u64, revision: u64, edits: list<edit>) -> result<u64, error>;
+}
+
+interface ui-message {
+  use types.{error};
+  message: func(text: string) -> result<_, error>;
+}
+
+interface diagnostics-publish {
+  use types.{diagnostic, error};
+  set: func(source: string, buffer: u64, revision: u64, items: list<diagnostic>) -> result<_, error>;
+}
+
+interface process-run {
+  use types.{process-output, error};
+  run: func(command: string, args: list<string>, timeout-ms: u32) -> result<process-output, error>;
+}
+
+interface lifecycle {
+  use types.{argument, error, event};
+  init: func(host-protocol: u32) -> result<_, error>;
+  invoke-command: func(id: string, args: list<argument>) -> result<argument, error>;
+  on-event: func(event: event);
+}
+
+world host {
+  import editor-read;
+  import editor-write;
+  import ui-message;
+  import diagnostics-publish;
+  import process-run;
+  export lifecycle;
+}

@@ -212,3 +212,5 @@ fn warns_on_invalid_capability_requests_without_skipping_the_plugin() {
         .all(|warning| warning.message.contains("capabilities:")));
     fs::remove_dir_all(root).unwrap();
 }
+
+mod wasm;

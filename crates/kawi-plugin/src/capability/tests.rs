@@ -142,3 +142,17 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
         assert!(!advertised_events.contains(&event));
     }
 }
+
+#[test]
+fn component_hash_changes_the_request_hash() {
+    let (base, _) = requests(r#""editor.read" = true"#);
+    let mut first = base.clone();
+    first.set_artifact_hash("sha256:first");
+    let mut second = base.clone();
+    second.set_artifact_hash("sha256:second");
+    assert_ne!(base.request_hash(), first.request_hash());
+    assert_ne!(first.request_hash(), second.request_hash());
+    assert!(first
+        .canonical_json()
+        .contains("\"component\":\"sha256:first\""));
+}

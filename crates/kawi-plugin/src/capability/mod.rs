@@ -92,6 +92,7 @@ impl Capability {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityRequests {
     scopes: BTreeMap<Capability, Scope>,
+    artifact: Option<String>,
 }
 
 impl CapabilityRequests {
@@ -130,7 +131,14 @@ impl CapabilityRequests {
             "capabilities".to_string(),
             Value::Object(capabilities.into_iter().collect()),
         );
+        if let Some(artifact) = &self.artifact {
+            root.insert("component".to_string(), Value::String(artifact.clone()));
+        }
         serde_json::to_string(&Value::Object(root)).unwrap_or_default()
+    }
+
+    pub fn set_artifact_hash(&mut self, hash: &str) {
+        self.artifact = Some(hash.to_string());
     }
 
     pub fn request_hash(&self) -> String {
