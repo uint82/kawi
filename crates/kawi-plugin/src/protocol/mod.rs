@@ -12,9 +12,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 1;
+pub const PROTOCOL_MINOR: u64 = 2;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 3] = ["editor.get_state", "editor.apply_edit", "ui.message"];
+pub const HOST_METHODS: [&str; 4] = [
+    "editor.get_state",
+    "editor.apply_edit",
+    "editor.set_diagnostics",
+    "ui.message",
+];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 
 pub const PARSE_ERROR: i64 = -32700;
@@ -179,6 +184,13 @@ pub struct ApplyEditResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiMessageParams {
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetDiagnosticsParams {
+    pub buffer: u64,
+    pub revision: u64,
+    pub diagnostics: Vec<DiagnosticSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
