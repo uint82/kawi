@@ -5,11 +5,11 @@ related = ["plugins", "plugin-capabilities", "configuration", "keymaps"]
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins will implement the same contract in a later release.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its granted events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins will implement the same contract in a later release.
 
 ## Trust model
 
-Process plugins run as your user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities. On Linux, a Landlock ruleset also limits filesystem writes and executable paths to granted scopes; see [Plugin capabilities](help:plugin-capabilities).
+Process plugins run as your user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to granted scopes; see [Plugin capabilities](help:plugin-capabilities).
 
 Each plugin lives in its own directory:
 
@@ -298,7 +298,7 @@ Request params:
 
 Result is `null`.
 
-`buffer` must be the current buffer and `revision` must match its current revision; otherwise Kawi returns `-32010`. The buffer must have a file path. Kawi replaces that plugin's diagnostics for the buffer; an empty array clears them. Severity is `error`, `warning`, `information`, or `hint`. Kawi ignores the supplied `source` and derives the displayed source from the plugin name, so a plugin cannot spoof another provider. Kawi accepts at most 1000 diagnostics per call.
+`buffer` must be the current buffer and `revision` must match its current revision; otherwise Kawi returns `-32010`. The buffer must have a file path. Kawi replaces that plugin's diagnostics for the buffer; an empty array clears them. Severity is `error`, `warning`, `information`, or `hint`. Kawi ignores the supplied `source` and derives the displayed source from the plugin name, so a plugin cannot spoof another provider. Kawi accepts at most 1000 diagnostics per call, messages up to 4096 bytes, and codes up to 256 bytes. Publishing is limited to 20 calls per plugin per second.
 
 ### ui.message
 

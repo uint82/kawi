@@ -9,7 +9,7 @@ Kawi supports process plugins that communicate over JSON-RPC 2.0. Plugins are tr
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
 
-Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux, Landlock enforces filesystem and process-execution scopes; network scopes remain advisory until the WebAssembly runtime ships.
+Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes; network scopes and older ABI filesystem scopes remain advisory until the WebAssembly runtime ships.
 
 Each plugin lives in its own directory:
 
