@@ -531,13 +531,16 @@ impl App {
             Vec::new()
         };
         let path = self.problem_path();
-        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
-            path: path.as_deref(),
-            rows: &rows,
-            cursor_row: self.editor.row(),
-            cursor_column: self.editor.col(),
-            suppress: self.virtual_text_suppressed(),
-        });
+        let virtual_texts = self.pane_virtual_texts(
+            self.editor.buffer_number(),
+            crate::app::diagnostic_ui::VirtualTextRequest {
+                path: path.as_deref(),
+                rows: &rows,
+                cursor_row: self.editor.row(),
+                cursor_column: self.editor.col(),
+                suppress: self.virtual_text_suppressed(),
+            },
+        );
         PaneData {
             rect,
             active: true,
@@ -671,13 +674,16 @@ impl App {
             Vec::new()
         };
         let syntax_spans = self.inactive_syntax_spans(id, window.buffer, top, end);
-        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
-            path: self.buffer_problem_path(window.buffer).as_deref(),
-            rows: &rows,
-            cursor_row: row,
-            cursor_column: col,
-            suppress: false,
-        });
+        let virtual_texts = self.pane_virtual_texts(
+            window.buffer,
+            crate::app::diagnostic_ui::VirtualTextRequest {
+                path: self.buffer_problem_path(window.buffer).as_deref(),
+                rows: &rows,
+                cursor_row: row,
+                cursor_column: col,
+                suppress: false,
+            },
+        );
         PaneData {
             rect,
             active: false,

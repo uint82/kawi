@@ -6,6 +6,7 @@ use kawi_tui::frame::Rect;
 
 mod app;
 mod layout;
+mod metadata;
 mod snapshot;
 
 pub use layout::WindowLayout;

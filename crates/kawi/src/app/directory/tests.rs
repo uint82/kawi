@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
+use kawi_tui::frame::{VirtualTextKind, VirtualTextPlacement};
 
 use super::super::save::SaveAfter;
 use crate::app::App;
@@ -10,6 +11,7 @@ use crate::keymap::Flavor;
 use crate::test_support::temp_dir;
 
 use super::test_support::settle;
+use super::MetadataColumns;
 
 pub(super) fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
     let dir = temp_dir(name);
@@ -277,5 +279,27 @@ fn write_quit_finishes_after_the_background_check() {
     assert!(app.quit_pending);
     assert!(!dir.join("alpha.txt").exists());
     assert!(dir.join("beta.txt").exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn directory_metadata_loads_with_the_listing() {
+    let dir = temp_dir("directory_metadata_load");
+    fs::write(dir.join("alpha.txt"), "hello").unwrap();
+    let columns = MetadataColumns::parse("permissions,size,modified").unwrap();
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.directory_options.metadata = columns;
+    assert!(app.open_directory_path(&dir, true));
+    settle(&mut app);
+    let number = app.editor.buffer_number();
+    let state = app.directory.get(number).unwrap();
+    let text = state.metadata_text(0, columns).unwrap();
+    assert!(text.starts_with('-'));
+    assert!(text.contains("5B"));
+    assert_eq!(text.len(), 35);
+    let texts = app.directory_metadata_texts(number, &[0]);
+    let text = texts[0].as_ref().unwrap();
+    assert_eq!(text.kind, VirtualTextKind::Metadata);
+    assert_eq!(text.placement, VirtualTextPlacement::RightEdge);
     let _ = fs::remove_dir_all(dir);
 }
