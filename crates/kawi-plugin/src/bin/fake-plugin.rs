@@ -68,7 +68,31 @@ fn handle_invoke(
 ) -> Result<()> {
     match mode {
         "exit-mid" => std::process::exit(1),
+        "crash-once" => {
+            if marker_exists("crash-once.marker") {
+                respond(stdout, message, json!({"echo": message.get("params")}))?;
+            } else {
+                create_marker("crash-once.marker")?;
+                std::process::exit(1);
+            }
+        }
+        "crash-five" => {
+            let count = read_count("crash-five.marker")?;
+            write_count("crash-five.marker", count + 1)?;
+            if count < 5 {
+                std::process::exit(1);
+            }
+            respond(stdout, message, json!({"echo": message.get("params")}))?;
+        }
         "hang-invoke" => thread::sleep(Duration::from_secs(5)),
+        "hang-invoke-once" => {
+            if marker_exists("hang-invoke-once.marker") {
+                respond(stdout, message, json!({"echo": message.get("params")}))?;
+            } else {
+                create_marker("hang-invoke-once.marker")?;
+                thread::sleep(Duration::from_secs(5));
+            }
+        }
         "host-call" => host_call(message, reader, stdout)?,
         _ => respond(stdout, message, json!({"echo": message.get("params")}))?,
     }
@@ -102,6 +126,25 @@ fn host_call(
             }),
         );
     }
+    Ok(())
+}
+
+fn marker_exists(name: &str) -> bool {
+    std::path::Path::new(name).exists()
+}
+
+fn create_marker(name: &str) -> Result<()> {
+    std::fs::write(name, b"")?;
+    Ok(())
+}
+
+fn read_count(name: &str) -> Result<u32> {
+    let text = std::fs::read_to_string(name).unwrap_or_else(|_| "0".to_string());
+    Ok(text.trim().parse().unwrap_or(0))
+}
+
+fn write_count(name: &str, count: u32) -> Result<()> {
+    std::fs::write(name, count.to_string())?;
     Ok(())
 }
 

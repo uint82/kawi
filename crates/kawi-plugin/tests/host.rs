@@ -186,6 +186,67 @@ fn backs_off_after_a_crash() {
 }
 
 #[test]
+fn recovers_after_an_invocation_timeout() {
+    let host = TestHost::start("hang-invoke-once", 100);
+    let first = host.invoke();
+    assert_eq!(
+        host.finish(first).unwrap_err(),
+        kawi_plugin::PluginError::Timeout
+    );
+    let second = host.invoke();
+    assert!(matches!(
+        host.finish(second).unwrap_err(),
+        kawi_plugin::PluginError::Backoff { .. }
+    ));
+    wait_for_retry(&host);
+    let third = host.invoke();
+    let result = host.finish(third).unwrap();
+    assert!(result["echo"].is_object());
+}
+
+#[test]
+fn successful_invocation_resets_the_crash_counter() {
+    let host = TestHost::start("crash-once", 1_000);
+    let first = host.invoke();
+    assert_eq!(
+        host.finish(first).unwrap_err(),
+        kawi_plugin::PluginError::ProcessExited
+    );
+    wait_for_retry(&host);
+    let second = host.invoke();
+    assert!(host.finish(second).is_ok());
+    let third = host.invoke();
+    assert!(host.finish(third).is_ok());
+    assert_eq!(host.host.status("fake"), Some(PluginStatus::Ready));
+}
+
+#[test]
+fn restart_recovers_a_disabled_plugin() {
+    let host = TestHost::start("crash-five", 1_000);
+    for attempt in 0..5 {
+        let request = host.invoke();
+        assert_eq!(
+            host.finish(request).unwrap_err(),
+            kawi_plugin::PluginError::ProcessExited,
+            "attempt {attempt}"
+        );
+        if attempt < 4 {
+            wait_for_retry(&host);
+        }
+    }
+    assert_eq!(host.host.status("fake"), Some(PluginStatus::Disabled));
+    host.host.restart("fake").unwrap();
+    let request = host.invoke();
+    assert!(host.finish(request).is_ok());
+}
+
+fn wait_for_retry(host: &TestHost) {
+    if let Some(PluginStatus::Backoff { remaining_ms }) = host.host.status("fake") {
+        std::thread::sleep(Duration::from_millis(remaining_ms.saturating_add(50)));
+    }
+}
+
+#[test]
 fn runs_the_example_plugin_as_a_real_process() {
     if std::process::Command::new("python3")
         .arg("--version")
