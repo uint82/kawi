@@ -233,3 +233,40 @@ fn other_keys_pass_through() {
     let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
     assert_eq!(super::normalize_interrupt(key), key);
 }
+
+#[test]
+fn resolver_lets_user_override_defaults() {
+    let registry = registry();
+    let mut resolver = KeymapResolver::new();
+    resolver.bind(binding(
+        &registry,
+        "file.quit",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::Default,
+    ));
+    resolver.bind(binding(
+        &registry,
+        "file.save",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::User,
+    ));
+    let outcome = resolver.feed(
+        plain(KeyCode::Char('g')),
+        KeyContext::Normal,
+        Instant::now(),
+    );
+    assert_eq!(outcome, ResolveOutcome::Pending);
+    let outcome = resolver.feed(
+        plain(KeyCode::Char('x')),
+        KeyContext::Normal,
+        Instant::now(),
+    );
+    match outcome {
+        ResolveOutcome::Command(command) => {
+            assert_eq!(command.command, registry.find("file.save").unwrap())
+        }
+        other => panic!("unexpected outcome: {other:?}"),
+    }
+}

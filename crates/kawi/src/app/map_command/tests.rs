@@ -20,6 +20,10 @@ fn key(character: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE)
 }
 
+fn escape() -> KeyEvent {
+    KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)
+}
+
 fn command(app: &App, name: &str) -> CommandId {
     app.commands.find(name).expect("command")
 }
@@ -200,4 +204,151 @@ fn runtime_leader_mapping_covers_every_leader() {
         .bindings()
         .iter()
         .all(|binding| binding.command == command(&app, "none")));
+}
+
+#[test]
+fn send_keys_recursion_is_bounded() {
+    let mut app = app();
+    let send = command(&app, "keys.send");
+    let binding = Binding::new(
+        send,
+        KeyContext::Normal,
+        KeySequence::parse("a", &default_leaders()).expect("keys"),
+        BindingSource::User,
+    )
+    .with_args(Some(toml::Value::String("a".to_string())));
+    app.apply_keymaps(load(vec![binding]));
+    app.handle_key(key('a')).unwrap();
+    assert!(app
+        .last_message()
+        .is_some_and(|message| message.contains("recursion limit")));
+}
+
+#[test]
+fn counts_survive_mapping_passthrough() {
+    let mut app = App::new(Buffer::from_string("a\nb\nc\nd\n"), Flavor::Vim);
+    app.apply_keymaps(load(vec![binding(
+        &app,
+        "edit.delete_line",
+        KeyContext::Normal,
+        "gx",
+    )]));
+    app.handle_key(key('3')).unwrap();
+    app.handle_key(key('d')).unwrap();
+    app.handle_key(key('d')).unwrap();
+    assert_eq!(app.editor.text_lines(), ["d"]);
+}
+
+#[test]
+fn registers_survive_mapping_passthrough() {
+    let mut app = app();
+    app.apply_keymaps(load(vec![binding(
+        &app,
+        "edit.delete_line",
+        KeyContext::Normal,
+        "gx",
+    )]));
+    for character in "\"ayy".chars() {
+        app.handle_key(key(character)).unwrap();
+    }
+    for character in "\"ap".chars() {
+        app.handle_key(key(character)).unwrap();
+    }
+    assert_eq!(app.editor.text_lines(), ["alpha", "alpha", "beta"]);
+}
+
+#[test]
+fn none_suppresses_the_builtin_leader() {
+    let mut app = app();
+    execute(&mut app, "nunmap <leader>ff");
+    app.handle_key(key(' ')).unwrap();
+    app.handle_key(key('f')).unwrap();
+    app.handle_key(key('f')).unwrap();
+    assert!(app.picker.is_none());
+}
+
+#[test]
+fn unmap_reports_user_and_builtin_mappings() {
+    let mut app = app();
+    execute(&mut app, "nmap gx edit.delete_line");
+    execute(&mut app, "nunmap gx");
+    assert_eq!(app.last_message(), Some("unmapped normal gx"));
+    execute(&mut app, "nunmap <leader>ff");
+    assert!(app
+        .last_message()
+        .is_some_and(|message| message.contains("disabled built-in")));
+}
+
+#[test]
+fn map_reload_drops_runtime_mappings() {
+    let dir = temp_dir("reload_runtime");
+    let path = dir.join("keymaps.toml");
+    fs::write(&path, "[normal]\n\"gx\" = \"edit.delete_line\"\n").unwrap();
+    let mut app = app();
+    app.keymaps_path = Some(path);
+    execute(&mut app, "nmap gy edit.delete_line");
+    assert_eq!(app.keymaps.bindings().len(), 1);
+    execute(&mut app, "map reload");
+    assert_eq!(app.keymaps.bindings().len(), 1);
+    assert_eq!(app.keymaps.bindings()[0].keys.to_string(), "gx");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn escape_clears_mapping_pending() {
+    let mut app = app();
+    app.apply_keymaps(load(vec![binding(
+        &app,
+        "edit.delete_line",
+        KeyContext::Normal,
+        "gx",
+    )]));
+    app.handle_key(key('g')).unwrap();
+    assert_eq!(app.keymaps.pending_text().as_deref(), Some("g"));
+    assert_eq!(app.showcmd_text().as_deref(), Some("g"));
+    app.handle_key(escape()).unwrap();
+    assert_eq!(app.keymaps.pending_text(), None);
+    assert_eq!(app.showcmd_text(), None);
+}
+
+#[test]
+fn mode_change_clears_mapping_pending() {
+    let mut app = app();
+    app.apply_keymaps(load(vec![binding(
+        &app,
+        "edit.delete_line",
+        KeyContext::Normal,
+        "gx",
+    )]));
+    app.handle_key(key('g')).unwrap();
+    app.editor.apply(Action::EnterInsert);
+    assert_eq!(app.flush_mapping_timeout().unwrap(), None);
+    assert_eq!(app.keymaps.pending_text(), None);
+    assert_eq!(app.editor.mode(), Mode::Insert);
+    assert_eq!(app.editor.text_lines(), ["alpha", "beta"]);
+}
+
+#[test]
+fn timeout_clears_mapping_pending() {
+    let mut app = app();
+    let load = load(vec![
+        binding(&app, "mode.visual", KeyContext::Normal, "g"),
+        binding(&app, "edit.delete_line", KeyContext::Normal, "gg"),
+    ]);
+    app.apply_keymaps(load);
+    app.handle_key(key('g')).unwrap();
+    assert_eq!(app.flush_mapping_timeout().unwrap(), Some(false));
+    assert_eq!(app.keymaps.pending_text(), None);
+    assert_eq!(app.showcmd_text(), None);
+}
+
+#[test]
+fn preset_switch_isolates_builtin_keys() {
+    let mut app = app();
+    app.handle_key(key(' ')).unwrap();
+    assert!(app.keymap.leader_path().is_some());
+    app.apply_flavor(Flavor::Helix).unwrap();
+    assert!(app.keymap.leader_path().is_none());
+    app.handle_key(key(' ')).unwrap();
+    assert!(app.keymap.leader_path().is_none());
 }
