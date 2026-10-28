@@ -7,7 +7,7 @@ related = ["configuration", "lsp", "sessions"]
 
 ## Run the doctor
 
-Run `kawi doctor` to check configuration, keymaps, language servers, tasks, Git, sessions, and state directories.
+Run `kawi doctor` to check configuration, keymaps, language servers, tasks, Git, sessions, and state directories. Use `:plugin list` and `:plugin logs` to diagnose plugins.
 
 Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict` to fail on warnings. Inspect another project with `kawi doctor --path PATH`.
 
