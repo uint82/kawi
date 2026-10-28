@@ -5,7 +5,7 @@ mod events;
 pub use events::{
     event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent,
     DiagnosticSummary, DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, ModeChangedEvent,
-    EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD, ORIGIN_UNDO, ORIGIN_USER,
+    EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER,
 };
 
 use serde::{Deserialize, Serialize};

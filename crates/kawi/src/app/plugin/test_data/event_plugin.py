@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 
 
 class Client:
@@ -106,6 +107,12 @@ def main():
                 continue
             if mode == "log":
                 log_event(params.get("payload"))
+            elif mode == "stall":
+                log_event(params.get("payload"))
+                if not os.path.exists("stalled.marker"):
+                    with open("stalled.marker", "w", encoding="utf-8") as handle:
+                        handle.write("1")
+                    time.sleep(0.3)
             else:
                 count = increment("event-edit.count")
                 if count > 3:

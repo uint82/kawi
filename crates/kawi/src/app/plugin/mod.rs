@@ -38,6 +38,8 @@ pub(super) struct PluginRuntime {
     last_delivered: BTreeMap<(String, u64), u64>,
     last_mode: Option<(u64, String)>,
     last_diagnostics_revision: u64,
+    resync_buffers: std::collections::BTreeSet<(String, u64)>,
+    pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
 }
 
 pub(super) struct PluginCommandTarget {

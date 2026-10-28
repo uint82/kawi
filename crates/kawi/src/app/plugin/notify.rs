@@ -13,6 +13,8 @@ use super::PluginRuntime;
 use crate::app::path_match::glob_matches;
 use crate::keymap::KeyContext;
 
+const MAX_ACTIVATION_EVENTS: usize = 256;
+
 impl PluginRuntime {
     pub(super) fn sync_plugin_state(
         &mut self,
@@ -101,44 +103,87 @@ impl PluginRuntime {
 
     fn publish_buffer_opened(&mut self, info: &BufferInfo) {
         let number = info.number as u64;
-        self.notify_event(
-            "buffer_opened",
-            serde_json::to_value(BufferOpenedEvent {
-                buffer: number,
-                path: info.path.clone(),
-                language: info.language.clone(),
-                revision: info.revision,
-            })
-            .unwrap_or(Value::Null),
-        );
+        let opened = serde_json::to_value(BufferOpenedEvent {
+            buffer: number,
+            path: info.path.clone(),
+            language: info.language.clone(),
+            revision: info.revision,
+        })
+        .unwrap_or(Value::Null);
+        self.notify_event("buffer_opened", opened.clone());
         let Some(path) = info.path.as_deref() else {
             return;
         };
-        self.notify_event(
-            "file_opened",
-            serde_json::to_value(FileOpenedEvent {
-                buffer: number,
-                path: path.to_string(),
-                language: info.language.clone(),
-                revision: info.revision,
-            })
-            .unwrap_or(Value::Null),
+        let file_opened = serde_json::to_value(FileOpenedEvent {
+            buffer: number,
+            path: path.to_string(),
+            language: info.language.clone(),
+            revision: info.revision,
+        })
+        .unwrap_or(Value::Null);
+        self.notify_event("file_opened", file_opened.clone());
+        self.activate_file_open(
+            path,
+            info.language.as_deref(),
+            &[("buffer_opened", opened), ("file_opened", file_opened)],
         );
-        self.activate_file_open(path, info.language.as_deref());
     }
 
-    fn activate_file_open(&self, path: &str, language: Option<&str>) {
+    fn activate_file_open(&mut self, path: &str, language: Option<&str>, events: &[(&str, Value)]) {
         let Some(host) = self.host.as_ref() else {
             return;
         };
-        for plugin in &self.catalog.plugins {
-            if plugin
-                .manifest
-                .activation_events
-                .iter()
-                .any(|event| activation_matches(event, path, language))
-            {
-                let _ = host.activate(&plugin.manifest.name);
+        let active = self
+            .catalog
+            .plugins
+            .iter()
+            .filter(|plugin| {
+                plugin
+                    .manifest
+                    .activation_events
+                    .iter()
+                    .any(|event| activation_matches(event, path, language))
+            })
+            .map(|plugin| {
+                (
+                    plugin.manifest.name.clone(),
+                    plugin.manifest.subscribes.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (name, subscribes) in active {
+            if self.status(&name) == Some(kawi_plugin::PluginStatus::Ready) {
+                continue;
+            }
+            let _ = host.activate(&name);
+            let pending = self.pending_activation_events.entry(name).or_default();
+            for (event, payload) in events {
+                if !subscribes.iter().any(|subscribed| subscribed == event) {
+                    continue;
+                }
+                if pending.len() >= MAX_ACTIVATION_EVENTS {
+                    pending.pop_front();
+                }
+                pending.push_back(((*event).to_string(), payload.clone()));
+            }
+        }
+    }
+
+    pub(super) fn flush_activation_events(&mut self) {
+        let ready = self
+            .pending_activation_events
+            .keys()
+            .filter(|name| self.status(name) == Some(kawi_plugin::PluginStatus::Ready))
+            .cloned()
+            .collect::<Vec<_>>();
+        for name in ready {
+            let Some(events) = self.pending_activation_events.remove(&name) else {
+                continue;
+            };
+            for (event, payload) in events {
+                if self.send(&name, &event, payload) == Some(NotifyOutcome::Overflow) {
+                    self.push_log(&name, "event queue full; dropping activation event");
+                }
             }
         }
     }

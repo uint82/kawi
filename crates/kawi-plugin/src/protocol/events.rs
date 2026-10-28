@@ -16,6 +16,7 @@ pub const EVENT_NAMES: [&str; 7] = [
 pub const ORIGIN_USER: &str = "user";
 pub const ORIGIN_UNDO: &str = "undo";
 pub const ORIGIN_EXTERNAL_RELOAD: &str = "external_reload";
+pub const ORIGIN_MIXED: &str = "mixed";
 
 pub fn plugin_origin(plugin: &str) -> String {
     format!("plugin:{plugin}")

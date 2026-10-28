@@ -1,4 +1,4 @@
-use kawi_plugin::PluginHostEvent;
+use kawi_plugin::{PluginHostEvent, PluginStatus};
 
 use super::super::App;
 
@@ -9,6 +9,7 @@ impl App {
         for event in events {
             redraw |= self.handle_plugin_event(event);
         }
+        self.plugins.flush_activation_events();
         self.plugins
             .sync_plugin_state(&mut self.editor, &self.problems);
         redraw
@@ -31,7 +32,18 @@ impl App {
                 true
             }
             PluginHostEvent::InvocationFinished { result: Ok(_), .. } => false,
-            PluginHostEvent::StatusChanged { .. } => true,
+            PluginHostEvent::StatusChanged { plugin, status } => {
+                if matches!(
+                    status,
+                    PluginStatus::Stopped
+                        | PluginStatus::Backoff { .. }
+                        | PluginStatus::Disabled
+                        | PluginStatus::Error(_)
+                ) {
+                    self.plugins.clear_plugin_state(&plugin);
+                }
+                true
+            }
             PluginHostEvent::Log { .. } => false,
         }
     }
