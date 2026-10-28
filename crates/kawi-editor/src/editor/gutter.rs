@@ -34,6 +34,14 @@ impl Editor {
         self.signcolumn_width
     }
 
+    pub fn set_gutter_extra_width(&mut self, width: usize) {
+        self.gutter_extra_width = width;
+    }
+
+    pub fn gutter_extra_width(&self) -> usize {
+        self.gutter_extra_width
+    }
+
     pub fn gutter_width(&self) -> usize {
         let options = self.window_options();
         let numbers = if numbers_visible(options) {
@@ -45,6 +53,7 @@ impl Editor {
         self.signcolumn_width
             .saturating_add(self.fold_column_width())
             .saturating_add(numbers)
+            .saturating_add(self.gutter_extra_width)
     }
 
     pub fn gutter_lines(&self, first: usize, count: usize) -> Vec<String> {
