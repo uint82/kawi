@@ -33,6 +33,10 @@ impl TestHost {
         let root = temp_dir();
         let executable = env!("CARGO_BIN_EXE_fake-plugin");
         write_manifest(&root, "fake", executable, mode, timeout_ms);
+        Self::start_custom(root, capabilities)
+    }
+
+    pub(super) fn start_custom(root: PathBuf, capabilities: CapabilityRegistry) -> Self {
         let catalog = load_catalog(&root);
         assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
         let (event_tx, events) = mpsc::channel();
@@ -52,12 +56,24 @@ impl TestHost {
     }
 
     pub(super) fn invoke_with(&self, args: Value) -> u64 {
+        self.invoke_as("fake", args)
+    }
+
+    pub(super) fn invoke_as(&self, plugin: &str, args: Value) -> u64 {
         self.host
-            .invoke("fake", "ping", args, context())
+            .invoke(plugin, "probe", args, context())
             .expect("invoke")
     }
 
     pub(super) fn finish(&self, request: u64) -> Result<Value, kawi_plugin::PluginError> {
+        self.finish_with_logs(request).0
+    }
+
+    pub(super) fn finish_with_logs(
+        &self,
+        request: u64,
+    ) -> (Result<Value, kawi_plugin::PluginError>, Vec<String>) {
+        let mut logs = Vec::new();
         loop {
             match self
                 .events
@@ -68,7 +84,8 @@ impl TestHost {
                     request: finished,
                     result,
                     ..
-                } if finished == request => return result,
+                } if finished == request => return (result, logs),
+                PluginHostEvent::Log { line, .. } => logs.push(line),
                 _ => continue,
             }
         }

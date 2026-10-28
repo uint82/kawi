@@ -13,6 +13,7 @@ pub enum PluginError {
     Backoff { remaining_ms: u64 },
     Disabled,
     Rpc(RpcError),
+    Restart,
     Shutdown,
 }
 
@@ -38,6 +39,7 @@ impl fmt::Display for PluginError {
                 "plugin is disabled after repeated crashes, use :plugin restart"
             ),
             Self::Rpc(error) => write!(formatter, "plugin error {}: {}", error.code, error.message),
+            Self::Restart => write!(formatter, "plugin restarted; invocation canceled"),
             Self::Shutdown => write!(formatter, "plugin host is shutting down"),
         }
     }

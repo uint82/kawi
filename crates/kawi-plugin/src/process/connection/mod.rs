@@ -7,7 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -17,7 +17,7 @@ use self::write::{spawn_stderr, spawn_writer};
 use crate::capability::{advertised_events, advertised_host_methods, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
-use crate::host::PluginHostEvent;
+use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
     notification_value, request_value, HostInfo, InitializeParams, InitializeResult, InvokeParams,
@@ -28,12 +28,14 @@ pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
 
 const INITIALIZE_REQUEST_ID: u64 = 0;
 const SUPERVISOR_QUEUE_CAPACITY: usize = 1024;
+const RESTART_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(super) struct ConnectionConfig {
     pub(super) timeout: Duration,
     pub(super) event_filter: Arc<Mutex<BTreeSet<String>>>,
     pub(super) capabilities: CapabilityRegistry,
     pub(super) environment: HostEnvironment,
+    pub(super) restart: Arc<AtomicBool>,
 }
 
 pub(super) struct Connection {
@@ -47,7 +49,8 @@ pub(super) struct Connection {
     plugin_name: String,
     writer_slot: WriterSlot,
     timeout: Duration,
-    sandboxed: bool,
+    sandboxed: kawi_process::SandboxStatus,
+    restart: Arc<AtomicBool>,
 }
 
 impl Connection {
@@ -63,6 +66,7 @@ impl Connection {
             event_filter,
             capabilities,
             environment,
+            restart,
         } = config;
         let command = plugin.resolved_command();
         let executable = command
@@ -76,11 +80,36 @@ impl Connection {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         kawi_process::configure(&mut process);
-        let sandbox = super::sandbox::policy(plugin, &capabilities, &environment);
-        let sandboxed = kawi_process::configure_sandbox(&mut process, &sandbox);
-        let mut child = process
-            .spawn()
-            .map_err(|error| PluginError::Spawn(error.to_string()))?;
+        let plan = super::sandbox::policy(plugin, &capabilities, &environment);
+        for warning in &plan.warnings {
+            send_event(
+                events,
+                wake,
+                PluginHostEvent::Log {
+                    plugin: plugin.manifest.name.clone(),
+                    line: warning.clone(),
+                },
+            );
+        }
+        let sandboxed = kawi_process::configure_sandbox(&mut process, &plan.policy);
+        if sandboxed == kawi_process::SandboxStatus::Partial {
+            send_event(
+                events,
+                wake,
+                PluginHostEvent::Log {
+                    plugin: plugin.manifest.name.clone(),
+                    line: "landlock supports only partial enforcement; filesystem scopes stay advisory"
+                        .to_string(),
+                },
+            );
+        }
+        let mut child = process.spawn().map_err(|error| {
+            PluginError::Spawn(spawn_error_message(
+                &plugin.manifest.name,
+                sandboxed,
+                &error,
+            ))
+        })?;
         let Some(stdin) = child.stdin.take() else {
             kawi_process::terminate(&mut child);
             return Err(PluginError::Spawn("missing stdin".to_string()));
@@ -140,6 +169,7 @@ impl Connection {
             writer_slot,
             timeout,
             sandboxed,
+            restart,
         })
     }
 
@@ -199,7 +229,7 @@ impl Connection {
     }
 
     pub(super) fn is_sandboxed(&self) -> bool {
-        self.sandboxed
+        self.sandboxed.is_enforced()
     }
 
     pub(super) fn shutdown(&mut self) {
@@ -226,27 +256,56 @@ impl Connection {
             remove_pending(&self.pending, id);
             return Err(PluginError::QueueFull);
         }
-        match response_rx.recv_timeout(self.timeout) {
-            Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                remove_pending(&self.pending, id);
-                let _ = self.writer.try_send(notification_value(
-                    "$/cancelRequest",
-                    serde_json::json!({"id": id}),
-                ));
-                Err(PluginError::Timeout)
+        let cancellable = method != "initialize";
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return self.cancel_request(id, PluginError::Timeout);
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                remove_pending(&self.pending, id);
-                Err(PluginError::ProcessExited)
+            match response_rx.recv_timeout(remaining.min(RESTART_POLL_INTERVAL)) {
+                Ok(result) => return result,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if cancellable && self.restart.load(Ordering::SeqCst) {
+                        return self.cancel_request(id, PluginError::Restart);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return self.cancel_request(id, PluginError::ProcessExited);
+                }
             }
         }
+    }
+
+    fn cancel_request(&self, id: u64, error: PluginError) -> Result<Value, PluginError> {
+        remove_pending(&self.pending, id);
+        let _ = self.writer.try_send(notification_value(
+            "$/cancelRequest",
+            serde_json::json!({"id": id}),
+        ));
+        Err(error)
     }
 }
 
 impl Drop for Connection {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+fn spawn_error_message(
+    plugin: &str,
+    status: kawi_process::SandboxStatus,
+    error: &std::io::Error,
+) -> String {
+    match status {
+        kawi_process::SandboxStatus::Enforced => {
+            format!("{plugin} cannot start under the enforced landlock ruleset: {error}")
+        }
+        kawi_process::SandboxStatus::Partial => {
+            format!("{plugin} cannot start under a partial landlock ruleset: {error}")
+        }
+        kawi_process::SandboxStatus::Unavailable => format!("{plugin}: {error}"),
     }
 }
 

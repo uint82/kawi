@@ -13,6 +13,9 @@ const RUNTIME_READ_ONLY: &[&str] = &[
     "/lib64",
     "/bin",
     "/sbin",
+    "/opt",
+    "/nix/store",
+    "/run/current-system/sw",
     "/etc/ld.so.cache",
     "/etc/ssl",
     "/etc/ca-certificates",
@@ -26,124 +29,189 @@ const RUNTIME_READ_ONLY: &[&str] = &[
 #[cfg(target_os = "linux")]
 const RUNTIME_READ_WRITE: &[&str] = &["/dev/null"];
 
+pub(super) struct SandboxPlan {
+    pub(super) policy: SandboxPolicy,
+    pub(super) warnings: Vec<String>,
+}
+
 pub(super) fn policy(
     plugin: &LoadedPlugin,
     capabilities: &CapabilityRegistry,
     environment: &HostEnvironment,
-) -> SandboxPolicy {
-    let name = plugin.manifest.name.as_str();
-    let mut policy = SandboxPolicy::default();
-    add_runtime(&mut policy);
-    add_plugin_dir(&mut policy, plugin);
-    add_runtime_executable(&mut policy, plugin);
-    add_file_scope(
-        &mut policy,
-        capabilities,
-        name,
-        Capability::FsRead,
-        environment,
-        plugin,
-    );
-    add_file_scope(
-        &mut policy,
-        capabilities,
-        name,
-        Capability::FsWrite,
-        environment,
-        plugin,
-    );
-    add_command_scope(&mut policy, capabilities, plugin);
-    policy
+) -> SandboxPlan {
+    let mut planner = Planner::new(plugin, capabilities, environment);
+    planner.add_runtime();
+    planner.add_plugin_dir();
+    planner.add_manifest_executable();
+    planner.add_file_scope(Capability::FsRead);
+    planner.add_file_scope(Capability::FsWrite);
+    planner.add_command_scope();
+    planner.finish()
 }
 
-fn add_runtime(policy: &mut SandboxPolicy) {
-    #[cfg(target_os = "linux")]
-    {
-        policy.read_only.extend(existing_paths(RUNTIME_READ_ONLY));
-        policy.read_only.push(PathBuf::from("/proc/self"));
-        policy.read_write.extend(existing_paths(RUNTIME_READ_WRITE));
+struct Planner<'a> {
+    plugin: &'a LoadedPlugin,
+    capabilities: &'a CapabilityRegistry,
+    environment: &'a HostEnvironment,
+    policy: SandboxPolicy,
+    warnings: Vec<String>,
+}
+
+impl<'a> Planner<'a> {
+    fn new(
+        plugin: &'a LoadedPlugin,
+        capabilities: &'a CapabilityRegistry,
+        environment: &'a HostEnvironment,
+    ) -> Self {
+        Self {
+            plugin,
+            capabilities,
+            environment,
+            policy: SandboxPolicy::default(),
+            warnings: Vec::new(),
+        }
     }
-}
 
-fn add_plugin_dir(policy: &mut SandboxPolicy, plugin: &LoadedPlugin) {
-    if let Some(path) = existing(&plugin.dir) {
-        policy.read_write.push(path);
+    fn add_runtime(&mut self) {
+        #[cfg(target_os = "linux")]
+        {
+            self.policy
+                .read_only
+                .extend(existing_paths(RUNTIME_READ_ONLY));
+            self.policy.read_only.push(PathBuf::from("/proc/self"));
+            self.policy
+                .read_write
+                .extend(existing_paths(RUNTIME_READ_WRITE));
+        }
     }
-}
 
-fn add_runtime_executable(policy: &mut SandboxPolicy, plugin: &LoadedPlugin) {
-    let command = plugin.resolved_command();
-    let Some(executable) = command.first() else {
-        return;
-    };
-    let executable = executable.to_string_lossy();
-    let resolved = resolve_command(&executable, &plugin.dir);
-    if let Some(path) = resolved {
-        let runs_env = path.file_name().is_some_and(|name| name == "env");
-        add_executable(policy, &path);
-        if runs_env {
+    fn add_plugin_dir(&mut self) {
+        match existing(&self.plugin.dir) {
+            Some(path) => self.policy.read_write.push(path),
+            None => self.warn(&format!(
+                "sandbox skipped plugin directory {}: path does not exist",
+                self.plugin.dir.display()
+            )),
+        }
+    }
+
+    fn add_manifest_executable(&mut self) {
+        let command = self.plugin.resolved_command();
+        let Some(executable) = command.first() else {
+            return;
+        };
+        let executable = executable.to_string_lossy();
+        let Some(path) = resolve_command(&executable, &self.plugin.dir) else {
+            self.warn(&format!(
+                "sandbox skipped plugin executable {executable}: executable not found"
+            ));
+            return;
+        };
+        self.add_executable(&path);
+        if path.file_name().is_some_and(|name| name == "env") {
             if let Some(inner) = command.get(1) {
-                if let Some(inner) = resolve_command(&inner.to_string_lossy(), &plugin.dir) {
-                    add_executable(policy, &inner);
+                if let Some(inner) = resolve_command(&inner.to_string_lossy(), &self.plugin.dir) {
+                    self.add_executable(&inner);
                 }
             }
         }
     }
+
+    fn add_file_scope(&mut self, capability: Capability) {
+        let name = self.plugin.manifest.name.as_str();
+        let Some(Scope::Paths(paths)) = self.capabilities.scope(name, capability) else {
+            return;
+        };
+        for path in paths {
+            self.add_file_path(capability, &path);
+        }
+    }
+
+    fn add_file_path(&mut self, capability: Capability, raw: &str) {
+        let Some(expanded) = expand_path(raw, self.plugin, self.environment) else {
+            self.warn(&format!(
+                "sandbox skipped granted {} path {raw}: variable is unset",
+                capability.name()
+            ));
+            return;
+        };
+        let Some(path) = existing(&expanded) else {
+            self.warn(&format!(
+                "sandbox skipped granted {} path {raw}: path does not exist",
+                capability.name()
+            ));
+            return;
+        };
+        if capability == Capability::FsWrite {
+            self.policy.read_write.push(path);
+        } else {
+            self.policy.read_only.push(path);
+        }
+    }
+
+    fn add_command_scope(&mut self) {
+        let name = self.plugin.manifest.name.as_str();
+        let Some(Scope::Commands(commands)) =
+            self.capabilities.scope(name, Capability::ProcessSpawn)
+        else {
+            return;
+        };
+        for command in commands {
+            let Some(path) = resolve_command(&command, &self.plugin.dir) else {
+                self.warn(&format!(
+                    "sandbox skipped granted process.spawn command {command}: executable not found"
+                ));
+                continue;
+            };
+            self.add_executable(&path);
+        }
+    }
+
+    fn add_executable(&mut self, path: &Path) {
+        if let Some(prefix) = runtime_prefix(path) {
+            self.policy.read_only.push(prefix);
+        }
+        let Some(path) = existing(path) else {
+            self.warn(&format!(
+                "sandbox skipped executable {}: path does not exist",
+                path.display()
+            ));
+            return;
+        };
+        if let Some(interpreter) = kawi_process::executable_interpreter(&path) {
+            if let Some(interpreter) = existing(&interpreter) {
+                if let Some(prefix) = runtime_prefix(&interpreter) {
+                    self.policy.read_only.push(prefix);
+                }
+                self.policy.execute.push(interpreter);
+            }
+        }
+        self.policy.execute.push(path);
+    }
+
+    fn warn(&mut self, line: &str) {
+        self.warnings.push(line.to_string());
+    }
+
+    fn finish(self) -> SandboxPlan {
+        SandboxPlan {
+            policy: self.policy,
+            warnings: self.warnings,
+        }
+    }
 }
 
-fn add_file_scope(
-    policy: &mut SandboxPolicy,
-    capabilities: &CapabilityRegistry,
-    plugin: &str,
-    capability: Capability,
-    environment: &HostEnvironment,
-    loaded: &LoadedPlugin,
-) {
-    let Some(scope) = capabilities.scope(plugin, capability) else {
-        return;
-    };
-    let Scope::Paths(paths) = scope else {
-        return;
-    };
-    let target = if capability == Capability::FsWrite {
-        &mut policy.read_write
+fn runtime_prefix(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    let prefix = if parent
+        .file_name()
+        .is_some_and(|name| name == "bin" || name == "sbin")
+    {
+        parent.parent()?
     } else {
-        &mut policy.read_only
+        parent
     };
-    target.extend(
-        paths
-            .iter()
-            .filter_map(|path| expand_path(path, loaded, environment))
-            .filter_map(|path| existing(&path)),
-    );
-}
-
-fn add_command_scope(
-    policy: &mut SandboxPolicy,
-    capabilities: &CapabilityRegistry,
-    plugin: &LoadedPlugin,
-) {
-    let name = plugin.manifest.name.as_str();
-    let Some(Scope::Commands(commands)) = capabilities.scope(name, Capability::ProcessSpawn) else {
-        return;
-    };
-    for command in commands {
-        if let Some(path) = resolve_command(command.as_str(), &plugin.dir) {
-            add_executable(policy, &path);
-        }
-    }
-}
-
-fn add_executable(policy: &mut SandboxPolicy, path: &Path) {
-    let Some(path) = existing(path) else {
-        return;
-    };
-    if let Some(interpreter) = kawi_process::executable_interpreter(&path) {
-        if let Some(interpreter) = existing(&interpreter) {
-            policy.execute.push(interpreter);
-        }
-    }
-    policy.execute.push(path);
+    existing(prefix)
 }
 
 fn expand_path(raw: &str, plugin: &LoadedPlugin, environment: &HostEnvironment) -> Option<PathBuf> {

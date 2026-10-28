@@ -163,15 +163,12 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
-        worker
-            .commands
-            .send(WorkerCommand::Restart)
-            .map_err(|_| PluginError::ProcessExited)
+        worker.restart()
     }
 
     pub fn restart_all(&self) {
         for worker in self.workers.values() {
-            let _ = worker.commands.send(WorkerCommand::Restart);
+            let _ = worker.restart();
         }
     }
 
