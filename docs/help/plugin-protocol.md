@@ -1,7 +1,7 @@
 ---
 title = "Plugin protocol"
 aliases = ["plugin-protocol-v1"]
-related = ["plugins", "configuration", "keymaps"]
+related = ["plugins", "plugin-capabilities", "configuration", "keymaps"]
 ---
 # Plugin protocol
 
@@ -9,7 +9,7 @@ This document defines Kawi plugin protocol version 1. Minor version 1 adds event
 
 ## Trust model
 
-Process plugins run with the full permissions of the user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust.
+Process plugins run with the full permissions of the user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities; see [Plugin capabilities](help:plugin-capabilities).
 
 Each plugin lives in its own directory:
 

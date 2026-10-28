@@ -126,6 +126,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Keybindings](docs/help/keybindings.md)
 - [Keymaps](docs/help/keymaps.md)
 - [Plugins](docs/help/plugins.md)
+- [Plugin capabilities](docs/help/plugin-capabilities.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
 - [Troubleshooting](docs/help/troubleshooting.md)

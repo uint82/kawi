@@ -51,6 +51,10 @@ timeout = 1000
 
 Use `:commands` to discover command names, `:map` to inspect mappings, and `:map reload` to reload the file. See [Keymaps](help:keymaps) for the complete reference.
 
+## Plugin permissions
+
+Plugins request capabilities in `plugin.toml`. Users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`, normally `~/.config/kawi/permissions.toml`. Grants live outside plugin directories and are deny by default. See [Plugin capabilities](help:plugin-capabilities).
+
 Directory buffer settings:
 
 ```toml

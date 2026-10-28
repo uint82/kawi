@@ -1,13 +1,15 @@
 ---
 title = "Plugins"
 aliases = ["plugin"]
-related = ["plugin-protocol", "keymaps", "configuration", "troubleshooting"]
+related = ["plugin-protocol", "plugin-capabilities", "keymaps", "configuration", "troubleshooting"]
 ---
 # Plugins
 
 Kawi supports process plugins that communicate over JSON-RPC 2.0. Plugins are trusted code and run with your full user permissions.
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
+
+Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Process plugins remain trusted; filesystem, network, and process scopes are advisory until Landlock or WebAssembly enforcement ships.
 
 Each plugin lives in its own directory:
 
