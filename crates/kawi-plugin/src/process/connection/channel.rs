@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::capability::CapabilityRegistry;
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
 
@@ -27,6 +28,7 @@ pub(super) struct WriterContext {
     pub(super) events: Sender<PluginHostEvent>,
     pub(super) wake: Sender<()>,
     pub(super) plugin: String,
+    pub(super) capabilities: CapabilityRegistry,
 }
 
 pub(super) fn remove_pending(pending: &PendingMap, id: u64) {

@@ -96,6 +96,7 @@ impl Connection {
             events: events.clone(),
             wake: wake.clone(),
             plugin: plugin_name.clone(),
+            capabilities: capabilities.clone(),
         });
         if let Err(error) = spawn_writer(stdin, writer_rx, writer_context) {
             kawi_process::terminate(&mut child);

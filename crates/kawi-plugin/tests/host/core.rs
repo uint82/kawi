@@ -177,6 +177,11 @@ fn redacts_invocation_context_without_editor_read() {
     assert_eq!(context["path"], Value::Null);
     assert_eq!(context["language"], Value::Null);
     assert_eq!(context["mode"], "normal");
+    assert_eq!(context["cursor"]["line"], 0);
+    assert_eq!(context["cursor"]["byte_column"], 0);
+    assert_eq!(context["selection"], Value::Null);
+    assert!(context.get("cwd").is_none());
+    assert!(context.get("workspace").is_none());
 }
 
 #[test]

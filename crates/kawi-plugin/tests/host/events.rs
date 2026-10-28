@@ -109,3 +109,55 @@ fn activation_starts_a_plugin_without_a_command() {
     host.shutdown();
     fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn queued_events_are_rechecked_after_revocation() {
+    let capabilities = registry_for("fake", &[kawi_plugin::Capability::EditorRead]);
+    let host = TestHost::start_with("stalled-events", 5_000, capabilities.clone());
+    host.host.activate("fake").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while host.host.status("fake") != Some(PluginStatus::Ready)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(host.host.status("fake"), Some(PluginStatus::Ready));
+    host.host
+        .respond(
+            "fake",
+            json!(999),
+            Ok(json!({"pad": "x".repeat(1024 * 1024)})),
+        )
+        .unwrap();
+    let mut queued = 0;
+    for revision in 0..1024 {
+        if host
+            .host
+            .notify("fake", "buffer_changed", json!({"revision": revision}))
+            .unwrap()
+            == NotifyOutcome::Queued
+        {
+            queued += 1;
+        }
+    }
+    assert!(queued > 0);
+    capabilities.replace(std::collections::BTreeMap::new());
+    assert_eq!(
+        host.host
+            .notify("fake", "buffer_changed", json!({"revision": 2048}))
+            .unwrap(),
+        NotifyOutcome::Denied
+    );
+    let mut delivered = 0;
+    let deadline = std::time::Instant::now() + Duration::from_millis(2500);
+    while std::time::Instant::now() < deadline {
+        match host.events.recv_timeout(Duration::from_millis(100)) {
+            Ok(kawi_plugin::PluginHostEvent::Log { line, .. }) if line.starts_with("event:") => {
+                delivered += 1;
+            }
+            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    assert_eq!(delivered, 0);
+}

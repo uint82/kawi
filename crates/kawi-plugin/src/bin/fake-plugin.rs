@@ -35,6 +35,7 @@ fn run(mode: &str) -> Result<()> {
         match method {
             "initialize" => handle_initialize(mode, &message, &mut stdout)?,
             "invoke_command" => handle_invoke(mode, &message, &mut reader, &mut stdout)?,
+            "event" => handle_event(mode, &message),
             "shutdown" => return Ok(()),
             _ => {}
         }
@@ -59,9 +60,25 @@ fn handle_initialize(mode: &str, message: &Value, stdout: &mut impl Write) -> Re
             respond(stdout, message, initialize_result())?;
             thread::sleep(Duration::from_secs(5));
         }
+        "stalled-events" => {
+            respond(stdout, message, initialize_result())?;
+            thread::sleep(Duration::from_secs(1));
+        }
         _ => respond(stdout, message, initialize_result())?,
     }
     Ok(())
+}
+
+fn handle_event(mode: &str, message: &Value) {
+    if mode == "stalled-events" {
+        if let Some(event) = message
+            .get("params")
+            .and_then(|params| params.get("event"))
+            .and_then(Value::as_str)
+        {
+            eprintln!("event:{event}");
+        }
+    }
 }
 
 fn handle_invoke(
