@@ -4,6 +4,7 @@ use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
 use super::executor::{applied_description, execute};
 use super::fs::RealFs;
+use super::permission_check::PermissionPhase;
 use super::planner::Plan;
 use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
@@ -17,10 +18,7 @@ impl App {
         visible: bool,
     ) -> bool {
         self.sync_current_directory();
-        if self.directory_loading.is_loading(number) {
-            if visible {
-                self.show_message("Directory is still loading".to_string());
-            }
+        if self.reject_directory_save(number, visible) {
             return false;
         }
         let Some(changes) = self.pending_directory_changes(number) else {
@@ -29,19 +27,27 @@ impl App {
         if changes.is_empty() {
             return self.finish_empty_directory_save(number, visible, after);
         }
-        match self.start_directory_save_check(number, changes, force, after, visible) {
-            Ok(()) => {
-                if visible {
-                    self.show_message("Checking directory...".to_string());
-                }
-            }
-            Err(message) => {
-                if visible {
-                    self.show_message(message);
-                }
-            }
+        let started = self.start_directory_save_check(number, changes, force, after, visible);
+        if visible {
+            self.show_message(match started {
+                Ok(()) => "Checking directory...".to_string(),
+                Err(message) => message,
+            });
         }
         false
+    }
+
+    fn reject_directory_save(&mut self, number: usize, visible: bool) -> bool {
+        if self.reject_running_permission_check(visible) {
+            return true;
+        }
+        if !self.directory_loading.is_loading(number) {
+            return false;
+        }
+        if visible {
+            self.show_message("Directory is still loading".to_string());
+        }
+        true
     }
 
     fn pending_directory_changes(&mut self, number: usize) -> Option<Vec<Change>> {
@@ -94,8 +100,16 @@ impl App {
     }
 
     pub(in crate::app) fn apply_directory_changes(&mut self, apply: PendingApply) -> bool {
+        self.start_permission_check(apply, PermissionPhase::Apply, false)
+    }
+
+    pub(super) fn execute_directory_changes(
+        &mut self,
+        apply: PendingApply,
+        permanent_delete: bool,
+    ) -> bool {
         let changes = all_changes(&apply.edits);
-        let mut fs = RealFs::new(!self.directory_options.trash);
+        let mut fs = RealFs::new(permanent_delete);
         let outcome = execute(&apply.plan, &mut fs);
         let applied = &apply.plan.operations[..outcome.applied];
         for operation in applied {
@@ -114,7 +128,7 @@ impl App {
         }
     }
 
-    fn finish_directory_apply_failure(
+    pub(super) fn finish_directory_apply_failure(
         &mut self,
         apply: &PendingApply,
         error: String,
@@ -224,7 +238,7 @@ impl App {
         }
     }
 
-    fn refresh_after_directory_change(&mut self) {
+    pub(super) fn refresh_after_directory_change(&mut self) {
         self.lsp.refresh(&self.editor);
         self.sync_language_settings();
         self.sync_watched_files();

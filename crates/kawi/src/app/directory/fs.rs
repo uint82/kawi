@@ -12,6 +12,11 @@ pub(super) trait DirectoryFs {
     fn create_dir(&mut self, path: &Path) -> io::Result<()>;
     fn exists(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
+    fn can_modify_directory(&self, path: &Path) -> bool;
+    fn can_write_directory(&self, path: &Path) -> bool;
+    fn can_read(&self, path: &Path) -> bool;
+    fn can_remove_entry(&self, path: &Path) -> bool;
+    fn delete_error(&self, path: &Path) -> Option<String>;
 }
 
 pub(super) struct RealFs {
@@ -60,5 +65,39 @@ impl DirectoryFs for RealFs {
     fn is_dir(&self, path: &Path) -> bool {
         std::fs::symlink_metadata(path)
             .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+    }
+
+    fn can_modify_directory(&self, path: &Path) -> bool {
+        file_fs::can_modify_directory(path)
+    }
+
+    fn can_write_directory(&self, path: &Path) -> bool {
+        file_fs::can_write_directory(path)
+    }
+
+    fn can_read(&self, path: &Path) -> bool {
+        file_fs::can_read(path)
+    }
+
+    fn can_remove_entry(&self, path: &Path) -> bool {
+        file_fs::sticky_allows(path)
+    }
+
+    fn delete_error(&self, path: &Path) -> Option<String> {
+        if self.permanent_delete {
+            return (!file_fs::can_remove_tree(path)).then(|| {
+                "permission denied; set directory_trash=true to use the trash".to_string()
+            });
+        }
+        let Some(trash) = TrashDir::for_target(path) else {
+            return Some(
+                "no trash available on this filesystem; set directory_trash=false to delete permanently"
+                    .to_string(),
+            );
+        };
+        (!trash.can_trash(path)).then(|| {
+            "no writable trash available on this filesystem; set directory_trash=false to delete permanently"
+                .to_string()
+        })
     }
 }

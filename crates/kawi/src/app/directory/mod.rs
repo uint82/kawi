@@ -12,6 +12,8 @@ mod metadata;
 mod moves;
 mod open;
 mod options;
+mod permission_check;
+mod permissions;
 mod planner;
 mod save;
 mod save_all;
@@ -22,6 +24,8 @@ mod verify;
 mod executor_tests;
 #[cfg(test)]
 mod load_tests;
+#[cfg(test)]
+mod permissions_tests;
 #[cfg(test)]
 mod planner_tests;
 #[cfg(test)]
@@ -35,5 +39,6 @@ pub(in crate::app) use listing::SortMode;
 pub(in crate::app) use loading::DirectoryLoading;
 pub(in crate::app) use metadata::MetadataColumns;
 pub(in crate::app) use options::DirectoryOptions;
+pub(in crate::app) use permission_check::PendingPermissionCheck;
 pub(in crate::app) use save_all::PendingSaveAll;
 pub(in crate::app) use session::{DirectoryBuffers, PendingApply};

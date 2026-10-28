@@ -47,11 +47,11 @@ Metadata is read with the listing on the background worker. Changing the option 
 
 ## Safety
 
-Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, directory moves into themselves, and moves into a directory that is being renamed. Rename cycles and swaps use temporary names.
+Before writing, Kawi validates names, duplicate targets, missing parents, existing targets, directory moves into themselves, moves into a directory that is being renamed, and permissions for affected directories, copy sources, and deletes. Permission checks cover search access on parents, write access on directories moved across parents, sticky-directory ownership, and the trash for the target filesystem. All permission failures are listed together, naming each operation and path. Rename cycles and swaps use temporary names.
 
 Deletes go to the freedesktop trash by default. Unlike symlinks, the link itself is renamed or removed and never followed. Copies preserve symlinks and metadata, and cross-device moves fall back to copy then delete.
 
-Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Execution stops at the first filesystem error and does not roll back operations already applied. The message lists what was applied, and the listing reloads from disk.
+Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Permission checks use effective IDs, run in the background while planning and again immediately before execution, and are discarded if the editor quits. A failed check stops the plan before any operation. Checks are advisory: root may bypass restrictions, while ACL changes, read-only mounts, immutable attributes, and races can still cause failures during execution. Execution stops at the first filesystem error and does not roll back operations already applied. The message names the operation, path, and error, lists what was applied, and reloads the listing from disk. Recursive checks for permanent directory deletion stop after 50 ms or 4096 entries so a large tree cannot stall the editor. When no writable trash exists for the target filesystem, preflight refuses and suggests permanent deletion with `directory_trash=false`.
 
 The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload.
 

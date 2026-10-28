@@ -25,7 +25,11 @@ fn create(path: &str, kind: EntryKind) -> Change {
 
 #[test]
 fn swaps_use_temporary_names() {
-    let fs = FakeFs::new(&[("/project/a", false), ("/project/b", false)]);
+    let fs = FakeFs::new(&[
+        ("/project", true),
+        ("/project/a", false),
+        ("/project/b", false),
+    ]);
     let plan = plan(
         vec![
             rename(1, "/project/a", "/project/b"),
@@ -50,6 +54,7 @@ fn swaps_use_temporary_names() {
 #[test]
 fn cycles_use_temporary_names() {
     let fs = FakeFs::new(&[
+        ("/project", true),
         ("/project/a", false),
         ("/project/b", false),
         ("/project/c", false),
@@ -79,7 +84,11 @@ fn cycles_use_temporary_names() {
 
 #[test]
 fn nested_sources_move_before_their_parent_directory() {
-    let fs = FakeFs::new(&[("/project/dir", true), ("/project/dir/file", false)]);
+    let fs = FakeFs::new(&[
+        ("/project", true),
+        ("/project/dir", true),
+        ("/project/dir/file", false),
+    ]);
     let plan = plan(
         vec![
             Change::Rename {
@@ -107,7 +116,11 @@ fn nested_sources_move_before_their_parent_directory() {
 #[test]
 fn moves_into_renamed_directories_are_refused() {
     for target in ["/project/dir/file", "/project/renamed/file"] {
-        let fs = FakeFs::new(&[("/project/dir", true), ("/project/item", false)]);
+        let fs = FakeFs::new(&[
+            ("/project", true),
+            ("/project/dir", true),
+            ("/project/item", false),
+        ]);
         let error = plan(
             vec![
                 Change::Rename {
@@ -129,7 +142,7 @@ fn moves_into_renamed_directories_are_refused() {
 
 #[test]
 fn unmatched_deletes_are_trashed() {
-    let fs = FakeFs::new(&[("/project/a", false)]);
+    let fs = FakeFs::new(&[("/project", true), ("/project/a", false)]);
     let plan = plan(
         vec![Change::Delete {
             id: 1,
@@ -157,14 +170,23 @@ fn parent_directories_are_created_before_files() {
 
 #[test]
 fn rename_targets_must_not_exist_unless_vacated() {
-    let fs = FakeFs::new(&[("/project/a", false), ("/project/b", false)]);
+    let fs = FakeFs::new(&[
+        ("/project", true),
+        ("/project/a", false),
+        ("/project/b", false),
+    ]);
     let error = plan(vec![rename(1, "/project/a", "/project/b")], &fs).unwrap_err();
     assert!(error.contains("already exists"));
 }
 
 #[test]
 fn copies_follow_sources_when_ids_repeat_across_directories() {
-    let fs = FakeFs::new(&[("/one/a", false), ("/two/c", false)]);
+    let fs = FakeFs::new(&[
+        ("/one", true),
+        ("/one/a", false),
+        ("/two", true),
+        ("/two/c", false),
+    ]);
     let plan = plan(
         vec![
             rename(1, "/one/a", "/one/b"),
@@ -191,7 +213,7 @@ fn copies_follow_sources_when_ids_repeat_across_directories() {
 
 #[test]
 fn directories_cannot_move_into_themselves() {
-    let fs = FakeFs::new(&[("/project/a", true)]);
+    let fs = FakeFs::new(&[("/project", true), ("/project/a", true)]);
     let change = Change::Rename {
         id: 1,
         from: PathBuf::from("/project/a"),
@@ -204,7 +226,7 @@ fn directories_cannot_move_into_themselves() {
 
 #[test]
 fn copies_use_the_renamed_primary_target() {
-    let fs = FakeFs::new(&[("/project/a", false)]);
+    let fs = FakeFs::new(&[("/project", true), ("/project/a", false)]);
     let plan = plan(
         vec![
             rename(1, "/project/a", "/project/b"),

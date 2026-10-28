@@ -32,6 +32,7 @@ impl Plan {
 
 pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, String> {
     let count = changes.len();
+    super::permissions::preflight(&changes, &[], fs)?;
     let mut deletes = Vec::new();
     let mut renames = Vec::new();
     let mut directory_renames = Vec::new();
