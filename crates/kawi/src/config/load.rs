@@ -79,6 +79,12 @@ impl Loader<'_> {
                 statusline::load(self, item);
                 continue;
             }
+            if section == ConfigSection::Explorer
+                && matches!(key, "metadata" | "directory_metadata" | "dmd")
+            {
+                self.load_metadata(item);
+                continue;
+            }
             let Some(spec) = spec_for(section, key) else {
                 self.unknown(&format!("{name}.{key}"), item);
                 continue;
@@ -114,29 +120,64 @@ impl Loader<'_> {
         self.config.undo_exclude = Some(values);
     }
 
+    fn load_metadata(&mut self, item: &Item) {
+        let Some(spec) = options::lookup("directory_metadata") else {
+            return;
+        };
+        let Some(value) = metadata_value(item) else {
+            let fallback = spec.default_value().display();
+            self.warn(
+                item.span(),
+                "explorer.metadata",
+                item.to_string(),
+                format!("{fallback}, expected a list or string"),
+            );
+            self.config.values.insert(spec.name, spec.default_value());
+            return;
+        };
+        self.load_option_input(
+            spec,
+            "explorer.metadata",
+            options::OptionInput::Text(&value),
+            item.span(),
+            item.to_string(),
+        );
+    }
+
     fn load_option(&mut self, spec: &'static OptionSpec, key: &str, item: &Item) {
+        let Some(input) = option_input(item) else {
+            let fallback = spec.default_value().display();
+            self.warn(
+                item.span(),
+                key,
+                item.to_string(),
+                format!("{}, expected {}", fallback, expected_type(spec)),
+            );
+            self.config.values.insert(spec.name, spec.default_value());
+            return;
+        };
+        self.load_option_input(spec, key, input, item.span(), item.to_string());
+    }
+
+    fn load_option_input(
+        &mut self,
+        spec: &'static OptionSpec,
+        key: &str,
+        input: options::OptionInput<'_>,
+        span: Option<std::ops::Range<usize>>,
+        value: String,
+    ) {
         let fallback = spec.default_value().display();
         let context = options::OptionContext {
             theme_dir: self.theme_dir,
         };
-        match option_input(item) {
-            Some(input) => match options::validate_spec(spec, input, &context) {
-                Ok(value) => {
-                    self.config.values.insert(spec.name, value);
-                }
-                Err(_) => {
-                    self.config.values.insert(spec.name, spec.default_value());
-                    self.warn(item.span(), key, item.to_string(), fallback);
-                }
-            },
-            None => {
-                self.warn(
-                    item.span(),
-                    key,
-                    item.to_string(),
-                    format!("{}, expected {}", fallback, expected_type(spec)),
-                );
+        match options::validate_spec(spec, input, &context) {
+            Ok(value) => {
+                self.config.values.insert(spec.name, value);
+            }
+            Err(_) => {
                 self.config.values.insert(spec.name, spec.default_value());
+                self.warn(span, key, value, fallback);
             }
         }
     }
@@ -161,6 +202,20 @@ impl Loader<'_> {
     }
 }
 
+fn metadata_value(item: &Item) -> Option<String> {
+    if let Some(array) = item.as_array() {
+        if array.is_empty() {
+            return Some("none".to_string());
+        }
+        let mut values = Vec::with_capacity(array.len());
+        for value in array.iter() {
+            values.push(value.as_str()?.to_string());
+        }
+        return Some(values.join(","));
+    }
+    item.as_str().map(str::to_string)
+}
+
 fn spec_for(section: ConfigSection, key: &str) -> Option<&'static OptionSpec> {
     options::OPTIONS.iter().find(|spec| {
         spec.section == section
@@ -182,6 +237,7 @@ fn expected_type(spec: &OptionSpec) -> &'static str {
         options::OptionKind::Bool => "a boolean",
         options::OptionKind::Int { .. } => "an integer",
         options::OptionKind::Enum(_) => "a name",
+        options::OptionKind::List(_) => "a list or comma-separated names",
         options::OptionKind::Text => "text",
     }
 }

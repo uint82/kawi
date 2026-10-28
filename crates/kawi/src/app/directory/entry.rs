@@ -1,5 +1,7 @@
 use std::ffi::{OsStr, OsString};
 
+use super::metadata::EntryMetadata;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::app) enum EntryKind {
     File,
@@ -13,6 +15,7 @@ pub(super) struct Entry {
     pub(super) name: OsString,
     pub(super) kind: EntryKind,
     pub(super) hidden: bool,
+    pub(super) metadata: Option<EntryMetadata>,
 }
 
 impl Entry {

@@ -10,7 +10,7 @@ use std::io::{Stdout, Write};
 
 use crate::frame::{
     CursorStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu, ReplaceMenu, ReplaceStage,
-    SearchSpan, Selection, TaskPanel, VirtualText,
+    SearchSpan, Selection, TaskPanel, VirtualText, VirtualTextKind, VirtualTextPlacement,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -373,6 +373,7 @@ fn draw_one_line(
     if pane.signs.is_some() || pane.gutter.get(screen_row).is_some() {
         paint::restore_base(out, theme)?;
     }
+    draw_left_virtual_text(out, pane, theme, screen_row)?;
     let width = pane.rect.width.saturating_sub(gutter_width);
     let end = pane.viewport.leftcol().saturating_add(width);
     let text = display::slice_screen(text, pane.viewport.leftcol(), end, pane.tabstop);
@@ -406,6 +407,29 @@ struct VirtualTextDraw<'a> {
     line_width: usize,
 }
 
+fn draw_left_virtual_text(
+    out: &mut Stdout,
+    pane: &PaneFrame<'_>,
+    theme: &Theme,
+    screen_row: usize,
+) -> Result<()> {
+    if pane.left_width == 0 {
+        return Ok(());
+    }
+    let text = pane
+        .virtual_texts
+        .get(screen_row)
+        .and_then(Option::as_ref)
+        .filter(|text| text.placement == VirtualTextPlacement::BeforeLine);
+    if let Some(text) = text {
+        paint::apply_faded_text(out, virtual_text_color(theme, text.kind))?;
+        write_padded(out, &text.text, pane.left_width)?;
+    } else {
+        write!(out, "{}", " ".repeat(pane.left_width)).context("write empty prefix")?;
+    }
+    finish_virtual_text(out, theme)
+}
+
 fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> {
     let Some(text) = draw
         .pane
@@ -432,9 +456,21 @@ fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> 
         )
     )
     .context("move to virtual text")?;
-    paint::apply_faded_text(out, draw.theme.diagnostic_color(text.severity))?;
+    paint::apply_faded_text(out, virtual_text_color(draw.theme, text.kind))?;
     write!(out, "{clipped}").context("write virtual text")?;
-    paint::clear_decorations(out)
+    finish_virtual_text(out, draw.theme)
+}
+
+fn finish_virtual_text<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
+    paint::clear_decorations(out)?;
+    paint::restore_base(out, theme)
+}
+
+fn virtual_text_color(theme: &Theme, kind: VirtualTextKind) -> Color {
+    match kind {
+        VirtualTextKind::Diagnostic(severity) => theme.diagnostic_color(severity),
+        VirtualTextKind::Metadata => theme.non_text,
+    }
 }
 
 fn virtual_text_layout(
@@ -442,10 +478,21 @@ fn virtual_text_layout(
     pane_width: usize,
     text: &VirtualText,
 ) -> Option<(usize, &str)> {
+    if text.placement == VirtualTextPlacement::BeforeLine {
+        return None;
+    }
     let remaining = pane_width.saturating_sub(line_width);
     if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
         return None;
     }
+    virtual_text_after_line(line_width, pane_width, text)
+}
+
+fn virtual_text_after_line(
+    line_width: usize,
+    pane_width: usize,
+    text: &VirtualText,
+) -> Option<(usize, &str)> {
     let column = line_width.saturating_add(VIRTUAL_TEXT_GAP);
     let text_width = pane_width.saturating_sub(column);
     let clipped = truncate_to_display_width(&text.text, text_width);
@@ -515,7 +562,9 @@ fn draw_filler_rows(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Re
 
 fn gutter_width(pane: &PaneFrame<'_>) -> usize {
     let numbers = pane.gutter.first().map_or(0, |line| line.chars().count());
-    numbers + usize::from(pane.signs.is_some())
+    numbers
+        .saturating_add(usize::from(pane.signs.is_some()))
+        .saturating_add(pane.left_width)
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {
@@ -2430,15 +2479,10 @@ mod tests {
 
     #[test]
     fn virtual_text_sits_after_the_line_and_clips() {
-        let text = VirtualText {
-            text: "message".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Error,
-        };
+        let text = VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
         assert_eq!(virtual_text_layout(10, 30, &text), Some((11, "message")));
-        let long = VirtualText {
-            text: "abcdefghijklmnop".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Error,
-        };
+        let long =
+            VirtualText::diagnostic("abcdefghijklmnop", crate::frame::DiagnosticSeverity::Error);
         assert_eq!(
             virtual_text_layout(0, 14, &long),
             Some((1, "abcdefghijklm"))
@@ -2448,24 +2492,35 @@ mod tests {
 
     #[test]
     fn virtual_text_uses_display_width_for_tabs_and_wide_characters() {
-        let text = VirtualText {
-            text: "中abc".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Warning,
-        };
+        let text = VirtualText::diagnostic("中abc", crate::frame::DiagnosticSeverity::Warning);
         let line_width = crate::display::screen_len("a\tb", 8);
         assert_eq!(line_width, 9);
         assert_eq!(
             virtual_text_layout(line_width, 19, &text),
             Some((10, "中abc"))
         );
-        let wide = VirtualText {
-            text: "中中中中中".to_string(),
-            severity: crate::frame::DiagnosticSeverity::Warning,
-        };
+        let wide = VirtualText::diagnostic("中中中中中", crate::frame::DiagnosticSeverity::Warning);
         assert_eq!(
             virtual_text_layout(line_width, 19, &wide),
             Some((10, "中中中中"))
         );
+    }
+
+    #[test]
+    fn metadata_virtual_text_is_placed_before_the_line() {
+        let text = VirtualText::metadata("-rw-r--r--    13 2026-10-28 14:32");
+        assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
+        assert_eq!(virtual_text_layout(4, 50, &text), None);
+    }
+
+    #[test]
+    fn virtual_text_restores_base_colors() {
+        let theme = Theme::default();
+        let mut out = Vec::new();
+        finish_virtual_text(&mut out, &theme).unwrap();
+        let mut base = Vec::new();
+        paint::restore_base(&mut base, &theme).unwrap();
+        assert!(out.ends_with(&base));
     }
 
     #[test]

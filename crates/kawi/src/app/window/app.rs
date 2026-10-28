@@ -25,6 +25,7 @@ pub(crate) struct PaneData<'a> {
     pub signs: Option<Vec<Option<Sign>>>,
     pub diagnostic_spans: Vec<DiagnosticSpan>,
     pub virtual_texts: Vec<Option<VirtualText>>,
+    pub left_width: usize,
     pub search_spans: Vec<SearchSpan>,
     pub preview_spans: Vec<SearchSpan>,
     pub syntax_spans: Cow<'a, [SyntaxSpan]>,
@@ -60,6 +61,7 @@ pub(crate) struct PaneData<'a> {
 
 impl App {
     pub(crate) fn sync_active_window(&mut self) {
+        self.sync_directory_metadata_width();
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
         let preserve_view = self.directory_loading.is_loading(buffer);
@@ -284,6 +286,7 @@ impl App {
             self.restore_window_syntax(previous);
             return false;
         }
+        self.sync_directory_metadata_width();
         if !self.windows.set_active(id) {
             self.restore_window_syntax(previous);
             return false;
@@ -303,6 +306,7 @@ impl App {
         if target.buffer != self.editor.buffer_number() {
             let _ = self.editor.buffer_select(target.buffer);
         }
+        self.sync_directory_metadata_width();
         self.refresh_window_sizes();
         self.editor.restore_view_state(target.view);
         self.editor.set_window_options(target.options);
@@ -531,19 +535,24 @@ impl App {
             Vec::new()
         };
         let path = self.problem_path();
-        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
-            path: path.as_deref(),
-            rows: &rows,
-            cursor_row: self.editor.row(),
-            cursor_column: self.editor.col(),
-            suppress: self.virtual_text_suppressed(),
-        });
+        let left_width = self.directory_metadata_width(self.editor.buffer_number());
+        let virtual_texts = self.pane_virtual_texts(
+            self.editor.buffer_number(),
+            crate::app::diagnostic_ui::VirtualTextRequest {
+                path: path.as_deref(),
+                rows: &rows,
+                cursor_row: self.editor.row(),
+                cursor_column: self.editor.col(),
+                suppress: self.virtual_text_suppressed(),
+            },
+        );
         PaneData {
             rect,
             active: true,
             signs: self.view_signs_for_rows(&rows),
             diagnostic_spans: self.lsp.diagnostic_spans(&lines, &rows),
             virtual_texts,
+            left_width,
             lines,
             gutter,
             search_spans,
@@ -671,19 +680,24 @@ impl App {
             Vec::new()
         };
         let syntax_spans = self.inactive_syntax_spans(id, window.buffer, top, end);
-        let virtual_texts = self.virtual_texts(crate::app::diagnostic_ui::VirtualTextRequest {
-            path: self.buffer_problem_path(window.buffer).as_deref(),
-            rows: &rows,
-            cursor_row: row,
-            cursor_column: col,
-            suppress: false,
-        });
+        let left_width = self.directory_metadata_width(window.buffer);
+        let virtual_texts = self.pane_virtual_texts(
+            window.buffer,
+            crate::app::diagnostic_ui::VirtualTextRequest {
+                path: self.buffer_problem_path(window.buffer).as_deref(),
+                rows: &rows,
+                cursor_row: row,
+                cursor_column: col,
+                suppress: false,
+            },
+        );
         PaneData {
             rect,
             active: false,
             signs: None,
             diagnostic_spans,
             virtual_texts,
+            left_width,
             lines,
             gutter,
             search_spans: Vec::new(),

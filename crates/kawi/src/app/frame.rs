@@ -91,6 +91,7 @@ impl App {
                 signs: pane.signs.as_deref(),
                 diagnostic_spans: &pane.diagnostic_spans,
                 virtual_texts: &pane.virtual_texts,
+                left_width: pane.left_width,
                 search_spans: &pane.search_spans,
                 preview_spans: &pane.preview_spans,
                 syntax_spans: pane.syntax_spans.as_ref(),

@@ -5,6 +5,7 @@ use std::thread;
 use ropey::Rope;
 
 use super::listing::{listing_text, read_listing, Listing, SortMode};
+use super::metadata::MetadataColumns;
 
 pub(super) struct DirectoryLoader {
     requests: Sender<LoadRequest>,
@@ -17,6 +18,7 @@ struct LoadRequest {
     root: PathBuf,
     show_hidden: bool,
     sort: SortMode,
+    columns: MetadataColumns,
     include_text: bool,
 }
 
@@ -50,6 +52,7 @@ impl DirectoryLoader {
         root: PathBuf,
         show_hidden: bool,
         sort: SortMode,
+        columns: MetadataColumns,
         include_text: bool,
     ) -> Result<u64, String> {
         self.next_id = self.next_id.saturating_add(1);
@@ -60,6 +63,7 @@ impl DirectoryLoader {
                 root,
                 show_hidden,
                 sort,
+                columns,
                 include_text,
             })
             .map_err(|_| "directory loader stopped".to_string())?;
@@ -73,14 +77,20 @@ impl DirectoryLoader {
 
 fn run(requests: Receiver<LoadRequest>, results: Sender<LoadResult>, wake: Sender<()>) {
     while let Ok(request) = requests.recv() {
-        let listing = read_listing(&request.root, request.show_hidden, 1, request.sort)
-            .map(|listing| {
-                let text = request
-                    .include_text
-                    .then(|| Rope::from_str(&listing_text(&listing)));
-                LoadedListing { listing, text }
-            })
-            .map_err(|error| format!("Cannot read {}: {error}", request.root.display()));
+        let listing = read_listing(
+            &request.root,
+            request.show_hidden,
+            1,
+            request.sort,
+            request.columns,
+        )
+        .map(|listing| {
+            let text = request
+                .include_text
+                .then(|| Rope::from_str(&listing_text(&listing)));
+            LoadedListing { listing, text }
+        })
+        .map_err(|error| format!("Cannot read {}: {error}", request.root.display()));
         if results
             .send(LoadResult {
                 id: request.id,

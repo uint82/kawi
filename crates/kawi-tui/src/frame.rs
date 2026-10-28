@@ -120,9 +120,41 @@ pub struct TerminalCursor {
     pub style: CursorStyle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtualTextKind {
+    Diagnostic(DiagnosticSeverity),
+    Metadata,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum VirtualTextPlacement {
+    #[default]
+    AfterLine,
+    BeforeLine,
+}
+
 pub struct VirtualText {
     pub text: String,
-    pub severity: DiagnosticSeverity,
+    pub kind: VirtualTextKind,
+    pub placement: VirtualTextPlacement,
+}
+
+impl VirtualText {
+    pub fn diagnostic(text: impl Into<String>, severity: DiagnosticSeverity) -> Self {
+        Self {
+            text: text.into(),
+            kind: VirtualTextKind::Diagnostic(severity),
+            placement: VirtualTextPlacement::AfterLine,
+        }
+    }
+
+    pub fn metadata(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            kind: VirtualTextKind::Metadata,
+            placement: VirtualTextPlacement::BeforeLine,
+        }
+    }
 }
 
 pub struct PaneFrame<'a> {
@@ -134,6 +166,7 @@ pub struct PaneFrame<'a> {
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
     pub virtual_texts: &'a [Option<VirtualText>],
+    pub left_width: usize,
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
     pub syntax_spans: &'a [SyntaxSpan],

@@ -13,6 +13,14 @@ pub(crate) const OVERLAY_MARGIN_DEFAULT: usize = 2;
 pub(crate) const EXPLORER_WIDTH_DEFAULT: usize = 30;
 pub(crate) const EXPLORER_WIDTH_MIN: usize = 20;
 pub(crate) const EXPLORER_WIDTH_MAX: usize = 60;
+pub(crate) const DIRECTORY_METADATA_PERMISSIONS: &str = "permissions";
+pub(crate) const DIRECTORY_METADATA_SIZE: &str = "size";
+pub(crate) const DIRECTORY_METADATA_MODIFIED: &str = "modified";
+pub(crate) const DIRECTORY_METADATA_COLUMNS: &[&str] = &[
+    DIRECTORY_METADATA_PERMISSIONS,
+    DIRECTORY_METADATA_SIZE,
+    DIRECTORY_METADATA_MODIFIED,
+];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum AutosaveMode {
@@ -107,6 +115,7 @@ pub(crate) enum OptionKind {
     Bool,
     Int { min: usize, max: usize },
     Enum(OptionValues),
+    List(&'static [&'static str]),
     Text,
 }
 
@@ -223,6 +232,11 @@ impl OptionSpec {
         match self.kind {
             OptionKind::Bool => vec!["true".to_string(), "false".to_string()],
             OptionKind::Enum(values) => values.values(context),
+            OptionKind::List(values) => values
+                .iter()
+                .map(|value| (*value).to_string())
+                .chain(std::iter::once("none".to_string()))
+                .collect(),
             OptionKind::Int { .. } | OptionKind::Text => Vec::new(),
         }
     }
@@ -253,7 +267,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 45] = [
+pub(crate) const OPTIONS: [OptionSpec; 46] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -727,6 +741,16 @@ pub(crate) const OPTIONS: [OptionSpec; 45] = [
         config_key: "sort",
         default: OptionDefault::Text("directories"),
     },
+    OptionSpec {
+        name: "directory_metadata",
+        aliases: &["dmd"],
+        description: "Metadata columns for directory buffers, or none.",
+        kind: OptionKind::List(DIRECTORY_METADATA_COLUMNS),
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "metadata",
+        default: OptionDefault::Text("permissions,size,modified"),
+    },
 ];
 
 pub(crate) fn lookup(name: &str) -> Option<&'static OptionSpec> {
@@ -748,6 +772,7 @@ pub(crate) fn validate_spec(
         OptionKind::Bool => parse_bool(input),
         OptionKind::Int { min, max } => parse_int(input, min, max),
         OptionKind::Enum(values) => parse_enum(input, values, context),
+        OptionKind::List(values) => parse_list(input, values),
         OptionKind::Text => parse_text(input),
     }
 }
@@ -769,6 +794,47 @@ fn parse_text(input: OptionInput<'_>) -> Result<OptionValue, OptionError> {
             value: value.to_string(),
         }),
     }
+}
+
+fn parse_list(
+    input: OptionInput<'_>,
+    values: &'static [&'static str],
+) -> Result<OptionValue, OptionError> {
+    let text = match input {
+        OptionInput::Text(value) => value.trim(),
+        OptionInput::Bool(value) => {
+            return Err(OptionError::InvalidType {
+                expected: "a list",
+                value: value.to_string(),
+            })
+        }
+        OptionInput::Integer(value) => {
+            return Err(OptionError::InvalidType {
+                expected: "a list",
+                value: value.to_string(),
+            })
+        }
+    };
+    if text.eq_ignore_ascii_case("none") {
+        return Ok(OptionValue::Text("none".to_string()));
+    }
+    let mut selected: Vec<&str> = Vec::new();
+    for value in text.split(',').map(str::trim) {
+        if value.is_empty() || !values.contains(&value) {
+            return Err(OptionError::InvalidValue {
+                value: text.to_string(),
+            });
+        }
+        if !selected.contains(&value) {
+            selected.push(value);
+        }
+    }
+    if selected.is_empty() {
+        return Err(OptionError::InvalidValue {
+            value: text.to_string(),
+        });
+    }
+    Ok(OptionValue::Text(selected.join(",")))
 }
 
 fn parse_bool(input: OptionInput<'_>) -> Result<OptionValue, OptionError> {

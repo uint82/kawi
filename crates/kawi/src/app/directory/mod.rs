@@ -8,6 +8,7 @@ mod listing;
 mod load;
 mod loader;
 mod loading;
+mod metadata;
 mod open;
 mod options;
 mod planner;
@@ -30,5 +31,6 @@ mod tests;
 
 pub(in crate::app) use listing::SortMode;
 pub(in crate::app) use loading::DirectoryLoading;
+pub(in crate::app) use metadata::MetadataColumns;
 pub(in crate::app) use options::DirectoryOptions;
 pub(in crate::app) use session::{DirectoryBuffers, PendingApply};

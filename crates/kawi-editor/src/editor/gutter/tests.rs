@@ -110,3 +110,15 @@ fn buffer_col_at_screen_skips_gutter_and_snaps_tabs() {
     assert_eq!(e.buffer_col_at_screen(0, 13), 1);
     assert_eq!(e.buffer_col_at_screen(0, 99), 10);
 }
+
+#[test]
+fn extra_gutter_width_shifts_cursor_and_mouse_columns() {
+    let mut e = editor_with("abc\ndef");
+    let gutter = e.gutter_width();
+    e.set_gutter_extra_width(7);
+    assert_eq!(e.gutter_width(), gutter + 7);
+    assert_eq!(e.cursor_wcol(), gutter + 7);
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 7), 0);
+    e.set_gutter_extra_width(0);
+    assert_eq!(e.gutter_width(), gutter);
+}

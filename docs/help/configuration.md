@@ -42,6 +42,7 @@ show_hidden = false
 confirm = true
 trash = true
 sort = "directories"
+metadata = ["permissions", "size", "modified"]
 ```
 
 See [Directory buffers](help:directory) for the behavior of these options.

@@ -6,6 +6,7 @@ use super::diff::{Change, DirectoryLine};
 use super::entry::Entry;
 use super::entry::EntryKind;
 use super::listing::{Listing, SortMode};
+use super::metadata::MetadataColumns;
 use super::planner::Plan;
 
 #[derive(Default)]
@@ -22,7 +23,7 @@ pub(in crate::app) struct PendingApply {
     pub(in crate::app) visible: bool,
 }
 
-pub(super) struct DirectoryBuffer {
+pub(in crate::app) struct DirectoryBuffer {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
     pub(super) sort: SortMode,
@@ -31,6 +32,7 @@ pub(super) struct DirectoryBuffer {
     pub(super) next_id: u64,
     pub(super) revision: u64,
     pub(super) removed: BTreeMap<String, Vec<u64>>,
+    pub(super) positions: HashMap<u64, usize>,
 }
 
 impl DirectoryBuffers {
@@ -38,7 +40,7 @@ impl DirectoryBuffers {
         self.states.insert(number, state);
     }
 
-    pub(super) fn get(&self, number: usize) -> Option<&DirectoryBuffer> {
+    pub(in crate::app) fn get(&self, number: usize) -> Option<&DirectoryBuffer> {
         self.states.get(&number)
     }
 
@@ -107,6 +109,7 @@ impl DirectoryBuffer {
         sort: SortMode,
         revision: u64,
     ) -> Self {
+        let positions = entry_positions(&listing.entries);
         let mut state = Self {
             root,
             show_hidden,
@@ -116,6 +119,7 @@ impl DirectoryBuffer {
             next_id: listing.next_id,
             revision,
             removed: BTreeMap::new(),
+            positions,
         };
         state.reset_lines();
         state
@@ -123,7 +127,6 @@ impl DirectoryBuffer {
 
     pub(super) fn sync(&mut self, texts: Vec<String>, revision: u64) {
         self.revision = revision;
-        let texts: Vec<String> = texts.into_iter().filter(|text| !text.is_empty()).collect();
         let old_lines = std::mem::take(&mut self.lines);
         let (mut ids, mut used) = match_existing(&old_lines, &texts, &mut self.removed);
         let kinds = original_kinds(&self.original);
@@ -138,6 +141,7 @@ impl DirectoryBuffer {
 
     pub(super) fn reset_listing(&mut self, listing: Listing, revision: u64) {
         self.original = listing.entries;
+        self.positions = entry_positions(&self.original);
         self.next_id = listing.next_id;
         self.revision = revision;
         self.removed.clear();
@@ -146,6 +150,23 @@ impl DirectoryBuffer {
 
     pub(super) fn root_display(&self) -> String {
         self.root.to_string_lossy().into_owned()
+    }
+
+    pub(in crate::app) fn metadata_text(
+        &self,
+        row: usize,
+        columns: MetadataColumns,
+    ) -> Option<String> {
+        let line = self.lines.get(row)?;
+        if line.text.is_empty() {
+            return None;
+        }
+        let position = *self.positions.get(&line.id?)?;
+        self.original
+            .get(position)?
+            .metadata
+            .as_ref()?
+            .text(columns)
     }
 
     fn reset_lines(&mut self) {
@@ -200,7 +221,7 @@ fn pair_renames(
     kinds: &HashMap<u64, EntryKind>,
 ) {
     for (index, id) in ids.iter_mut().enumerate() {
-        if id.is_some() {
+        if id.is_some() || texts[index].is_empty() {
             continue;
         }
         let Some(old) = old_lines.get(index) else {
@@ -217,6 +238,14 @@ fn pair_renames(
             used.insert(old_id);
         }
     }
+}
+
+fn entry_positions(entries: &[Entry]) -> HashMap<u64, usize> {
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.id, index))
+        .collect()
 }
 
 fn original_kinds(entries: &[Entry]) -> HashMap<u64, EntryKind> {

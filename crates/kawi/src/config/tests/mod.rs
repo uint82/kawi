@@ -272,3 +272,25 @@ fn keymap_values_use_the_runtime_validator() {
     assert_eq!(loaded.warnings.len(), 1);
     assert_eq!(crate::keymap::flavor_from_name("vim"), Some(Flavor::Vim));
 }
+
+#[test]
+fn directory_metadata_accepts_lists_and_rejects_unknown_columns() {
+    let loaded = load_text("[explorer]\nmetadata = [\"size\", \"permissions\"]\n");
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(
+        loaded.config.get("directory_metadata"),
+        Some(&OptionValue::Text("size,permissions".to_string()))
+    );
+    let loaded = load_text("[explorer]\nmetadata = []\n");
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(
+        loaded.config.get("directory_metadata"),
+        Some(&OptionValue::Text("none".to_string()))
+    );
+    let loaded = load_text("[explorer]\nmetadata = [\"owner\"]\n");
+    assert_eq!(loaded.warnings.len(), 1);
+    assert_eq!(
+        loaded.config.get("directory_metadata"),
+        Some(&OptionValue::Text("permissions,size,modified".to_string()))
+    );
+}
