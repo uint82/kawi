@@ -5,6 +5,7 @@ use super::listing::Listing;
 use super::loader::LoadedListing;
 use super::loading::{LoadOutcome, LoadPurpose};
 use super::metadata::MetadataColumns;
+use super::session::DirectoryEdit;
 use crate::app::save::SaveAfter;
 use crate::app::App;
 
@@ -15,6 +16,7 @@ impl App {
         for outcome in outcomes {
             changed |= self.apply_directory_load(outcome);
         }
+        self.check_save_all_loads();
         changed
     }
 
@@ -70,6 +72,17 @@ impl App {
         )
     }
 
+    pub(super) fn start_directory_save_all_check(
+        &mut self,
+        number: usize,
+        batch: u64,
+    ) -> Result<(), String> {
+        if self.directory_loading.is_loading(number) {
+            return Err("Directory is still loading".to_string());
+        }
+        self.start_directory_load(number, LoadPurpose::SaveAll { batch })
+    }
+
     fn start_directory_load(&mut self, number: usize, purpose: LoadPurpose) -> Result<(), String> {
         let (root, show_hidden, sort) = self
             .directory
@@ -87,8 +100,10 @@ impl App {
         Ok(())
     }
 
-    pub(in crate::app) fn cancel_directory_apply(&mut self, number: usize) {
-        self.editor.set_buffer_readonly(number, false);
+    pub(in crate::app) fn cancel_directory_apply(&mut self, edits: &[DirectoryEdit]) {
+        for edit in edits {
+            self.editor.set_buffer_readonly(edit.number, false);
+        }
     }
 
     fn apply_directory_load(&mut self, outcome: LoadOutcome) -> bool {
@@ -119,6 +134,9 @@ impl App {
                 after,
                 visible,
             } => self.finish_directory_save_check(number, changes, force, after, visible, listing),
+            LoadPurpose::SaveAll { batch } => {
+                self.finish_directory_save_all_check(number, batch, listing)
+            }
         }
     }
 

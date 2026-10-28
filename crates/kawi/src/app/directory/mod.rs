@@ -13,6 +13,7 @@ mod open;
 mod options;
 mod planner;
 mod save;
+mod save_all;
 mod session;
 mod verify;
 
@@ -33,4 +34,5 @@ pub(in crate::app) use listing::SortMode;
 pub(in crate::app) use loading::DirectoryLoading;
 pub(in crate::app) use metadata::MetadataColumns;
 pub(in crate::app) use options::DirectoryOptions;
+pub(in crate::app) use save_all::PendingSaveAll;
 pub(in crate::app) use session::{DirectoryBuffers, PendingApply};

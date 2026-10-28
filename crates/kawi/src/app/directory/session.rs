@@ -15,12 +15,17 @@ pub(in crate::app) struct DirectoryBuffers {
     pending: Option<PendingApply>,
 }
 
-pub(in crate::app) struct PendingApply {
+pub(in crate::app) struct DirectoryEdit {
     pub(in crate::app) number: usize,
     pub(in crate::app) changes: Vec<Change>,
+}
+
+pub(in crate::app) struct PendingApply {
+    pub(in crate::app) edits: Vec<DirectoryEdit>,
     pub(in crate::app) plan: Plan,
     pub(in crate::app) after: SaveAfter,
     pub(in crate::app) visible: bool,
+    pub(in crate::app) save_files: bool,
 }
 
 pub(in crate::app) struct DirectoryBuffer {
