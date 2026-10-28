@@ -44,6 +44,7 @@ mod map_command;
 mod options;
 mod overlay;
 mod overlay_scroll;
+mod path_match;
 mod picker;
 mod plugin;
 mod preview;

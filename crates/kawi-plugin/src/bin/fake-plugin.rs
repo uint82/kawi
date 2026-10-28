@@ -55,6 +55,10 @@ fn handle_initialize(mode: &str, message: &Value, stdout: &mut impl Write) -> Re
             thread::sleep(Duration::from_secs(5));
         }
         "hang-init" => thread::sleep(Duration::from_secs(5)),
+        "stalled" => {
+            respond(stdout, message, initialize_result())?;
+            thread::sleep(Duration::from_secs(5));
+        }
         _ => respond(stdout, message, initialize_result())?,
     }
     Ok(())
@@ -155,6 +159,7 @@ fn initialize_result() -> Value {
         "version": "0.1.0",
         "plugin_capabilities": ["invoke_command"],
         "host_capabilities": ["editor.get_state", "editor.apply_edit", "ui.message"],
+        "events": ["buffer_changed", "file_saved", "mode_changed"],
     })
 }
 

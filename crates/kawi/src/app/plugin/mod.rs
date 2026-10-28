@@ -1,13 +1,19 @@
+mod coalesce;
 mod commands;
+mod diagnostics;
 mod events;
 mod host_methods;
 mod invoke;
 mod load;
+mod notify;
+
+use self::coalesce::PendingBufferEvent;
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc::Receiver;
 
 use crate::keymap::{Binding, KeymapResolver};
+use kawi_editor::BufferInfo;
 use kawi_plugin::{
     InvocationContext, LoadedPlugin, PluginCatalog, PluginError, PluginHost, PluginHostEvent,
     PluginStatus, RpcError,
@@ -27,6 +33,13 @@ pub(super) struct PluginRuntime {
     targets: Vec<PluginCommandTarget>,
     bindings: Vec<Binding>,
     logs: BTreeMap<String, VecDeque<String>>,
+    known_buffers: BTreeMap<u64, BufferInfo>,
+    pending: BTreeMap<(String, u64), PendingBufferEvent>,
+    last_delivered: BTreeMap<(String, u64), u64>,
+    last_mode: Option<(u64, String)>,
+    last_diagnostics_revision: u64,
+    resync_buffers: std::collections::BTreeSet<(String, u64)>,
+    pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
 }
 
 pub(super) struct PluginCommandTarget {

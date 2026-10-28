@@ -5,6 +5,7 @@ use std::time::Duration;
 use kawi_buffer::UndoStore;
 use sha2::{Digest, Sha256};
 
+use super::path_match::glob_matches;
 use super::App;
 
 const DEFAULT_EXCLUSIONS: &[&str] = &["/tmp/*", "*.gpg", "*/.ssh/*"];
@@ -232,37 +233,6 @@ fn canonical_display(path: &Path) -> String {
     let path = std::fs::canonicalize(path)
         .unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()));
     path.to_string_lossy().into_owned()
-}
-
-fn glob_matches(pattern: &str, text: &str) -> bool {
-    let pattern: Vec<char> = pattern.chars().collect();
-    let text: Vec<char> = text.chars().collect();
-    let mut pattern_index = 0;
-    let mut text_index = 0;
-    let mut star = None;
-    let mut star_text = 0;
-    while text_index < text.len() {
-        if pattern_index < pattern.len()
-            && (pattern[pattern_index] == '?' || pattern[pattern_index] == text[text_index])
-        {
-            pattern_index += 1;
-            text_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == '*' {
-            star = Some(pattern_index);
-            star_text = text_index;
-            pattern_index += 1;
-        } else if let Some(star_index) = star {
-            pattern_index = star_index + 1;
-            star_text += 1;
-            text_index = star_text;
-        } else {
-            return false;
-        }
-    }
-    while pattern_index < pattern.len() && pattern[pattern_index] == '*' {
-        pattern_index += 1;
-    }
-    pattern_index == pattern.len()
 }
 
 fn log_undo(path: &Path, message: impl std::fmt::Display) {

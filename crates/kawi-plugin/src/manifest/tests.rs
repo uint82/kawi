@@ -113,3 +113,65 @@ fn missing_directory_is_not_a_warning() {
     assert!(catalog.warnings.is_empty());
     assert!(catalog.plugins.is_empty());
 }
+
+#[test]
+fn parses_subscriptions_and_activation_events() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        r#"
+subscribes = ["buffer_changed", "file_saved", "unknown_event"]
+
+[debounce]
+buffer_changed = 100
+
+[[activation_events]]
+event = "on_file_open"
+filetypes = ["rust"]
+globs = ["*.rs"]
+
+[[activation_events]]
+event = "on_command"
+
+[[commands]]"#,
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
+    let plugin = &catalog.plugins[0];
+    assert_eq!(plugin.manifest.subscribes.len(), 3);
+    assert_eq!(plugin.manifest.debounce["buffer_changed"], 100);
+    assert_eq!(plugin.manifest.activation_events.len(), 2);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_debounce_for_unsubscribed_events() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[debounce]\nbuffer_changed = 100\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings[0].message.contains("unsubscribed event"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_unknown_activation_events() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[[activation_events]]\nevent = \"on_idle\"\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings[0]
+        .message
+        .contains("unknown activation event"));
+    fs::remove_dir_all(root).unwrap();
+}

@@ -25,6 +25,18 @@ protocol = 1
 description = "Example plugin"
 command = ["python3", "${plugin_dir}/plugin.py"]
 timeout_ms = 5000
+subscribes = ["buffer_changed", "file_saved"]
+
+[debounce]
+buffer_changed = 100
+
+[[activation_events]]
+event = "on_command"
+
+[[activation_events]]
+event = "on_file_open"
+filetypes = ["rust"]
+globs = ["*.rs"]
 
 [[commands]]
 id = "format"
@@ -39,7 +51,10 @@ The plugin name is the namespace. The command above is `example.format`, and you
 
 - `command` is an executable and its arguments. `${plugin_dir}` resolves to the plugin directory, which is also the working directory.
 - `timeout_ms` applies to initialization and each invocation. The default is `5000`. The range is `100` to `60000`.
-- Commands and default keybindings are loaded from the manifest at startup. No process starts until the first invocation.
+- `subscribes` lists events delivered to a running plugin. Delivery never starts a plugin.
+- `debounce` optionally delays an event per subscription. `buffer_changed` is also coalesced per buffer.
+- `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.
+- Commands and default keybindings are loaded from the manifest at startup. No process starts until an invocation or activation event.
 - Plugin keybindings have lower precedence than user mappings. They survive `:map reload`.
 - Count and register prefixes are reserved and cannot start a plugin binding.
 
@@ -56,12 +71,24 @@ Use `:commands` to discover plugin command names. Plugin commands appear with a 
 ## Lifecycle
 
 1. Kawi reads manifests and registers static commands and keybindings.
-2. The first invocation starts the plugin process.
+2. The first invocation or activation event starts the plugin process.
 3. Kawi performs capability negotiation with `initialize`.
-4. Kawi sends `invoke_command`.
+4. Kawi sends `invoke_command` or events.
 5. A crashed plugin restarts on the next invocation with exponential backoff. Five consecutive failures disable it until `:plugin restart`.
 
-Kawi supports one in-flight invocation per plugin. A plugin may call back into the host while an invocation is running. A timed-out invocation is canceled and the process is restarted.
+Kawi supports one in-flight invocation per plugin. A plugin may call back into the host while an invocation is running. Events continue to flow during an invocation. A timed-out invocation is canceled and the process is restarted.
+
+## Events
+
+Kawi sends `buffer_changed`, `buffer_opened`, `file_opened`, `buffer_closed`, `file_saved`, `mode_changed`, and `diagnostics_changed`. Events are notifications and never require a response.
+
+- Delivery is separate from activation. A stopped plugin receives nothing and is not started by an event.
+- Each plugin has a bounded queue. Buffer changes are coalesced per buffer, optional debounce applies, and other events are dropped with a log line when the queue is full.
+- `buffer_changed` carries the buffer identifier, revision, previous revision, origin, UTF-8 byte edits, and a `full_resync` flag. Apply edits in order, or call `editor.get_state` when the revision does not match.
+- Origins are `user`, `undo`, `plugin:<name>`, `external_reload`, and `mixed`. A plugin does not receive its own edits. Mixed origins force a resync instead of partial filtering.
+- `:plugin logs example` reports queue overflows. An overflow forces a resync on the next delivered change. Crashes and restarts clear queued events.
+
+Kawi sends diagnostics from LSP and tasks to plugins. Plugin-published diagnostics are reserved for a future minor version.
 
 ## Host methods
 
@@ -75,6 +102,11 @@ See [Plugin protocol](help:plugin-protocol) for framing, capability negotiation,
 
 ## Example
 
-The repository includes a Python example at `examples/plugins/echo`. Copy it to `~/.config/kawi/plugins/echo` to try it. It registers `echo.ping` and `echo.hello`.
+The repository includes two Python examples:
+
+- `examples/plugins/echo` registers `echo.ping` and `echo.hello`.
+- `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command. It is a trim-after-save plugin: the saved file is not trimmed until the next save, and the buffer becomes dirty after trimming. It is not a format-before-save hook.
+
+Copy either directory to `~/.config/kawi/plugins` to try it.
 
 Standard output is protocol-only. Write logs to standard error and read them with `:plugin logs`.

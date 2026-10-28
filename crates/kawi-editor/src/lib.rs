@@ -34,9 +34,9 @@ pub use editing::{
     default_match_pairs, default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair,
 };
 pub use editor::{
-    BufferError, BufferOptionDefaults, EditError, Editor, HistoryEntries, IndentRules,
-    LanguageIndent, PathAdoption, ViewState, WindowOptions, WriteOutcome, DEFAULT_HISTORY_LIMIT,
-    MAX_HISTORY_LIMIT,
+    BufferChanges, BufferError, BufferInfo, BufferOptionDefaults, EditError, Editor,
+    HistoryEntries, IndentRules, LanguageIndent, PathAdoption, ViewState, WindowOptions,
+    WriteOutcome, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT,
 };
 pub use folds::{Fold, FoldMethod, FoldSnapshot, FoldState, DEFAULT_FOLD_COLUMN, MAX_FOLD_COLUMN};
 pub use mode::Mode;

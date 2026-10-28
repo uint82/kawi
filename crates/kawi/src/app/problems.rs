@@ -422,6 +422,14 @@ impl Problems {
         self.filter
     }
 
+    pub(super) fn problems_for_path(&self, path: &Path) -> Vec<&Problem> {
+        self.groups
+            .iter()
+            .filter(|(key, _)| key.path == path)
+            .flat_map(|(_, problems)| problems.iter())
+            .collect()
+    }
+
     pub(super) fn visible(&self, current_path: Option<&Path>) -> Vec<&Problem> {
         let mut visible: Vec<&Problem> = self
             .groups

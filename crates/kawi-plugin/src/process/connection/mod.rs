@@ -5,7 +5,7 @@ mod write;
 use std::collections::{BTreeSet, HashMap};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Sender, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -19,19 +19,22 @@ use crate::host::PluginHostEvent;
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
     notification_value, request_value, HostInfo, InitializeParams, InitializeResult, InvokeParams,
-    HOST_METHODS, PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_VERSION,
+    EVENT_NAMES, HOST_METHODS, PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
 
-pub(super) type WriterSlot = Arc<Mutex<Option<Sender<Value>>>>;
+pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
 
 const INITIALIZE_REQUEST_ID: u64 = 0;
+const SUPERVISOR_QUEUE_CAPACITY: usize = 1024;
 
 pub(super) struct Connection {
     child: Child,
-    writer: Sender<Value>,
+    writer: SyncSender<Value>,
     pending: PendingMap,
     alive: Arc<AtomicBool>,
     allowed_host_methods: Arc<Mutex<BTreeSet<String>>>,
+    event_filter: Arc<Mutex<BTreeSet<String>>>,
+    subscribes: BTreeSet<String>,
     writer_slot: WriterSlot,
     timeout: Duration,
 }
@@ -43,6 +46,7 @@ impl Connection {
         wake: &Sender<()>,
         writer_slot: WriterSlot,
         timeout: Duration,
+        event_filter: Arc<Mutex<BTreeSet<String>>>,
     ) -> Result<Self, PluginError> {
         let command = plugin.resolved_command();
         let executable = command
@@ -79,7 +83,7 @@ impl Connection {
                 .map(|method| (*method).to_string())
                 .collect(),
         ));
-        let (writer, writer_rx) = mpsc::channel();
+        let (writer, writer_rx) = mpsc::sync_channel(SUPERVISOR_QUEUE_CAPACITY);
         let plugin_name = plugin.manifest.name.clone();
         let reader_context = Arc::new(ReaderContext {
             alive: Arc::clone(&alive),
@@ -118,6 +122,8 @@ impl Connection {
             pending,
             alive,
             allowed_host_methods,
+            event_filter,
+            subscribes: plugin.manifest.subscribes.iter().cloned().collect(),
             writer_slot,
             timeout,
         })
@@ -126,6 +132,7 @@ impl Connection {
     pub(super) fn initialize(&mut self) -> Result<InitializeResult, PluginError> {
         let params = InitializeParams {
             protocol_version: PROTOCOL_VERSION,
+            protocol_minor: PROTOCOL_MINOR,
             host: HostInfo {
                 name: "kawi".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -139,6 +146,10 @@ impl Connection {
                 .iter()
                 .map(|method| (*method).to_string())
                 .collect(),
+            events: EVENT_NAMES
+                .iter()
+                .map(|event| (*event).to_string())
+                .collect(),
         };
         let params = serde_json::to_value(params)
             .map_err(|error| PluginError::Initialize(error.to_string()))?;
@@ -151,6 +162,16 @@ impl Connection {
             .lock()
             .unwrap_or_else(|error| error.into_inner()) =
             result.host_capabilities.iter().cloned().collect();
+        let subscribed = self
+            .subscribes
+            .iter()
+            .filter(|event| result.events.contains(event))
+            .cloned()
+            .collect();
+        *self
+            .event_filter
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = subscribed;
         Ok(result)
     }
 
@@ -186,17 +207,17 @@ impl Connection {
             .insert(id, response_tx);
         if self
             .writer
-            .send(request_value(Value::from(id), method, params))
+            .try_send(request_value(Value::from(id), method, params))
             .is_err()
         {
             remove_pending(&self.pending, id);
-            return Err(PluginError::ProcessExited);
+            return Err(PluginError::QueueFull);
         }
         match response_rx.recv_timeout(self.timeout) {
             Ok(result) => result,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 remove_pending(&self.pending, id);
-                let _ = self.writer.send(notification_value(
+                let _ = self.writer.try_send(notification_value(
                     "$/cancelRequest",
                     serde_json::json!({"id": id}),
                 ));

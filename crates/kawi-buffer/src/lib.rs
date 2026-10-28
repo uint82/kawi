@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod change;
 pub mod diff;
 mod hash;
 pub mod history;
@@ -11,6 +12,7 @@ mod text_edit;
 pub mod undo_store;
 pub mod write;
 pub use buffer::{first_non_blank, indent_width_of, tab_width, Buffer};
+pub use change::{BufferChange, BufferChangeOrigin, TextPosition};
 pub use diff::{diff_ropes, RopeChange};
 pub use hash::content_hash;
 pub use history_nav::{UndoLeaf, UndoOffset};

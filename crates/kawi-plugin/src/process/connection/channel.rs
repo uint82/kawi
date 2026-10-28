@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, SyncSender};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -16,7 +16,7 @@ pub(super) struct ReaderContext {
     pub(super) alive: Arc<AtomicBool>,
     pub(super) pending: PendingMap,
     pub(super) allowed_host_methods: Arc<Mutex<BTreeSet<String>>>,
-    pub(super) writer: Sender<Value>,
+    pub(super) writer: SyncSender<Value>,
     pub(super) events: Sender<PluginHostEvent>,
     pub(super) wake: Sender<()>,
     pub(super) plugin: String,

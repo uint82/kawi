@@ -82,7 +82,7 @@ fn handle_request_or_notification(
         .contains(method);
     if !declared {
         let error = RpcError::method_not_found(method);
-        let _ = context.writer.send(error_response_value(id, &error));
+        let _ = context.writer.try_send(error_response_value(id, &error));
         return Ok(());
     }
     let params = value.get("params").cloned().unwrap_or(Value::Null);

@@ -28,6 +28,22 @@ pub struct PluginManifest {
     pub timeout_ms: u64,
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
+    #[serde(default)]
+    pub subscribes: Vec<String>,
+    #[serde(default)]
+    pub debounce: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub activation_events: Vec<ActivationEvent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActivationEvent {
+    pub event: String,
+    #[serde(default)]
+    pub filetypes: Vec<String>,
+    #[serde(default)]
+    pub globs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -176,7 +192,54 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
     }
     validate_command(&manifest.command)?;
     validate_timeout(manifest.timeout_ms)?;
-    validate_commands(&manifest.commands)
+    validate_commands(&manifest.commands)?;
+    validate_subscriptions(manifest)?;
+    validate_activation(&manifest.activation_events)
+}
+
+fn validate_subscriptions(manifest: &PluginManifest) -> Result<(), String> {
+    let mut names = HashSet::new();
+    for event in &manifest.subscribes {
+        if event.trim().is_empty() {
+            return Err("subscription names must not be empty".to_string());
+        }
+        if !names.insert(event.as_str()) {
+            return Err(format!("duplicate subscription: {event}"));
+        }
+    }
+    for (event, debounce_ms) in &manifest.debounce {
+        if !names.contains(event.as_str()) {
+            return Err(format!("debounce set for unsubscribed event: {event}"));
+        }
+        if *debounce_ms > MAX_TIMEOUT_MS {
+            return Err(format!(
+                "debounce for {event} must not exceed {MAX_TIMEOUT_MS}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_activation(events: &[ActivationEvent]) -> Result<(), String> {
+    for event in events {
+        match event.event.as_str() {
+            "on_startup" | "on_command" => {
+                if !event.filetypes.is_empty() || !event.globs.is_empty() {
+                    return Err(format!("{} does not accept filters", event.event));
+                }
+            }
+            "on_file_open" => {
+                if event.filetypes.iter().any(|value| value.trim().is_empty()) {
+                    return Err("activation filetypes must not be empty".to_string());
+                }
+                if event.globs.iter().any(|value| value.trim().is_empty()) {
+                    return Err("activation globs must not be empty".to_string());
+                }
+            }
+            other => return Err(format!("unknown activation event: {other}")),
+        }
+    }
+    Ok(())
 }
 
 fn validate_name(name: &str) -> Result<(), String> {
