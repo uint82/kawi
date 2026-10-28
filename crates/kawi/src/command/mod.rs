@@ -10,11 +10,6 @@ mod tests;
 pub(crate) struct CommandId(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CommandSource {
-    Builtin,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommandHandler {
     Action(Action),
     SendKeys,
@@ -23,12 +18,10 @@ pub(crate) enum CommandHandler {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CommandSpec {
-    pub(crate) id: CommandId,
     pub(crate) name: String,
     pub(crate) aliases: Vec<String>,
     pub(crate) description: String,
     pub(crate) handler: CommandHandler,
-    pub(crate) source: CommandSource,
 }
 
 pub(crate) struct CommandRegistry {
@@ -47,7 +40,6 @@ impl CommandRegistry {
                 insert_name(&mut index, alias, id);
             }
             specs.push(CommandSpec {
-                id,
                 name: builtin.name.to_string(),
                 aliases: builtin
                     .aliases
@@ -56,7 +48,6 @@ impl CommandRegistry {
                     .collect(),
                 description: builtin.description.to_string(),
                 handler: builtin.handler,
-                source: CommandSource::Builtin,
             });
         }
         Self { specs, index }
@@ -73,24 +64,11 @@ impl CommandRegistry {
     pub(crate) fn specs(&self) -> impl Iterator<Item = &CommandSpec> {
         self.specs.iter()
     }
-
-    pub(crate) fn names(&self) -> Vec<&str> {
-        self.specs
-            .iter()
-            .map(|spec| spec.name.as_str())
-            .chain(
-                self.specs
-                    .iter()
-                    .flat_map(|spec| spec.aliases.iter().map(String::as_str)),
-            )
-            .collect()
-    }
 }
 
 fn insert_name(index: &mut HashMap<String, CommandId>, name: &str, id: CommandId) {
-    if index.insert(name.to_string(), id).is_none() {
-        return;
-    }
-    index.remove(name);
-    panic!("duplicate command name: {name}");
+    assert!(
+        index.insert(name.to_string(), id).is_none(),
+        "duplicate command name: {name}"
+    );
 }

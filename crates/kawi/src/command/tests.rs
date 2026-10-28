@@ -57,12 +57,3 @@ fn action_commands_are_parameterless() {
         CommandHandler::Action(kawi_editor::Action::DeleteLine)
     );
 }
-
-#[test]
-fn names_include_aliases() {
-    let registry = registry();
-    let names = registry.names();
-    assert!(names.contains(&"edit.undo"));
-    assert!(names.contains(&"undo"));
-    assert!(names.contains(&"quit"));
-}
