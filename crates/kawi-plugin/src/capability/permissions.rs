@@ -43,6 +43,15 @@ pub fn parse_permissions(text: &str) -> Result<PermissionsFile, String> {
     toml::from_str(text).map_err(|error| error.to_string())
 }
 
+pub fn scope_is_partial(requested: &Scope, granted: &Scope) -> bool {
+    match (requested, granted) {
+        (Scope::Paths(requested), Scope::Paths(granted))
+        | (Scope::Commands(requested), Scope::Commands(granted))
+        | (Scope::Hosts(requested), Scope::Hosts(granted)) => granted.len() < requested.len(),
+        _ => false,
+    }
+}
+
 pub fn effective(
     requests: &CapabilityRequests,
     permissions: Option<&PluginPermissions>,
@@ -88,6 +97,11 @@ pub fn effective(
         };
         match intersect_scope(requested, granted) {
             Some(scope) => {
+                if scope_is_partial(requested, &scope) {
+                    result
+                        .warnings
+                        .push(format!("{}: request partially granted", capability.name()));
+                }
                 result.granted.insert(capability, scope);
             }
             None => result.missing.push(capability),

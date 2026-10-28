@@ -125,17 +125,32 @@ fn parse_hosts(values: &[toml::Value]) -> Result<Vec<String>, String> {
 }
 
 fn normalize_host(host: &str) -> Result<String, String> {
-    let (host, port) = host
+    let (raw_host, port) = host
         .rsplit_once(':')
         .ok_or_else(|| "hosts must include a port".to_string())?;
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    if host.is_empty() || port.is_empty() || port.parse::<u16>().is_err() {
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "hosts must use host:port".to_string())?;
+    let is_ipv6 = raw_host.starts_with('[') && raw_host.ends_with(']');
+    let host = if is_ipv6 {
+        &raw_host[1..raw_host.len() - 1]
+    } else {
+        raw_host
+    };
+    if host.is_empty() || port == 0 {
         return Err("hosts must use host:port".to_string());
     }
     if host.contains('*') {
         return Err("host wildcards are not supported".to_string());
     }
-    Ok(format!("{}:{port}", host.to_ascii_lowercase()))
+    if host.contains(':') && !is_ipv6 {
+        return Err("IPv6 hosts must use brackets".to_string());
+    }
+    let host = host.to_ascii_lowercase();
+    if is_ipv6 {
+        return Ok(format!("[{host}]:{port}"));
+    }
+    Ok(format!("{host}:{port}"))
 }
 
 fn normalize_path(path: &str) -> Result<String, String> {
@@ -145,7 +160,12 @@ fn normalize_path(path: &str) -> Result<String, String> {
     if path.split('/').any(|component| component == "..") {
         return Err("paths must not contain ..".to_string());
     }
-    if !path.starts_with('/') && !path.starts_with('$') {
+    if let Some(variable) = path.strip_prefix('$') {
+        let name = variable.split('/').next().unwrap_or_default();
+        if !matches!(name, "WORKSPACE" | "PLUGIN_DIR" | "CONFIG" | "HOME") {
+            return Err(format!("unknown path variable: ${name}"));
+        }
+    } else if !path.starts_with('/') {
         return Err("paths must be absolute or start with a variable".to_string());
     }
     let mut parts = Vec::new();

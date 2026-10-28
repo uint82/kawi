@@ -69,3 +69,26 @@ fn hash_is_stable_under_reordering_and_changes_on_scope_widening() {
         r#"{"capabilities":{"editor.read":true,"fs.read":{"paths":["$WORKSPACE/a","$WORKSPACE/b"]}}}"#
     );
 }
+
+#[test]
+fn normalizes_bracketed_ipv6_hosts() {
+    let (requests, warnings) = requests(r#""net.connect" = { hosts = ["[::1]:443"] }"#);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        requests.get(Capability::NetConnect),
+        Some(&Scope::Hosts(vec!["[::1]:443".to_string()]))
+    );
+}
+
+#[test]
+fn rejects_unknown_path_variables_and_unbracketed_ipv6() {
+    let (requests, warnings) = requests(
+        r#"
+"fs.read" = { paths = ["$UNKNOWN/src"] }
+"net.connect" = { hosts = ["::1:443"] }
+"editor.read" = true
+"#,
+    );
+    assert!(requests.contains(Capability::EditorRead));
+    assert_eq!(warnings.len(), 2);
+}

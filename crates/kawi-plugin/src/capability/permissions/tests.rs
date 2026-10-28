@@ -107,3 +107,22 @@ fn invalid_entries_are_ignored_and_malformed_files_fail_parse() {
     assert_eq!(granted.warnings.len(), 1);
     assert!(parse_permissions("[plugins").is_err());
 }
+
+#[test]
+fn partial_grants_warn_but_still_grant_the_subset() {
+    let granted = effective_for(
+        r#""process.spawn" = { commands = ["git", "rg"] }"#,
+        r#"
+[plugins.plugin.grant]
+"process.spawn" = { commands = ["git"] }
+"#,
+    );
+    assert_eq!(
+        granted.scope(Capability::ProcessSpawn),
+        Some(&Scope::Commands(vec!["git".to_string()]))
+    );
+    assert!(granted
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("partially")));
+}
