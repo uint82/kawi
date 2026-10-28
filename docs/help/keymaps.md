@@ -72,13 +72,13 @@ A leader must be a single key. Pressing `<leader>` alone opens the built-in lead
 
 ## Timeout
 
-When one mapping is a prefix of another, Kawi waits before choosing:
+When the typed keys are a prefix of a longer mapping, Kawi waits before choosing:
 
 ```toml
 timeout = 1000
 ```
 
-The value is milliseconds and defaults to `1000`. A complete mapping wins after the timeout. A prefix with no complete mapping is replayed to the built-in keymap.
+The value is milliseconds and defaults to `1000`. A complete mapping wins after the timeout. A prefix with no complete mapping is replayed to the built-in keymap. A longer timeout allows slower multi-key mappings. A shorter timeout makes built-in prefixes such as the leader menu appear sooner.
 
 ## Key notation
 
