@@ -95,7 +95,7 @@ impl Autosave {
 impl App {
     pub(super) fn autosave_tick(&mut self) -> bool {
         self.autosave_observe();
-        if !self.autosave.mode().idle() || self.pending_save.is_some() {
+        if !self.autosave.mode().idle() || self.save_is_pending() {
             return false;
         }
         let number = self.editor.buffer_number();
@@ -110,7 +110,7 @@ impl App {
 
     pub(super) fn autosave_focus_lost(&mut self) -> bool {
         self.autosave_observe();
-        if !self.autosave.mode().focus() || self.pending_save.is_some() {
+        if !self.autosave.mode().focus() || self.save_is_pending() {
             return false;
         }
         let number = self.editor.buffer_number();
@@ -123,7 +123,7 @@ impl App {
     }
 
     pub(super) fn autosave_wait_timeout(&self) -> Option<Duration> {
-        if !self.autosave.mode().idle() || self.pending_save.is_some() {
+        if !self.autosave.mode().idle() || self.save_is_pending() {
             return None;
         }
         let number = self.editor.buffer_number();

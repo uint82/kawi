@@ -11,6 +11,7 @@ const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
 pub(super) enum SaveAfter {
     None,
     Quit,
+    QuitAll,
 }
 
 pub(super) struct PendingSave {
@@ -30,7 +31,7 @@ impl PendingSave {
 
 impl App {
     pub(super) fn request_save(&mut self, force: bool, after: SaveAfter, visible: bool) -> bool {
-        if self.pending_save.is_some() {
+        if self.save_is_pending() {
             if visible {
                 self.show_message("Save already in progress".to_string());
             }

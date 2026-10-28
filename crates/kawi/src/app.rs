@@ -53,6 +53,7 @@ mod replace;
 mod replace_apply;
 mod restore;
 mod save;
+mod save_all;
 mod signature;
 mod signcolumn;
 mod status;
@@ -174,6 +175,8 @@ pub struct App {
     loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
     pending_save: Option<save::PendingSave>,
+    pending_save_all: Option<directory::PendingSaveAll>,
+    save_batch_id: u64,
     format_on_save: bool,
     quit_pending: bool,
     autosave: autosave::Autosave,
@@ -270,6 +273,8 @@ impl App {
             loaded_views: BTreeSet::new(),
             conflict: None,
             pending_save: None,
+            pending_save_all: None,
+            save_batch_id: 0,
             format_on_save: false,
             quit_pending: false,
             autosave: autosave::Autosave::default(),
@@ -1896,54 +1901,6 @@ impl App {
         }
         self.show_message("E37: No write since last change".to_string());
         Ok(false)
-    }
-
-    fn handle_save_all(&mut self) -> Result<bool> {
-        if self.has_disk_conflicts() {
-            self.show_message("Resolve disk conflicts before saving all".to_string());
-            return Ok(false);
-        }
-        if self.has_dirty_directory() {
-            self.show_message("Directory buffers must be saved individually with :w".to_string());
-            return Ok(false);
-        }
-        match self.editor.write_all() {
-            Ok(()) => {
-                self.persist_clean_undos();
-                self.record_all_saved();
-                self.lsp.refresh(&self.editor);
-                self.lsp.save();
-                Ok(false)
-            }
-            Err(error) => {
-                self.show_message(file_error_message(error));
-                Ok(false)
-            }
-        }
-    }
-
-    fn handle_write_quit_all(&mut self) -> Result<bool> {
-        if self.has_disk_conflicts() {
-            self.show_message("Resolve disk conflicts before saving all".to_string());
-            return Ok(false);
-        }
-        if self.has_dirty_directory() {
-            self.show_message("Directory buffers must be saved individually with :w".to_string());
-            return Ok(false);
-        }
-        match self.editor.write_all() {
-            Ok(()) => {
-                self.persist_clean_undos();
-                self.record_all_saved();
-                self.lsp.refresh(&self.editor);
-                self.lsp.save();
-                Ok(true)
-            }
-            Err(error) => {
-                self.show_message(file_error_message(error));
-                Ok(false)
-            }
-        }
     }
 
     fn handle_edit(&mut self, name: Option<String>, force: bool) -> Result<bool> {

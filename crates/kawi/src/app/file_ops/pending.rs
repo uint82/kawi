@@ -49,14 +49,7 @@ impl PendingFileOp {
             ),
             Self::Delete(pending) => app.finish_delete(pending.delete, pending.keep_dirty),
             Self::Directory(pending) => {
-                let apply = pending.apply;
-                app.apply_directory_changes(
-                    apply.number,
-                    apply.changes,
-                    apply.plan,
-                    apply.after,
-                    apply.visible,
-                );
+                app.apply_directory_changes(pending.apply);
             }
         }
     }
@@ -71,7 +64,7 @@ impl PendingFileOp {
 
     fn cancel(self, app: &mut App) {
         if let Self::Directory(pending) = self {
-            app.cancel_directory_apply(pending.apply.number);
+            app.cancel_directory_apply(&pending.apply.edits);
         }
     }
 }

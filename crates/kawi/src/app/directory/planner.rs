@@ -34,6 +34,7 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
     let count = changes.len();
     let mut deletes = Vec::new();
     let mut renames = Vec::new();
+    let mut directory_renames = Vec::new();
     let mut copies = Vec::new();
     let mut files = Vec::new();
     let mut directories = BTreeSet::new();
@@ -48,8 +49,11 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
             Change::Rename { from, to, kind, .. } => {
                 vacated.insert(from.clone());
                 targets.insert(to.clone());
-                if *kind == EntryKind::Directory && to.starts_with(from) {
-                    return Err(format!("cannot move {} into itself", from.display()));
+                if *kind == EntryKind::Directory {
+                    if to.starts_with(from) {
+                        return Err(format!("cannot move {} into itself", from.display()));
+                    }
+                    directory_renames.push((from.clone(), to.clone()));
                 }
                 renames.push((from.clone(), to.clone()));
             }
@@ -67,6 +71,7 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
             }
         }
     }
+    validate_directory_rename_targets(&targets, &directory_renames)?;
     for target in &targets {
         if fs.exists(target) && !vacated.contains(target) {
             return Err(format!("target already exists: {}", target.display()));
@@ -95,13 +100,23 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
             ));
         }
     }
+    let renamed_directories: BTreeSet<PathBuf> = directory_renames
+        .iter()
+        .map(|(from, _)| from.clone())
+        .collect();
+    let temporary_names = TemporaryNames {
+        targets: &targets,
+        renamed_directories: &renamed_directories,
+        fs,
+    };
     let mut operations = Vec::new();
     for path in deletes {
         operations.push(Operation::Trash(path));
     }
     let mut finals = Vec::new();
+    renames.sort_by_key(|(from, _)| std::cmp::Reverse(from.components().count()));
     for (index, (from, to)) in renames.into_iter().enumerate() {
-        let temporary = temporary_path(&from, index, &targets, fs)?;
+        let temporary = temporary_names.path(&from, index)?;
         operations.push(Operation::Rename {
             from: from.clone(),
             to: temporary.clone(),
@@ -116,23 +131,44 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
     operations.extend(directory_paths.into_iter().map(Operation::CreateDirectory));
     operations.extend(finals);
     operations.extend(files.into_iter().map(Operation::CreateFile));
-    let mut renamed_by_id = BTreeMap::new();
+    let mut renamed_paths = BTreeMap::new();
     for change in &changes {
-        if let Change::Rename { id, to, .. } = change {
-            renamed_by_id.insert(*id, to.clone());
+        if let Change::Rename { from, to, .. } = change {
+            renamed_paths.insert(from.clone(), to.clone());
         }
     }
     for change in copies {
-        let Change::Copy { id, from, to, .. } = change else {
+        let Change::Copy { from, to, .. } = change else {
             continue;
         };
-        let source = renamed_by_id.get(&id).cloned().unwrap_or(from);
+        let source = renamed_paths.get(&from).unwrap_or(&from).clone();
         operations.push(Operation::Copy { from: source, to });
     }
     Ok(Plan {
         operations,
         changes: count,
     })
+}
+
+fn validate_directory_rename_targets(
+    targets: &BTreeSet<PathBuf>,
+    directory_renames: &[(PathBuf, PathBuf)],
+) -> Result<(), String> {
+    for (from, to) in directory_renames {
+        for target in targets {
+            let moves_under_source = target != from && target.starts_with(from);
+            let moves_under_target = target != to && target.starts_with(to);
+            if moves_under_source || moves_under_target {
+                return Err(format!(
+                    "cannot place {} inside directory being renamed from {} to {}",
+                    target.display(),
+                    from.display(),
+                    to.display()
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn collect_missing_directories(
@@ -154,26 +190,42 @@ fn collect_missing_directories(
     Ok(())
 }
 
-fn temporary_path(
-    from: &Path,
-    index: usize,
-    targets: &BTreeSet<PathBuf>,
-    fs: &impl DirectoryFs,
-) -> Result<PathBuf, String> {
-    let parent = from.parent().unwrap_or_else(|| Path::new(""));
-    let name = from
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "item".to_string());
-    for attempt in 0..10_000 {
-        let candidate = parent.join(format!(".{name}.kawi-move-{index}-{attempt}"));
-        if !fs.exists(&candidate) && !targets.contains(&candidate) {
-            return Ok(candidate);
+struct TemporaryNames<'a, F> {
+    targets: &'a BTreeSet<PathBuf>,
+    renamed_directories: &'a BTreeSet<PathBuf>,
+    fs: &'a F,
+}
+
+impl<F: DirectoryFs> TemporaryNames<'_, F> {
+    fn path(&self, from: &Path, index: usize) -> Result<PathBuf, String> {
+        let parent = self.parent(from);
+        let name = from
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "item".to_string());
+        for attempt in 0..10_000 {
+            let candidate = parent.join(format!(".{name}.kawi-move-{index}-{attempt}"));
+            if !self.fs.exists(&candidate) && !self.targets.contains(&candidate) {
+                return Ok(candidate);
+            }
         }
+        Err(format!(
+            "cannot find a temporary name for {}",
+            from.display()
+        ))
     }
-    Err(format!(
-        "cannot find a temporary name for {}",
-        from.display()
-    ))
+
+    fn parent(&self, from: &Path) -> PathBuf {
+        let mut parent = from.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+        for ancestor in from.ancestors() {
+            if self.renamed_directories.contains(ancestor) {
+                parent = ancestor
+                    .parent()
+                    .unwrap_or_else(|| Path::new(""))
+                    .to_path_buf();
+            }
+        }
+        parent
+    }
 }

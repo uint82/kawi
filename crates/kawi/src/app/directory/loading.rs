@@ -32,6 +32,9 @@ pub(super) enum LoadPurpose {
         after: SaveAfter,
         visible: bool,
     },
+    SaveAll {
+        batch: u64,
+    },
 }
 
 impl LoadPurpose {

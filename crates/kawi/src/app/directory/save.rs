@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
-use super::executor::execute;
+use super::executor::{applied_description, execute};
 use super::fs::RealFs;
 use super::planner::Plan;
-use super::session::PendingApply;
+use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
 
 impl App {
@@ -45,14 +45,21 @@ impl App {
     }
 
     fn pending_directory_changes(&mut self, number: usize) -> Option<Vec<Change>> {
-        let state = self.directory.get(number)?;
-        match diff(&state.root, &state.original, &state.lines) {
+        match self.directory_changes(number) {
             Ok(changes) => Some(changes),
             Err(message) => {
                 self.show_message(message);
                 None
             }
         }
+    }
+
+    pub(super) fn directory_changes(&self, number: usize) -> Result<Vec<Change>, String> {
+        let state = self
+            .directory
+            .get(number)
+            .ok_or_else(|| "directory buffer is missing".to_string())?;
+        diff(&state.root, &state.original, &state.lines)
     }
 
     fn finish_empty_directory_save(
@@ -69,21 +76,8 @@ impl App {
         true
     }
 
-    pub(in crate::app) fn begin_directory_apply(
-        &mut self,
-        number: usize,
-        changes: Vec<Change>,
-        plan: Plan,
-        after: SaveAfter,
-        visible: bool,
-    ) -> bool {
-        let renames: Vec<(PathBuf, PathBuf)> = changes
-            .iter()
-            .filter_map(|change| match change {
-                Change::Rename { from, to, .. } => Some((from.clone(), to.clone())),
-                _ => None,
-            })
-            .collect();
+    pub(in crate::app) fn begin_directory_apply(&mut self, apply: PendingApply) -> bool {
+        let renames = rename_requests(&apply.edits);
         let request = if renames.is_empty() {
             0
         } else {
@@ -91,89 +85,89 @@ impl App {
         };
         if request != 0 {
             self.pending_file_op = Some(super::super::file_ops::PendingFileOp::Directory(
-                super::super::file_ops::PendingDirectoryOp {
-                    request,
-                    apply: PendingApply {
-                        number,
-                        changes,
-                        plan,
-                        after,
-                        visible,
-                    },
-                },
+                super::super::file_ops::PendingDirectoryOp { request, apply },
             ));
             self.show_message("Applying directory changes...".to_string());
             return false;
         }
-        self.apply_directory_changes(number, changes, plan, after, visible)
+        self.apply_directory_changes(apply)
     }
 
-    pub(in crate::app) fn apply_directory_changes(
-        &mut self,
-        number: usize,
-        changes: Vec<Change>,
-        plan: Plan,
-        after: SaveAfter,
-        visible: bool,
-    ) -> bool {
+    pub(in crate::app) fn apply_directory_changes(&mut self, apply: PendingApply) -> bool {
+        let changes = all_changes(&apply.edits);
         let mut fs = RealFs::new(!self.directory_options.trash);
-        let outcome = execute(&plan, &mut fs);
-        let applied = &plan.operations[..outcome.applied];
+        let outcome = execute(&apply.plan, &mut fs);
+        let applied = &apply.plan.operations[..outcome.applied];
         for operation in applied {
             self.update_applied_operation(operation);
         }
         if outcome.error.is_none() {
             self.notify_lsp_changes(&changes);
-            self.editor.mark_buffer_clean(number);
+            for edit in &apply.edits {
+                self.editor.mark_buffer_clean(edit.number);
+            }
         }
         self.refresh_after_directory_change();
         match outcome.error {
-            Some(error) => self.finish_directory_apply_failure(number, error, outcome.applied),
-            None => self.finish_directory_apply_success(number, plan, after, visible),
+            Some(error) => self.finish_directory_apply_failure(&apply, error, outcome.applied),
+            None => self.finish_directory_apply_success(&apply),
         }
     }
 
     fn finish_directory_apply_failure(
         &mut self,
-        number: usize,
+        apply: &PendingApply,
         error: String,
         applied: usize,
     ) -> bool {
-        if let Err(reload_error) = self.start_directory_reload_after_save(number) {
-            self.editor.set_buffer_readonly(number, false);
-            self.show_message(format!(
-                "{error}; applied {applied} operation(s); {reload_error}"
-            ));
-            return false;
+        let reload_error = self.reload_directories(&apply.edits);
+        let mut message = if applied == 0 {
+            format!("{error}; no operations were applied")
+        } else {
+            format!(
+                "{error}; applied {applied} operation(s): {}; no rollback attempted",
+                applied_operations(&apply.plan, applied)
+            )
+        };
+        if let Some(reload_error) = reload_error {
+            message.push_str("; ");
+            message.push_str(&reload_error);
         }
-        self.show_message(format!("{error}; applied {applied} operation(s)"));
+        self.show_message(message);
         false
     }
 
-    fn finish_directory_apply_success(
-        &mut self,
-        number: usize,
-        plan: Plan,
-        after: SaveAfter,
-        visible: bool,
-    ) -> bool {
-        if visible {
-            self.show_message(format!(
-                "Applied {} change(s) to {}",
-                plan.changes,
-                self.directory
-                    .get(number)
-                    .map_or_else(String::new, |state| state.root_display())
-            ));
+    fn finish_directory_apply_success(&mut self, apply: &PendingApply) -> bool {
+        if apply.visible {
+            self.show_message(apply_success_message(self, &apply.edits, &apply.plan));
         }
-        self.complete_save(after);
+        let saved = if apply.save_files {
+            self.finish_save_all_files(apply.after)
+        } else {
+            self.complete_save(apply.after);
+            true
+        };
         if !self.quit_pending {
-            if let Err(error) = self.start_directory_reload_after_save(number) {
-                self.editor.set_buffer_readonly(number, false);
+            if let Some(error) = self.reload_directories(&apply.edits) {
                 self.show_message(error);
             }
         }
-        true
+        saved
+    }
+
+    fn reload_directories(&mut self, edits: &[DirectoryEdit]) -> Option<String> {
+        let mut first_error = None;
+        for edit in edits {
+            if !self.directory.contains(edit.number) {
+                self.editor.set_buffer_readonly(edit.number, false);
+                continue;
+            }
+            if let Err(error) = self.start_directory_reload_after_save(edit.number) {
+                self.editor.set_buffer_readonly(edit.number, false);
+                first_error.get_or_insert(error);
+            }
+        }
+        first_error
     }
 
     fn update_applied_operation(&mut self, operation: &super::planner::Operation) {
@@ -237,4 +231,46 @@ impl App {
         self.refresh_git_status();
         self.explorer.refresh();
     }
+}
+
+fn applied_operations(plan: &Plan, applied: usize) -> String {
+    plan.operations
+        .iter()
+        .take(applied)
+        .map(applied_description)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn rename_requests(edits: &[DirectoryEdit]) -> Vec<(PathBuf, PathBuf)> {
+    edits
+        .iter()
+        .flat_map(|edit| edit.changes.iter())
+        .filter_map(|change| match change {
+            Change::Rename { from, to, .. } => Some((from.clone(), to.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+pub(super) fn all_changes(edits: &[DirectoryEdit]) -> Vec<Change> {
+    edits
+        .iter()
+        .flat_map(|edit| edit.changes.iter().cloned())
+        .collect()
+}
+
+fn apply_success_message(app: &App, edits: &[DirectoryEdit], plan: &Plan) -> String {
+    if let [edit] = edits {
+        let root = app
+            .directory
+            .get(edit.number)
+            .map_or_else(String::new, |state| state.root_display());
+        return format!("Applied {} change(s) to {root}", plan.changes);
+    }
+    format!(
+        "Applied {} change(s) to {} directories",
+        plan.changes,
+        edits.len()
+    )
 }

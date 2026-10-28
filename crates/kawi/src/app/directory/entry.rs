@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 
 use super::metadata::EntryMetadata;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::app) enum EntryKind {
     File,
     Directory,

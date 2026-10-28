@@ -5,7 +5,7 @@ use super::fs::RealFs;
 use super::listing::listing_unchanged;
 use super::loader::LoadedListing;
 use super::planner::{plan, Plan};
-use super::session::PendingApply;
+use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
 
 impl App {
@@ -24,11 +24,18 @@ impl App {
         let Some(plan) = self.plan_directory_changes(number, &changes) else {
             return true;
         };
-        if !force && self.directory_options.confirm && plan.needs_confirmation() {
-            self.confirm_directory_apply(number, changes, plan, after, visible);
+        let apply = PendingApply {
+            edits: vec![DirectoryEdit { number, changes }],
+            plan,
+            after,
+            visible,
+            save_files: false,
+        };
+        if !force && self.directory_options.confirm && apply.plan.needs_confirmation() {
+            self.confirm_directory_apply(apply);
             return true;
         }
-        self.begin_directory_apply(number, changes, plan, after, visible);
+        self.begin_directory_apply(apply);
         true
     }
 
@@ -37,29 +44,35 @@ impl App {
         number: usize,
         listing: Result<LoadedListing, String>,
     ) -> bool {
-        let LoadedListing { listing, .. } = match listing {
-            Ok(listing) => listing,
+        match self.check_directory_listing(number, listing) {
+            Ok(()) => true,
             Err(message) => {
                 self.editor.set_buffer_readonly(number, false);
                 self.show_message(message);
-                return false;
+                false
             }
-        };
+        }
+    }
+
+    pub(super) fn check_directory_listing(
+        &self,
+        number: usize,
+        listing: Result<LoadedListing, String>,
+    ) -> Result<(), String> {
+        let LoadedListing { listing, .. } = listing?;
         let unchanged = self
             .directory
             .get(number)
             .is_some_and(|state| listing_unchanged(&state.original, &listing));
         if unchanged {
-            return true;
+            Ok(())
+        } else {
+            Err("Directory changed on disk; reload before saving".to_string())
         }
-        self.editor.set_buffer_readonly(number, false);
-        self.show_message("Directory changed on disk; reload before saving".to_string());
-        false
     }
 
     fn plan_directory_changes(&mut self, number: usize, changes: &[Change]) -> Option<Plan> {
-        let fs = RealFs::new(!self.directory_options.trash);
-        match plan(changes.to_vec(), &fs) {
+        match self.check_directory_plan(changes) {
             Ok(plan) => Some(plan),
             Err(message) => {
                 self.editor.set_buffer_readonly(number, false);
@@ -69,22 +82,19 @@ impl App {
         }
     }
 
-    fn confirm_directory_apply(
-        &mut self,
-        number: usize,
-        changes: Vec<Change>,
-        plan: Plan,
-        after: SaveAfter,
-        visible: bool,
-    ) {
+    pub(super) fn check_directory_plan(&self, changes: &[Change]) -> Result<Plan, String> {
+        let fs = RealFs::new(!self.directory_options.trash);
+        plan(changes.to_vec(), &fs)
+    }
+
+    pub(super) fn confirm_directory_apply(&mut self, apply: PendingApply) {
+        let changes = apply
+            .edits
+            .iter()
+            .flat_map(|edit| edit.changes.iter().cloned())
+            .collect::<Vec<Change>>();
         self.show_message(confirmation_message(&changes));
-        self.directory.set_pending(PendingApply {
-            number,
-            changes,
-            plan,
-            after,
-            visible,
-        });
+        self.directory.set_pending(apply);
     }
 
     pub(super) fn apply_pending_directory(&mut self, accept: bool) {
@@ -92,21 +102,15 @@ impl App {
             return;
         };
         if !accept {
-            self.editor.set_buffer_readonly(pending.number, false);
+            self.cancel_directory_apply(&pending.edits);
             self.show_message("Directory changes cancelled".to_string());
             return;
         }
-        self.begin_directory_apply(
-            pending.number,
-            pending.changes,
-            pending.plan,
-            pending.after,
-            pending.visible,
-        );
+        self.begin_directory_apply(pending);
     }
 }
 
-fn confirmation_message(changes: &[Change]) -> String {
+pub(super) fn confirmation_message(changes: &[Change]) -> String {
     let mut labels: Vec<String> = changes.iter().take(3).map(change_label).collect();
     if changes.len() > labels.len() {
         labels.push("...".to_string());
