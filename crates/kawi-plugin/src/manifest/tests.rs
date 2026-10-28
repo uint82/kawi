@@ -1,4 +1,5 @@
 use super::*;
+use crate::capability::Capability;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -173,5 +174,41 @@ fn rejects_unknown_activation_events() {
     assert!(catalog.warnings[0]
         .message
         .contains("unknown activation event"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn parses_capability_requests() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[capabilities]\n\"editor.read\" = true\n\"fs.read\" = { paths = [\"$WORKSPACE\"] }\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
+    let requests = &catalog.plugins[0].manifest.capability_requests;
+    assert!(requests.contains(Capability::EditorRead));
+    assert!(requests.contains(Capability::FsRead));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn warns_on_invalid_capability_requests_without_skipping_the_plugin() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[capabilities]\n\"unknown.cap\" = true\n\"fs.read\" = true\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert_eq!(catalog.plugins.len(), 1);
+    assert_eq!(catalog.warnings.len(), 2);
+    assert!(catalog
+        .warnings
+        .iter()
+        .all(|warning| warning.message.contains("capabilities:")));
     fs::remove_dir_all(root).unwrap();
 }

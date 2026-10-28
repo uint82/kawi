@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::capability::{parse_capability_requests, CapabilityRequests};
 use crate::protocol::PROTOCOL_VERSION;
 
 const MANIFEST_FILE: &str = "plugin.toml";
@@ -34,6 +35,10 @@ pub struct PluginManifest {
     pub debounce: BTreeMap<String, u64>,
     #[serde(default)]
     pub activation_events: Vec<ActivationEvent>,
+    #[serde(default)]
+    pub capabilities: toml::Table,
+    #[serde(skip)]
+    pub capability_requests: CapabilityRequests,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -153,7 +158,7 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
             return None;
         }
     };
-    let manifest = match toml::from_str::<PluginManifest>(&text) {
+    let mut manifest = match toml::from_str::<PluginManifest>(&text) {
         Ok(manifest) => manifest,
         Err(error) => {
             warnings.push(PluginWarning {
@@ -164,11 +169,21 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
         }
     };
     match validate_manifest(&manifest) {
-        Ok(()) => Some(LoadedPlugin {
-            manifest,
-            dir: dir.to_path_buf(),
-            path,
-        }),
+        Ok(()) => {
+            let (requests, capability_warnings) = parse_capability_requests(&manifest.capabilities);
+            manifest.capability_requests = requests;
+            for warning in capability_warnings {
+                warnings.push(PluginWarning {
+                    path: path.clone(),
+                    message: format!("capabilities: {warning}"),
+                });
+            }
+            Some(LoadedPlugin {
+                manifest,
+                dir: dir.to_path_buf(),
+                path,
+            })
+        }
         Err(message) => {
             warnings.push(PluginWarning {
                 path: path.clone(),
