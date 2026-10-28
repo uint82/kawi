@@ -68,6 +68,12 @@ impl PendingFileOp {
             Self::Directory(_) => "Directory",
         }
     }
+
+    fn cancel(self, app: &mut App) {
+        if let Self::Directory(pending) = self {
+            app.cancel_directory_apply(pending.apply.number);
+        }
+    }
 }
 
 impl App {
@@ -84,11 +90,13 @@ impl App {
         }
         if let Some(error) = event.error {
             self.show_message(format!("{} cancelled: {error}", pending.label()));
+            pending.cancel(self);
             return;
         }
         if let Some(edit) = event.edit {
             if let Err(message) = self.apply_workspace_edit(&edit) {
                 self.show_message(format!("{} cancelled: {message}", pending.label()));
+                pending.cancel(self);
                 return;
             }
         }
@@ -99,6 +107,7 @@ impl App {
         if is_cancel_key(key) {
             if let Some(pending) = self.pending_file_op.take() {
                 self.show_message(format!("{} cancelled", pending.label()));
+                pending.cancel(self);
             }
         }
         Ok(false)

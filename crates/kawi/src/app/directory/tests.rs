@@ -9,7 +9,9 @@ use crate::app::App;
 use crate::keymap::Flavor;
 use crate::test_support::temp_dir;
 
-fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
+use super::test_support::settle;
+
+pub(super) fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
     let dir = temp_dir(name);
     for directory in directories {
         fs::create_dir_all(dir.join(directory)).unwrap();
@@ -19,10 +21,11 @@ fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
     }
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     assert!(app.open_directory_path(&dir, true));
+    settle(&mut app);
     (dir, app)
 }
 
-fn set_listing(app: &mut App, text: &str) {
+pub(super) fn set_listing(app: &mut App, text: &str) {
     let number = app.editor.buffer_number();
     assert!(app.editor.restore_buffer_text(number, text));
     app.sync_current_directory();
@@ -32,7 +35,7 @@ fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
-fn listing(app: &App) -> Vec<String> {
+pub(super) fn listing(app: &App) -> Vec<String> {
     app.editor
         .text_lines()
         .into_iter()
@@ -55,7 +58,8 @@ fn opening_a_directory_creates_a_named_buffer_and_skips_watching_it() {
 fn a_single_rename_applies_without_confirmation() {
     let (dir, mut app) = setup("directory_rename", &["alpha.txt"], &[]);
     set_listing(&mut app, "beta.txt");
-    assert!(app.request_save(false, SaveAfter::None, true));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert!(!dir.join("alpha.txt").exists());
     assert!(dir.join("beta.txt").exists());
     assert!(!app.editor.is_dirty());
@@ -68,9 +72,11 @@ fn multi_action_plans_wait_for_confirmation() {
     let (dir, mut app) = setup("directory_confirm", &["alpha.txt"], &[]);
     set_listing(&mut app, "beta.txt\nnew/\nsub/new.txt");
     assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert!(app.directory.has_pending());
     assert!(dir.join("alpha.txt").exists());
     app.apply_pending_directory(true);
+    settle(&mut app);
     assert!(!dir.join("alpha.txt").exists());
     assert!(dir.join("beta.txt").exists());
     assert!(dir.join("new").is_dir());
@@ -85,6 +91,7 @@ fn cancelling_a_plan_leaves_the_filesystem_unchanged() {
     let (dir, mut app) = setup("directory_cancel", &["alpha.txt", "old.txt"], &[]);
     set_listing(&mut app, "beta.txt");
     assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert!(app.directory.has_pending());
     app.apply_pending_directory(false);
     assert!(dir.join("alpha.txt").exists());
@@ -97,7 +104,8 @@ fn cancelling_a_plan_leaves_the_filesystem_unchanged() {
 fn files_move_into_existing_subdirectories() {
     let (dir, mut app) = setup("directory_move", &["alpha.txt"], &["sub"]);
     set_listing(&mut app, "sub/\nsub/beta.txt");
-    assert!(app.request_save(false, SaveAfter::None, true));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert!(!dir.join("alpha.txt").exists());
     assert!(dir.join("sub/beta.txt").exists());
     let _ = fs::remove_dir_all(dir);
@@ -121,7 +129,9 @@ fn minus_opens_the_parent_and_restores_the_cursor() {
     let (dir, mut app) = setup("directory_parent", &[], &["child"]);
     let child = dir.join("child");
     assert!(app.open_directory_path(&child, true));
+    settle(&mut app);
     assert!(app.handle_directory_key(key(KeyCode::Char('-'))).unwrap());
+    settle(&mut app);
     assert_eq!(app.editor.filename(), dir.to_string_lossy().as_ref());
     assert_eq!(listing(&app)[app.editor.row()], "child/");
     let _ = fs::remove_dir_all(dir);
@@ -136,6 +146,7 @@ fn parent_action_opens_parent_from_a_file() {
     assert!(!app
         .dispatch_action(kawi_editor::Action::OpenParentDirectory)
         .unwrap());
+    settle(&mut app);
     assert_eq!(app.editor.filename(), dir.to_string_lossy().as_ref());
     assert_eq!(listing(&app)[app.editor.row()], "alpha.txt");
     let _ = fs::remove_dir_all(dir);
@@ -146,6 +157,7 @@ fn hidden_entries_can_be_toggled_when_the_buffer_is_clean() {
     let (dir, mut app) = setup("directory_hidden", &[".secret", "alpha.txt"], &[]);
     assert_eq!(listing(&app), ["alpha.txt"]);
     assert!(app.handle_directory_key(key(KeyCode::Char('.'))).unwrap());
+    settle(&mut app);
     assert_eq!(listing(&app), [".secret", "alpha.txt"]);
     let _ = fs::remove_dir_all(dir);
 }
@@ -167,6 +179,7 @@ fn edit_command_opens_a_directory_buffer() {
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.handle_edit(Some(dir.to_string_lossy().into_owned()), false)
         .unwrap();
+    settle(&mut app);
     assert!(app.editor.current_buffer_is_directory());
     assert_eq!(app.editor.filename(), dir.to_string_lossy().as_ref());
     let _ = fs::remove_dir_all(dir);
@@ -181,8 +194,10 @@ fn saving_renames_retargets_open_buffers() {
         .unwrap();
     let file_buffer = app.editor.buffer_number();
     assert!(app.open_directory_path(&dir, true));
+    settle(&mut app);
     set_listing(&mut app, "beta.txt");
-    assert!(app.request_save(false, SaveAfter::None, true));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert_eq!(
         app.editor.buffer_path(file_buffer),
         Some(dir.join("beta.txt").to_string_lossy().as_ref())
@@ -192,13 +207,20 @@ fn saving_renames_retargets_open_buffers() {
 
 #[test]
 fn sessions_restore_directory_buffers() {
-    let (dir, mut app) = setup("directory_session", &["alpha.txt"], &[]);
+    let (dir, mut app) = setup(
+        "directory_session",
+        &["alpha.txt", "beta.txt", "gamma.txt"],
+        &[],
+    );
+    app.editor.apply(kawi_editor::Action::JumpTo(2, 0));
     let session = app.session_snapshot().expect("snapshot");
     let mut restored = App::new(Buffer::from_string(""), Flavor::Vim);
     assert_eq!(restored.restore_session(&session), None);
+    settle(&mut restored);
     assert!(restored.editor.current_buffer_is_directory());
     assert_eq!(restored.editor.filename(), dir.to_string_lossy().as_ref());
-    assert_eq!(listing(&restored), ["alpha.txt"]);
+    assert_eq!(listing(&restored), ["alpha.txt", "beta.txt", "gamma.txt"]);
+    assert_eq!(restored.editor.row(), 2);
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -221,8 +243,10 @@ fn partial_failures_reload_the_listing_from_disk() {
     let (dir, mut app) = setup("directory_partial", &["alpha.txt"], &[]);
     set_listing(&mut app, "beta.txt\nnew.txt");
     assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     fs::write(dir.join("new.txt"), "external\n").unwrap();
     app.apply_pending_directory(true);
+    settle(&mut app);
     assert!(dir.join("beta.txt").exists());
     assert!(!dir.join("alpha.txt").exists());
     assert_eq!(listing(&app), ["beta.txt", "new.txt"]);
@@ -236,9 +260,22 @@ fn permanent_delete_removes_entries_when_trash_is_disabled() {
     app.directory_options.trash = false;
     app.directory_options.confirm = false;
     set_listing(&mut app, "keep.txt");
-    assert!(app.request_save(false, SaveAfter::None, true));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
     assert!(!dir.join("old.txt").exists());
     assert!(dir.join("keep.txt").exists());
     assert_eq!(listing(&app), ["keep.txt"]);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn write_quit_finishes_after_the_background_check() {
+    let (dir, mut app) = setup("directory_write_quit", &["alpha.txt"], &[]);
+    set_listing(&mut app, "beta.txt");
+    assert!(!app.request_save(false, SaveAfter::Quit, true));
+    settle(&mut app);
+    assert!(app.quit_pending);
+    assert!(!dir.join("alpha.txt").exists());
+    assert!(dir.join("beta.txt").exists());
     let _ = fs::remove_dir_all(dir);
 }

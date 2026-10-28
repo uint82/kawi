@@ -934,11 +934,11 @@ impl Editor {
         number
     }
 
-    pub fn replace_directory_listing(&mut self, number: usize, name: &str, text: &str) -> bool {
+    pub fn replace_directory_listing(&mut self, number: usize, name: &str, text: Rope) -> bool {
         if number == self.buffers.current() {
             self.buffer.set_path(Some(name), None);
             self.buffer.set_directory(true);
-            self.buffer.replace_all(text);
+            self.buffer.replace_rope(text);
             self.buffer.reset_history();
             self.buffer.mark_clean();
             self.normalize_cursor();
@@ -957,7 +957,7 @@ impl Editor {
         let state = &mut entry.state;
         state.buffer.set_path(Some(name), None);
         state.buffer.set_directory(true);
-        state.buffer.replace_all(text);
+        state.buffer.replace_rope(text);
         state.buffer.reset_history();
         state.buffer.mark_clean();
         let row = state
@@ -975,6 +975,23 @@ impl Editor {
 
     pub fn mark_current_clean(&mut self) {
         self.buffer.mark_clean();
+    }
+
+    pub fn mark_buffer_clean(&mut self, number: usize) -> bool {
+        if number == self.buffers.current() {
+            self.buffer.mark_clean();
+            return true;
+        }
+        let Some(entry) = self
+            .buffers
+            .parked
+            .iter_mut()
+            .find(|entry| entry.number == number)
+        else {
+            return false;
+        };
+        entry.state.buffer.mark_clean();
+        true
     }
 
     pub fn open_internal_buffer(&mut self, name: &str, text: &str) -> usize {
@@ -2074,6 +2091,22 @@ mod tests {
         e.edit_file(None, false).unwrap();
         assert_eq!(e.jump_older(), Err(EditError::InvalidMark));
     }
+    #[test]
+    fn clean_state_can_be_marked_by_buffer_number() {
+        let mut editor = Editor::new(Buffer::from_string("one\n"));
+        editor.apply(Action::EnterInsert);
+        editor.apply(Action::InsertChar('x'));
+        editor.apply(Action::ExitInsert);
+        let first = editor.buffer_number();
+        editor.open_scratch_buffer("scratch", "text\n", true);
+        assert!(editor.buffer_is_dirty(first).unwrap_or(false));
+        assert!(editor.mark_buffer_clean(first));
+        assert!(!editor.buffer_is_dirty(first).unwrap_or(true));
+        let current = editor.buffer_number();
+        assert!(editor.mark_buffer_clean(current));
+        assert!(!editor.is_dirty());
+    }
+
     #[test]
     fn scratch_buffers_are_readonly_and_clean() {
         let mut editor = Editor::new(Buffer::from_string(""));

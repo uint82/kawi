@@ -5,14 +5,20 @@ mod executor;
 mod fs;
 mod keys;
 mod listing;
+mod load;
+mod loader;
+mod loading;
 mod open;
 mod options;
 mod planner;
 mod save;
 mod session;
+mod verify;
 
 #[cfg(test)]
 mod executor_tests;
+#[cfg(test)]
+mod load_tests;
 #[cfg(test)]
 mod planner_tests;
 #[cfg(test)]
@@ -23,5 +29,6 @@ mod test_support;
 mod tests;
 
 pub(in crate::app) use listing::SortMode;
+pub(in crate::app) use loading::DirectoryLoading;
 pub(in crate::app) use options::DirectoryOptions;
 pub(in crate::app) use session::{DirectoryBuffers, PendingApply};
