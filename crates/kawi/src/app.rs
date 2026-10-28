@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 mod autosave;
 mod code_action;
 mod command_completion;
+mod command_text;
 mod completion;
 mod config;
 mod conflict;

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use super::binding::{Binding, KeyContext, ResolvedCommand};
+use super::binding::{Binding, BindingSource, KeyContext, ResolvedCommand};
 use super::chord::{KeyChord, KeySequence};
 
 pub(crate) const DEFAULT_MAP_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -139,10 +139,10 @@ impl KeymapResolver {
         self.pending_context
     }
 
-    pub(crate) fn has_binding(&self, mode: KeyContext, keys: &[KeyChord]) -> bool {
+    pub(crate) fn has_user_binding(&self, mode: KeyContext, keys: &[KeyChord]) -> bool {
         self.bindings
             .iter()
-            .any(|binding| binding.matches(mode, keys))
+            .any(|binding| binding.source == BindingSource::User && binding.matches(mode, keys))
     }
 
     fn exact_binding(&self, context: KeyContext, keys: &[KeyChord]) -> Option<&Binding> {

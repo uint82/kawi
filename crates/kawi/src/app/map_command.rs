@@ -1,7 +1,8 @@
 use anyhow::Result;
 
-use crate::keymap::{Binding, BindingSource, KeyCodeSpec, KeyContext};
+use crate::keymap::{Binding, BindingSource, KeyContext};
 
+use super::command_text::split_command;
 use super::App;
 
 impl App {
@@ -35,11 +36,7 @@ impl App {
                 return Ok(Some(false));
             }
         };
-        if sequences.iter().any(|keys| {
-            keys.first().is_some_and(|chord| {
-                matches!(chord.code, KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"')
-            })
-        }) {
+        if sequences.iter().any(crate::keymap::has_reserved_prefix) {
             self.show_message("E474: Count and register prefixes are reserved".to_string());
             return Ok(Some(false));
         }
@@ -70,7 +67,7 @@ impl App {
             }
         };
         for keys in sequences {
-            if !self.keymaps.has_binding(mode, &keys) {
+            if !self.keymaps.has_user_binding(mode, &keys) {
                 self.show_message(format!("E31: No such mapping: {} {}", mode.name(), keys));
                 continue;
             }
@@ -177,14 +174,6 @@ impl App {
                 format!("{mode:<7} {keys:<24} {command:<28} {description}")
             })
             .collect()
-    }
-}
-
-fn split_command(text: &str) -> (&str, &str) {
-    let text = text.trim();
-    match text.split_once(char::is_whitespace) {
-        Some((name, rest)) => (name, rest.trim()),
-        None => (text, ""),
     }
 }
 

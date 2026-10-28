@@ -9,6 +9,15 @@ pub(crate) use binding::{Binding, BindingSource, KeyContext};
 pub(crate) use chord::{KeyChord, KeyCodeSpec, KeySequence};
 pub(crate) use resolver::{KeymapResolver, ResolveOutcome};
 
+pub(crate) fn has_reserved_prefix(keys: &KeySequence) -> bool {
+    keys.first().is_some_and(|chord| {
+        matches!(
+            chord.code,
+            KeyCodeSpec::Char(character) if character.is_ascii_digit() || character == '"'
+        )
+    })
+}
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use kawi_editor::Action;
