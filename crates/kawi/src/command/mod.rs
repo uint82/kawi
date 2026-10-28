@@ -14,6 +14,22 @@ pub(crate) enum CommandHandler {
     Action(Action),
     SendKeys,
     Noop,
+    Plugin(u32),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommandSource {
+    Builtin,
+    Plugin(String),
+}
+
+impl CommandSource {
+    pub(crate) fn label(&self) -> String {
+        match self {
+            Self::Builtin => String::new(),
+            Self::Plugin(name) => format!(" [plugin: {name}]"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +38,7 @@ pub(crate) struct CommandSpec {
     pub(crate) aliases: Vec<String>,
     pub(crate) description: String,
     pub(crate) handler: CommandHandler,
+    pub(crate) source: CommandSource,
 }
 
 pub(crate) struct CommandRegistry {
@@ -48,6 +65,7 @@ impl CommandRegistry {
                     .collect(),
                 description: builtin.description.to_string(),
                 handler: builtin.handler,
+                source: CommandSource::Builtin,
             });
         }
         Self { specs, index }
@@ -63,6 +81,28 @@ impl CommandRegistry {
 
     pub(crate) fn specs(&self) -> impl Iterator<Item = &CommandSpec> {
         self.specs.iter()
+    }
+
+    pub(crate) fn register_plugin(
+        &mut self,
+        name: String,
+        description: String,
+        plugin: String,
+        target: u32,
+    ) -> Result<CommandId, String> {
+        if self.index.contains_key(&name) {
+            return Err(format!("command name already exists: {name}"));
+        }
+        let id = CommandId(self.specs.len() as u32);
+        self.index.insert(name.clone(), id);
+        self.specs.push(CommandSpec {
+            name,
+            aliases: Vec::new(),
+            description,
+            handler: CommandHandler::Plugin(target),
+            source: CommandSource::Plugin(plugin),
+        });
+        Ok(id)
     }
 }
 

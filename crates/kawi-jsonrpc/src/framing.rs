@@ -11,21 +11,24 @@ pub fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
         return Ok(None);
     };
     if length > MAX_MESSAGE_BYTES {
-        bail!("lsp message exceeds {MAX_MESSAGE_BYTES} bytes");
+        bail!("jsonrpc message exceeds {MAX_MESSAGE_BYTES} bytes");
     }
     let mut body = vec![0; length];
     reader
         .read_exact(&mut body)
-        .context("read lsp message body")?;
-    let value = serde_json::from_slice(&body).context("parse lsp message json")?;
+        .context("read jsonrpc message body")?;
+    let value = serde_json::from_slice(&body).context("parse jsonrpc message json")?;
     Ok(Some(value))
 }
 
 pub fn write_message(writer: &mut impl Write, message: &Value) -> Result<()> {
-    let body = serde_json::to_vec(message).context("serialize lsp message")?;
-    write!(writer, "Content-Length: {}\r\n\r\n", body.len()).context("write lsp header")?;
+    let body = serde_json::to_vec(message).context("serialize jsonrpc message")?;
+    if body.len() > MAX_MESSAGE_BYTES {
+        bail!("jsonrpc message exceeds {MAX_MESSAGE_BYTES} bytes");
+    }
+    write!(writer, "Content-Length: {}\r\n\r\n", body.len()).context("write jsonrpc header")?;
     writer.write_all(&body).context("write lsp body")?;
-    writer.flush().context("flush lsp message")?;
+    writer.flush().context("flush jsonrpc message")?;
     Ok(())
 }
 
@@ -38,17 +41,17 @@ fn read_headers(reader: &mut impl BufRead) -> Result<Option<usize>> {
             if content_length.is_none() {
                 return Ok(None);
             }
-            bail!("unexpected end of stream in lsp headers");
+            bail!("unexpected end of stream in jsonrpc headers");
         };
         if line.is_empty() {
             break;
         }
         total = total.saturating_add(line.len());
         if total > MAX_HEADER_BYTES {
-            bail!("lsp headers exceed {MAX_HEADER_BYTES} bytes");
+            bail!("jsonrpc headers exceed {MAX_HEADER_BYTES} bytes");
         }
         let Some((name, value)) = line.split_once(':') else {
-            bail!("invalid lsp header line");
+            bail!("invalid jsonrpc header line");
         };
         if name.eq_ignore_ascii_case("content-length") {
             if content_length.is_some() {
@@ -71,14 +74,14 @@ fn read_header_line(reader: &mut impl BufRead) -> Result<Option<String>> {
     let mut line = Vec::new();
     let read = reader
         .read_until(b'\n', &mut line)
-        .context("read lsp header")?;
+        .context("read jsonrpc header")?;
     if read == 0 {
         return Ok(None);
     }
     if line.len() > MAX_HEADER_LINE {
-        bail!("lsp header line exceeds {MAX_HEADER_LINE} bytes");
+        bail!("jsonrpc header line exceeds {MAX_HEADER_LINE} bytes");
     }
-    let line = std::str::from_utf8(&line).context("lsp header is not utf-8")?;
+    let line = std::str::from_utf8(&line).context("jsonrpc header is not utf-8")?;
     Ok(Some(line.trim_end_matches(['\r', '\n']).to_string()))
 }
 
@@ -141,5 +144,13 @@ mod tests {
         let header = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
         let mut reader = Cursor::new(header.into_bytes());
         assert!(read_message(&mut reader).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_outgoing_messages() {
+        let message = Value::String("x".repeat(MAX_MESSAGE_BYTES));
+        let mut buffer = Vec::new();
+        assert!(write_message(&mut buffer, &message).is_err());
+        assert!(buffer.is_empty());
     }
 }

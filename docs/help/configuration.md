@@ -36,7 +36,7 @@ Options can also be changed at runtime with `:set name=value`, toggled with `:se
 
 ## Keymaps
 
-Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`.
+Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`. Process plugins live in `$XDG_CONFIG_HOME/kawi/plugins`.
 
 ```toml
 leader = [" ", "\\"]

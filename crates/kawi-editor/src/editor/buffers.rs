@@ -33,6 +33,7 @@ pub enum EditError {
     MarkNotSet,
     NoString,
     InvalidEdit,
+    StaleRevision,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1300,6 +1301,17 @@ impl Editor {
     pub fn file_char_len(&self, target: &Path) -> Option<usize> {
         self.file_snapshot(target)
             .map(|snapshot| snapshot.len_chars())
+    }
+
+    pub fn apply_text_edits_at_revision(
+        &mut self,
+        revision: u64,
+        edits: &[TextEdit],
+    ) -> Result<(), EditError> {
+        if revision != self.buffer.revision() {
+            return Err(EditError::StaleRevision);
+        }
+        self.apply_current_text_edits(edits)
     }
 
     pub fn apply_text_edits(&mut self, target: &Path, edits: &[TextEdit]) -> Result<(), EditError> {

@@ -3,7 +3,7 @@ mod config;
 mod defaults;
 mod editing;
 mod file;
-pub mod framing;
+pub use kawi_jsonrpc::framing;
 mod process;
 pub mod protocol;
 mod service;

@@ -263,6 +263,7 @@ mod tests {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
             keymaps: dir.join("keymaps.toml"),
+            plugins: dir.join("plugins"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

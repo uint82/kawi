@@ -1,0 +1,17 @@
+[package]
+name = "kawi-plugin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+kawi-jsonrpc = { path = "../kawi-jsonrpc" }
+kawi-process = { path = "../kawi-process" }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

@@ -19,5 +19,6 @@ related = ["getting-started", "lsp", "pickers", "tasks"]
 - Manual and indentation folding with a fold column.
 - Key sequence guidance for leader menus and pending Vim sequences.
 - Configurable themes, overlays, and diagnostic presentation.
+- Process plugins with static command and keybinding contributions.
 
 Use `:help <topic>` to open the guide for a feature.
