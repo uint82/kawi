@@ -90,7 +90,7 @@ The value is milliseconds and defaults to `1000`. A complete mapping wins after 
 - Literals: `<Space>`, `<lt>`, `<gt>`, `<bar>`, `<bslash>`
 - Leader: `<leader>`
 
-Use `:nmap`, `:imap`, and `:vmap` for runtime mappings. Use `:nunmap`, `:iunmap`, and `:vunmap` to remove a runtime mapping or suppress a built-in mapping. Unmapping an unbound key creates a no-op binding.
+Use `:nmap`, `:imap`, and `:vmap` for runtime mappings. Use `:nunmap`, `:iunmap`, and `:vunmap` to remove a runtime mapping. Unmapping a key without a runtime mapping reports `E31`. To disable a built-in key or a configured mapping, bind it to `none`.
 
 ## Introspection
 
