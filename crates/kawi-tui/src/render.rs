@@ -434,7 +434,12 @@ fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> 
     .context("move to virtual text")?;
     paint::apply_faded_text(out, virtual_text_color(draw.theme, text.kind))?;
     write!(out, "{clipped}").context("write virtual text")?;
-    paint::clear_decorations(out)
+    finish_virtual_text(out, draw.theme)
+}
+
+fn finish_virtual_text<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
+    paint::clear_decorations(out)?;
+    paint::restore_base(out, theme)
 }
 
 fn virtual_text_color(theme: &Theme, kind: VirtualTextKind) -> Color {
@@ -2496,6 +2501,16 @@ mod tests {
             Some((17, "-rw-r--r--    13 2026-10-28 14:32"))
         );
         assert_eq!(virtual_text_layout(42, 50, &text), None);
+    }
+
+    #[test]
+    fn virtual_text_restores_base_colors() {
+        let theme = Theme::default();
+        let mut out = Vec::new();
+        finish_virtual_text(&mut out, &theme).unwrap();
+        let mut base = Vec::new();
+        paint::restore_base(&mut base, &theme).unwrap();
+        assert!(out.ends_with(&base));
     }
 
     #[test]
