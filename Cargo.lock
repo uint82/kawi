@@ -479,11 +479,20 @@ name = "kawi-help"
 version = "0.0.1"
 
 [[package]]
+name = "kawi-jsonrpc"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "serde_json",
+]
+
+[[package]]
 name = "kawi-lsp"
 version = "0.0.1"
 dependencies = [
  "anyhow",
  "kawi-buffer",
+ "kawi-jsonrpc",
  "kawi-process",
  "libc",
  "lsp-types",
