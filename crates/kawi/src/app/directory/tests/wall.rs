@@ -1,6 +1,11 @@
 use std::fs;
 
-use super::{set_listing, settle, setup};
+use kawi_buffer::Buffer;
+
+use super::super::test_support::message_text;
+use super::{set_listing, settle, setup, SaveAfter};
+use crate::app::App;
+use crate::keymap::Flavor;
 use crate::test_support::temp_dir;
 
 #[test]
@@ -118,10 +123,10 @@ fn wall_rejects_nested_dirty_directories() {
     app.editor.buffer_select(root);
     set_listing(&mut app, "child/\nbeta.txt");
     assert!(!app.handle_save_all().unwrap());
-    assert_eq!(
-        app.last_message(),
-        Some("Nested directory buffers must be saved separately")
-    );
+    let message = message_text(&app);
+    assert!(message.contains("Nested directory buffers must be saved separately"));
+    assert!(message.contains(&dir.to_string_lossy().into_owned()));
+    assert!(message.contains(&dir.join("child").to_string_lossy().into_owned()));
     assert!(dir.join("alpha.txt").exists());
     assert!(!dir.join("child/new.txt").exists());
     assert!(app.editor.has_unsaved());
@@ -157,4 +162,72 @@ fn write_quit_all_finishes_directory_transaction_then_quits() {
     assert!(dir.join("beta.txt").exists());
     assert!(!dir.join("alpha.txt").exists());
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn wall_moves_deleted_entries_to_matching_created_names() {
+    let (first, mut app) = setup("directory_wall_move_first", &["shared.txt"], &[]);
+    set_listing(&mut app, "");
+    let second = temp_dir("directory_wall_move_second");
+    assert!(app.open_directory_path(&second, true));
+    settle(&mut app);
+    set_listing(&mut app, "shared.txt");
+    assert!(!app.handle_save_all().unwrap());
+    settle(&mut app);
+    assert!(!first.join("shared.txt").exists());
+    assert_eq!(
+        fs::read_to_string(second.join("shared.txt")).unwrap(),
+        "content\n"
+    );
+    let _ = fs::remove_dir_all(first);
+    let _ = fs::remove_dir_all(second);
+}
+
+#[test]
+fn wall_retargets_open_buffers_and_undo_for_moves() {
+    let undo = temp_dir("directory_wall_move_undo");
+    let first = temp_dir("directory_wall_move_buffer_first");
+    let second = temp_dir("directory_wall_move_buffer_second");
+    let source = first.join("project/shared.txt");
+    let target = second.join("project/shared.txt");
+    fs::create_dir(first.join("project")).unwrap();
+    fs::write(&source, "alpha\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(source.to_str().expect("path")).expect("buffer"),
+        Flavor::Vim,
+    );
+    app.undo.configure(undo.clone());
+    app.undo.set_exclusions(Vec::new());
+    app.sync_undo_histories();
+    app.editor.apply(kawi_editor::Action::EnterInsert);
+    app.editor.apply(kawi_editor::Action::InsertChar('x'));
+    app.editor.apply(kawi_editor::Action::ExitInsert);
+    assert!(app.request_save(false, SaveAfter::None, true));
+    let file_buffer = app.editor.buffer_number();
+    assert!(app.open_directory_path(&first, true));
+    settle(&mut app);
+    set_listing(&mut app, "");
+    assert!(app.open_directory_path(&second, true));
+    settle(&mut app);
+    set_listing(&mut app, "project/");
+    assert!(!app.handle_save_all().unwrap());
+    settle(&mut app);
+    assert!(!source.exists());
+    assert_eq!(fs::read_to_string(&target).unwrap(), "xalpha\n");
+    assert_eq!(
+        app.editor.buffer_path(file_buffer),
+        Some(target.to_string_lossy().as_ref())
+    );
+    drop(app);
+    let mut restored = App::new(
+        Buffer::from_file(target.to_str().expect("path")).expect("buffer"),
+        Flavor::Vim,
+    );
+    restored.undo.configure(undo);
+    restored.undo.set_exclusions(Vec::new());
+    restored.sync_undo_histories();
+    restored.editor.apply(kawi_editor::Action::Undo);
+    assert_eq!(restored.editor.buffer_text(1).unwrap(), "alpha\n");
+    let _ = fs::remove_dir_all(first);
+    let _ = fs::remove_dir_all(second);
 }

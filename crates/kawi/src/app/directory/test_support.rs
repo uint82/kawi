@@ -90,6 +90,13 @@ impl DirectoryFs for FakeFs {
     }
 }
 
+pub(super) fn message_text(app: &App) -> String {
+    app.last_message()
+        .map(str::to_string)
+        .or_else(|| app.pager_lines().map(|lines| lines.concat()))
+        .unwrap_or_default()
+}
+
 pub(super) fn settle(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while app.directory_loading.has_loads() {

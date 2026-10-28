@@ -127,12 +127,16 @@ impl App {
             .filter_map(|number| self.directory.get(*number).map(|state| state.root.clone()))
             .collect();
         for (index, root) in roots.iter().enumerate() {
-            if roots
+            if let Some(other) = roots
                 .iter()
                 .skip(index.saturating_add(1))
-                .any(|other| root.starts_with(other) || other.starts_with(root))
+                .find(|other| root.starts_with(other) || other.starts_with(root))
             {
-                return Err("Nested directory buffers must be saved separately".to_string());
+                return Err(format!(
+                    "Nested directory buffers must be saved separately: {} and {}",
+                    root.display(),
+                    other.display()
+                ));
             }
         }
         Ok(())
@@ -179,7 +183,8 @@ impl App {
         let Some(pending) = self.pending_save_all.take() else {
             return;
         };
-        let edits = pending_edits(pending.edits);
+        let mut edits = pending_edits(pending.edits);
+        super::moves::merge_cross_directory_moves(&mut edits);
         let changes = super::save::all_changes(&edits);
         let plan = match self.check_directory_plan(&changes) {
             Ok(plan) => plan,

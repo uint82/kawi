@@ -9,6 +9,7 @@ mod load;
 mod loader;
 mod loading;
 mod metadata;
+mod moves;
 mod open;
 mod options;
 mod planner;
