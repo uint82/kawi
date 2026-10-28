@@ -859,6 +859,9 @@ impl LspUi {
 }
 
 pub(super) fn editor_path(editor: &Editor) -> Option<PathBuf> {
+    if editor.current_buffer_is_directory() {
+        return None;
+    }
     let path = editor
         .has_file()
         .then(|| PathBuf::from(editor.filename()))?;

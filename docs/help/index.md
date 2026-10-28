@@ -13,6 +13,7 @@ Kawi is a terminal editor built around modal editing, language servers, fast pic
 - [Features](help:features)
 - [Keybindings](help:keybindings)
 - [Project explorer](help:explorer)
+- [Directory buffers](help:directory)
 - [Configuration](help:configuration)
 - [Themes](help:themes)
 - [Pickers](help:pickers)

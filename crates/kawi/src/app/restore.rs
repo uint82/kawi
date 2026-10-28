@@ -80,15 +80,20 @@ impl App {
         for buffer in buffers {
             match buffer.path.as_deref() {
                 Some(path) => {
-                    if !Path::new(path).is_file() {
+                    let target = Path::new(path);
+                    if !target.is_file() && !target.is_dir() {
                         skipped += 1;
                         numbers.push(None);
                         continue;
                     }
-                    let opened = if used_initial {
-                        self.editor.open_file_buffer(path)
+                    let opened = if target.is_dir() {
+                        self.open_directory(target, !used_initial)
+                            .map(|_| ())
+                            .map_err(|_| ())
+                    } else if used_initial {
+                        self.editor.open_file_buffer(path).map_err(|_| ())
                     } else {
-                        self.editor.edit_file(Some(path), false)
+                        self.editor.edit_file(Some(path), false).map_err(|_| ())
                     };
                     match opened {
                         Ok(()) => {

@@ -42,6 +42,7 @@ impl Loader<'_> {
         let section = match key {
             "ui" => ConfigSection::Ui,
             "editor" => ConfigSection::Editor,
+            "explorer" => ConfigSection::Explorer,
             _ => {
                 self.unknown(key, item);
                 return;

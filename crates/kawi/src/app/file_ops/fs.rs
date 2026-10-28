@@ -7,18 +7,26 @@ mod copy;
 use copy::copy_across_filesystems;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RenameKind {
+pub(in crate::app) enum RenameKind {
     Moved,
     Copied,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RenameOutcome {
+pub(in crate::app) struct RenameOutcome {
     pub kind: RenameKind,
     pub symlink: bool,
 }
 
-pub(super) fn rename_path(old: &Path, new: &Path, force: bool) -> io::Result<RenameOutcome> {
+pub(in crate::app) fn copy_path(old: &Path, new: &Path, force: bool) -> io::Result<()> {
+    copy_across_filesystems(old, new, force)
+}
+
+pub(in crate::app) fn rename_path(
+    old: &Path,
+    new: &Path,
+    force: bool,
+) -> io::Result<RenameOutcome> {
     let source = fs::symlink_metadata(old)?;
     let symlink = source.file_type().is_symlink();
     let target = fs::symlink_metadata(new);
@@ -53,7 +61,7 @@ pub(super) fn rename_path(old: &Path, new: &Path, force: bool) -> io::Result<Ren
     }
 }
 
-pub(super) fn remove_path(path: &Path, permanent: bool) -> io::Result<()> {
+pub(in crate::app) fn remove_path(path: &Path, permanent: bool) -> io::Result<()> {
     if !permanent {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -85,7 +93,7 @@ pub(super) fn count_tree(path: &Path) -> io::Result<usize> {
     Ok(count)
 }
 
-pub(super) fn path_exists(path: &Path) -> bool {
+pub(in crate::app) fn path_exists(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok()
 }
 
@@ -120,7 +128,7 @@ fn already_exists(path: &Path) -> io::Error {
     )
 }
 
-pub(super) fn create_empty_file(path: &Path) -> io::Result<()> {
+pub(in crate::app) fn create_empty_file(path: &Path) -> io::Result<()> {
     OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -128,7 +136,7 @@ pub(super) fn create_empty_file(path: &Path) -> io::Result<()> {
         .map(|_| ())
 }
 
-pub(super) fn create_directory(path: &Path) -> io::Result<()> {
+pub(in crate::app) fn create_directory(path: &Path) -> io::Result<()> {
     fs::create_dir_all(path)
 }
 

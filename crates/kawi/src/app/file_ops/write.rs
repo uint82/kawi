@@ -7,6 +7,10 @@ use super::{absolute_path, fs, is_directory_text, App};
 
 impl App {
     pub(super) fn handle_write_target(&mut self, name: &str, force: bool, kind: WriteKind) {
+        if self.directory.contains(self.editor.buffer_number()) {
+            self.show_message("Cannot write a directory buffer to a file".to_string());
+            return;
+        }
         self.prepare_write_target(absolute_path(name), name.to_string(), force, kind);
     }
 

@@ -555,7 +555,8 @@ impl Editor {
             | Action::ToggleTerminal
             | Action::ToggleExplorer
             | Action::FocusExplorer
-            | Action::RevealInExplorer => self.noop(),
+            | Action::RevealInExplorer
+            | Action::OpenParentDirectory => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
         if was_insert {

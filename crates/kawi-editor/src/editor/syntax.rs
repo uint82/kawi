@@ -4,6 +4,9 @@ use super::Editor;
 
 impl Editor {
     pub fn language_id(&self) -> Option<LanguageId> {
+        if self.buffer.is_directory() {
+            return None;
+        }
         LanguageId::from_path(self.buffer.path.as_deref()?)
     }
 

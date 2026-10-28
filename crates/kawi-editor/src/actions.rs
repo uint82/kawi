@@ -365,6 +365,7 @@ pub enum Action {
     ToggleExplorer,
     FocusExplorer,
     RevealInExplorer,
+    OpenParentDirectory,
     Noop,
 }
 
@@ -453,6 +454,7 @@ impl Action {
                 | Self::ToggleExplorer
                 | Self::FocusExplorer
                 | Self::RevealInExplorer
+                | Self::OpenParentDirectory
                 | Self::CommentLines
                 | Self::CommentAt { .. }
                 | Self::SurroundSelection { .. }

@@ -4,7 +4,7 @@ use super::App;
 
 impl App {
     pub(crate) fn sync_language_indent(&mut self) {
-        let indent = if self.editor.has_file() {
+        let indent = if self.editor.has_file() && !self.editor.current_buffer_is_directory() {
             self.lsp
                 .language_indent(Some(Path::new(self.editor.filename())))
         } else {
@@ -14,7 +14,7 @@ impl App {
     }
 
     pub(crate) fn sync_language_editing(&mut self) {
-        let editing = if self.editor.has_file() {
+        let editing = if self.editor.has_file() && !self.editor.current_buffer_is_directory() {
             self.lsp
                 .language_editing(Some(Path::new(self.editor.filename())))
         } else {

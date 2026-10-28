@@ -147,6 +147,7 @@ impl App {
 
     fn autosave_eligible(&self, number: usize) -> bool {
         self.editor.buffer_path(number).is_some()
+            && !self.directory.contains(number)
             && !self.editor.buffer_is_readonly(number).unwrap_or(false)
             && self.editor.buffer_is_dirty(number).unwrap_or(false)
             && !self.disk_conflict(number)

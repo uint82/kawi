@@ -11,6 +11,7 @@ Kawi reads configuration from the XDG config directory, normally `~/.config/kawi
 
 - `[ui]` for keymap, theme, overlays, diagnostics, completion, the project explorer, and the status line
 - `[editor]` for indentation, line numbers, sign column, matching, autosave, and key guidance
+- `[explorer]` for directory buffer behavior
 - `[history]` for undo history and persistence
 
 Example:
@@ -32,6 +33,18 @@ foldcolumn = 1
 ```
 
 Options can also be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
+
+Directory buffer settings:
+
+```toml
+[explorer]
+show_hidden = false
+confirm = true
+trash = true
+sort = "directories"
+```
+
+See [Directory buffers](help:directory) for the behavior of these options.
 
 Use `:help options` for the generated option reference. See [Themes](help:themes) for built-in and custom themes.
 

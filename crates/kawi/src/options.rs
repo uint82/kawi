@@ -99,6 +99,7 @@ pub(crate) enum ConfigSection {
     Ui,
     Editor,
     History,
+    Explorer,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -252,7 +253,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 41] = [
+pub(crate) const OPTIONS: [OptionSpec; 45] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -685,6 +686,46 @@ pub(crate) const OPTIONS: [OptionSpec; 41] = [
         section: ConfigSection::Editor,
         config_key: "keyguide_delay",
         default: OptionDefault::Int(KEYGUIDE_DELAY_DEFAULT),
+    },
+    OptionSpec {
+        name: "directory_show_hidden",
+        aliases: &["dsh"],
+        description: "Show hidden entries in new directory buffers.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "show_hidden",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "directory_confirm",
+        aliases: &["dcf"],
+        description: "Confirm destructive directory buffer changes.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "confirm",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "directory_trash",
+        aliases: &["dtr"],
+        description: "Send deleted directory entries to the trash.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "trash",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "directory_sort",
+        aliases: &["dsr"],
+        description: "Directory buffer sort order.",
+        kind: OptionKind::Enum(OptionValues::Static(&["directories", "name"])),
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "sort",
+        default: OptionDefault::Text("directories"),
     },
 ];
 

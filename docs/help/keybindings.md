@@ -28,6 +28,7 @@ The leader key is Space or Backslash.
 - `]q` and `[q` next and previous quickfix entry
 - `Ctrl-w` window prefix
 - `Ctrl-t` return from a help link
+- `<leader> e -` open the parent directory of the current file or directory buffer
 
 ## Folds
 
@@ -60,6 +61,19 @@ The explorer is opt-in and disabled by default. Set `explorer_enabled` to enable
 - `:explorer`, `:explorer focus`, and `:explorer reveal` work from the command line
 
 See [Project explorer](help:explorer) for explorer keys, markers, and options.
+
+## Directory buffers
+
+Directory buffers use normal editing keys for the listing.
+
+- `Enter` open the entry under the cursor
+- `-` open the parent directory and restore the cursor
+- `.` show or hide hidden entries when the buffer is clean
+- `:w` apply the edited listing
+- `:bd` close the directory buffer and keep Kawi open
+- `:bd!` discard pending listing edits and close the directory buffer
+
+See [Directory buffers](help:directory) for the diff rules and safety behavior.
 
 ## Pickers
 

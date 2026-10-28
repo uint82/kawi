@@ -54,11 +54,18 @@ fn main() -> Result<()> {
         kawi_syntax::set_user_query_dir(paths.queries.clone());
     }
     let (session, warning) = load_startup_session(restore_workspace, paths.as_ref(), &cwd);
-    let buffer = load_buffer(path)?;
+    let directory = path
+        .as_deref()
+        .map(|path| paths::absolute(path, &cwd))
+        .filter(|path| path.is_dir());
+    let buffer = load_buffer(if directory.is_some() { None } else { path })?;
     let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
     app.load_state(cli_flavor);
     if let Some(paths) = paths.as_ref() {
         app.attach_file_views(FileViewStore::new(paths.views.clone()));
+    }
+    if let Some(directory) = directory {
+        app.open_directory_path(&directory, true);
     }
     apply_startup_session(&mut app, session.as_ref(), warning);
     app.load_file_views();

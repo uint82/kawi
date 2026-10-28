@@ -199,6 +199,7 @@ fn section_name(section: ConfigSection) -> &'static str {
         ConfigSection::Ui => "ui",
         ConfigSection::Editor => "editor",
         ConfigSection::History => "history",
+        ConfigSection::Explorer => "explorer",
     }
 }
 
