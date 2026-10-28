@@ -12,6 +12,7 @@ use crate::test_support::temp_dir;
 use super::test_support::{message_text, settle};
 
 mod metadata;
+mod permissions;
 mod wall;
 
 pub(super) fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
