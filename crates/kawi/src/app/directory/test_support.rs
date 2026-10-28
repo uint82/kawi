@@ -21,7 +21,9 @@ pub(super) struct FakeFs {
     pub(super) calls: Vec<Call>,
     fail_at: Option<usize>,
     denied_write: BTreeSet<PathBuf>,
+    denied_directory_write: BTreeSet<PathBuf>,
     denied_read: BTreeSet<PathBuf>,
+    denied_entry_remove: BTreeSet<PathBuf>,
     denied_delete: BTreeSet<PathBuf>,
 }
 
@@ -35,7 +37,9 @@ impl FakeFs {
             calls: Vec::new(),
             fail_at: None,
             denied_write: BTreeSet::new(),
+            denied_directory_write: BTreeSet::new(),
             denied_read: BTreeSet::new(),
+            denied_entry_remove: BTreeSet::new(),
             denied_delete: BTreeSet::new(),
         }
     }
@@ -50,8 +54,18 @@ impl FakeFs {
         self
     }
 
+    pub(super) fn deny_directory_write(mut self, path: &str) -> Self {
+        self.denied_directory_write.insert(PathBuf::from(path));
+        self
+    }
+
     pub(super) fn deny_read(mut self, path: &str) -> Self {
         self.denied_read.insert(PathBuf::from(path));
+        self
+    }
+
+    pub(super) fn deny_entry_remove(mut self, path: &str) -> Self {
+        self.denied_entry_remove.insert(PathBuf::from(path));
         self
     }
 
@@ -114,12 +128,22 @@ impl DirectoryFs for FakeFs {
         !self.denied_write.contains(path)
     }
 
+    fn can_write_directory(&self, path: &Path) -> bool {
+        !self.denied_directory_write.contains(path)
+    }
+
     fn can_read(&self, path: &Path) -> bool {
         !self.denied_read.contains(path)
     }
 
-    fn can_delete(&self, path: &Path) -> bool {
-        !self.denied_delete.contains(path)
+    fn can_remove_entry(&self, path: &Path) -> bool {
+        !self.denied_entry_remove.contains(path)
+    }
+
+    fn delete_error(&self, path: &Path) -> Option<String> {
+        self.denied_delete
+            .contains(path)
+            .then(|| "no trash available on this filesystem".to_string())
     }
 }
 

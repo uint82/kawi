@@ -91,6 +91,13 @@ fn topdir_trash_uses_a_relative_info_path() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn topdir_trash_uses_the_target_filesystem_root() {
+    let trash = topdir_trash(std::path::Path::new("/dev/shm")).unwrap();
+    assert!(trash.root.starts_with("/dev/shm"));
+}
+
 #[test]
 fn formats_a_stable_deletion_date() {
     assert_eq!(civil_from_days(0), (1970, 1, 1));

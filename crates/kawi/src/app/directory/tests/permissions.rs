@@ -18,7 +18,7 @@ fn plan_preflight_blocks_a_read_only_directory() {
     assert!(!app.request_save(false, SaveAfter::None, true));
     settle(&mut app);
     let message = message_text(&app);
-    assert!(message.contains("Cannot modify"));
+    assert!(message.contains("requires write and execute permission"));
     assert!(message.contains(&dir.to_string_lossy().into_owned()));
     assert!(dir.join("alpha.txt").exists());
     assert!(!dir.join("beta.txt").exists());
@@ -41,7 +41,7 @@ fn apply_preflight_catches_permissions_changed_after_confirmation() {
     app.apply_pending_directory(true);
     settle(&mut app);
     let message = message_text(&app);
-    assert!(message.contains("Cannot modify"));
+    assert!(message.contains("requires write and execute permission"));
     assert!(message.contains("no operations were applied"));
     assert!(dir.join("alpha.txt").exists());
     assert!(!dir.join("beta.txt").exists());
@@ -77,7 +77,7 @@ fn save_all_stops_before_writes_when_one_directory_is_read_only() {
     assert!(!app.handle_save_all().unwrap());
     settle(&mut app);
     let message = message_text(&app);
-    assert!(message.contains("Cannot modify"));
+    assert!(message.contains("requires write and execute permission"));
     assert!(message.contains(&second.to_string_lossy().into_owned()));
     assert!(first.join("alpha.txt").exists());
     assert!(!first.join("beta.txt").exists());
@@ -88,4 +88,30 @@ fn save_all_stops_before_writes_when_one_directory_is_read_only() {
     fs::set_permissions(&second, fs::Permissions::from_mode(0o755)).unwrap();
     let _ = fs::remove_dir_all(first);
     let _ = fs::remove_dir_all(second);
+}
+
+#[cfg(unix)]
+#[test]
+fn plan_preflight_rejects_a_parent_without_search_permission() {
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let (dir, mut app) = setup("directory_permission_search", &["alpha.txt"], &[]);
+    set_listing(&mut app, "beta.txt");
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
+    let message = message_text(&app);
+    assert!(
+        message.contains("write and execute permission"),
+        "{message}"
+    );
+    assert!(
+        message.contains(&dir.to_string_lossy().into_owned()),
+        "{message}"
+    );
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(dir.join("alpha.txt").exists());
+    assert!(!dir.join("beta.txt").exists());
+    let _ = fs::remove_dir_all(dir);
 }

@@ -116,7 +116,11 @@ fn nested_sources_move_before_their_parent_directory() {
 #[test]
 fn moves_into_renamed_directories_are_refused() {
     for target in ["/project/dir/file", "/project/renamed/file"] {
-        let fs = FakeFs::new(&[("/project/dir", true), ("/project/item", false)]);
+        let fs = FakeFs::new(&[
+            ("/project", true),
+            ("/project/dir", true),
+            ("/project/item", false),
+        ]);
         let error = plan(
             vec![
                 Change::Rename {
@@ -209,7 +213,7 @@ fn copies_follow_sources_when_ids_repeat_across_directories() {
 
 #[test]
 fn directories_cannot_move_into_themselves() {
-    let fs = FakeFs::new(&[("/project/a", true)]);
+    let fs = FakeFs::new(&[("/project", true), ("/project/a", true)]);
     let change = Change::Rename {
         id: 1,
         from: PathBuf::from("/project/a"),
