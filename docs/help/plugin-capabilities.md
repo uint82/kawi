@@ -7,7 +7,7 @@ related = ["plugins", "plugin-protocol", "configuration", "troubleshooting"]
 
 Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else.
 
-Kawi enforces `editor.*`, `ui.*`, and `diagnostics.*` for process plugins. Process plugins remain trusted code. Until Landlock or WebAssembly enforcement is available, `fs.*`, `net.*`, and `process.*` capabilities are advisory for process plugins.
+Kawi enforces the `editor.*` and `ui.*` host methods and `diagnostics.read` events for process plugins. The `diagnostics.publish` mapping is ready for `editor.set_diagnostics`, but that host method is not advertised yet. Process plugins remain trusted code. Until Landlock or WebAssembly enforcement is available, `fs.*`, `net.*`, and `process.*` capabilities are advisory for process plugins.
 
 ## Capability list
 
@@ -166,7 +166,7 @@ Scope narrowing examples:
 | `editor.get_state` | `editor.read` |
 | `editor.apply_edit` | `editor.write` |
 | `ui.message` | `ui.message` |
-| `editor.set_diagnostics` | `diagnostics.publish` |
+| `editor.set_diagnostics` | `diagnostics.publish` (not advertised yet) |
 | `buffer_changed` | `editor.read` |
 | `buffer_opened` | `editor.read` |
 | `file_opened` | `editor.read` |
@@ -229,7 +229,8 @@ A malformed `permissions.toml` during `:plugin reload` is fail-closed. Kawi swap
 
 For process plugins, capabilities are enforced only when the plugin calls Kawi:
 
-- Enforced: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
+- Enforced: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`.
+- Mapped but not advertised yet: `diagnostics.publish` for `editor.set_diagnostics`.
 - Advisory: `fs.read`, `fs.write`, `process.spawn`, `net.connect`.
 
 A process plugin can call the operating system directly, so Kawi cannot enforce filesystem, network, or process scopes for it. `:plugin list` and `kawi doctor` label advisory grants as `advisory`, not as a sandbox.
