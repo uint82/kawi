@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Sender, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -15,7 +15,6 @@ const MAX_LOG_LINE: usize = 8 * 1024;
 pub(super) struct ReaderContext {
     pub(super) alive: Arc<AtomicBool>,
     pub(super) pending: PendingMap,
-    pub(super) allowed_host_methods: Arc<Mutex<BTreeSet<String>>>,
     pub(super) writer: SyncSender<Value>,
     pub(super) events: Sender<PluginHostEvent>,
     pub(super) wake: Sender<()>,

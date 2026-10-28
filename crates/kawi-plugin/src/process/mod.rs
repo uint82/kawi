@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use self::connection::WriterSlot;
 use self::worker::Worker;
+use crate::capability::CapabilityRegistry;
 use crate::error::PluginError;
 use crate::host::{set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
@@ -39,6 +40,7 @@ pub enum NotifyOutcome {
     Queued,
     NotRunning,
     NotSubscribed,
+    Denied,
     Overflow,
 }
 
@@ -102,6 +104,7 @@ impl WorkerHandle {
 
 pub(crate) fn start_worker(
     plugin: LoadedPlugin,
+    capabilities: CapabilityRegistry,
     events: Sender<PluginHostEvent>,
     wake: Sender<()>,
 ) -> WorkerHandle {
@@ -122,7 +125,16 @@ pub(crate) fn start_worker(
     let spawn = thread::Builder::new()
         .name(format!("kawi-plugin-{name}"))
         .spawn(move || {
-            Worker::new(plugin, events, wake, writer, status, event_filter).run(receiver);
+            Worker::new(
+                plugin,
+                events,
+                wake,
+                writer,
+                status,
+                event_filter,
+                capabilities,
+            )
+            .run(receiver);
         });
     if let Err(error) = spawn {
         set_status(

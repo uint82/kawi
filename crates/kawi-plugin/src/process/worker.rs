@@ -8,6 +8,7 @@ use serde_json::Value;
 use super::backoff::Backoff;
 use super::connection::{Connection, WriterSlot};
 use super::WorkerCommand;
+use crate::capability::{Capability, CapabilityRegistry};
 use crate::error::PluginError;
 use crate::host::{send_event, set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
@@ -27,6 +28,7 @@ pub(super) struct Worker {
     writer: WriterSlot,
     status: Arc<Mutex<PluginStatus>>,
     event_filter: Arc<Mutex<BTreeSet<String>>>,
+    capabilities: CapabilityRegistry,
     timeout: Duration,
     connection: Option<Connection>,
     backoff: Backoff,
@@ -40,6 +42,7 @@ impl Worker {
         writer: WriterSlot,
         status: Arc<Mutex<PluginStatus>>,
         event_filter: Arc<Mutex<BTreeSet<String>>>,
+        capabilities: CapabilityRegistry,
     ) -> Self {
         let timeout = Duration::from_millis(plugin.manifest.timeout_ms);
         Self {
@@ -49,6 +52,7 @@ impl Worker {
             writer,
             status,
             event_filter,
+            capabilities,
             timeout,
             connection: None,
             backoff: Backoff::new(),
@@ -122,6 +126,14 @@ impl Worker {
         if self.connection.is_none() {
             self.start_connection()?;
         }
+        let context = if self
+            .capabilities
+            .has(&self.plugin.manifest.name, Capability::EditorRead)
+        {
+            *job.context
+        } else {
+            InvocationContext::redacted()
+        };
         self.connection
             .as_mut()
             .ok_or(PluginError::ProcessExited)?
@@ -130,7 +142,7 @@ impl Worker {
                 InvokeParams {
                     command: job.command,
                     args: job.args,
-                    context: *job.context,
+                    context,
                 },
             )
     }
@@ -144,6 +156,7 @@ impl Worker {
             Arc::clone(&self.writer),
             self.timeout,
             Arc::clone(&self.event_filter),
+            self.capabilities.clone(),
         )?;
         if let Err(error) = connection.initialize() {
             connection.shutdown();
