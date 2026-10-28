@@ -373,6 +373,7 @@ fn draw_one_line(
     if pane.signs.is_some() || pane.gutter.get(screen_row).is_some() {
         paint::restore_base(out, theme)?;
     }
+    draw_left_virtual_text(out, pane, theme, screen_row)?;
     let width = pane.rect.width.saturating_sub(gutter_width);
     let end = pane.viewport.leftcol().saturating_add(width);
     let text = display::slice_screen(text, pane.viewport.leftcol(), end, pane.tabstop);
@@ -404,6 +405,29 @@ struct VirtualTextDraw<'a> {
     gutter_width: usize,
     width: usize,
     line_width: usize,
+}
+
+fn draw_left_virtual_text(
+    out: &mut Stdout,
+    pane: &PaneFrame<'_>,
+    theme: &Theme,
+    screen_row: usize,
+) -> Result<()> {
+    if pane.left_width == 0 {
+        return Ok(());
+    }
+    let text = pane
+        .virtual_texts
+        .get(screen_row)
+        .and_then(Option::as_ref)
+        .filter(|text| text.placement == VirtualTextPlacement::BeforeLine);
+    if let Some(text) = text {
+        paint::apply_faded_text(out, virtual_text_color(theme, text.kind))?;
+        write_padded(out, &text.text, pane.left_width)?;
+    } else {
+        write!(out, "{}", " ".repeat(pane.left_width)).context("write empty prefix")?;
+    }
+    finish_virtual_text(out, theme)
 }
 
 fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> {
@@ -454,14 +478,14 @@ fn virtual_text_layout(
     pane_width: usize,
     text: &VirtualText,
 ) -> Option<(usize, &str)> {
+    if text.placement == VirtualTextPlacement::BeforeLine {
+        return None;
+    }
     let remaining = pane_width.saturating_sub(line_width);
     if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
         return None;
     }
-    match text.placement {
-        VirtualTextPlacement::AfterLine => virtual_text_after_line(line_width, pane_width, text),
-        VirtualTextPlacement::RightEdge => virtual_text_at_right_edge(remaining, pane_width, text),
-    }
+    virtual_text_after_line(line_width, pane_width, text)
 }
 
 fn virtual_text_after_line(
@@ -473,19 +497,6 @@ fn virtual_text_after_line(
     let text_width = pane_width.saturating_sub(column);
     let clipped = truncate_to_display_width(&text.text, text_width);
     (!clipped.is_empty()).then_some((column, clipped))
-}
-
-fn virtual_text_at_right_edge(
-    remaining: usize,
-    pane_width: usize,
-    text: &VirtualText,
-) -> Option<(usize, &str)> {
-    let available = remaining.saturating_sub(VIRTUAL_TEXT_GAP);
-    let text_width = display_width(&text.text);
-    if text_width == 0 || text_width > available {
-        return None;
-    }
-    Some((pane_width.saturating_sub(text_width), &text.text))
 }
 
 fn draw_rulers(
@@ -551,7 +562,9 @@ fn draw_filler_rows(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Re
 
 fn gutter_width(pane: &PaneFrame<'_>) -> usize {
     let numbers = pane.gutter.first().map_or(0, |line| line.chars().count());
-    numbers + usize::from(pane.signs.is_some())
+    numbers
+        .saturating_add(usize::from(pane.signs.is_some()))
+        .saturating_add(pane.left_width)
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {
@@ -2494,13 +2507,10 @@ mod tests {
     }
 
     #[test]
-    fn metadata_virtual_text_aligns_to_the_right_edge() {
+    fn metadata_virtual_text_is_placed_before_the_line() {
         let text = VirtualText::metadata("-rw-r--r--    13 2026-10-28 14:32");
-        assert_eq!(
-            virtual_text_layout(4, 50, &text),
-            Some((17, "-rw-r--r--    13 2026-10-28 14:32"))
-        );
-        assert_eq!(virtual_text_layout(42, 50, &text), None);
+        assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
+        assert_eq!(virtual_text_layout(4, 50, &text), None);
     }
 
     #[test]

@@ -130,7 +130,7 @@ pub enum VirtualTextKind {
 pub enum VirtualTextPlacement {
     #[default]
     AfterLine,
-    RightEdge,
+    BeforeLine,
 }
 
 pub struct VirtualText {
@@ -152,7 +152,7 @@ impl VirtualText {
         Self {
             text: text.into(),
             kind: VirtualTextKind::Metadata,
-            placement: VirtualTextPlacement::RightEdge,
+            placement: VirtualTextPlacement::BeforeLine,
         }
     }
 }
@@ -166,6 +166,7 @@ pub struct PaneFrame<'a> {
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
     pub virtual_texts: &'a [Option<VirtualText>],
+    pub left_width: usize,
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
     pub syntax_spans: &'a [SyntaxSpan],
