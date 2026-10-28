@@ -1,3 +1,5 @@
+pub mod capability;
+
 mod error;
 mod host;
 mod manifest;
