@@ -166,17 +166,22 @@ impl App {
             return Ok(false);
         }
         let keys = decode_keys(text);
-        let mut quit = false;
-        'replay: for _ in 0..count {
-            for key in &keys {
+        self.synthetic_input_depth += 1;
+        let result = self.replay_macro_keys(&keys, count);
+        self.synthetic_input_depth -= 1;
+        self.macros.leave_replay();
+        result
+    }
+
+    fn replay_macro_keys(&mut self, keys: &[KeyEvent], count: usize) -> Result<bool> {
+        for _ in 0..count {
+            for key in keys {
                 if self.process_replayed_key(*key)? {
-                    quit = true;
-                    break 'replay;
+                    return Ok(true);
                 }
             }
         }
-        self.macros.leave_replay();
-        Ok(quit)
+        Ok(false)
     }
 
     pub(super) fn stops_macro_recording(&self, key: KeyEvent) -> bool {

@@ -124,9 +124,11 @@ pub struct App {
     commands: CommandRegistry,
     keymaps: KeymapResolver,
     plugins: plugin::PluginRuntime,
+    plugin_grants: plugin::GrantQueue,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
     send_keys_depth: usize,
+    synthetic_input_depth: usize,
     flavor: Flavor,
     theme: Theme,
     theme_dir: Option<PathBuf>,
@@ -229,9 +231,11 @@ impl App {
             commands: CommandRegistry::new(),
             keymaps: KeymapResolver::new(),
             plugins: plugin::PluginRuntime::default(),
+            plugin_grants: plugin::GrantQueue::default(),
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
             send_keys_depth: 0,
+            synthetic_input_depth: 0,
             flavor,
             theme: Theme::default(),
             theme_dir: None,
@@ -530,6 +534,8 @@ impl App {
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
+            let timeout =
+                shortest_timeout(timeout, self.plugin_grants.wait_timeout(Instant::now()));
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -783,6 +789,9 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
+        if self.plugin_grants.is_active() {
+            return self.handle_noop();
+        }
         self.window_prefix = false;
         if let Some(result) = self.handle_terminal_mouse(mouse) {
             return Ok(result);
@@ -966,6 +975,12 @@ impl App {
     }
 
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.plugin_grants.is_active() {
+            if self.synthetic_input_depth == 0 {
+                return Ok(self.handle_plugin_grant_key(key));
+            }
+            return Ok(false);
+        }
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
         }
@@ -1223,6 +1238,9 @@ impl App {
     }
 
     fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
+        if self.plugin_grants.is_active() {
+            return Ok(false);
+        }
         if self.pager.is_some() {
             return self.handle_pager_key(key);
         }
@@ -1327,6 +1345,13 @@ impl App {
     }
 
     fn send_key_chords(&mut self, keys: &[KeyChord]) -> Result<bool> {
+        self.synthetic_input_depth += 1;
+        let result = self.send_synthetic_chords(keys);
+        self.synthetic_input_depth -= 1;
+        result
+    }
+
+    fn send_synthetic_chords(&mut self, keys: &[KeyChord]) -> Result<bool> {
         for chord in keys {
             if self.handle_key_inner(chord.to_event())? {
                 return Ok(true);
@@ -1623,6 +1648,9 @@ impl App {
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
+        if self.plugin_grants.is_active() {
+            return Ok(false);
+        }
         self.window_prefix = false;
         self.diagnostic_popup = None;
         self.mark_diagnostic_input();

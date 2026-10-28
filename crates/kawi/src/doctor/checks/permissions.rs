@@ -41,20 +41,25 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
 }
 
 fn describe(capabilities: impl Iterator<Item = kawi_plugin::Capability>) -> String {
-    let names = capabilities
-        .map(|capability| {
-            if capability.is_advisory() {
-                format!("{} (advisory)", capability.name())
-            } else {
-                capability.name().to_string()
-            }
-        })
-        .collect::<Vec<_>>();
+    let names = capabilities.map(describe_capability).collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()
     } else {
         names.join(", ")
     }
+}
+
+fn describe_capability(capability: kawi_plugin::Capability) -> String {
+    if capability == kawi_plugin::Capability::NetConnect {
+        return format!("{} (advisory)", capability.name());
+    }
+    if capability.is_advisory() && kawi_process::sandbox_supported() {
+        return format!("{} (enforced)", capability.name());
+    }
+    if capability.is_advisory() {
+        return format!("{} (advisory)", capability.name());
+    }
+    capability.name().to_string()
 }
 
 #[cfg(test)]

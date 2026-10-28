@@ -1,4 +1,4 @@
-use kawi_plugin::PluginStatus;
+use kawi_plugin::{Capability, PluginStatus};
 
 use super::super::command_text::split_command;
 use super::super::App;
@@ -8,12 +8,14 @@ impl App {
         let text = text.trim();
         let (name, rest) = split_command(text);
         match name {
+            "grant" => self.grant_plugin_permission(rest),
             "list" => self.list_plugins(),
             "reload" => self.reload_permissions(),
             "restart" => self.restart_plugins(rest),
             "logs" => self.show_plugin_logs(rest),
             _ => self.show_message(
-                "Usage: plugin list | reload | restart [name] | logs [name]".to_string(),
+                "Usage: plugin grant <plugin> <capability> | list | reload | restart [name] | logs [name]"
+                    .to_string(),
             ),
         }
     }
@@ -29,6 +31,7 @@ impl App {
                     .plugins
                     .status(name)
                     .map(status_label)
+                    .map(|status| super::text::sanitize(&status))
                     .unwrap_or_else(|| "stopped".to_string());
                 let commands = plugin
                     .manifest
@@ -40,7 +43,11 @@ impl App {
                 let capabilities = self.plugins.capability_lines(name).join("; ");
                 format!(
                     "{:<16} {:<8} {:<20} {:<24} {}",
-                    name, plugin.manifest.version, status, capabilities, commands
+                    name,
+                    super::text::sanitize(&plugin.manifest.version),
+                    status,
+                    capabilities,
+                    commands
                 )
             })
             .collect::<Vec<_>>();
@@ -56,6 +63,42 @@ impl App {
         } else {
             self.show_pager(lines);
         }
+    }
+
+    fn grant_plugin_permission(&mut self, rest: &str) {
+        let mut parts = rest.split_whitespace();
+        let (Some(plugin), Some(capability)) = (parts.next(), parts.next()) else {
+            self.show_message("Usage: plugin grant <plugin> <capability>".to_string());
+            return;
+        };
+        if parts.next().is_some() {
+            self.show_message("Usage: plugin grant <plugin> <capability>".to_string());
+            return;
+        }
+        let Some(capability) = Capability::parse(capability) else {
+            self.show_message(format!(
+                "Unknown capability: {}",
+                super::text::sanitize(capability)
+            ));
+            return;
+        };
+        if self.plugins.request_scope(plugin, capability).is_none() {
+            self.show_message(format!(
+                "{} does not request {}",
+                super::text::sanitize(plugin),
+                capability.name()
+            ));
+            return;
+        }
+        if self.plugins.has_capability(plugin, capability) {
+            self.show_message(format!(
+                "{} already has {}",
+                super::text::sanitize(plugin),
+                capability.name()
+            ));
+            return;
+        }
+        self.request_plugin_grant(plugin, capability);
     }
 
     fn reload_permissions(&mut self) {
@@ -78,7 +121,10 @@ impl App {
                 };
                 self.show_message(message);
             }
-            Err(error) => self.show_message(format!("Cannot restart plugin: {error}")),
+            Err(error) => self.show_message(format!(
+                "Cannot restart plugin: {}",
+                super::text::sanitize(&error.to_string())
+            )),
         }
     }
 
@@ -88,7 +134,10 @@ impl App {
             self.all_plugin_logs()
         } else {
             self.plugins.logs(name)
-        };
+        }
+        .into_iter()
+        .map(|line| super::text::sanitize(&line))
+        .collect::<Vec<_>>();
         if lines.is_empty() {
             self.show_message("No plugin logs".to_string());
         } else {
