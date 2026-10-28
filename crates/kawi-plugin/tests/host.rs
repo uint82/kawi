@@ -252,6 +252,19 @@ fn unknown_event_subscriptions_are_ignored() {
     let host = TestHost::start("normal", 1_000);
     assert_eq!(
         host.host
+            .notify("fake", "buffer_changed", json!({"buffer": 1}))
+            .unwrap(),
+        NotifyOutcome::NotRunning
+    );
+    host.host.activate("fake").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while host.host.status("fake") != Some(PluginStatus::Ready)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        host.host
             .notify("fake", "unknown_event", json!({"buffer": 1}))
             .unwrap(),
         NotifyOutcome::NotSubscribed
@@ -260,7 +273,7 @@ fn unknown_event_subscriptions_are_ignored() {
         host.host
             .notify("fake", "buffer_changed", json!({"buffer": 1}))
             .unwrap(),
-        NotifyOutcome::NotRunning
+        NotifyOutcome::Queued
     );
 }
 
@@ -299,13 +312,13 @@ fn event_flood_against_a_stalled_plugin_drops_without_blocking() {
     let started = std::time::Instant::now();
     let mut overflow = 0;
     for revision in 0..10_000 {
-        match host
+        if host
             .host
             .notify("fake", "buffer_changed", json!({"revision": revision}))
             .unwrap()
+            == NotifyOutcome::Overflow
         {
-            NotifyOutcome::Overflow => overflow += 1,
-            _ => {}
+            overflow += 1;
         }
     }
     assert!(overflow > 0);

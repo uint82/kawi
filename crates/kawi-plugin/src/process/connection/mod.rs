@@ -34,6 +34,7 @@ pub(super) struct Connection {
     alive: Arc<AtomicBool>,
     allowed_host_methods: Arc<Mutex<BTreeSet<String>>>,
     event_filter: Arc<Mutex<BTreeSet<String>>>,
+    subscribes: BTreeSet<String>,
     writer_slot: WriterSlot,
     timeout: Duration,
 }
@@ -122,6 +123,7 @@ impl Connection {
             alive,
             allowed_host_methods,
             event_filter,
+            subscribes: plugin.manifest.subscribes.iter().cloned().collect(),
             writer_slot,
             timeout,
         })
@@ -160,10 +162,16 @@ impl Connection {
             .lock()
             .unwrap_or_else(|error| error.into_inner()) =
             result.host_capabilities.iter().cloned().collect();
-        self.event_filter
+        let subscribed = self
+            .subscribes
+            .iter()
+            .filter(|event| result.events.contains(event))
+            .cloned()
+            .collect();
+        *self
+            .event_filter
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .retain(|event| result.events.contains(event));
+            .unwrap_or_else(|error| error.into_inner()) = subscribed;
         Ok(result)
     }
 

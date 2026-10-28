@@ -50,6 +50,14 @@ impl WorkerHandle {
     }
 
     pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
+        let writer = self
+            .writer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let Some(writer) = writer else {
+            return NotifyOutcome::NotRunning;
+        };
         if !crate::protocol::EVENT_NAMES.contains(&event)
             || !self
                 .event_filter
@@ -59,14 +67,6 @@ impl WorkerHandle {
         {
             return NotifyOutcome::NotSubscribed;
         }
-        let writer = self
-            .writer
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        let Some(writer) = writer else {
-            return NotifyOutcome::NotRunning;
-        };
         match writer.try_send(crate::protocol::event_value(event, payload)) {
             Ok(()) => NotifyOutcome::Queued,
             Err(std::sync::mpsc::TrySendError::Full(_)) => NotifyOutcome::Overflow,
@@ -108,9 +108,7 @@ pub(crate) fn start_worker(
     let (commands, receiver) = mpsc::channel();
     let writer = Arc::new(Mutex::new(None));
     let status = Arc::new(Mutex::new(PluginStatus::Stopped));
-    let event_filter = Arc::new(Mutex::new(
-        plugin.manifest.subscribes.iter().cloned().collect(),
-    ));
+    let event_filter = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let handle = WorkerHandle {
         commands,
         writer: Arc::clone(&writer),
