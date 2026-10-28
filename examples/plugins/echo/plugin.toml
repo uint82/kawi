@@ -5,6 +5,9 @@ description = "Example Kawi plugin"
 command = ["python3", "${plugin_dir}/plugin.py"]
 timeout_ms = 5000
 
+[capabilities]
+"ui.message" = true
+
 [[commands]]
 id = "ping"
 title = "Ping the plugin"
