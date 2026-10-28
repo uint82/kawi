@@ -85,8 +85,8 @@ Kawi sends `buffer_changed`, `buffer_opened`, `file_opened`, `buffer_closed`, `f
 - Delivery is separate from activation. A stopped plugin receives nothing and is not started by an event.
 - Each plugin has a bounded queue. Buffer changes are coalesced per buffer, optional debounce applies, and other events are dropped with a log line when the queue is full.
 - `buffer_changed` carries the buffer identifier, revision, previous revision, origin, UTF-8 byte edits, and a `full_resync` flag. Apply edits in order, or call `editor.get_state` when the revision does not match.
-- Origins are `user`, `undo`, `plugin:<name>`, and `external_reload`. A plugin does not receive its own edits.
-- `:plugin logs example` reports queue overflows.
+- Origins are `user`, `undo`, `plugin:<name>`, `external_reload`, and `mixed`. A plugin does not receive its own edits. Mixed origins force a resync instead of partial filtering.
+- `:plugin logs example` reports queue overflows. An overflow forces a resync on the next delivered change. Crashes and restarts clear queued events.
 
 Kawi sends diagnostics from LSP and tasks to plugins. Plugin-published diagnostics are reserved for a future minor version.
 
@@ -105,7 +105,7 @@ See [Plugin protocol](help:plugin-protocol) for framing, capability negotiation,
 The repository includes two Python examples:
 
 - `examples/plugins/echo` registers `echo.ping` and `echo.hello`.
-- `examples/plugins/trim` trims trailing whitespace on `file_saved` and through the `trim.trim` command.
+- `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command. It is a trim-after-save plugin: the saved file is not trimmed until the next save, and the buffer becomes dirty after trimming. It is not a format-before-save hook.
 
 Copy either directory to `~/.config/kawi/plugins` to try it.
 

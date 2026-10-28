@@ -200,7 +200,7 @@ Event names:
 
 `buffer_changed` carries revisions, not full text. Apply `changes` in order. If `previous_revision` does not match the last revision the plugin applied, or `full_resync` is true, call `editor.get_state`. Kawi coalesces rapid changes and may mark a coalesced event `full_resync`.
 
-`origin` is one of `user`, `undo`, `plugin:<name>`, or `external_reload`. A plugin does not receive its own `plugin:<name>` edits by default.
+`origin` is one of `user`, `undo`, `plugin:<name>`, `external_reload`, or `mixed`. A plugin does not receive its own `plugin:<name>` edits by default. When origins or own edits mix, Kawi sends `full_resync` instead of filtering part of the change.
 
 `diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision.
 
@@ -208,7 +208,7 @@ Events are post-hoc notifications. They never wait for a plugin response. Kawi d
 
 Notifications and requests share one ordered pipe per plugin. Ordering is guaranteed per plugin and per event type. `editor.get_state` always returns live state and includes the current revision.
 
-Each plugin has a bounded event queue. Kawi coalesces or debounces `buffer_changed`; other events are dropped with a log line when the queue is full. A plugin that overflows repeatedly may be restarted or disabled.
+Each plugin has a bounded event queue. Kawi coalesces or debounces `buffer_changed`; other events are dropped with a log line when the queue is full. An overflow marks the buffer for resync, so the next delivered change has `full_resync: true`. A crash or restart clears queued events and forces resync.
 
 Kawi currently sends diagnostics to plugins. Plugin-published diagnostics are reserved for a future minor version as `editor.set_diagnostics`, scoped by plugin name.
 
