@@ -93,14 +93,16 @@ fn start(
     (handle, events_rx)
 }
 
-fn request_paths(mut plugin: LoadedPlugin, capability: Capability, path: &str) -> LoadedPlugin {
-    let mut scope = toml::Table::new();
-    scope.insert(
-        "paths".to_string(),
-        toml::Value::Array(vec![toml::Value::String(path.to_string())]),
-    );
+fn request_paths(mut plugin: LoadedPlugin, paths: &[(Capability, &str)]) -> LoadedPlugin {
     let mut requests = toml::Table::new();
-    requests.insert(capability.name().to_string(), toml::Value::Table(scope));
+    for (capability, path) in paths {
+        let mut scope = toml::Table::new();
+        scope.insert(
+            "paths".to_string(),
+            toml::Value::Array(vec![toml::Value::String((*path).to_string())]),
+        );
+        requests.insert(capability.name().to_string(), toml::Value::Table(scope));
+    }
     plugin.manifest.capability_requests = crate::capability::parse_capability_requests(&requests).0;
     plugin
 }

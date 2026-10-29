@@ -125,12 +125,11 @@ fn rejects_an_import_outside_the_manifest_without_prompting() {
 }
 
 #[test]
-fn requests_only_the_manifest_filesystem_alternative() {
+fn rejects_a_partially_requested_filesystem_import() {
     let path = std::env::temp_dir();
     let plugin = request_paths(
         plugin_with("fs-sandbox.wasm"),
-        Capability::FsRead,
-        &path.to_string_lossy(),
+        &[(Capability::FsRead, &path.to_string_lossy())],
     );
     let dir = plugin.dir.clone();
     let name = plugin.manifest.name.clone();
@@ -138,6 +137,31 @@ fn requests_only_the_manifest_filesystem_alternative() {
     handle
         .invoke(
             15,
+            "run".to_string(),
+            json!([]),
+            InvocationContext::redacted(),
+        )
+        .unwrap();
+    let (requested, error) = wait_for_import_failure(&events_rx);
+    assert!(requested.is_empty());
+    assert!(error.to_string().contains("not requested"), "{error}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn requests_one_manifest_filesystem_alternative() {
+    let path = std::env::temp_dir();
+    let path = path.to_string_lossy();
+    let plugin = request_paths(
+        plugin_with("fs-sandbox.wasm"),
+        &[(Capability::FsRead, &path), (Capability::FsWrite, &path)],
+    );
+    let dir = plugin.dir.clone();
+    let name = plugin.manifest.name.clone();
+    let (handle, events_rx) = start(plugin, grants(&name, &[]));
+    handle
+        .invoke(
+            16,
             "run".to_string(),
             json!([]),
             InvocationContext::redacted(),
@@ -167,7 +191,7 @@ fn reports_each_missing_capability_once() {
     let (handle, events_rx) = start(plugin, grants(&name, &[]));
     handle
         .invoke(
-            16,
+            17,
             "ping".to_string(),
             json!([]),
             InvocationContext::redacted(),

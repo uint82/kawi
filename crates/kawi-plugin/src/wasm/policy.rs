@@ -114,12 +114,9 @@ pub fn unauthorized_imports<'a>(
         .into_iter()
         .filter(|name| match import_capabilities(name) {
             None => true,
-            Some(capabilities) => {
-                !capabilities.is_empty()
-                    && !capabilities
-                        .iter()
-                        .any(|capability| requested.contains(capability))
-            }
+            Some(capabilities) => capabilities
+                .iter()
+                .any(|capability| !requested.contains(capability)),
         })
         .collect()
 }
@@ -189,8 +186,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_imports_beyond_manifest_requests() {
+    fn rejects_partially_requested_alternatives() {
         let requested = BTreeSet::from([Capability::EditorRead, Capability::FsRead]);
+        assert_eq!(
+            unauthorized_imports(["wasi:filesystem/types@0.2.12"].into_iter(), &requested),
+            vec!["wasi:filesystem/types@0.2.12"]
+        );
+    }
+
+    #[test]
+    fn rejects_imports_beyond_manifest_requests() {
+        let requested = BTreeSet::from([
+            Capability::EditorRead,
+            Capability::FsRead,
+            Capability::FsWrite,
+        ]);
         let imports = [
             "wasi:cli/environment@0.2.12",
             "wasi:filesystem/types@0.2.12",

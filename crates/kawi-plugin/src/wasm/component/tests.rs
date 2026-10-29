@@ -96,7 +96,11 @@ fn accepts_versioned_wasi_imports_with_a_grant() {
         .inspect(
             &fixture("editor-and-fs.wasm"),
             None,
-            &[Capability::EditorRead, Capability::FsRead],
+            &[
+                Capability::EditorRead,
+                Capability::FsRead,
+                Capability::FsWrite,
+            ],
         )
         .unwrap();
     assert!(inspection

@@ -73,9 +73,9 @@ fn blocks_preopen_escapes_and_read_only_writes() {
 }
 
 fn fs_plugin(component: &str, allowed: &Path) -> LoadedPlugin {
+    let path = allowed.to_string_lossy();
     request_paths(
         plugin_with(component),
-        Capability::FsRead,
-        &allowed.to_string_lossy(),
+        &[(Capability::FsRead, &path), (Capability::FsWrite, &path)],
     )
 }
