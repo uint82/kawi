@@ -1,9 +1,12 @@
 mod queue;
 
+pub(super) use self::queue::GrantKind;
 pub(crate) use self::queue::GrantQueue;
 use std::time::Instant;
 
-use self::queue::{changed_request_summary, navigation_key, Enqueue, GrantPrompt, GrantRequest};
+use self::queue::{
+    changed_request_summary, navigation_key, Enqueue, GrantChoice, GrantPrompt, GrantRequest,
+};
 use crossterm::event::{KeyCode, KeyEvent};
 use kawi_plugin::Capability;
 
@@ -11,17 +14,28 @@ use super::super::App;
 use super::text::sanitize;
 
 impl App {
-    pub(super) fn request_plugin_grant(&mut self, plugin: &str, capability: Capability) {
+    pub(super) fn request_plugin_grant(
+        &mut self,
+        plugin: &str,
+        capability: Capability,
+        kind: GrantKind,
+    ) {
         if self.plugins.has_capability(plugin, capability)
             || self.plugins.request_scope(plugin, capability).is_none()
         {
             return;
         }
+        let kind = if self.plugins.is_wasm(plugin) {
+            GrantKind::Startup
+        } else {
+            kind
+        };
         let request = GrantRequest {
             plugin: plugin.to_string(),
             capability,
             changed: self.plugins.is_changed(plugin),
             changed_requests: self.plugins.changed_requests(plugin),
+            kind,
         };
         match self.plugin_grants.enqueue(request, Instant::now()) {
             Enqueue::Activated => self.show_grant_prompt_message(),
@@ -51,7 +65,8 @@ impl App {
             }
             KeyCode::Enter => {
                 let request = prompt.request().clone();
-                self.apply_grant(request, prompt.selected());
+                let choice = prompt.choice();
+                self.apply_grant(request, choice);
             }
             _ => self.plugin_grants.restore_active(prompt),
         }
@@ -80,11 +95,11 @@ impl App {
             .map(|prompt| (self.plugin_grants.items(), prompt.selected()))
     }
 
-    fn apply_grant(&mut self, request: GrantRequest, selected: usize) {
-        match selected {
-            0 => self.grant_once(request),
-            1 => self.grant_always(request),
-            _ => self.deny_grant(&request),
+    fn apply_grant(&mut self, request: GrantRequest, choice: GrantChoice) {
+        match choice {
+            GrantChoice::Once => self.grant_once(request),
+            GrantChoice::Always => self.grant_always(request),
+            GrantChoice::Deny => self.deny_grant(&request),
         }
         self.advance_grant();
     }
@@ -120,24 +135,29 @@ impl App {
                     ));
                     return;
                 }
-                self.fallback_allow_once(&request, "grant was not applied");
+                self.handle_grant_failure(&request, "grant was not applied");
             }
-            Err(error) => self.fallback_allow_once(&request, &error),
+            Err(error) => self.handle_grant_failure(&request, &error),
         }
     }
 
-    fn fallback_allow_once(&mut self, request: &GrantRequest, reason: &str) {
+    fn handle_grant_failure(&mut self, request: &GrantRequest, reason: &str) {
+        if request.kind == GrantKind::Startup {
+            self.show_grant_failure(request, reason, "cannot save grant");
+            return;
+        }
         self.plugins.allow_next(&request.plugin, request.capability);
         self.plugins
             .clear_denial(&request.plugin, request.capability);
+        self.show_grant_failure(request, reason, "cannot save grant; allowing once");
+    }
+
+    fn show_grant_failure(&mut self, request: &GrantRequest, reason: &str, suffix: &str) {
         self.plugins.push_log(
             &request.plugin,
             &format!("cannot save grant: {}", sanitize(reason)),
         );
-        self.show_message(format!(
-            "{}: cannot save grant; allowing once",
-            sanitize(&request.plugin)
-        ));
+        self.show_message(format!("{}: {suffix}", sanitize(&request.plugin)));
     }
 
     fn deny_grant(&mut self, request: &GrantRequest) {

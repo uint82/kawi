@@ -6,9 +6,36 @@ use kawi_plugin::Capability;
 
 use super::super::text::sanitize;
 
-pub(super) const CHOICES: [&str; 3] = ["Allow once", "Allow always", "Deny"];
+const CALL_CHOICES: [&str; 3] = ["Allow once", "Allow always", "Deny"];
+const STARTUP_CHOICES: [&str; 2] = ["Allow always", "Deny"];
 const MAX_PENDING: usize = 8;
 const PROMPT_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GrantKind {
+    Call,
+    Startup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GrantChoice {
+    Once,
+    Always,
+    Deny,
+}
+
+impl GrantKind {
+    pub(super) fn choices(self) -> &'static [&'static str] {
+        match self {
+            Self::Call => &CALL_CHOICES,
+            Self::Startup => &STARTUP_CHOICES,
+        }
+    }
+
+    fn initial_selection(self) -> usize {
+        self.choices().len() - 1
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GrantRequest {
@@ -16,6 +43,7 @@ pub(super) struct GrantRequest {
     pub(super) capability: Capability,
     pub(super) changed: bool,
     pub(super) changed_requests: Vec<String>,
+    pub(super) kind: GrantKind,
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +65,8 @@ pub(super) enum Enqueue {
 pub(crate) struct GrantQueue {
     active: Option<GrantPrompt>,
     pending: VecDeque<GrantRequest>,
-    choices: [String; 3],
+    call_choices: [String; 3],
+    startup_choices: [String; 2],
 }
 
 impl Default for GrantQueue {
@@ -45,7 +74,8 @@ impl Default for GrantQueue {
         Self {
             active: None,
             pending: VecDeque::new(),
-            choices: CHOICES.map(str::to_string),
+            call_choices: CALL_CHOICES.map(str::to_string),
+            startup_choices: STARTUP_CHOICES.map(str::to_string),
         }
     }
 }
@@ -83,7 +113,11 @@ impl GrantQueue {
     }
 
     pub(super) fn items(&self) -> &[String] {
-        &self.choices
+        lift(
+            self.active.as_ref().map(|prompt| prompt.request.kind),
+            &self.call_choices,
+            &self.startup_choices,
+        )
     }
 
     pub(super) fn expire(&mut self, now: Instant) -> Option<GrantRequest> {
@@ -126,9 +160,10 @@ impl GrantQueue {
 
 impl GrantPrompt {
     fn new(request: GrantRequest, now: Instant) -> Self {
+        let selected = request.kind.initial_selection();
         Self {
             request,
-            selected: CHOICES.len() - 1,
+            selected,
             expires_at: now + PROMPT_TTL,
         }
     }
@@ -142,8 +177,17 @@ impl GrantPrompt {
     }
 
     pub(super) fn move_by(&mut self, delta: isize) {
-        self.selected =
-            (self.selected as isize + delta).rem_euclid(CHOICES.len() as isize) as usize;
+        let choices = self.request.kind.choices().len() as isize;
+        self.selected = (self.selected as isize + delta).rem_euclid(choices) as usize;
+    }
+
+    pub(super) fn choice(&self) -> GrantChoice {
+        match (self.request.kind, self.selected) {
+            (GrantKind::Call, 0) => GrantChoice::Once,
+            (GrantKind::Call, 1) => GrantChoice::Always,
+            (GrantKind::Startup, 0) => GrantChoice::Always,
+            _ => GrantChoice::Deny,
+        }
     }
 
     pub(super) fn accepts_key(key: KeyEvent) -> bool {
@@ -170,7 +214,18 @@ pub(super) fn changed_request_summary(request: &GrantRequest) -> String {
 }
 
 fn same_request(left: &GrantRequest, right: &GrantRequest) -> bool {
-    left.plugin == right.plugin && left.capability == right.capability
+    left.plugin == right.plugin && left.capability == right.capability && left.kind == right.kind
+}
+
+fn lift<'a>(
+    kind: Option<GrantKind>,
+    call_choices: &'a [String],
+    startup_choices: &'a [String],
+) -> &'a [String] {
+    match kind {
+        Some(GrantKind::Startup) => startup_choices,
+        Some(GrantKind::Call) | None => call_choices,
+    }
 }
 
 pub(super) fn navigation_key(key: KeyEvent) -> Option<isize> {
@@ -182,73 +237,4 @@ pub(super) fn navigation_key(key: KeyEvent) -> Option<isize> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request(plugin: &str, capability: Capability) -> GrantRequest {
-        GrantRequest {
-            plugin: plugin.to_string(),
-            capability,
-            changed: false,
-            changed_requests: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn queues_one_prompt_and_deduplicates_requests() {
-        let now = Instant::now();
-        let mut queue = GrantQueue::default();
-        assert_eq!(
-            queue.enqueue(request("a", Capability::EditorRead), now),
-            Enqueue::Activated
-        );
-        assert_eq!(
-            queue.enqueue(request("b", Capability::EditorRead), now),
-            Enqueue::Queued
-        );
-        assert_eq!(
-            queue.enqueue(request("a", Capability::EditorRead), now),
-            Enqueue::Duplicate
-        );
-    }
-
-    #[test]
-    fn caps_the_pending_queue() {
-        let now = Instant::now();
-        let mut queue = GrantQueue::default();
-        queue.enqueue(request("active", Capability::EditorRead), now);
-        for index in 0..MAX_PENDING {
-            assert_eq!(
-                queue.enqueue(
-                    request(&format!("pending-{index}"), Capability::EditorRead),
-                    now
-                ),
-                Enqueue::Queued
-            );
-        }
-        assert_eq!(
-            queue.enqueue(request("overflow", Capability::EditorRead), now),
-            Enqueue::Full
-        );
-    }
-
-    #[test]
-    fn expiry_lapses_the_active_prompt() {
-        let now = Instant::now();
-        let mut queue = GrantQueue::default();
-        queue.enqueue(request("a", Capability::EditorRead), now);
-        assert!(queue.expire(now + PROMPT_TTL).is_some());
-        assert!(queue.active().is_none());
-    }
-
-    #[test]
-    fn changed_summary_is_bounded() {
-        let mut request = request("a", Capability::FsWrite);
-        request.changed = true;
-        request.changed_requests = (0..5).map(|index| format!("cap {index} added")).collect();
-        assert_eq!(
-            changed_request_summary(&request),
-            " Changed: cap 0 added, cap 1 added."
-        );
-    }
-}
+mod tests;

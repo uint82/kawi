@@ -1,6 +1,11 @@
 use std::fs;
 use std::path::Path;
 
+#[cfg(feature = "wasm")]
+use std::time::{Duration, Instant};
+
+#[cfg(feature = "wasm")]
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use sha2::{Digest, Sha256};
 
 use kawi_plugin::PluginStatus;
@@ -82,6 +87,10 @@ fn write_plugin(root: &Path, declared: Option<&str>) -> String {
 }
 
 fn write_plugin_bytes(root: &Path, bytes: &[u8], declared: Option<&str>) -> String {
+    write_plugin_manifest(root, bytes, declared, "")
+}
+
+fn write_plugin_manifest(root: &Path, bytes: &[u8], declared: Option<&str>, extra: &str) -> String {
     let dir = root.join("wasm");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("plugin.wasm"), bytes).unwrap();
@@ -90,11 +99,58 @@ fn write_plugin_bytes(root: &Path, bytes: &[u8], declared: Option<&str>) -> Stri
     fs::write(
         dir.join("plugin.toml"),
         format!(
-            "name = \"wasm\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"{declared}\"\n\n[capabilities]\n\"editor.read\" = true\n"
+            "name = \"wasm\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"{declared}\"\n\n[capabilities]\n\"editor.read\" = true\n{extra}"
         ),
     )
     .unwrap();
     hash
+}
+
+#[cfg(feature = "wasm")]
+fn write_startup_plugin(root: &Path) -> String {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../kawi-plugin/tests/fixtures/wasm/editor-host.wasm");
+    let bytes = fs::read(fixture).unwrap();
+    write_plugin_manifest(
+        root,
+        &bytes,
+        None,
+        "\n[[activation_events]]\nevent = \"on_startup\"\n",
+    )
+}
+
+#[cfg(feature = "wasm")]
+#[test]
+fn startup_import_denial_opens_grant_prompt_and_restarts_on_grant() {
+    let root = temp_dir("wasm-startup-consent");
+    write_startup_plugin(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !app.plugin_grants.is_active() && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.plugin_grants.is_active());
+    assert!(app
+        .message
+        .as_deref()
+        .is_some_and(|message| message.contains("wasm requests editor.read")));
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!app.plugin_grants.is_active());
+    assert!(app
+        .plugins
+        .has_capability("wasm", kawi_plugin::Capability::EditorRead));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.plugins.status("wasm") != Some(PluginStatus::Ready) && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.plugins.status("wasm"), Some(PluginStatus::Ready));
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(feature = "wasm")]
