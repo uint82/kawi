@@ -21,6 +21,7 @@ use super::bindings::kawi::plugin::{
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
+use super::net::NetworkPolicy;
 use super::policy::missing_import_capabilities;
 use super::process::ProcessRunner;
 use super::state::{output_pipes, HostBridge, PendingCalls, WasmState};
@@ -224,7 +225,15 @@ fn build_wasi(
     stdout: MemoryOutputPipe,
     stderr: MemoryOutputPipe,
 ) -> Result<wasmtime_wasi::WasiCtx, PluginError> {
-    let mut config = WasiConfig::new().stdout(stdout).stderr(stderr);
+    let network = NetworkPolicy::from_scope(
+        capabilities
+            .scope(&plugin.manifest.name, Capability::NetConnect)
+            .as_ref(),
+    );
+    let mut config = WasiConfig::new()
+        .stdout(stdout)
+        .stderr(stderr)
+        .network(network);
     config = add_preopens(
         config,
         plugin,

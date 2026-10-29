@@ -5,6 +5,8 @@ use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder};
 
 use crate::error::PluginError;
 
+use super::net::NetworkPolicy;
+
 pub struct WasiConfig {
     builder: WasiCtxBuilder,
 }
@@ -40,6 +42,18 @@ impl WasiConfig {
             .preopened_dir(host_path, guest_path, perms)
             .map_err(|error| PluginError::Initialize(format!("wasi preopen: {error}")))?;
         Ok(self)
+    }
+
+    pub(crate) fn network(mut self, policy: NetworkPolicy) -> Self {
+        self.builder
+            .allow_ip_name_lookup(policy.allows_name_lookup());
+        self.builder.allow_tcp(policy.is_enabled());
+        self.builder.allow_udp(false);
+        self.builder.socket_addr_check(move |address, use_| {
+            let allowed = policy.allows(address, use_);
+            Box::pin(async move { allowed })
+        });
+        self
     }
 
     pub fn build(self) -> WasiCtx {
