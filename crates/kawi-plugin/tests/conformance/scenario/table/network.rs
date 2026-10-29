@@ -1,5 +1,10 @@
 use super::super::{Action, Behavior, Expected, Group, Scenario};
 
+#[cfg(feature = "wasm-test-network")]
+const HOSTNAME_EXPECTED: Expected = Expected::Success;
+#[cfg(not(feature = "wasm-test-network"))]
+const HOSTNAME_EXPECTED: Expected = Expected::Denied("net.connect");
+
 pub(crate) const ROWS: &[Scenario] = &[
     Scenario {
         id: "wasm.net.no_grant",
@@ -8,6 +13,26 @@ pub(crate) const ROWS: &[Scenario] = &[
         grants: &[],
         action: Action::NetworkProbe,
         expected: Expected::Crashed,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "wasm.net.connection_cap_denied",
+        group: Group::Network,
+        behavior: Behavior::NetworkProbe,
+        grants: &[],
+        action: Action::NetworkProbe,
+        expected: Expected::Denied("net.connect"),
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "wasm.net.restart_closes_socket",
+        group: Group::Network,
+        behavior: Behavior::NetworkProbe,
+        grants: &[],
+        action: Action::NetworkProbe,
+        expected: Expected::Success,
         covers_methods: &[],
         covers_events: &[],
     },
@@ -62,22 +87,12 @@ pub(crate) const ROWS: &[Scenario] = &[
         covers_events: &[],
     },
     Scenario {
-        id: "wasm.net.dns_private_denied",
+        id: "wasm.net.hostname_allowed",
         group: Group::Network,
         behavior: Behavior::NetworkProbe,
         grants: &[],
         action: Action::NetworkProbe,
-        expected: Expected::Denied("net.connect"),
-        covers_methods: &[],
-        covers_events: &[],
-    },
-    Scenario {
-        id: "wasm.net.hostname_connect_denied",
-        group: Group::Network,
-        behavior: Behavior::NetworkProbe,
-        grants: &[],
-        action: Action::NetworkProbe,
-        expected: Expected::Denied("net.connect"),
+        expected: HOSTNAME_EXPECTED,
         covers_methods: &[],
         covers_events: &[],
     },

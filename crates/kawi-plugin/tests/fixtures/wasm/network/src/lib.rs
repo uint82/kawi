@@ -5,11 +5,14 @@ wit_bindgen::generate!({
 
 use std::io;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
+use std::sync::Mutex;
 
 use exports::kawi::plugin::lifecycle::Guest;
 use kawi::plugin::types::{Argument, Error, Event};
 
 struct Plugin;
+
+static HELD: Mutex<Option<TcpStream>> = Mutex::new(None);
 
 const CAPABILITY_DENIED: i32 = -32012;
 const NETWORK_CAPABILITY: &str = "net.connect";
@@ -39,10 +42,25 @@ impl Guest for Plugin {
     }
 
     fn invoke_command(id: String, args: Vec<Argument>) -> Result<Argument, Error> {
+        if id == "ping" {
+            return Ok(text("pong"));
+        }
         let address = argument(&args)?;
         match id.as_str() {
             "connect" => TcpStream::connect(address)
                 .map(|_| text("connected"))
+                .map_err(failure),
+            "connect-many" => {
+                for _ in 0..65 {
+                    TcpStream::connect(address).map_err(failure)?;
+                }
+                Ok(text("connected"))
+            }
+            "hold" => TcpStream::connect(address)
+                .map(|stream| {
+                    *HELD.lock().expect("held socket lock") = Some(stream);
+                    text("held")
+                })
                 .map_err(failure),
             "resolve" => address
                 .to_socket_addrs()

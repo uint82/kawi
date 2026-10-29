@@ -145,8 +145,11 @@ status = "pass"
 [rows."wasm.net.dns_ip_allowed"]
 status = "pass"
 
-[rows."wasm.net.hostname_connect_denied"]
+[rows."wasm.net.hostname_allowed"]
 status = "pass"
 
-[rows."wasm.net.dns_private_denied"]
+[rows."wasm.net.restart_closes_socket"]
+status = "pass"
+
+[rows."wasm.net.connection_cap_denied"]
 status = "pass"

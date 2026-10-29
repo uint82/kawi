@@ -34,6 +34,16 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::None,
         },
+        "wasm.net.connection_cap_denied" => NetworkCase {
+            command: "connect-many",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.restart_closes_socket" => NetworkCase {
+            command: "hold",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
         "wasm.net.connect_allowed" => NetworkCase {
             command: "connect",
             target: NetworkTarget::Allowed,
@@ -59,12 +69,7 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::PublicIp,
             grant: NetworkGrant::Hostname,
         },
-        "wasm.net.dns_private_denied" => NetworkCase {
-            command: "resolve",
-            target: NetworkTarget::Hostname,
-            grant: NetworkGrant::Hostname,
-        },
-        "wasm.net.hostname_connect_denied" => NetworkCase {
+        "wasm.net.hostname_allowed" => NetworkCase {
             command: "connect",
             target: NetworkTarget::Hostname,
             grant: NetworkGrant::Hostname,

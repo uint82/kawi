@@ -185,12 +185,17 @@ status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"
 
-[rows."wasm.net.hostname_connect_denied"]
+[rows."wasm.net.hostname_allowed"]
 status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"
 
-[rows."wasm.net.dns_private_denied"]
+[rows."wasm.net.restart_closes_socket"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connection_cap_denied"]
 status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"

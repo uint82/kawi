@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::{Ipv4Addr, SocketAddr, TcpListener};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -37,7 +37,7 @@ pub(crate) struct ConformanceHost {
     pub(crate) policy: Arc<Mutex<Policy>>,
     pub(crate) network_allowed: Option<SocketAddr>,
     pub(crate) network_denied: Option<SocketAddr>,
-    _network_listeners: Option<(TcpListener, TcpListener)>,
+    network_listeners: Option<(TcpListener, TcpListener)>,
     _wake: Receiver<()>,
 }
 
@@ -107,7 +107,7 @@ impl ConformanceHost {
             policy,
             network_allowed: network.allowed,
             network_denied: network.denied,
-            _network_listeners: network.listeners,
+            network_listeners: network.listeners,
             _wake: wake_rx,
         }
     }
@@ -191,6 +191,14 @@ impl ConformanceHost {
         self.host
             .notify(PLUGIN_NAME, event, payload)
             .expect("notify conformance plugin")
+    }
+
+    pub(crate) fn accept_allowed(&self) -> std::io::Result<TcpStream> {
+        let (listener, _) = self
+            .network_listeners
+            .as_ref()
+            .expect("network scenario has no listener");
+        listener.accept().map(|(stream, _)| stream)
     }
 
     pub(crate) fn network_target(&self, target: NetworkTarget) -> String {
