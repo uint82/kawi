@@ -28,6 +28,7 @@ impl RuntimeReport {
 pub(super) struct Report {
     runtimes: BTreeMap<&'static str, RuntimeReport>,
     not_built: BTreeMap<&'static str, &'static str>,
+    sandbox: Option<String>,
 }
 
 impl Report {
@@ -37,6 +38,10 @@ impl Report {
 
     pub(super) fn record_not_built(&mut self, runtime: Runtime, reason: &'static str) {
         self.not_built.insert(runtime.label(), reason);
+    }
+
+    pub(super) fn record_sandbox(&mut self, status: &str) {
+        self.sandbox = Some(status.to_string());
     }
 
     pub(super) fn has_failures(&self) -> bool {
@@ -78,6 +83,9 @@ impl fmt::Display for Report {
         }
         for (runtime, reason) in &self.not_built {
             writeln!(formatter, "{runtime}: not built ({reason})")?;
+        }
+        if let Some(sandbox) = &self.sandbox {
+            writeln!(formatter, "sandbox: {sandbox}")?;
         }
         Ok(())
     }

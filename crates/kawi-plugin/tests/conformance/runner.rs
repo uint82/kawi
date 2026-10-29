@@ -39,6 +39,11 @@ pub(super) fn run() -> Report {
     if !cfg!(feature = "wasm") {
         report.record_not_built(Runtime::Wasm, "wasm feature disabled");
     }
+    report.record_sandbox(&format!(
+        "{:?} (landlock abi {:?})",
+        kawi_process::sandbox_status(),
+        kawi_process::sandbox_abi()
+    ));
     report
 }
 
@@ -129,7 +134,7 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
                 .event()
                 .expect("revoke action needs an event behavior");
             let outcome = host.notify(event, event_payload(event));
-            return assert_revoked(outcome);
+            return assert_revoked(outcome, runtime, scenario);
         }
         Action::NotifyThenInvoke => {
             host.activate_ready();
@@ -140,11 +145,13 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             assert_eq!(
                 host.notify(event, event_payload(event)),
                 kawi_plugin::NotifyOutcome::Queued,
-                "{event} was not queued"
+                "{runtime:?} {}: {event} was not queued",
+                scenario.id
             );
             assert!(
                 host.wait_for_host_response("ui.message"),
-                "{event} was not delivered"
+                "{runtime:?} {}: {event} was not delivered",
+                scenario.id
             );
             host.invoke(command, json!(null))
         }
@@ -203,11 +210,18 @@ fn assert_denial_was_enforced(
     }
 }
 
-fn assert_revoked(outcome: kawi_plugin::NotifyOutcome) -> Result<(), String> {
+fn assert_revoked(
+    outcome: kawi_plugin::NotifyOutcome,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<(), String> {
     if outcome == kawi_plugin::NotifyOutcome::Denied {
         Ok(())
     } else {
-        Err(format!("expected Denied, observed {outcome:?}"))
+        Err(format!(
+            "{runtime:?} {}: expected Denied, observed {outcome:?}",
+            scenario.id
+        ))
     }
 }
 
@@ -230,7 +244,8 @@ fn run_trap_then_recover(
     assert_eq!(
         normalize_result(&first),
         Outcome::Crashed,
-        "first invocation did not crash: {first:?}"
+        "{runtime:?} {}: first invocation did not crash: {first:?}",
+        scenario.id
     );
     host.wait_backoff();
     host.invoke(runtime.command(scenario.behavior), json!(null))
@@ -247,14 +262,16 @@ fn run_five_strike(
         assert_eq!(
             normalize_result(&last),
             Outcome::Crashed,
-            "attempt {attempt} did not crash: {last:?}"
+            "{runtime:?} {}: attempt {attempt} did not crash: {last:?}",
+            scenario.id
         );
         host.wait_backoff();
     }
     assert_eq!(
         host.status(),
         Some(kawi_plugin::PluginStatus::Disabled),
-        "plugin was not disabled after five crashes"
+        "{runtime:?} {}: plugin was not disabled after five crashes",
+        scenario.id
     );
     last
 }
@@ -265,16 +282,32 @@ fn run_counter_reset(
     scenario: &Scenario,
 ) -> Result<Value, kawi_plugin::PluginError> {
     let first = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
-    assert_eq!(normalize_result(&first), Outcome::Crashed);
+    assert_eq!(
+        normalize_result(&first),
+        Outcome::Crashed,
+        "{runtime:?} {}: first invocation did not crash: {first:?}",
+        scenario.id
+    );
     host.wait_backoff();
     let second = host.invoke(runtime.command(scenario.behavior), json!(null));
-    assert_eq!(normalize_result(&second), Outcome::Success);
+    assert_eq!(
+        normalize_result(&second),
+        Outcome::Success,
+        "{runtime:?} {}: recovery invocation failed: {second:?}",
+        scenario.id
+    );
     let third = host.invoke(runtime.command(scenario.behavior), json!(null));
-    assert_eq!(normalize_result(&third), Outcome::Success);
+    assert_eq!(
+        normalize_result(&third),
+        Outcome::Success,
+        "{runtime:?} {}: invocation after recovery failed: {third:?}",
+        scenario.id
+    );
     assert_eq!(
         host.status(),
         Some(kawi_plugin::PluginStatus::Ready),
-        "success did not reset the crash counter"
+        "{runtime:?} {}: success did not reset the crash counter",
+        scenario.id
     );
     third
 }
@@ -291,7 +324,8 @@ fn run_oversize_invocation(
     assert_eq!(
         normalize_result(&first),
         Outcome::Protocol,
-        "{runtime:?} oversize invocation did not fail: {first:?}"
+        "{runtime:?} {}: oversize invocation did not fail: {first:?}",
+        scenario.id
     );
     host.invoke(runtime.command(scenario.behavior), json!(null))
 }
@@ -311,7 +345,8 @@ fn run_oversize_event(
     assert_eq!(
         host.notify(event, payload),
         kawi_plugin::NotifyOutcome::Overflow,
-        "oversize event was not dropped"
+        "{runtime:?} {}: oversize event was not dropped",
+        scenario.id
     );
     let result = host.invoke(runtime.command(scenario.behavior), json!(null));
     let observation = host.observation();
@@ -320,7 +355,8 @@ fn run_oversize_event(
             .host_requests
             .iter()
             .all(|request| request.method != "ui.message"),
-        "oversize event reached the plugin"
+        "{runtime:?} {}: oversize event reached the plugin",
+        scenario.id
     );
     result
 }
@@ -340,7 +376,8 @@ fn run_queued_revocation(
         assert_eq!(
             host.notify(event, event_payload(event)),
             kawi_plugin::NotifyOutcome::Queued,
-            "{event} was not queued"
+            "{runtime:?} {}: {event} was not queued",
+            scenario.id
         );
     }
     host.revoke_all();
@@ -356,7 +393,8 @@ fn run_queued_revocation(
                 "ui.message" | "editor.apply_edit" | "editor.set_diagnostics"
             )
         }),
-        "host requests after revocation: {observed_after:?}"
+        "{runtime:?} {}: host requests after revocation: {observed_after:?}",
+        scenario.id
     );
     result
 }
@@ -373,7 +411,8 @@ fn run_restart_with_pending_host_call(
         .expect("invoke conformance plugin");
     assert!(
         host.wait_for_host_request("editor.get_state"),
-        "plugin never issued its host call"
+        "{runtime:?} {}: plugin never issued its host call",
+        scenario.id
     );
     host.restart();
     let first = host.wait_for_finished(request);
@@ -381,7 +420,8 @@ fn run_restart_with_pending_host_call(
     assert_eq!(
         normalize_result(&first),
         Outcome::Crashed,
-        "restart did not cancel the pending call: {first:?}"
+        "{runtime:?} {}: restart did not cancel the pending call: {first:?}",
+        scenario.id
     );
     host.wait_backoff();
     host.invoke(runtime.command(scenario.behavior), json!(null))

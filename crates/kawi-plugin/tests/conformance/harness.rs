@@ -96,6 +96,7 @@ impl Policy {
 
 pub(super) struct ConformanceHost {
     runtime: Runtime,
+    scenario: &'static str,
     root: PathBuf,
     grants_path: PathBuf,
     catalog: PluginCatalog,
@@ -152,6 +153,7 @@ impl ConformanceHost {
         let driver = driver.spawn(events);
         Self {
             runtime,
+            scenario: scenario.id,
             root,
             grants_path,
             catalog,
@@ -179,10 +181,18 @@ impl ConformanceHost {
             match self.host.status(PLUGIN_NAME) {
                 Some(PluginStatus::Ready) => return,
                 Some(PluginStatus::Disabled) | Some(PluginStatus::Error(_)) => {
-                    panic!("plugin did not start: {}", self.describe())
+                    panic!(
+                        "{}: plugin did not start: {}",
+                        self.label(),
+                        self.describe()
+                    )
                 }
                 _ if Instant::now() >= deadline => {
-                    panic!("plugin did not become ready: {}", self.describe())
+                    panic!(
+                        "{}: plugin did not become ready: {}",
+                        self.label(),
+                        self.describe()
+                    )
                 }
                 _ => thread::sleep(STATUS_POLL),
             }
@@ -211,11 +221,18 @@ impl ConformanceHost {
         let deadline = Instant::now() + INVOCATION_TIMEOUT;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            assert!(!remaining.is_zero(), "invocation {request} timed out");
+            assert!(
+                !remaining.is_zero(),
+                "{}: invocation {request} timed out",
+                self.label()
+            );
             match self.finished.recv_timeout(remaining) {
                 Ok(finished) if finished.request == request => return finished.result,
                 Ok(_) => {}
-                Err(error) => panic!("invocation {request} did not finish: {error}"),
+                Err(error) => panic!(
+                    "{}: invocation {request} did not finish: {error}",
+                    self.label()
+                ),
             }
         }
     }
@@ -268,11 +285,13 @@ impl ConformanceHost {
                 assert_eq!(
                     self.notify(event, payload),
                     NotifyOutcome::Queued,
-                    "{event} was not queued"
+                    "{}: {event} was not queued",
+                    self.label()
                 );
                 assert!(
                     self.wait_for_host_request("ui.message"),
-                    "{event} was not delivered before revocation"
+                    "{}: {event} was not delivered before revocation",
+                    self.label()
                 );
             }
         }
@@ -371,6 +390,10 @@ impl ConformanceHost {
         {
             request.responded = true;
         }
+    }
+
+    fn label(&self) -> String {
+        format!("{:?} {}", self.runtime, self.scenario)
     }
 
     fn describe(&self) -> String {
