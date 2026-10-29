@@ -158,6 +158,12 @@ impl App {
                 plugin.manifest.capability_requests.request_hash()
             ));
         }
+        if let Some(hash) = plugin.declared_hash() {
+            lines.push(format!("declared sha256: {}", super::text::sanitize(hash)));
+        }
+        if let Some(reason) = plugin.disabled_reason.as_deref() {
+            lines.push(format!("disabled: {}", super::text::sanitize(reason)));
+        }
         for (capability, scope) in plugin.manifest.capability_requests.iter() {
             lines.push(format!(
                 "requests: {} {}",
@@ -166,7 +172,9 @@ impl App {
             ));
         }
         #[cfg(feature = "wasm")]
-        if plugin.manifest.runtime == kawi_plugin::PluginRuntime::Wasm {
+        if plugin.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
+            && plugin.disabled_reason.is_none()
+        {
             lines.extend(inspect_wasm_component(plugin));
         }
         self.show_pager(lines);
@@ -223,7 +231,9 @@ fn inspect_wasm_component(plugin: &kawi_plugin::LoadedPlugin) -> Vec<String> {
         .iter()
         .map(|(capability, _)| capability)
         .collect::<Vec<_>>();
-    match kawi_plugin::WasmRuntime::new().and_then(|runtime| runtime.inspect(&path, &requested)) {
+    match kawi_plugin::WasmRuntime::new()
+        .and_then(|runtime| runtime.inspect(&path, plugin.component_hash(), &requested))
+    {
         Ok(inspection) => {
             let mut lines = vec![format!("component hash: {}", inspection.hash)];
             lines.push("imports:".to_string());

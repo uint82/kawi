@@ -68,7 +68,7 @@ The plugin name is the namespace. The command above is `example.format`, and you
 - `:plugin restart` restarts every plugin process.
 - `:plugin restart example` restarts one plugin and clears its crash backoff.
 - `:plugin logs` shows all plugin logs.
-- `:plugin inspect <plugin>` shows the runtime, component hash, request hash, requested capabilities, and WASM imports when the `wasm` feature is enabled.
+- `:plugin inspect <plugin>` shows the runtime, computed and declared component hashes, request hash, requested capabilities, and WASM imports when the `wasm` feature is enabled.
 - `:plugin logs example` shows one plugin's log.
 
 Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
