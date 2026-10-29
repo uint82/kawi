@@ -16,10 +16,12 @@ Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0`
 
 Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation. Revocation drops events that are still queued. An event already delivered to the guest may finish, including a host call already in flight; the conformance suite treats that in-flight write as committed and asserts it is not repeated.
 
+Component compilation is host work and is not charged to `timeout_ms`. Compiled components are cached in memory by their verified SHA-256 hash, so manifest inspection, activation, restarts, and later sessions reuse the compiled artifact. The cache is bounded and is never populated from serialized component bytes. Instantiation and `init` are charged to the per-call budget; a timeout there is a start failure.
+
 Limits:
 
 - Epoch interruption with a per-call deadline.
-- A two second wall-clock budget per call, checked through the epoch callback and applied to host request waits.
+- A wall-clock budget from the manifest `timeout_ms` per call, checked through the epoch callback and applied to host request waits.
 - Optional fuel metering when deterministic accounting is required.
 - A 64 MiB memory limit, a 1,048,576 element table limit, and a 512 KiB stack limit.
 - A 64 MiB component size limit.

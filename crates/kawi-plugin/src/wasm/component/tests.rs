@@ -14,6 +14,27 @@ fn hashes_component_bytes() {
 fn runtime_configures_the_engine() {
     assert!(WasmRuntime::new().is_ok());
 }
+#[test]
+fn reuses_cached_components_by_hash() {
+    let runtime = WasmRuntime::new().unwrap();
+    let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
+    let (first, hash) = runtime.compile(&bytes, None).unwrap();
+    let (second, second_hash) = runtime.compile(&bytes, None).unwrap();
+    assert_eq!(hash, second_hash);
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn evicts_the_oldest_cached_component() {
+    let runtime = WasmRuntime::new().unwrap();
+    let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
+    let (component, _) = runtime.compile(&bytes, None).unwrap();
+    let mut cache = ComponentCache::new(1);
+    cache.insert("first".to_string(), std::sync::Arc::clone(&component));
+    cache.insert("second".to_string(), std::sync::Arc::clone(&component));
+    assert!(cache.get("first").is_none());
+    assert!(cache.get("second").is_some());
+}
 
 #[test]
 fn inspects_component_imports_and_hash() {
