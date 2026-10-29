@@ -5,6 +5,8 @@ mod bridge;
 #[cfg(feature = "wasm")]
 mod component;
 #[cfg(feature = "wasm")]
+mod connection_cap;
+#[cfg(feature = "wasm")]
 mod convert;
 #[cfg(feature = "wasm")]
 mod limits;

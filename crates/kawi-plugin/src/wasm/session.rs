@@ -11,7 +11,7 @@ use wasmtime_wasi::FsPerms;
 use crate::capability::{Capability, CapabilityRegistry, Scope};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
-use crate::host::PluginHostEvent;
+use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
 use crate::protocol::PROTOCOL_VERSION;
 
@@ -187,6 +187,8 @@ impl Session {
         add_kawi_interfaces(&mut linker, capabilities, &plugin.manifest.name)?;
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|error| PluginError::Initialize(format!("wasi linker: {error}")))?;
+        super::connection_cap::add_to_linker(&mut linker)
+            .map_err(|error| PluginError::Initialize(format!("wasi connection cap: {error}")))?;
         name_lookup::add_to_linker(&mut linker)
             .map_err(|error| PluginError::Initialize(format!("wasi name lookup: {error}")))?;
         let (stdout, stderr) = output_pipes();
@@ -195,6 +197,16 @@ impl Session {
                 .scope(&plugin.manifest.name, Capability::NetConnect)
                 .as_ref(),
         );
+        for warning in network.warnings() {
+            send_event(
+                &events,
+                &wake,
+                PluginHostEvent::Log {
+                    plugin: plugin.manifest.name.clone(),
+                    line: warning.clone(),
+                },
+            );
+        }
         let wasi = build_wasi(
             plugin,
             capabilities,

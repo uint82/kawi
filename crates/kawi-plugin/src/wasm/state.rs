@@ -1,5 +1,6 @@
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
+use wasmtime_wasi::sockets::WasiSocketsView;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
@@ -64,6 +65,12 @@ impl WasmState {
 
     pub fn call_expired(&self) -> bool {
         self.bridge.call_expired()
+    }
+
+    pub(crate) fn tracked_sockets(&mut self) -> super::connection_cap::TrackedSocketsView<'_> {
+        let policy = self.network.clone();
+        let sockets = <Self as WasiSocketsView>::sockets(self);
+        super::connection_cap::TrackedSocketsView::new(sockets, policy)
     }
 
     pub fn drain_output(&mut self) {

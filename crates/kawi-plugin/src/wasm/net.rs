@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use wasmtime_wasi::sockets::SocketAddrUse;
 
 use crate::capability::{HostPort, Scope};
+use crate::NETWORK_WARNING_PREFIX;
 
 const RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CONNECTIONS: usize = 64;
@@ -19,7 +19,8 @@ const TEST_LOOPBACK_HOSTNAME: bool = cfg!(all(feature = "wasm-test-network", deb
 pub(crate) struct NetworkPolicy {
     allowed: BTreeSet<SocketAddr>,
     names: BTreeMap<String, Vec<IpAddr>>,
-    connections: Arc<AtomicUsize>,
+    active_connections: Arc<Mutex<BTreeSet<u32>>>,
+    warnings: Vec<String>,
     name_lookup: bool,
     enabled: bool,
 }
@@ -39,7 +40,8 @@ impl NetworkPolicy {
         let mut policy = Self {
             allowed: BTreeSet::new(),
             names: BTreeMap::new(),
-            connections: Arc::new(AtomicUsize::new(0)),
+            active_connections: Arc::new(Mutex::new(BTreeSet::new())),
+            warnings: Vec::new(),
             name_lookup: false,
             enabled: !hosts.is_empty(),
         };
@@ -58,6 +60,10 @@ impl NetworkPolicy {
 
     pub(crate) fn allows_name_lookup(&self) -> bool {
         self.name_lookup
+    }
+
+    pub(crate) fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     pub(crate) fn resolve_name(&self, name: &str) -> Result<Vec<IpAddr>, io::Error> {
@@ -81,36 +87,45 @@ impl NetworkPolicy {
             SocketAddrUse::TcpBind => {
                 self.enabled && address.ip().is_unspecified() && address.port() == 0
             }
-            SocketAddrUse::TcpConnect => self.allowed.contains(&address) && self.claim_connection(),
+            SocketAddrUse::TcpConnect => self.allowed.contains(&address),
             _ => false,
         }
+    }
+
+    pub(crate) fn is_tracked(&self, handle: u32) -> bool {
+        self.lock_connections().contains(&handle)
+    }
+
+    pub(crate) fn claim_connection(&self, handle: u32) -> bool {
+        let mut active = self.lock_connections();
+        if active.contains(&handle) {
+            return true;
+        }
+        if active.len() >= MAX_CONNECTIONS {
+            return false;
+        }
+        active.insert(handle);
+        true
+    }
+
+    pub(crate) fn release_connection(&self, handle: u32) {
+        self.lock_connections().remove(&handle);
+    }
+
+    fn lock_connections(&self) -> std::sync::MutexGuard<'_, BTreeSet<u32>> {
+        self.active_connections
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     fn deny() -> Self {
         Self {
             allowed: BTreeSet::new(),
             names: BTreeMap::new(),
-            connections: Arc::new(AtomicUsize::new(0)),
+            active_connections: Arc::new(Mutex::new(BTreeSet::new())),
+            warnings: Vec::new(),
             name_lookup: false,
             enabled: false,
-        }
-    }
-
-    fn claim_connection(&self) -> bool {
-        let mut current = self.connections.load(Ordering::Relaxed);
-        loop {
-            if current >= MAX_CONNECTIONS {
-                return false;
-            }
-            match self.connections.compare_exchange_weak(
-                current,
-                current + 1,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return true,
-                Err(next) => current = next,
-            }
         }
     }
 
@@ -128,14 +143,28 @@ impl NetworkPolicy {
         self.name_lookup = true;
         let key = host.host().to_ascii_lowercase();
         let mut allowed_ips = BTreeSet::new();
-        if let Ok(addresses) = resolve(host) {
-            for address in addresses {
-                if is_allowed_resolved(host, address.ip()) {
-                    allowed_ips.insert(address.ip());
-                    self.allowed
-                        .insert(SocketAddr::new(address.ip(), host.port()));
+        let mut resolution_failed = false;
+        match resolve(host) {
+            Ok(addresses) => {
+                for address in addresses {
+                    if is_allowed_resolved(host, address.ip()) {
+                        allowed_ips.insert(address.ip());
+                        self.allowed
+                            .insert(SocketAddr::new(address.ip(), host.port()));
+                    }
                 }
             }
+            Err(error) => {
+                resolution_failed = true;
+                self.warnings
+                    .push(format!("{NETWORK_WARNING_PREFIX}{}: {error}", host.host()));
+            }
+        }
+        if allowed_ips.is_empty() && !resolution_failed {
+            self.warnings.push(format!(
+                "{NETWORK_WARNING_PREFIX}{}: no permitted addresses",
+                host.host()
+            ));
         }
         self.names.insert(key, allowed_ips.into_iter().collect());
     }

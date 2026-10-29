@@ -131,6 +131,14 @@ fn failed_resolution_denies_connections() {
     assert!(policy.allows_name_lookup());
     assert!(!policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
     assert!(policy.resolve_name("example.com").unwrap().is_empty());
+    assert!(policy
+        .warnings()
+        .iter()
+        .any(|warning| warning.contains("example.com")));
+    assert!(policy
+        .warnings()
+        .iter()
+        .any(|warning| warning.contains("resolver failure")));
 }
 
 #[test]
@@ -224,12 +232,43 @@ fn caps_connections_per_session() {
         &hosts(&["example.com:443"]),
         fixed_resolver(vec![address(PUBLIC_V4, 443)]),
     );
-    for _ in 0..MAX_CONNECTIONS {
-        assert!(policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    for handle in 0..MAX_CONNECTIONS as u32 {
+        assert!(policy.claim_connection(handle));
     }
-    assert!(!policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    assert!(!policy.claim_connection(MAX_CONNECTIONS as u32));
     let cloned = policy.clone();
-    assert!(!cloned.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    assert!(!cloned.claim_connection(MAX_CONNECTIONS as u32));
+}
+
+#[test]
+fn closed_connections_free_slots() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![address(PUBLIC_V4, 443)]),
+    );
+    for handle in 0..MAX_CONNECTIONS as u32 {
+        assert!(policy.claim_connection(handle));
+    }
+    assert!(!policy.claim_connection(MAX_CONNECTIONS as u32));
+    policy.release_connection(0);
+    assert!(policy.claim_connection(MAX_CONNECTIONS as u32));
+}
+
+#[test]
+fn connection_caps_are_per_policy() {
+    let first = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![address(PUBLIC_V4, 443)]),
+    );
+    let second = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![address(PUBLIC_V4, 443)]),
+    );
+    for handle in 0..MAX_CONNECTIONS as u32 {
+        assert!(first.claim_connection(handle));
+    }
+    assert!(!first.claim_connection(MAX_CONNECTIONS as u32));
+    assert!(second.claim_connection(0));
 }
 
 #[test]
