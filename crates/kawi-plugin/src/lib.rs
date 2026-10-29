@@ -4,6 +4,7 @@ mod environment;
 mod error;
 mod host;
 mod manifest;
+mod payload_size;
 mod process;
 mod protocol;
 mod wasm;

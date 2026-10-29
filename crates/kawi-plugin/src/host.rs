@@ -9,10 +9,11 @@ use crate::capability::{is_event_allowed, Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::manifest::{PluginCatalog, PluginRuntime};
+use crate::payload_size::payload_too_large;
 use crate::process::{start_worker, NotifyOutcome};
 
 use self::wasm::wasm_worker;
-use crate::protocol::{InvocationContext, RpcError};
+use crate::protocol::{InvocationContext, RpcError, INTERNAL_ERROR};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginStatus {
@@ -126,7 +127,7 @@ impl PluginHost {
         if !is_event_allowed(&self.capabilities, plugin, event) {
             return Ok(NotifyOutcome::Denied);
         }
-        if event_payload_too_large(&payload) {
+        if payload_too_large(&payload) {
             return Ok(NotifyOutcome::Overflow);
         }
         Ok(worker.notify(event, payload))
@@ -151,7 +152,7 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
-        if invocation_payload_too_large(&args) {
+        if payload_too_large(&args) {
             return Err(PluginError::Protocol(
                 "invocation payload exceeds the maximum size".to_string(),
             ));
@@ -171,6 +172,13 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        let result = match result {
+            Ok(value) if payload_too_large(&value) => Err(RpcError::new(
+                INTERNAL_ERROR,
+                "host response exceeds the maximum size",
+            )),
+            result => result,
+        };
         worker.respond(id, result)
     }
 
@@ -207,18 +215,6 @@ impl Drop for PluginHost {
     fn drop(&mut self) {
         self.shutdown();
     }
-}
-
-fn invocation_payload_too_large(args: &Value) -> bool {
-    serde_json::to_vec(args)
-        .map(|bytes| bytes.len() > kawi_jsonrpc::framing::MAX_MESSAGE_BYTES)
-        .unwrap_or(true)
-}
-
-fn event_payload_too_large(payload: &Value) -> bool {
-    serde_json::to_vec(payload)
-        .map(|bytes| bytes.len() > kawi_jsonrpc::framing::MAX_MESSAGE_BYTES)
-        .unwrap_or(true)
 }
 
 pub(crate) fn send_event(
