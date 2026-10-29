@@ -156,3 +156,15 @@ status = "pass"
 
 [rows."wasm.net.connection_cap_reuse"]
 status = "pass"
+
+[rows."wasm.net.rebind_private"]
+status = "pass"
+
+[rows."wasm.net.rebind_public"]
+status = "pass"
+
+[rows."wasm.net.mixed_answers"]
+status = "pass"
+
+[rows."wasm.net.all_private"]
+status = "pass"
