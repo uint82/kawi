@@ -14,9 +14,9 @@ use super::scenario::{scenarios, Action, Expected, Scenario};
 
 use actions::{
     assert_revoked, event_payload, run_advertised_parity, run_control_text, run_counter_reset,
-    run_five_strike, run_oversize_diagnostics, run_oversize_event, run_oversize_host_response,
-    run_oversize_invocation, run_queued_revocation, run_queued_revocation_mid_write,
-    run_restart_with_pending_host_call, run_trap_then_recover,
+    run_five_strike, run_mid_codepoint, run_oversize_diagnostics, run_oversize_event,
+    run_oversize_host_response, run_oversize_invocation, run_queued_revocation,
+    run_queued_revocation_mid_write, run_restart_with_pending_host_call, run_trap_then_recover,
 };
 
 struct RowResult {
@@ -189,6 +189,7 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
         Action::OversizeDiagnostics => run_oversize_diagnostics(&host, runtime, scenario),
         Action::AdvertisedParity => run_advertised_parity(&host, runtime, scenario),
         Action::ControlText => run_control_text(&host, runtime, scenario),
+        Action::MidCodepointPosition => run_mid_codepoint(&host, runtime, scenario),
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);

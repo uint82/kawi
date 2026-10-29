@@ -29,6 +29,13 @@ impl ConformanceHost {
             .withhold = true;
     }
 
+    pub(crate) fn withhold_apply_edit(&self) {
+        self.policy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .withhold_method = Some("editor.apply_edit".to_string());
+    }
+
     pub(crate) fn release_host_responses(&self) {
         let deferred = {
             let mut policy = self
@@ -36,6 +43,7 @@ impl ConformanceHost {
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
             policy.withhold = false;
+            policy.withhold_method = None;
             std::mem::take(&mut policy.deferred)
         };
         for response in deferred {

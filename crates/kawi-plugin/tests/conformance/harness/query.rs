@@ -40,6 +40,26 @@ impl ConformanceHost {
         }
     }
 
+    pub(crate) fn wait_for_event_marker(&self, marker: &str) -> bool {
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if self.observation().host_requests.iter().any(|request| {
+                request.method == "ui.message"
+                    && request
+                        .params
+                        .get("message")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(marker)
+            }) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(STATUS_POLL);
+        }
+    }
+
     pub(crate) fn wait_for_host_response(&self, method: &str) -> bool {
         let deadline = Instant::now() + START_TIMEOUT;
         loop {
@@ -67,6 +87,15 @@ impl ConformanceHost {
 
     pub(crate) fn host_request_count(&self) -> usize {
         self.observation().host_requests.len()
+    }
+
+    pub(crate) fn last_host_request(&self, method: &str) -> Option<serde_json::Value> {
+        self.observation()
+            .host_requests
+            .iter()
+            .rev()
+            .find(|request| request.method == method)
+            .map(|request| request.params.clone())
     }
 
     #[cfg(feature = "wasm")]

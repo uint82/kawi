@@ -116,7 +116,7 @@
         i64.const 1
         i64.const 7
         i32.const 4096
-        i32.const 1000
+        i32.const 1001
         i32.const 2048
         call $set
       i32.const 2048

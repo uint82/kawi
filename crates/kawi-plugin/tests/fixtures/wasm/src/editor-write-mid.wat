@@ -104,13 +104,13 @@
         i32.const 1
         i32.store8
         i32.const 40
-        i32.const -32602
+        i32.const -32011
         i32.store
         i32.const 44
-        i32.const 128
+        i32.const 160
         i32.store
         i32.const 48
-        i32.const 4
+        i32.const 9
         i32.store
         i32.const 52
         i32.const 0
@@ -134,6 +134,7 @@
     )
     (func (;4;) (type 3) (param i32 i64 i64 i64 i32 i64 i32 i64 i64))
     (data (;0;) (i32.const 128) "pong")
+    (data (;1;) (i32.const 160) "codepoint")
     (@producers
       (processed-by "wit-component" "0.262.0")
     )

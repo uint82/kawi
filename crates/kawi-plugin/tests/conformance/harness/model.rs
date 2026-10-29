@@ -29,16 +29,32 @@ impl Runtime {
 #[derive(Debug, Clone)]
 pub(crate) struct HostRequestRecord {
     pub(crate) method: String,
+    pub(crate) params: Value,
     pub(crate) denied: bool,
     pub(crate) responded: bool,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct Observation {
     pub(crate) host_requests: Vec<HostRequestRecord>,
     pub(crate) logs: Vec<String>,
     pub(crate) statuses: Vec<PluginStatus>,
     pub(crate) required: Vec<kawi_plugin::Capability>,
+    pub(crate) buffer: String,
+    pub(crate) applied_edits: usize,
+}
+
+impl Default for Observation {
+    fn default() -> Self {
+        Self {
+            host_requests: Vec::new(),
+            logs: Vec::new(),
+            statuses: Vec::new(),
+            required: Vec::new(),
+            buffer: "é\n".to_string(),
+            applied_edits: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +68,7 @@ pub(crate) struct Policy {
     pub(crate) invalid_position: bool,
     pub(crate) oversize_response: bool,
     pub(crate) withhold: bool,
+    pub(crate) withhold_method: Option<String>,
     pub(crate) deferred: Vec<DeferredResponse>,
 }
 
@@ -69,6 +86,7 @@ impl Policy {
             invalid_position: false,
             oversize_response: false,
             withhold: false,
+            withhold_method: None,
             deferred: Vec::new(),
         }
     }

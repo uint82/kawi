@@ -1,4 +1,5 @@
 mod driver;
+mod editor;
 mod events;
 mod fixtures;
 mod host;
@@ -9,7 +10,7 @@ mod query;
 use std::time::Duration;
 
 pub(crate) use host::ConformanceHost;
-pub(crate) use model::Runtime;
+pub(crate) use model::{HostRequestRecord, Runtime};
 
 pub(crate) const PLUGIN_NAME: &str = "conformance";
 pub(crate) const START_TIMEOUT: Duration = Duration::from_secs(5);

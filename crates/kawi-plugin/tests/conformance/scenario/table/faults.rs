@@ -18,7 +18,11 @@ pub(crate) const ROWS: &[Scenario] = &[
         id: "revocation.queued_mid_write",
         group: Group::QueuedRevocation,
         behavior: Behavior::EventWrite,
-        grants: &[Capability::EditorRead, Capability::EditorWrite],
+        grants: &[
+            Capability::EditorRead,
+            Capability::EditorWrite,
+            Capability::UiMessage,
+        ],
         action: Action::QueuedRevocationMidWrite,
         expected: Expected::Success,
         covers_methods: &["editor.apply_edit"],

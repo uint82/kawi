@@ -6,7 +6,7 @@ mod recovery;
 mod revocation;
 
 pub(crate) use events::event_payload;
-pub(crate) use hygiene::run_control_text;
+pub(crate) use hygiene::{run_control_text, run_mid_codepoint};
 pub(crate) use oversize::{
     run_oversize_diagnostics, run_oversize_event, run_oversize_host_response,
     run_oversize_invocation,

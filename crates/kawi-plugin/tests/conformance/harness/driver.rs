@@ -3,17 +3,16 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use kawi_plugin::{
     host_method_capability, is_host_method_allowed, CapabilityRegistry, MethodCapability,
     PluginHost, PluginHostEvent, PluginStatus, RpcError,
 };
 
+use super::editor::{apply_edit, diagnostics_invalid, oversized_state_value, state_value};
 use super::model::{DeferredResponse, Finished, HostRequestRecord, Observation, Policy};
 use super::DRIVER_POLL;
-
-const MAX_DIAGNOSTICS_BYTES: usize = 64 * 1024;
 
 pub(crate) struct Driver {
     pub(crate) host: Arc<PluginHost>,
@@ -71,7 +70,7 @@ impl Driver {
 
     fn handle_host_request(&self, plugin: &str, id: Value, method: &str, params: Value) {
         let allowed = is_host_method_allowed(&self.registry, plugin, method);
-        let index = self.record_host_request(method, !allowed);
+        let index = self.record_host_request(method, &params, !allowed);
         if !allowed {
             let _ = self
                 .host
@@ -79,7 +78,7 @@ impl Driver {
             self.mark_responded(index);
             return;
         }
-        let (withhold, stale_revision, invalid_position, oversize_response) =
+        let (withhold, withhold_method, stale_revision, invalid_position, oversize_response) =
             self.policy_snapshot();
         let result = host_result(
             method,
@@ -88,21 +87,28 @@ impl Driver {
             invalid_position,
             oversize_response,
         );
-        if withhold {
+        if withhold || withhold_method.as_deref() == Some(method) {
             self.defer_response(plugin, id, result, index);
             return;
+        }
+        if method == "editor.apply_edit" && result.is_ok() {
+            self.observation
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .applied_edits += 1;
         }
         let _ = self.host.respond(plugin, id, result);
         self.mark_responded(index);
     }
 
-    fn record_host_request(&self, method: &str, denied: bool) -> usize {
+    fn record_host_request(&self, method: &str, params: &Value, denied: bool) -> usize {
         let mut observation = self
             .observation
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         observation.host_requests.push(HostRequestRecord {
             method: method.to_string(),
+            params: params.clone(),
             denied,
             responded: false,
         });
@@ -121,13 +127,14 @@ impl Driver {
         }
     }
 
-    fn policy_snapshot(&self) -> (bool, bool, bool, bool) {
+    fn policy_snapshot(&self) -> (bool, Option<String>, bool, bool, bool) {
         let policy = self
             .policy
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         (
             policy.withhold,
+            policy.withhold_method.clone(),
             policy.stale_revision,
             policy.invalid_position,
             policy.oversize_response,
@@ -199,44 +206,12 @@ fn host_result(
                 .unwrap_or_default(),
             7,
         )),
-        "editor.apply_edit" => Ok(json!({ "revision": next_revision(params) })),
-        "editor.set_diagnostics" if diagnostics_too_large(params) => Err(RpcError::invalid_params(
-            "diagnostics payload exceeds the maximum size",
-        )),
-        "editor.set_diagnostics" | "ui.message" => Ok(Value::Null),
+        "editor.apply_edit" => apply_edit(params),
+        "editor.set_diagnostics" => match diagnostics_invalid(params) {
+            Some(error) => Err(error),
+            None => Ok(Value::Null),
+        },
+        "ui.message" => Ok(Value::Null),
         _ => Ok(Value::Null),
     }
-}
-
-fn diagnostics_too_large(params: &Value) -> bool {
-    serde_json::to_vec(params)
-        .map(|bytes| bytes.len() > MAX_DIAGNOSTICS_BYTES)
-        .unwrap_or(true)
-}
-
-fn next_revision(params: &Value) -> u64 {
-    params
-        .get("revision")
-        .and_then(Value::as_u64)
-        .unwrap_or_default()
-        .saturating_add(1)
-}
-
-fn oversized_state_value() -> Value {
-    let mut value = state_value();
-    value["text"] = json!("x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1));
-    value
-}
-
-fn state_value() -> Value {
-    json!({
-        "buffer": 1,
-        "revision": 7,
-        "path": "/tmp/conformance.rs",
-        "language": "rust",
-        "mode": "normal",
-        "cursor": { "line": 0, "byte_column": 0 },
-        "selection": null,
-        "text": null,
-    })
 }

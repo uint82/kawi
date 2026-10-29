@@ -1,7 +1,9 @@
+use std::collections::VecDeque;
 use std::io::{self, BufReader, Write};
 
 use anyhow::Result;
 use std::process::ExitCode;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -12,11 +14,12 @@ use kawi_jsonrpc::framing::{read_message, write_message};
 mod commands;
 
 use commands::{
-    apply_edit, apply_edit_mid_codepoint, diagnostics_call, exec_command, host_call, multi_call,
-    read_file,
+    apply_edit, apply_edit_mid_codepoint, control_text, diagnostics_call, exec_command, host_call,
+    multi_call, read_file,
 };
 
 const HOST_STATE_REQUEST: u64 = 100;
+static BUFFERED: Mutex<VecDeque<Value>> = Mutex::new(VecDeque::new());
 
 fn main() -> ExitCode {
     let mode = std::env::args()
@@ -36,18 +39,58 @@ fn run(mode: &str) -> Result<()> {
     let mut reader = BufReader::new(stdin.lock());
     let mut stdout = io::stdout().lock();
     while let Some(message) = read_message(&mut reader)? {
-        let Some(method) = message.get("method").and_then(Value::as_str) else {
-            continue;
-        };
-        match method {
-            "initialize" => handle_initialize(mode, &message, &mut stdout)?,
-            "invoke_command" => handle_invoke(mode, &message, &mut reader, &mut stdout)?,
-            "event" => handle_event(mode, &message, &mut reader, &mut stdout)?,
-            "shutdown" => return Ok(()),
-            _ => {}
+        if dispatch(mode, &message, &mut reader, &mut stdout)? {
+            return Ok(());
         }
+        drain_buffered(mode, &mut reader, &mut stdout)?;
     }
     Ok(())
+}
+
+fn dispatch(
+    mode: &str,
+    message: &Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<bool> {
+    let Some(method) = message.get("method").and_then(Value::as_str) else {
+        return Ok(false);
+    };
+    match method {
+        "initialize" => handle_initialize(mode, message, stdout)?,
+        "invoke_command" => handle_invoke(mode, message, reader, stdout)?,
+        "event" => handle_event(mode, message, reader, stdout)?,
+        "shutdown" => return Ok(true),
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn drain_buffered(
+    mode: &str,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<()> {
+    loop {
+        let Some(message) = take_buffered() else {
+            return Ok(());
+        };
+        let _ = dispatch(mode, &message, reader, stdout)?;
+    }
+}
+
+pub(crate) fn buffer_message(message: Value) {
+    BUFFERED
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .push_back(message);
+}
+
+fn take_buffered() -> Option<Value> {
+    BUFFERED
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .pop_front()
 }
 
 fn handle_initialize(mode: &str, message: &Value, stdout: &mut impl Write) -> Result<()> {
@@ -96,8 +139,20 @@ fn handle_event(
         }
         "event-write" => {
             let _ = host_request(
+                "ui.message",
+                json!({"message": "event-write-start"}),
+                reader,
+                stdout,
+            )?;
+            let _ = host_request(
                 "editor.apply_edit",
                 json!({"buffer": 1, "revision": 7, "edits": []}),
+                reader,
+                stdout,
+            )?;
+            let _ = host_request(
+                "ui.message",
+                json!({"message": "event-write-done"}),
                 reader,
                 stdout,
             )?;
@@ -145,7 +200,7 @@ fn handle_invoke(
         "diagnostics" => diagnostics_call(message, reader, stdout)?,
         "apply-edit" => apply_edit(message, reader, stdout)?,
         "mid-codepoint" => apply_edit_mid_codepoint(message, reader, stdout)?,
-        "control-text" => respond(stdout, message, json!("a\n\t\u{1}b"))?,
+        "control-text" => control_text(message, reader, stdout)?,
         "read-file" => read_file(message, stdout)?,
         "exec" => exec_command(message, stdout)?,
         _ => respond(stdout, message, json!({"echo": message.get("params")}))?,
@@ -171,6 +226,9 @@ fn host_request(
     while let Some(value) = read_message(reader)? {
         if value.get("id").and_then(Value::as_u64) == Some(HOST_STATE_REQUEST) {
             return Ok(value);
+        }
+        if value.get("method").is_some() {
+            buffer_message(value);
         }
     }
     Err(anyhow::anyhow!("host request ended without a response"))
