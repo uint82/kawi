@@ -65,7 +65,7 @@ fn is_fully_supported(abi: i32) -> bool {
     abi >= ABI_TRUNCATE
 }
 
-fn abi() -> Option<i32> {
+pub(crate) fn abi() -> Option<i32> {
     static ABI: OnceLock<Option<i32>> = OnceLock::new();
     *ABI.get_or_init(probe)
 }

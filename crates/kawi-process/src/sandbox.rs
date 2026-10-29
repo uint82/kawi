@@ -32,6 +32,17 @@ pub fn sandbox_status() -> SandboxStatus {
     }
 }
 
+pub fn sandbox_abi() -> Option<i32> {
+    #[cfg(target_os = "linux")]
+    {
+        crate::landlock::abi()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+
 pub fn configure_sandbox(command: &mut Command, policy: &SandboxPolicy) -> SandboxStatus {
     #[cfg(target_os = "linux")]
     {
