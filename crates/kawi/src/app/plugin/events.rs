@@ -1,6 +1,7 @@
 use kawi_plugin::{PluginHostEvent, PluginStatus};
 
 use super::super::App;
+use super::consent::GrantKind;
 use super::text::sanitize;
 
 impl App {
@@ -64,6 +65,13 @@ impl App {
                 }
                 true
             }
+            PluginHostEvent::CapabilityRequired { plugin, capability } => {
+                if !self.plugins.has_capability(&plugin, capability) {
+                    self.plugins.record_denial(&plugin, capability);
+                    self.request_plugin_grant(&plugin, capability, GrantKind::Startup);
+                }
+                false
+            }
             PluginHostEvent::Log { .. } => false,
             PluginHostEvent::SandboxApplied { plugin } => {
                 self.plugins.mark_sandboxed(&plugin);
@@ -85,7 +93,7 @@ impl App {
                 return self.handle_authorized_request(plugin, id, method, params);
             }
             self.plugins.record_denial(plugin, capability);
-            self.request_plugin_grant(plugin, capability);
+            self.request_plugin_grant(plugin, capability, GrantKind::Call);
             if !id.is_null() {
                 let error = self.plugins.capability_error(plugin, capability);
                 let _ = self.plugins.respond(plugin, id, Err(error));

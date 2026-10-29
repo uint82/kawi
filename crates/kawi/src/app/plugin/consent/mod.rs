@@ -1,9 +1,12 @@
 mod queue;
 
+pub(super) use self::queue::GrantKind;
 pub(crate) use self::queue::GrantQueue;
 use std::time::Instant;
 
-use self::queue::{changed_request_summary, navigation_key, Enqueue, GrantPrompt, GrantRequest};
+use self::queue::{
+    changed_request_summary, navigation_key, Enqueue, GrantChoice, GrantPrompt, GrantRequest,
+};
 use crossterm::event::{KeyCode, KeyEvent};
 use kawi_plugin::Capability;
 
@@ -11,24 +14,39 @@ use super::super::App;
 use super::text::sanitize;
 
 impl App {
-    pub(super) fn request_plugin_grant(&mut self, plugin: &str, capability: Capability) {
+    pub(super) fn request_plugin_grant(
+        &mut self,
+        plugin: &str,
+        capability: Capability,
+        kind: GrantKind,
+    ) {
         if self.plugins.has_capability(plugin, capability)
             || self.plugins.request_scope(plugin, capability).is_none()
         {
             return;
         }
+        let Some(request_hash) = self.plugins.request_hash(plugin) else {
+            return;
+        };
+        let kind = if self.plugins.is_wasm(plugin) {
+            GrantKind::Startup
+        } else {
+            kind
+        };
         let request = GrantRequest {
             plugin: plugin.to_string(),
             capability,
             changed: self.plugins.is_changed(plugin),
             changed_requests: self.plugins.changed_requests(plugin),
+            kind,
+            request_hash,
         };
         match self.plugin_grants.enqueue(request, Instant::now()) {
             Enqueue::Activated => self.show_grant_prompt_message(),
             Enqueue::Full => self
                 .plugins
                 .push_log(plugin, "grant prompt queue full; request denied"),
-            Enqueue::Queued | Enqueue::Duplicate => {}
+            Enqueue::Queued | Enqueue::Duplicate | Enqueue::Suppressed => {}
         }
     }
 
@@ -51,7 +69,8 @@ impl App {
             }
             KeyCode::Enter => {
                 let request = prompt.request().clone();
-                self.apply_grant(request, prompt.selected());
+                let choice = prompt.choice();
+                self.apply_grant(request, choice);
             }
             _ => self.plugin_grants.restore_active(prompt),
         }
@@ -72,6 +91,7 @@ impl App {
         if self.plugin_grants.activate_next(now) {
             self.show_grant_prompt_message();
         }
+        self.flush_deferred_plugin_restarts();
     }
 
     pub(crate) fn grant_prompt_items(&self) -> Option<(&[String], usize)> {
@@ -80,11 +100,11 @@ impl App {
             .map(|prompt| (self.plugin_grants.items(), prompt.selected()))
     }
 
-    fn apply_grant(&mut self, request: GrantRequest, selected: usize) {
-        match selected {
-            0 => self.grant_once(request),
-            1 => self.grant_always(request),
-            _ => self.deny_grant(&request),
+    fn apply_grant(&mut self, request: GrantRequest, choice: GrantChoice) {
+        match choice {
+            GrantChoice::Once => self.grant_once(request),
+            GrantChoice::Always => self.grant_always(request),
+            GrantChoice::Deny => self.deny_grant(&request),
         }
         self.advance_grant();
     }
@@ -106,7 +126,8 @@ impl App {
             .write_grant(&request.plugin, request.capability)
         {
             Ok(()) => {
-                self.plugins.reload_permissions();
+                let (_, restarted) = self.plugins.reload_permissions_without_restart();
+                self.deferred_plugin_restarts.extend(restarted);
                 if self
                     .plugins
                     .has_capability(&request.plugin, request.capability)
@@ -120,24 +141,29 @@ impl App {
                     ));
                     return;
                 }
-                self.fallback_allow_once(&request, "grant was not applied");
+                self.handle_grant_failure(&request, "grant was not applied");
             }
-            Err(error) => self.fallback_allow_once(&request, &error),
+            Err(error) => self.handle_grant_failure(&request, &error),
         }
     }
 
-    fn fallback_allow_once(&mut self, request: &GrantRequest, reason: &str) {
+    fn handle_grant_failure(&mut self, request: &GrantRequest, reason: &str) {
+        if request.kind == GrantKind::Startup {
+            self.show_grant_failure(request, reason, "cannot save grant");
+            return;
+        }
         self.plugins.allow_next(&request.plugin, request.capability);
         self.plugins
             .clear_denial(&request.plugin, request.capability);
+        self.show_grant_failure(request, reason, "cannot save grant; allowing once");
+    }
+
+    fn show_grant_failure(&mut self, request: &GrantRequest, reason: &str, suffix: &str) {
         self.plugins.push_log(
             &request.plugin,
             &format!("cannot save grant: {}", sanitize(reason)),
         );
-        self.show_message(format!(
-            "{}: cannot save grant; allowing once",
-            sanitize(&request.plugin)
-        ));
+        self.show_message(format!("{}: {suffix}", sanitize(&request.plugin)));
     }
 
     fn deny_grant(&mut self, request: &GrantRequest) {
@@ -155,6 +181,20 @@ impl App {
     fn advance_grant(&mut self) {
         if self.plugin_grants.activate_next(Instant::now()) {
             self.show_grant_prompt_message();
+        }
+        self.flush_deferred_plugin_restarts();
+    }
+
+    fn flush_deferred_plugin_restarts(&mut self) {
+        let ready = self
+            .deferred_plugin_restarts
+            .iter()
+            .filter(|plugin| !self.plugin_grants.has_plugin_requests(plugin))
+            .cloned()
+            .collect::<Vec<_>>();
+        for plugin in ready {
+            self.deferred_plugin_restarts.remove(&plugin);
+            let _ = self.plugins.restart(Some(&plugin));
         }
     }
 

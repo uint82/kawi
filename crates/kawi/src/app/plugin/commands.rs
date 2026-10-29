@@ -2,6 +2,7 @@ use kawi_plugin::{Capability, PluginStatus};
 
 use super::super::command_text::split_command;
 use super::super::App;
+use super::consent::GrantKind;
 
 impl App {
     pub(crate) fn handle_plugin_command(&mut self, text: &str) {
@@ -99,7 +100,7 @@ impl App {
             ));
             return;
         }
-        self.request_plugin_grant(plugin, capability);
+        self.request_plugin_grant(plugin, capability, GrantKind::Call);
     }
 
     fn reload_permissions(&mut self) {

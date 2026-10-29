@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::capability::Capability;
 use crate::protocol::RpcError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +11,7 @@ pub enum PluginError {
     QueueFull,
     Protocol(String),
     Initialize(String),
+    MissingCapabilities(Vec<Capability>),
     Backoff { remaining_ms: u64 },
     Disabled,
     Rpc(RpcError),
@@ -27,6 +29,9 @@ impl fmt::Display for PluginError {
             Self::Protocol(message) => write!(formatter, "plugin protocol error: {message}"),
             Self::Initialize(message) => {
                 write!(formatter, "plugin initialization failed: {message}")
+            }
+            Self::MissingCapabilities(capabilities) => {
+                write_missing_capabilities(formatter, capabilities)
             }
             Self::Backoff { remaining_ms } => {
                 write!(
@@ -46,3 +51,18 @@ impl fmt::Display for PluginError {
 }
 
 impl std::error::Error for PluginError {}
+
+fn write_missing_capabilities(
+    formatter: &mut fmt::Formatter<'_>,
+    capabilities: &[Capability],
+) -> fmt::Result {
+    formatter.write_str("plugin requests ")?;
+    let mut capabilities = capabilities.iter();
+    if let Some(capability) = capabilities.next() {
+        formatter.write_str(capability.name())?;
+    }
+    for capability in capabilities {
+        write!(formatter, ", {}", capability.name())?;
+    }
+    formatter.write_str(", not granted")
+}

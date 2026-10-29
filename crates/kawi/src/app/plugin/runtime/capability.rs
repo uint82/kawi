@@ -1,9 +1,10 @@
+use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use kawi_plugin::{load_permission_state, Capability, RpcError, Scope};
 use kawi_watch::{Fingerprint, WatchService};
 
-use super::support::{changed_sandbox_plugins, denial_lines, describe_capabilities, same_path};
+use super::support::{changed_restart_plugins, denial_lines, describe_capabilities, same_path};
 use super::{DiagnosticWindow, PluginRuntime, MESSAGE_THROTTLE};
 
 const DIAGNOSTIC_RATE_WINDOW: Duration = Duration::from_secs(1);
@@ -20,6 +21,21 @@ impl PluginRuntime {
 
     pub(crate) fn has_capability(&self, plugin: &str, capability: Capability) -> bool {
         self.capabilities.has(plugin, capability)
+    }
+
+    pub(crate) fn is_wasm(&self, plugin: &str) -> bool {
+        self.catalog.plugins.iter().any(|loaded| {
+            loaded.manifest.name == plugin
+                && loaded.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
+        })
+    }
+
+    pub(crate) fn request_hash(&self, plugin: &str) -> Option<String> {
+        self.catalog
+            .plugins
+            .iter()
+            .find(|loaded| loaded.manifest.name == plugin)
+            .map(|loaded| loaded.manifest.capability_requests.request_hash())
     }
 
     pub(crate) fn is_changed(&self, plugin: &str) -> bool {
@@ -158,17 +174,26 @@ impl PluginRuntime {
     }
 
     pub(crate) fn reload_permissions(&mut self) -> Vec<String> {
+        let (warnings, restarted) = self.reload_permissions_without_restart();
+        self.restart_plugins(restarted);
+        warnings
+    }
+
+    pub(crate) fn reload_permissions_without_restart(&mut self) -> (Vec<String>, BTreeSet<String>) {
         let Some(path) = self.permissions_path.as_deref() else {
-            return Vec::new();
+            return (Vec::new(), BTreeSet::new());
         };
         let previous = self.capabilities.snapshot();
         let state = load_permission_state(&self.catalog, path);
-        let restarted = changed_sandbox_plugins(&previous, &state.grants);
+        let restarted = changed_restart_plugins(&self.catalog, &previous, &state.grants);
         self.capabilities.replace(state.grants);
+        (state.warnings, restarted)
+    }
+
+    fn restart_plugins(&self, restarted: BTreeSet<String>) {
         for plugin in restarted {
             let _ = self.restart(Some(&plugin));
         }
-        state.warnings
     }
 
     pub(crate) fn poll_permission_changes(&mut self) -> Option<Vec<String>> {

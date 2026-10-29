@@ -82,20 +82,41 @@ fn write_plugin(root: &Path, declared: Option<&str>) -> String {
 }
 
 fn write_plugin_bytes(root: &Path, bytes: &[u8], declared: Option<&str>) -> String {
+    write_plugin_manifest(root, bytes, declared, "")
+}
+
+fn write_plugin_manifest(root: &Path, bytes: &[u8], declared: Option<&str>, extra: &str) -> String {
+    write_plugin_manifest_with(root, bytes, declared, &["editor.read"], extra)
+}
+
+fn write_plugin_manifest_with(
+    root: &Path,
+    bytes: &[u8],
+    declared: Option<&str>,
+    capabilities: &[&str],
+    extra: &str,
+) -> String {
     let dir = root.join("wasm");
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("plugin.wasm"), bytes).unwrap();
     let hash = format!("{:x}", Sha256::digest(bytes));
     let declared = declared.unwrap_or(&hash);
+    let capabilities = capabilities
+        .iter()
+        .map(|capability| format!("\"{capability}\" = true\n"))
+        .collect::<String>();
     fs::write(
         dir.join("plugin.toml"),
         format!(
-            "name = \"wasm\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"{declared}\"\n\n[capabilities]\n\"editor.read\" = true\n"
+            "name = \"wasm\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"{declared}\"\n\n[capabilities]\n{capabilities}{extra}"
         ),
     )
     .unwrap();
     hash
 }
+
+#[cfg(feature = "wasm")]
+mod startup;
 
 #[cfg(feature = "wasm")]
 #[test]

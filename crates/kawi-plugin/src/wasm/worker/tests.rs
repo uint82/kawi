@@ -77,6 +77,36 @@ fn request(mut plugin: LoadedPlugin, capabilities: &[Capability]) -> LoadedPlugi
     plugin
 }
 
+fn start(
+    plugin: LoadedPlugin,
+    capabilities: CapabilityRegistry,
+) -> (WasmWorkerHandle, mpsc::Receiver<PluginHostEvent>) {
+    let (events_tx, events_rx) = mpsc::channel();
+    let (wake_tx, _wake_rx) = mpsc::channel();
+    let handle = start_wasm_worker(
+        plugin,
+        capabilities,
+        HostEnvironment::default(),
+        events_tx,
+        wake_tx,
+    );
+    (handle, events_rx)
+}
+
+fn request_paths(mut plugin: LoadedPlugin, paths: &[(Capability, &str)]) -> LoadedPlugin {
+    let mut requests = toml::Table::new();
+    for (capability, path) in paths {
+        let mut scope = toml::Table::new();
+        scope.insert(
+            "paths".to_string(),
+            toml::Value::Array(vec![toml::Value::String((*path).to_string())]),
+        );
+        requests.insert(capability.name().to_string(), toml::Value::Table(scope));
+    }
+    plugin.manifest.capability_requests = crate::capability::parse_capability_requests(&requests).0;
+    plugin
+}
+
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/wasm")
@@ -118,46 +148,6 @@ fn invokes_a_wasm_component() {
             _ => {}
         }
     }
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn refuses_an_ungranted_import() {
-    let plugin = plugin_with("editor-host.wasm");
-    let dir = plugin.dir.clone();
-    let name = plugin.manifest.name.clone();
-    let (events_tx, events_rx) = mpsc::channel();
-    let (wake_tx, _wake_rx) = mpsc::channel();
-    let handle = start_wasm_worker(
-        plugin,
-        grants(&name, &[]),
-        HostEnvironment::default(),
-        events_tx,
-        wake_tx,
-    );
-    handle
-        .invoke(
-            12,
-            "read".to_string(),
-            json!([]),
-            InvocationContext::redacted(),
-        )
-        .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let event = events_rx
-            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-            .unwrap();
-        if let PluginHostEvent::InvocationFinished { result, .. } = event {
-            let error = result.unwrap_err().to_string();
-            assert!(error.contains("import"), "{error}");
-            break;
-        }
-    }
-    assert!(matches!(
-        handle.status(),
-        PluginStatus::Backoff { .. } | PluginStatus::Disabled
-    ));
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -282,4 +272,5 @@ mod editor;
 mod events;
 #[cfg(unix)]
 mod fs;
+mod imports;
 mod timeout;

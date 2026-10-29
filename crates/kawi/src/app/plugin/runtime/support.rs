@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use kawi_plugin::{Capability, EffectiveCapabilities, Scope};
+use kawi_plugin::{Capability, EffectiveCapabilities, PluginCatalog, PluginRuntime, Scope};
+
+use crate::permission_lines::grant_lines;
 
 pub(super) fn describe_capabilities(
     capabilities: impl Iterator<Item = Capability>,
@@ -34,37 +36,45 @@ pub(super) fn denial_lines(
     capability: Capability,
     scope: Option<Scope>,
 ) -> [String; 3] {
-    [
-        format!("denied {}", capability.name()),
-        format!("add to permissions.toml: [plugins.{plugin}.grant]"),
-        format!(
-            "\"{}\" = {}",
-            capability.name(),
-            grant_value(scope.as_ref())
-        ),
-    ]
+    let [hint, assignment] = grant_lines(plugin, capability, scope.as_ref());
+    [format!("denied {}", capability.name()), hint, assignment]
 }
 
-fn grant_value(scope: Option<&Scope>) -> String {
-    match scope {
-        None | Some(Scope::Unscoped) => "true".to_string(),
-        Some(Scope::Paths(paths)) => format!("{{ paths = {paths:?} }}"),
-        Some(Scope::Commands(commands)) => format!("{{ commands = {commands:?} }}"),
-        Some(Scope::Hosts(hosts)) => format!("{{ hosts = {hosts:?} }}"),
-    }
-}
-
-pub(super) fn changed_sandbox_plugins(
+pub(super) fn changed_restart_plugins(
+    catalog: &PluginCatalog,
     previous: &BTreeMap<String, EffectiveCapabilities>,
     next: &BTreeMap<String, EffectiveCapabilities>,
 ) -> BTreeSet<String> {
-    let mut changed = BTreeSet::new();
-    for name in previous.keys().chain(next.keys()).collect::<BTreeSet<_>>() {
-        if sandbox_scope_changed(previous.get(name), next.get(name)) {
-            changed.insert(name.clone());
-        }
+    catalog
+        .plugins
+        .iter()
+        .filter(|plugin| {
+            restart_required(
+                plugin.manifest.runtime,
+                previous.get(&plugin.manifest.name),
+                next.get(&plugin.manifest.name),
+            )
+        })
+        .map(|plugin| plugin.manifest.name.clone())
+        .collect()
+}
+
+fn restart_required(
+    runtime: PluginRuntime,
+    previous: Option<&EffectiveCapabilities>,
+    next: Option<&EffectiveCapabilities>,
+) -> bool {
+    match runtime {
+        PluginRuntime::Process => sandbox_scope_changed(previous, next),
+        PluginRuntime::Wasm => granted_capabilities_changed(previous, next),
     }
-    changed
+}
+
+fn granted_capabilities_changed(
+    previous: Option<&EffectiveCapabilities>,
+    next: Option<&EffectiveCapabilities>,
+) -> bool {
+    previous.map(|effective| &effective.granted) != next.map(|effective| &effective.granted)
 }
 
 fn sandbox_scope_changed(

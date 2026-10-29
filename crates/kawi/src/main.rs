@@ -11,6 +11,7 @@ mod keymap;
 mod leader;
 mod mouse;
 mod options;
+mod permission_lines;
 mod persist;
 mod recovery;
 mod session;

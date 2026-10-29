@@ -31,7 +31,9 @@ Unscoped capabilities use `true` in both requests and grants. Scoped capabilitie
 
 ### Paths
 
-`fs.read` and `fs.write` take `paths`, an array of directories or files. Paths may start with these variables:
+`fs.read` and `fs.write` take `paths`, an array of directories or files. An import that exposes multiple capabilities, such as WASI filesystem read and write, must have every exposed capability requested by the manifest. A grant for any one of the requested capabilities is enough to instantiate the plugin, so read-only access still grants only `fs.read`.
+
+Paths may start with these variables:
 
 - `$WORKSPACE`: the active workspace roots
 - `$PLUGIN_DIR`: the plugin directory
@@ -189,7 +191,7 @@ The `invoke_command` context is editor state. Without `editor.read`, Kawi replac
 
 ## Consent prompt
 
-A denial opens a host prompt with three choices: allow once, allow always, or deny. The prompt is the normal consent path. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
+A denial opens a host prompt with three choices: allow once, allow always, or deny. The prompt is the normal consent path. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow. WASM startup imports offer only allow always and deny because linking is fixed at instantiation.
 
 - Only real keyboard input answers a prompt. Synthetic keys from `keys.send`, macro replay, mouse events, and pasted text are ignored while a prompt is open.
 - Plugin-originated messages cannot replace the prompt text.
@@ -228,7 +230,7 @@ An unmet request:
 - Appears in `:plugin list`.
 - Does not prevent the plugin from running with its granted subset.
 
-The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
+The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. `:plugin list` and `kawi doctor` keep showing missing grants and the permissions lines after a prompt is dismissed. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
 
 Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` or run `:plugin reload` to change host-method and event grants immediately. Kawi restarts a plugin when its filesystem or execute scope changes so Landlock re-applies the ruleset.
 

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
-use crate::capability::{is_event_allowed, CapabilityRegistry};
+use crate::capability::{is_event_allowed, Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::manifest::{PluginCatalog, PluginRuntime};
@@ -36,6 +36,10 @@ pub enum PluginHostEvent {
         id: Value,
         method: String,
         params: Value,
+    },
+    CapabilityRequired {
+        plugin: String,
+        capability: Capability,
     },
     Log {
         plugin: String,
