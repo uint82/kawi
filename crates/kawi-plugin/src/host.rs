@@ -9,10 +9,11 @@ use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::manifest::{PluginCatalog, PluginRuntime};
-use crate::process::{
-    start_disabled_worker, start_worker, NotifyOutcome, WorkerCommand, WorkerHandle,
-};
+use crate::process::{start_disabled_worker, start_worker, NotifyOutcome};
 use crate::protocol::{InvocationContext, RpcError};
+
+#[cfg(feature = "wasm")]
+use crate::wasm::worker::start_wasm_worker;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginStatus {
@@ -50,8 +51,12 @@ pub enum PluginHostEvent {
     },
 }
 
+mod host_worker;
+
+use self::host_worker::HostWorker;
+
 pub struct PluginHost {
-    workers: HashMap<String, WorkerHandle>,
+    workers: HashMap<String, HostWorker>,
     capabilities: CapabilityRegistry,
     next_request: AtomicU64,
 }
@@ -64,46 +69,28 @@ impl PluginHost {
         events: Sender<PluginHostEvent>,
         wake: Sender<()>,
     ) -> Self {
-        let workers: HashMap<String, WorkerHandle> = catalog
+        let workers: HashMap<String, HostWorker> = catalog
             .plugins
             .iter()
             .cloned()
             .map(|plugin| {
                 let name = plugin.manifest.name.clone();
                 let worker = match plugin.manifest.runtime {
-                    PluginRuntime::Process => start_worker(
+                    PluginRuntime::Process => HostWorker::Process(start_worker(
                         plugin,
                         capabilities.clone(),
                         environment.clone(),
                         events.clone(),
                         wake.clone(),
-                    ),
+                    )),
                     PluginRuntime::Wasm => {
-                        let message = plugin
-                            .disabled_reason
-                            .clone()
-                            .unwrap_or_else(|| wasm_unavailable_message().to_string());
-                        start_disabled_worker(plugin, message, events.clone(), wake.clone())
+                        wasm_worker(plugin, &capabilities, &environment, &events, &wake)
                     }
                 };
                 (name, worker)
             })
             .collect();
         for plugin in &catalog.plugins {
-            if plugin.manifest.runtime == PluginRuntime::Wasm {
-                send_event(
-                    &events,
-                    &wake,
-                    PluginHostEvent::Log {
-                        plugin: plugin.manifest.name.clone(),
-                        line: plugin
-                            .disabled_reason
-                            .clone()
-                            .unwrap_or_else(|| wasm_unavailable_message().to_string()),
-                    },
-                );
-                continue;
-            }
             if plugin
                 .manifest
                 .activation_events
@@ -158,15 +145,7 @@ impl PluginHost {
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
         let request = self.next_request.fetch_add(1, Ordering::Relaxed);
-        worker
-            .commands
-            .send(WorkerCommand::Invoke {
-                request,
-                command: command.to_string(),
-                args,
-                context: Box::new(context),
-            })
-            .map_err(|_| PluginError::ProcessExited)?;
+        worker.invoke(request, command.to_string(), args, context)?;
         Ok(request)
     }
 
@@ -198,7 +177,7 @@ impl PluginHost {
     }
 
     pub fn status(&self, plugin: &str) -> Option<PluginStatus> {
-        self.workers.get(plugin).map(WorkerHandle::status)
+        self.workers.get(plugin).map(HostWorker::status)
     }
 
     pub fn plugins(&self) -> impl Iterator<Item = &str> {
@@ -207,7 +186,7 @@ impl PluginHost {
 
     pub fn shutdown(&self) {
         for worker in self.workers.values() {
-            let _ = worker.commands.send(WorkerCommand::Shutdown);
+            worker.shutdown();
         }
     }
 }
@@ -256,6 +235,68 @@ pub(crate) fn set_status(
     }
 }
 
+#[cfg(feature = "wasm")]
+fn wasm_worker(
+    plugin: crate::manifest::LoadedPlugin,
+    capabilities: &CapabilityRegistry,
+    environment: &HostEnvironment,
+    events: &Sender<PluginHostEvent>,
+    wake: &Sender<()>,
+) -> HostWorker {
+    if let Some(reason) = plugin.disabled_reason.clone() {
+        send_event(
+            events,
+            wake,
+            PluginHostEvent::Log {
+                plugin: plugin.manifest.name.clone(),
+                line: reason.clone(),
+            },
+        );
+        return HostWorker::Disabled(start_disabled_worker(
+            plugin,
+            reason,
+            events.clone(),
+            wake.clone(),
+        ));
+    }
+    HostWorker::Wasm(start_wasm_worker(
+        plugin,
+        capabilities.clone(),
+        environment.clone(),
+        events.clone(),
+        wake.clone(),
+    ))
+}
+
+#[cfg(not(feature = "wasm"))]
+fn wasm_worker(
+    plugin: crate::manifest::LoadedPlugin,
+    _capabilities: &CapabilityRegistry,
+    _environment: &HostEnvironment,
+    events: &Sender<PluginHostEvent>,
+    wake: &Sender<()>,
+) -> HostWorker {
+    let message = plugin
+        .disabled_reason
+        .clone()
+        .unwrap_or_else(|| wasm_unavailable_message().to_string());
+    send_event(
+        events,
+        wake,
+        PluginHostEvent::Log {
+            plugin: plugin.manifest.name.clone(),
+            line: message.clone(),
+        },
+    );
+    HostWorker::Disabled(start_disabled_worker(
+        plugin,
+        message,
+        events.clone(),
+        wake.clone(),
+    ))
+}
+
+#[cfg(not(feature = "wasm"))]
 fn wasm_unavailable_message() -> &'static str {
     #[cfg(feature = "wasm")]
     {
