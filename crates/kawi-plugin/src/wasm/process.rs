@@ -13,6 +13,7 @@ use super::convert::process_output;
 
 const MIN_TIMEOUT_MS: u32 = 100;
 const MAX_TIMEOUT_MS: u32 = 300_000;
+const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 pub struct ProcessRunner {
@@ -40,11 +41,7 @@ impl ProcessRunner {
         args: &[String],
         timeout_ms: u32,
     ) -> Result<ProcessOutput, RpcError> {
-        self.authorize(command)?;
-        let path =
-            kawi_process::find_executable_in(command, &self.plugin.dir).ok_or_else(|| {
-                RpcError::new(PLUGIN_UNAVAILABLE, format!("command not found: {command}"))
-            })?;
+        let path = self.authorize(command)?;
         let timeout =
             Duration::from_millis(u64::from(timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS)));
         let mut command = Command::new(path);
@@ -81,7 +78,7 @@ impl ProcessRunner {
         Ok(process_output(stdout, stderr, status.code()))
     }
 
-    fn authorize(&self, command: &str) -> Result<(), RpcError> {
+    fn authorize(&self, command: &str) -> Result<std::path::PathBuf, RpcError> {
         let name = &self.plugin.manifest.name;
         if !self.capabilities.has(name, Capability::ProcessSpawn) {
             return Err(RpcError::capability_denied(
@@ -89,14 +86,20 @@ impl ProcessRunner {
                 None,
             ));
         }
-        match self.capabilities.scope(name, Capability::ProcessSpawn) {
-            Some(Scope::Commands(commands)) if commands.iter().any(|item| item == command) => {
-                Ok(())
-            }
-            _ => Err(RpcError::capability_denied(
-                Capability::ProcessSpawn.name(),
-                Some(serde_json::json!({ "command": command })),
-            )),
+        let requested = kawi_process::find_executable_in(command, &self.plugin.dir)
+            .ok_or_else(|| command_not_found(command))?;
+        let Some(Scope::Commands(commands)) =
+            self.capabilities.scope(name, Capability::ProcessSpawn)
+        else {
+            return Err(capability_denied(command));
+        };
+        if commands.iter().any(|granted| {
+            kawi_process::find_executable_in(granted, &self.plugin.dir)
+                .is_some_and(|granted| same_executable(&granted, &requested))
+        }) {
+            Ok(requested)
+        } else {
+            Err(capability_denied(command))
         }
     }
 
@@ -105,11 +108,40 @@ impl ProcessRunner {
     }
 }
 
+fn same_executable(left: &std::path::Path, right: &std::path::Path) -> bool {
+    left == right
+        || match (left.canonicalize(), right.canonicalize()) {
+            (Ok(left), Ok(right)) => left == right,
+            _ => false,
+        }
+}
+
+fn command_not_found(command: &str) -> RpcError {
+    RpcError::new(PLUGIN_UNAVAILABLE, format!("command not found: {command}"))
+}
+
+fn capability_denied(command: &str) -> RpcError {
+    RpcError::capability_denied(
+        Capability::ProcessSpawn.name(),
+        Some(serde_json::json!({ "command": command })),
+    )
+}
+
 fn read_stream(stream: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {
     thread::spawn(move || {
         let mut bytes = Vec::new();
-        if let Some(mut stream) = stream {
-            let _ = stream.read_to_end(&mut bytes);
+        let Some(mut stream) = stream else {
+            return String::new();
+        };
+        let mut buffer = [0_u8; 8192];
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    let remaining = MAX_OUTPUT_BYTES.saturating_sub(bytes.len());
+                    bytes.extend_from_slice(&buffer[..read.min(remaining)]);
+                }
+            }
         }
         String::from_utf8_lossy(&bytes).into_owned()
     })
@@ -120,82 +152,4 @@ fn join_stream(stream: thread::JoinHandle<String>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use super::*;
-    use crate::capability::{EffectiveCapabilities, Scope};
-    use crate::manifest::{PluginManifest, PluginRuntime};
-
-    fn plugin() -> LoadedPlugin {
-        LoadedPlugin {
-            manifest: PluginManifest {
-                name: "runner".to_string(),
-                version: "0.1.0".to_string(),
-                protocol: 1,
-                description: String::new(),
-                runtime: PluginRuntime::Wasm,
-                component: None,
-                sha256: None,
-                command: Vec::new(),
-                timeout_ms: 1_000,
-                commands: Vec::new(),
-                subscribes: Vec::new(),
-                debounce: Default::default(),
-                activation_events: Vec::new(),
-                capabilities: toml::Table::new(),
-                capability_requests: Default::default(),
-            },
-            dir: std::env::temp_dir(),
-            path: std::env::temp_dir().join("plugin.toml"),
-            computed_hash: None,
-            disabled_reason: None,
-        }
-    }
-
-    fn registry(granted: Option<Scope>) -> CapabilityRegistry {
-        let registry = CapabilityRegistry::default();
-        let granted = granted
-            .map(|scope| BTreeMap::from([(Capability::ProcessSpawn, scope)]))
-            .unwrap_or_default();
-        registry.replace(BTreeMap::from([(
-            "runner".to_string(),
-            EffectiveCapabilities {
-                granted,
-                ..Default::default()
-            },
-        )]));
-        registry
-    }
-
-    #[test]
-    fn runs_an_authorized_command() {
-        let runner = ProcessRunner::new(
-            plugin(),
-            registry(Some(Scope::Commands(vec!["/bin/sh".to_string()]))),
-            HostEnvironment::default(),
-        );
-        let output = runner
-            .run(
-                "/bin/sh",
-                &["-c".to_string(), "printf hi".to_string()],
-                1_000,
-            )
-            .unwrap();
-        assert!(output.success);
-        assert_eq!(output.stdout, "hi");
-    }
-
-    #[test]
-    fn rejects_a_command_outside_the_scope() {
-        let runner = ProcessRunner::new(
-            plugin(),
-            registry(Some(Scope::Commands(vec!["/bin/true".to_string()]))),
-            HostEnvironment::default(),
-        );
-        let error = runner
-            .run("/bin/sh", &["-c".to_string(), "true".to_string()], 1_000)
-            .unwrap_err();
-        assert_eq!(error.code, crate::protocol::CAPABILITY_DENIED);
-    }
-}
+mod tests;

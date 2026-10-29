@@ -1,19 +1,13 @@
-use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use serde_json::Value;
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
-use crate::host::{send_event, PluginHostEvent};
 use crate::protocol::{
     ApplyEditParams, ApplyEditResult, GetStateParams, RpcError, SetDiagnosticsParams,
     UiMessageParams, PLUGIN_UNAVAILABLE,
 };
+
+pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
 
 use super::bindings::kawi::plugin::types::{Edit, Error, ProcessOutput, State};
 use super::bindings::kawi::plugin::{
@@ -22,78 +16,6 @@ use super::bindings::kawi::plugin::{
 use super::convert::{diagnostics_to_protocol, edits_to_protocol, error_from_rpc, state_from_json};
 use super::limits::WasmLimits;
 use super::process::ProcessRunner;
-
-const HOST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const OUTPUT_LIMIT: usize = 64 * 1024;
-
-pub type PendingCalls = Arc<Mutex<BTreeMap<u64, Sender<Result<Value, RpcError>>>>>;
-
-#[derive(Clone)]
-pub struct HostBridge {
-    plugin: String,
-    events: Sender<PluginHostEvent>,
-    wake: Sender<()>,
-    next_id: Arc<AtomicU64>,
-    pending: PendingCalls,
-}
-
-impl HostBridge {
-    pub fn new(
-        plugin: String,
-        events: Sender<PluginHostEvent>,
-        wake: Sender<()>,
-        pending: PendingCalls,
-    ) -> Self {
-        Self {
-            plugin,
-            events,
-            wake,
-            next_id: Arc::new(AtomicU64::new(1)),
-            pending,
-        }
-    }
-
-    pub fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let (response_tx, response_rx) = mpsc::channel();
-        self.pending
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .insert(id, response_tx);
-        send_event(
-            &self.events,
-            &self.wake,
-            PluginHostEvent::HostRequest {
-                plugin: self.plugin.clone(),
-                id: Value::from(id),
-                method: method.to_string(),
-                params,
-            },
-        );
-        let result = response_rx.recv_timeout(HOST_REQUEST_TIMEOUT);
-        self.pending
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .remove(&id);
-        result.unwrap_or_else(|_| {
-            Err(RpcError::new(
-                PLUGIN_UNAVAILABLE,
-                format!("host request timed out: {method}"),
-            ))
-        })
-    }
-
-    pub fn log(&self, line: String) {
-        send_event(
-            &self.events,
-            &self.wake,
-            PluginHostEvent::Log {
-                plugin: self.plugin.clone(),
-                line,
-            },
-        );
-    }
-}
 
 pub struct WasmState {
     pub wasi: WasiCtx,
@@ -126,6 +48,18 @@ impl WasmState {
             stdout_offset: 0,
             stderr_offset: 0,
         }
+    }
+
+    pub fn begin_call(&self) {
+        self.bridge.begin_call();
+    }
+
+    pub fn clear_call(&self) {
+        self.bridge.clear_call();
+    }
+
+    pub fn call_expired(&self) -> bool {
+        self.bridge.call_expired()
     }
 
     pub fn drain_output(&mut self) {
@@ -236,15 +170,4 @@ fn drain(pipe: &MemoryOutputPipe, offset: usize, stream: &str, bridge: &HostBrid
         bridge.log(format!("{stream}: {line}"));
     }
     contents.len()
-}
-
-pub fn pending_calls() -> PendingCalls {
-    Arc::new(Mutex::new(BTreeMap::new()))
-}
-
-pub fn output_pipes() -> (MemoryOutputPipe, MemoryOutputPipe) {
-    (
-        MemoryOutputPipe::new(OUTPUT_LIMIT),
-        MemoryOutputPipe::new(OUTPUT_LIMIT),
-    )
 }

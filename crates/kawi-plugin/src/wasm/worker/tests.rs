@@ -162,7 +162,7 @@ fn refuses_an_ungranted_import() {
 }
 
 #[test]
-fn stops_a_component_that_exceeds_its_epoch() {
+fn stops_a_component_that_exceeds_its_wall_clock() {
     let plugin = plugin_with("loop.wasm");
     let dir = plugin.dir.clone();
     let name = plugin.manifest.name.clone();
@@ -190,7 +190,7 @@ fn stops_a_component_that_exceeds_its_epoch() {
             .unwrap();
         if let PluginHostEvent::InvocationFinished { result, .. } = event {
             let error = result.unwrap_err();
-            assert!(error.to_string().contains("wasm trap"), "{error}");
+            assert!(error.to_string().contains("wall-clock"), "{error}");
             break;
         }
     }
@@ -209,7 +209,7 @@ fn forwards_events_to_a_wasm_component() {
     );
     let dir = plugin.dir.clone();
     let name = plugin.manifest.name.clone();
-    let capabilities = grants(&name, &[Capability::UiMessage]);
+    let capabilities = grants(&name, &[Capability::EditorRead, Capability::UiMessage]);
     let (events_tx, events_rx) = mpsc::channel();
     let (wake_tx, _wake_rx) = mpsc::channel();
     let handle = start_wasm_worker(
@@ -279,3 +279,7 @@ fn forwards_events_to_a_wasm_component() {
 }
 
 mod editor;
+mod events;
+#[cfg(unix)]
+mod fs;
+mod timeout;

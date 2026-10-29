@@ -9,11 +9,10 @@ use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::manifest::{PluginCatalog, PluginRuntime};
-use crate::process::{start_disabled_worker, start_worker, NotifyOutcome};
-use crate::protocol::{InvocationContext, RpcError};
+use crate::process::{start_worker, NotifyOutcome};
 
-#[cfg(feature = "wasm")]
-use crate::wasm::worker::start_wasm_worker;
+use self::wasm::wasm_worker;
+use crate::protocol::{InvocationContext, RpcError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginStatus {
@@ -52,6 +51,7 @@ pub enum PluginHostEvent {
 }
 
 mod host_worker;
+mod wasm;
 
 use self::host_worker::HostWorker;
 
@@ -232,78 +232,5 @@ pub(crate) fn set_status(
                 status: next,
             },
         );
-    }
-}
-
-#[cfg(feature = "wasm")]
-fn wasm_worker(
-    plugin: crate::manifest::LoadedPlugin,
-    capabilities: &CapabilityRegistry,
-    environment: &HostEnvironment,
-    events: &Sender<PluginHostEvent>,
-    wake: &Sender<()>,
-) -> HostWorker {
-    if let Some(reason) = plugin.disabled_reason.clone() {
-        send_event(
-            events,
-            wake,
-            PluginHostEvent::Log {
-                plugin: plugin.manifest.name.clone(),
-                line: reason.clone(),
-            },
-        );
-        return HostWorker::Disabled(start_disabled_worker(
-            plugin,
-            reason,
-            events.clone(),
-            wake.clone(),
-        ));
-    }
-    HostWorker::Wasm(start_wasm_worker(
-        plugin,
-        capabilities.clone(),
-        environment.clone(),
-        events.clone(),
-        wake.clone(),
-    ))
-}
-
-#[cfg(not(feature = "wasm"))]
-fn wasm_worker(
-    plugin: crate::manifest::LoadedPlugin,
-    _capabilities: &CapabilityRegistry,
-    _environment: &HostEnvironment,
-    events: &Sender<PluginHostEvent>,
-    wake: &Sender<()>,
-) -> HostWorker {
-    let message = plugin
-        .disabled_reason
-        .clone()
-        .unwrap_or_else(|| wasm_unavailable_message().to_string());
-    send_event(
-        events,
-        wake,
-        PluginHostEvent::Log {
-            plugin: plugin.manifest.name.clone(),
-            line: message.clone(),
-        },
-    );
-    HostWorker::Disabled(start_disabled_worker(
-        plugin,
-        message,
-        events.clone(),
-        wake.clone(),
-    ))
-}
-
-#[cfg(not(feature = "wasm"))]
-fn wasm_unavailable_message() -> &'static str {
-    #[cfg(feature = "wasm")]
-    {
-        "wasm execution is not available in this build phase"
-    }
-    #[cfg(not(feature = "wasm"))]
-    {
-        "wasm support is not enabled in this build"
     }
 }

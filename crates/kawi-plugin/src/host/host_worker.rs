@@ -8,7 +8,7 @@ use crate::protocol::{InvocationContext, RpcError};
 #[cfg(feature = "wasm")]
 use crate::wasm::worker::WasmWorkerHandle;
 
-pub(crate) enum HostWorker {
+pub(super) enum HostWorker {
     Process(WorkerHandle),
     #[cfg(feature = "wasm")]
     Wasm(WasmWorkerHandle),
@@ -16,7 +16,7 @@ pub(crate) enum HostWorker {
 }
 
 impl HostWorker {
-    pub(crate) fn activate(&self) -> Result<(), PluginError> {
+    pub(super) fn activate(&self) -> Result<(), PluginError> {
         match self {
             Self::Process(worker) => worker.activate(),
             #[cfg(feature = "wasm")]
@@ -25,7 +25,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
+    pub(super) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
             Self::Process(worker) => worker.notify(event, payload),
             #[cfg(feature = "wasm")]
@@ -34,7 +34,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn invoke(
+    pub(super) fn invoke(
         &self,
         request: u64,
         command: String,
@@ -65,7 +65,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn respond(
+    pub(super) fn respond(
         &self,
         id: Value,
         result: Result<Value, RpcError>,
@@ -77,7 +77,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn restart(&self) -> Result<(), PluginError> {
+    pub(super) fn restart(&self) -> Result<(), PluginError> {
         match self {
             Self::Process(worker) | Self::Disabled(worker) => worker.restart(),
             #[cfg(feature = "wasm")]
@@ -85,7 +85,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn status(&self) -> PluginStatus {
+    pub(super) fn status(&self) -> PluginStatus {
         match self {
             Self::Process(worker) | Self::Disabled(worker) => worker.status(),
             #[cfg(feature = "wasm")]
@@ -93,7 +93,7 @@ impl HostWorker {
         }
     }
 
-    pub(crate) fn shutdown(&self) {
+    pub(super) fn shutdown(&self) {
         match self {
             Self::Process(worker) | Self::Disabled(worker) => {
                 let _ = worker

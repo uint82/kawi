@@ -1,10 +1,11 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde_json::Value;
 
-use crate::capability::CapabilityRegistry;
+use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{send_event, set_status, PluginHostEvent, PluginStatus};
@@ -15,7 +16,7 @@ use crate::protocol::{InvocationContext, RpcError};
 use self::handle::WasmCommand;
 pub(crate) use self::handle::WasmWorkerHandle;
 use super::session::Session;
-use super::state::{pending_calls, PendingCalls};
+use super::state::{fail_pending, pending_calls, PendingCalls};
 
 const COMMAND_QUEUE: usize = 64;
 
@@ -32,11 +33,13 @@ pub(crate) fn start_wasm_worker(
         plugin.manifest.subscribes.iter().cloned().collect(),
     ));
     let pending = pending_calls();
+    let cancel = Arc::new(AtomicBool::new(false));
     let handle = WasmWorkerHandle {
         commands,
         status: Arc::clone(&status),
         event_filter: Arc::clone(&event_filter),
         pending: Arc::clone(&pending),
+        cancel: Arc::clone(&cancel),
     };
     let name = plugin.manifest.name.clone();
     let worker = WasmWorker {
@@ -47,6 +50,7 @@ pub(crate) fn start_wasm_worker(
         wake: wake.clone(),
         status,
         pending,
+        cancel,
         session: None,
         start_error: None,
         backoff: Backoff::new(),
@@ -76,6 +80,7 @@ struct WasmWorker {
     wake: mpsc::Sender<()>,
     status: Arc<Mutex<PluginStatus>>,
     pending: PendingCalls,
+    cancel: Arc<AtomicBool>,
     session: Option<Session>,
     start_error: Option<String>,
     backoff: Backoff,
@@ -132,6 +137,7 @@ impl WasmWorker {
             self.events.clone(),
             self.wake.clone(),
             Arc::clone(&self.pending),
+            Arc::clone(&self.cancel),
         )
     }
 
@@ -207,6 +213,9 @@ impl WasmWorker {
     }
 
     fn handle_event(&mut self, event: &str, payload: Value) {
+        if !is_event_allowed(&self.capabilities, &self.plugin.manifest.name, event) {
+            return;
+        }
         if let Err(error) = self.backoff.check() {
             self.log(error.to_string());
             return;
@@ -229,6 +238,7 @@ impl WasmWorker {
     }
 
     fn restart(&mut self) {
+        self.cancel.store(false, Ordering::SeqCst);
         self.session = None;
         self.start_error = None;
         self.backoff.reset();
@@ -240,7 +250,10 @@ impl WasmWorker {
         self.session = None;
         self.start_error = None;
         self.set_status(PluginStatus::Stopped);
-        fail_pending(&self.pending);
+        fail_pending(
+            &self.pending,
+            RpcError::new(crate::protocol::PLUGIN_UNAVAILABLE, "plugin stopped"),
+        );
     }
 
     fn update_backoff_status(&self) {
@@ -271,14 +284,6 @@ impl WasmWorker {
                 line,
             },
         );
-    }
-}
-
-fn fail_pending(pending: &PendingCalls) {
-    let mut pending = pending.lock().unwrap_or_else(|error| error.into_inner());
-    let calls = std::mem::take(&mut *pending);
-    for (_, sender) in calls {
-        let _ = sender.send(Err(RpcError::unavailable("plugin stopped")));
     }
 }
 

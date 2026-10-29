@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde_json::Value;
 use wasmtime::component::{HasSelf, Linker};
-use wasmtime::Store;
+use wasmtime::{Store, UpdateDeadline};
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::FsPerms;
 
@@ -19,11 +19,12 @@ use super::bindings::kawi::plugin::{
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
+use super::policy::unauthorized_imports;
 use super::process::ProcessRunner;
 use super::state::{output_pipes, HostBridge, PendingCalls, WasmState};
 use super::{WasiConfig, WasmRuntime};
 
-pub(crate) const CALL_EPOCH_TICKS: u64 = 20;
+const WALL_CLOCK_CHECK_TICKS: u64 = 1;
 const MAX_COMPONENT_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(crate) struct Session {
@@ -33,7 +34,7 @@ pub(crate) struct Session {
 
 impl Session {
     pub(crate) fn initialize(&mut self) -> Result<(), PluginError> {
-        self.store.set_epoch_deadline(CALL_EPOCH_TICKS);
+        self.begin_call();
         let result = self
             .instance
             .kawi_plugin_lifecycle()
@@ -41,19 +42,21 @@ impl Session {
                 &mut self.store,
                 u32::try_from(PROTOCOL_VERSION).unwrap_or(u32::MAX),
             )
-            .map_err(|error| PluginError::Initialize(format!("wasm init: {error}")))?;
+            .map_err(|error| PluginError::Initialize(format!("wasm init: {error:#}")))?;
+        self.store.data_mut().clear_call();
         self.store.data_mut().drain_output();
         result.map_err(|error| PluginError::Initialize(error.message))
     }
 
     pub(crate) fn invoke(&mut self, command: &str, args: Value) -> Result<Value, PluginError> {
-        self.store.set_epoch_deadline(CALL_EPOCH_TICKS);
         let args = wasm_arguments(args)?;
+        self.begin_call();
         let result = self
             .instance
             .kawi_plugin_lifecycle()
             .call_invoke_command(&mut self.store, command, &args)
-            .map_err(|error| PluginError::Protocol(format!("wasm trap: {error}")))?;
+            .map_err(|error| PluginError::Protocol(format!("wasm trap: {error:#}")))?;
+        self.store.data_mut().clear_call();
         self.store.data_mut().drain_output();
         match result {
             Ok(value) => argument_to_json(value),
@@ -62,14 +65,20 @@ impl Session {
     }
 
     pub(crate) fn event(&mut self, event: &str, payload: Value) -> Result<(), PluginError> {
-        self.store.set_epoch_deadline(CALL_EPOCH_TICKS);
         let event = event_from_json(event, payload).map_err(PluginError::Rpc)?;
-        self.instance
+        self.begin_call();
+        let result = self
+            .instance
             .kawi_plugin_lifecycle()
-            .call_on_event(&mut self.store, &event)
-            .map_err(|error| PluginError::Protocol(format!("wasm trap: {error}")))?;
+            .call_on_event(&mut self.store, &event);
+        self.store.data_mut().clear_call();
         self.store.data_mut().drain_output();
-        Ok(())
+        result.map_err(|error| PluginError::Protocol(format!("wasm trap: {error:#}")))
+    }
+
+    fn begin_call(&mut self) {
+        self.store.set_epoch_deadline(WALL_CLOCK_CHECK_TICKS);
+        self.store.data().begin_call();
     }
 }
 
@@ -127,6 +136,7 @@ impl Session {
         events: std::sync::mpsc::Sender<PluginHostEvent>,
         wake: std::sync::mpsc::Sender<()>,
         pending: PendingCalls,
+        cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Self, PluginError> {
         let path = plugin
             .component_path()
@@ -147,22 +157,56 @@ impl Session {
             .iter()
             .map(|(capability, _)| capability)
             .collect::<Vec<_>>();
-        let (component, _) =
+        let (component, inspection) =
             runtime.inspect_component(&bytes, plugin.component_hash(), &requested)?;
+        let granted = Capability::ALL
+            .into_iter()
+            .filter(|capability| capabilities.has(&plugin.manifest.name, *capability))
+            .collect::<std::collections::BTreeSet<_>>();
+        let unauthorized =
+            unauthorized_imports(inspection.imports.iter().map(String::as_str), &granted);
+        if !unauthorized.is_empty() {
+            let missing = unauthorized
+                .iter()
+                .filter_map(|import| super::policy::import_capabilities(import))
+                .flatten()
+                .filter(|capability| !granted.contains(capability))
+                .map(|capability| capability.name())
+                .collect::<std::collections::BTreeSet<_>>();
+            let requested = if missing.is_empty() {
+                unauthorized.join(", ")
+            } else {
+                missing.into_iter().collect::<Vec<_>>().join(", ")
+            };
+            return Err(PluginError::Initialize(format!(
+                "plugin requests {requested}, not granted"
+            )));
+        }
         let mut linker = Linker::new(runtime.engine());
         add_kawi_interfaces(&mut linker, capabilities, &plugin.manifest.name)?;
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|error| PluginError::Initialize(format!("wasi linker: {error}")))?;
         let (stdout, stderr) = output_pipes();
         let wasi = build_wasi(plugin, capabilities, stdout.clone(), stderr.clone())?;
-        let bridge = HostBridge::new(plugin.manifest.name.clone(), events, wake, pending);
+        let bridge = HostBridge::new(plugin.manifest.name.clone(), events, wake, pending, cancel);
         let process = ProcessRunner::new(plugin.clone(), capabilities.clone(), environment.clone());
         let state = WasmState::new(wasi, bridge, process, stdout, stderr);
         let mut store = Store::new(runtime.engine(), state);
         store.limiter(|state| &mut state.limits);
-        store.set_epoch_deadline(CALL_EPOCH_TICKS);
+        store.epoch_deadline_callback(|context| {
+            if context.data().call_expired() {
+                Err(wasmtime::Error::msg(
+                    "wasm call exceeded wall-clock timeout",
+                ))
+            } else {
+                Ok(UpdateDeadline::Continue(WALL_CLOCK_CHECK_TICKS))
+            }
+        });
+        store.data_mut().begin_call();
+        store.set_epoch_deadline(WALL_CLOCK_CHECK_TICKS);
         let instance = Host_::instantiate(&mut store, &component, &linker)
             .map_err(|error| PluginError::Initialize(format!("wasm instantiate: {error}")))?;
+        store.data_mut().clear_call();
         Ok(Self { store, instance })
     }
 }

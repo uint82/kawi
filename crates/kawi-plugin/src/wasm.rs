@@ -1,6 +1,8 @@
 #[cfg(feature = "wasm")]
 mod bindings;
 #[cfg(feature = "wasm")]
+mod bridge;
+#[cfg(feature = "wasm")]
 mod component;
 #[cfg(feature = "wasm")]
 mod convert;
