@@ -73,6 +73,7 @@ Content-Length: <bytes>\r\n
 - Standard output is protocol-only. Plugins must write logs to standard error.
 - Standard error is line-oriented log output.
 - The maximum message size is 16 MiB.
+- Host responses larger than the maximum message size are rejected with `-32603`.
 - Malformed JSON, invalid framing, or oversized messages terminate the process.
 - Request IDs are JSON-RPC IDs. Host requests use integer IDs.
 
@@ -208,6 +209,8 @@ Events are post-hoc notifications. They never wait for a plugin response. Kawi d
 
 Notifications and requests share one ordered pipe per plugin. Ordering is guaranteed per plugin and per event type. `editor.get_state` always returns live state and includes the current revision.
 
+When a plugin loses its event grants, queued events are dropped. An event already being handled may finish, including any host call already in flight; revocation does not cancel that call.
+
 Each plugin has a bounded event queue. Kawi coalesces or debounces `buffer_changed`; other events are dropped with a log line when the queue is full. An overflow marks the buffer for resync, so the next delivered change has `full_resync: true`. A crash or restart clears queued events and forces resync.
 
 Kawi sends diagnostics to plugins and accepts plugin-published diagnostics through `editor.set_diagnostics`, scoped by plugin name.
@@ -273,7 +276,7 @@ Result:
 {"revision": 13}
 ```
 
-Edits are applied atomically. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010` and leaves the buffer unchanged. Edits must not overlap.
+Edits are applied atomically. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010` and leaves the buffer unchanged. A position inside a UTF-8 code point or outside the buffer returns `-32011` and also leaves the buffer unchanged. Edits must not overlap.
 
 ### editor.set_diagnostics
 
@@ -298,7 +301,7 @@ Request params:
 
 Result is `null`.
 
-`buffer` must be the current buffer and `revision` must match its current revision; otherwise Kawi returns `-32010`. The buffer must have a file path. Kawi replaces that plugin's diagnostics for the buffer; an empty array clears them. Severity is `error`, `warning`, `information`, or `hint`. Kawi ignores the supplied `source` and derives the displayed source from the plugin name, so a plugin cannot spoof another provider. Kawi accepts at most 1000 diagnostics per call, messages up to 4096 bytes, and codes up to 256 bytes. Publishing is limited to 20 calls per plugin per second.
+`buffer` must be the current buffer and `revision` must match its current revision; otherwise Kawi returns `-32010`. The buffer must have a file path. Kawi replaces that plugin's diagnostics for the buffer; an empty array clears them. Severity is `error`, `warning`, `information`, or `hint`. Kawi ignores the supplied `source` and derives the displayed source from the plugin name, so a plugin cannot spoof another provider. Kawi accepts at most 1000 diagnostics per call, messages up to 4096 bytes, and codes up to 256 bytes. A payload that exceeds any of these limits returns `-32602`. Publishing is limited to 20 calls per plugin per second.
 
 ### ui.message
 
@@ -308,7 +311,7 @@ Request params:
 {"message": "Formatted 3 files"}
 ```
 
-Result is `null`.
+Result is `null`. Kawi strips terminal escape sequences and replaces control characters with spaces before displaying the message.
 
 ## Versioning
 

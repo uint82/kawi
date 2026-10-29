@@ -1,6 +1,7 @@
 use std::fmt;
 
 mod events;
+mod sanitize;
 
 pub use events::{
     event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent,
@@ -10,6 +11,8 @@ pub use events::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub use sanitize::sanitize;
 
 pub const PROTOCOL_VERSION: u64 = 1;
 pub const PROTOCOL_MINOR: u64 = 2;
@@ -21,6 +24,9 @@ pub const HOST_METHODS: [&str; 4] = [
     "ui.message",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
+pub const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
+pub const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
+pub const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
 
 pub const PARSE_ERROR: i64 = -32700;
 pub const INVALID_REQUEST: i64 = -32600;
