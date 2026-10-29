@@ -11,19 +11,20 @@ use crate::host::{send_event, PluginHostEvent};
 use crate::protocol::{RpcError, PLUGIN_UNAVAILABLE};
 
 const HOST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const CALL_WALL_CLOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const OUTPUT_LIMIT: usize = 64 * 1024;
 
 pub type PendingCalls = Arc<Mutex<BTreeMap<u64, Sender<Result<Value, RpcError>>>>>;
 
 #[derive(Clone)]
 pub struct CallDeadline {
+    timeout: Duration,
     deadline: Arc<Mutex<Option<Instant>>>,
 }
 
 impl CallDeadline {
-    fn new() -> Self {
+    fn new(timeout: Duration) -> Self {
         Self {
+            timeout,
             deadline: Arc::new(Mutex::new(None)),
         }
     }
@@ -32,8 +33,7 @@ impl CallDeadline {
         *self
             .deadline
             .lock()
-            .unwrap_or_else(|error| error.into_inner()) =
-            Some(Instant::now() + CALL_WALL_CLOCK_TIMEOUT);
+            .unwrap_or_else(|error| error.into_inner()) = Some(Instant::now() + self.timeout);
     }
 
     fn clear(&self) {
@@ -74,6 +74,7 @@ impl HostBridge {
         wake: Sender<()>,
         pending: PendingCalls,
         cancel: Arc<AtomicBool>,
+        timeout: Duration,
     ) -> Self {
         Self {
             plugin,
@@ -81,7 +82,7 @@ impl HostBridge {
             wake,
             next_id: Arc::new(AtomicU64::new(1)),
             pending,
-            deadline: CallDeadline::new(),
+            deadline: CallDeadline::new(timeout),
             cancel,
         }
     }

@@ -5,17 +5,14 @@ use std::path::{Path, PathBuf};
 use kawi_plugin::{
     ApplyEditParams, ApplyEditResult, DiagnosticSummary, GetStateParams, GetStateResult,
     InvocationContext, Position, RpcError, Selection, SetDiagnosticsParams, UiMessageParams,
-    INTERNAL_ERROR,
+    INTERNAL_ERROR, MAX_DIAGNOSTIC_CODE_BYTES, MAX_DIAGNOSTIC_MESSAGE_BYTES,
+    MAX_PLUGIN_DIAGNOSTICS,
 };
 use ropey::Rope;
 use serde_json::Value;
 
 use super::super::problems::{plugin_source, Problem, ProblemSeverity};
 use super::super::App;
-
-const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
-const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
-const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
 
 impl App {
     pub(crate) fn handle_plugin_request(

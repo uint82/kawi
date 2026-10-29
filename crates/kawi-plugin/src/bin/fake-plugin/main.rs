@@ -1,7 +1,9 @@
+use std::collections::VecDeque;
 use std::io::{self, BufReader, Write};
 
 use anyhow::Result;
 use std::process::ExitCode;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -9,7 +11,15 @@ use serde_json::{json, Value};
 
 use kawi_jsonrpc::framing::{read_message, write_message};
 
+mod commands;
+
+use commands::{
+    apply_edit, apply_edit_mid_codepoint, control_text, diagnostics_call, exec_command, host_call,
+    multi_call, read_file,
+};
+
 const HOST_STATE_REQUEST: u64 = 100;
+static BUFFERED: Mutex<VecDeque<Value>> = Mutex::new(VecDeque::new());
 
 fn main() -> ExitCode {
     let mode = std::env::args()
@@ -29,18 +39,58 @@ fn run(mode: &str) -> Result<()> {
     let mut reader = BufReader::new(stdin.lock());
     let mut stdout = io::stdout().lock();
     while let Some(message) = read_message(&mut reader)? {
-        let Some(method) = message.get("method").and_then(Value::as_str) else {
-            continue;
-        };
-        match method {
-            "initialize" => handle_initialize(mode, &message, &mut stdout)?,
-            "invoke_command" => handle_invoke(mode, &message, &mut reader, &mut stdout)?,
-            "event" => handle_event(mode, &message, &mut reader, &mut stdout)?,
-            "shutdown" => return Ok(()),
-            _ => {}
+        if dispatch(mode, &message, &mut reader, &mut stdout)? {
+            return Ok(());
         }
+        drain_buffered(mode, &mut reader, &mut stdout)?;
     }
     Ok(())
+}
+
+fn dispatch(
+    mode: &str,
+    message: &Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<bool> {
+    let Some(method) = message.get("method").and_then(Value::as_str) else {
+        return Ok(false);
+    };
+    match method {
+        "initialize" => handle_initialize(mode, message, stdout)?,
+        "invoke_command" => handle_invoke(mode, message, reader, stdout)?,
+        "event" => handle_event(mode, message, reader, stdout)?,
+        "shutdown" => return Ok(true),
+        _ => {}
+    }
+    Ok(false)
+}
+
+fn drain_buffered(
+    mode: &str,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<()> {
+    loop {
+        let Some(message) = take_buffered() else {
+            return Ok(());
+        };
+        let _ = dispatch(mode, &message, reader, stdout)?;
+    }
+}
+
+pub(crate) fn buffer_message(message: Value) {
+    BUFFERED
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .push_back(message);
+}
+
+fn take_buffered() -> Option<Value> {
+    BUFFERED
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .pop_front()
 }
 
 fn handle_initialize(mode: &str, message: &Value, stdout: &mut impl Write) -> Result<()> {
@@ -87,6 +137,26 @@ fn handle_event(
         "event-host" => {
             let _ = host_request("ui.message", json!({"message": event}), reader, stdout)?;
         }
+        "event-write" => {
+            let _ = host_request(
+                "ui.message",
+                json!({"message": "event-write-start"}),
+                reader,
+                stdout,
+            )?;
+            let _ = host_request(
+                "editor.apply_edit",
+                json!({"buffer": 1, "revision": 7, "edits": []}),
+                reader,
+                stdout,
+            )?;
+            let _ = host_request(
+                "ui.message",
+                json!({"message": "event-write-done"}),
+                reader,
+                stdout,
+            )?;
+        }
         _ => {}
     }
     Ok(())
@@ -127,73 +197,15 @@ fn handle_invoke(
         }
         "host-call" => host_call(message, reader, stdout)?,
         "multi-call" => multi_call(message, reader, stdout)?,
+        "diagnostics" => diagnostics_call(message, reader, stdout)?,
         "apply-edit" => apply_edit(message, reader, stdout)?,
+        "mid-codepoint" => apply_edit_mid_codepoint(message, reader, stdout)?,
+        "control-text" => control_text(message, reader, stdout)?,
         "read-file" => read_file(message, stdout)?,
         "exec" => exec_command(message, stdout)?,
         _ => respond(stdout, message, json!({"echo": message.get("params")}))?,
     }
     Ok(())
-}
-
-fn host_call(
-    message: &Value,
-    reader: &mut impl std::io::BufRead,
-    stdout: &mut impl Write,
-) -> Result<()> {
-    let value = host_request(
-        "editor.get_state",
-        json!({"include_text": true}),
-        reader,
-        stdout,
-    )?;
-    if let Some(error) = value.get("error") {
-        return respond_error(stdout, message, error.clone());
-    }
-    respond(
-        stdout,
-        message,
-        json!({
-            "host_result": value.get("result").cloned().unwrap_or(Value::Null),
-        }),
-    )
-}
-
-fn multi_call(
-    message: &Value,
-    reader: &mut impl std::io::BufRead,
-    stdout: &mut impl Write,
-) -> Result<()> {
-    for (method, params) in [
-        ("editor.get_state", json!({"include_text": false})),
-        ("ui.message", json!({"message": "conformance"})),
-        (
-            "editor.set_diagnostics",
-            json!({"buffer": 1, "revision": 7, "diagnostics": []}),
-        ),
-    ] {
-        let value = host_request(method, params, reader, stdout)?;
-        if let Some(error) = value.get("error") {
-            return respond_error(stdout, message, error.clone());
-        }
-    }
-    respond(stdout, message, json!({"ok": true}))
-}
-
-fn apply_edit(
-    message: &Value,
-    reader: &mut impl std::io::BufRead,
-    stdout: &mut impl Write,
-) -> Result<()> {
-    let value = host_request(
-        "editor.apply_edit",
-        json!({"buffer": 1, "revision": 7, "edits": []}),
-        reader,
-        stdout,
-    )?;
-    if let Some(error) = value.get("error") {
-        return respond_error(stdout, message, error.clone());
-    }
-    respond(stdout, message, json!({"ok": true}))
 }
 
 fn host_request(
@@ -215,36 +227,11 @@ fn host_request(
         if value.get("id").and_then(Value::as_u64) == Some(HOST_STATE_REQUEST) {
             return Ok(value);
         }
+        if value.get("method").is_some() {
+            buffer_message(value);
+        }
     }
     Err(anyhow::anyhow!("host request ended without a response"))
-}
-
-fn read_file(message: &Value, stdout: &mut impl Write) -> Result<()> {
-    let path = message
-        .get("params")
-        .and_then(|params| params.get("args"))
-        .and_then(|args| args.get("path"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("missing path"))?;
-    let result = match std::fs::read_to_string(path) {
-        Ok(content) => json!({"content": content}),
-        Err(error) => json!({"error": error.to_string()}),
-    };
-    respond(stdout, message, result)
-}
-
-fn exec_command(message: &Value, stdout: &mut impl Write) -> Result<()> {
-    let path = message
-        .get("params")
-        .and_then(|params| params.get("args"))
-        .and_then(|args| args.get("path"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("missing path"))?;
-    let result = match std::process::Command::new(path).status() {
-        Ok(status) => json!({"success": status.success()}),
-        Err(error) => json!({"error": error.to_string()}),
-    };
-    respond(stdout, message, result)
 }
 
 fn marker_exists(name: &str) -> bool {

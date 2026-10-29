@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::Value;
 use wasmtime::component::{HasSelf, Linker};
@@ -186,7 +187,15 @@ impl Session {
             .map_err(|error| PluginError::Initialize(format!("wasi linker: {error}")))?;
         let (stdout, stderr) = output_pipes();
         let wasi = build_wasi(plugin, capabilities, stdout.clone(), stderr.clone())?;
-        let bridge = HostBridge::new(plugin.manifest.name.clone(), events, wake, pending, cancel);
+        let timeout = Duration::from_millis(plugin.manifest.timeout_ms);
+        let bridge = HostBridge::new(
+            plugin.manifest.name.clone(),
+            events,
+            wake,
+            pending,
+            cancel,
+            timeout,
+        );
         let process = ProcessRunner::new(plugin.clone(), capabilities.clone(), environment.clone());
         let state = WasmState::new(wasi, bridge, process, stdout, stderr);
         let mut store = Store::new(runtime.engine(), state);

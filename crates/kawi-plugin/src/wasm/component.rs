@@ -1,5 +1,6 @@
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -15,8 +16,10 @@ use super::policy::{requested_import_capabilities, unauthorized_imports};
 
 const MAX_STACK_BYTES: usize = 512 * 1024;
 const EPOCH_INTERVAL: Duration = Duration::from_millis(50);
+const COMPONENT_CACHE_CAPACITY: usize = 16;
 
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
+static COMPILED_COMPONENTS: OnceLock<Mutex<ComponentCache>> = OnceLock::new();
 
 pub struct WasmRuntime {
     engine: Engine,
@@ -56,7 +59,7 @@ impl WasmRuntime {
         &self,
         bytes: &[u8],
         expected_hash: Option<&str>,
-    ) -> Result<(Component, String), PluginError> {
+    ) -> Result<(Arc<Component>, String), PluginError> {
         let hash = digest(bytes);
         if expected_hash.is_some_and(|expected| expected != hash) {
             return Err(PluginError::Initialize(format!(
@@ -64,8 +67,14 @@ impl WasmRuntime {
                 expected_hash.unwrap_or_default()
             )));
         }
-        let component = Component::from_binary(&self.engine, bytes)
-            .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?;
+        if let Some(component) = cached_component(&hash) {
+            return Ok((component, hash));
+        }
+        let component = Arc::new(
+            Component::from_binary(&self.engine, bytes)
+                .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?,
+        );
+        let component = store_component(hash.clone(), component);
         Ok((component, hash))
     }
 
@@ -95,7 +104,7 @@ impl WasmRuntime {
         bytes: &[u8],
         expected_hash: Option<&str>,
         requested: &[Capability],
-    ) -> Result<(Component, ComponentInspection), PluginError> {
+    ) -> Result<(Arc<Component>, ComponentInspection), PluginError> {
         let (component, hash) = self.compile(bytes, expected_hash)?;
         let inspection = self.check_imports(&component, hash, requested)?;
         Ok((component, inspection))
@@ -132,6 +141,66 @@ impl WasmRuntime {
             hash,
         })
     }
+}
+
+struct ComponentCache {
+    entries: HashMap<String, Arc<Component>>,
+    order: VecDeque<String>,
+    capacity: usize,
+}
+
+impl ComponentCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            capacity,
+        }
+    }
+
+    fn get(&mut self, hash: &str) -> Option<Arc<Component>> {
+        let component = self.entries.get(hash).cloned()?;
+        self.touch(hash);
+        Some(component)
+    }
+
+    fn insert(&mut self, hash: String, component: Arc<Component>) -> Arc<Component> {
+        if let Some(existing) = self.entries.get(&hash).cloned() {
+            self.touch(&hash);
+            return existing;
+        }
+        self.entries.insert(hash.clone(), Arc::clone(&component));
+        self.order.push_back(hash);
+        while self.order.len() > self.capacity {
+            if let Some(expired) = self.order.pop_front() {
+                self.entries.remove(&expired);
+            }
+        }
+        component
+    }
+
+    fn touch(&mut self, hash: &str) {
+        self.order.retain(|key| key != hash);
+        self.order.push_back(hash.to_string());
+    }
+}
+
+fn component_cache() -> &'static Mutex<ComponentCache> {
+    COMPILED_COMPONENTS.get_or_init(|| Mutex::new(ComponentCache::new(COMPONENT_CACHE_CAPACITY)))
+}
+
+fn cached_component(hash: &str) -> Option<Arc<Component>> {
+    component_cache()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(hash)
+}
+
+fn store_component(hash: String, component: Arc<Component>) -> Arc<Component> {
+    component_cache()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(hash, component)
 }
 
 fn build_engine() -> Result<Engine, String> {

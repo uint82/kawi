@@ -1,0 +1,77 @@
+use kawi_plugin::Capability;
+
+use super::super::EDITOR_READ_UI;
+use super::super::{Action, Behavior, Expected, Group, Scenario};
+
+pub(crate) const ROWS: &[Scenario] = &[
+    Scenario {
+        id: "oversize.invocation",
+        group: Group::Oversize,
+        behavior: Behavior::Echo,
+        grants: &[],
+        action: Action::OversizeInvocation,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "oversize.event",
+        group: Group::Oversize,
+        behavior: Behavior::EventBufferChanged,
+        grants: EDITOR_READ_UI,
+        action: Action::OversizeEvent,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "oversize.host_response",
+        group: Group::Oversize,
+        behavior: Behavior::HostCall,
+        grants: &[Capability::EditorRead],
+        action: Action::OversizeHostResponse,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "oversize.diagnostics",
+        group: Group::Oversize,
+        behavior: Behavior::DiagnosticsLarge,
+        grants: &[Capability::DiagnosticsPublish],
+        action: Action::OversizeDiagnostics,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "hygiene.mid_codepoint",
+        group: Group::InputHygiene,
+        behavior: Behavior::MidCodepoint,
+        grants: &[Capability::EditorWrite],
+        action: Action::MidCodepointPosition,
+        expected: Expected::Protocol,
+        covers_methods: &["editor.apply_edit"],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "hygiene.control_text",
+        group: Group::InputHygiene,
+        behavior: Behavior::ControlText,
+        grants: &[Capability::UiMessage, Capability::DiagnosticsPublish],
+        action: Action::ControlText,
+        expected: Expected::Success,
+        covers_methods: &["ui.message", "editor.set_diagnostics"],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "hygiene.invalid_position",
+        group: Group::InputHygiene,
+        behavior: Behavior::EditorWrite,
+        grants: &[Capability::EditorWrite],
+        action: Action::InvalidPosition,
+        expected: Expected::Protocol,
+        covers_methods: &["editor.apply_edit"],
+        covers_events: &[],
+    },
+];

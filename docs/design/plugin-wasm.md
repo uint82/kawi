@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phase 2 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, and runs authorized processes. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation, trap and recovery, oversize components, input hygiene, WASM limits and load-time failures, and every host method and event for both runtimes. Network enforcement and the remaining host response and diagnostics payload groups remain phase 3 work. The default build does not compile or execute WebAssembly plugins.
+Status: phase 2 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, and runs authorized processes. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Network enforcement remains phase 3 work. The default build does not compile or execute WebAssembly plugins.
 
 ## Principles
 
@@ -14,12 +14,14 @@ Status: phase 2 implemented behind the `wasm` feature. The runtime validates has
 
 Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
 
-Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation.
+Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation. Revocation drops events that are still queued. An event already delivered to the guest may finish, including a host call already in flight; the conformance suite treats that in-flight write as committed and asserts it is not repeated.
+
+Component compilation is host work and is not charged to `timeout_ms`. Compiled components are cached in memory by their verified SHA-256 hash, so manifest inspection, activation, restarts, and later sessions reuse the compiled artifact. The cache is bounded and is never populated from serialized component bytes. Instantiation and `init` are charged to the per-call budget; a timeout there is a start failure.
 
 Limits:
 
 - Epoch interruption with a per-call deadline.
-- A two second wall-clock budget per call, checked through the epoch callback and applied to host request waits.
+- A wall-clock budget from the manifest `timeout_ms` per call, checked through the epoch callback and applied to host request waits.
 - Optional fuel metering when deterministic accounting is required.
 - A 64 MiB memory limit, a 1,048,576 element table limit, and a 512 KiB stack limit.
 - A 64 MiB component size limit.
@@ -79,13 +81,11 @@ Implemented:
 - Preopen traversal, absolute-path, symlink escape, and read-only write attempts.
 - Component inspection, hash binding, malformed input, renamed imports, nested imports, and versioned WASI imports.
 - Process command scope enforcement, resolution at call time, shell-free argument passing, output and runtime caps, and the capability error code.
-- Shared conformance table for process and WASM runtimes: echo, denial, revocation, stale revision, grant combinations, queued revocation, trap and recovery, timeouts, invocation and event payload size, component size, input hygiene, WASM limits, WASM load-time failures, and every host method and event.
+- Shared conformance table for process and WASM runtimes: echo, denial, revocation, stale revision, grant combinations, queued revocation, mid-write revocation, trap and recovery, timeouts, invocation, event, host response, diagnostics, and component payload size, advertised versus linked interface parity, input hygiene, WASM limits, WASM load-time failures, and every host method and event.
 - Fixture sources under `tests/fixtures/wasm/src` rebuilt in CI with `wasm-tools`.
 
 Still required:
 
-- Host response and diagnostics payload size conformance rows.
-- Advertised versus linked interface parity.
 - Denied socket and DNS rebinding tests.
 - Fuzzing of the host import boundary.
 
@@ -94,7 +94,7 @@ Still required:
 1. Contract, manifest fields, hash binding, component inspection, and engine foundation. This phase.
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement.
-4. Shared conformance suite and fuzzing in CI. All groups except host response and diagnostics payload rows are complete.
+4. Shared conformance suite and fuzzing in CI. The conformance suite is complete; fuzzing remains.
 5. Process runtime deprecation once the WASM authoring path is practical.
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.

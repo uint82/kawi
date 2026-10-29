@@ -91,3 +91,21 @@ status = "pass"
 [rows."wasm.oversize.component"]
 status = "pass"
 
+[rows."oversize.diagnostics"]
+status = "pass"
+
+[rows."oversize.host_response"]
+status = "pass"
+
+[rows."wasm.link.advertised_parity"]
+status = "pass"
+
+[rows."revocation.queued_mid_write"]
+status = "pass"
+
+[rows."hygiene.mid_codepoint"]
+status = "pass"
+
+[rows."hygiene.control_text"]
+status = "pass"
+
