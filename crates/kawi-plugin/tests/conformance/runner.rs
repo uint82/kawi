@@ -248,7 +248,14 @@ fn run_trap_then_recover(
         scenario.id
     );
     host.wait_backoff();
-    host.invoke(runtime.command(scenario.behavior), json!(null))
+    let recovered = host.invoke(runtime.command(scenario.behavior), json!(null));
+    assert_eq!(
+        normalize_result(&recovered),
+        Outcome::Success,
+        "{runtime:?} {}: recovery invocation failed: {recovered:?}",
+        scenario.id
+    );
+    recovered
 }
 
 fn run_five_strike(
