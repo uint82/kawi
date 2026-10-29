@@ -14,6 +14,12 @@ fn inspect_reports_a_wasm_manifest_and_hash() {
     let mut app = app();
     let warnings = load_plugins(&mut app, &root);
     assert!(warnings.is_empty(), "{warnings:?}");
+    #[cfg(feature = "wasm")]
+    assert!(matches!(
+        app.plugins.status("wasm"),
+        Some(PluginStatus::Stopped | PluginStatus::Starting | PluginStatus::Error(_))
+    ));
+    #[cfg(not(feature = "wasm"))]
     assert_eq!(app.plugins.status("wasm"), Some(PluginStatus::Disabled));
     app.handle_plugin_command("inspect wasm");
     let lines = app.pager.as_ref().expect("pager");
