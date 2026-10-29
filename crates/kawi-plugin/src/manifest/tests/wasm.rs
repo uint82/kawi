@@ -36,7 +36,10 @@ fn write_component(dir: &Path, bytes: &[u8]) -> String {
 fn loads_a_wasm_manifest_and_hashes_the_component() {
     let root = temp_dir();
     let dir = root.join("wasm");
-    let hash = write_component(&dir, b"component");
+    let hash = write_component(
+        &dir,
+        include_bytes!("../../../tests/fixtures/wasm/editor-read.wasm"),
+    );
     fs::write(dir.join(MANIFEST_FILE), wasm_manifest("wasm", &hash)).unwrap();
     let catalog = load_catalog(&root);
     assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
@@ -65,7 +68,13 @@ fn rejects_component_hash_mismatch() {
     )
     .unwrap();
     let catalog = load_catalog(&root);
-    assert!(catalog.plugins.is_empty());
+    assert_eq!(catalog.plugins.len(), 1);
+    assert!(catalog.plugins[0]
+        .disabled_reason
+        .as_deref()
+        .unwrap()
+        .contains("hash mismatch"));
+    assert!(catalog.plugins[0].component_hash().is_some());
     assert!(catalog.warnings[0].message.contains("hash mismatch"));
     fs::remove_dir_all(root).unwrap();
 }
@@ -81,9 +90,11 @@ fn rejects_component_paths_outside_the_plugin_directory() {
     );
     fs::write(dir.join(MANIFEST_FILE), body).unwrap();
     let catalog = load_catalog(&root);
-    assert!(catalog.plugins.is_empty());
-    assert!(catalog.warnings[0]
-        .message
+    assert_eq!(catalog.plugins.len(), 1);
+    assert!(catalog.plugins[0]
+        .disabled_reason
+        .as_deref()
+        .unwrap()
         .contains("inside the plugin directory"));
     fs::remove_dir_all(root).unwrap();
 }
@@ -126,9 +137,64 @@ fn rejects_component_symlinks_outside_the_plugin_directory() {
     };
     fs::write(dir.join(MANIFEST_FILE), wasm_manifest("wasm", &hash)).unwrap();
     let catalog = load_catalog(&root);
-    assert!(catalog.plugins.is_empty());
-    assert!(catalog.warnings[0]
-        .message
+    assert_eq!(catalog.plugins.len(), 1);
+    assert!(catalog.plugins[0]
+        .disabled_reason
+        .as_deref()
+        .unwrap()
         .contains("inside the plugin directory"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn disables_malformed_components() {
+    let root = temp_dir();
+    let dir = root.join("wasm");
+    let hash = write_component(&dir, b"not a component");
+    fs::write(dir.join(MANIFEST_FILE), wasm_manifest("wasm", &hash)).unwrap();
+    let catalog = load_catalog(&root);
+    assert_eq!(catalog.plugins.len(), 1);
+    assert!(catalog.plugins[0]
+        .disabled_reason
+        .as_deref()
+        .unwrap()
+        .contains("not a WebAssembly component"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(feature = "wasm")]
+#[test]
+fn disables_truncated_components_after_the_header() {
+    let root = temp_dir();
+    let dir = root.join("wasm");
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/wasm/editor-read.wasm");
+    let bytes = fs::read(fixture).unwrap();
+    let hash = write_component(&dir, &bytes[..bytes.len() - 4]);
+    fs::write(dir.join(MANIFEST_FILE), wasm_manifest("wasm", &hash)).unwrap();
+    let catalog = load_catalog(&root);
+    assert_eq!(catalog.plugins.len(), 1);
+    let reason = catalog.plugins[0].disabled_reason.as_deref().unwrap();
+    assert!(reason.contains("invalid component"), "{reason}");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_absolute_component_paths() {
+    let root = temp_dir();
+    let dir = root.join("wasm");
+    let hash = write_component(&dir, b"component");
+    let body = wasm_manifest("wasm", &hash).replace(
+        "component = \"plugin.wasm\"",
+        "component = \"/tmp/plugin.wasm\"",
+    );
+    fs::write(dir.join(MANIFEST_FILE), body).unwrap();
+    let catalog = load_catalog(&root);
+    assert_eq!(catalog.plugins.len(), 1);
+    assert!(catalog.plugins[0]
+        .disabled_reason
+        .as_deref()
+        .unwrap()
+        .contains("relative to the plugin directory"));
     fs::remove_dir_all(root).unwrap();
 }

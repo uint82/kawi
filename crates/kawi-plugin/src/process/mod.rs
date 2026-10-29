@@ -116,7 +116,7 @@ impl WorkerHandle {
 
 pub(crate) fn start_disabled_worker(
     plugin: LoadedPlugin,
-    message: &'static str,
+    message: String,
     events: Sender<PluginHostEvent>,
     wake: Sender<()>,
 ) -> WorkerHandle {
@@ -139,7 +139,7 @@ pub(crate) fn start_disabled_worker(
                     PluginHostEvent::InvocationFinished {
                         plugin: name.clone(),
                         request,
-                        result: Err(PluginError::Initialize(message.to_string())),
+                        result: Err(PluginError::Initialize(message.clone())),
                     },
                 ),
                 WorkerCommand::Shutdown => break,

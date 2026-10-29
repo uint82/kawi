@@ -11,7 +11,7 @@ const MAX_NAME_LEN: usize = 64;
 pub(super) fn validate_manifest(
     manifest: &mut PluginManifest,
     dir: &std::path::Path,
-) -> Result<(), String> {
+) -> Result<runtime::Artifact, String> {
     validate_name(&manifest.name)?;
     if manifest.version.trim().is_empty() {
         return Err("version must not be empty".to_string());
@@ -22,11 +22,12 @@ pub(super) fn validate_manifest(
             manifest.protocol, PROTOCOL_VERSION
         ));
     }
-    runtime::validate(manifest, dir)?;
+    let artifact = runtime::validate(manifest, dir)?;
     validate_timeout(manifest.timeout_ms)?;
     validate_commands(&manifest.commands)?;
     validate_subscriptions(manifest)?;
-    validate_activation(&manifest.activation_events)
+    validate_activation(&manifest.activation_events)?;
+    Ok(artifact)
 }
 
 fn validate_subscriptions(manifest: &PluginManifest) -> Result<(), String> {

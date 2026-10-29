@@ -75,6 +75,8 @@ pub struct LoadedPlugin {
     pub manifest: PluginManifest,
     pub dir: PathBuf,
     pub path: PathBuf,
+    pub computed_hash: Option<String>,
+    pub disabled_reason: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -118,6 +120,10 @@ impl LoadedPlugin {
     }
 
     pub fn component_hash(&self) -> Option<&str> {
+        self.computed_hash.as_deref()
+    }
+
+    pub fn declared_hash(&self) -> Option<&str> {
         self.manifest.sha256.as_deref()
     }
 }
@@ -188,10 +194,16 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
         }
     };
     match validation::validate_manifest(&mut manifest, dir) {
-        Ok(()) => {
+        Ok(artifact) => {
+            if let Some(reason) = &artifact.disabled_reason {
+                warnings.push(PluginWarning {
+                    path: path.clone(),
+                    message: reason.clone(),
+                });
+            }
             let (mut requests, capability_warnings) =
                 parse_capability_requests(&manifest.capabilities);
-            if let Some(hash) = manifest.sha256.as_deref() {
+            if let Some(hash) = artifact.computed_hash.as_deref() {
                 requests.set_artifact_hash(hash);
             }
             manifest.capability_requests = requests;
@@ -205,6 +217,8 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
                 manifest,
                 dir: dir.to_path_buf(),
                 path,
+                computed_hash: artifact.computed_hash,
+                disabled_reason: artifact.disabled_reason,
             })
         }
         Err(message) => {

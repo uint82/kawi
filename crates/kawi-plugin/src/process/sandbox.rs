@@ -269,6 +269,8 @@ mod tests {
     #[test]
     fn expands_plugin_and_environment_paths() {
         let plugin = LoadedPlugin {
+            computed_hash: None,
+            disabled_reason: None,
             manifest: crate::manifest::PluginManifest {
                 name: "sample".to_string(),
                 version: "0.1.0".to_string(),

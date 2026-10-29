@@ -78,12 +78,13 @@ impl PluginHost {
                         events.clone(),
                         wake.clone(),
                     ),
-                    PluginRuntime::Wasm => start_disabled_worker(
-                        plugin,
-                        wasm_unavailable_message(),
-                        events.clone(),
-                        wake.clone(),
-                    ),
+                    PluginRuntime::Wasm => {
+                        let message = plugin
+                            .disabled_reason
+                            .clone()
+                            .unwrap_or_else(|| wasm_unavailable_message().to_string());
+                        start_disabled_worker(plugin, message, events.clone(), wake.clone())
+                    }
                 };
                 (name, worker)
             })
@@ -95,7 +96,10 @@ impl PluginHost {
                     &wake,
                     PluginHostEvent::Log {
                         plugin: plugin.manifest.name.clone(),
-                        line: wasm_unavailable_message().to_string(),
+                        line: plugin
+                            .disabled_reason
+                            .clone()
+                            .unwrap_or_else(|| wasm_unavailable_message().to_string()),
                     },
                 );
                 continue;
