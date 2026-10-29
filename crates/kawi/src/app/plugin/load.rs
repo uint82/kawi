@@ -21,7 +21,15 @@ pub(crate) struct PluginLoadContext<'a> {
 }
 
 impl PluginRuntime {
-    pub(crate) fn load(&mut self, context: PluginLoadContext<'_>) -> Vec<String> {
+    pub(crate) fn load(&mut self, context: PluginLoadContext<'_>, enabled: bool) -> Vec<String> {
+        if !enabled {
+            self.host = None;
+            self.events = None;
+            self.catalog = kawi_plugin::PluginCatalog::default();
+            self.targets.clear();
+            self.bindings.clear();
+            return Vec::new();
+        }
         let PluginLoadContext {
             dir,
             permissions,

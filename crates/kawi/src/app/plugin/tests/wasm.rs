@@ -110,3 +110,40 @@ fn inspect_detects_a_component_replaced_after_load() {
     assert!(lines.iter().any(|line| line.contains("changed since load")));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn no_plugins_skips_loading_and_wasm_compilation() {
+    let root = super::common::temp_dir("no_plugins");
+    let dir = root.join("wasm");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "wasm"
+version = "0.1.0"
+protocol = 1
+runtime = "wasm"
+component = "plugin.wasm"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("plugin.wasm"), b"not a component").unwrap();
+    std::fs::write(root.join("permissions.toml"), "").unwrap();
+    let mut app = super::common::app();
+    let warnings = app.plugins.load(
+        crate::app::plugin::PluginLoadContext {
+            dir: &root,
+            permissions: &root.join("permissions.toml"),
+            workspace: &root,
+            commands: &mut app.commands,
+            keymaps: &mut app.keymaps,
+            leaders: &app.leaders,
+            wake: app.events.wake(),
+        },
+        false,
+    );
+    assert!(warnings.is_empty());
+    assert!(app.plugins.plugins().is_empty());
+    assert_eq!(app.plugins.target(0), None);
+    std::fs::remove_dir_all(root).unwrap();
+}
