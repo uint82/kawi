@@ -1033,6 +1033,7 @@ name = "kawi-plugin"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bytes",
  "kawi-jsonrpc",
  "kawi-process",
  "serde",

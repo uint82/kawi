@@ -9,6 +9,7 @@ use wasmtime_wasi::p2::SocketError;
 use wasmtime_wasi::sockets::WasiSocketsCtxView;
 
 use super::net::NetworkPolicy;
+use super::outbound_cap::cap_output_stream;
 use super::state::WasmState;
 
 pub(crate) struct TrackedSockets;
@@ -99,7 +100,11 @@ impl HostTcpSocket for TrackedSocketsView<'_> {
         &mut self,
         this: Resource<TcpSocket>,
     ) -> Result<(Resource<InputStream>, Resource<OutputStream>), SocketError> {
-        <WasiSocketsCtxView<'_> as HostTcpSocket>::finish_connect(&mut self.inner, this)
+        let socket = this.rep();
+        let (input, output) =
+            <WasiSocketsCtxView<'_> as HostTcpSocket>::finish_connect(&mut self.inner, this)?;
+        let output = cap_output_stream(self.inner.table, socket, output)?;
+        Ok((input, output))
     }
 
     fn start_listen(&mut self, this: Resource<TcpSocket>) -> Result<(), SocketError> {

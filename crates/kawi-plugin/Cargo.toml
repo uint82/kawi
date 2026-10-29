@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+bytes.workspace = true
 kawi-jsonrpc = { path = "../kawi-jsonrpc" }
 kawi-process = { path = "../kawi-process" }
 serde.workspace = true
