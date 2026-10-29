@@ -1,4 +1,5 @@
 use super::super::report::{Check, Level};
+use crate::permission_lines::grant_lines;
 use crate::state::StatePaths;
 use kawi_plugin::{load_catalog, load_permission_state};
 
@@ -27,6 +28,15 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
                 describe(effective.granted.keys().copied()),
                 describe(effective.missing.iter().copied())
             ));
+            for capability in &effective.missing {
+                let [hint, assignment] = grant_lines(
+                    name,
+                    *capability,
+                    plugin.manifest.capability_requests.get(*capability),
+                );
+                details.push(format!("{name}: {hint}"));
+                details.push(format!("{name}: {assignment}"));
+            }
         }
     }
     if !state.warnings.is_empty() {
@@ -106,6 +116,33 @@ mod tests {
             .details
             .iter()
             .any(|detail| detail.contains("request hash changed")));
+    }
+
+    #[test]
+    fn reports_missing_grant_lines() {
+        let dir = TestDir::new("permissions_grant_lines");
+        let paths = paths(&dir.path);
+        let plugin = paths.plugins.join("sample");
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(
+            plugin.join("plugin.toml"),
+            "name = \"sample\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n\n[capabilities]\n\"editor.read\" = true\n",
+        )
+        .unwrap();
+        fs::write(&paths.permissions, "[plugins]\n").unwrap();
+        let check = check(&paths);
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail.contains("sample: granted none, missing editor.read")));
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail == "sample: add to permissions.toml: [plugins.sample.grant]"));
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail == "sample: \"editor.read\" = true"));
     }
 
     #[test]

@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kawi_plugin::{Capability, EffectiveCapabilities, PluginCatalog, PluginRuntime, Scope};
 
+use crate::permission_lines::grant_lines;
+
 pub(super) fn describe_capabilities(
     capabilities: impl Iterator<Item = Capability>,
     sandboxed: bool,
@@ -34,24 +36,8 @@ pub(super) fn denial_lines(
     capability: Capability,
     scope: Option<Scope>,
 ) -> [String; 3] {
-    [
-        format!("denied {}", capability.name()),
-        format!("add to permissions.toml: [plugins.{plugin}.grant]"),
-        format!(
-            "\"{}\" = {}",
-            capability.name(),
-            grant_value(scope.as_ref())
-        ),
-    ]
-}
-
-fn grant_value(scope: Option<&Scope>) -> String {
-    match scope {
-        None | Some(Scope::Unscoped) => "true".to_string(),
-        Some(Scope::Paths(paths)) => format!("{{ paths = {paths:?} }}"),
-        Some(Scope::Commands(commands)) => format!("{{ commands = {commands:?} }}"),
-        Some(Scope::Hosts(hosts)) => format!("{{ hosts = {hosts:?} }}"),
-    }
+    let [hint, assignment] = grant_lines(plugin, capability, scope.as_ref());
+    [format!("denied {}", capability.name()), hint, assignment]
 }
 
 pub(super) fn changed_restart_plugins(

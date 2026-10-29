@@ -66,7 +66,10 @@ impl App {
                 true
             }
             PluginHostEvent::CapabilityRequired { plugin, capability } => {
-                self.request_plugin_grant(&plugin, capability, GrantKind::Startup);
+                if !self.plugins.has_capability(&plugin, capability) {
+                    self.plugins.record_denial(&plugin, capability);
+                    self.request_plugin_grant(&plugin, capability, GrantKind::Startup);
+                }
                 false
             }
             PluginHostEvent::Log { .. } => false,
