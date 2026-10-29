@@ -14,11 +14,12 @@ Status: phase 2 implemented behind the `wasm` feature. The runtime validates has
 
 Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
 
-Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events.
+Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation.
 
 Limits:
 
 - Epoch interruption with a per-call deadline.
+- A two second wall-clock budget per call, checked through the epoch callback and applied to host request waits.
 - Optional fuel metering when deterministic accounting is required.
 - A 64 MiB memory limit, a 1,048,576 element table limit, and a 512 KiB stack limit.
 - A 64 MiB component size limit.
@@ -74,14 +75,14 @@ Import inspection runs before instantiation. It rejects imports that exceed mani
 
 Implemented:
 
-- Lifecycle invocation, editor state bridging, event forwarding, denied imports, and epoch exhaustion for WASM.
+- Lifecycle invocation, editor state bridging, event forwarding, denied imports, wall-clock exhaustion, blocked host-call cancellation, restart cancellation, and discarded stores after traps.
+- Preopen traversal, absolute-path, symlink escape, and read-only write attempts.
 - Component inspection, hash binding, malformed input, renamed imports, nested imports, and versioned WASI imports.
-- Process command scope enforcement and WASI preopen configuration.
+- Process command scope enforcement, resolution at call time, shell-free argument passing, output and runtime caps, and the capability error code.
 
 Still required:
 
 - Shared conformance table for process and WASM runtimes: echo, trim, events, denial, revocation, and stale revision.
-- Filesystem escape and symlink escape through a preopen.
 - Denied socket and DNS rebinding tests.
 - Memory trap, oversize payload, and trap mid-invocation tests.
 - Advertised versus linked interface parity.
