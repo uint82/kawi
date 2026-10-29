@@ -260,6 +260,13 @@ impl PluginRuntime {
         if stale != "none" {
             lines.push(format!("stale: {stale}"));
         }
+        if let Some(warnings) = self.warnings.get(plugin) {
+            lines.extend(
+                warnings
+                    .iter()
+                    .map(|warning| super::super::text::sanitize(warning)),
+            );
+        }
         lines
     }
 }

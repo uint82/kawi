@@ -49,6 +49,7 @@ pub(crate) struct PluginRuntime {
     pub(super) permissions_path: Option<PathBuf>,
     pub(super) capabilities: CapabilityRegistry,
     pub(super) denials: BTreeMap<(String, Capability), DenialRecord>,
+    pub(super) warnings: BTreeMap<String, Vec<String>>,
     pub(super) last_message: BTreeMap<String, Instant>,
     pub(super) throttled_messages: BTreeMap<String, u64>,
     pub(super) diagnostic_windows: BTreeMap<String, DiagnosticWindow>,
@@ -112,6 +113,12 @@ impl PluginRuntime {
         for event in &events {
             if let PluginHostEvent::Log { plugin, line } = event {
                 self.push_log(plugin, line);
+                if line.starts_with(kawi_plugin::NETWORK_WARNING_PREFIX) {
+                    self.warnings
+                        .entry(plugin.clone())
+                        .or_default()
+                        .push(line.clone());
+                }
             }
         }
         events
@@ -187,6 +194,8 @@ impl PluginRuntime {
         self.diagnostic_windows
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.logs
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.warnings
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.allow_once
             .retain(|(plugin, _)| known.contains(plugin.as_str()));
