@@ -162,6 +162,31 @@ fn resolver_timeout_fails_closed() {
 }
 
 #[test]
+#[cfg(not(feature = "wasm-test-network"))]
+fn production_denies_loopback_hostnames() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["localhost:443"]),
+        fixed_resolver(vec![address(Ipv4Addr::LOCALHOST, 443)]),
+    );
+    assert!(!policy.allows(address(Ipv4Addr::LOCALHOST, 443), SocketAddrUse::TcpConnect));
+    assert!(policy.resolve_name("localhost").unwrap().is_empty());
+}
+
+#[test]
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+fn test_override_allows_loopback_hostnames() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["localhost:443"]),
+        fixed_resolver(vec![address(Ipv4Addr::LOCALHOST, 443)]),
+    );
+    assert!(policy.allows(address(Ipv4Addr::LOCALHOST, 443), SocketAddrUse::TcpConnect));
+    assert_eq!(
+        policy.resolve_name("localhost").unwrap(),
+        vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]
+    );
+}
+
+#[test]
 fn rejects_private_and_special_dns_answers() {
     let addresses = vec![
         address(Ipv4Addr::LOCALHOST, 443),
@@ -191,6 +216,20 @@ fn rejects_private_and_special_dns_answers() {
     assert!(addresses
         .iter()
         .all(|address| !policy.allows(*address, SocketAddrUse::TcpConnect)));
+}
+
+#[test]
+fn caps_connections_per_session() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![address(PUBLIC_V4, 443)]),
+    );
+    for _ in 0..MAX_CONNECTIONS {
+        assert!(policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    }
+    assert!(!policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    let cloned = policy.clone();
+    assert!(!cloned.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
 }
 
 #[test]

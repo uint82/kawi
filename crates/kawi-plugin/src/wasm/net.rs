@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -10,11 +12,14 @@ use wasmtime_wasi::sockets::SocketAddrUse;
 use crate::capability::{HostPort, Scope};
 
 const RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_CONNECTIONS: usize = 64;
+const TEST_LOOPBACK_HOSTNAME: bool = cfg!(all(feature = "wasm-test-network", debug_assertions));
 
 #[derive(Clone)]
 pub(crate) struct NetworkPolicy {
     allowed: BTreeSet<SocketAddr>,
     names: BTreeMap<String, Vec<IpAddr>>,
+    connections: Arc<AtomicUsize>,
     name_lookup: bool,
     enabled: bool,
 }
@@ -34,6 +39,7 @@ impl NetworkPolicy {
         let mut policy = Self {
             allowed: BTreeSet::new(),
             names: BTreeMap::new(),
+            connections: Arc::new(AtomicUsize::new(0)),
             name_lookup: false,
             enabled: !hosts.is_empty(),
         };
@@ -75,7 +81,7 @@ impl NetworkPolicy {
             SocketAddrUse::TcpBind => {
                 self.enabled && address.ip().is_unspecified() && address.port() == 0
             }
-            SocketAddrUse::TcpConnect => self.allowed.contains(&address),
+            SocketAddrUse::TcpConnect => self.allowed.contains(&address) && self.claim_connection(),
             _ => false,
         }
     }
@@ -84,8 +90,27 @@ impl NetworkPolicy {
         Self {
             allowed: BTreeSet::new(),
             names: BTreeMap::new(),
+            connections: Arc::new(AtomicUsize::new(0)),
             name_lookup: false,
             enabled: false,
+        }
+    }
+
+    fn claim_connection(&self) -> bool {
+        let mut current = self.connections.load(Ordering::Relaxed);
+        loop {
+            if current >= MAX_CONNECTIONS {
+                return false;
+            }
+            match self.connections.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(next) => current = next,
+            }
         }
     }
 
@@ -102,17 +127,17 @@ impl NetworkPolicy {
     ) {
         self.name_lookup = true;
         let key = host.host().to_ascii_lowercase();
-        let mut public = BTreeSet::new();
+        let mut allowed_ips = BTreeSet::new();
         if let Ok(addresses) = resolve(host) {
             for address in addresses {
-                if is_public_ip(address.ip()) {
-                    public.insert(address.ip());
+                if is_allowed_resolved(host, address.ip()) {
+                    allowed_ips.insert(address.ip());
                     self.allowed
                         .insert(SocketAddr::new(address.ip(), host.port()));
                 }
             }
         }
-        self.names.insert(key, public.into_iter().collect());
+        self.names.insert(key, allowed_ips.into_iter().collect());
     }
 }
 
@@ -150,6 +175,10 @@ fn is_connectable_explicit(ip: IpAddr) -> bool {
         IpAddr::V4(ip) => !(ip.is_unspecified() || ip.is_broadcast() || ip.is_multicast()),
         IpAddr::V6(ip) => !(ip.is_unspecified() || ip.is_multicast()),
     }
+}
+
+fn is_allowed_resolved(host: &HostPort, ip: IpAddr) -> bool {
+    is_public_ip(ip) || (TEST_LOOPBACK_HOSTNAME && host.host() == "localhost" && ip.is_loopback())
 }
 
 fn is_public_ip(ip: IpAddr) -> bool {
