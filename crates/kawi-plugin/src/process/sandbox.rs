@@ -29,12 +29,12 @@ const RUNTIME_READ_ONLY: &[&str] = &[
 #[cfg(target_os = "linux")]
 const RUNTIME_READ_WRITE: &[&str] = &["/dev/null"];
 
-pub(super) struct SandboxPlan {
-    pub(super) policy: SandboxPolicy,
-    pub(super) warnings: Vec<String>,
+pub(crate) struct SandboxPlan {
+    pub(crate) policy: SandboxPolicy,
+    pub(crate) warnings: Vec<String>,
 }
 
-pub(super) fn policy(
+pub(crate) fn policy(
     plugin: &LoadedPlugin,
     capabilities: &CapabilityRegistry,
     environment: &HostEnvironment,

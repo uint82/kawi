@@ -7,7 +7,7 @@ use crate::options::OptionValue;
 use crate::state::{self, StatePaths};
 
 impl App {
-    pub fn load_state(&mut self, cli_flavor: Option<Flavor>) {
+    pub fn load_state(&mut self, cli_flavor: Option<Flavor>, load_plugins: bool) {
         let Some(paths) = StatePaths::resolve() else {
             return;
         };
@@ -41,15 +41,18 @@ impl App {
         self.apply_keymaps(keymap_load);
         self.apply_config(&loaded.config);
         let workspace = self.project_root();
-        let plugin_warnings = self.plugins.load(crate::app::plugin::PluginLoadContext {
-            dir: &paths.plugins,
-            permissions: &paths.permissions,
-            workspace: &workspace,
-            commands: &mut self.commands,
-            keymaps: &mut self.keymaps,
-            leaders: &self.leaders,
-            wake: self.events.wake(),
-        });
+        let plugin_warnings = self.plugins.load(
+            crate::app::plugin::PluginLoadContext {
+                dir: &paths.plugins,
+                permissions: &paths.permissions,
+                workspace: &workspace,
+                commands: &mut self.commands,
+                keymaps: &mut self.keymaps,
+                leaders: &self.leaders,
+                wake: self.events.wake(),
+            },
+            load_plugins,
+        );
         warnings.extend(plugin_warnings);
         let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
         if !warnings.is_empty() {

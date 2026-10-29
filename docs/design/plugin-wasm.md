@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: proposed. Phase 1 adds the contract, manifest fields, component inspection, and the feature-gated Wasmtime foundation. It does not execute WebAssembly plugins yet.
+Status: phase 2 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, and runs authorized processes. Network enforcement and the shared conformance harness remain phase 3 work. The default build does not compile or execute WebAssembly plugins.
 
 ## Principles
 
@@ -14,19 +14,21 @@ Status: proposed. Phase 1 adds the contract, manifest fields, component inspecti
 
 Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
 
-Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline.
+Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation.
 
 Limits:
 
 - Epoch interruption with a per-call deadline.
+- A two second wall-clock budget per call, checked through the epoch callback and applied to host request waits.
 - Optional fuel metering when deterministic accounting is required.
-- Hard memory, table, instance, and stack limits.
+- A 64 MiB memory limit, a 1,048,576 element table limit, and a 512 KiB stack limit.
+- A 64 MiB component size limit.
 - Bounded host message sizes, UI throttles, and diagnostic publish limits.
 - One instance and one linear memory per plugin.
 
-A trap counts as a crash and uses the existing backoff and five-strike disable path. Queued events are cleared and buffers are resynchronized.
+A trap counts as a crash and uses the existing backoff and five-strike disable path. The failed session is discarded and rebuilt on the next allowed attempt.
 
-Epoch accounting includes time spent in host calls. A host call must therefore consume a bounded part of the deadline or pause the budget explicitly.
+Epoch accounting excludes time spent blocked in host calls because the guest is not executing. Each call receives a fresh deadline. A trap marks the plugin as errored and a later invocation or restart builds a fresh instance.
 
 ## Contract
 
@@ -65,25 +67,32 @@ sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 ## Inspection
 
-`kawi plugin inspect <name>` prints the runtime, component, computed hash, declared hash, request hash, requested capabilities, and, when the `wasm` feature is enabled, the component imports. The computed hash comes from the bytes that were hashed at load and is checked again before the component is compiled for inspection.
+`:plugin inspect <name>` prints the runtime, component, computed hash, declared hash, request hash, requested capabilities, and, when the `wasm` feature is enabled, the component imports. The computed hash comes from the bytes that were hashed at load and is checked again before the component is compiled for inspection.
 
 Import inspection runs before instantiation. It rejects imports that exceed manifest requests and reports the imports that a user is being asked to grant.
 
 ## Testing
 
-Required before execution is enabled:
+Implemented:
 
-- Conformance table shared by process and WASM runtimes: echo, trim, events, denial, revocation, and stale revision.
-- Filesystem escape and symlink escape through a preopen.
-- Denied socket, DNS rebinding, epoch exhaustion, memory trap, oversize payload, and trap mid-invocation.
-- Import versus manifest parity and advertised versus linked interface parity.
+- Lifecycle invocation, editor state bridging, event forwarding, denied imports, wall-clock exhaustion, blocked host-call cancellation, restart cancellation, and discarded stores after traps.
+- Preopen traversal, absolute-path, symlink escape, and read-only write attempts.
+- Component inspection, hash binding, malformed input, renamed imports, nested imports, and versioned WASI imports.
+- Process command scope enforcement, resolution at call time, shell-free argument passing, output and runtime caps, and the capability error code.
+
+Still required:
+
+- Shared conformance table for process and WASM runtimes: echo, trim, events, denial, revocation, and stale revision.
+- Denied socket and DNS rebinding tests.
+- Memory trap, oversize payload, and trap mid-invocation tests.
+- Advertised versus linked interface parity.
 - Fuzzing of the host import boundary.
 
 ## Rollout
 
 1. Contract, manifest fields, hash binding, component inspection, and engine foundation. This phase.
-2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces.
-3. Network and process enforcement.
+2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
+3. Network enforcement.
 4. Shared conformance suite and fuzzing in CI.
 5. Process runtime deprecation once the WASM authoring path is practical.
 

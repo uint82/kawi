@@ -1,4 +1,7 @@
 use std::path::Path;
+use std::sync::OnceLock;
+use std::thread;
+use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use wasmtime::component::types::{ComponentExtern, ComponentInstance, ComponentItem};
@@ -11,6 +14,9 @@ use crate::error::PluginError;
 use super::policy::{requested_import_capabilities, unauthorized_imports};
 
 const MAX_STACK_BYTES: usize = 512 * 1024;
+const EPOCH_INTERVAL: Duration = Duration::from_millis(50);
+
+static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 
 pub struct WasmRuntime {
     engine: Engine,
@@ -25,15 +31,17 @@ pub struct ComponentInspection {
 
 impl WasmRuntime {
     pub fn new() -> Result<Self, PluginError> {
-        let mut config = Config::new();
-        config
-            .wasm_component_model(true)
-            .wasm_component_model_implements(true)
-            .epoch_interruption(true)
-            .max_wasm_stack(MAX_STACK_BYTES);
-        let engine = Engine::new(&config)
-            .map_err(|error| PluginError::Initialize(format!("wasm engine: {error}")))?;
-        Ok(Self { engine })
+        let engine = ENGINE.get_or_init(build_engine);
+        match engine {
+            Ok(engine) => Ok(Self {
+                engine: engine.clone(),
+            }),
+            Err(message) => Err(PluginError::Initialize(message.clone())),
+        }
+    }
+
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
     }
 
     pub fn validate_bytes(
@@ -69,7 +77,36 @@ impl WasmRuntime {
     ) -> Result<ComponentInspection, PluginError> {
         let bytes = std::fs::read(path)
             .map_err(|error| PluginError::Spawn(format!("cannot read component: {error}")))?;
-        let (component, hash) = self.compile(&bytes, expected_hash)?;
+        self.inspect_bytes(&bytes, expected_hash, requested)
+    }
+
+    pub(crate) fn inspect_bytes(
+        &self,
+        bytes: &[u8],
+        expected_hash: Option<&str>,
+        requested: &[Capability],
+    ) -> Result<ComponentInspection, PluginError> {
+        self.inspect_component(bytes, expected_hash, requested)
+            .map(|(_, inspection)| inspection)
+    }
+
+    pub(crate) fn inspect_component(
+        &self,
+        bytes: &[u8],
+        expected_hash: Option<&str>,
+        requested: &[Capability],
+    ) -> Result<(Component, ComponentInspection), PluginError> {
+        let (component, hash) = self.compile(bytes, expected_hash)?;
+        let inspection = self.check_imports(&component, hash, requested)?;
+        Ok((component, inspection))
+    }
+
+    fn check_imports(
+        &self,
+        component: &Component,
+        hash: String,
+        requested: &[Capability],
+    ) -> Result<ComponentInspection, PluginError> {
         let imports = component
             .component_type()
             .imports(&self.engine)
@@ -95,6 +132,30 @@ impl WasmRuntime {
             hash,
         })
     }
+}
+
+fn build_engine() -> Result<Engine, String> {
+    let mut config = Config::new();
+    config
+        .wasm_component_model(true)
+        .wasm_component_model_implements(true)
+        .epoch_interruption(true)
+        .max_wasm_stack(MAX_STACK_BYTES);
+    let engine = Engine::new(&config).map_err(|error| format!("wasm engine: {error}"))?;
+    spawn_epoch_ticker(engine.weak(), EPOCH_INTERVAL);
+    Ok(engine)
+}
+
+fn spawn_epoch_ticker(engine: wasmtime::EngineWeak, interval: Duration) {
+    let _ = thread::Builder::new()
+        .name("kawi-wasm-epoch".to_string())
+        .spawn(move || loop {
+            thread::sleep(interval);
+            let Some(engine) = engine.upgrade() else {
+                break;
+            };
+            engine.increment_epoch();
+        });
 }
 
 fn collect_import(name: &str, item: &ComponentExtern<'_>, engine: &Engine) -> Vec<String> {
@@ -142,129 +203,4 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::*;
-
-    #[test]
-    fn hashes_component_bytes() {
-        assert_eq!(
-            digest(b"plugin"),
-            "sha256:5e689e2b01672bf33996e75d5e372ff60c536ce1599a1458e867cd8f4bef5160"
-        );
-    }
-
-    #[test]
-    fn runtime_configures_the_engine() {
-        assert!(WasmRuntime::new().is_ok());
-    }
-
-    #[test]
-    fn inspects_component_imports_and_hash() {
-        let runtime = WasmRuntime::new().unwrap();
-        let inspection = runtime
-            .inspect(
-                &fixture("editor-read.wasm"),
-                None,
-                &[Capability::EditorRead],
-            )
-            .unwrap();
-        assert_eq!(
-            inspection.imports,
-            vec!["kawi:plugin/editor-read@0.1.0".to_string()]
-        );
-        assert_eq!(inspection.requested, vec![Capability::EditorRead]);
-        assert!(inspection.hash.starts_with("sha256:"));
-    }
-
-    #[test]
-    fn inspects_renamed_imports_by_their_implements_name() {
-        let runtime = WasmRuntime::new().unwrap();
-        let inspection = runtime
-            .inspect(
-                &fixture("renamed-import.wasm"),
-                None,
-                &[Capability::EditorRead],
-            )
-            .unwrap();
-        assert_eq!(
-            inspection.imports,
-            vec!["kawi:plugin/editor-read@0.1.0".to_string()]
-        );
-    }
-
-    #[test]
-    fn rejects_nested_imports_without_a_matching_capability() {
-        let runtime = WasmRuntime::new().unwrap();
-        let error = runtime
-            .inspect(&fixture("nested-import.wasm"), None, &[])
-            .unwrap_err();
-        assert!(error.to_string().contains("alias/editor-read"));
-    }
-
-    #[test]
-    fn accepts_components_with_no_imports() {
-        let runtime = WasmRuntime::new().unwrap();
-        let inspection = runtime.inspect(&fixture("empty.wasm"), None, &[]).unwrap();
-        assert!(inspection.imports.is_empty());
-        assert!(inspection.requested.is_empty());
-    }
-
-    #[test]
-    fn rejects_a_component_that_changed_after_load() {
-        let runtime = WasmRuntime::new().unwrap();
-        let error = runtime
-            .inspect(
-                &fixture("editor-read.wasm"),
-                Some("sha256:0000"),
-                &[Capability::EditorRead],
-            )
-            .unwrap_err();
-        assert!(error.to_string().contains("changed since load"));
-    }
-
-    #[test]
-    fn rejects_malformed_components_without_panicking() {
-        let runtime = WasmRuntime::new().unwrap();
-        let path = std::env::temp_dir().join(format!("kawi-malformed-{}", std::process::id()));
-        std::fs::write(&path, b"not a component").unwrap();
-        let error = runtime.inspect(&path, None, &[]).unwrap_err();
-        assert!(error.to_string().contains("invalid component"));
-        std::fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn accepts_versioned_wasi_imports_with_a_grant() {
-        let runtime = WasmRuntime::new().unwrap();
-        let inspection = runtime
-            .inspect(
-                &fixture("editor-and-fs.wasm"),
-                None,
-                &[Capability::EditorRead, Capability::FsRead],
-            )
-            .unwrap();
-        assert!(inspection
-            .imports
-            .contains(&"wasi:filesystem/types@0.2.12".to_string()));
-    }
-
-    #[test]
-    fn rejects_component_imports_without_a_request() {
-        let runtime = WasmRuntime::new().unwrap();
-        let error = runtime
-            .inspect(
-                &fixture("editor-and-fs.wasm"),
-                None,
-                &[Capability::EditorRead],
-            )
-            .unwrap_err();
-        assert!(error.to_string().contains("wasi:filesystem/types@0.2.12"));
-    }
-
-    fn fixture(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/wasm")
-            .join(name)
-    }
-}
+mod tests;

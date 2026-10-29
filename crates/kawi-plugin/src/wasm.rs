@@ -1,11 +1,25 @@
 #[cfg(feature = "wasm")]
 mod bindings;
 #[cfg(feature = "wasm")]
+mod bridge;
+#[cfg(feature = "wasm")]
 mod component;
+#[cfg(feature = "wasm")]
+mod convert;
+#[cfg(feature = "wasm")]
+mod limits;
 #[cfg(feature = "wasm")]
 mod policy;
 #[cfg(feature = "wasm")]
+mod process;
+#[cfg(feature = "wasm")]
+mod session;
+#[cfg(feature = "wasm")]
+mod state;
+#[cfg(feature = "wasm")]
 mod wasi;
+#[cfg(feature = "wasm")]
+pub(crate) mod worker;
 
 #[cfg(feature = "wasm")]
 pub use component::{ComponentInspection, WasmRuntime};

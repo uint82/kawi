@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder};
 
 use crate::error::PluginError;
@@ -17,6 +18,16 @@ impl WasiConfig {
         builder.allow_tcp(false);
         builder.allow_udp(false);
         Self { builder }
+    }
+
+    pub fn stdout(mut self, stdout: MemoryOutputPipe) -> Self {
+        self.builder.stdout(stdout);
+        self
+    }
+
+    pub fn stderr(mut self, stderr: MemoryOutputPipe) -> Self {
+        self.builder.stderr(stderr);
+        self
     }
 
     pub fn preopen(

@@ -1,6 +1,12 @@
 mod backoff;
 mod connection;
 mod sandbox;
+
+#[cfg(feature = "wasm")]
+pub(crate) use sandbox::policy as sandbox_policy;
+
+#[cfg(feature = "wasm")]
+pub(crate) use backoff::Backoff;
 mod worker;
 
 use std::sync::atomic::AtomicBool;

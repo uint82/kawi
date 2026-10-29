@@ -65,15 +65,18 @@ pub(super) fn load_plugins_with_permissions(
     permissions: &str,
 ) -> Vec<String> {
     fs::write(root.join("permissions.toml"), permissions).unwrap();
-    app.plugins.load(crate::app::plugin::PluginLoadContext {
-        dir: root,
-        permissions: &root.join("permissions.toml"),
-        workspace: root,
-        commands: &mut app.commands,
-        keymaps: &mut app.keymaps,
-        leaders: &app.leaders,
-        wake: app.events.wake(),
-    })
+    app.plugins.load(
+        crate::app::plugin::PluginLoadContext {
+            dir: root,
+            permissions: &root.join("permissions.toml"),
+            workspace: root,
+            commands: &mut app.commands,
+            keymaps: &mut app.keymaps,
+            leaders: &app.leaders,
+            wake: app.events.wake(),
+        },
+        true,
+    )
 }
 
 pub(super) fn grant_all(root: &std::path::Path) {

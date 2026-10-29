@@ -32,7 +32,7 @@ use std::path::Path;
 
 const USAGE: &str = "\
 Usage:
-  kawi [--helix] [FILE]
+  kawi [--helix] [--no-plugins] [FILE]
   kawi doctor [OPTIONS]
   kawi --version
   kawi --help
@@ -47,6 +47,7 @@ fn main() -> Result<()> {
     if args.iter().any(|arg| is_wait_flag(arg)) {
         return run_wait_editor(&args);
     }
+    let load_plugins = !has_no_plugins(&args);
     let (path, cli_flavor) = parse_cli(args);
     let restore_workspace = path.is_none();
     let cwd = std::env::current_dir()?;
@@ -61,7 +62,7 @@ fn main() -> Result<()> {
         .filter(|path| path.is_dir());
     let buffer = load_buffer(if directory.is_some() { None } else { path })?;
     let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
-    app.load_state(cli_flavor);
+    app.load_state(cli_flavor, load_plugins);
     if let Some(paths) = paths.as_ref() {
         app.attach_file_views(FileViewStore::new(paths.views.clone()));
     }
@@ -99,6 +100,18 @@ fn run_utility(args: &[String]) -> Result<bool> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn has_no_plugins(args: &[String]) -> bool {
+    for arg in args {
+        if arg == "--" {
+            break;
+        }
+        if arg == "--no-plugins" {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_wait_flag(arg: &str) -> bool {
@@ -205,7 +218,7 @@ fn select_path(args: Vec<String>) -> Option<String> {
         if arg == "--" {
             return args.next();
         }
-        if arg != "--helix" {
+        if arg != "--helix" && arg != "--no-plugins" {
             return Some(arg);
         }
     }
@@ -294,6 +307,19 @@ mod tests {
             parse_cli(vec!["notes.txt".to_string(), "--helix".to_string()]),
             (Some("notes.txt".to_string()), Some(Flavor::Helix))
         );
+    }
+
+    #[test]
+    fn no_plugins_flag_is_not_a_path() {
+        assert_eq!(
+            parse_cli(vec!["--no-plugins".to_string(), "notes.txt".to_string()]),
+            (Some("notes.txt".to_string()), None)
+        );
+        assert!(has_no_plugins(&["--no-plugins".to_string()]));
+        assert!(!has_no_plugins(&[
+            "--".to_string(),
+            "--no-plugins".to_string()
+        ]));
     }
 
     #[test]

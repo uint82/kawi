@@ -10,6 +10,10 @@ pub struct ImportRule {
 
 pub const WASM_IMPORTS: &[ImportRule] = &[
     ImportRule {
+        prefix: "kawi:plugin/types@0.1.0",
+        capabilities: &[],
+    },
+    ImportRule {
         prefix: "kawi:plugin/editor-read@0.1.0",
         capabilities: &[Capability::EditorRead],
     },
