@@ -27,11 +27,16 @@ impl RuntimeReport {
 #[derive(Debug, Default)]
 pub(super) struct Report {
     runtimes: BTreeMap<&'static str, RuntimeReport>,
+    not_built: BTreeMap<&'static str, &'static str>,
 }
 
 impl Report {
     pub(super) fn runtime(&mut self, runtime: Runtime) -> &mut RuntimeReport {
         self.runtimes.entry(runtime.label()).or_default()
+    }
+
+    pub(super) fn record_not_built(&mut self, runtime: Runtime, reason: &'static str) {
+        self.not_built.insert(runtime.label(), reason);
     }
 
     pub(super) fn has_failures(&self) -> bool {
@@ -70,6 +75,9 @@ impl fmt::Display for Report {
             if !report.failures.is_empty() {
                 writeln!(formatter, "{runtime} failures: {}", report.failures.len())?;
             }
+        }
+        for (runtime, reason) in &self.not_built {
+            writeln!(formatter, "{runtime}: not built ({reason})")?;
         }
         Ok(())
     }

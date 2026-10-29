@@ -101,6 +101,17 @@ fn enforcement_table_is_covered_or_explicitly_uncovered() {
 }
 
 #[test]
+fn report_reports_missing_wasm_as_not_built() {
+    let mut report = Report::default();
+    report.record_not_built(super::harness::Runtime::Wasm, "wasm feature disabled");
+    let text = report.to_string();
+    assert!(
+        text.contains("wasm: not built (wasm feature disabled)"),
+        "{text}"
+    );
+}
+
+#[test]
 fn report_keeps_pass_and_not_supported_separate() {
     let mut report = Report::default();
     report

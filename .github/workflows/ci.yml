@@ -37,9 +37,9 @@ jobs:
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
       - name: Conformance
-        run: cargo test -p kawi-plugin --test conformance
+        run: cargo test -p kawi-plugin --test conformance -- --nocapture
       - name: Conformance WASM feature
-        run: cargo test -p kawi-plugin --features wasm --test conformance
+        run: cargo test -p kawi-plugin --features wasm --test conformance -- --nocapture
       - name: Check default dependencies
         run: |
           if cargo tree -p kawi -e normal | grep -q wasmtime; then

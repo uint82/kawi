@@ -36,6 +36,9 @@ pub(super) fn run() -> Report {
         }
     }
     record_not_supported(&mut report, &process, &wasm, &runtimes);
+    if !cfg!(feature = "wasm") {
+        report.record_not_built(Runtime::Wasm, "wasm feature disabled");
+    }
     report
 }
 
