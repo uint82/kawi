@@ -54,7 +54,9 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
 
-The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. TCP connect is allowed only to a pinned address. UDP, listen, and accept are denied. Resolver failure fails closed.
+The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set, but a long-lived session keeps stale addresses. Restart, or a grant change that restarts the plugin, builds a new session and re-resolves. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. TCP connect is allowed only to a pinned address. UDP, listen, and accept are denied. Resolver failure fails closed.
+
+Each session allows at most 64 TCP connect attempts, which bounds active descriptors. There is no outbound byte cap yet; bytes are bounded by the per-call wall-clock budget and OS socket buffers. Restart closes sockets held by the guest; the conformance suite verifies EOF on a held connection. Hostname-positive connect is guest-tested only with the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames. Rebinding and mixed answers are policy-tested only. Resolution runs while the session is built, not inside an invocation, so its five-second cap is a bounded startup cost. A timeout fails closed and leaves the worker restartable.
 
 ### Subsumption summary
 
@@ -246,7 +248,7 @@ Process plugins call the host for editor and UI methods, and the kernel sandbox 
 
 - Enforced everywhere: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
 - Enforced on Linux with Landlock: `fs.read`, `fs.write`, and the execute half of `process.spawn`.
-- Enforced for WebAssembly: `net.connect`, including DNS pinning, filtered guest name lookup, and non-public address rejection.
+- Enforced for WebAssembly: `net.connect`, including DNS pinning, filtered guest name lookup, non-public address rejection, connection caps, and restart socket closure. Rebinding and mixed-answer behavior are policy-tested only.
 - Advisory for process plugins: `net.connect` on every platform, `fs.*` and `process.spawn` off Linux, and every filesystem scope on older Landlock ABIs that cannot enforce rename or truncate restrictions.
 
 Each spawned plugin receives a Landlock ruleset in the child between fork and exec, after `no_new_privs` is set. The ruleset is deny by default. The baseline read-only allowlist covers common runtime roots: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, `/nix/store`, `/run/current-system/sw`, the dynamic loader and ELF interpreter, runtime prefixes derived from the plugin executable (including virtualenv prefixes), `/etc/ld.so.cache`, TLS and DNS configuration, `/proc/self`, and `/dev/urandom`. `/dev/null` and the plugin directory are writable. A plugin that needs any other file must request `fs.read` or `fs.write`; it must request `process.spawn` to execute anything beyond the interpreter named in its manifest.
@@ -271,7 +273,7 @@ Landlock is not a complete process boundary. It does not restrict hostnames or n
 - Subscriptions that cannot receive events.
 - Advisory grants labeled `advisory` and fully enforced grants labeled `enforced`.
 
-`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced)`. Process `net.connect` is labeled `(advisory)`:
+`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced; policy-tested: rebinding, mixed answers)`. Process `net.connect` is labeled `(advisory)`:
 
 ```text
 gitsigns 0.2.0 ready
@@ -289,6 +291,7 @@ The grant file remains the durable consent surface; the prompt is the interactiv
 
 The remaining enforcement follow-up:
 
+- Add a per-connection outbound byte cap.
 - Fuzz the host import boundary, including network and process execution.
 
 Other roadmap items:
