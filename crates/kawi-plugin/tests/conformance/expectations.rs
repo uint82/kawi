@@ -34,8 +34,42 @@ impl Expectation {
     }
 }
 
-pub(super) fn parse(name: &str, text: &str) -> ExpectationFile {
+pub(super) const TEST_RESOLVER_ROWS: &[&str] = &[
+    "wasm.net.rebind_private",
+    "wasm.net.rebind_public",
+    "wasm.net.mixed_answers",
+    "wasm.net.all_private",
+];
+
+fn parse_file(name: &str, text: &str) -> ExpectationFile {
     toml::from_str(text).unwrap_or_else(|error| panic!("{name} expectations: {error}"))
+}
+
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+pub(super) fn parse(name: &str, text: &str) -> ExpectationFile {
+    parse_file(name, text)
+}
+
+#[cfg(not(all(feature = "wasm-test-network", debug_assertions)))]
+pub(super) fn parse(name: &str, text: &str) -> ExpectationFile {
+    let mut file = parse_file(name, text);
+    if name == "wasm" {
+        for id in TEST_RESOLVER_ROWS {
+            file.rows.insert(
+                (*id).to_string(),
+                Expectation::NotSupported {
+                    kind: "TestResolverRequired".to_string(),
+                    reason:
+                        "the scripted resolver requires the debug-only wasm-test-network feature"
+                            .to_string(),
+                    issue: None,
+                    temporary: false,
+                    feature: None,
+                },
+            );
+        }
+    }
+    file
 }
 
 pub(super) fn validate(scenarios: &[Scenario], file: &ExpectationFile) -> Vec<String> {
