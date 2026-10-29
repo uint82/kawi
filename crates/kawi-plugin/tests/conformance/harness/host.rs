@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use kawi_plugin::{
     load_catalog, load_permission_state, CapabilityRegistry, HostEnvironment, InvocationContext,
@@ -20,18 +20,18 @@ use super::model::{Finished, Observation, Policy, Runtime};
 use super::{INVOCATION_TIMEOUT, PLUGIN_NAME, START_TIMEOUT, STATUS_POLL};
 
 pub(crate) struct ConformanceHost {
-    runtime: Runtime,
-    scenario: &'static str,
+    pub(crate) runtime: Runtime,
+    pub(crate) scenario: &'static str,
     root: PathBuf,
     grants_path: PathBuf,
     catalog: PluginCatalog,
-    host: Arc<PluginHost>,
+    pub(crate) host: Arc<PluginHost>,
     driver: Option<JoinHandle<()>>,
     stop: Arc<AtomicBool>,
     finished: Receiver<Finished>,
-    observation: Arc<Mutex<Observation>>,
+    pub(crate) observation: Arc<Mutex<Observation>>,
     registry: CapabilityRegistry,
-    policy: Arc<Mutex<Policy>>,
+    pub(crate) policy: Arc<Mutex<Policy>>,
     _wake: Receiver<()>,
 }
 
@@ -168,156 +168,13 @@ impl ConformanceHost {
             .expect("restart conformance plugin");
     }
 
-    pub(crate) fn status(&self) -> Option<PluginStatus> {
-        self.host.status(PLUGIN_NAME)
-    }
-
-    pub(crate) fn wait_backoff(&self) {
-        if let Some(PluginStatus::Backoff { remaining_ms }) = self.status() {
-            thread::sleep(Duration::from_millis(remaining_ms.saturating_add(10)));
-        }
-    }
-
-    pub(crate) fn wait_for_host_request(&self, method: &str) -> bool {
-        let deadline = Instant::now() + START_TIMEOUT;
-        loop {
-            if self
-                .observation()
-                .host_requests
-                .iter()
-                .any(|request| request.method == method)
-            {
-                return true;
-            }
-            if Instant::now() >= deadline {
-                return false;
-            }
-            thread::sleep(STATUS_POLL);
-        }
-    }
-
-    pub(crate) fn wait_for_host_response(&self, method: &str) -> bool {
-        let deadline = Instant::now() + START_TIMEOUT;
-        loop {
-            if self
-                .observation()
-                .host_requests
-                .iter()
-                .any(|request| request.method == method && request.responded)
-            {
-                return true;
-            }
-            if Instant::now() >= deadline {
-                return false;
-            }
-            thread::sleep(STATUS_POLL);
-        }
-    }
-
     pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
         self.host
             .notify(PLUGIN_NAME, event, payload)
             .expect("notify conformance plugin")
     }
 
-    pub(crate) fn observation(&self) -> Observation {
-        self.observation
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone()
-    }
-
-    pub(crate) fn host_request_count(&self) -> usize {
-        self.observation().host_requests.len()
-    }
-
-    pub(crate) fn stall_events(&self, event: &str, payload: Value) {
-        match self.runtime {
-            Runtime::Process => self.inject_pipe_block(),
-            Runtime::Wasm => {
-                self.withhold_host_responses();
-                assert_eq!(
-                    self.notify(event, payload),
-                    NotifyOutcome::Queued,
-                    "{}: {event} was not queued",
-                    self.label()
-                );
-                assert!(
-                    self.wait_for_host_request("ui.message"),
-                    "{}: {event} was not delivered before revocation",
-                    self.label()
-                );
-            }
-        }
-    }
-
-    pub(crate) fn release_events(&self) {
-        if self.runtime == Runtime::Wasm {
-            self.release_host_responses();
-        }
-    }
-
-    pub(crate) fn set_stale_revision(&self, stale: bool) {
-        self.policy
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .stale_revision = stale;
-    }
-
-    pub(crate) fn set_invalid_position(&self, invalid: bool) {
-        self.policy
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .invalid_position = invalid;
-    }
-
-    pub(crate) fn withhold_host_responses(&self) {
-        self.policy
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .withhold = true;
-    }
-
-    pub(crate) fn release_host_responses(&self) {
-        let deferred = {
-            let mut policy = self
-                .policy
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            policy.withhold = false;
-            std::mem::take(&mut policy.deferred)
-        };
-        for response in deferred {
-            let _ = self
-                .host
-                .respond(&response.plugin, response.id, response.result);
-            self.mark_responded(response.index);
-        }
-    }
-
-    fn mark_responded(&self, index: usize) {
-        if let Some(request) = self
-            .observation
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .host_requests
-            .get_mut(index)
-        {
-            request.responded = true;
-        }
-    }
-
-    fn inject_pipe_block(&self) {
-        self.host
-            .respond(
-                PLUGIN_NAME,
-                json!(999),
-                Ok(json!({ "pad": "x".repeat(1024 * 1024) })),
-            )
-            .expect("inject pipe block");
-    }
-
-    fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         format!("{:?} {}", self.runtime, self.scenario)
     }
 

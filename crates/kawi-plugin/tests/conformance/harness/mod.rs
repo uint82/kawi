@@ -1,7 +1,10 @@
 mod driver;
+mod events;
 mod fixtures;
 mod host;
 mod model;
+mod policy;
+mod query;
 
 use std::time::Duration;
 
