@@ -16,6 +16,8 @@ pub use wasm::{
     import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,
     ComponentInspection, ImportRule, WasiConfig, WasmRuntime, WASM_IMPORTS,
 };
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};
 
 pub use capability::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,

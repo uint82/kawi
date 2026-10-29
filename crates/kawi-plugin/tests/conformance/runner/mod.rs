@@ -14,9 +14,10 @@ use super::scenario::{scenarios, Action, Expected, Scenario};
 
 use actions::{
     assert_revoked, event_payload, run_advertised_parity, run_control_text, run_counter_reset,
-    run_five_strike, run_mid_codepoint, run_network_probe, run_oversize_diagnostics,
-    run_oversize_event, run_oversize_host_response, run_oversize_invocation, run_queued_revocation,
-    run_queued_revocation_mid_write, run_restart_with_pending_host_call, run_trap_then_recover,
+    run_five_strike, run_mid_codepoint, run_network_probe, run_network_scripted,
+    run_oversize_diagnostics, run_oversize_event, run_oversize_host_response,
+    run_oversize_invocation, run_queued_revocation, run_queued_revocation_mid_write,
+    run_restart_with_pending_host_call, run_trap_then_recover,
 };
 
 struct RowResult {
@@ -191,6 +192,7 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
         Action::ControlText => run_control_text(&host, runtime, scenario),
         Action::MidCodepointPosition => run_mid_codepoint(&host, runtime, scenario),
         Action::NetworkProbe => run_network_probe(&host, runtime, scenario),
+        Action::NetworkScripted => run_network_scripted(&host, runtime, scenario),
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);
@@ -211,7 +213,10 @@ fn assert_denial_was_enforced(
     let Expected::Denied(capability) = scenario.expected else {
         return Ok(());
     };
-    if scenario.action == Action::NetworkProbe {
+    if matches!(
+        scenario.action,
+        Action::NetworkProbe | Action::NetworkScripted
+    ) {
         return Ok(());
     }
     if !result.is_err() {

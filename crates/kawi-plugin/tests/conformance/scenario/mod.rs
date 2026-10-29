@@ -4,7 +4,11 @@ mod network;
 use kawi_plugin::Capability;
 
 pub(crate) use behavior::{Behavior, DIAGNOSTICS_READ_UI, EDITOR_READ_UI};
-pub(crate) use network::{network_case, NetworkGrant, NetworkTarget, PUBLIC_GRANT};
+pub(crate) use network::{
+    network_case, network_endpoint, NetworkGrant, NetworkTarget, PUBLIC_GRANT,
+};
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+pub(crate) use network::{resolver_script, ResolverScript};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Group {
@@ -58,6 +62,7 @@ pub(crate) enum Action {
     ControlText,
     MidCodepointPosition,
     NetworkProbe,
+    NetworkScripted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

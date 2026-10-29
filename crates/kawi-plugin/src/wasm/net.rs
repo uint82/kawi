@@ -28,7 +28,7 @@ pub(crate) struct NetworkPolicy {
 impl NetworkPolicy {
     pub(crate) fn from_scope(scope: Option<&Scope>) -> Self {
         match scope {
-            Some(Scope::Hosts(hosts)) => Self::from_hosts_with(hosts, resolve_host),
+            Some(Scope::Hosts(hosts)) => Self::from_hosts_with(hosts, resolve_grant),
             _ => Self::deny(),
         }
     }
@@ -168,6 +168,14 @@ impl NetworkPolicy {
         }
         self.names.insert(key, allowed_ips.into_iter().collect());
     }
+}
+
+fn resolve_grant(host: &HostPort) -> io::Result<Vec<SocketAddr>> {
+    #[cfg(all(feature = "wasm-test-network", debug_assertions))]
+    if let Some(result) = super::test_resolver::resolve_scripted(host) {
+        return result;
+    }
+    resolve_host(host)
 }
 
 fn resolve_host(host: &HostPort) -> io::Result<Vec<SocketAddr>> {

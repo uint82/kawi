@@ -26,9 +26,13 @@ pub(crate) struct NetworkSetup {
 }
 
 impl NetworkSetup {
-    pub(crate) fn new(workspace: PathBuf, scenario: &Scenario, allowed: SocketAddr) -> Self {
+    pub(crate) fn new(
+        workspace: PathBuf,
+        scenario: &Scenario,
+        allowed: SocketAddr,
+        hostname: String,
+    ) -> Self {
         let case = network_case(scenario.id);
-        let hostname = format!("localhost:{}", allowed.port());
         let request = match case.grant {
             NetworkGrant::Local => allowed.to_string(),
             NetworkGrant::Hostname => hostname.clone(),

@@ -60,8 +60,7 @@ fn wasm_network_capability_is_labeled_enforced() {
     assert!(
         lines
             .iter()
-            .any(|line| line
-                .contains("net.connect (enforced; policy-tested: rebinding, mixed answers)")),
+            .any(|line| line.contains("net.connect (enforced)")),
         "{lines:?}"
     );
     fs::remove_dir_all(root).unwrap();

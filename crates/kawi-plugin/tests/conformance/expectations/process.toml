@@ -204,3 +204,23 @@ reason = "the process runtime cannot enforce host-scoped network destinations"
 status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.rebind_private"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.rebind_public"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.mixed_answers"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.all_private"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"

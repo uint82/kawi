@@ -73,6 +73,17 @@ impl Guest for Plugin {
                 .to_socket_addrs()
                 .map(|addresses| text(format!("{}", addresses.count())))
                 .map_err(failure),
+            "resolve-list" => address
+                .to_socket_addrs()
+                .map(|addresses| {
+                    text(
+                        addresses
+                            .map(|address| address.to_string())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    )
+                })
+                .map_err(failure),
             "udp" => UdpSocket::bind(address)
                 .map(|_| text("bound"))
                 .map_err(failure),

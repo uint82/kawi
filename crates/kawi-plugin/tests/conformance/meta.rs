@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use super::expectations::{
-    parse, validate, Expectation, ExpectationFile, PROCESS_EXPECTATIONS, WASM_EXPECTATIONS,
+    parse, validate, Expectation, ExpectationFile, PROCESS_EXPECTATIONS, TEST_RESOLVER_ROWS,
+    WASM_EXPECTATIONS,
 };
 use super::report::Report;
 use super::scenario::{
@@ -78,6 +79,32 @@ fn not_supported_entries_have_a_kind_and_reason() {
                 );
             }
         }
+    }
+}
+
+#[cfg(not(all(feature = "wasm-test-network", debug_assertions)))]
+#[test]
+fn scripted_network_rows_require_the_test_resolver() {
+    let file = parse("wasm", WASM_EXPECTATIONS);
+    for id in TEST_RESOLVER_ROWS {
+        let expectation = file.rows.get(*id).expect("scripted network row");
+        match expectation {
+            Expectation::NotSupported { kind, .. } => assert_eq!(kind, "TestResolverRequired"),
+            Expectation::Pass => panic!("{id} passes without the test resolver"),
+        }
+    }
+}
+
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+#[test]
+fn scripted_network_rows_pass_with_the_test_resolver() {
+    let file = parse("wasm", WASM_EXPECTATIONS);
+    for id in TEST_RESOLVER_ROWS {
+        let expectation = file.rows.get(*id).expect("scripted network row");
+        assert!(
+            expectation.is_pass(),
+            "{id} is not run with the test resolver"
+        );
     }
 }
 

@@ -1,6 +1,10 @@
 mod events;
 mod hygiene;
 mod network;
+#[cfg(not(all(feature = "wasm-test-network", debug_assertions)))]
+mod network_fallback;
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+mod network_scripted;
 mod oversize;
 mod parity;
 mod recovery;
@@ -9,6 +13,10 @@ mod revocation;
 pub(crate) use events::event_payload;
 pub(crate) use hygiene::{run_control_text, run_mid_codepoint};
 pub(crate) use network::run_network_probe;
+#[cfg(not(all(feature = "wasm-test-network", debug_assertions)))]
+pub(crate) use network_fallback::run_network_scripted;
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+pub(crate) use network_scripted::run_network_scripted;
 pub(crate) use oversize::{
     run_oversize_diagnostics, run_oversize_event, run_oversize_host_response,
     run_oversize_invocation,
