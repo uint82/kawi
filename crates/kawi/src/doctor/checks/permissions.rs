@@ -25,8 +25,8 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
         if let Some(effective) = state.grants.get(name) {
             details.push(format!(
                 "{name}: granted {}, missing {}",
-                describe(effective.granted.keys().copied()),
-                describe(effective.missing.iter().copied())
+                describe(effective.granted.keys().copied(), plugin.manifest.runtime),
+                describe(effective.missing.iter().copied(), plugin.manifest.runtime)
             ));
             for capability in &effective.missing {
                 let [hint, assignment] = grant_lines(
@@ -50,8 +50,13 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
     }
 }
 
-fn describe(capabilities: impl Iterator<Item = kawi_plugin::Capability>) -> String {
-    let names = capabilities.map(describe_capability).collect::<Vec<_>>();
+fn describe(
+    capabilities: impl Iterator<Item = kawi_plugin::Capability>,
+    runtime: kawi_plugin::PluginRuntime,
+) -> String {
+    let names = capabilities
+        .map(|capability| describe_capability(capability, runtime))
+        .collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()
     } else {
@@ -59,9 +64,17 @@ fn describe(capabilities: impl Iterator<Item = kawi_plugin::Capability>) -> Stri
     }
 }
 
-fn describe_capability(capability: kawi_plugin::Capability) -> String {
+fn describe_capability(
+    capability: kawi_plugin::Capability,
+    runtime: kawi_plugin::PluginRuntime,
+) -> String {
     if capability == kawi_plugin::Capability::NetConnect {
-        return format!("{} (advisory)", capability.name());
+        let enforcement = if cfg!(feature = "wasm") && runtime == kawi_plugin::PluginRuntime::Wasm {
+            crate::plugin_labels::WASM_NETWORK_ENFORCEMENT
+        } else {
+            "advisory"
+        };
+        return format!("{} ({enforcement})", capability.name());
     }
     if capability.is_advisory() && kawi_process::sandbox_status().is_enforced() {
         return format!("{} (enforced)", capability.name());

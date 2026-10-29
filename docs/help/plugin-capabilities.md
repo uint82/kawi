@@ -7,7 +7,7 @@ related = ["plugins", "plugin-protocol", "configuration", "troubleshooting"]
 
 Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else.
 
-Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, and `diagnostics.read` events for process plugins. On Linux with a full Landlock ABI, Landlock enforces `fs.read`, `fs.write`, and `process.spawn` for process plugins. Landlock does not scope network destinations, so `net.connect` remains advisory until the WebAssembly runtime ships. On other platforms every filesystem, process, and network scope remains advisory.
+Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, and `diagnostics.read` events for process plugins. On Linux with a full Landlock ABI, Landlock enforces `fs.read`, `fs.write`, and `process.spawn` for process plugins. The WebAssembly runtime enforces `net.connect` with a deny-by-default WASI socket policy. Landlock cannot scope network destinations, so `net.connect` remains advisory for process plugins. On other platforms every filesystem, process, and network scope remains advisory for process plugins.
 
 ## Capability list
 
@@ -53,6 +53,10 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 ### Hosts
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
+
+The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set, but a long-lived session keeps stale addresses. Restart, or a grant change that restarts the plugin, builds a new session and re-resolves. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. Outbound TCP connect is the only permitted network operation. TCP connect is allowed only to a pinned address; UDP, listen, and accept are denied. Resolver failure fails closed. A failed or timed-out resolution emits a `network warning` in `:plugin list` and `:plugin logs`; the plugin still starts, and the warning does not count toward the five-failure disable.
+
+Each session allows at most 64 simultaneous TCP connections. A connection releases its slot when the guest drops the socket or shuts down both directions, so connect-and-disconnect loops do not exhaust the cap. The cap is per plugin session, not global. Denied attempts do not consume a slot. There is no outbound byte cap yet; bytes are bounded by the per-call wall-clock budget and OS socket buffers. Restart closes sockets held by the guest; the conformance suite verifies EOF on a held connection. Hostname-positive connect is guest-tested only with the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames. Rebinding and mixed answers are policy-tested only. Resolution runs while the session is built, not inside an invocation, so its five-second cap is a bounded startup cost. A timeout fails closed and leaves the worker restartable.
 
 ### Subsumption summary
 
@@ -244,17 +248,18 @@ Process plugins call the host for editor and UI methods, and the kernel sandbox 
 
 - Enforced everywhere: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
 - Enforced on Linux with Landlock: `fs.read`, `fs.write`, and the execute half of `process.spawn`.
-- Advisory: `net.connect` on every platform, `fs.*` and `process.spawn` off Linux, and every filesystem scope on older Landlock ABIs that cannot enforce rename or truncate restrictions.
+- Enforced for WebAssembly: `net.connect`, including DNS pinning, filtered guest name lookup, non-public address rejection, connection caps, and restart socket closure. Rebinding and mixed-answer behavior are policy-tested only.
+- Advisory for process plugins: `net.connect` on every platform, `fs.*` and `process.spawn` off Linux, and every filesystem scope on older Landlock ABIs that cannot enforce rename or truncate restrictions.
 
 Each spawned plugin receives a Landlock ruleset in the child between fork and exec, after `no_new_privs` is set. The ruleset is deny by default. The baseline read-only allowlist covers common runtime roots: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, `/nix/store`, `/run/current-system/sw`, the dynamic loader and ELF interpreter, runtime prefixes derived from the plugin executable (including virtualenv prefixes), `/etc/ld.so.cache`, TLS and DNS configuration, `/proc/self`, and `/dev/urandom`. `/dev/null` and the plugin directory are writable. A plugin that needs any other file must request `fs.read` or `fs.write`; it must request `process.spawn` to execute anything beyond the interpreter named in its manifest.
 
 A granted path that does not exist is skipped with a log line instead of aborting the spawn or widening access. A granted executable that cannot be resolved is likewise skipped with a log line. A plugin that dies during startup logs the spawn error together with the sandbox status.
 
-`process.spawn` grants are resolved to canonical executable paths at spawn time. Landlock allows `EXECUTE` on those paths, which closes the command-name race between grant checking and execution. Arguments are not scoped. `net.connect` cannot be enforced by Landlock because it scopes ports, not hostnames.
+`process.spawn` grants are resolved to canonical executable paths at spawn time. Landlock allows `EXECUTE` on those paths, which closes the command-name race between grant checking and execution. Arguments are not scoped. `net.connect` cannot be enforced by Landlock because it scopes ports, not hostnames; WebAssembly plugins use the WASI socket policy instead.
 
 The ruleset is best effort and follows the ABI the running kernel supports. Full enforcement requires an ABI that includes rename and truncate restrictions. If Landlock is unavailable the plugin starts unsandboxed. If the ABI is older, the plugin still starts under the partial ruleset. `:plugin list` marks a scope `enforced` only after a full ruleset was applied at spawn; unavailable and partial results stay `advisory`. A spawn fails visibly if an available ruleset cannot be applied.
 
-Landlock is not a complete process boundary. It does not restrict hostnames or network destinations, so `net.connect` remains advisory. Depending on the ABI it also may not stop connections to local sockets such as D-Bus or an ssh-agent, and it does not restrict signals or ptrace between same-user processes. Filesystem and executable scopes are enforced, but a plugin remains same-user code. The WebAssembly runtime is the path to a complete boundary.
+Landlock is not a complete process boundary. It does not restrict hostnames or network destinations, so `net.connect` remains advisory for process plugins. Depending on the ABI it also may not stop connections to local sockets such as D-Bus or an ssh-agent, and it does not restrict signals or ptrace between same-user processes. Filesystem and executable scopes are enforced, but a process plugin remains same-user code. The WebAssembly runtime is the path to a complete boundary.
 
 ## Doctor and plugin list
 
@@ -266,9 +271,9 @@ Landlock is not a complete process boundary. It does not restrict hostnames or n
 - Requests without grants, including unresolved `$WORKSPACE`.
 - Request hash mismatches, shown as changed with grants withheld.
 - Subscriptions that cannot receive events.
-- Advisory grants labeled `advisory` and fully enforced Landlock grants labeled `enforced`.
+- Advisory grants labeled `advisory` and fully enforced grants labeled `enforced`.
 
-`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Scoped capabilities are labeled `(enforced)` only after a spawn applied a full Landlock ruleset, and `(advisory)` otherwise. `net.connect` is always `(advisory)`:
+`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced; policy-tested: rebinding, mixed answers)`. Process `net.connect` is labeled `(advisory)`:
 
 ```text
 gitsigns 0.2.0 ready
@@ -286,9 +291,9 @@ The grant file remains the durable consent surface; the prompt is the interactiv
 
 The remaining enforcement follow-up:
 
-- `plugin: add WebAssembly component runtime`
+- Add a per-connection outbound byte cap.
+- Fuzz the host import boundary, including network and process execution.
 
 Other roadmap items:
 
-- WebAssembly plugin runtime, which makes `net.connect` enforceable.
 - Re-approval review for several changed requests at once instead of one capability at a time.

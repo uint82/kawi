@@ -21,6 +21,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
@@ -32,14 +33,22 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-tools@1.262.0
+      - name: Install wasm component linker
+        run: cargo install wasm-component-ld --version 0.5.31 --locked
       - name: Rebuild wasm fixtures
         run: crates/kawi-plugin/tests/fixtures/wasm/build.sh
+      - name: Format network fixture
+        run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/network/Cargo.toml -- --check
+      - name: Rebuild network fixture
+        run: crates/kawi-plugin/tests/fixtures/wasm/build-network.sh
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
       - name: Conformance
         run: cargo test -p kawi-plugin --test conformance -- --nocapture
       - name: Conformance WASM feature
         run: cargo test -p kawi-plugin --features wasm --test conformance -- --nocapture
+      - name: Conformance WASM test network override
+        run: cargo test -p kawi-plugin --features wasm,wasm-test-network --test conformance -- --nocapture
       - name: Check default dependencies
         run: |
           if cargo tree -p kawi -e normal | grep -q wasmtime; then
@@ -47,19 +56,47 @@ jobs:
           fi
       - name: Check WASM dependencies
         run: cargo tree -p kawi --features wasm -e normal | grep -q "wasmtime v50.0.0"
+      - name: Check release excludes test network override
+        run: |
+          cargo build -p kawi --release
+          cargo build -p kawi --release --features wasm
+          if cargo tree -p kawi -e features -i kawi-plugin | grep -q 'kawi-plugin feature "wasm-test-network"'; then
+            echo "wasm-test-network must not be enabled in the default build" >&2
+            exit 1
+          fi
+          if cargo tree -p kawi --features wasm -e features -i kawi-plugin | grep -q 'kawi-plugin feature "wasm-test-network"'; then
+            echo "wasm-test-network must not be enabled in the wasm build" >&2
+            exit 1
+          fi
       - name: Lint WASM feature
         run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
+      - name: Lint WASM test network feature
+        run: cargo clippy -p kawi-plugin --all-targets --features wasm,wasm-test-network -- -D warnings
       - name: Check WASM feature
         run: cargo check -p kawi --features wasm
       - name: Test WASM feature
         run: cargo test -p kawi-plugin --features wasm
       - name: Test WASM app feature
         run: cargo test -p kawi --features wasm --bin kawi app::plugin::tests::wasm
+  supply-chain:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        args:
+          - ""
+          - "--features kawi/wasm"
+          - "--features kawi-plugin/wasm-test-network"
+          - "--features kawi/wasm,kawi-plugin/wasm-test-network"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Install supply chain tools
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny,cargo-vet
       - name: Deny
-        run: cargo deny check
+        run: cargo deny ${{ matrix.args }} check
       - name: Vet
-        run: cargo vet
+        run: cargo vet --no-all-features ${{ matrix.args }}

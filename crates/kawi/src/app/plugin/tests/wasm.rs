@@ -36,6 +36,105 @@ fn inspect_reports_a_wasm_manifest_and_hash() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(feature = "wasm")]
+#[test]
+fn wasm_network_capability_is_labeled_enforced() {
+    let root = temp_dir("wasm-net-label");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../kawi-plugin/tests/fixtures/wasm/editor-read.wasm");
+    let bytes = fs::read(fixture).unwrap();
+    write_plugin_manifest_with(
+        &root,
+        &bytes,
+        None,
+        &[],
+        "\"net.connect\" = { hosts = [\"127.0.0.1:443\"] }\n",
+    );
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.wasm.grant]\n\"net.connect\" = { hosts = [\"127.0.0.1:443\"] }\n",
+    );
+    let lines = app.plugins.capability_lines("wasm");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line
+                .contains("net.connect (enforced; policy-tested: rebinding, mixed answers)")),
+        "{lines:?}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(feature = "wasm")]
+#[test]
+fn wasm_resolution_warning_is_listed_without_counting_as_failure() {
+    let root = temp_dir("wasm-resolution-warning");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../kawi-plugin/tests/fixtures/wasm/editor-host.wasm");
+    let bytes = fs::read(fixture).unwrap();
+    write_plugin_manifest_with(
+        &root,
+        &bytes,
+        None,
+        &["editor.read"],
+        "\"net.connect\" = { hosts = [\"localhost:443\"] }\n",
+    );
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.wasm.grant]\n\"editor.read\" = true\n\"net.connect\" = { hosts = [\"localhost:443\"] }\n",
+    );
+    app.plugins.restart(Some("wasm")).unwrap();
+    wait_until_ready(&mut app);
+    app.poll_plugins();
+    app.handle_plugin_command("list");
+    let lines = app.pager.as_ref().expect("pager");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("network warning: localhost")),
+        "{lines:?}"
+    );
+    assert!(app
+        .plugins
+        .logs("wasm")
+        .iter()
+        .any(|line| line.contains("network warning: localhost")));
+    for _ in 0..6 {
+        app.plugins.restart(Some("wasm")).unwrap();
+        wait_until_ready(&mut app);
+        assert_eq!(app.plugins.status("wasm"), Some(PluginStatus::Ready));
+    }
+    app.poll_plugins();
+    assert_eq!(
+        app.plugins
+            .capability_lines("wasm")
+            .iter()
+            .filter(|line| line.contains("network warning:"))
+            .count(),
+        1
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(feature = "wasm")]
+fn wait_until_ready(app: &mut crate::app::App) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.plugins.status("wasm") != Some(PluginStatus::Ready) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "plugin did not become ready: {:?} {:?}",
+            app.plugins.status("wasm"),
+            app.plugins.logs("wasm")
+        );
+        app.poll_plugins();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 #[test]
 fn inspect_reports_the_computed_hash_when_the_manifest_lies() {
     let root = temp_dir("inspect-wasm-mismatch");

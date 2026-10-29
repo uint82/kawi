@@ -1,9 +1,73 @@
 use std::collections::BTreeSet;
+use std::fmt;
+#[cfg(feature = "wasm")]
+use std::net::IpAddr;
 use std::path::Path;
 
 use serde_json::{Map, Value};
 
 use super::Capability;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct HostPort {
+    host: String,
+    port: u16,
+}
+
+impl HostPort {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        let (raw_host, port) = value
+            .rsplit_once(':')
+            .ok_or_else(|| "hosts must include a port".to_string())?;
+        let port = port
+            .parse::<u16>()
+            .map_err(|_| "hosts must use host:port".to_string())?;
+        let is_ipv6 = raw_host.starts_with('[') && raw_host.ends_with(']');
+        let host = if is_ipv6 {
+            &raw_host[1..raw_host.len() - 1]
+        } else {
+            raw_host
+        };
+        if host.is_empty() || port == 0 {
+            return Err("hosts must use host:port".to_string());
+        }
+        if host.contains('*') {
+            return Err("host wildcards are not supported".to_string());
+        }
+        if host.contains(':') && !is_ipv6 {
+            return Err("IPv6 hosts must use brackets".to_string());
+        }
+        Ok(Self {
+            host: host.to_ascii_lowercase(),
+            port,
+        })
+    }
+
+    #[cfg(feature = "wasm")]
+    pub(crate) fn host(&self) -> &str {
+        &self.host
+    }
+
+    #[cfg(feature = "wasm")]
+    pub(crate) fn port(&self) -> u16 {
+        self.port
+    }
+
+    #[cfg(feature = "wasm")]
+    pub(crate) fn ip(&self) -> Option<IpAddr> {
+        self.host.parse().ok()
+    }
+}
+
+impl fmt::Display for HostPort {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.host.contains(':') {
+            write!(formatter, "[{}]:{}", self.host, self.port)
+        } else {
+            write!(formatter, "{}:{}", self.host, self.port)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
@@ -125,32 +189,7 @@ fn parse_hosts(values: &[toml::Value]) -> Result<Vec<String>, String> {
 }
 
 fn normalize_host(host: &str) -> Result<String, String> {
-    let (raw_host, port) = host
-        .rsplit_once(':')
-        .ok_or_else(|| "hosts must include a port".to_string())?;
-    let port = port
-        .parse::<u16>()
-        .map_err(|_| "hosts must use host:port".to_string())?;
-    let is_ipv6 = raw_host.starts_with('[') && raw_host.ends_with(']');
-    let host = if is_ipv6 {
-        &raw_host[1..raw_host.len() - 1]
-    } else {
-        raw_host
-    };
-    if host.is_empty() || port == 0 {
-        return Err("hosts must use host:port".to_string());
-    }
-    if host.contains('*') {
-        return Err("host wildcards are not supported".to_string());
-    }
-    if host.contains(':') && !is_ipv6 {
-        return Err("IPv6 hosts must use brackets".to_string());
-    }
-    let host = host.to_ascii_lowercase();
-    if is_ipv6 {
-        return Ok(format!("[{host}]:{port}"));
-    }
-    Ok(format!("{host}:{port}"))
+    HostPort::parse(host).map(|host| host.to_string())
 }
 
 fn normalize_path(path: &str) -> Result<String, String> {

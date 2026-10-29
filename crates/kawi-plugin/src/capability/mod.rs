@@ -12,6 +12,8 @@ pub use permissions::{
     effective, parse_permissions, EffectiveCapabilities, PermissionsFile, PluginPermissions,
 };
 pub use registry::CapabilityRegistry;
+#[cfg(feature = "wasm")]
+pub(crate) use scope::HostPort;
 pub use scope::{intersect_scope, Scope};
 pub use state::{load_permission_state, PermissionState};
 

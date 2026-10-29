@@ -109,3 +109,50 @@ status = "pass"
 [rows."hygiene.control_text"]
 status = "pass"
 
+[rows."wasm.net.no_grant"]
+status = "pass"
+
+[rows."wasm.net.connect_allowed"]
+status = "pass"
+
+[rows."wasm.net.connect_denied"]
+status = "pass"
+
+[rows."wasm.net.dns_denied"]
+status = "pass"
+
+[rows."wasm.net.udp_denied"]
+status = "pass"
+
+[rows."wasm.net.bind_denied"]
+status = "pass"
+
+[rows."wasm.net.accept_denied"]
+status = "pass"
+
+[rows."wasm.net.mapped_denied"]
+status = "pass"
+
+[rows."wasm.net.link_local_denied"]
+status = "pass"
+
+[rows."wasm.net.loopback_denied"]
+status = "pass"
+
+[rows."wasm.net.dns_other_denied"]
+status = "pass"
+
+[rows."wasm.net.dns_ip_allowed"]
+status = "pass"
+
+[rows."wasm.net.hostname_allowed"]
+status = "pass"
+
+[rows."wasm.net.restart_closes_socket"]
+status = "pass"
+
+[rows."wasm.net.connection_cap_denied"]
+status = "pass"
+
+[rows."wasm.net.connection_cap_reuse"]
+status = "pass"

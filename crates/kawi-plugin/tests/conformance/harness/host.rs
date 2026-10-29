@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -13,11 +14,9 @@ use kawi_plugin::{
     NotifyOutcome, PluginCatalog, PluginError, PluginHost, PluginStatus, Position,
 };
 
-#[cfg(feature = "wasm")]
-use super::super::scenario::Behavior;
-use super::super::scenario::Scenario;
+use super::super::scenario::{Behavior, NetworkTarget, Scenario};
 use super::driver::Driver;
-use super::fixtures::{temp_root, write_grants, write_manifest};
+use super::fixtures::{temp_root, write_grants, write_manifest, ManifestSpec, NetworkSetup};
 use super::model::{Finished, Observation, Policy, Runtime};
 use super::{INVOCATION_TIMEOUT, PLUGIN_NAME, START_TIMEOUT, STATUS_POLL};
 
@@ -36,6 +35,9 @@ pub(crate) struct ConformanceHost {
     pub(crate) observation: Arc<Mutex<Observation>>,
     pub(crate) registry: CapabilityRegistry,
     pub(crate) policy: Arc<Mutex<Policy>>,
+    pub(crate) network_allowed: Option<SocketAddr>,
+    pub(crate) network_denied: Option<SocketAddr>,
+    network_listeners: Option<(TcpListener, TcpListener)>,
     _wake: Receiver<()>,
 }
 
@@ -47,8 +49,16 @@ impl ConformanceHost {
         let grants_path = config.join("permissions.toml");
         fs::create_dir_all(&config).unwrap();
         fs::create_dir_all(&plugins).unwrap();
-        write_manifest(&plugins, runtime, scenario);
-        write_grants(&grants_path, scenario.grants);
+        let network = network_setup(&root, scenario);
+        write_manifest(
+            &plugins,
+            ManifestSpec {
+                runtime,
+                scenario,
+                network: network.setup.as_ref(),
+            },
+        );
+        write_grants(&grants_path, scenario.grants, network.setup.as_ref());
         let catalog = load_catalog(&plugins);
         if !scenario.behavior.expects_load_warning() {
             assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
@@ -95,6 +105,9 @@ impl ConformanceHost {
             observation,
             registry,
             policy,
+            network_allowed: network.allowed,
+            network_denied: network.denied,
+            network_listeners: network.listeners,
             _wake: wake_rx,
         }
     }
@@ -131,7 +144,7 @@ impl ConformanceHost {
     }
 
     pub(crate) fn revoke_all(&self) {
-        write_grants(&self.grants_path, &[]);
+        write_grants(&self.grants_path, &[], None);
         let state = load_permission_state(&self.catalog, &self.grants_path);
         assert!(state.file_error.is_none(), "{:?}", state.file_error);
         self.registry.replace(state.grants);
@@ -180,6 +193,33 @@ impl ConformanceHost {
             .expect("notify conformance plugin")
     }
 
+    pub(crate) fn accept_allowed(&self) -> std::io::Result<TcpStream> {
+        let (listener, _) = self
+            .network_listeners
+            .as_ref()
+            .expect("network scenario has no listener");
+        listener.accept().map(|(stream, _)| stream)
+    }
+
+    pub(crate) fn network_target(&self, target: NetworkTarget) -> String {
+        let allowed = self
+            .network_allowed
+            .expect("network scenario has no allowed address");
+        let denied = self
+            .network_denied
+            .expect("network scenario has no denied address");
+        match target {
+            NetworkTarget::Allowed => allowed.to_string(),
+            NetworkTarget::Denied => denied.to_string(),
+            NetworkTarget::Hostname => format!("localhost:{}", allowed.port()),
+            NetworkTarget::OtherHostname => "example.com:443".to_string(),
+            NetworkTarget::PublicIp => "8.8.8.8:443".to_string(),
+            NetworkTarget::Mapped => format!("[::ffff:127.0.0.1]:{}", allowed.port()),
+            NetworkTarget::LinkLocal => format!("169.254.169.254:{}", allowed.port()),
+            NetworkTarget::Loopback => format!("[::1]:{}", allowed.port()),
+        }
+    }
+
     pub(crate) fn label(&self) -> String {
         format!("{:?} {}", self.runtime, self.scenario)
     }
@@ -203,6 +243,35 @@ impl Drop for ConformanceHost {
             let _ = driver.join();
         }
         let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+struct NetworkHarness {
+    setup: Option<NetworkSetup>,
+    listeners: Option<(TcpListener, TcpListener)>,
+    allowed: Option<SocketAddr>,
+    denied: Option<SocketAddr>,
+}
+
+fn network_setup(root: &std::path::Path, scenario: &Scenario) -> NetworkHarness {
+    if scenario.behavior != Behavior::NetworkProbe {
+        return NetworkHarness {
+            setup: None,
+            listeners: None,
+            allowed: None,
+            denied: None,
+        };
+    }
+    let allowed = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let denied = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let allowed_address = allowed.local_addr().unwrap();
+    let denied_address = denied.local_addr().unwrap();
+    let setup = NetworkSetup::new(root.to_path_buf(), scenario, allowed_address);
+    NetworkHarness {
+        setup: Some(setup),
+        listeners: Some((allowed, denied)),
+        allowed: Some(allowed_address),
+        denied: Some(denied_address),
     }
 }
 

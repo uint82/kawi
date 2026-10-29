@@ -13,6 +13,7 @@ mod mouse;
 mod options;
 mod permission_lines;
 mod persist;
+mod plugin_labels;
 mod recovery;
 mod session;
 mod state;

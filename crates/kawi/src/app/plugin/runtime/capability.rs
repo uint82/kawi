@@ -245,9 +245,10 @@ impl PluginRuntime {
 
     pub(crate) fn capability_lines(&self, plugin: &str) -> Vec<String> {
         let effective = self.capabilities.get(plugin);
+        let wasm = cfg!(feature = "wasm") && self.is_wasm(plugin);
         let sandboxed = self.is_sandboxed(plugin);
-        let granted = describe_capabilities(effective.granted.keys().copied(), sandboxed);
-        let missing = describe_capabilities(effective.missing.iter().copied(), sandboxed);
+        let granted = describe_capabilities(effective.granted.keys().copied(), wasm, sandboxed);
+        let missing = describe_capabilities(effective.missing.iter().copied(), wasm, sandboxed);
         let mut lines = vec![format!("granted: {granted}")];
         if missing != "none" {
             lines.push(format!("ungranted: {missing}"));
@@ -255,9 +256,16 @@ impl PluginRuntime {
         if effective.changed {
             lines.push("changed: request hash mismatch".to_string());
         }
-        let stale = describe_capabilities(effective.stale.iter().copied(), sandboxed);
+        let stale = describe_capabilities(effective.stale.iter().copied(), wasm, sandboxed);
         if stale != "none" {
             lines.push(format!("stale: {stale}"));
+        }
+        if let Some(warnings) = self.warnings.get(plugin) {
+            lines.extend(
+                warnings
+                    .iter()
+                    .map(|warning| super::super::text::sanitize(warning)),
+            );
         }
         lines
     }

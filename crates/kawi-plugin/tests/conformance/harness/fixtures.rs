@@ -1,10 +1,11 @@
 use std::fs;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 
-use super::super::scenario::{Behavior, Scenario};
+use super::super::scenario::{network_case, Behavior, NetworkGrant, Scenario, PUBLIC_GRANT};
 use super::model::Runtime;
 use super::PLUGIN_NAME;
 
@@ -18,7 +19,54 @@ pub(crate) fn temp_root() -> PathBuf {
     root
 }
 
-pub(crate) fn write_grants(path: &Path, grants: &[kawi_plugin::Capability]) {
+pub(crate) struct NetworkSetup {
+    pub(crate) workspace: PathBuf,
+    pub(crate) request: String,
+    pub(crate) grant: Option<String>,
+}
+
+impl NetworkSetup {
+    pub(crate) fn new(workspace: PathBuf, scenario: &Scenario, allowed: SocketAddr) -> Self {
+        let case = network_case(scenario.id);
+        let hostname = format!("localhost:{}", allowed.port());
+        let request = match case.grant {
+            NetworkGrant::Local => allowed.to_string(),
+            NetworkGrant::Hostname => hostname.clone(),
+            NetworkGrant::Public | NetworkGrant::None => PUBLIC_GRANT.to_string(),
+        };
+        let grant = match case.grant {
+            NetworkGrant::Local => Some(allowed.to_string()),
+            NetworkGrant::Hostname => Some(hostname),
+            NetworkGrant::Public => Some(PUBLIC_GRANT.to_string()),
+            NetworkGrant::None => None,
+        };
+        Self {
+            workspace,
+            request,
+            grant,
+        }
+    }
+}
+
+pub(crate) struct ManifestSpec<'a> {
+    pub(crate) runtime: Runtime,
+    pub(crate) scenario: &'a Scenario,
+    pub(crate) network: Option<&'a NetworkSetup>,
+}
+
+pub(crate) fn write_grants(
+    path: &Path,
+    grants: &[kawi_plugin::Capability],
+    network: Option<&NetworkSetup>,
+) {
+    let text = match network {
+        Some(network) => network_grants(network),
+        None => unscoped_grants(grants),
+    };
+    fs::write(path, text).unwrap();
+}
+
+fn unscoped_grants(grants: &[kawi_plugin::Capability]) -> String {
     let mut text = String::new();
     if !grants.is_empty() {
         text.push_str(&format!("[plugins.{PLUGIN_NAME}.grant]\n"));
@@ -26,17 +74,27 @@ pub(crate) fn write_grants(path: &Path, grants: &[kawi_plugin::Capability]) {
             text.push_str(&format!("\"{}\" = true\n", capability.name()));
         }
     }
-    fs::write(path, text).unwrap();
+    text
 }
 
-pub(crate) fn write_manifest(plugins: &Path, runtime: Runtime, scenario: &Scenario) {
-    let behavior = scenario.behavior;
-    let timeout_ms = scenario.timeout_ms();
+fn network_grants(network: &NetworkSetup) -> String {
+    let Some(grant) = &network.grant else {
+        return String::new();
+    };
+    let workspace = network.workspace.display();
+    format!(
+        "[plugins.{PLUGIN_NAME}.grant]\n\"fs.read\" = {{ paths = [{workspace:?}] }}\n\"net.connect\" = {{ hosts = [{grant:?}] }}\n"
+    )
+}
+
+pub(crate) fn write_manifest(plugins: &Path, spec: ManifestSpec<'_>) {
+    let behavior = spec.scenario.behavior;
+    let timeout_ms = spec.scenario.timeout_ms();
     let dir = plugins.join(PLUGIN_NAME);
     fs::create_dir_all(&dir).unwrap();
-    let capabilities = capability_table(behavior);
+    let capabilities = capability_table(behavior, spec.network);
     let subscribes = subscribes_line(behavior);
-    let manifest = match runtime {
+    let manifest = match spec.runtime {
         Runtime::Process => process_manifest(behavior, timeout_ms, &subscribes, &capabilities),
         Runtime::Wasm => wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities),
     };
@@ -121,7 +179,10 @@ fn write_leb128(mut value: usize, output: &mut Vec<u8>) {
     }
 }
 
-fn capability_table(behavior: Behavior) -> String {
+fn capability_table(behavior: Behavior, network: Option<&NetworkSetup>) -> String {
+    if let Some(network) = network {
+        return network_capability_table(network);
+    }
     let requests = behavior.requests();
     if requests.is_empty() {
         return String::new();
@@ -131,4 +192,12 @@ fn capability_table(behavior: Behavior) -> String {
         table.push_str(&format!("\"{}\" = true\n", capability.name()));
     }
     table
+}
+
+fn network_capability_table(network: &NetworkSetup) -> String {
+    let workspace = network.workspace.display();
+    let request = &network.request;
+    format!(
+        "[capabilities]\n\"fs.read\" = {{ paths = [{workspace:?}] }}\n\"fs.write\" = {{ paths = [{workspace:?}] }}\n\"net.connect\" = {{ hosts = [{request:?}] }}\n"
+    )
 }

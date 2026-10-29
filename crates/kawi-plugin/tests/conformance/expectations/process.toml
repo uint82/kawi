@@ -125,3 +125,82 @@ status = "pass"
 [rows."hygiene.control_text"]
 status = "pass"
 
+[rows."wasm.net.no_grant"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connect_allowed"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connect_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.dns_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.udp_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.bind_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.accept_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.mapped_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.link_local_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.loopback_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.dns_other_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.dns_ip_allowed"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.hostname_allowed"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.restart_closes_socket"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connection_cap_denied"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connection_cap_reuse"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"

@@ -204,6 +204,7 @@ impl PluginRuntime {
             .retain(|(name, _), _| name.as_str() != plugin);
         self.resync_buffers
             .retain(|(name, _)| name.as_str() != plugin);
+        self.warnings.remove(plugin);
     }
 }
 

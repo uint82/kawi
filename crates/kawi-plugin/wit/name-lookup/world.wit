@@ -1,0 +1,5 @@
+package kawi:name-lookup@0.1.0;
+
+world name-lookup {
+  import wasi:sockets/ip-name-lookup@0.2.12;
+}
