@@ -11,6 +11,9 @@ use super::scenario::{
 
 const LANDED_FEATURES: &[&str] = &[];
 
+const SHORT_TIMEOUT_MS: u64 = 2_000;
+const DEFAULT_TIMEOUT_FLOOR_MS: u64 = 5_000;
+
 #[test]
 fn scenario_ids_are_unique_and_not_empty() {
     let mut ids = BTreeSet::new();
@@ -22,6 +25,20 @@ fn scenario_ids_are_unique_and_not_empty() {
             scenario.id
         );
     }
+}
+
+#[test]
+fn timeout_rows_keep_a_short_budget_and_normal_rows_have_headroom() {
+    let timeout = scenarios()
+        .iter()
+        .find(|scenario| scenario.id == "trap.timeout")
+        .expect("timeout scenario");
+    assert_eq!(timeout.timeout_ms(), SHORT_TIMEOUT_MS);
+    let normal = scenarios()
+        .iter()
+        .find(|scenario| scenario.id == "core.echo")
+        .expect("normal scenario");
+    assert!(normal.timeout_ms() >= DEFAULT_TIMEOUT_FLOOR_MS);
 }
 
 #[test]
