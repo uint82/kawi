@@ -12,7 +12,7 @@ Status: proposed. Phase 1 adds the contract, manifest fields, component inspecti
 
 ## Runtime
 
-Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. `cargo vet` audits are a follow-up once the initial dependency set is stable.
+Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
 
 Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline.
 
@@ -65,7 +65,7 @@ sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 ## Inspection
 
-`kawi plugin inspect <name>` prints the runtime, component, declared hash, request hash, requested capabilities, and, when the `wasm` feature is enabled, the component imports.
+`kawi plugin inspect <name>` prints the runtime, component, computed hash, declared hash, request hash, requested capabilities, and, when the `wasm` feature is enabled, the component imports. The computed hash comes from the bytes that were hashed at load and is checked again before the component is compiled for inspection.
 
 Import inspection runs before instantiation. It rejects imports that exceed manifest requests and reports the imports that a user is being asked to grant.
 
