@@ -1,5 +1,5 @@
 wit_bindgen::generate!({
-    path: "/home/uint32/Documents/kawi/crates/kawi-plugin/wit",
+    path: "../../../../wit",
     world: "host",
 });
 
