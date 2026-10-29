@@ -22,6 +22,8 @@ mod process;
 mod session;
 #[cfg(feature = "wasm")]
 mod state;
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+mod test_resolver;
 #[cfg(feature = "wasm")]
 mod wasi;
 #[cfg(feature = "wasm")]
@@ -34,5 +36,7 @@ pub use policy::{
     import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,
     ImportRule, WASM_IMPORTS,
 };
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
+pub use test_resolver::{install_resolver_script, remove_resolver_script, resolver_call_count};
 #[cfg(feature = "wasm")]
 pub use wasi::WasiConfig;
