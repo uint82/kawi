@@ -77,6 +77,34 @@ fn request(mut plugin: LoadedPlugin, capabilities: &[Capability]) -> LoadedPlugi
     plugin
 }
 
+fn start(
+    plugin: LoadedPlugin,
+    capabilities: CapabilityRegistry,
+) -> (WasmWorkerHandle, mpsc::Receiver<PluginHostEvent>) {
+    let (events_tx, events_rx) = mpsc::channel();
+    let (wake_tx, _wake_rx) = mpsc::channel();
+    let handle = start_wasm_worker(
+        plugin,
+        capabilities,
+        HostEnvironment::default(),
+        events_tx,
+        wake_tx,
+    );
+    (handle, events_rx)
+}
+
+fn request_paths(mut plugin: LoadedPlugin, capability: Capability, path: &str) -> LoadedPlugin {
+    let mut scope = toml::Table::new();
+    scope.insert(
+        "paths".to_string(),
+        toml::Value::Array(vec![toml::Value::String(path.to_string())]),
+    );
+    let mut requests = toml::Table::new();
+    requests.insert(capability.name().to_string(), toml::Value::Table(scope));
+    plugin.manifest.capability_requests = crate::capability::parse_capability_requests(&requests).0;
+    plugin
+}
+
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/wasm")

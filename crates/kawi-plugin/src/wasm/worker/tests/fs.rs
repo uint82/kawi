@@ -73,16 +73,9 @@ fn blocks_preopen_escapes_and_read_only_writes() {
 }
 
 fn fs_plugin(component: &str, allowed: &Path) -> LoadedPlugin {
-    let mut plugin = request(plugin_with(component), &[Capability::FsRead]);
-    let mut request = toml::Table::new();
-    let mut scope = toml::Table::new();
-    scope.insert(
-        "paths".to_string(),
-        toml::Value::Array(vec![toml::Value::String(
-            allowed.to_string_lossy().into_owned(),
-        )]),
-    );
-    request.insert("fs.read".to_string(), toml::Value::Table(scope));
-    plugin.manifest.capability_requests = crate::capability::parse_capability_requests(&request).0;
-    plugin
+    request_paths(
+        plugin_with(component),
+        Capability::FsRead,
+        &allowed.to_string_lossy(),
+    )
 }

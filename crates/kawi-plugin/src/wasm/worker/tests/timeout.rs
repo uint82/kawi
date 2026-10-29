@@ -109,22 +109,6 @@ fn rejects_component_bytes_that_changed_after_load() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-fn start(
-    plugin: LoadedPlugin,
-    capabilities: CapabilityRegistry,
-) -> (WasmWorkerHandle, std::sync::mpsc::Receiver<PluginHostEvent>) {
-    let (events_tx, events_rx) = std::sync::mpsc::channel();
-    let (wake_tx, _wake_rx) = std::sync::mpsc::channel();
-    let handle = start_wasm_worker(
-        plugin,
-        capabilities,
-        HostEnvironment::default(),
-        events_tx,
-        wake_tx,
-    );
-    (handle, events_rx)
-}
-
 fn wait_for_host_request(
     events: &std::sync::mpsc::Receiver<PluginHostEvent>,
     method: &str,
