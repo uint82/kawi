@@ -6,14 +6,14 @@ const BASE_DELAY: Duration = Duration::from_millis(250);
 const MAX_DELAY: Duration = Duration::from_secs(30);
 const MAX_FAILURES: u32 = 5;
 
-pub(super) struct Backoff {
+pub(crate) struct Backoff {
     failures: u32,
     delay: Duration,
     next_attempt: Instant,
 }
 
 impl Backoff {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             failures: 0,
             delay: BASE_DELAY,
@@ -21,7 +21,7 @@ impl Backoff {
         }
     }
 
-    pub(super) fn check(&self) -> Result<(), PluginError> {
+    pub(crate) fn check(&self) -> Result<(), PluginError> {
         if self.failures >= MAX_FAILURES {
             return Err(PluginError::Disabled);
         }
@@ -34,27 +34,27 @@ impl Backoff {
         Ok(())
     }
 
-    pub(super) fn record_failure(&mut self) {
+    pub(crate) fn record_failure(&mut self) {
         self.failures = self.failures.saturating_add(1);
         self.next_attempt = Instant::now() + self.delay;
         self.delay = (self.delay * 2).min(MAX_DELAY);
     }
 
-    pub(super) fn record_success(&mut self) {
+    pub(crate) fn record_success(&mut self) {
         self.failures = 0;
         self.delay = BASE_DELAY;
         self.next_attempt = Instant::now();
     }
 
-    pub(super) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.record_success();
     }
 
-    pub(super) fn is_disabled(&self) -> bool {
+    pub(crate) fn is_disabled(&self) -> bool {
         self.failures >= MAX_FAILURES
     }
 
-    pub(super) fn remaining(&self) -> Duration {
+    pub(crate) fn remaining(&self) -> Duration {
         self.next_attempt.saturating_duration_since(Instant::now())
     }
 }
