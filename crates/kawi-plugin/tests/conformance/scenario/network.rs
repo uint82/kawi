@@ -36,6 +36,8 @@ const LOOPBACK_ANSWER: &str = "127.0.0.1:443";
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 const LINK_LOCAL_ANSWER: &str = "169.254.169.254:443";
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
+const LINK_LOCAL_V6_ANSWER: &str = "[fe80::1%1]:443";
+#[cfg(all(feature = "wasm-test-network", debug_assertions))]
 const MAPPED_LOOPBACK_ANSWER: &str = "[::ffff:127.0.0.1]:443";
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 const SCRIPTED_PORT: u16 = 443;
@@ -63,6 +65,7 @@ const MIXED_ANSWER: &[&str] = &[
     PRIVATE_ANSWER,
     LOOPBACK_ANSWER,
     LINK_LOCAL_ANSWER,
+    LINK_LOCAL_V6_ANSWER,
     MAPPED_LOOPBACK_ANSWER,
 ];
 
@@ -82,7 +85,7 @@ pub(crate) fn resolver_script(id: &str) -> Option<ResolverScript> {
         "wasm.net.mixed_answers" => Some(ResolverScript {
             host: MIXED_ANSWERS_HOST,
             port: SCRIPTED_PORT,
-            answers: &[MIXED_ANSWER; 4],
+            answers: &[MIXED_ANSWER; 5],
         }),
         "wasm.net.all_private" => Some(ResolverScript {
             host: ALL_PRIVATE_HOST,
