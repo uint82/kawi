@@ -21,6 +21,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
@@ -32,8 +33,14 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-tools@1.262.0
+      - name: Install wasm component linker
+        run: cargo install wasm-component-ld --version 0.5.31 --locked
       - name: Rebuild wasm fixtures
         run: crates/kawi-plugin/tests/fixtures/wasm/build.sh
+      - name: Format network fixture
+        run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/network/Cargo.toml -- --check
+      - name: Rebuild network fixture
+        run: crates/kawi-plugin/tests/fixtures/wasm/build-network.sh
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
       - name: Conformance
