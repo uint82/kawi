@@ -3,7 +3,7 @@ wit_bindgen::generate!({
     world: "host",
 });
 
-use std::io;
+use std::io::{self, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::Mutex;
 
@@ -16,6 +16,8 @@ static HELD: Mutex<Option<TcpStream>> = Mutex::new(None);
 
 const CAPABILITY_DENIED: i32 = -32012;
 const NETWORK_CAPABILITY: &str = "net.connect";
+const WRITE_LIMIT: usize = 9 * 1024 * 1024;
+const WRITE_CHUNK: usize = 64 * 1024;
 
 fn failure(error: impl std::fmt::Display) -> Error {
     Error {
@@ -63,6 +65,7 @@ impl Guest for Plugin {
                 }
                 Ok(text("reused"))
             }
+            "write-cap" => write_until_error(address),
             "hold" => TcpStream::connect(address)
                 .map(|stream| {
                     *HELD.lock().expect("held socket lock") = Some(stream);
@@ -102,6 +105,27 @@ impl Guest for Plugin {
     }
 
     fn on_event(_event: Event) {}
+}
+
+fn write_until_error(address: &str) -> Result<Argument, Error> {
+    let mut stream = TcpStream::connect(address).map_err(failure)?;
+    let chunk = [0_u8; WRITE_CHUNK];
+    let mut written = 0;
+    let mut outcome = "none".to_string();
+    while written < WRITE_LIMIT {
+        match stream.write(&chunk) {
+            Ok(0) => {
+                outcome = "zero".to_string();
+                break;
+            }
+            Ok(count) => written += count,
+            Err(error) => {
+                outcome = error.to_string();
+                break;
+            }
+        }
+    }
+    Ok(text(format!("{written}:{outcome}")))
 }
 
 export!(Plugin);
