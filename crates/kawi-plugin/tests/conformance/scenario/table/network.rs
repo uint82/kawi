@@ -27,6 +27,16 @@ pub(crate) const ROWS: &[Scenario] = &[
         covers_events: &[],
     },
     Scenario {
+        id: "wasm.net.connection_cap_reuse",
+        group: Group::Network,
+        behavior: Behavior::NetworkProbe,
+        grants: &[],
+        action: Action::NetworkProbe,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
         id: "wasm.net.restart_closes_socket",
         group: Group::Network,
         behavior: Behavior::NetworkProbe,

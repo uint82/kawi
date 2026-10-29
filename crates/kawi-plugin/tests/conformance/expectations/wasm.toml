@@ -153,3 +153,6 @@ status = "pass"
 
 [rows."wasm.net.connection_cap_denied"]
 status = "pass"
+
+[rows."wasm.net.connection_cap_reuse"]
+status = "pass"

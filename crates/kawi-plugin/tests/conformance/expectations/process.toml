@@ -199,3 +199,8 @@ reason = "the process runtime cannot enforce host-scoped network destinations"
 status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.connection_cap_reuse"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"

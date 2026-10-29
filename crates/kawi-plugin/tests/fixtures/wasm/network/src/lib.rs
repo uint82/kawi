@@ -51,10 +51,17 @@ impl Guest for Plugin {
                 .map(|_| text("connected"))
                 .map_err(failure),
             "connect-many" => {
+                let mut streams = Vec::new();
                 for _ in 0..65 {
-                    TcpStream::connect(address).map_err(failure)?;
+                    streams.push(TcpStream::connect(address).map_err(failure)?);
                 }
                 Ok(text("connected"))
+            }
+            "connect-reuse" => {
+                for _ in 0..100 {
+                    TcpStream::connect(address).map_err(failure)?;
+                }
+                Ok(text("reused"))
             }
             "hold" => TcpStream::connect(address)
                 .map(|stream| {
