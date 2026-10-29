@@ -5,7 +5,7 @@ use super::expectations::{
 };
 use super::report::Report;
 use super::scenario::{
-    all_events, all_methods, covered_events, covered_methods, Uncovered, SCENARIOS,
+    all_events, all_methods, covered_events, covered_methods, scenarios, Uncovered,
     UNCOVERED_EVENTS, UNCOVERED_METHODS,
 };
 
@@ -14,7 +14,7 @@ const LANDED_FEATURES: &[&str] = &[];
 #[test]
 fn scenario_ids_are_unique_and_not_empty() {
     let mut ids = BTreeSet::new();
-    for scenario in SCENARIOS {
+    for scenario in scenarios() {
         assert!(!scenario.id.trim().is_empty());
         assert!(
             ids.insert(scenario.id),
@@ -31,7 +31,7 @@ fn both_runtimes_have_exactly_one_status_for_every_scenario() {
         ("wasm", WASM_EXPECTATIONS),
     ] {
         let file = parse(name, text);
-        let problems = validate(SCENARIOS, &file);
+        let problems = validate(scenarios(), &file);
         assert!(problems.is_empty(), "{name}: {problems:#?}");
     }
 }

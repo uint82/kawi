@@ -1,0 +1,77 @@
+use kawi_plugin::Capability;
+
+use super::super::{Action, Behavior, Expected, Group, Scenario};
+use super::super::EDITOR_READ_UI;
+
+pub(crate) const ROWS: &[Scenario] = &[
+    Scenario {
+        id: "revocation.queued",
+        group: Group::QueuedRevocation,
+        behavior: Behavior::EventBufferChanged,
+        grants: EDITOR_READ_UI,
+        action: Action::QueuedRevocation,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &["buffer_changed"],
+    },
+    Scenario {
+        id: "trap.crash",
+        group: Group::TrapRecovery,
+        behavior: Behavior::Trap,
+        grants: &[],
+        action: Action::Trap,
+        expected: Expected::Crashed,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "trap.timeout",
+        group: Group::TrapRecovery,
+        behavior: Behavior::Timeout,
+        grants: &[],
+        action: Action::Invoke,
+        expected: Expected::Timeout,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "trap.recovery",
+        group: Group::TrapRecovery,
+        behavior: Behavior::TrapThenRecover,
+        grants: &[],
+        action: Action::TrapThenRecover,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "trap.five_strike",
+        group: Group::TrapRecovery,
+        behavior: Behavior::Trap,
+        grants: &[],
+        action: Action::FiveStrike,
+        expected: Expected::Crashed,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "trap.counter_reset",
+        group: Group::TrapRecovery,
+        behavior: Behavior::TrapThenRecover,
+        grants: &[],
+        action: Action::CounterReset,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "trap.restart_pending_host_call",
+        group: Group::TrapRecovery,
+        behavior: Behavior::HostCall,
+        grants: &[Capability::EditorRead],
+        action: Action::RestartWithPendingHostCall,
+        expected: Expected::Success,
+        covers_methods: &["editor.get_state"],
+        covers_events: &[],
+    },
+];
