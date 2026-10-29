@@ -180,7 +180,7 @@ fn stops_a_component_that_exceeds_its_wall_clock() {
             .unwrap();
         if let PluginHostEvent::InvocationFinished { result, .. } = event {
             let error = result.unwrap_err();
-            assert!(error.to_string().contains("wall-clock"), "{error}");
+            assert_eq!(error, PluginError::Timeout);
             break;
         }
     }

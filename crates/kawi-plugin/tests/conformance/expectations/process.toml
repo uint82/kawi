@@ -1,0 +1,107 @@
+[rows."core.echo"]
+status = "pass"
+
+[rows."core.denial"]
+status = "pass"
+
+[rows."core.revocation"]
+status = "pass"
+
+[rows."core.stale_revision"]
+status = "pass"
+
+[rows."parity.grants.editor_read"]
+status = "pass"
+
+[rows."parity.grants.read_write"]
+status = "pass"
+
+[rows."parity.grants.multi"]
+status = "pass"
+
+[rows."parity.events.buffer_changed"]
+status = "pass"
+
+[rows."parity.events.buffer_opened"]
+status = "pass"
+
+[rows."parity.events.file_opened"]
+status = "pass"
+
+[rows."parity.events.buffer_closed"]
+status = "pass"
+
+[rows."parity.events.file_saved"]
+status = "pass"
+
+[rows."parity.events.mode_changed"]
+status = "pass"
+
+[rows."parity.events.diagnostics_changed"]
+status = "pass"
+
+[rows."revocation.queued"]
+status = "pass"
+
+[rows."trap.crash"]
+status = "pass"
+
+[rows."trap.timeout"]
+status = "pass"
+
+[rows."trap.recovery"]
+status = "pass"
+
+[rows."trap.five_strike"]
+status = "pass"
+
+[rows."trap.counter_reset"]
+status = "pass"
+
+[rows."trap.restart_pending_host_call"]
+status = "pass"
+
+[rows."hygiene.invalid_position"]
+status = "pass"
+
+[rows."oversize.invocation"]
+status = "pass"
+
+[rows."oversize.event"]
+status = "pass"
+
+[rows."wasm.limits.linear_memory"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.limits.table"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.limits.stack"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.load.hash_mismatch"]
+status = "not-supported"
+kind = "NoComponentLoader"
+reason = "the process runtime does not load components or verify component hashes"
+
+[rows."wasm.load.ungranted_import"]
+status = "not-supported"
+kind = "NoLinkStep"
+reason = "the process runtime has no link step; missing grants are enforced per call"
+
+[rows."wasm.load.over_import"]
+status = "not-supported"
+kind = "NoLinkStep"
+reason = "the process runtime has no link step; missing grants are enforced per call"
+
+[rows."wasm.oversize.component"]
+status = "not-supported"
+kind = "NoComponentLoader"
+reason = "the process runtime does not load components or enforce component size"
+

@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phase 2 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, and runs authorized processes. Network enforcement and the shared conformance harness remain phase 3 work. The default build does not compile or execute WebAssembly plugins.
+Status: phase 2 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, and runs authorized processes. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation, trap and recovery, oversize components, input hygiene, WASM limits and load-time failures, and every host method and event for both runtimes. Network enforcement and the remaining host response and diagnostics payload groups remain phase 3 work. The default build does not compile or execute WebAssembly plugins.
 
 ## Principles
 
@@ -79,13 +79,14 @@ Implemented:
 - Preopen traversal, absolute-path, symlink escape, and read-only write attempts.
 - Component inspection, hash binding, malformed input, renamed imports, nested imports, and versioned WASI imports.
 - Process command scope enforcement, resolution at call time, shell-free argument passing, output and runtime caps, and the capability error code.
+- Shared conformance table for process and WASM runtimes: echo, denial, revocation, stale revision, grant combinations, queued revocation, trap and recovery, timeouts, invocation and event payload size, component size, input hygiene, WASM limits, WASM load-time failures, and every host method and event.
+- Fixture sources under `tests/fixtures/wasm/src` rebuilt in CI with `wasm-tools`.
 
 Still required:
 
-- Shared conformance table for process and WASM runtimes: echo, trim, events, denial, revocation, and stale revision.
-- Denied socket and DNS rebinding tests.
-- Memory trap, oversize payload, and trap mid-invocation tests.
+- Host response and diagnostics payload size conformance rows.
 - Advertised versus linked interface parity.
+- Denied socket and DNS rebinding tests.
 - Fuzzing of the host import boundary.
 
 ## Rollout
@@ -93,7 +94,7 @@ Still required:
 1. Contract, manifest fields, hash binding, component inspection, and engine foundation. This phase.
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement.
-4. Shared conformance suite and fuzzing in CI.
+4. Shared conformance suite and fuzzing in CI. All groups except host response and diagnostics payload rows are complete.
 5. Process runtime deprecation once the WASM authoring path is practical.
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.

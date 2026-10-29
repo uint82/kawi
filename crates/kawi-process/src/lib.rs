@@ -4,7 +4,7 @@ mod landlock;
 mod sandbox;
 
 pub use executable::{executable_interpreter, find_executable, find_executable_in};
-pub use sandbox::{configure_sandbox, sandbox_status, SandboxPolicy, SandboxStatus};
+pub use sandbox::{configure_sandbox, sandbox_abi, sandbox_status, SandboxPolicy, SandboxStatus};
 
 use std::io;
 use std::process::{Child, Command};
