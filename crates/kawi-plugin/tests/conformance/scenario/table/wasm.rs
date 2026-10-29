@@ -1,5 +1,6 @@
-use super::super::{Action, Behavior, Expected, Group, Scenario};
+use kawi_plugin::Capability;
 
+use super::super::{Action, Behavior, Expected, Group, Scenario};
 
 pub(crate) const ROWS: &[Scenario] = &[
     Scenario {
@@ -60,6 +61,26 @@ pub(crate) const ROWS: &[Scenario] = &[
         action: Action::Invoke,
         expected: Expected::Crashed,
         covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "wasm.link.advertised_parity",
+        group: Group::WasmLoadTime,
+        behavior: Behavior::AllImports,
+        grants: &[
+            Capability::EditorRead,
+            Capability::EditorWrite,
+            Capability::UiMessage,
+            Capability::DiagnosticsPublish,
+        ],
+        action: Action::AdvertisedParity,
+        expected: Expected::Success,
+        covers_methods: &[
+            "editor.get_state",
+            "editor.apply_edit",
+            "editor.set_diagnostics",
+            "ui.message",
+        ],
         covers_events: &[],
     },
     Scenario {

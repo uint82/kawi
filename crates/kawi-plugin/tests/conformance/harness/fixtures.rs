@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 
-use super::super::scenario::Behavior;
+use super::super::scenario::{Behavior, Scenario};
 use super::model::Runtime;
 use super::PLUGIN_NAME;
 
@@ -29,27 +29,40 @@ pub(crate) fn write_grants(path: &Path, grants: &[kawi_plugin::Capability]) {
     fs::write(path, text).unwrap();
 }
 
-pub(crate) fn write_manifest(plugins: &Path, runtime: Runtime, behavior: Behavior) {
+pub(crate) fn write_manifest(plugins: &Path, runtime: Runtime, scenario: &Scenario) {
+    let behavior = scenario.behavior;
+    let timeout_ms = scenario.timeout_ms();
     let dir = plugins.join(PLUGIN_NAME);
     fs::create_dir_all(&dir).unwrap();
     let capabilities = capability_table(behavior);
     let subscribes = subscribes_line(behavior);
     let manifest = match runtime {
-        Runtime::Process => process_manifest(behavior, &subscribes, &capabilities),
-        Runtime::Wasm => wasm_manifest(&dir, behavior, &subscribes, &capabilities),
+        Runtime::Process => process_manifest(behavior, timeout_ms, &subscribes, &capabilities),
+        Runtime::Wasm => wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities),
     };
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
 }
 
-fn process_manifest(behavior: Behavior, subscribes: &str, capabilities: &str) -> String {
+fn process_manifest(
+    behavior: Behavior,
+    timeout_ms: u64,
+    subscribes: &str,
+    capabilities: &str,
+) -> String {
     let executable = env!("CARGO_BIN_EXE_fake-plugin");
     format!(
-        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [{executable:?}, {:?}]\ntimeout_ms = 2000\n{subscribes}\n{capabilities}\n[[commands]]\nid = \"probe\"\ntitle = \"Probe\"\n",
+        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [{executable:?}, {:?}]\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n[[commands]]\nid = \"probe\"\ntitle = \"Probe\"\n",
         behavior.process_mode()
     )
 }
 
-fn wasm_manifest(dir: &Path, behavior: Behavior, subscribes: &str, capabilities: &str) -> String {
+fn wasm_manifest(
+    dir: &Path,
+    behavior: Behavior,
+    timeout_ms: u64,
+    subscribes: &str,
+    capabilities: &str,
+) -> String {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/wasm")
         .join(behavior.wasm_component());
@@ -67,7 +80,7 @@ fn wasm_manifest(dir: &Path, behavior: Behavior, subscribes: &str, capabilities:
         format!("{digest:x}")
     };
     format!(
-        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"sha256:{hash}\"\ntimeout_ms = 2000\n{subscribes}\n{capabilities}"
+        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"sha256:{hash}\"\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}"
     )
 }
 

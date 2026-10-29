@@ -8,6 +8,13 @@ impl ConformanceHost {
             .stale_revision = stale;
     }
 
+    pub(crate) fn set_oversize_response(&self, oversize: bool) {
+        self.policy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .oversize_response = oversize;
+    }
+
     pub(crate) fn set_invalid_position(&self, invalid: bool) {
         self.policy
             .lock()

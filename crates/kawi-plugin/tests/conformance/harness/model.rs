@@ -50,6 +50,7 @@ pub(crate) struct Finished {
 pub(crate) struct Policy {
     pub(crate) stale_revision: bool,
     pub(crate) invalid_position: bool,
+    pub(crate) oversize_response: bool,
     pub(crate) withhold: bool,
     pub(crate) deferred: Vec<DeferredResponse>,
 }
@@ -66,6 +67,7 @@ impl Policy {
         Self {
             stale_revision: false,
             invalid_position: false,
+            oversize_response: false,
             withhold: false,
             deferred: Vec::new(),
         }

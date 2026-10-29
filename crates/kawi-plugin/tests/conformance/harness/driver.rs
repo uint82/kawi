@@ -13,6 +13,8 @@ use kawi_plugin::{
 use super::model::{DeferredResponse, Finished, HostRequestRecord, Observation, Policy};
 use super::DRIVER_POLL;
 
+const MAX_DIAGNOSTICS_BYTES: usize = 64 * 1024;
+
 pub(crate) struct Driver {
     pub(crate) host: Arc<PluginHost>,
     pub(crate) registry: CapabilityRegistry,
@@ -77,8 +79,15 @@ impl Driver {
             self.mark_responded(index);
             return;
         }
-        let (withhold, stale_revision, invalid_position) = self.policy_snapshot();
-        let result = host_result(method, &params, stale_revision, invalid_position);
+        let (withhold, stale_revision, invalid_position, oversize_response) =
+            self.policy_snapshot();
+        let result = host_result(
+            method,
+            &params,
+            stale_revision,
+            invalid_position,
+            oversize_response,
+        );
         if withhold {
             self.defer_response(plugin, id, result, index);
             return;
@@ -112,7 +121,7 @@ impl Driver {
         }
     }
 
-    fn policy_snapshot(&self) -> (bool, bool, bool) {
+    fn policy_snapshot(&self) -> (bool, bool, bool, bool) {
         let policy = self
             .policy
             .lock()
@@ -121,6 +130,7 @@ impl Driver {
             policy.withhold,
             policy.stale_revision,
             policy.invalid_position,
+            policy.oversize_response,
         )
     }
 
@@ -174,8 +184,10 @@ fn host_result(
     params: &Value,
     stale_revision: bool,
     invalid_position: bool,
+    oversize_response: bool,
 ) -> Result<Value, RpcError> {
     match method {
+        "editor.get_state" if oversize_response => Ok(oversized_state_value()),
         "editor.get_state" => Ok(state_value()),
         "editor.apply_edit" if invalid_position => {
             Err(RpcError::invalid_position("edit position is out of range"))
@@ -188,9 +200,18 @@ fn host_result(
             7,
         )),
         "editor.apply_edit" => Ok(json!({ "revision": next_revision(params) })),
+        "editor.set_diagnostics" if diagnostics_too_large(params) => Err(RpcError::invalid_params(
+            "diagnostics payload exceeds the maximum size",
+        )),
         "editor.set_diagnostics" | "ui.message" => Ok(Value::Null),
         _ => Ok(Value::Null),
     }
+}
+
+fn diagnostics_too_large(params: &Value) -> bool {
+    serde_json::to_vec(params)
+        .map(|bytes| bytes.len() > MAX_DIAGNOSTICS_BYTES)
+        .unwrap_or(true)
 }
 
 fn next_revision(params: &Value) -> u64 {
@@ -199,6 +220,12 @@ fn next_revision(params: &Value) -> u64 {
         .and_then(Value::as_u64)
         .unwrap_or_default()
         .saturating_add(1)
+}
+
+fn oversized_state_value() -> Value {
+    let mut value = state_value();
+    value["text"] = json!("x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1));
+    value
 }
 
 fn state_value() -> Value {

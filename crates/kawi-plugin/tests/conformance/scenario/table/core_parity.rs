@@ -147,4 +147,5 @@ pub(crate) const ROWS: &[Scenario] = &[
         expected: Expected::Success,
         covers_methods: &["ui.message"],
         covers_events: &["diagnostics_changed"],
-    },];
+    },
+];

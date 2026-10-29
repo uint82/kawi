@@ -13,6 +13,8 @@ use kawi_plugin::{
     NotifyOutcome, PluginCatalog, PluginError, PluginHost, PluginStatus, Position,
 };
 
+#[cfg(feature = "wasm")]
+use super::super::scenario::Behavior;
 use super::super::scenario::Scenario;
 use super::driver::Driver;
 use super::fixtures::{temp_root, write_grants, write_manifest};
@@ -22,7 +24,9 @@ use super::{INVOCATION_TIMEOUT, PLUGIN_NAME, START_TIMEOUT, STATUS_POLL};
 pub(crate) struct ConformanceHost {
     pub(crate) runtime: Runtime,
     pub(crate) scenario: &'static str,
-    root: PathBuf,
+    #[cfg(feature = "wasm")]
+    pub(crate) behavior: Behavior,
+    pub(crate) root: PathBuf,
     grants_path: PathBuf,
     catalog: PluginCatalog,
     pub(crate) host: Arc<PluginHost>,
@@ -30,7 +34,7 @@ pub(crate) struct ConformanceHost {
     stop: Arc<AtomicBool>,
     finished: Receiver<Finished>,
     pub(crate) observation: Arc<Mutex<Observation>>,
-    registry: CapabilityRegistry,
+    pub(crate) registry: CapabilityRegistry,
     pub(crate) policy: Arc<Mutex<Policy>>,
     _wake: Receiver<()>,
 }
@@ -43,7 +47,7 @@ impl ConformanceHost {
         let grants_path = config.join("permissions.toml");
         fs::create_dir_all(&config).unwrap();
         fs::create_dir_all(&plugins).unwrap();
-        write_manifest(&plugins, runtime, scenario.behavior);
+        write_manifest(&plugins, runtime, scenario);
         write_grants(&grants_path, scenario.grants);
         let catalog = load_catalog(&plugins);
         if !scenario.behavior.expects_load_warning() {
@@ -79,6 +83,8 @@ impl ConformanceHost {
         Self {
             runtime,
             scenario: scenario.id,
+            #[cfg(feature = "wasm")]
+            behavior: scenario.behavior,
             root,
             grants_path,
             catalog,

@@ -27,6 +27,12 @@ impl ConformanceHost {
         }
     }
 
+    pub(crate) fn block_queued_events(&self) {
+        if self.runtime == Runtime::Process {
+            self.inject_pipe_block();
+        }
+    }
+
     pub(crate) fn release_events(&self) {
         if self.runtime == Runtime::Wasm {
             self.release_host_responses();

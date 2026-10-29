@@ -1,7 +1,11 @@
+#[cfg(feature = "wasm")]
+use std::collections::BTreeSet;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use kawi_plugin::PluginStatus;
+#[cfg(feature = "wasm")]
+use kawi_plugin::{advertised_host_methods, host_method_capability, Capability, MethodCapability};
 
 use super::host::ConformanceHost;
 use super::model::Observation;
@@ -63,5 +67,30 @@ impl ConformanceHost {
 
     pub(crate) fn host_request_count(&self) -> usize {
         self.observation().host_requests.len()
+    }
+
+    #[cfg(feature = "wasm")]
+    pub(crate) fn advertised_capabilities(&self) -> BTreeSet<Capability> {
+        advertised_host_methods(&self.registry, super::PLUGIN_NAME)
+            .into_iter()
+            .filter_map(|method| match host_method_capability(method) {
+                MethodCapability::Required(capability) => Some(capability),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "wasm")]
+    pub(crate) fn linked_capabilities(&self) -> BTreeSet<Capability> {
+        let path = self
+            .root
+            .join("plugins")
+            .join(super::PLUGIN_NAME)
+            .join("plugin.wasm");
+        let runtime = kawi_plugin::WasmRuntime::new().expect("wasm runtime");
+        let inspection = runtime
+            .inspect(&path, None, self.behavior.requests())
+            .expect("inspect component");
+        inspection.requested.into_iter().collect()
     }
 }

@@ -1,7 +1,7 @@
 use kawi_plugin::Capability;
 
-use super::super::{Action, Behavior, Expected, Group, Scenario};
 use super::super::EDITOR_READ_UI;
+use super::super::{Action, Behavior, Expected, Group, Scenario};
 
 pub(crate) const ROWS: &[Scenario] = &[
     Scenario {
@@ -12,6 +12,16 @@ pub(crate) const ROWS: &[Scenario] = &[
         action: Action::QueuedRevocation,
         expected: Expected::Success,
         covers_methods: &[],
+        covers_events: &["buffer_changed"],
+    },
+    Scenario {
+        id: "revocation.queued_mid_write",
+        group: Group::QueuedRevocation,
+        behavior: Behavior::EventWrite,
+        grants: &[Capability::EditorRead, Capability::EditorWrite],
+        action: Action::QueuedRevocationMidWrite,
+        expected: Expected::Success,
+        covers_methods: &["editor.apply_edit"],
         covers_events: &["buffer_changed"],
     },
     Scenario {

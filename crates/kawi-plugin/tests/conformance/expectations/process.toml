@@ -105,3 +105,23 @@ status = "not-supported"
 kind = "NoComponentLoader"
 reason = "the process runtime does not load components or enforce component size"
 
+[rows."oversize.diagnostics"]
+status = "pass"
+
+[rows."oversize.host_response"]
+status = "pass"
+
+[rows."wasm.link.advertised_parity"]
+status = "not-supported"
+kind = "NoLinkStep"
+reason = "the process runtime has no link step; advertised methods are enforced per call"
+
+[rows."revocation.queued_mid_write"]
+status = "pass"
+
+[rows."hygiene.mid_codepoint"]
+status = "pass"
+
+[rows."hygiene.control_text"]
+status = "pass"
+
