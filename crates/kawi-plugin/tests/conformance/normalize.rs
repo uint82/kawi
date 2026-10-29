@@ -1,4 +1,4 @@
-use kawi_plugin::{PluginError, RpcError, CAPABILITY_DENIED};
+use kawi_plugin::{PluginError, RpcError, CAPABILITY_DENIED, PLUGIN_UNAVAILABLE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Outcome {
@@ -31,6 +31,7 @@ pub(super) fn normalize_error(error: &PluginError) -> Outcome {
         PluginError::Rpc(error) => normalize_rpc(error),
         PluginError::Spawn(_)
         | PluginError::ProcessExited
+        | PluginError::Trap(_)
         | PluginError::Initialize(_)
         | PluginError::MissingCapabilities(_)
         | PluginError::Backoff { .. }
@@ -41,6 +42,9 @@ pub(super) fn normalize_error(error: &PluginError) -> Outcome {
 }
 
 pub(super) fn normalize_rpc(error: &RpcError) -> Outcome {
+    if error.code == PLUGIN_UNAVAILABLE {
+        return Outcome::Crashed;
+    }
     if error.code != CAPABILITY_DENIED {
         return Outcome::Protocol;
     }
@@ -88,9 +92,18 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_rpc_errors_normalize_to_crashed() {
+        assert_eq!(
+            normalize_rpc(&RpcError::unavailable("restarting")),
+            Outcome::Crashed
+        );
+    }
+
+    #[test]
     fn transport_failures_normalize_to_crashed() {
         for error in [
             PluginError::ProcessExited,
+            PluginError::Trap("bad".to_string()),
             PluginError::Spawn("missing".to_string()),
             PluginError::Initialize("bad".to_string()),
             PluginError::Backoff { remaining_ms: 1 },

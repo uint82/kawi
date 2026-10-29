@@ -36,29 +36,25 @@ pub(crate) struct Session {
 impl Session {
     pub(crate) fn initialize(&mut self) -> Result<(), PluginError> {
         self.begin_call();
-        let result = self
-            .instance
-            .kawi_plugin_lifecycle()
-            .call_init(
-                &mut self.store,
-                u32::try_from(PROTOCOL_VERSION).unwrap_or(u32::MAX),
-            )
-            .map_err(|error| PluginError::Initialize(format!("wasm init: {error:#}")))?;
-        self.store.data_mut().clear_call();
-        self.store.data_mut().drain_output();
-        result.map_err(|error| PluginError::Initialize(error.message))
+        let result = self.instance.kawi_plugin_lifecycle().call_init(
+            &mut self.store,
+            u32::try_from(PROTOCOL_VERSION).unwrap_or(u32::MAX),
+        );
+        let error = self.finish_call(result);
+        error
+            .map_err(|error| PluginError::Initialize(format!("wasm init: {error:#}")))?
+            .map_err(|error| PluginError::Initialize(error.message))
     }
 
     pub(crate) fn invoke(&mut self, command: &str, args: Value) -> Result<Value, PluginError> {
         let args = wasm_arguments(args)?;
         self.begin_call();
-        let result = self
-            .instance
-            .kawi_plugin_lifecycle()
-            .call_invoke_command(&mut self.store, command, &args)
-            .map_err(|error| PluginError::Protocol(format!("wasm trap: {error:#}")))?;
-        self.store.data_mut().clear_call();
-        self.store.data_mut().drain_output();
+        let result = self.instance.kawi_plugin_lifecycle().call_invoke_command(
+            &mut self.store,
+            command,
+            &args,
+        );
+        let result = self.finish_call(result)?;
         match result {
             Ok(value) => argument_to_json(value),
             Err(error) => Err(rpc_from_wit_error(error)),
@@ -72,14 +68,25 @@ impl Session {
             .instance
             .kawi_plugin_lifecycle()
             .call_on_event(&mut self.store, &event);
-        self.store.data_mut().clear_call();
-        self.store.data_mut().drain_output();
-        result.map_err(|error| PluginError::Protocol(format!("wasm trap: {error:#}")))
+        self.finish_call(result)
     }
 
     fn begin_call(&mut self) {
         self.store.set_epoch_deadline(WALL_CLOCK_CHECK_TICKS);
         self.store.data().begin_call();
+    }
+
+    fn finish_call<T>(&mut self, result: wasmtime::Result<T>) -> Result<T, PluginError> {
+        let expired = self.store.data().call_expired();
+        self.store.data_mut().clear_call();
+        self.store.data_mut().drain_output();
+        result.map_err(|error| {
+            if expired {
+                PluginError::Timeout
+            } else {
+                PluginError::Trap(format!("wasm trap: {error:#}"))
+            }
+        })
     }
 }
 

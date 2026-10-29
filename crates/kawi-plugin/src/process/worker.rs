@@ -268,6 +268,7 @@ fn is_transport_failure(error: &PluginError) -> bool {
         PluginError::Spawn(_)
             | PluginError::Timeout
             | PluginError::ProcessExited
+            | PluginError::Trap(_)
             | PluginError::Protocol(_)
             | PluginError::Initialize(_)
     )

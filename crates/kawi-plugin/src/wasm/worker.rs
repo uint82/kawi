@@ -117,7 +117,6 @@ impl WasmWorker {
             Ok(session) => {
                 self.session = Some(session);
                 self.start_error = None;
-                self.backoff.record_success();
                 self.set_status(PluginStatus::Ready);
             }
             Err(error) => {

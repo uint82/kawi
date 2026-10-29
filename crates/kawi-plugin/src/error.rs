@@ -8,6 +8,7 @@ pub enum PluginError {
     Spawn(String),
     Timeout,
     ProcessExited,
+    Trap(String),
     QueueFull,
     Protocol(String),
     Initialize(String),
@@ -25,6 +26,7 @@ impl fmt::Display for PluginError {
             Self::Spawn(message) => write!(formatter, "cannot start plugin: {message}"),
             Self::Timeout => write!(formatter, "plugin request timed out"),
             Self::ProcessExited => write!(formatter, "plugin process exited"),
+            Self::Trap(message) => write!(formatter, "plugin trapped: {message}"),
             Self::QueueFull => write!(formatter, "plugin event queue is full"),
             Self::Protocol(message) => write!(formatter, "plugin protocol error: {message}"),
             Self::Initialize(message) => {

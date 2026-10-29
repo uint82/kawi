@@ -23,7 +23,7 @@ fn starts_fresh_after_a_blocked_host_call_times_out() {
     wait_for_host_request(&events_rx, "editor.get_state");
     let started = Instant::now();
     let error = wait_for_invocation_error(&events_rx);
-    assert!(error.to_string().contains("timeout"), "{error}");
+    assert_eq!(error, PluginError::Timeout);
     assert!(started.elapsed() < Duration::from_secs(4));
     assert!(matches!(
         handle.status(),
@@ -174,7 +174,7 @@ fn discards_the_store_after_a_wall_clock_trap() {
         )
         .unwrap();
     let error = wait_for_invocation_error(&events_rx);
-    assert!(error.to_string().contains("wall-clock"), "{error}");
+    assert_eq!(error, PluginError::Timeout);
     std::fs::write(dir.join("plugin.wasm"), b"changed").unwrap();
     std::thread::sleep(Duration::from_millis(400));
     handle
