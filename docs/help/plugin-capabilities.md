@@ -54,7 +54,7 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
 
-The WebAssembly runtime resolves hostname grants once per session and pins the resulting addresses. Only globally routable answers are pinned. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. The guest may resolve names only when a hostname grant exists. TCP connect is allowed only to a pinned address. UDP, listen, and accept are denied.
+The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. TCP connect is allowed only to a pinned address. UDP, listen, and accept are denied. Resolver failure fails closed.
 
 ### Subsumption summary
 
@@ -246,7 +246,7 @@ Process plugins call the host for editor and UI methods, and the kernel sandbox 
 
 - Enforced everywhere: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
 - Enforced on Linux with Landlock: `fs.read`, `fs.write`, and the execute half of `process.spawn`.
-- Enforced for WebAssembly: `net.connect`, including DNS pinning and non-public address rejection.
+- Enforced for WebAssembly: `net.connect`, including DNS pinning, filtered guest name lookup, and non-public address rejection.
 - Advisory for process plugins: `net.connect` on every platform, `fs.*` and `process.spawn` off Linux, and every filesystem scope on older Landlock ABIs that cannot enforce rename or truncate restrictions.
 
 Each spawned plugin receives a Landlock ruleset in the child between fork and exec, after `no_new_privs` is set. The ruleset is deny by default. The baseline read-only allowlist covers common runtime roots: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, `/nix/store`, `/run/current-system/sw`, the dynamic loader and ELF interpreter, runtime prefixes derived from the plugin executable (including virtualenv prefixes), `/etc/ld.so.cache`, TLS and DNS configuration, `/proc/self`, and `/dev/urandom`. `/dev/null` and the plugin directory are writable. A plugin that needs any other file must request `fs.read` or `fs.write`; it must request `process.spawn` to execute anything beyond the interpreter named in its manifest.
@@ -289,7 +289,7 @@ The grant file remains the durable consent surface; the prompt is the interactiv
 
 The remaining enforcement follow-up:
 
-- Add WASI socket conformance fixtures for denied connects and DNS rebinding.
+- Fuzz the host import boundary, including network and process execution.
 
 Other roadmap items:
 

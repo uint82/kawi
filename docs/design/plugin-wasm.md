@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phase 3 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, and enforces outbound TCP policy. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Socket conformance fixtures for denied connects and DNS rebinding remain follow-up work. The default build does not compile or execute WebAssembly plugins.
+Status: phase 3 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, and enforces outbound TCP policy. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, and loopback denial. Rebinding and mixed-answer behavior are covered by policy tests because the conformance harness does not control DNS. The default build does not compile or execute WebAssembly plugins.
 
 ## Principles
 
@@ -51,7 +51,9 @@ Positions use line and UTF-8 byte column. Revision checks, origin handling, and 
 
 ## Network
 
-`net.connect` grants enable WASI TCP only. UDP, listen, and accept stay disabled. Hostname grants are resolved once when the session is built, and only globally routable answers are pinned. Explicit IP grants allow that exact address and port, including loopback and private addresses. The socket address check permits TCP connect only to a pinned address and permits the wildcard ephemeral bind that connect needs. A hostname that resolves to a private, loopback, link-local, shared, documentation, benchmarking, multicast, reserved, 6to4, Teredo, or IPv4-mapped non-public address is denied. A later DNS answer cannot widen the pinned set during the session, so rebinding is denied. The guest may use WASI name lookup only when at least one hostname grant exists.
+`net.connect` grants enable WASI TCP only. UDP, listen, and accept stay disabled. Hostname grants are resolved once when the session is built with a five-second cap, and only globally routable answers are pinned. Mixed answers pin only the public addresses. The session never re-resolves a hostname, so TTL expiry cannot widen the pinned set; a long-lived session keeps the addresses pinned at build time. Explicit IP grants allow that exact address and port, including loopback and private addresses. The socket address check permits TCP connect only to a pinned address and permits the wildcard ephemeral bind that connect needs. A hostname that resolves to a private, loopback, link-local, shared, documentation, benchmarking, multicast, reserved, 6to4, Teredo, or IPv4-mapped non-public address is denied.
+
+WASI name lookup is replaced with a filtered resolver. The guest can resolve only hostnames present in the grant, and the resolver returns only the public addresses pinned for that hostname. IP literals are returned without an external request when name lookup is enabled. Resolution failure fails closed with no pinned addresses. Arbitrary names are denied before any DNS request. The conformance suite exercises denied lookup, non-granted lookup, and IP literal lookup through the guest; rebinding and mixed-answer behavior are covered by policy tests.
 
 A component that imports a Kawi interface not requested by its manifest is rejected before instantiation. An import that exposes multiple capabilities requires the manifest to request all of them, while a grant of any one capability is enough to instantiate. A requested but ungranted import fails startup with the missing capability, emits a capability request to the editor, and restarts after a persistent grant. Startup prompts offer persistent grants only because linking is fixed at instantiation. Requests are deduplicated by plugin, capability, and request hash for the session, so restarts and permission reloads do not repeat a denied prompt. Multiple granted imports restart the instance once after the prompt queue drains. Linking supplies only granted interfaces. The manifest request hash includes the component hash, so replacing the binary reopens consent.
 
@@ -87,10 +89,11 @@ Implemented:
 - Process command scope enforcement, resolution at call time, shell-free argument passing, output and runtime caps, and the capability error code.
 - Shared conformance table for process and WASM runtimes: echo, denial, revocation, stale revision, grant combinations, queued revocation, mid-write revocation, trap and recovery, timeouts, invocation, event, host response, diagnostics, and component payload size, advertised versus linked interface parity, input hygiene, WASM limits, WASM load-time failures, and every host method and event.
 - Fixture sources under `tests/fixtures/wasm/src` rebuilt in CI with `wasm-tools`.
+- Guest network fixtures under `tests/fixtures/wasm/network`, rebuilt in CI with the `wasm32-wasip2` target and `wasm-component-ld`.
+- Network policy tests for DNS pinning, rebinding, mixed answers, resolver failure, filtered name lookup, mapped addresses, and address classification.
 
 Still required:
 
-- WASI socket conformance fixtures for denied connects and DNS rebinding.
 - Fuzzing of the host import boundary.
 
 ## Rollout
@@ -98,7 +101,7 @@ Still required:
 1. Contract, manifest fields, hash binding, component inspection, and engine foundation. This phase.
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement. Complete.
-4. Shared conformance suite and fuzzing in CI. The conformance suite is complete; socket fixtures and fuzzing remain.
+4. Shared conformance suite and fuzzing in CI. The conformance suite and socket fixtures are complete; fuzzing remains.
 5. Process runtime deprecation once the WASM authoring path is practical.
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.
