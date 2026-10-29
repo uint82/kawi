@@ -122,46 +122,6 @@ fn invokes_a_wasm_component() {
 }
 
 #[test]
-fn refuses_an_ungranted_import() {
-    let plugin = plugin_with("editor-host.wasm");
-    let dir = plugin.dir.clone();
-    let name = plugin.manifest.name.clone();
-    let (events_tx, events_rx) = mpsc::channel();
-    let (wake_tx, _wake_rx) = mpsc::channel();
-    let handle = start_wasm_worker(
-        plugin,
-        grants(&name, &[]),
-        HostEnvironment::default(),
-        events_tx,
-        wake_tx,
-    );
-    handle
-        .invoke(
-            12,
-            "read".to_string(),
-            json!([]),
-            InvocationContext::redacted(),
-        )
-        .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        let event = events_rx
-            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
-            .unwrap();
-        if let PluginHostEvent::InvocationFinished { result, .. } = event {
-            let error = result.unwrap_err().to_string();
-            assert!(error.contains("import"), "{error}");
-            break;
-        }
-    }
-    assert!(matches!(
-        handle.status(),
-        PluginStatus::Backoff { .. } | PluginStatus::Disabled
-    ));
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
 fn stops_a_component_that_exceeds_its_wall_clock() {
     let plugin = plugin_with("loop.wasm");
     let dir = plugin.dir.clone();
@@ -282,4 +242,5 @@ mod editor;
 mod events;
 #[cfg(unix)]
 mod fs;
+mod imports;
 mod timeout;

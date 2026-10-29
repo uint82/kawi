@@ -80,6 +80,32 @@ pub fn requested_import_capabilities<'a>(
         .collect()
 }
 
+pub fn missing_import_capabilities<'a>(
+    imports: impl IntoIterator<Item = &'a str>,
+    requested: &BTreeSet<Capability>,
+    granted: &BTreeSet<Capability>,
+) -> Vec<Capability> {
+    let mut missing = BTreeSet::new();
+    for import in imports {
+        let Some(capabilities) = import_capabilities(import) else {
+            continue;
+        };
+        if capabilities
+            .iter()
+            .any(|capability| requested.contains(capability) && granted.contains(capability))
+        {
+            continue;
+        }
+        if let Some(capability) = capabilities
+            .iter()
+            .find(|capability| requested.contains(capability) && !granted.contains(capability))
+        {
+            missing.insert(*capability);
+        }
+    }
+    missing.into_iter().collect()
+}
+
 pub fn unauthorized_imports<'a>(
     imports: impl IntoIterator<Item = &'a str>,
     requested: &BTreeSet<Capability>,
@@ -120,6 +146,46 @@ mod tests {
             import_capabilities("wasi:cli/environment@0.2.12"),
             Some(&[][..])
         );
+    }
+
+    #[test]
+    fn requests_one_missing_alternative_per_import() {
+        let requested = BTreeSet::from([Capability::FsRead, Capability::FsWrite]);
+        let granted = BTreeSet::new();
+        assert_eq!(
+            missing_import_capabilities(
+                ["wasi:filesystem/types@0.2.12"].into_iter(),
+                &requested,
+                &granted
+            ),
+            vec![Capability::FsRead]
+        );
+    }
+
+    #[test]
+    fn requests_only_manifest_alternatives() {
+        let requested = BTreeSet::from([Capability::FsWrite]);
+        let granted = BTreeSet::new();
+        assert_eq!(
+            missing_import_capabilities(
+                ["wasi:filesystem/types@0.2.12"].into_iter(),
+                &requested,
+                &granted
+            ),
+            vec![Capability::FsWrite]
+        );
+    }
+
+    #[test]
+    fn ignores_satisfied_imports() {
+        let requested = BTreeSet::from([Capability::FsRead, Capability::FsWrite]);
+        let granted = BTreeSet::from([Capability::FsWrite]);
+        assert!(missing_import_capabilities(
+            ["wasi:filesystem/types@0.2.12"].into_iter(),
+            &requested,
+            &granted
+        )
+        .is_empty());
     }
 
     #[test]

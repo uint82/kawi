@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::Value;
@@ -19,7 +20,7 @@ use super::bindings::kawi::plugin::{
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
-use super::policy::unauthorized_imports;
+use super::policy::missing_import_capabilities;
 use super::process::ProcessRunner;
 use super::state::{output_pipes, HostBridge, PendingCalls, WasmState};
 use super::{WasiConfig, WasmRuntime};
@@ -156,31 +157,21 @@ impl Session {
             .capability_requests
             .iter()
             .map(|(capability, _)| capability)
-            .collect::<Vec<_>>();
+            .collect::<BTreeSet<_>>();
+        let requested_imports = requested.iter().copied().collect::<Vec<_>>();
         let (component, inspection) =
-            runtime.inspect_component(&bytes, plugin.component_hash(), &requested)?;
+            runtime.inspect_component(&bytes, plugin.component_hash(), &requested_imports)?;
         let granted = Capability::ALL
             .into_iter()
             .filter(|capability| capabilities.has(&plugin.manifest.name, *capability))
-            .collect::<std::collections::BTreeSet<_>>();
-        let unauthorized =
-            unauthorized_imports(inspection.imports.iter().map(String::as_str), &granted);
-        if !unauthorized.is_empty() {
-            let missing = unauthorized
-                .iter()
-                .filter_map(|import| super::policy::import_capabilities(import))
-                .flatten()
-                .filter(|capability| !granted.contains(capability))
-                .map(|capability| capability.name())
-                .collect::<std::collections::BTreeSet<_>>();
-            let requested = if missing.is_empty() {
-                unauthorized.join(", ")
-            } else {
-                missing.into_iter().collect::<Vec<_>>().join(", ")
-            };
-            return Err(PluginError::Initialize(format!(
-                "plugin requests {requested}, not granted"
-            )));
+            .collect::<BTreeSet<_>>();
+        let missing = missing_import_capabilities(
+            inspection.imports.iter().map(String::as_str),
+            &requested,
+            &granted,
+        );
+        if !missing.is_empty() {
+            return Err(PluginError::MissingCapabilities(missing));
         }
         let mut linker = Linker::new(runtime.engine());
         add_kawi_interfaces(&mut linker, capabilities, &plugin.manifest.name)?;

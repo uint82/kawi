@@ -82,7 +82,7 @@ struct WasmWorker {
     pending: PendingCalls,
     cancel: Arc<AtomicBool>,
     session: Option<Session>,
-    start_error: Option<String>,
+    start_error: Option<PluginError>,
     backoff: Backoff,
 }
 
@@ -121,7 +121,8 @@ impl WasmWorker {
                 self.set_status(PluginStatus::Ready);
             }
             Err(error) => {
-                self.start_error = Some(error.to_string());
+                self.emit_capability_requirements(&error);
+                self.start_error = Some(error.clone());
                 self.backoff.record_failure();
                 self.update_backoff_status();
                 self.log(error.to_string());
@@ -179,11 +180,9 @@ impl WasmWorker {
         self.ensure_start();
         let had_session = self.session.is_some();
         let not_ready = || {
-            PluginError::Initialize(
-                self.start_error
-                    .clone()
-                    .unwrap_or_else(|| "wasm session is not ready".to_string()),
-            )
+            self.start_error
+                .clone()
+                .unwrap_or_else(|| PluginError::Initialize("wasm session is not ready".to_string()))
         };
         let result = self
             .session
@@ -287,6 +286,7 @@ impl WasmWorker {
     }
 }
 
+mod consent;
 mod handle;
 #[cfg(test)]
 mod tests;
