@@ -1,5 +1,6 @@
 mod core_parity;
 mod faults;
+mod network;
 mod payloads;
 mod wasm;
 
@@ -13,6 +14,7 @@ static SCENARIOS: LazyLock<Vec<Scenario>> = LazyLock::new(|| {
     rows.extend_from_slice(faults::ROWS);
     rows.extend_from_slice(wasm::ROWS);
     rows.extend_from_slice(payloads::ROWS);
+    rows.extend_from_slice(network::ROWS);
     rows
 });
 

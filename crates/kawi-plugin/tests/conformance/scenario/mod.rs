@@ -1,8 +1,10 @@
 mod behavior;
+mod network;
 
 use kawi_plugin::Capability;
 
 pub(crate) use behavior::{Behavior, DIAGNOSTICS_READ_UI, EDITOR_READ_UI};
+pub(crate) use network::{network_case, NetworkGrant, NetworkTarget, PUBLIC_GRANT};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Group {
@@ -14,6 +16,7 @@ pub(crate) enum Group {
     WasmLoadTime,
     Oversize,
     InputHygiene,
+    Network,
 }
 
 impl Group {
@@ -27,6 +30,7 @@ impl Group {
             Self::WasmLoadTime => "wasm-load-time",
             Self::Oversize => "oversize",
             Self::InputHygiene => "input-hygiene",
+            Self::Network => "network",
         }
     }
 }
@@ -53,6 +57,7 @@ pub(crate) enum Action {
     AdvertisedParity,
     ControlText,
     MidCodepointPosition,
+    NetworkProbe,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

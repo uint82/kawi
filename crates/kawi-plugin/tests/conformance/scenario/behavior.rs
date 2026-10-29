@@ -27,6 +27,7 @@ pub(crate) enum Behavior {
     EventWrite,
     MidCodepoint,
     ControlText,
+    NetworkProbe,
     EventBufferChanged,
     EventBufferOpened,
     EventFileOpened,
@@ -53,6 +54,7 @@ impl Behavior {
             Self::EventWrite => "event-write",
             Self::MidCodepoint => "mid-codepoint",
             Self::ControlText => "control-text",
+            Self::NetworkProbe => "normal",
             Self::UngrantedImport | Self::OverImport => "host-call",
             Self::EventBufferChanged
             | Self::EventBufferOpened
@@ -81,6 +83,7 @@ impl Behavior {
             Self::EventWrite => "events-write.wasm",
             Self::MidCodepoint => "editor-write-mid.wasm",
             Self::ControlText => "control-text.wasm",
+            Self::NetworkProbe => "network.wasm",
             Self::UngrantedImport | Self::OverImport => "editor-host.wasm",
             Self::EventBufferChanged
             | Self::EventBufferOpened
@@ -97,6 +100,7 @@ impl Behavior {
             Self::HostCall => "read",
             Self::DiagnosticsLarge => "diagnostics",
             Self::ControlText => "control",
+            Self::NetworkProbe => "connect",
             Self::Trap | Self::TrapThenRecover => "ping",
             _ => "ping",
         }
@@ -150,6 +154,11 @@ impl Behavior {
             ],
             Self::MidCodepoint => &[Capability::EditorWrite],
             Self::ControlText => &[Capability::UiMessage, Capability::DiagnosticsPublish],
+            Self::NetworkProbe => &[
+                Capability::NetConnect,
+                Capability::FsRead,
+                Capability::FsWrite,
+            ],
             Self::UngrantedImport => &[Capability::EditorRead],
             Self::EventDiagnosticsChanged => DIAGNOSTICS_READ_UI,
             Self::EventBufferChanged
@@ -196,7 +205,8 @@ impl Behavior {
             | Self::DiagnosticsLarge
             | Self::AllImports
             | Self::MidCodepoint
-            | Self::ControlText => None,
+            | Self::ControlText
+            | Self::NetworkProbe => None,
         }
     }
 }
