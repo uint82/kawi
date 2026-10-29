@@ -31,7 +31,9 @@ Unscoped capabilities use `true` in both requests and grants. Scoped capabilitie
 
 ### Paths
 
-`fs.read` and `fs.write` take `paths`, an array of directories or files. Paths may start with these variables:
+`fs.read` and `fs.write` take `paths`, an array of directories or files. An import that exposes multiple capabilities, such as WASI filesystem read and write, must have every exposed capability requested by the manifest. A grant for any one of the requested capabilities is enough to instantiate the plugin, so read-only access still grants only `fs.read`.
+
+Paths may start with these variables:
 
 - `$WORKSPACE`: the active workspace roots
 - `$PLUGIN_DIR`: the plugin directory
