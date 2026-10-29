@@ -70,7 +70,7 @@ fn describe_capability(
 ) -> String {
     if capability == kawi_plugin::Capability::NetConnect {
         let enforcement = if cfg!(feature = "wasm") && runtime == kawi_plugin::PluginRuntime::Wasm {
-            "enforced"
+            crate::plugin_labels::WASM_NETWORK_ENFORCEMENT
         } else {
             "advisory"
         };
