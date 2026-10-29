@@ -8,8 +8,10 @@ use serde_json::Value;
 use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
-use crate::manifest::PluginCatalog;
-use crate::process::{start_worker, NotifyOutcome, WorkerCommand, WorkerHandle};
+use crate::manifest::{PluginCatalog, PluginRuntime};
+use crate::process::{
+    start_disabled_worker, start_worker, NotifyOutcome, WorkerCommand, WorkerHandle,
+};
 use crate::protocol::{InvocationContext, RpcError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,17 +70,40 @@ impl PluginHost {
             .cloned()
             .map(|plugin| {
                 let name = plugin.manifest.name.clone();
-                let worker = start_worker(
-                    plugin,
-                    capabilities.clone(),
-                    environment.clone(),
-                    events.clone(),
-                    wake.clone(),
-                );
+                let worker = match plugin.manifest.runtime {
+                    PluginRuntime::Process => start_worker(
+                        plugin,
+                        capabilities.clone(),
+                        environment.clone(),
+                        events.clone(),
+                        wake.clone(),
+                    ),
+                    PluginRuntime::Wasm => {
+                        let message = plugin
+                            .disabled_reason
+                            .clone()
+                            .unwrap_or_else(|| wasm_unavailable_message().to_string());
+                        start_disabled_worker(plugin, message, events.clone(), wake.clone())
+                    }
+                };
                 (name, worker)
             })
             .collect();
         for plugin in &catalog.plugins {
+            if plugin.manifest.runtime == PluginRuntime::Wasm {
+                send_event(
+                    &events,
+                    &wake,
+                    PluginHostEvent::Log {
+                        plugin: plugin.manifest.name.clone(),
+                        line: plugin
+                            .disabled_reason
+                            .clone()
+                            .unwrap_or_else(|| wasm_unavailable_message().to_string()),
+                    },
+                );
+                continue;
+            }
             if plugin
                 .manifest
                 .activation_events
@@ -228,5 +253,16 @@ pub(crate) fn set_status(
                 status: next,
             },
         );
+    }
+}
+
+fn wasm_unavailable_message() -> &'static str {
+    #[cfg(feature = "wasm")]
+    {
+        "wasm execution is not available in this build phase"
+    }
+    #[cfg(not(feature = "wasm"))]
+    {
+        "wasm support is not enabled in this build"
     }
 }

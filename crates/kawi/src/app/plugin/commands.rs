@@ -13,8 +13,9 @@ impl App {
             "reload" => self.reload_permissions(),
             "restart" => self.restart_plugins(rest),
             "logs" => self.show_plugin_logs(rest),
+            "inspect" => self.inspect_plugin(rest),
             _ => self.show_message(
-                "Usage: plugin grant <plugin> <capability> | list | reload | restart [name] | logs [name]"
+                "Usage: plugin grant <plugin> <capability> | list | reload | restart [name] | logs [name] | inspect <plugin>"
                     .to_string(),
             ),
         }
@@ -128,6 +129,57 @@ impl App {
         }
     }
 
+    fn inspect_plugin(&mut self, name: &str) {
+        let name = name.trim();
+        let Some(plugin) = self
+            .plugins
+            .plugins()
+            .iter()
+            .find(|plugin| plugin.manifest.name == name)
+        else {
+            self.show_message(format!("Unknown plugin: {}", super::text::sanitize(name)));
+            return;
+        };
+        let mut lines = vec![
+            format!("name: {}", plugin.manifest.name),
+            format!(
+                "version: {}",
+                super::text::sanitize(&plugin.manifest.version)
+            ),
+            format!("runtime: {:?}", plugin.manifest.runtime).to_lowercase(),
+        ];
+        if let Some(component) = plugin.manifest.component.as_deref() {
+            lines.push(format!("component: {}", super::text::sanitize(component)));
+        }
+        if let Some(hash) = plugin.component_hash() {
+            lines.push(format!("sha256: {}", super::text::sanitize(hash)));
+            lines.push(format!(
+                "request hash: {}",
+                plugin.manifest.capability_requests.request_hash()
+            ));
+        }
+        if let Some(hash) = plugin.declared_hash() {
+            lines.push(format!("declared sha256: {}", super::text::sanitize(hash)));
+        }
+        if let Some(reason) = plugin.disabled_reason.as_deref() {
+            lines.push(format!("disabled: {}", super::text::sanitize(reason)));
+        }
+        for (capability, scope) in plugin.manifest.capability_requests.iter() {
+            lines.push(format!(
+                "requests: {} {}",
+                capability.name(),
+                serde_json::Value::Object(scope.to_json_object())
+            ));
+        }
+        #[cfg(feature = "wasm")]
+        if plugin.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
+            && plugin.disabled_reason.is_none()
+        {
+            lines.extend(inspect_wasm_component(plugin));
+        }
+        self.show_pager(lines);
+    }
+
     fn show_plugin_logs(&mut self, name: &str) {
         let name = name.trim();
         let lines = if name.is_empty() {
@@ -165,5 +217,34 @@ fn status_label(status: PluginStatus) -> String {
         PluginStatus::Backoff { remaining_ms } => format!("retry {remaining_ms}ms"),
         PluginStatus::Disabled => "disabled".to_string(),
         PluginStatus::Error(message) => format!("error: {message}"),
+    }
+}
+
+#[cfg(feature = "wasm")]
+fn inspect_wasm_component(plugin: &kawi_plugin::LoadedPlugin) -> Vec<String> {
+    let Some(path) = plugin.component_path() else {
+        return vec!["component: missing path".to_string()];
+    };
+    let requested = plugin
+        .manifest
+        .capability_requests
+        .iter()
+        .map(|(capability, _)| capability)
+        .collect::<Vec<_>>();
+    match kawi_plugin::WasmRuntime::new()
+        .and_then(|runtime| runtime.inspect(&path, plugin.component_hash(), &requested))
+    {
+        Ok(inspection) => {
+            let mut lines = vec![format!("component hash: {}", inspection.hash)];
+            lines.push("imports:".to_string());
+            lines.extend(
+                inspection
+                    .imports
+                    .into_iter()
+                    .map(|value| format!("  {value}")),
+            );
+            lines
+        }
+        Err(error) => vec![format!("imports: unavailable: {error}")],
     }
 }

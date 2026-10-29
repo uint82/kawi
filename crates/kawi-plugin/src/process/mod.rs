@@ -114,6 +114,42 @@ impl WorkerHandle {
     }
 }
 
+pub(crate) fn start_disabled_worker(
+    plugin: LoadedPlugin,
+    message: String,
+    events: Sender<PluginHostEvent>,
+    wake: Sender<()>,
+) -> WorkerHandle {
+    let (commands, receiver) = mpsc::channel();
+    let status = Arc::new(Mutex::new(PluginStatus::Disabled));
+    let handle = WorkerHandle {
+        commands,
+        writer: Arc::new(Mutex::new(None)),
+        status,
+        event_filter: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
+        restart: Arc::new(AtomicBool::new(false)),
+    };
+    let name = plugin.manifest.name.clone();
+    thread::spawn(move || {
+        while let Ok(command) = receiver.recv() {
+            match command {
+                WorkerCommand::Invoke { request, .. } => crate::host::send_event(
+                    &events,
+                    &wake,
+                    PluginHostEvent::InvocationFinished {
+                        plugin: name.clone(),
+                        request,
+                        result: Err(PluginError::Initialize(message.clone())),
+                    },
+                ),
+                WorkerCommand::Shutdown => break,
+                WorkerCommand::Activate | WorkerCommand::Restart => {}
+            }
+        }
+    });
+    handle
+}
+
 pub(crate) fn start_worker(
     plugin: LoadedPlugin,
     capabilities: CapabilityRegistry,

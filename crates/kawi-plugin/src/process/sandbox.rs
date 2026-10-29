@@ -269,11 +269,16 @@ mod tests {
     #[test]
     fn expands_plugin_and_environment_paths() {
         let plugin = LoadedPlugin {
+            computed_hash: None,
+            disabled_reason: None,
             manifest: crate::manifest::PluginManifest {
                 name: "sample".to_string(),
                 version: "0.1.0".to_string(),
                 protocol: 1,
                 description: String::new(),
+                runtime: crate::manifest::PluginRuntime::Process,
+                component: None,
+                sha256: None,
                 command: vec!["/bin/true".to_string()],
                 timeout_ms: 1000,
                 commands: Vec::new(),

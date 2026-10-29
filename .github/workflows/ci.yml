@@ -28,3 +28,26 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Check default dependencies
+        run: |
+          if cargo tree -p kawi -e normal | grep -q wasmtime; then
+            exit 1
+          fi
+      - name: Check WASM dependencies
+        run: cargo tree -p kawi --features wasm -e normal | grep -q "wasmtime v50.0.0"
+      - name: Lint WASM feature
+        run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
+      - name: Check WASM feature
+        run: cargo check -p kawi --features wasm
+      - name: Test WASM feature
+        run: cargo test -p kawi-plugin --features wasm
+      - name: Test WASM app feature
+        run: cargo test -p kawi --features wasm --bin kawi app::plugin::tests::wasm
+      - name: Install supply chain tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-vet
+      - name: Deny
+        run: cargo deny check
+      - name: Vet
+        run: cargo vet
