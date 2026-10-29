@@ -64,6 +64,12 @@ status = "pass"
 [rows."hygiene.invalid_position"]
 status = "pass"
 
+[rows."oversize.invocation"]
+status = "pass"
+
+[rows."oversize.event"]
+status = "pass"
+
 [rows."wasm.limits.linear_memory"]
 status = "not-supported"
 kind = "NoProcessMemoryCap"

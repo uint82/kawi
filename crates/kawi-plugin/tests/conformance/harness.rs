@@ -197,14 +197,14 @@ impl ConformanceHost {
     }
 
     pub(super) fn invoke(&self, command: &str, args: Value) -> Result<Value, PluginError> {
-        let request = self.start_invocation(command, args);
-        self.wait_for_finished(request)
+        match self.start_invocation(command, args) {
+            Ok(request) => self.wait_for_finished(request),
+            Err(error) => Err(error),
+        }
     }
 
-    pub(super) fn start_invocation(&self, command: &str, args: Value) -> u64 {
-        self.host
-            .invoke(PLUGIN_NAME, command, args, context())
-            .expect("invoke conformance plugin")
+    pub(super) fn start_invocation(&self, command: &str, args: Value) -> Result<u64, PluginError> {
+        self.host.invoke(PLUGIN_NAME, command, args, context())
     }
 
     pub(super) fn wait_for_finished(&self, request: u64) -> Result<Value, PluginError> {

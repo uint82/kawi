@@ -204,6 +204,8 @@ pub(super) enum Action {
     RestartWithPendingHostCall,
     QueuedRevocation,
     InvalidPosition,
+    OversizeInvocation,
+    OversizeEvent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,6 +441,26 @@ pub(super) const SCENARIOS: &[Scenario] = &[
         grants: &[],
         action: Action::Invoke,
         expected: Expected::Crashed,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "oversize.invocation",
+        group: Group::Oversize,
+        behavior: Behavior::Echo,
+        grants: &[],
+        action: Action::OversizeInvocation,
+        expected: Expected::Success,
+        covers_methods: &[],
+        covers_events: &[],
+    },
+    Scenario {
+        id: "oversize.event",
+        group: Group::Oversize,
+        behavior: Behavior::EventBufferChanged,
+        grants: EDITOR_READ_UI,
+        action: Action::OversizeEvent,
+        expected: Expected::Success,
         covers_methods: &[],
         covers_events: &[],
     },

@@ -161,6 +161,8 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.set_invalid_position(true);
             host.invoke(command, json!(null))
         }
+        Action::OversizeInvocation => run_oversize_invocation(&host, runtime, scenario),
+        Action::OversizeEvent => run_oversize_event(&host, runtime, scenario),
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);
@@ -274,6 +276,52 @@ fn run_counter_reset(
     third
 }
 
+fn run_oversize_invocation(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    let oversized = json!({
+        "pad": "x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1),
+    });
+    let first = host.invoke(runtime.command(scenario.behavior), oversized);
+    assert_eq!(
+        normalize_result(&first),
+        Outcome::Protocol,
+        "{runtime:?} oversize invocation did not fail: {first:?}"
+    );
+    host.invoke(runtime.command(scenario.behavior), json!(null))
+}
+
+fn run_oversize_event(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    host.activate_ready();
+    let event = scenario
+        .behavior
+        .event()
+        .expect("oversize event needs an event behavior");
+    let mut payload = event_payload(event);
+    payload["pad"] = json!("x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1));
+    assert_eq!(
+        host.notify(event, payload),
+        kawi_plugin::NotifyOutcome::Overflow,
+        "oversize event was not dropped"
+    );
+    let result = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let observation = host.observation();
+    assert!(
+        observation
+            .host_requests
+            .iter()
+            .all(|request| request.method != "ui.message"),
+        "oversize event reached the plugin"
+    );
+    result
+}
+
 fn run_queued_revocation(
     host: &ConformanceHost,
     runtime: Runtime,
@@ -317,7 +365,9 @@ fn run_restart_with_pending_host_call(
 ) -> Result<Value, kawi_plugin::PluginError> {
     host.activate_ready();
     host.withhold_host_responses();
-    let request = host.start_invocation(runtime.command(scenario.behavior), json!(null));
+    let request = host
+        .start_invocation(runtime.command(scenario.behavior), json!(null))
+        .expect("invoke conformance plugin");
     assert!(
         host.wait_for_host_request("editor.get_state"),
         "plugin never issued its host call"
