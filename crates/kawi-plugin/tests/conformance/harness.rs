@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,6 @@ const START_TIMEOUT: Duration = Duration::from_secs(5);
 const INVOCATION_TIMEOUT: Duration = Duration::from_secs(10);
 const DRIVER_POLL: Duration = Duration::from_millis(50);
 const STATUS_POLL: Duration = Duration::from_millis(5);
-const RELEASE_POLL: Duration = Duration::from_millis(10);
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -72,21 +71,31 @@ pub(super) struct Finished {
 
 struct Policy {
     stale_revision: bool,
+    invalid_position: bool,
     withhold: bool,
-    release: Arc<(Mutex<bool>, Condvar)>,
+    deferred: Vec<DeferredResponse>,
+}
+
+struct DeferredResponse {
+    plugin: String,
+    id: Value,
+    result: Result<Value, RpcError>,
+    index: usize,
 }
 
 impl Policy {
     fn new() -> Self {
         Self {
             stale_revision: false,
+            invalid_position: false,
             withhold: false,
-            release: Arc::new((Mutex::new(false), Condvar::new())),
+            deferred: Vec::new(),
         }
     }
 }
 
 pub(super) struct ConformanceHost {
+    runtime: Runtime,
     root: PathBuf,
     grants_path: PathBuf,
     catalog: PluginCatalog,
@@ -111,7 +120,9 @@ impl ConformanceHost {
         write_manifest(&plugins, runtime, scenario.behavior);
         write_grants(&grants_path, scenario.grants);
         let catalog = load_catalog(&plugins);
-        assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
+        if !scenario.behavior.expects_load_warning() {
+            assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
+        }
         let state = load_permission_state(&catalog, &grants_path);
         assert!(state.file_error.is_none(), "{:?}", state.file_error);
         let registry = CapabilityRegistry::default();
@@ -140,6 +151,7 @@ impl ConformanceHost {
         };
         let driver = driver.spawn(events);
         Self {
+            runtime,
             root,
             grants_path,
             catalog,
@@ -185,11 +197,61 @@ impl ConformanceHost {
     }
 
     pub(super) fn invoke(&self, command: &str, args: Value) -> Result<Value, PluginError> {
-        let request = self
-            .host
+        let request = self.start_invocation(command, args);
+        self.wait_for_finished(request)
+    }
+
+    pub(super) fn start_invocation(&self, command: &str, args: Value) -> u64 {
+        self.host
             .invoke(PLUGIN_NAME, command, args, context())
-            .expect("invoke conformance plugin");
-        self.wait_finished(request)
+            .expect("invoke conformance plugin")
+    }
+
+    pub(super) fn wait_for_finished(&self, request: u64) -> Result<Value, PluginError> {
+        let deadline = Instant::now() + INVOCATION_TIMEOUT;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            assert!(!remaining.is_zero(), "invocation {request} timed out");
+            match self.finished.recv_timeout(remaining) {
+                Ok(finished) if finished.request == request => return finished.result,
+                Ok(_) => {}
+                Err(error) => panic!("invocation {request} did not finish: {error}"),
+            }
+        }
+    }
+
+    pub(super) fn restart(&self) {
+        self.host
+            .restart(PLUGIN_NAME)
+            .expect("restart conformance plugin");
+    }
+
+    pub(super) fn status(&self) -> Option<PluginStatus> {
+        self.host.status(PLUGIN_NAME)
+    }
+
+    pub(super) fn wait_backoff(&self) {
+        if let Some(PluginStatus::Backoff { remaining_ms }) = self.status() {
+            thread::sleep(Duration::from_millis(remaining_ms.saturating_add(10)));
+        }
+    }
+
+    pub(super) fn wait_for_host_request(&self, method: &str) -> bool {
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if self
+                .observation()
+                .host_requests
+                .iter()
+                .any(|request| request.method == method)
+            {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(STATUS_POLL);
+        }
     }
 
     pub(super) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
@@ -198,11 +260,56 @@ impl ConformanceHost {
             .expect("notify conformance plugin")
     }
 
+    pub(super) fn stall_events(&self, event: &str, payload: Value) {
+        match self.runtime {
+            Runtime::Process => self.inject_pipe_block(),
+            Runtime::Wasm => {
+                self.withhold_host_responses();
+                assert_eq!(
+                    self.notify(event, payload),
+                    NotifyOutcome::Queued,
+                    "{event} was not queued"
+                );
+                assert!(
+                    self.wait_for_host_request("ui.message"),
+                    "{event} was not delivered before revocation"
+                );
+            }
+        }
+    }
+
+    pub(super) fn release_events(&self) {
+        if self.runtime == Runtime::Wasm {
+            self.release_host_responses();
+        }
+    }
+
+    pub(super) fn host_request_count(&self) -> usize {
+        self.observation().host_requests.len()
+    }
+
+    fn inject_pipe_block(&self) {
+        self.host
+            .respond(
+                PLUGIN_NAME,
+                json!(999),
+                Ok(json!({ "pad": "x".repeat(1024 * 1024) })),
+            )
+            .expect("inject pipe block");
+    }
+
     pub(super) fn set_stale_revision(&self, stale: bool) {
         self.policy
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .stale_revision = stale;
+    }
+
+    pub(super) fn set_invalid_position(&self, invalid: bool) {
+        self.policy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .invalid_position = invalid;
     }
 
     pub(super) fn wait_for_host_response(&self, method: &str) -> bool {
@@ -230,26 +337,39 @@ impl ConformanceHost {
             .clone()
     }
 
-    pub(super) fn release_host_responses(&self) {
-        let policy = self
-            .policy
+    pub(super) fn withhold_host_responses(&self) {
+        self.policy
             .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let (released, condvar) = &*policy.release;
-        *released.lock().unwrap_or_else(|error| error.into_inner()) = true;
-        condvar.notify_all();
+            .unwrap_or_else(|error| error.into_inner())
+            .withhold = true;
     }
 
-    fn wait_finished(&self, request: u64) -> Result<Value, PluginError> {
-        let deadline = Instant::now() + INVOCATION_TIMEOUT;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            assert!(!remaining.is_zero(), "invocation {request} timed out");
-            match self.finished.recv_timeout(remaining) {
-                Ok(finished) if finished.request == request => return finished.result,
-                Ok(_) => {}
-                Err(error) => panic!("invocation {request} did not finish: {error}"),
-            }
+    pub(super) fn release_host_responses(&self) {
+        let deferred = {
+            let mut policy = self
+                .policy
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            policy.withhold = false;
+            std::mem::take(&mut policy.deferred)
+        };
+        for response in deferred {
+            let _ = self
+                .host
+                .respond(&response.plugin, response.id, response.result);
+            self.mark_responded(response.index);
+        }
+    }
+
+    fn mark_responded(&self, index: usize) {
+        if let Some(request) = self
+            .observation
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .host_requests
+            .get_mut(index)
+        {
+            request.responded = true;
         }
     }
 
@@ -339,13 +459,13 @@ impl Driver {
             self.mark_responded(index);
             return;
         }
-        let (withhold, stale_revision, release) = self.policy_snapshot();
-        if withhold && !wait_for_release(&release, &self.stop) {
+        let (withhold, stale_revision, invalid_position) = self.policy_snapshot();
+        let result = host_result(method, &params, stale_revision, invalid_position);
+        if withhold {
+            self.defer_response(plugin, id, result, index);
             return;
         }
-        let _ = self
-            .host
-            .respond(plugin, id, host_result(method, &params, stale_revision));
+        let _ = self.host.respond(plugin, id, result);
         self.mark_responded(index);
     }
 
@@ -374,7 +494,7 @@ impl Driver {
         }
     }
 
-    fn policy_snapshot(&self) -> (bool, bool, Arc<(Mutex<bool>, Condvar)>) {
+    fn policy_snapshot(&self) -> (bool, bool, bool) {
         let policy = self
             .policy
             .lock()
@@ -382,8 +502,27 @@ impl Driver {
         (
             policy.withhold,
             policy.stale_revision,
-            Arc::clone(&policy.release),
+            policy.invalid_position,
         )
+    }
+
+    fn defer_response(
+        &self,
+        plugin: &str,
+        id: Value,
+        result: Result<Value, RpcError>,
+        index: usize,
+    ) {
+        self.policy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .deferred
+            .push(DeferredResponse {
+                plugin: plugin.to_string(),
+                id,
+                result,
+                index,
+            });
     }
 
     fn observe_log(&self, line: String) {
@@ -412,24 +551,17 @@ fn capability_denied(method: &str) -> RpcError {
     }
 }
 
-fn wait_for_release(release: &(Mutex<bool>, Condvar), stop: &AtomicBool) -> bool {
-    let (released, condvar) = release;
-    let mut released = released.lock().unwrap_or_else(|error| error.into_inner());
-    while !*released {
-        if stop.load(Ordering::SeqCst) {
-            return false;
-        }
-        let (next, _) = condvar
-            .wait_timeout(released, RELEASE_POLL)
-            .unwrap_or_else(|error| error.into_inner());
-        released = next;
-    }
-    true
-}
-
-fn host_result(method: &str, params: &Value, stale_revision: bool) -> Result<Value, RpcError> {
+fn host_result(
+    method: &str,
+    params: &Value,
+    stale_revision: bool,
+    invalid_position: bool,
+) -> Result<Value, RpcError> {
     match method {
         "editor.get_state" => Ok(state_value()),
+        "editor.apply_edit" if invalid_position => {
+            Err(RpcError::invalid_position("edit position is out of range"))
+        }
         "editor.apply_edit" if stale_revision => Err(RpcError::stale_revision(
             params
                 .get("revision")
@@ -516,10 +648,20 @@ fn write_manifest(plugins: &Path, runtime: Runtime, behavior: Behavior) {
                 .join("tests/fixtures/wasm")
                 .join(behavior.wasm_component());
             let bytes = fs::read(source).unwrap();
+            let bytes = if behavior.oversizes_component() {
+                pad_component(bytes)
+            } else {
+                bytes
+            };
             fs::write(dir.join("plugin.wasm"), &bytes).unwrap();
             let digest = Sha256::digest(&bytes);
+            let hash = if behavior == Behavior::HashMismatch {
+                "0".repeat(64)
+            } else {
+                format!("{digest:x}")
+            };
             format!(
-                "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"sha256:{digest:x}\"\ntimeout_ms = 2000\n{subscribes}\n{capabilities}"
+                "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"sha256:{hash}\"\ntimeout_ms = 2000\n{subscribes}\n{capabilities}"
             )
         }
     };
@@ -530,6 +672,36 @@ fn subscribes_line(behavior: Behavior) -> String {
     match behavior.event() {
         Some(event) => format!("subscribes = [\"{event}\"]\n"),
         None => String::new(),
+    }
+}
+
+fn pad_component(mut bytes: Vec<u8>) -> Vec<u8> {
+    const MAX_COMPONENT_BYTES: usize = 64 * 1024 * 1024;
+    const PADDING_NAME: &[u8] = b"conformance-padding";
+    let payload_len = MAX_COMPONENT_BYTES
+        .saturating_sub(bytes.len())
+        .saturating_add(1);
+    let mut section = Vec::new();
+    write_leb128(PADDING_NAME.len(), &mut section);
+    section.extend_from_slice(PADDING_NAME);
+    section.resize(section.len() + payload_len, 0);
+    bytes.push(0);
+    write_leb128(section.len(), &mut bytes);
+    bytes.extend_from_slice(&section);
+    bytes
+}
+
+fn write_leb128(mut value: usize, output: &mut Vec<u8>) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 {
+            byte |= 0x80;
+        }
+        output.push(byte);
+        if value == 0 {
+            break;
+        }
     }
 }
 

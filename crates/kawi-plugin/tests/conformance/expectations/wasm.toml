@@ -40,3 +40,48 @@ status = "pass"
 [rows."parity.events.diagnostics_changed"]
 status = "pass"
 
+[rows."revocation.queued"]
+status = "pass"
+
+[rows."trap.crash"]
+status = "pass"
+
+[rows."trap.timeout"]
+status = "pass"
+
+[rows."trap.recovery"]
+status = "pass"
+
+[rows."trap.five_strike"]
+status = "pass"
+
+[rows."trap.counter_reset"]
+status = "pass"
+
+[rows."trap.restart_pending_host_call"]
+status = "pass"
+
+[rows."hygiene.invalid_position"]
+status = "pass"
+
+[rows."wasm.limits.linear_memory"]
+status = "pass"
+
+[rows."wasm.limits.table"]
+status = "pass"
+
+[rows."wasm.limits.stack"]
+status = "pass"
+
+[rows."wasm.load.hash_mismatch"]
+status = "pass"
+
+[rows."wasm.load.ungranted_import"]
+status = "pass"
+
+[rows."wasm.load.over_import"]
+status = "pass"
+
+[rows."wasm.oversize.component"]
+status = "pass"
+

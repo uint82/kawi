@@ -40,3 +40,62 @@ status = "pass"
 [rows."parity.events.diagnostics_changed"]
 status = "pass"
 
+[rows."revocation.queued"]
+status = "pass"
+
+[rows."trap.crash"]
+status = "pass"
+
+[rows."trap.timeout"]
+status = "pass"
+
+[rows."trap.recovery"]
+status = "pass"
+
+[rows."trap.five_strike"]
+status = "pass"
+
+[rows."trap.counter_reset"]
+status = "pass"
+
+[rows."trap.restart_pending_host_call"]
+status = "pass"
+
+[rows."hygiene.invalid_position"]
+status = "pass"
+
+[rows."wasm.limits.linear_memory"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.limits.table"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.limits.stack"]
+status = "not-supported"
+kind = "NoProcessMemoryCap"
+reason = "the process runtime does not impose linear-memory, table, or stack limits"
+
+[rows."wasm.load.hash_mismatch"]
+status = "not-supported"
+kind = "NoComponentLoader"
+reason = "the process runtime does not load components or verify component hashes"
+
+[rows."wasm.load.ungranted_import"]
+status = "not-supported"
+kind = "NoLinkStep"
+reason = "the process runtime has no link step; missing grants are enforced per call"
+
+[rows."wasm.load.over_import"]
+status = "not-supported"
+kind = "NoLinkStep"
+reason = "the process runtime has no link step; missing grants are enforced per call"
+
+[rows."wasm.oversize.component"]
+status = "not-supported"
+kind = "NoComponentLoader"
+reason = "the process runtime does not load components or enforce component size"
+

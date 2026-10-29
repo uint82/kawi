@@ -149,6 +149,18 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.set_stale_revision(true);
             host.invoke(command, json!(null))
         }
+        Action::Trap => host.invoke(scenario.behavior.trap_command(runtime), json!(null)),
+        Action::TrapThenRecover => run_trap_then_recover(&host, runtime, scenario),
+        Action::FiveStrike => run_five_strike(&host, runtime, scenario),
+        Action::CounterReset => run_counter_reset(&host, runtime, scenario),
+        Action::RestartWithPendingHostCall => {
+            run_restart_with_pending_host_call(&host, runtime, scenario)
+        }
+        Action::QueuedRevocation => run_queued_revocation(&host, runtime, scenario),
+        Action::InvalidPosition => {
+            host.set_invalid_position(true);
+            host.invoke(command, json!(null))
+        }
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);
@@ -199,7 +211,127 @@ fn expected_outcome(expected: Expected) -> Outcome {
         Expected::Success => Outcome::Success,
         Expected::Denied(capability) => Outcome::denied(capability),
         Expected::Protocol => Outcome::Protocol,
+        Expected::Crashed => Outcome::Crashed,
+        Expected::Timeout => Outcome::Timeout,
     }
+}
+
+fn run_trap_then_recover(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    let first = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+    assert_eq!(
+        normalize_result(&first),
+        Outcome::Crashed,
+        "first invocation did not crash: {first:?}"
+    );
+    host.wait_backoff();
+    host.invoke(runtime.command(scenario.behavior), json!(null))
+}
+
+fn run_five_strike(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    let mut last = Ok(Value::Null);
+    for attempt in 0..5 {
+        last = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+        assert_eq!(
+            normalize_result(&last),
+            Outcome::Crashed,
+            "attempt {attempt} did not crash: {last:?}"
+        );
+        host.wait_backoff();
+    }
+    assert_eq!(
+        host.status(),
+        Some(kawi_plugin::PluginStatus::Disabled),
+        "plugin was not disabled after five crashes"
+    );
+    last
+}
+
+fn run_counter_reset(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    let first = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+    assert_eq!(normalize_result(&first), Outcome::Crashed);
+    host.wait_backoff();
+    let second = host.invoke(runtime.command(scenario.behavior), json!(null));
+    assert_eq!(normalize_result(&second), Outcome::Success);
+    let third = host.invoke(runtime.command(scenario.behavior), json!(null));
+    assert_eq!(normalize_result(&third), Outcome::Success);
+    assert_eq!(
+        host.status(),
+        Some(kawi_plugin::PluginStatus::Ready),
+        "success did not reset the crash counter"
+    );
+    third
+}
+
+fn run_queued_revocation(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    host.activate_ready();
+    let event = scenario
+        .behavior
+        .event()
+        .expect("queued revocation needs an event behavior");
+    host.stall_events(event, event_payload(event));
+    for _ in 0..16 {
+        assert_eq!(
+            host.notify(event, event_payload(event)),
+            kawi_plugin::NotifyOutcome::Queued,
+            "{event} was not queued"
+        );
+    }
+    host.revoke_all();
+    let revoked_at = host.host_request_count();
+    host.release_events();
+    let result = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let observation = host.observation();
+    let observed_after = &observation.host_requests[revoked_at..];
+    assert!(
+        observed_after.iter().all(|request| {
+            !matches!(
+                request.method.as_str(),
+                "ui.message" | "editor.apply_edit" | "editor.set_diagnostics"
+            )
+        }),
+        "host requests after revocation: {observed_after:?}"
+    );
+    result
+}
+
+fn run_restart_with_pending_host_call(
+    host: &ConformanceHost,
+    runtime: Runtime,
+    scenario: &Scenario,
+) -> Result<Value, kawi_plugin::PluginError> {
+    host.activate_ready();
+    host.withhold_host_responses();
+    let request = host.start_invocation(runtime.command(scenario.behavior), json!(null));
+    assert!(
+        host.wait_for_host_request("editor.get_state"),
+        "plugin never issued its host call"
+    );
+    host.restart();
+    let first = host.wait_for_finished(request);
+    host.release_host_responses();
+    assert_eq!(
+        normalize_result(&first),
+        Outcome::Crashed,
+        "restart did not cancel the pending call: {first:?}"
+    );
+    host.wait_backoff();
+    host.invoke(runtime.command(scenario.behavior), json!(null))
 }
 
 fn event_payload(event: &str) -> Value {
