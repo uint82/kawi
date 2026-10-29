@@ -35,7 +35,7 @@ fn run(mode: &str) -> Result<()> {
         match method {
             "initialize" => handle_initialize(mode, &message, &mut stdout)?,
             "invoke_command" => handle_invoke(mode, &message, &mut reader, &mut stdout)?,
-            "event" => handle_event(mode, &message),
+            "event" => handle_event(mode, &message, &mut reader, &mut stdout)?,
             "shutdown" => return Ok(()),
             _ => {}
         }
@@ -69,16 +69,27 @@ fn handle_initialize(mode: &str, message: &Value, stdout: &mut impl Write) -> Re
     Ok(())
 }
 
-fn handle_event(mode: &str, message: &Value) {
-    if mode == "stalled-events" {
-        if let Some(event) = message
-            .get("params")
-            .and_then(|params| params.get("event"))
-            .and_then(Value::as_str)
-        {
-            eprintln!("event:{event}");
+fn handle_event(
+    mode: &str,
+    message: &Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<()> {
+    let Some(event) = message
+        .get("params")
+        .and_then(|params| params.get("event"))
+        .and_then(Value::as_str)
+    else {
+        return Ok(());
+    };
+    match mode {
+        "stalled-events" => eprintln!("event:{event}"),
+        "event-host" => {
+            let _ = host_request("ui.message", json!({"message": event}), reader, stdout)?;
         }
+        _ => {}
     }
+    Ok(())
 }
 
 fn handle_invoke(
@@ -115,6 +126,8 @@ fn handle_invoke(
             }
         }
         "host-call" => host_call(message, reader, stdout)?,
+        "multi-call" => multi_call(message, reader, stdout)?,
+        "apply-edit" => apply_edit(message, reader, stdout)?,
         "read-file" => read_file(message, stdout)?,
         "exec" => exec_command(message, stdout)?,
         _ => respond(stdout, message, json!({"echo": message.get("params")}))?,
@@ -127,29 +140,83 @@ fn host_call(
     reader: &mut impl std::io::BufRead,
     stdout: &mut impl Write,
 ) -> Result<()> {
+    let value = host_request(
+        "editor.get_state",
+        json!({"include_text": true}),
+        reader,
+        stdout,
+    )?;
+    if let Some(error) = value.get("error") {
+        return respond_error(stdout, message, error.clone());
+    }
+    respond(
+        stdout,
+        message,
+        json!({
+            "host_result": value.get("result").cloned().unwrap_or(Value::Null),
+        }),
+    )
+}
+
+fn multi_call(
+    message: &Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<()> {
+    for (method, params) in [
+        ("editor.get_state", json!({"include_text": false})),
+        ("ui.message", json!({"message": "conformance"})),
+        (
+            "editor.set_diagnostics",
+            json!({"buffer": 1, "revision": 7, "diagnostics": []}),
+        ),
+    ] {
+        let value = host_request(method, params, reader, stdout)?;
+        if let Some(error) = value.get("error") {
+            return respond_error(stdout, message, error.clone());
+        }
+    }
+    respond(stdout, message, json!({"ok": true}))
+}
+
+fn apply_edit(
+    message: &Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<()> {
+    let value = host_request(
+        "editor.apply_edit",
+        json!({"buffer": 1, "revision": 7, "edits": []}),
+        reader,
+        stdout,
+    )?;
+    if let Some(error) = value.get("error") {
+        return respond_error(stdout, message, error.clone());
+    }
+    respond(stdout, message, json!({"ok": true}))
+}
+
+fn host_request(
+    method: &str,
+    params: Value,
+    reader: &mut impl std::io::BufRead,
+    stdout: &mut impl Write,
+) -> Result<Value> {
     write_message(
         stdout,
         &json!({
             "jsonrpc": "2.0",
             "id": HOST_STATE_REQUEST,
-            "method": "editor.get_state",
-            "params": {"include_text": true},
+            "method": method,
+            "params": params,
         }),
     )?;
     while let Some(value) = read_message(reader)? {
-        if value.get("id").and_then(Value::as_u64) != Some(HOST_STATE_REQUEST) {
-            continue;
+        if value.get("id").and_then(Value::as_u64) == Some(HOST_STATE_REQUEST) {
+            return Ok(value);
         }
-        return respond(
-            stdout,
-            message,
-            json!({
-                "host_result": value.get("result").cloned().unwrap_or(Value::Null),
-                "host_error": value.get("error").cloned().unwrap_or(Value::Null),
-            }),
-        );
     }
-    Ok(())
+    Err(anyhow::anyhow!("host request ended without a response"))
 }
 
 fn read_file(message: &Value, stdout: &mut impl Write) -> Result<()> {
@@ -205,8 +272,21 @@ fn initialize_result() -> Value {
         "name": "fake",
         "version": "0.1.0",
         "plugin_capabilities": ["invoke_command"],
-        "host_capabilities": ["editor.get_state", "editor.apply_edit", "ui.message"],
-        "events": ["buffer_changed", "file_saved", "mode_changed"],
+        "host_capabilities": [
+            "editor.get_state",
+            "editor.apply_edit",
+            "editor.set_diagnostics",
+            "ui.message"
+        ],
+        "events": [
+            "buffer_changed",
+            "buffer_opened",
+            "file_opened",
+            "buffer_closed",
+            "file_saved",
+            "mode_changed",
+            "diagnostics_changed"
+        ],
     })
 }
 
@@ -216,4 +296,9 @@ fn respond(stdout: &mut impl Write, request: &Value, result: Value) -> Result<()
         stdout,
         &json!({"jsonrpc": "2.0", "id": id, "result": result}),
     )
+}
+
+fn respond_error(stdout: &mut impl Write, request: &Value, error: Value) -> Result<()> {
+    let id = request.get("id").cloned().unwrap_or(Value::Null);
+    write_message(stdout, &json!({"jsonrpc": "2.0", "id": id, "error": error}))
 }
