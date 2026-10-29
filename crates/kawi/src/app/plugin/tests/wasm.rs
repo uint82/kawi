@@ -36,6 +36,36 @@ fn inspect_reports_a_wasm_manifest_and_hash() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(feature = "wasm")]
+#[test]
+fn wasm_network_capability_is_labeled_enforced() {
+    let root = temp_dir("wasm-net-label");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../kawi-plugin/tests/fixtures/wasm/editor-read.wasm");
+    let bytes = fs::read(fixture).unwrap();
+    write_plugin_manifest_with(
+        &root,
+        &bytes,
+        None,
+        &[],
+        "\"net.connect\" = { hosts = [\"example.com:443\"] }\n",
+    );
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.wasm.grant]\n\"net.connect\" = { hosts = [\"example.com:443\"] }\n",
+    );
+    let lines = app.plugins.capability_lines("wasm");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("net.connect (enforced)")),
+        "{lines:?}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn inspect_reports_the_computed_hash_when_the_manifest_lies() {
     let root = temp_dir("inspect-wasm-mismatch");

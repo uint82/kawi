@@ -6,10 +6,11 @@ use crate::permission_lines::grant_lines;
 
 pub(super) fn describe_capabilities(
     capabilities: impl Iterator<Item = Capability>,
+    wasm: bool,
     sandboxed: bool,
 ) -> String {
     let names = capabilities
-        .map(|capability| describe_capability(capability, sandboxed))
+        .map(|capability| describe_capability(capability, wasm, sandboxed))
         .collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()
@@ -18,9 +19,10 @@ pub(super) fn describe_capabilities(
     }
 }
 
-fn describe_capability(capability: Capability, sandboxed: bool) -> String {
+fn describe_capability(capability: Capability, wasm: bool, sandboxed: bool) -> String {
     if capability == Capability::NetConnect {
-        return format!("{} (advisory)", capability.name());
+        let enforcement = if wasm { "enforced" } else { "advisory" };
+        return format!("{} ({enforcement})", capability.name());
     }
     if capability.is_advisory() && sandboxed {
         return format!("{} (enforced)", capability.name());

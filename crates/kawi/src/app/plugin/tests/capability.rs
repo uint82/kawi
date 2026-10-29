@@ -392,6 +392,7 @@ command = ["/bin/true"]
 
 [capabilities]
 "fs.read" = { paths = ["$WORKSPACE/src"] }
+"net.connect" = { hosts = ["example.com:443"] }
 "#,
     )
     .unwrap();
@@ -399,10 +400,13 @@ command = ["/bin/true"]
     load_plugins_with_permissions(
         &mut app,
         &root,
-        "[plugins.advisory.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE/src\"] }\n",
+        "[plugins.advisory.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE/src\"] }\n\"net.connect\" = { hosts = [\"example.com:443\"] }\n",
     );
     let lines = app.plugins.capability_lines("advisory");
     assert!(lines.iter().any(|line| line.contains("fs.read (advisory)")));
+    assert!(lines
+        .iter()
+        .any(|line| line.contains("net.connect (advisory)")));
     fs::remove_dir_all(root).unwrap();
 }
 
