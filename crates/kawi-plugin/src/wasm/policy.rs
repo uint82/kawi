@@ -2,9 +2,6 @@ use std::collections::BTreeSet;
 
 use crate::capability::Capability;
 
-pub const KAWI_PACKAGE_PREFIX: &str = "kawi:plugin/";
-pub const WASI_PACKAGE_PREFIX: &str = "wasi:";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImportRule {
     pub prefix: &'static str,
@@ -85,15 +82,14 @@ pub fn unauthorized_imports<'a>(
 ) -> Vec<&'a str> {
     imports
         .into_iter()
-        .filter(|name| {
-            let Some(capabilities) = import_capabilities(name) else {
-                return name.starts_with(KAWI_PACKAGE_PREFIX)
-                    || name.starts_with(WASI_PACKAGE_PREFIX);
-            };
-            !capabilities.is_empty()
-                && !capabilities
-                    .iter()
-                    .any(|capability| requested.contains(capability))
+        .filter(|name| match import_capabilities(name) {
+            None => true,
+            Some(capabilities) => {
+                !capabilities.is_empty()
+                    && !capabilities
+                        .iter()
+                        .any(|capability| requested.contains(capability))
+            }
         })
         .collect()
 }
@@ -156,11 +152,11 @@ mod tests {
         assert!(wit.contains("package kawi:plugin@0.1.0;"));
         for rule in WASM_IMPORTS
             .iter()
-            .filter(|rule| rule.prefix.starts_with(KAWI_PACKAGE_PREFIX))
+            .filter(|rule| rule.prefix.starts_with("kawi:plugin/"))
         {
             let name = rule
                 .prefix
-                .trim_start_matches(KAWI_PACKAGE_PREFIX)
+                .trim_start_matches("kawi:plugin/")
                 .split('@')
                 .next()
                 .unwrap();
@@ -173,7 +169,7 @@ mod tests {
     fn host_interfaces_share_the_process_capability_table() {
         for rule in WASM_IMPORTS
             .iter()
-            .filter(|rule| rule.prefix.starts_with(KAWI_PACKAGE_PREFIX))
+            .filter(|rule| rule.prefix.starts_with("kawi:plugin/"))
         {
             for capability in rule.capabilities {
                 if *capability == Capability::ProcessSpawn {
