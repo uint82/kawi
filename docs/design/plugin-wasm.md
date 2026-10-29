@@ -47,7 +47,7 @@ Positions use line and UTF-8 byte column. Revision checks, origin handling, and 
 
 `fs.read`, `fs.write`, and network access use WASI instead of custom interfaces. WASI preopens are derived only from grants. The network is denied by default. A network grant is checked against recorded DNS results and rejects private and link-local addresses unless granted explicitly.
 
-A component that imports a Kawi interface not requested by its manifest is rejected before instantiation. Linking supplies only granted interfaces. The manifest request hash includes the component hash, so replacing the binary reopens consent.
+A component that imports a Kawi interface not requested by its manifest is rejected before instantiation. A requested but ungranted import fails startup with the missing capability, emits a capability request to the editor, and restarts after a persistent grant. Startup prompts offer persistent grants only because linking is fixed at instantiation. Linking supplies only granted interfaces. The manifest request hash includes the component hash, so replacing the binary reopens consent.
 
 ## Manifest
 
