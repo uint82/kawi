@@ -28,6 +28,18 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools@1.262.0
+      - name: Rebuild wasm fixtures
+        run: crates/kawi-plugin/tests/fixtures/wasm/build.sh
+      - name: Check wasm fixtures are current
+        run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
+      - name: Conformance
+        run: cargo test -p kawi-plugin --test conformance
+      - name: Conformance WASM feature
+        run: cargo test -p kawi-plugin --features wasm --test conformance
       - name: Check default dependencies
         run: |
           if cargo tree -p kawi -e normal | grep -q wasmtime; then
