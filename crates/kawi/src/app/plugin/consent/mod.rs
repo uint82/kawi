@@ -25,6 +25,9 @@ impl App {
         {
             return;
         }
+        let Some(request_hash) = self.plugins.request_hash(plugin) else {
+            return;
+        };
         let kind = if self.plugins.is_wasm(plugin) {
             GrantKind::Startup
         } else {
@@ -36,13 +39,14 @@ impl App {
             changed: self.plugins.is_changed(plugin),
             changed_requests: self.plugins.changed_requests(plugin),
             kind,
+            request_hash,
         };
         match self.plugin_grants.enqueue(request, Instant::now()) {
             Enqueue::Activated => self.show_grant_prompt_message(),
             Enqueue::Full => self
                 .plugins
                 .push_log(plugin, "grant prompt queue full; request denied"),
-            Enqueue::Queued | Enqueue::Duplicate => {}
+            Enqueue::Queued | Enqueue::Duplicate | Enqueue::Suppressed => {}
         }
     }
 
@@ -87,6 +91,7 @@ impl App {
         if self.plugin_grants.activate_next(now) {
             self.show_grant_prompt_message();
         }
+        self.flush_deferred_plugin_restarts();
     }
 
     pub(crate) fn grant_prompt_items(&self) -> Option<(&[String], usize)> {
@@ -121,7 +126,8 @@ impl App {
             .write_grant(&request.plugin, request.capability)
         {
             Ok(()) => {
-                self.plugins.reload_permissions();
+                let (_, restarted) = self.plugins.reload_permissions_without_restart();
+                self.deferred_plugin_restarts.extend(restarted);
                 if self
                     .plugins
                     .has_capability(&request.plugin, request.capability)
@@ -175,6 +181,20 @@ impl App {
     fn advance_grant(&mut self) {
         if self.plugin_grants.activate_next(Instant::now()) {
             self.show_grant_prompt_message();
+        }
+        self.flush_deferred_plugin_restarts();
+    }
+
+    fn flush_deferred_plugin_restarts(&mut self) {
+        let ready = self
+            .deferred_plugin_restarts
+            .iter()
+            .filter(|plugin| !self.plugin_grants.has_plugin_requests(plugin))
+            .cloned()
+            .collect::<Vec<_>>();
+        for plugin in ready {
+            self.deferred_plugin_restarts.remove(&plugin);
+            let _ = self.plugins.restart(Some(&plugin));
         }
     }
 

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use kawi_plugin::{load_permission_state, Capability, RpcError, Scope};
@@ -27,6 +28,14 @@ impl PluginRuntime {
             loaded.manifest.name == plugin
                 && loaded.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
         })
+    }
+
+    pub(crate) fn request_hash(&self, plugin: &str) -> Option<String> {
+        self.catalog
+            .plugins
+            .iter()
+            .find(|loaded| loaded.manifest.name == plugin)
+            .map(|loaded| loaded.manifest.capability_requests.request_hash())
     }
 
     pub(crate) fn is_changed(&self, plugin: &str) -> bool {
@@ -165,17 +174,26 @@ impl PluginRuntime {
     }
 
     pub(crate) fn reload_permissions(&mut self) -> Vec<String> {
+        let (warnings, restarted) = self.reload_permissions_without_restart();
+        self.restart_plugins(restarted);
+        warnings
+    }
+
+    pub(crate) fn reload_permissions_without_restart(&mut self) -> (Vec<String>, BTreeSet<String>) {
         let Some(path) = self.permissions_path.as_deref() else {
-            return Vec::new();
+            return (Vec::new(), BTreeSet::new());
         };
         let previous = self.capabilities.snapshot();
         let state = load_permission_state(&self.catalog, path);
         let restarted = changed_restart_plugins(&self.catalog, &previous, &state.grants);
         self.capabilities.replace(state.grants);
+        (state.warnings, restarted)
+    }
+
+    fn restart_plugins(&self, restarted: BTreeSet<String>) {
         for plugin in restarted {
             let _ = self.restart(Some(&plugin));
         }
-        state.warnings
     }
 
     pub(crate) fn poll_permission_changes(&mut self) -> Option<Vec<String>> {

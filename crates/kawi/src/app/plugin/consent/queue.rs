@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -44,6 +44,24 @@ pub(super) struct GrantRequest {
     pub(super) changed: bool,
     pub(super) changed_requests: Vec<String>,
     pub(super) kind: GrantKind,
+    pub(super) request_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct StartupKey {
+    plugin: String,
+    capability: Capability,
+    request_hash: String,
+}
+
+impl StartupKey {
+    fn new(request: &GrantRequest) -> Option<Self> {
+        (request.kind == GrantKind::Startup).then(|| Self {
+            plugin: request.plugin.clone(),
+            capability: request.capability,
+            request_hash: request.request_hash.clone(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +76,7 @@ pub(super) enum Enqueue {
     Activated,
     Queued,
     Duplicate,
+    Suppressed,
     Full,
 }
 
@@ -67,6 +86,7 @@ pub(crate) struct GrantQueue {
     pending: VecDeque<GrantRequest>,
     call_choices: [String; 3],
     startup_choices: [String; 2],
+    seen_startup: BTreeSet<StartupKey>,
 }
 
 impl Default for GrantQueue {
@@ -76,24 +96,51 @@ impl Default for GrantQueue {
             pending: VecDeque::new(),
             call_choices: CALL_CHOICES.map(str::to_string),
             startup_choices: STARTUP_CHOICES.map(str::to_string),
+            seen_startup: BTreeSet::new(),
         }
     }
 }
 
 impl GrantQueue {
     pub(super) fn enqueue(&mut self, request: GrantRequest, now: Instant) -> Enqueue {
+        let startup_key = StartupKey::new(&request);
+        if startup_key
+            .as_ref()
+            .is_some_and(|key| self.seen_startup.contains(key))
+        {
+            return Enqueue::Suppressed;
+        }
         if self.is_pending(&request) {
             return Enqueue::Duplicate;
         }
         if self.active.is_none() {
+            self.remember_startup(startup_key);
             self.active = Some(GrantPrompt::new(request, now));
             return Enqueue::Activated;
         }
         if self.pending.len() >= MAX_PENDING {
             return Enqueue::Full;
         }
+        self.remember_startup(startup_key);
         self.pending.push_back(request);
         Enqueue::Queued
+    }
+
+    pub(super) fn has_plugin_requests(&self, plugin: &str) -> bool {
+        self.active
+            .as_ref()
+            .is_some_and(|prompt| prompt.request.plugin == plugin)
+            || self.pending.iter().any(|pending| pending.plugin == plugin)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn active_capability(&self) -> Option<Capability> {
+        self.active.as_ref().map(|prompt| prompt.request.capability)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_count(&self) -> usize {
+        self.pending.len()
     }
 
     pub(crate) fn is_active(&self) -> bool {
@@ -145,6 +192,12 @@ impl GrantQueue {
         };
         self.active = Some(GrantPrompt::new(request, now));
         true
+    }
+
+    fn remember_startup(&mut self, key: Option<StartupKey>) {
+        if let Some(key) = key {
+            self.seen_startup.insert(key);
+        }
     }
 
     fn is_pending(&self, request: &GrantRequest) -> bool {
@@ -214,7 +267,10 @@ pub(super) fn changed_request_summary(request: &GrantRequest) -> String {
 }
 
 fn same_request(left: &GrantRequest, right: &GrantRequest) -> bool {
-    left.plugin == right.plugin && left.capability == right.capability && left.kind == right.kind
+    left.plugin == right.plugin
+        && left.capability == right.capability
+        && left.kind == right.kind
+        && left.request_hash == right.request_hash
 }
 
 fn lift<'a>(
