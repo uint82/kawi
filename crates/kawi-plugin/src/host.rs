@@ -126,6 +126,9 @@ impl PluginHost {
         if !is_event_allowed(&self.capabilities, plugin, event) {
             return Ok(NotifyOutcome::Denied);
         }
+        if event_payload_too_large(&payload) {
+            return Ok(NotifyOutcome::Overflow);
+        }
         Ok(worker.notify(event, payload))
     }
 
@@ -148,6 +151,11 @@ impl PluginHost {
             .workers
             .get(plugin)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        if invocation_payload_too_large(&args) {
+            return Err(PluginError::Protocol(
+                "invocation payload exceeds the maximum size".to_string(),
+            ));
+        }
         let request = self.next_request.fetch_add(1, Ordering::Relaxed);
         worker.invoke(request, command.to_string(), args, context)?;
         Ok(request)
@@ -199,6 +207,18 @@ impl Drop for PluginHost {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+fn invocation_payload_too_large(args: &Value) -> bool {
+    serde_json::to_vec(args)
+        .map(|bytes| bytes.len() > kawi_jsonrpc::framing::MAX_MESSAGE_BYTES)
+        .unwrap_or(true)
+}
+
+fn event_payload_too_large(payload: &Value) -> bool {
+    serde_json::to_vec(payload)
+        .map(|bytes| bytes.len() > kawi_jsonrpc::framing::MAX_MESSAGE_BYTES)
+        .unwrap_or(true)
 }
 
 pub(crate) fn send_event(
