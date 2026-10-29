@@ -21,6 +21,7 @@ use super::bindings::kawi::plugin::{
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
+use super::name_lookup;
 use super::net::NetworkPolicy;
 use super::policy::missing_import_capabilities;
 use super::process::ProcessRunner;
@@ -186,8 +187,21 @@ impl Session {
         add_kawi_interfaces(&mut linker, capabilities, &plugin.manifest.name)?;
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|error| PluginError::Initialize(format!("wasi linker: {error}")))?;
+        name_lookup::add_to_linker(&mut linker)
+            .map_err(|error| PluginError::Initialize(format!("wasi name lookup: {error}")))?;
         let (stdout, stderr) = output_pipes();
-        let wasi = build_wasi(plugin, capabilities, stdout.clone(), stderr.clone())?;
+        let network = NetworkPolicy::from_scope(
+            capabilities
+                .scope(&plugin.manifest.name, Capability::NetConnect)
+                .as_ref(),
+        );
+        let wasi = build_wasi(
+            plugin,
+            capabilities,
+            network.clone(),
+            stdout.clone(),
+            stderr.clone(),
+        )?;
         let timeout = Duration::from_millis(plugin.manifest.timeout_ms);
         let bridge = HostBridge::new(
             plugin.manifest.name.clone(),
@@ -198,7 +212,7 @@ impl Session {
             timeout,
         );
         let process = ProcessRunner::new(plugin.clone(), capabilities.clone(), environment.clone());
-        let state = WasmState::new(wasi, bridge, process, stdout, stderr);
+        let state = WasmState::new(wasi, network, bridge, process, stdout, stderr);
         let mut store = Store::new(runtime.engine(), state);
         store.limiter(|state| &mut state.limits);
         store.epoch_deadline_callback(|context| {
@@ -222,14 +236,10 @@ impl Session {
 fn build_wasi(
     plugin: &LoadedPlugin,
     capabilities: &CapabilityRegistry,
+    network: NetworkPolicy,
     stdout: MemoryOutputPipe,
     stderr: MemoryOutputPipe,
 ) -> Result<wasmtime_wasi::WasiCtx, PluginError> {
-    let network = NetworkPolicy::from_scope(
-        capabilities
-            .scope(&plugin.manifest.name, Capability::NetConnect)
-            .as_ref(),
-    );
     let mut config = WasiConfig::new()
         .stdout(stdout)
         .stderr(stderr)

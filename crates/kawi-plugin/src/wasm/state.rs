@@ -15,6 +15,7 @@ use super::bindings::kawi::plugin::{
 };
 use super::convert::{diagnostics_to_protocol, edits_to_protocol, error_from_rpc, state_from_json};
 use super::limits::WasmLimits;
+use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
 
 pub struct WasmState {
@@ -22,6 +23,7 @@ pub struct WasmState {
     pub table: ResourceTable,
     pub bridge: HostBridge,
     pub process: ProcessRunner,
+    pub network: NetworkPolicy,
     pub limits: WasmLimits,
     stdout: MemoryOutputPipe,
     stderr: MemoryOutputPipe,
@@ -32,6 +34,7 @@ pub struct WasmState {
 impl WasmState {
     pub fn new(
         wasi: WasiCtx,
+        network: NetworkPolicy,
         bridge: HostBridge,
         process: ProcessRunner,
         stdout: MemoryOutputPipe,
@@ -42,6 +45,7 @@ impl WasmState {
             table: ResourceTable::new(),
             bridge,
             process,
+            network,
             limits: WasmLimits::new(),
             stdout,
             stderr,

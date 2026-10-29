@@ -9,6 +9,8 @@ mod convert;
 #[cfg(feature = "wasm")]
 mod limits;
 #[cfg(feature = "wasm")]
+mod name_lookup;
+#[cfg(feature = "wasm")]
 mod net;
 #[cfg(feature = "wasm")]
 mod policy;

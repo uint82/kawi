@@ -1,13 +1,20 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 use wasmtime_wasi::sockets::SocketAddrUse;
 
 use crate::capability::{HostPort, Scope};
 
+const RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone)]
 pub(crate) struct NetworkPolicy {
     allowed: BTreeSet<SocketAddr>,
+    names: BTreeMap<String, Vec<IpAddr>>,
     name_lookup: bool,
     enabled: bool,
 }
@@ -26,6 +33,7 @@ impl NetworkPolicy {
     ) -> Self {
         let mut policy = Self {
             allowed: BTreeSet::new(),
+            names: BTreeMap::new(),
             name_lookup: false,
             enabled: !hosts.is_empty(),
         };
@@ -46,6 +54,22 @@ impl NetworkPolicy {
         self.name_lookup
     }
 
+    pub(crate) fn resolve_name(&self, name: &str) -> Result<Vec<IpAddr>, io::Error> {
+        if !self.name_lookup {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "name lookup is not granted",
+            ));
+        }
+        if let Ok(address) = name.parse::<IpAddr>() {
+            return Ok(vec![address]);
+        }
+        self.names
+            .get(&name.to_ascii_lowercase())
+            .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, "name is not granted"))
+    }
+
     pub(crate) fn allows(&self, address: SocketAddr, use_: SocketAddrUse) -> bool {
         match use_ {
             SocketAddrUse::TcpBind => {
@@ -59,6 +83,7 @@ impl NetworkPolicy {
     fn deny() -> Self {
         Self {
             allowed: BTreeSet::new(),
+            names: BTreeMap::new(),
             name_lookup: false,
             enabled: false,
         }
@@ -76,21 +101,42 @@ impl NetworkPolicy {
         resolve: &impl Fn(&HostPort) -> io::Result<Vec<SocketAddr>>,
     ) {
         self.name_lookup = true;
-        let Ok(addresses) = resolve(host) else {
-            return;
-        };
-        self.allowed.extend(
-            addresses
-                .into_iter()
-                .filter(|address| is_public_ip(address.ip())),
-        );
+        let key = host.host().to_ascii_lowercase();
+        let mut public = BTreeSet::new();
+        if let Ok(addresses) = resolve(host) {
+            for address in addresses {
+                if is_public_ip(address.ip()) {
+                    public.insert(address.ip());
+                    self.allowed
+                        .insert(SocketAddr::new(address.ip(), host.port()));
+                }
+            }
+        }
+        self.names.insert(key, public.into_iter().collect());
     }
 }
 
 fn resolve_host(host: &HostPort) -> io::Result<Vec<SocketAddr>> {
-    (host.host(), host.port())
-        .to_socket_addrs()
-        .map(Iterator::collect)
+    let name = host.host().to_string();
+    let port = host.port();
+    let (sender, receiver) = mpsc::channel();
+    thread::Builder::new()
+        .name("kawi-dns".to_string())
+        .spawn(move || {
+            let result = (name.as_str(), port)
+                .to_socket_addrs()
+                .map(Iterator::collect);
+            let _ = sender.send(result);
+        })
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    receiver
+        .recv_timeout(RESOLUTION_TIMEOUT)
+        .unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "dns resolution timed out",
+            ))
+        })
 }
 
 fn is_connectable_explicit(ip: IpAddr) -> bool {

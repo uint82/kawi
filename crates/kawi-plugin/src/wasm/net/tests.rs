@@ -1,4 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use wasmtime_wasi::sockets::SocketAddrUse;
 
@@ -76,6 +78,74 @@ fn pins_dns_answers_and_rejects_rebinding() {
     assert!(policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
     assert!(!policy.allows(address(Ipv4Addr::LOCALHOST, 443), SocketAddrUse::TcpConnect));
     assert!(!policy.allows(address(OTHER_PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+}
+
+#[test]
+fn resolves_only_granted_names() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![address(PUBLIC_V4, 443)]),
+    );
+    assert_eq!(
+        policy.resolve_name("example.com").unwrap(),
+        vec![IpAddr::V4(PUBLIC_V4)]
+    );
+    assert!(policy.resolve_name("other.example").is_err());
+    assert_eq!(
+        policy.resolve_name("8.8.8.8").unwrap(),
+        vec![IpAddr::V4(PUBLIC_V4)]
+    );
+}
+
+#[test]
+fn denies_name_lookup_without_a_hostname_grant() {
+    let policy = NetworkPolicy::from_hosts_with(&hosts(&["8.8.8.8:443"]), unreachable_resolver);
+    assert!(!policy.allows_name_lookup());
+    assert!(policy.resolve_name("8.8.8.8").is_err());
+    assert!(policy.resolve_name("example.com").is_err());
+}
+
+#[test]
+fn mixed_answers_pin_only_public_addresses() {
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443"]),
+        fixed_resolver(vec![
+            address(PUBLIC_V4, 443),
+            address(Ipv4Addr::LOCALHOST, 443),
+        ]),
+    );
+    assert!(policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    assert!(!policy.allows(address(Ipv4Addr::LOCALHOST, 443), SocketAddrUse::TcpConnect));
+    assert_eq!(
+        policy.resolve_name("example.com").unwrap(),
+        vec![IpAddr::V4(PUBLIC_V4)]
+    );
+}
+
+#[test]
+fn failed_resolution_denies_connections() {
+    let policy = NetworkPolicy::from_hosts_with(&hosts(&["example.com:443"]), |_| {
+        Err(io::Error::other("resolver failure"))
+    });
+    assert!(policy.allows_name_lookup());
+    assert!(!policy.allows(address(PUBLIC_V4, 443), SocketAddrUse::TcpConnect));
+    assert!(policy.resolve_name("example.com").unwrap().is_empty());
+}
+
+#[test]
+fn resolves_each_hostname_once_per_policy() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&calls);
+    let policy = NetworkPolicy::from_hosts_with(
+        &hosts(&["example.com:443", "example.com:8443"]),
+        move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![address(PUBLIC_V4, 443)])
+        },
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    let _ = policy.resolve_name("example.com");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
 
 #[test]
