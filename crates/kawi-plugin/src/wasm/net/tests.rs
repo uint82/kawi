@@ -1,6 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use wasmtime_wasi::sockets::SocketAddrUse;
 
@@ -146,6 +147,18 @@ fn resolves_each_hostname_once_per_policy() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     let _ = policy.resolve_name("example.com");
     assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn resolver_timeout_fails_closed() {
+    let host = HostPort::parse("example.com:443").unwrap();
+    let start = Instant::now();
+    let result = resolve_with_timeout(&host, Duration::from_millis(10), |_| {
+        thread::sleep(Duration::from_secs(1));
+        Ok(Vec::new())
+    });
+    assert!(result.is_err());
+    assert!(start.elapsed() < Duration::from_secs(1));
 }
 
 #[test]

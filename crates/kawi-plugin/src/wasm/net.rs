@@ -117,26 +117,32 @@ impl NetworkPolicy {
 }
 
 fn resolve_host(host: &HostPort) -> io::Result<Vec<SocketAddr>> {
-    let name = host.host().to_string();
-    let port = host.port();
+    resolve_with_timeout(host, RESOLUTION_TIMEOUT, |host| {
+        (host.host(), host.port())
+            .to_socket_addrs()
+            .map(Iterator::collect)
+    })
+}
+
+fn resolve_with_timeout(
+    host: &HostPort,
+    timeout: Duration,
+    resolve: impl FnOnce(&HostPort) -> io::Result<Vec<SocketAddr>> + Send + 'static,
+) -> io::Result<Vec<SocketAddr>> {
+    let host = host.clone();
     let (sender, receiver) = mpsc::channel();
     thread::Builder::new()
         .name("kawi-dns".to_string())
         .spawn(move || {
-            let result = (name.as_str(), port)
-                .to_socket_addrs()
-                .map(Iterator::collect);
-            let _ = sender.send(result);
+            let _ = sender.send(resolve(&host));
         })
         .map_err(|error| io::Error::other(error.to_string()))?;
-    receiver
-        .recv_timeout(RESOLUTION_TIMEOUT)
-        .unwrap_or_else(|_| {
-            Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "dns resolution timed out",
-            ))
-        })
+    receiver.recv_timeout(timeout).unwrap_or_else(|_| {
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "dns resolution timed out",
+        ))
+    })
 }
 
 fn is_connectable_explicit(ip: IpAddr) -> bool {
