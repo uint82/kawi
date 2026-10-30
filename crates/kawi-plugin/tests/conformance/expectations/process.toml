@@ -225,6 +225,21 @@ status = "not-supported"
 kind = "NetworkAdvisory"
 reason = "the process runtime cannot enforce host-scoped network destinations"
 
+[rows."wasm.net.outbound_session_cap"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.inbound_cap"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
+[rows."wasm.net.inbound_cap_no_sender"]
+status = "not-supported"
+kind = "NetworkAdvisory"
+reason = "the process runtime cannot enforce host-scoped network destinations"
+
 [rows."wasm.net.rebind_private"]
 status = "not-supported"
 kind = "NetworkAdvisory"

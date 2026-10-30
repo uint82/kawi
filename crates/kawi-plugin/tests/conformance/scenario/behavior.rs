@@ -28,6 +28,7 @@ pub(crate) enum Behavior {
     MidCodepoint,
     ControlText,
     NetworkProbe,
+    NetworkProbeHeavy,
     EventBufferChanged,
     EventBufferOpened,
     EventFileOpened,
@@ -54,7 +55,7 @@ impl Behavior {
             Self::EventWrite => "event-write",
             Self::MidCodepoint => "mid-codepoint",
             Self::ControlText => "control-text",
-            Self::NetworkProbe => "normal",
+            Self::NetworkProbe | Self::NetworkProbeHeavy => "normal",
             Self::UngrantedImport | Self::OverImport => "host-call",
             Self::EventBufferChanged
             | Self::EventBufferOpened
@@ -83,7 +84,7 @@ impl Behavior {
             Self::EventWrite => "events-write.wasm",
             Self::MidCodepoint => "editor-write-mid.wasm",
             Self::ControlText => "control-text.wasm",
-            Self::NetworkProbe => "network.wasm",
+            Self::NetworkProbe | Self::NetworkProbeHeavy => "network.wasm",
             Self::UngrantedImport | Self::OverImport => "editor-host.wasm",
             Self::EventBufferChanged
             | Self::EventBufferOpened
@@ -154,7 +155,7 @@ impl Behavior {
             ],
             Self::MidCodepoint => &[Capability::EditorWrite],
             Self::ControlText => &[Capability::UiMessage, Capability::DiagnosticsPublish],
-            Self::NetworkProbe => &[
+            Self::NetworkProbe | Self::NetworkProbeHeavy => &[
                 Capability::NetConnect,
                 Capability::FsRead,
                 Capability::FsWrite,
@@ -176,6 +177,10 @@ impl Behavior {
 
     pub(crate) fn oversizes_component(self) -> bool {
         self == Self::OversizeComponent
+    }
+
+    pub(crate) fn is_network(self) -> bool {
+        matches!(self, Self::NetworkProbe | Self::NetworkProbeHeavy)
     }
 
     pub(crate) fn event(self) -> Option<&'static str> {
@@ -206,7 +211,8 @@ impl Behavior {
             | Self::AllImports
             | Self::MidCodepoint
             | Self::ControlText
-            | Self::NetworkProbe => None,
+            | Self::NetworkProbe
+            | Self::NetworkProbeHeavy => None,
         }
     }
 }

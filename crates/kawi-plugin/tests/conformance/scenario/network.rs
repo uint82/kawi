@@ -141,6 +141,21 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },
+        "wasm.net.outbound_session_cap" => NetworkCase {
+            command: "write-session",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.inbound_cap" => NetworkCase {
+            command: "read-cap",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.inbound_cap_no_sender" => NetworkCase {
+            command: "read-strict",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
         "wasm.net.restart_closes_socket" => NetworkCase {
             command: "hold",
             target: NetworkTarget::Allowed,

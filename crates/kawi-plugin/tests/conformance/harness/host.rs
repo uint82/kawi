@@ -16,7 +16,9 @@ use kawi_plugin::{
 
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 use super::super::scenario::resolver_script;
-use super::super::scenario::{network_endpoint, Behavior, NetworkTarget, Scenario};
+#[cfg(feature = "wasm")]
+use super::super::scenario::Behavior;
+use super::super::scenario::{network_endpoint, NetworkTarget, Scenario};
 use super::driver::Driver;
 use super::fixtures::{temp_root, write_grants, write_manifest, ManifestSpec, NetworkSetup};
 use super::model::{Finished, Observation, Policy, Runtime};
@@ -266,7 +268,7 @@ struct NetworkHarness {
 }
 
 fn network_setup(root: &std::path::Path, scenario: &Scenario) -> NetworkHarness {
-    if scenario.behavior != Behavior::NetworkProbe {
+    if !scenario.behavior.is_network() {
         return NetworkHarness {
             setup: None,
             hostname: None,

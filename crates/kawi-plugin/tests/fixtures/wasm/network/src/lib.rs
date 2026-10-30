@@ -3,7 +3,7 @@ wit_bindgen::generate!({
     world: "host",
 });
 
-use std::io::{self, IoSlice, Write};
+use std::io::{self, IoSlice, Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::Mutex;
 
@@ -18,7 +18,9 @@ const CAPABILITY_DENIED: i32 = -32012;
 const NETWORK_CAPABILITY: &str = "net.connect";
 const OUTBOUND_CAP: usize = 8 * 1024 * 1024;
 const WRITE_LIMIT: usize = 9 * 1024 * 1024;
-const WRITE_CHUNK: usize = 64 * 1024;
+const WRITE_CHUNK: usize = 256 * 1024;
+const READ_CHUNK: usize = 256 * 1024;
+const SESSION_CONNECTIONS: usize = 9;
 
 fn failure(error: impl std::fmt::Display) -> Error {
     Error {
@@ -70,6 +72,9 @@ impl Guest for Plugin {
             "write-strict" => write_strict(address),
             "write-straddle" => write_straddle(address),
             "write-vectored" => write_vectored_cap(address),
+            "write-session" => write_session(address),
+            "read-cap" => read_until_eof(address),
+            "read-strict" => read_strict(address),
             "hold" => TcpStream::connect(address)
                 .map(|stream| {
                     *HELD.lock().expect("held socket lock") = Some(stream);
@@ -166,19 +171,59 @@ fn write_bytes(address: &str) -> Result<(usize, String), Error> {
 
 fn write_bytes_with(
     address: &str,
-    mut write: impl FnMut(&mut TcpStream, &[u8]) -> io::Result<usize>,
+    write: impl FnMut(&mut TcpStream, &[u8]) -> io::Result<usize>,
 ) -> Result<(usize, String), Error> {
     let mut stream = TcpStream::connect(address).map_err(failure)?;
+    write_stream(&mut stream, write)
+}
+
+fn write_stream(
+    stream: &mut TcpStream,
+    mut write: impl FnMut(&mut TcpStream, &[u8]) -> io::Result<usize>,
+) -> Result<(usize, String), Error> {
     let chunk = [0_u8; WRITE_CHUNK];
     let mut written = 0;
     while written < WRITE_LIMIT {
-        match write(&mut stream, &chunk) {
+        match write(stream, &chunk) {
             Ok(0) => return Ok((written, "zero".to_string())),
             Ok(count) => written += count,
             Err(error) => return Ok((written, error.to_string())),
         }
     }
     Ok((written, "none".to_string()))
+}
+
+fn write_session(address: &str) -> Result<Argument, Error> {
+    let mut results = Vec::with_capacity(SESSION_CONNECTIONS);
+    for _ in 0..SESSION_CONNECTIONS {
+        let mut stream = TcpStream::connect(address).map_err(failure)?;
+        let (written, outcome) = write_stream(&mut stream, TcpStream::write)?;
+        results.push(format!("{written}:{outcome}"));
+    }
+    Ok(text(results.join(",")))
+}
+
+fn read_until_eof(address: &str) -> Result<Argument, Error> {
+    let (read, outcome) = read_bytes(address)?;
+    Ok(text(format!("{read}:{outcome}")))
+}
+
+fn read_strict(address: &str) -> Result<Argument, Error> {
+    let (_, outcome) = read_bytes(address)?;
+    Err(failure(outcome))
+}
+
+fn read_bytes(address: &str) -> Result<(usize, String), Error> {
+    let mut stream = TcpStream::connect(address).map_err(failure)?;
+    let mut buffer = [0_u8; READ_CHUNK];
+    let mut read = 0;
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => return Ok((read, "eof".to_string())),
+            Ok(count) => read += count,
+            Err(error) => return Ok((read, error.to_string())),
+        }
+    }
 }
 
 export!(Plugin);

@@ -169,6 +169,15 @@ status = "pass"
 [rows."wasm.net.outbound_cap_vectored"]
 status = "pass"
 
+[rows."wasm.net.outbound_session_cap"]
+status = "pass"
+
+[rows."wasm.net.inbound_cap"]
+status = "pass"
+
+[rows."wasm.net.inbound_cap_no_sender"]
+status = "pass"
+
 [rows."wasm.net.rebind_private"]
 status = "pass"
 
