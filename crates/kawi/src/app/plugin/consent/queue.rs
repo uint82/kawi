@@ -1,117 +1,50 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
+#[cfg(test)]
 use kawi_plugin::Capability;
 
 use super::super::text::sanitize;
+pub(super) use super::prompt::{GrantChoice, GrantPrompt};
+pub(crate) use super::request::GrantKind;
+use super::request::StartupKey;
+pub(super) use super::request::{GrantItem, GrantRequest};
 
-const CALL_CHOICES: [&str; 3] = ["Allow once", "Allow always", "Deny"];
-const STARTUP_CHOICES: [&str; 2] = ["Allow always", "Deny"];
 const MAX_PENDING: usize = 8;
-const PROMPT_TTL: Duration = Duration::from_secs(30);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GrantKind {
-    Call,
-    Startup,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum GrantChoice {
-    Once,
-    Always,
-    Deny,
-}
-
-impl GrantKind {
-    pub(super) fn choices(self) -> &'static [&'static str] {
-        match self {
-            Self::Call => &CALL_CHOICES,
-            Self::Startup => &STARTUP_CHOICES,
-        }
-    }
-
-    fn initial_selection(self) -> usize {
-        self.choices().len() - 1
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct GrantRequest {
-    pub(super) plugin: String,
-    pub(super) capability: Capability,
-    pub(super) changed: bool,
-    pub(super) changed_requests: Vec<String>,
-    pub(super) kind: GrantKind,
-    pub(super) request_hash: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct StartupKey {
-    plugin: String,
-    capability: Capability,
-    request_hash: String,
-}
-
-impl StartupKey {
-    fn new(request: &GrantRequest) -> Option<Self> {
-        (request.kind == GrantKind::Startup).then(|| Self {
-            plugin: request.plugin.clone(),
-            capability: request.capability,
-            request_hash: request.request_hash.clone(),
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct GrantPrompt {
-    request: GrantRequest,
-    selected: usize,
-    expires_at: Instant,
-}
+pub(super) const PROMPT_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Enqueue {
     Activated,
+    Merged,
     Queued,
     Duplicate,
     Suppressed,
     Full,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct GrantQueue {
     active: Option<GrantPrompt>,
     pending: VecDeque<GrantRequest>,
-    call_choices: [String; 3],
-    startup_choices: [String; 2],
     seen_startup: BTreeSet<StartupKey>,
-}
-
-impl Default for GrantQueue {
-    fn default() -> Self {
-        Self {
-            active: None,
-            pending: VecDeque::new(),
-            call_choices: CALL_CHOICES.map(str::to_string),
-            startup_choices: STARTUP_CHOICES.map(str::to_string),
-            seen_startup: BTreeSet::new(),
-        }
-    }
 }
 
 impl GrantQueue {
     pub(super) fn enqueue(&mut self, request: GrantRequest, now: Instant) -> Enqueue {
-        let startup_key = StartupKey::new(&request);
+        let startup_key = request.startup_key();
         if startup_key
             .as_ref()
             .is_some_and(|key| self.seen_startup.contains(key))
         {
             return Enqueue::Suppressed;
         }
-        if self.is_pending(&request) {
-            return Enqueue::Duplicate;
+        if let Some(outcome) = self.merge_active(&request) {
+            return outcome;
+        }
+        if let Some(outcome) = self.merge_pending(&request) {
+            return outcome;
         }
         if self.active.is_none() {
             self.remember_startup(startup_key);
@@ -126,16 +59,64 @@ impl GrantQueue {
         Enqueue::Queued
     }
 
+    fn merge_active(&mut self, request: &GrantRequest) -> Option<Enqueue> {
+        let prompt = self.active.as_mut()?;
+        if !prompt.request().same_batch(request) {
+            return None;
+        }
+        let added = prompt.merge(request.clone());
+        let key = added.then(|| prompt.request().startup_key()).flatten();
+        self.remember_startup(key);
+        Some(if added {
+            Enqueue::Merged
+        } else {
+            Enqueue::Duplicate
+        })
+    }
+
+    fn merge_pending(&mut self, request: &GrantRequest) -> Option<Enqueue> {
+        let pending = self
+            .pending
+            .iter_mut()
+            .find(|pending| pending.same_batch(request))?;
+        let added = pending.merge(request);
+        let key = added.then(|| pending.startup_key()).flatten();
+        self.remember_startup(key);
+        Some(if added {
+            Enqueue::Merged
+        } else {
+            Enqueue::Duplicate
+        })
+    }
+
     pub(super) fn has_plugin_requests(&self, plugin: &str) -> bool {
         self.active
             .as_ref()
-            .is_some_and(|prompt| prompt.request.plugin == plugin)
+            .is_some_and(|prompt| prompt.request().plugin == plugin)
             || self.pending.iter().any(|pending| pending.plugin == plugin)
     }
 
     #[cfg(test)]
     pub(crate) fn active_capability(&self) -> Option<Capability> {
-        self.active.as_ref().map(|prompt| prompt.request.capability)
+        self.active
+            .as_ref()
+            .and_then(|prompt| prompt.request().items.first())
+            .map(|item| item.capability)
+    }
+
+    #[cfg(all(test, feature = "wasm"))]
+    pub(crate) fn active_capabilities(&self) -> Vec<Capability> {
+        self.active
+            .as_ref()
+            .map(|prompt| {
+                prompt
+                    .request()
+                    .items
+                    .iter()
+                    .map(|item| item.capability)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     #[cfg(test)]
@@ -160,27 +141,26 @@ impl GrantQueue {
     }
 
     pub(super) fn items(&self) -> &[String] {
-        lift(
-            self.active.as_ref().map(|prompt| prompt.request.kind),
-            &self.call_choices,
-            &self.startup_choices,
-        )
+        self.active
+            .as_ref()
+            .map(GrantPrompt::labels)
+            .unwrap_or_default()
     }
 
     pub(super) fn expire(&mut self, now: Instant) -> Option<GrantRequest> {
         let expired = self
             .active
             .as_ref()
-            .is_some_and(|prompt| prompt.expires_at <= now);
+            .is_some_and(|prompt| prompt.expires_at() <= now);
         if !expired {
             return None;
         }
-        self.active.take().map(|prompt| prompt.request)
+        self.active.take().map(|prompt| prompt.into_request())
     }
 
     pub(crate) fn wait_timeout(&self, now: Instant) -> Option<Duration> {
         let prompt = self.active.as_ref()?;
-        Some(prompt.expires_at.saturating_duration_since(now))
+        Some(prompt.expires_at().saturating_duration_since(now))
     }
 
     pub(super) fn activate_next(&mut self, now: Instant) -> bool {
@@ -199,62 +179,11 @@ impl GrantQueue {
             self.seen_startup.insert(key);
         }
     }
-
-    fn is_pending(&self, request: &GrantRequest) -> bool {
-        self.active
-            .as_ref()
-            .is_some_and(|prompt| same_request(&prompt.request, request))
-            || self
-                .pending
-                .iter()
-                .any(|pending| same_request(pending, request))
-    }
-}
-
-impl GrantPrompt {
-    fn new(request: GrantRequest, now: Instant) -> Self {
-        let selected = request.kind.initial_selection();
-        Self {
-            request,
-            selected,
-            expires_at: now + PROMPT_TTL,
-        }
-    }
-
-    pub(super) fn selected(&self) -> usize {
-        self.selected
-    }
-
-    pub(super) fn request(&self) -> &GrantRequest {
-        &self.request
-    }
-
-    pub(super) fn move_by(&mut self, delta: isize) {
-        let choices = self.request.kind.choices().len() as isize;
-        self.selected = (self.selected as isize + delta).rem_euclid(choices) as usize;
-    }
-
-    pub(super) fn choice(&self) -> GrantChoice {
-        match (self.request.kind, self.selected) {
-            (GrantKind::Call, 0) => GrantChoice::Once,
-            (GrantKind::Call, 1) => GrantChoice::Always,
-            (GrantKind::Startup, 0) => GrantChoice::Always,
-            _ => GrantChoice::Deny,
-        }
-    }
-
-    pub(super) fn accepts_key(key: KeyEvent) -> bool {
-        !key.modifiers
-            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-    }
 }
 
 pub(super) fn changed_request_summary(request: &GrantRequest) -> String {
-    if !request.changed {
+    if !request.changed || request.changed_requests.is_empty() {
         return String::new();
-    }
-    if request.changed_requests.is_empty() {
-        return " Request hash changed; grants were withheld.".to_string();
     }
     let shown = request
         .changed_requests
@@ -264,24 +193,6 @@ pub(super) fn changed_request_summary(request: &GrantRequest) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(" Changed: {shown}.")
-}
-
-fn same_request(left: &GrantRequest, right: &GrantRequest) -> bool {
-    left.plugin == right.plugin
-        && left.capability == right.capability
-        && left.kind == right.kind
-        && left.request_hash == right.request_hash
-}
-
-fn lift<'a>(
-    kind: Option<GrantKind>,
-    call_choices: &'a [String],
-    startup_choices: &'a [String],
-) -> &'a [String] {
-    match kind {
-        Some(GrantKind::Startup) => startup_choices,
-        Some(GrantKind::Call) | None => call_choices,
-    }
 }
 
 pub(super) fn navigation_key(key: KeyEvent) -> Option<isize> {

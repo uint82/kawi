@@ -1,45 +1,57 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use kawi_plugin::{Capability, Scope};
+use kawi_plugin::{reconcile_approved, Capability, CapabilityRequests, Scope};
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value};
 
 use super::PluginRuntime;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GrantDecision {
+    pub(super) capability: Capability,
+    pub(super) allow: bool,
+}
+
 impl PluginRuntime {
-    pub(super) fn write_grant(
+    pub(super) fn write_grants(
         &mut self,
         plugin: &str,
-        capability: Capability,
+        decisions: &[GrantDecision],
     ) -> Result<(), String> {
         let path = self
             .permissions_path
             .clone()
             .ok_or_else(|| "permissions.toml is not configured".to_string())?;
-        let scope = self
-            .request_scope(plugin, capability)
-            .ok_or_else(|| "capability is not requested".to_string())?;
-        let request_hash = self
+        let loaded = self
             .catalog
             .plugins
             .iter()
             .find(|loaded| loaded.manifest.name == plugin)
-            .map(|loaded| loaded.manifest.capability_requests.request_hash())
             .ok_or_else(|| "unknown plugin".to_string())?;
-        let changed = self.changed_capabilities(plugin);
-        write_grant(&path, plugin, capability, &scope, &request_hash, &changed)?;
+        let requests = loaded.manifest.capability_requests.clone();
+        let request_hash = requests.request_hash();
+        let approved = self.capabilities.get(plugin).approved;
+        write_grants(
+            &path,
+            plugin,
+            &requests,
+            &request_hash,
+            &approved,
+            decisions,
+        )?;
         self.remember_permission_write(&path);
         Ok(())
     }
 }
 
-pub(super) fn write_grant(
+pub(super) fn write_grants(
     path: &Path,
     plugin: &str,
-    capability: Capability,
-    scope: &Scope,
+    requests: &CapabilityRequests,
     request_hash: &str,
-    changed: &[Capability],
+    approved: &BTreeMap<Capability, Scope>,
+    decisions: &[GrantDecision],
 ) -> Result<(), String> {
     let text = read_permissions(path)?;
     let mut document = text
@@ -48,15 +60,60 @@ pub(super) fn write_grant(
     let plugins = ensure_table(document.as_table_mut(), "plugins")?;
     let plugin_table = ensure_table(plugins, plugin)?;
     plugin_table.insert("request_hash", toml_edit::value(request_hash));
+    write_approved(plugin_table, approved, requests, decisions)?;
     let grant = ensure_table(plugin_table, "grant")?;
-    for changed_capability in changed {
-        if *changed_capability != capability {
-            grant.remove(changed_capability.name());
-        }
-    }
-    grant.insert(capability.name(), scope_item(scope));
+    remove_unrequested_grants(grant, requests);
+    apply_decisions(grant, requests, decisions)?;
     crate::persist::write_atomically(path, &document.to_string())
         .map_err(|error| format!("cannot write permissions.toml: {error}"))
+}
+
+fn write_approved(
+    plugin_table: &mut Table,
+    approved: &BTreeMap<Capability, Scope>,
+    requests: &CapabilityRequests,
+    decisions: &[GrantDecision],
+) -> Result<(), String> {
+    let decision_map = decisions
+        .iter()
+        .map(|decision| (decision.capability, decision.allow))
+        .collect::<BTreeMap<_, _>>();
+    let next = reconcile_approved(approved, requests, &decision_map);
+    let table = ensure_table(plugin_table, "approved")?;
+    *table = Table::new();
+    for (capability, scope) in next {
+        table.insert(capability.name(), scope_item(&scope));
+    }
+    Ok(())
+}
+
+fn apply_decisions(
+    grant: &mut Table,
+    requests: &CapabilityRequests,
+    decisions: &[GrantDecision],
+) -> Result<(), String> {
+    for decision in decisions {
+        if decision.allow {
+            let scope = requests
+                .get(decision.capability)
+                .ok_or_else(|| "capability is not requested".to_string())?;
+            grant.insert(decision.capability.name(), scope_item(scope));
+        } else {
+            grant.remove(decision.capability.name());
+        }
+    }
+    Ok(())
+}
+
+fn remove_unrequested_grants(grant: &mut Table, requests: &CapabilityRequests) {
+    let stale = grant
+        .iter()
+        .filter_map(|(name, _)| Capability::parse(name))
+        .filter(|capability| !requests.contains(*capability))
+        .collect::<Vec<_>>();
+    for capability in stale {
+        grant.remove(capability.name());
+    }
 }
 
 fn read_permissions(path: &Path) -> Result<String, String> {
@@ -96,78 +153,4 @@ fn scoped_item(key: &str, values: &[String]) -> Item {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    fn temp_file() -> PathBuf {
-        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("kawi-grant-file-{}-{id}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        dir.join("permissions.toml")
-    }
-
-    #[test]
-    fn merges_grants_and_preserves_comments() {
-        let path = temp_file();
-        fs::write(
-            &path,
-            "# keep\n[plugins.other.grant]\n\"ui.message\" = true\n",
-        )
-        .unwrap();
-        write_grant(
-            &path,
-            "sample",
-            Capability::FsRead,
-            &Scope::Paths(vec!["$WORKSPACE/src".to_string()]),
-            "sha256:new",
-            &[],
-        )
-        .unwrap();
-        let text = fs::read_to_string(&path).unwrap();
-        assert!(text.contains("# keep"));
-        assert!(text.contains("[plugins.other.grant]"));
-        assert!(text.contains("[plugins.sample]"));
-        assert!(text.contains("request_hash = \"sha256:new\""));
-        assert!(text.contains("\"fs.read\" = { paths = [\"$WORKSPACE/src\"] }"));
-    }
-
-    #[test]
-    fn concurrent_edits_are_re_read_before_merge() {
-        let path = temp_file();
-        write_grant(
-            &path,
-            "sample",
-            Capability::EditorRead,
-            &Scope::Unscoped,
-            "sha256:first",
-            &[],
-        )
-        .unwrap();
-        fs::write(
-            &path,
-            format!(
-                "{}\n[plugins.other.grant]\n\"ui.message\" = true\n",
-                fs::read_to_string(&path).unwrap()
-            ),
-        )
-        .unwrap();
-        write_grant(
-            &path,
-            "sample",
-            Capability::EditorWrite,
-            &Scope::Unscoped,
-            "sha256:second",
-            &[],
-        )
-        .unwrap();
-        let text = fs::read_to_string(&path).unwrap();
-        assert!(text.contains("[plugins.other.grant]"));
-        assert!(text.contains("\"editor.read\" = true"));
-        assert!(text.contains("\"editor.write\" = true"));
-        assert!(text.contains("request_hash = \"sha256:second\""));
-    }
-}
+mod tests;

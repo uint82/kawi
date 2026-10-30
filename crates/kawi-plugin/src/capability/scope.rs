@@ -85,6 +85,20 @@ pub enum Scope {
 }
 
 impl Scope {
+    pub fn covers(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unscoped, Self::Unscoped) => true,
+            (Self::Paths(outer), Self::Paths(inner)) => inner
+                .iter()
+                .all(|inner| outer.iter().any(|outer| path_within(inner, outer))),
+            (Self::Commands(outer), Self::Commands(inner))
+            | (Self::Hosts(outer), Self::Hosts(inner)) => {
+                inner.iter().all(|inner| outer.contains(inner))
+            }
+            _ => false,
+        }
+    }
+
     pub fn to_json_object(&self) -> Map<String, Value> {
         let mut object = Map::new();
         match self {

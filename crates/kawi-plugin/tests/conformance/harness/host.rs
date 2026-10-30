@@ -64,8 +64,13 @@ impl ConformanceHost {
                 network: network.setup.as_ref(),
             },
         );
-        write_grants(&grants_path, scenario.grants, network.setup.as_ref());
         let catalog = load_catalog(&plugins);
+        write_grants(
+            &grants_path,
+            scenario.grants,
+            network.setup.as_ref(),
+            &catalog,
+        );
         if !scenario.behavior.expects_load_warning() {
             assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
         }
@@ -152,7 +157,7 @@ impl ConformanceHost {
     }
 
     pub(crate) fn revoke_all(&self) {
-        write_grants(&self.grants_path, &[], None);
+        write_grants(&self.grants_path, &[], None, &self.catalog);
         let state = load_permission_state(&self.catalog, &self.grants_path);
         assert!(state.file_error.is_none(), "{:?}", state.file_error);
         self.registry.replace(state.grants);

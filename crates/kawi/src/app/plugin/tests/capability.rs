@@ -299,7 +299,7 @@ fn stale_request_hash_shows_ungranted_and_changed() {
     let lines = app.plugins.capability_lines("denied");
     assert!(lines
         .iter()
-        .any(|line| line == "changed: request hash mismatch"));
+        .any(|line| line.starts_with("changed: ") && line.contains("editor.read added")));
     assert!(lines
         .iter()
         .any(|line| line == "ungranted: editor.read, editor.write"));
@@ -307,7 +307,7 @@ fn stale_request_hash_shows_ungranted_and_changed() {
     let list = app.pager.as_ref().expect("pager");
     assert!(list
         .iter()
-        .any(|line| line.contains("changed: request hash mismatch")));
+        .any(|line| line.contains("changed: ") && line.contains("editor.read added")));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -525,13 +525,53 @@ fn hash_change_prompt_lists_added_requests() {
         "[plugins.denied]\nrequest_hash = \"sha256:stale\"\n\n[plugins.denied.grant]\n\"editor.read\" = true\n",
     );
     app.handle_plugin_host_request("denied", json!(null), "editor.apply_edit", json!({}));
+    let items = app.grant_prompt_items().expect("prompt").0;
     assert!(
-        app.message
-            .as_deref()
-            .is_some_and(|message| message.contains("editor.write added")),
-        "{:?}",
-        app.message
+        items
+            .iter()
+            .any(|line| line.contains("editor.write: deny (added)")),
+        "{items:?}"
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn batched_reapproval_keeps_per_item_choices_and_records_approval() {
+    let root = temp_dir("batch_reapproval");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(
+        &mut app,
+        &root,
+        "[plugins.denied.approved]\n\"ui.message\" = true\n\n[plugins.denied.grant]\n\"ui.message\" = true\n",
+    );
+    app.handle_plugin_host_request("denied", json!(null), "editor.get_state", json!({}));
+    let items = app.grant_prompt_items().expect("prompt").0;
+    assert!(items
+        .iter()
+        .any(|line| line.contains("editor.read: deny (added)")));
+    assert!(items
+        .iter()
+        .any(|line| line.contains("editor.write: deny (added)")));
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!app.plugin_grants.is_active());
+    assert!(app
+        .plugins
+        .has_capability("denied", kawi_plugin::Capability::EditorRead));
+    assert!(!app
+        .plugins
+        .has_capability("denied", kawi_plugin::Capability::EditorWrite));
+    let permissions = fs::read_to_string(root.join("permissions.toml")).unwrap();
+    assert!(permissions.contains("[plugins.denied.approved]"));
+    assert!(permissions.contains("\"editor.read\" = true"));
+    assert!(!permissions.contains("\"editor.write\" = true"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -544,12 +584,7 @@ fn permissions_file_changes_reload_grants() {
     assert!(!app
         .plugins
         .has_capability("denied", kawi_plugin::Capability::EditorRead));
-    std::thread::sleep(Duration::from_millis(150));
-    fs::write(
-        root.join("permissions.toml"),
-        "[plugins.denied.grant]\n\"editor.read\" = true\n",
-    )
-    .unwrap();
+    write_permissions(&root, "[plugins.denied.grant]\n\"editor.read\" = true\n");
     wait_for_grant(&mut app, true);
     assert!(app
         .plugins
@@ -570,8 +605,7 @@ fn malformed_permission_saves_fail_closed() {
     assert!(app
         .plugins
         .has_capability("denied", kawi_plugin::Capability::EditorRead));
-    std::thread::sleep(Duration::from_millis(150));
-    fs::write(root.join("permissions.toml"), "not toml").unwrap();
+    write_permissions(&root, "not toml");
     wait_for_grant(&mut app, false);
     assert!(!app
         .plugins
@@ -748,11 +782,10 @@ title = "Probe"
     let (first, first_pid) = run_sandbox_probe(&mut app, &secret);
     assert_eq!(first["content"], "secret");
 
-    fs::write(
-        root.join("permissions.toml"),
+    write_permissions(
+        &root,
         "[plugins.sandbox.grant]\n\"fs.read\" = { paths = [\"$WORKSPACE/open\"] }\n",
-    )
-    .unwrap();
+    );
     app.plugins.reload_permissions();
     let (second, second_pid) = run_sandbox_probe(&mut app, &secret);
     assert_eq!(second["ok"], false, "{second}");
@@ -883,9 +916,12 @@ fn atomic_permission_saves_are_detected() {
     denied_manifest(&root);
     let mut app = app();
     load_plugins_with_permissions(&mut app, &root, "");
-    std::thread::sleep(Duration::from_millis(150));
     let staged = root.join("permissions.toml.tmp");
-    fs::write(&staged, "[plugins.denied.grant]\n\"editor.read\" = true\n").unwrap();
+    fs::write(
+        &staged,
+        "[plugins.denied.approved]\n\"editor.read\" = true\n\"editor.write\" = true\n\"ui.message\" = true\n\n[plugins.denied.grant]\n\"editor.read\" = true\n",
+    )
+    .unwrap();
     fs::rename(&staged, root.join("permissions.toml")).unwrap();
     wait_for_grant(&mut app, true);
     assert!(app

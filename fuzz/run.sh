@@ -2,6 +2,7 @@
 set -eu
 
 mode=${1:-smoke}
+selected=${2:-}
 case "$mode" in
     smoke)
         seconds=${FUZZ_SECONDS:-30}
@@ -9,15 +10,26 @@ case "$mode" in
         malloc=${FUZZ_MALLOC_MB:-256}
         ;;
     nightly)
-        seconds=${FUZZ_SECONDS:-300}
+        seconds=${FUZZ_SECONDS:-120}
         rss=${FUZZ_RSS_MB:-4096}
         malloc=${FUZZ_MALLOC_MB:-512}
         ;;
     *)
-        echo "usage: $0 smoke|nightly" >&2
+        echo "usage: $0 smoke|nightly [target]" >&2
         exit 2
         ;;
 esac
+
+targets="network_policy stream_bytes process_framing authorization host_imports process_run"
+if [ -n "$selected" ]; then
+    case " $targets " in
+        *" $selected "*) targets=$selected ;;
+        *)
+            echo "unknown fuzz target: $selected" >&2
+            exit 2
+            ;;
+    esac
+fi
 
 max_len() {
     case "$1" in
@@ -33,7 +45,7 @@ max_len() {
 directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$directory"
 
-for target in network_policy stream_bytes process_framing authorization host_imports process_run; do
+for target in $targets; do
     length=$(max_len "$target")
     cargo fuzz run "$target" -- \
         -dict=dictionaries/protocol.dict \

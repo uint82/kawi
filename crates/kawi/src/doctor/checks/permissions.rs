@@ -108,8 +108,8 @@ mod tests {
     }
 
     #[test]
-    fn reports_stale_request_hashes() {
-        let dir = TestDir::new("permissions_hash");
+    fn reports_changed_requests() {
+        let dir = TestDir::new("permissions_changed");
         let paths = paths(&dir.path);
         let plugin = paths.plugins.join("sample");
         fs::create_dir_all(&plugin).unwrap();
@@ -128,7 +128,7 @@ mod tests {
         assert!(check
             .details
             .iter()
-            .any(|detail| detail.contains("request hash changed")));
+            .any(|detail| detail.contains("request set changed")));
     }
 
     #[test]

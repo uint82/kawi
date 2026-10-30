@@ -23,9 +23,10 @@ pub use wasm::{
 pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};
 
 pub use capability::{
-    advertised_events, advertised_host_methods, event_capability, host_method_capability,
-    is_event_allowed, is_host_method_allowed, load_permission_state, Capability,
-    CapabilityRegistry, EffectiveCapabilities, MethodCapability, PermissionState, Scope,
+    advertised_events, advertised_host_methods, diff, event_capability, host_method_capability,
+    is_event_allowed, is_host_method_allowed, load_permission_state, reconcile_approved,
+    Capability, CapabilityChange, CapabilityRegistry, CapabilityRequests, ChangeKind,
+    EffectiveCapabilities, MethodCapability, PermissionState, Scope,
 };
 pub use environment::HostEnvironment;
 pub use error::PluginError;

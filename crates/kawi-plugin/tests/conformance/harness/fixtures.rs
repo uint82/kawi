@@ -62,12 +62,48 @@ pub(crate) fn write_grants(
     path: &Path,
     grants: &[kawi_plugin::Capability],
     network: Option<&NetworkSetup>,
+    catalog: &kawi_plugin::PluginCatalog,
 ) {
-    let text = match network {
+    let mut text = approved_grants(catalog);
+    text.push_str(&match network {
         Some(network) => network_grants(network),
         None => unscoped_grants(grants),
-    };
+    });
     fs::write(path, text).unwrap();
+}
+
+fn approved_grants(catalog: &kawi_plugin::PluginCatalog) -> String {
+    let mut text = String::new();
+    for plugin in &catalog.plugins {
+        let requests = &plugin.manifest.capability_requests;
+        if requests.is_empty() {
+            continue;
+        }
+        text.push_str(&format!("[plugins.{}.approved]\n", plugin.manifest.name));
+        for (capability, scope) in requests.iter() {
+            text.push_str(&approved_line(capability, scope));
+        }
+        text.push('\n');
+    }
+    text
+}
+
+fn approved_line(capability: kawi_plugin::Capability, scope: &kawi_plugin::Scope) -> String {
+    match scope {
+        kawi_plugin::Scope::Unscoped => format!("\"{}\" = true\n", capability.name()),
+        kawi_plugin::Scope::Paths(paths) => {
+            format!("\"{}\" = {{ paths = {paths:?} }}\n", capability.name())
+        }
+        kawi_plugin::Scope::Commands(commands) => {
+            format!(
+                "\"{}\" = {{ commands = {commands:?} }}\n",
+                capability.name()
+            )
+        }
+        kawi_plugin::Scope::Hosts(hosts) => {
+            format!("\"{}\" = {{ hosts = {hosts:?} }}\n", capability.name())
+        }
+    }
 }
 
 fn unscoped_grants(grants: &[kawi_plugin::Capability]) -> String {

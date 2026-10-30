@@ -105,7 +105,7 @@ Implemented:
 
 The `fuzz` workspace is excluded from the main workspace and runs on nightly with `cargo-fuzz` and `libfuzzer-sys`. Targets call host-side functions directly and use fake streams, a fake resolver, and a mock process executor. They assert capability denials produce no editor effect, edits preserve UTF-8 and revisions, diagnostics respect the 1000/4096/256 caps, sanitized text has no control characters, errors use the conformance normalization set, and ungranted commands are denied without spawning.
 
-Run targets with `fuzz/run.sh smoke` for a short PR check or `fuzz/run.sh nightly` for the longer scheduled budget. The runner sets `-max_len`, `-rss_limit_mb`, and `-malloc_limit_mb` per mode. PR CI builds every target and smoke-runs each one. Nightly CI runs longer, caches the corpus, and uploads crash artifacts.
+Fuzzing is complete. Run targets with `fuzz/run.sh smoke` for the 30 second PR check or `fuzz/run.sh nightly <target>` for the scheduled budget. The runner sets `-max_len`, `-rss_limit_mb`, and `-malloc_limit_mb` per mode. Pull requests that touch the host boundary run the smoke job. The weekly schedule and manual dispatch run the six targets in a parallel matrix at 120 seconds per target, cache the corpus, and upload crash artifacts. See `fuzz/README.md` for the deliberate `libfuzzer-sys` vet exclusion and the line and region coverage model.
 
 ## Rollout
 

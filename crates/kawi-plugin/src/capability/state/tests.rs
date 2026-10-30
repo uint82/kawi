@@ -58,7 +58,11 @@ fn malformed_permissions_fail_closed() {
 fn grants_narrow_requested_capabilities() {
     let root = temp_dir();
     let path = root.join("permissions.toml");
-    fs::write(&path, "[plugins.sample.grant]\n\"editor.read\" = true\n").unwrap();
+    fs::write(
+        &path,
+        "[plugins.sample.approved]\n\"editor.read\" = true\n\"ui.message\" = true\n\n[plugins.sample.grant]\n\"editor.read\" = true\n",
+    )
+    .unwrap();
     let state = load_permission_state(&catalog(&root), &path);
     assert!(state.grants["sample"].has(Capability::EditorRead));
     assert!(state.file_error.is_none());
