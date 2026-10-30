@@ -1,6 +1,6 @@
 #![no_main]
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use kawi_plugin::fuzz::{
     host_port, host_port_ip, is_public_address, network_allows_bind, network_allows_connect,
@@ -46,6 +46,7 @@ fuzz_target!(|data: &[u8]| {
         assert!(explicit || resolved);
         if resolved && !explicit {
             assert!(is_public_address(address.ip()));
+            assert!(!is_forbidden(address.ip()));
         }
         assert!(network_allows_connect(&hosts, &answers, *address));
     }
@@ -53,6 +54,7 @@ fuzz_target!(|data: &[u8]| {
     for (name, addresses) in &summary.names {
         assert_eq!(name, &name.to_ascii_lowercase());
         assert!(addresses.iter().all(|ip| is_public_address(*ip)));
+        assert!(addresses.iter().all(|ip| !is_forbidden(*ip)));
     }
 
     let bind = SocketAddr::new(IpAddr::from([0_u8; 4]), 0);
@@ -91,4 +93,28 @@ fn answers(line: &str) -> Vec<SocketAddr> {
     line.split(',')
         .filter_map(|value| value.trim().parse().ok())
         .collect()
+}
+
+fn is_forbidden(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(address) => is_forbidden_v4(address),
+        IpAddr::V6(address) => {
+            address.to_ipv4_mapped().is_some_and(is_forbidden_v4)
+                || address.is_loopback()
+                || address.is_unspecified()
+                || address.is_unique_local()
+                || address.is_unicast_link_local()
+                || address.is_multicast()
+        }
+    }
+}
+
+fn is_forbidden_v4(address: Ipv4Addr) -> bool {
+    address.is_private()
+        || address.is_loopback()
+        || address.is_link_local()
+        || address.is_broadcast()
+        || address.is_documentation()
+        || address.is_unspecified()
+        || address.is_multicast()
 }

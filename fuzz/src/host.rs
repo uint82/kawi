@@ -19,6 +19,12 @@ pub struct MockEditor {
     effects: usize,
 }
 
+impl Default for MockEditor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockEditor {
     pub fn new() -> Self {
         Self {
@@ -31,6 +37,10 @@ impl MockEditor {
 
     pub fn effects(&self) -> usize {
         self.effects
+    }
+
+    pub fn text(&self) -> &Rope {
+        &self.text
     }
 
     pub fn dispatch(
@@ -136,6 +146,18 @@ impl MockEditor {
         char_offset_at(&self.text, line, byte_column)
             .map_err(|error| RpcError::invalid_position(error.to_string()))
     }
+}
+
+pub fn position_is_valid(text: &Rope, line: usize, byte_column: usize) -> bool {
+    if line >= text.len_lines() {
+        return false;
+    }
+    let line_text = text.line(line);
+    if byte_column > line_text.len_bytes() {
+        return false;
+    }
+    let character = line_text.byte_to_char(byte_column);
+    line_text.char_to_byte(character) == byte_column
 }
 
 pub fn registry(grants: u16) -> CapabilityRegistry {

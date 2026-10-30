@@ -81,11 +81,12 @@ fuzz_target!(|data: &[u8]| {
 fn decode_hex(value: &str) -> Vec<u8> {
     let bytes = value.as_bytes();
     bytes
-        .chunks_exact(2)
+        .chunks(2)
         .filter_map(|pair| {
-            let high = hex_digit(pair[0])?;
-            let low = hex_digit(pair[1])?;
-            Some(high << 4 | low)
+            let [high, low] = pair else {
+                return None;
+            };
+            Some(hex_digit(*high)? << 4 | hex_digit(*low)?)
         })
         .collect()
 }

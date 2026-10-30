@@ -1,10 +1,10 @@
 #![no_main]
 
 use arbitrary::{Arbitrary, Unstructured};
-use kawi_fuzz::host::{registry, MockEditor};
+use kawi_fuzz::host::{position_is_valid, registry, MockEditor};
 use kawi_plugin::{
     host_method_capability, is_host_method_allowed, sanitize, validate_diagnostics,
-    MethodCapability, Outcome, SetDiagnosticsParams, MAX_DIAGNOSTIC_CODE_BYTES,
+    ApplyEditParams, MethodCapability, Outcome, SetDiagnosticsParams, MAX_DIAGNOSTIC_CODE_BYTES,
     MAX_DIAGNOSTIC_MESSAGE_BYTES, MAX_PLUGIN_DIAGNOSTICS,
 };
 use libfuzzer_sys::fuzz_target;
@@ -41,17 +41,27 @@ fuzz_target!(|input: Input| {
         let expected = expected_allowed(input.grants, method);
         assert_eq!(is_host_method_allowed(&registry, "fuzz", method), expected);
 
+        let invalid_position = has_invalid_position(&editor, method, &params);
         let before = editor.effects();
         let outcome = editor.dispatch(&registry, method, params.clone());
+        assert!(matches!(
+            outcome,
+            Outcome::Success | Outcome::Denied(_) | Outcome::Protocol
+        ));
         if !expected {
             assert!(matches!(outcome, Outcome::Denied(_)));
+            assert_eq!(editor.effects(), before);
+            continue;
+        }
+        if invalid_position {
+            assert_eq!(outcome, Outcome::Protocol);
             assert_eq!(editor.effects(), before);
             continue;
         }
 
         check_diagnostics(method, &params);
         check_sanitize(method, &params);
-        check_effect(method, &outcome, before, editor.effects());
+        check_effect(method, &params, &outcome, before, editor.effects());
     }
 });
 
@@ -107,13 +117,36 @@ fn check_sanitize(method: &str, params: &Value) {
     assert!(!sanitize(message).chars().any(char::is_control));
 }
 
-fn check_effect(method: &str, outcome: &Outcome, before: usize, after: usize) {
+fn has_invalid_position(editor: &MockEditor, method: &str, params: &Value) -> bool {
+    if method != "editor.apply_edit" {
+        return false;
+    }
+    let Ok(params) = serde_json::from_value::<ApplyEditParams>(params.clone()) else {
+        return false;
+    };
+    params.edits.iter().any(|edit| {
+        !position_is_valid(editor.text(), edit.start.line, edit.start.byte_column)
+            || !position_is_valid(editor.text(), edit.end.line, edit.end.byte_column)
+    })
+}
+
+fn check_effect(method: &str, params: &Value, outcome: &Outcome, before: usize, after: usize) {
     if method == "editor.get_state" {
         assert_eq!(before, after);
         return;
     }
-    if matches!(outcome, Outcome::Success) {
-        assert!(after >= before);
+    if !matches!(outcome, Outcome::Success) {
+        assert_eq!(before, after);
+        return;
+    }
+    let mutates = match method {
+        "editor.apply_edit" => serde_json::from_value::<ApplyEditParams>(params.clone())
+            .is_ok_and(|params| !params.edits.is_empty()),
+        "editor.set_diagnostics" | "ui.message" => true,
+        _ => false,
+    };
+    if mutates {
+        assert!(after > before);
     } else {
         assert_eq!(before, after);
     }

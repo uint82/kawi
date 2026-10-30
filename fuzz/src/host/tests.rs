@@ -54,6 +54,16 @@ fn diagnostic(message: String, code: Option<String>) -> DiagnosticSummary {
 }
 
 #[test]
+fn position_oracle_rejects_mid_codepoint_columns() {
+    let text = Rope::from_str("é\n");
+    assert!(position_is_valid(&text, 0, 0));
+    assert!(position_is_valid(&text, 0, 2));
+    assert!(!position_is_valid(&text, 0, 1));
+    assert!(!position_is_valid(&text, 2, 0));
+    assert!(!position_is_valid(&text, 0, 4));
+}
+
+#[test]
 fn denied_call_does_not_apply_edit() {
     let registry = registry(0);
     let mut editor = MockEditor::new();
