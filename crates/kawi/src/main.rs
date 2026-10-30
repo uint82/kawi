@@ -13,6 +13,7 @@ mod mouse;
 mod options;
 mod permission_lines;
 mod persist;
+mod plugin_cli;
 mod plugin_labels;
 mod recovery;
 mod session;
@@ -36,6 +37,9 @@ const USAGE: &str = "\
 Usage:
   kawi [--helix] [--no-plugins] [FILE]
   kawi doctor [OPTIONS]
+  kawi plugin new <name> [--sdk-path <path>]
+  kawi plugin build [directory]
+  kawi plugin inspect [directory]
   kawi --version
   kawi --help
 
@@ -84,6 +88,10 @@ fn main() -> Result<()> {
 }
 
 fn run_utility(args: &[String]) -> Result<bool> {
+    if args.first().is_some_and(|arg| arg == "plugin") {
+        plugin_cli::run(&args[1..])?;
+        return Ok(true);
+    }
     if let Some(exit_code) = doctor::run_cli(args)? {
         std::process::exit(exit_code);
     }
