@@ -67,6 +67,18 @@ impl KeymapResolver {
         self.clear_pending();
     }
 
+    pub(crate) fn unbind_source(
+        &mut self,
+        mode: KeyContext,
+        keys: &KeySequence,
+        source: BindingSource,
+    ) {
+        self.bindings.retain(|binding| {
+            binding.mode != mode || binding.keys != *keys || binding.source != source
+        });
+        self.clear_pending();
+    }
+
     pub(crate) fn feed(
         &mut self,
         key: KeyChord,

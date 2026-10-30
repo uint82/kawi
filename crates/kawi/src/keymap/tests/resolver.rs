@@ -270,3 +270,33 @@ fn resolver_lets_user_override_defaults() {
         other => panic!("unexpected outcome: {other:?}"),
     }
 }
+
+#[test]
+fn unbind_source_preserves_user_bindings() {
+    let registry = registry();
+    let mut resolver = KeymapResolver::new();
+    resolver.bind(binding(
+        &registry,
+        "file.quit",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::Plugin,
+    ));
+    resolver.bind(binding(
+        &registry,
+        "file.save",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::User,
+    ));
+    let keys = crate::keymap::config::expand_sequences("gx", &[])
+        .expect("keys")
+        .remove(0);
+    resolver.unbind_source(KeyContext::Normal, &keys, BindingSource::Plugin);
+    assert_eq!(resolver.bindings().len(), 1);
+    assert_eq!(resolver.bindings()[0].source, BindingSource::User);
+    assert_eq!(
+        resolver.bindings()[0].command,
+        registry.find("file.save").expect("save")
+    );
+}

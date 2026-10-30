@@ -46,7 +46,10 @@ pub(crate) struct PluginRuntime {
     pub(super) last_diagnostics_revision: u64,
     pub(super) resync_buffers: BTreeSet<(String, u64)>,
     pub(super) pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
+    pub(super) plugins_dir: Option<PathBuf>,
     pub(super) permissions_path: Option<PathBuf>,
+    pub(super) workspace: Option<PathBuf>,
+    pub(super) wake: Option<std::sync::mpsc::Sender<()>>,
     pub(super) capabilities: CapabilityRegistry,
     pub(super) denials: BTreeMap<(String, Capability), DenialRecord>,
     pub(super) warnings: BTreeMap<String, Vec<String>>,
@@ -126,6 +129,13 @@ impl PluginRuntime {
 
     pub(crate) fn plugins(&self) -> &[LoadedPlugin] {
         &self.catalog.plugins
+    }
+
+    pub(crate) fn contains(&self, plugin: &str) -> bool {
+        self.catalog
+            .plugins
+            .iter()
+            .any(|item| item.manifest.name == plugin)
     }
 
     pub(crate) fn apply_bindings(&self, keymaps: &mut KeymapResolver) {
