@@ -39,6 +39,80 @@ impl CapabilityChange {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandGateChange {
+    pub command: String,
+    pub added: BTreeSet<Capability>,
+    pub removed: BTreeSet<Capability>,
+}
+
+impl CommandGateChange {
+    pub fn labels(&self) -> Vec<String> {
+        let mut labels = Vec::new();
+        if !self.added.is_empty() {
+            labels.push(format!(
+                "command {} requires {}",
+                self.command,
+                self.added
+                    .iter()
+                    .map(|capability| capability.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if !self.removed.is_empty() {
+            labels.push(format!(
+                "command {} no longer requires {}",
+                self.command,
+                self.removed
+                    .iter()
+                    .map(|capability| capability.name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        labels
+    }
+
+    pub fn widens(&self) -> bool {
+        !self.removed.is_empty()
+    }
+}
+
+pub fn diff_command_gates(
+    approved: &BTreeMap<String, BTreeSet<Capability>>,
+    requests: &CapabilityRequests,
+) -> Vec<CommandGateChange> {
+    let commands = approved
+        .keys()
+        .chain(requests.command_gates().keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    commands
+        .into_iter()
+        .filter_map(|command| {
+            let previous = approved.get(&command).cloned().unwrap_or_default();
+            let next = requests.command_gate(&command).cloned().unwrap_or_default();
+            let added = next
+                .difference(&previous)
+                .copied()
+                .collect::<BTreeSet<Capability>>();
+            let removed = previous
+                .difference(&next)
+                .copied()
+                .collect::<BTreeSet<Capability>>();
+            if added.is_empty() && removed.is_empty() {
+                return None;
+            }
+            Some(CommandGateChange {
+                command,
+                added,
+                removed,
+            })
+        })
+        .collect()
+}
+
 pub fn diff(
     approved: &BTreeMap<Capability, Scope>,
     requests: &CapabilityRequests,

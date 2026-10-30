@@ -2,10 +2,11 @@ use kawi_plugin::{PluginHostEvent, PluginStatus};
 
 use super::super::App;
 use super::consent::GrantKind;
-use super::text::sanitize;
 
 impl App {
     pub(crate) fn poll_plugins(&mut self) -> bool {
+        let dropped = self.plugins.expire_queued();
+        self.log_queue_drops(&dropped, "queue wait exceeded");
         let events = self.plugins.drain_events();
         let mut redraw = false;
         for event in events {
@@ -34,24 +35,18 @@ impl App {
                 method,
                 params,
             } => self.handle_plugin_host_request(&plugin, id, &method, params),
-            PluginHostEvent::InvocationFinished {
-                plugin,
-                result: Err(error),
-                ..
-            } => {
-                if self.plugin_grants.is_active() {
-                    self.plugins
-                        .push_log(&plugin, "request failed while a grant prompt is open");
+            PluginHostEvent::InvocationFinished { plugin, result, .. } => {
+                let dropped = self.plugins.finish_invocation(&plugin, &result);
+                self.log_queue_drops(&dropped, "plugin restarted");
+                let redraw = if let Err(error) = &result {
+                    self.handle_plugin_invocation_error(&plugin, "", error);
+                    true
                 } else {
-                    self.show_message(format!(
-                        "{}: {}",
-                        sanitize(&plugin),
-                        sanitize(&error.to_string())
-                    ));
-                }
-                true
+                    false
+                };
+                self.advance_plugin_queue(&plugin);
+                redraw
             }
-            PluginHostEvent::InvocationFinished { result: Ok(_), .. } => false,
             PluginHostEvent::StatusChanged { plugin, status } => {
                 if matches!(
                     status,
@@ -60,6 +55,8 @@ impl App {
                         | PluginStatus::Disabled
                         | PluginStatus::Error(_)
                 ) {
+                    let dropped = self.plugins.drop_queues(Some(&plugin));
+                    self.log_queue_drops(&dropped, "plugin stopped");
                     self.plugins.clear_plugin_state(&plugin);
                     self.problems.clear_plugin(&plugin);
                 }

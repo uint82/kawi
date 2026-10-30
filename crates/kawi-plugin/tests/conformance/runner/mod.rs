@@ -193,6 +193,12 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
         Action::MidCodepointPosition => run_mid_codepoint(&host, runtime, scenario),
         Action::NetworkProbe => run_network_probe(&host, runtime, scenario),
         Action::NetworkScripted => run_network_scripted(&host, runtime, scenario),
+        Action::GatedInvoke => host.invoke(command, json!(null)),
+        Action::GatedRevokeThenInvoke => {
+            host.activate_ready();
+            host.revoke_all();
+            host.invoke(command, json!(null))
+        }
         Action::Trim => host.invoke(command, json!(null)),
         Action::TrimDenied => {
             host.activate_ready();
@@ -275,7 +281,10 @@ fn assert_denial_was_enforced(
     };
     if matches!(
         scenario.action,
-        Action::NetworkProbe | Action::NetworkScripted
+        Action::NetworkProbe
+            | Action::NetworkScripted
+            | Action::GatedInvoke
+            | Action::GatedRevokeThenInvoke
     ) {
         return Ok(());
     }

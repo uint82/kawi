@@ -37,6 +37,16 @@ pub(crate) fn check(paths: &StatePaths) -> Check {
                 details.push(format!("{name}: {hint}"));
                 details.push(format!("{name}: {assignment}"));
             }
+            if effective.has(kawi_plugin::Capability::EditorWrite) {
+                for command in &plugin.manifest.commands {
+                    if command.capabilities.is_empty() {
+                        details.push(format!(
+                            "{name}: command {} has no capability gate; add capabilities = [...] to restrict it",
+                            command.id
+                        ));
+                    }
+                }
+            }
         }
     }
     if !state.warnings.is_empty() {
@@ -129,6 +139,29 @@ mod tests {
             .details
             .iter()
             .any(|detail| detail.contains("request set changed")));
+    }
+
+    #[test]
+    fn hints_about_ungated_commands_when_editor_write_is_granted() {
+        let dir = TestDir::new("permissions_ungated");
+        let paths = paths(&dir.path);
+        let plugin = paths.plugins.join("sample");
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(
+            plugin.join("plugin.toml"),
+            "name = \"sample\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n\n[capabilities]\n\"editor.write\" = true\n\n[[commands]]\nid = \"edit\"\ntitle = \"Edit\"\n",
+        )
+        .unwrap();
+        fs::write(
+            &paths.permissions,
+            "[plugins.sample.approved]\n\"editor.write\" = true\n\n[plugins.sample.grant]\n\"editor.write\" = true\n",
+        )
+        .unwrap();
+        let check = check(&paths);
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail.contains("command edit has no capability gate")));
     }
 
     #[test]

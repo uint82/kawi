@@ -84,6 +84,21 @@ fn approved_grants(catalog: &kawi_plugin::PluginCatalog) -> String {
             text.push_str(&approved_line(capability, scope));
         }
         text.push('\n');
+        if !requests.command_gates().is_empty() {
+            text.push_str(&format!(
+                "[plugins.{}.command_gates]\n",
+                plugin.manifest.name
+            ));
+            for (command, capabilities) in requests.command_gates() {
+                let names = capabilities
+                    .iter()
+                    .map(|capability| format!("{:?}", capability.name()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                text.push_str(&format!("{command} = [{names}]\n"));
+            }
+            text.push('\n');
+        }
     }
     text
 }
@@ -132,14 +147,32 @@ pub(crate) fn write_manifest(plugins: &Path, spec: ManifestSpec<'_>) {
     let timeout_ms = spec.scenario.timeout_ms();
     let dir = plugins.join(PLUGIN_NAME);
     fs::create_dir_all(&dir).unwrap();
-    let capabilities = capability_table(behavior, spec.network);
+    let mut capabilities = capability_table(behavior, spec.network);
+    let gate_capability = spec.scenario.action.command_gate();
+    if let Some(capability) = gate_capability {
+        if capabilities.is_empty() {
+            capabilities.push_str("[capabilities]\n");
+        }
+        capabilities.push_str(&format!("\"{}\" = true\n", capability.name()));
+    }
     let subscribes = subscribes_line(behavior);
-    let manifest = match spec.runtime {
+    let mut manifest = match spec.runtime {
         Runtime::Process => {
             process_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities)
         }
         Runtime::Wasm => wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities),
     };
+    let gate = gate_capability
+        .map(|capability| format!("\ncapabilities = [\"{}\"]", capability.name()))
+        .unwrap_or_default();
+    let command = if gate_capability.is_some() {
+        spec.runtime.command(behavior)
+    } else {
+        "probe"
+    };
+    manifest.push_str(&format!(
+        "\n[[commands]]\nid = \"{command}\"\ntitle = \"Probe\"{gate}\n"
+    ));
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
 }
 
@@ -164,7 +197,7 @@ fn process_manifest(
 ) -> String {
     let command = process_command(directory, behavior);
     format!(
-        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = {command}\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n[[commands]]\nid = \"probe\"\ntitle = \"Probe\"\n"
+        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = {command}\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n"
     )
 }
 

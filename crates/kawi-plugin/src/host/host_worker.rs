@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::capability::Capability;
+
 use crate::error::PluginError;
 use crate::host::PluginStatus;
 use crate::process::{NotifyOutcome, WorkerHandle};
@@ -90,6 +92,14 @@ impl HostWorker {
             Self::Process(worker) | Self::Disabled(worker) => worker.status(),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.status(),
+        }
+    }
+
+    pub(super) fn requirements(&self, command: &str) -> Option<&[Capability]> {
+        match self {
+            Self::Process(worker) | Self::Disabled(worker) => worker.requirements(command),
+            #[cfg(feature = "wasm")]
+            Self::Wasm(worker) => worker.requirements(command),
         }
     }
 

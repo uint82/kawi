@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-use super::diff::{diff, CapabilityChange, ChangeKind};
+use super::diff::{diff, diff_command_gates, CapabilityChange, ChangeKind, CommandGateChange};
 use super::scope::{intersect_scope, parse_request_scope, Scope};
 use super::{Capability, CapabilityRequests};
 
@@ -22,12 +22,16 @@ pub struct PluginPermissions {
     pub approved: Option<BTreeMap<String, toml::Value>>,
     #[serde(default)]
     pub request_hash: Option<String>,
+    #[serde(default)]
+    pub command_gates: Option<BTreeMap<String, Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EffectiveCapabilities {
     pub granted: BTreeMap<Capability, Scope>,
     pub approved: BTreeMap<Capability, Scope>,
+    pub approved_commands: BTreeMap<String, BTreeSet<Capability>>,
+    pub command_gate_changes: Vec<CommandGateChange>,
     pub missing: Vec<Capability>,
     pub stale: Vec<Capability>,
     pub warnings: Vec<String>,
@@ -66,11 +70,12 @@ pub fn effective(
 ) -> EffectiveCapabilities {
     let mut result = EffectiveCapabilities::default();
     let grants = parse_grants(permissions, &mut result);
-    let (approved, approved_warning) = resolve_approved(permissions, requests);
-    if let Some(warning) = approved_warning {
+    let approved = resolve_approved(permissions, requests);
+    if let Some(warning) = approved.warning {
         result.warnings.push(warning);
     }
-    result.approved = approved;
+    result.approved = approved.capabilities;
+    result.approved_commands = approved.commands;
     let changes = diff(&result.approved, requests);
     result.changed = changes
         .iter()
@@ -86,6 +91,20 @@ pub fn effective(
         .map(|change| change.capability)
         .collect();
     result.changes = changes;
+    let gate_changes = diff_command_gates(&result.approved_commands, requests);
+    result.changed |= !gate_changes.is_empty();
+    result.changed_requests.extend(
+        gate_changes
+            .iter()
+            .flat_map(CommandGateChange::labels)
+            .collect::<Vec<_>>(),
+    );
+    result.command_gate_changes = gate_changes.clone();
+    if gate_changes.iter().any(CommandGateChange::widens) {
+        result
+            .warnings
+            .push("command gate removed; review widened access".to_string());
+    }
     if !result.changed_capabilities.is_empty() {
         result
             .warnings
@@ -162,22 +181,46 @@ fn revoked_capabilities(
     revoked
 }
 
+#[derive(Default)]
+struct ApprovedRequests {
+    capabilities: BTreeMap<Capability, Scope>,
+    commands: BTreeMap<String, BTreeSet<Capability>>,
+    warning: Option<String>,
+}
+
 fn resolve_approved(
     permissions: Option<&PluginPermissions>,
     requests: &CapabilityRequests,
-) -> (BTreeMap<Capability, Scope>, Option<String>) {
+) -> ApprovedRequests {
     let Some(permissions) = permissions else {
-        return (BTreeMap::new(), None);
+        return ApprovedRequests::default();
     };
     if let Some(approved) = &permissions.approved {
-        return match parse_approved(approved) {
-            Ok(approved) => (approved, None),
-            Err(error) => (
-                BTreeMap::new(),
-                Some(format!(
-                    "approved request record is corrupt: {error}; every request is new"
-                )),
-            ),
+        let capabilities = match parse_approved(approved) {
+            Ok(approved) => approved,
+            Err(error) => {
+                return ApprovedRequests {
+                    warning: Some(format!(
+                        "approved request record is corrupt: {error}; every request is new"
+                    )),
+                    ..ApprovedRequests::default()
+                };
+            }
+        };
+        let commands = match parse_approved_commands(permissions.command_gates.as_ref()) {
+            Ok(commands) => commands,
+            Err(error) => {
+                return ApprovedRequests {
+                    capabilities,
+                    warning: Some(format!("approved command gates are corrupt: {error}")),
+                    ..ApprovedRequests::default()
+                };
+            }
+        };
+        return ApprovedRequests {
+            capabilities,
+            commands,
+            warning: None,
         };
     }
     if permissions
@@ -185,15 +228,34 @@ fn resolve_approved(
         .as_ref()
         .is_some_and(|hash| hash == &requests.request_hash())
     {
-        return (
-            requests
+        return ApprovedRequests {
+            capabilities: requests
                 .iter()
                 .map(|(capability, scope)| (capability, scope.clone()))
                 .collect(),
-            None,
-        );
+            commands: requests.command_gates().clone(),
+            warning: None,
+        };
     }
-    (BTreeMap::new(), None)
+    ApprovedRequests::default()
+}
+
+fn parse_approved_commands(
+    commands: Option<&BTreeMap<String, Vec<String>>>,
+) -> Result<BTreeMap<String, BTreeSet<Capability>>, String> {
+    let mut parsed = BTreeMap::new();
+    for (command, names) in commands.into_iter().flatten() {
+        let mut capabilities = BTreeSet::new();
+        for name in names {
+            let capability =
+                Capability::parse(name).ok_or_else(|| format!("unknown capability: {name}"))?;
+            capabilities.insert(capability);
+        }
+        if !capabilities.is_empty() {
+            parsed.insert(command.clone(), capabilities);
+        }
+    }
+    Ok(parsed)
 }
 
 fn parse_approved(

@@ -4,7 +4,7 @@ mod registry;
 mod scope;
 mod state;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -96,6 +96,7 @@ impl Capability {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityRequests {
     scopes: BTreeMap<Capability, Scope>,
+    commands: BTreeMap<String, BTreeSet<Capability>>,
     artifact: Option<String>,
 }
 
@@ -115,7 +116,19 @@ impl CapabilityRequests {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.scopes.is_empty()
+        self.scopes.is_empty() && self.commands.is_empty()
+    }
+
+    pub fn command_gate(&self, id: &str) -> Option<&BTreeSet<Capability>> {
+        self.commands.get(id)
+    }
+
+    pub fn command_gates(&self) -> &BTreeMap<String, BTreeSet<Capability>> {
+        &self.commands
+    }
+
+    pub fn set_command_gates(&mut self, gates: BTreeMap<String, BTreeSet<Capability>>) {
+        self.commands = gates;
     }
 
     pub fn canonical_json(&self) -> String {
@@ -135,6 +148,21 @@ impl CapabilityRequests {
             "capabilities".to_string(),
             Value::Object(capabilities.into_iter().collect()),
         );
+        if !self.commands.is_empty() {
+            let commands = self
+                .commands
+                .iter()
+                .filter(|(_, capabilities)| !capabilities.is_empty())
+                .map(|(id, capabilities)| {
+                    let names = capabilities
+                        .iter()
+                        .map(|capability| Value::String(capability.name().to_string()))
+                        .collect::<Vec<_>>();
+                    (id.clone(), Value::Array(names))
+                })
+                .collect::<Map<_, _>>();
+            root.insert("commands".to_string(), Value::Object(commands));
+        }
         if let Some(artifact) = &self.artifact {
             root.insert("component".to_string(), Value::String(artifact.clone()));
         }

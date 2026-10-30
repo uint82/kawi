@@ -61,6 +61,7 @@ pub(super) fn write_grants(
     let plugin_table = ensure_table(plugins, plugin)?;
     plugin_table.insert("request_hash", toml_edit::value(request_hash));
     write_approved(plugin_table, approved, requests, decisions)?;
+    write_command_gates(plugin_table, requests)?;
     let grant = ensure_table(plugin_table, "grant")?;
     remove_unrequested_grants(grant, requests);
     apply_decisions(grant, requests, decisions)?;
@@ -83,6 +84,26 @@ fn write_approved(
     *table = Table::new();
     for (capability, scope) in next {
         table.insert(capability.name(), scope_item(&scope));
+    }
+    Ok(())
+}
+
+fn write_command_gates(
+    plugin_table: &mut Table,
+    requests: &CapabilityRequests,
+) -> Result<(), String> {
+    if requests.command_gates().is_empty() {
+        plugin_table.remove("command_gates");
+        return Ok(());
+    }
+    let table = ensure_table(plugin_table, "command_gates")?;
+    *table = Table::new();
+    for (command, capabilities) in requests.command_gates() {
+        let mut array = Array::new();
+        for capability in capabilities {
+            array.push(capability.name());
+        }
+        table.insert(command, Item::Value(Value::Array(array)));
     }
     Ok(())
 }

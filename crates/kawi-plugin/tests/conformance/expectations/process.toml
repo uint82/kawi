@@ -10,6 +10,15 @@ status = "pass"
 [rows."core.echo"]
 status = "pass"
 
+[rows."parity.gates.denied"]
+status = "pass"
+
+[rows."parity.gates.revoked"]
+status = "pass"
+
+[rows."parity.gates.ungated"]
+status = "pass"
+
 [rows."core.denial"]
 status = "pass"
 

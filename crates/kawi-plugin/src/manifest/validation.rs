@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use super::runtime;
 use super::{ActivationEvent, PluginCommand, PluginManifest};
+use crate::capability::Capability;
 use crate::protocol::PROTOCOL_VERSION;
 
 const MIN_TIMEOUT_MS: u64 = 100;
@@ -127,7 +128,35 @@ fn validate_commands(commands: &[PluginCommand]) -> Result<(), String> {
         }
         validate_keybindings(&command.keybindings)?;
     }
+    command_capabilities(commands)?;
     Ok(())
+}
+
+pub(super) fn command_capabilities(
+    commands: &[PluginCommand],
+) -> Result<BTreeMap<String, BTreeSet<Capability>>, String> {
+    let mut gates = BTreeMap::new();
+    for command in commands {
+        let mut capabilities = BTreeSet::new();
+        for name in &command.capabilities {
+            let Some(capability) = Capability::parse(name) else {
+                return Err(format!(
+                    "command {} declares unknown capability: {name}",
+                    command.id
+                ));
+            };
+            if !capabilities.insert(capability) {
+                return Err(format!(
+                    "command {} declares duplicate capability: {name}",
+                    command.id
+                ));
+            }
+        }
+        if !capabilities.is_empty() {
+            gates.insert(command.id.clone(), capabilities);
+        }
+    }
+    Ok(gates)
 }
 
 fn validate_command_id(id: &str) -> Result<(), String> {

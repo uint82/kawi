@@ -21,6 +21,7 @@ impl PluginRuntime {
         ) else {
             return Ok(Vec::new());
         };
+        self.drop_queues(plugin);
         let loaded = load_catalog(&dir);
         let catalog = merge_catalog(&self.catalog, loaded, plugin)?;
         let permission_state = load_permission_state(&catalog, &permissions);

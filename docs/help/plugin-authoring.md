@@ -101,6 +101,7 @@ For the bundled WASM trim example, run `:trim.trim` or the configured keybinding
 ## Capability model from the author side
 
 - `[capabilities]` in `plugin.toml` is the request. The host does not grant it automatically.
+- `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]` and does not replace per-call authorization.
 - The user grants, narrows, or denies each request in `permissions.toml`.
 - A missing or corrupt approved record treats every request as new. The user sees the changed set in one prompt.
 - A denied call returns `Error` with code `-32012`, a message, and the capability name. Handle it by reporting a useful message or stopping the operation.

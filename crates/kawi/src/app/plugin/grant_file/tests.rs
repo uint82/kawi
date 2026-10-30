@@ -92,3 +92,33 @@ fn concurrent_edits_are_re_read_before_merge() {
     assert!(text.contains("\"editor.write\" = true"));
     assert!(text.contains("[plugins.sample.approved]"));
 }
+
+#[test]
+fn records_command_gates_with_the_approval() {
+    let path = temp_file();
+    let mut requests = requests(r#""editor.write" = true"#);
+    requests.set_command_gates(BTreeMap::from([(
+        "run".to_string(),
+        std::collections::BTreeSet::from([Capability::EditorWrite]),
+    )]));
+    write_grants(
+        &path,
+        "sample",
+        &requests,
+        &requests.request_hash(),
+        &BTreeMap::new(),
+        &[GrantDecision {
+            capability: Capability::EditorWrite,
+            allow: true,
+        }],
+    )
+    .unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[plugins.sample.command_gates]"));
+    assert!(text.contains("run = [\"editor.write\"]"));
+    let parsed = kawi_plugin::capability::parse_permissions(&text).unwrap();
+    assert_eq!(
+        parsed.plugins["sample"].command_gates.as_ref().unwrap()["run"],
+        ["editor.write"]
+    );
+}

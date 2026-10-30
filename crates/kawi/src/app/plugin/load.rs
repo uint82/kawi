@@ -102,6 +102,12 @@ impl PluginRuntime {
                         self.targets.push(PluginCommandTarget {
                             plugin: plugin.manifest.name.clone(),
                             command: contribution.id.clone(),
+                            required: contribution
+                                .capabilities
+                                .iter()
+                                .filter_map(|name| kawi_plugin::Capability::parse(name))
+                                .collect(),
+                            coalesce: contribution.coalesce_queued,
                         });
                         let (mut plugin_bindings, mut binding_warnings) =
                             plugin_bindings(plugin, contribution, id, leaders);

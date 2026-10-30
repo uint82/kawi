@@ -121,14 +121,14 @@ impl PluginRuntime {
         self.denials.remove(&(plugin.to_string(), capability));
     }
 
-    pub(crate) fn record_denial(&mut self, plugin: &str, capability: Capability) {
+    pub(crate) fn record_denial(&mut self, plugin: &str, capability: Capability) -> bool {
         if !self
             .catalog
             .plugins
             .iter()
             .any(|loaded| loaded.manifest.name == plugin)
         {
-            return;
+            return false;
         }
         let first = self
             .denials
@@ -143,6 +143,7 @@ impl PluginRuntime {
             .entry((plugin.to_string(), capability))
             .or_default()
             .count += 1;
+        first
     }
 
     pub(crate) fn allow_diagnostic_publish(&mut self, plugin: &str) -> bool {
@@ -199,7 +200,7 @@ impl PluginRuntime {
         (state.warnings, restarted)
     }
 
-    fn restart_plugins(&self, restarted: BTreeSet<String>) {
+    fn restart_plugins(&mut self, restarted: BTreeSet<String>) {
         for plugin in restarted {
             let _ = self.restart(Some(&plugin));
         }
