@@ -1,7 +1,7 @@
 ---
 title = "Plugin capabilities"
 aliases = ["permissions"]
-related = ["plugins", "plugin-protocol", "plugin-authoring", "configuration", "troubleshooting"]
+related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration", "configuration", "troubleshooting"]
 ---
 # Plugin capabilities
 

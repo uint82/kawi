@@ -1,15 +1,15 @@
 ---
 title = "Plugins"
 aliases = ["plugin"]
-related = ["plugin-protocol", "plugin-capabilities", "plugin-authoring", "keymaps", "configuration", "troubleshooting"]
+related = ["plugin-protocol", "plugin-capabilities", "plugin-authoring", "plugin-migration", "keymaps", "configuration", "troubleshooting"]
 ---
 # Plugins
 
-Kawi supports process plugins that communicate over JSON-RPC 2.0 and WebAssembly plugins that use a versioned component contract. Process plugins are trusted code and run with your full user permissions. WASM plugins are the restricted path and are the recommended authoring target. See [Writing a WASM plugin](help:plugin-authoring).
+Kawi supports process plugins that communicate over JSON-RPC 2.0 and WebAssembly plugins that use a versioned component contract. Process plugins are trusted code and run with your full user permissions. WASM plugins are the restricted path and are the recommended authoring target. The WebAssembly runtime is enabled by default and can be omitted with `--no-default-features`. See [Writing a WASM plugin](help:plugin-authoring) and [Migrating a process plugin to WASM](help:plugin-migration).
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
 
-Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes. A feature-gated WebAssembly runtime executes components with a deny-by-default WIT contract, manifest-bound component hashes, WASI preopens from capability scopes, lifecycle calls, editor host calls, events, authorized process execution, wall-clock call limits, and cancellation of blocked host calls on restart. Start `kawi --no-plugins` to skip plugin discovery, hashing, and WebAssembly compilation entirely. WebAssembly network scopes are enforced with DNS pinning, filtered guest name lookup, and non-public address rejection. Process network scopes and older ABI filesystem scopes remain advisory.
+Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes. The WebAssembly runtime is enabled by default and executes components with a deny-by-default WIT contract, manifest-bound component hashes, WASI preopens from capability scopes, lifecycle calls, editor host calls, events, authorized process execution, wall-clock call limits, and cancellation of blocked host calls on restart. Start `kawi --no-plugins` to skip plugin discovery, hashing, and WebAssembly compilation entirely. WebAssembly network scopes are enforced with DNS pinning, filtered guest name lookup, and non-public address rejection. Process network scopes and older ABI filesystem scopes remain advisory.
 
 Each plugin lives in its own directory:
 
@@ -66,7 +66,7 @@ The plugin name is the namespace. The command above is `example.format`, and you
 
 ## Commands
 
-- `:plugin list` shows installed plugins, versions, status, effective capabilities, and commands.
+- `:plugin list` shows installed plugins, versions, runtime, status, effective capabilities, and commands. Process plugins are marked as a trusted compatibility runtime.
 - `:plugin grant <plugin> <capability>` opens the consent prompt for a requested capability.
 - `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event. Filesystem and execute scope changes restart the affected plugin so Landlock re-applies. Kawi also reloads the file automatically after a debounced external save.
 - `:plugin restart` reloads every manifest, reconciles commands and keybindings, and restarts every plugin.

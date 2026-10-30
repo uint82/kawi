@@ -1,11 +1,11 @@
 ---
 title = "Writing a WASM plugin"
 aliases = ["wasm-plugin"]
-related = ["plugins", "plugin-capabilities", "plugin-protocol"]
+related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migration"]
 ---
 # Writing a WASM plugin
 
-WASM plugins run in a WebAssembly component with explicit capabilities. This guide walks through creating, building, installing, granting, running, and inspecting a Rust plugin.
+WASM plugins run in a WebAssembly component with explicit capabilities. This guide walks through creating, building, installing, granting, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
 The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. It pins `wit-bindgen` 0.63.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
@@ -23,11 +23,13 @@ Install the component linker used by this repository:
 cargo install wasm-component-ld --version 0.5.31 --locked
 ```
 
-Build or install Kawi with the `wasm` feature so that `:plugin inspect` and the runtime are available:
+The `wasm` feature is enabled by default, so `:plugin inspect` and the runtime are available in a normal build:
 
 ```sh
-cargo install --path crates/kawi --features wasm
+cargo install --path crates/kawi
 ```
+
+Build with `--no-default-features` only when you intentionally want to omit the WebAssembly runtime.
 
 The SDK is not published yet. When scaffolding from this repository, pass the SDK path explicitly. Omit `--sdk-path` to use the future crates.io dependency.
 
