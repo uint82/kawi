@@ -9,10 +9,10 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-kawi-jsonrpc = { path = "../kawi-jsonrpc" }
-kawi-process = { path = "../kawi-process" }
+kawi-jsonrpc.workspace = true
+kawi-process.workspace = true
 anyhow.workspace = true
-kawi-buffer = { path = "../kawi-buffer" }
+kawi-buffer.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
 ropey = "1.6.1"

@@ -12,7 +12,7 @@ Status: phases 1-4 implemented behind the `wasm` feature. The runtime validates 
 
 ## Runtime
 
-Use Wasmtime 50 with the component model and WASI Preview 2, pinned to `=50.0.0` behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
+Use Wasmtime 50 with the component model and WASI Preview 2, pinned exactly in the workspace manifest behind the `wasm` Cargo feature. Dependency upgrades are explicit and reviewed with `cargo deny`. The initial `cargo vet` configuration uses blanket exemptions for the existing dependency tree; replace those with reviewed audits as the tree stabilizes.
 
 Each plugin owns one `Store` on one worker thread. The editor loop never calls into WebAssembly. Host imports send a request to the editor loop over a bounded channel and wait with a deadline. The worker lazily instantiates on activation or the first invocation, calls `init` once, then serves invocations and subscribed events. A restart or shutdown cancels pending host calls before it is queued, so a blocked worker cannot delay revocation. Revocation drops events that are still queued. An event already delivered to the guest may finish, including a host call already in flight; the conformance suite treats that in-flight write as committed and asserts it is not repeated.
 

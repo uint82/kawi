@@ -9,20 +9,20 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-kawi-buffer = { path = "../kawi-buffer" }
-kawi-completion = { path = "../kawi-completion" }
-kawi-editor = { path = "../kawi-editor" }
-kawi-git = { path = "../kawi-git" }
-kawi-help = { path = "../kawi-help" }
-kawi-lsp = { path = "../kawi-lsp" }
-kawi-picker = { path = "../kawi-picker" }
-kawi-plugin = { path = "../kawi-plugin" }
-kawi-process = { path = "../kawi-process" }
-kawi-syntax = { path = "../kawi-syntax" }
-kawi-task = { path = "../kawi-task" }
-kawi-terminal = { path = "../kawi-terminal" }
-kawi-tui = { path = "../kawi-tui" }
-kawi-watch = { path = "../kawi-watch" }
+kawi-buffer.workspace = true
+kawi-completion.workspace = true
+kawi-editor.workspace = true
+kawi-git.workspace = true
+kawi-help.workspace = true
+kawi-lsp.workspace = true
+kawi-picker.workspace = true
+kawi-plugin.workspace = true
+kawi-process.workspace = true
+kawi-syntax.workspace = true
+kawi-task.workspace = true
+kawi-terminal.workspace = true
+kawi-tui.workspace = true
+kawi-watch.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
