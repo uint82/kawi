@@ -14,6 +14,7 @@ use super::bindings::kawi::plugin::types::{Edit, Error, ProcessOutput, State};
 use super::bindings::kawi::plugin::{
     diagnostics_publish, editor_read, editor_write, process_run, types, ui_message,
 };
+use super::byte_budget::NetworkBudget;
 use super::convert::{diagnostics_to_protocol, edits_to_protocol, error_from_rpc, state_from_json};
 use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
@@ -25,6 +26,7 @@ pub struct WasmState {
     pub bridge: HostBridge,
     pub process: ProcessRunner,
     pub network: NetworkPolicy,
+    pub network_budget: NetworkBudget,
     pub limits: WasmLimits,
     stdout: MemoryOutputPipe,
     stderr: MemoryOutputPipe,
@@ -47,6 +49,7 @@ impl WasmState {
             bridge,
             process,
             network,
+            network_budget: NetworkBudget::new(),
             limits: WasmLimits::new(),
             stdout,
             stderr,
@@ -70,8 +73,9 @@ impl WasmState {
     pub(crate) fn tracked_sockets(&mut self) -> super::connection_cap::TrackedSocketsView<'_> {
         let policy = self.network.clone();
         let deadline = self.bridge.deadline();
+        let budget = self.network_budget.clone();
         let sockets = <Self as WasiSocketsView>::sockets(self);
-        super::connection_cap::TrackedSocketsView::new(sockets, policy, deadline)
+        super::connection_cap::TrackedSocketsView::new(sockets, policy, deadline, budget)
     }
 
     pub fn drain_output(&mut self) {

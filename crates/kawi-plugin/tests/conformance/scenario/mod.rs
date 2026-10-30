@@ -94,14 +94,16 @@ impl Scenario {
     pub(crate) fn timeout_ms(self) -> u64 {
         if self.behavior == Behavior::Timeout {
             TIMEOUT_MS
-        } else if matches!(
-            self.action,
-            Action::OversizeHostResponse
-                | Action::OversizeInvocation
-                | Action::OversizeDiagnostics
-                | Action::QueuedRevocation
-                | Action::QueuedRevocationMidWrite
-        ) {
+        } else if self.behavior == Behavior::NetworkProbeHeavy
+            || matches!(
+                self.action,
+                Action::OversizeHostResponse
+                    | Action::OversizeInvocation
+                    | Action::OversizeDiagnostics
+                    | Action::QueuedRevocation
+                    | Action::QueuedRevocationMidWrite
+            )
+        {
             HEAVY_TIMEOUT_MS
         } else {
             DEFAULT_TIMEOUT_MS

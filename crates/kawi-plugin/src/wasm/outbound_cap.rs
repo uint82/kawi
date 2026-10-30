@@ -8,17 +8,19 @@ use wasmtime_wasi::p2::{
 };
 
 use super::bridge::CallDeadline;
-
-const MAX_OUTBOUND_BYTES_PER_CONNECTION: u64 = 8 * 1024 * 1024;
+use super::byte_budget::{
+    cap_exceeded, ensure_call_active, wait_ready, ConnectionBudget, NetworkBudget, SessionBudget,
+};
 
 pub(crate) fn cap_output_stream(
     table: &mut ResourceTable,
     socket: u32,
     output: Resource<OutputStream>,
     deadline: CallDeadline,
+    budget: NetworkBudget,
 ) -> Result<Resource<OutputStream>, SocketError> {
     let inner = table.delete(output)?;
-    let capped: OutputStream = Box::new(CappedOutputStream::new(inner, deadline));
+    let capped: OutputStream = Box::new(CappedOutputStream::new(inner, deadline, budget.session()));
     let socket: Resource<TcpSocket> = Resource::new_borrow(socket);
     Ok(table.push_child(capped, &socket)?)
 }
@@ -30,28 +32,19 @@ struct CappedOutputStream {
 }
 
 impl CappedOutputStream {
-    fn new(inner: DynOutputStream, deadline: CallDeadline) -> Self {
+    fn new(inner: DynOutputStream, deadline: CallDeadline, session: SessionBudget) -> Self {
         Self {
             inner,
-            budget: OutboundBudget::new(MAX_OUTBOUND_BYTES_PER_CONNECTION),
+            budget: OutboundBudget::new(session),
             deadline,
         }
-    }
-
-    fn ensure_call_active(&self) -> StreamResult<()> {
-        if self.deadline.expired() {
-            return Err(StreamError::LastOperationFailed(wasmtime::format_err!(
-                "network write exceeded the invocation budget"
-            )));
-        }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl OutputStreamTrait for CappedOutputStream {
     fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
-        self.ensure_call_active()?;
+        ensure_call_active(&self.deadline)?;
         self.budget.consume(bytes.len())?;
         self.inner.write(bytes)
     }
@@ -61,7 +54,7 @@ impl OutputStreamTrait for CappedOutputStream {
     }
 
     fn check_write(&mut self) -> StreamResult<usize> {
-        self.ensure_call_active()?;
+        ensure_call_active(&self.deadline)?;
         let inner = self.inner.check_write()?;
         self.budget.permit(inner)
     }
@@ -74,41 +67,41 @@ impl OutputStreamTrait for CappedOutputStream {
 #[async_trait]
 impl Pollable for CappedOutputStream {
     async fn ready(&mut self) {
-        let Some(remaining) = self.deadline.remaining() else {
-            self.inner.ready().await;
-            return;
-        };
-        let _ = tokio::time::timeout(remaining, self.inner.ready()).await;
+        wait_ready(self.inner.as_mut(), &self.deadline).await;
     }
 }
 
 struct OutboundBudget {
-    remaining: u64,
+    local: ConnectionBudget,
+    session: SessionBudget,
     permit: usize,
     can_drain_check: bool,
 }
 
 impl OutboundBudget {
-    fn new(limit: u64) -> Self {
+    fn new(session: SessionBudget) -> Self {
         Self {
-            remaining: limit,
+            local: ConnectionBudget::new(),
+            session,
             permit: 0,
             can_drain_check: false,
         }
     }
 
     fn permit(&mut self, inner: usize) -> StreamResult<usize> {
-        if self.remaining > 0 {
-            let remaining = usize::try_from(self.remaining).unwrap_or(usize::MAX);
-            self.permit = inner.min(remaining);
-            return Ok(self.permit);
-        }
         if self.can_drain_check {
             self.can_drain_check = false;
             self.permit = inner.max(1);
             return Ok(self.permit);
         }
-        Err(cap_exceeded())
+        let local = self.local.remaining();
+        let session = self.session.remaining();
+        if local == 0 || session == 0 {
+            return Err(cap_exceeded());
+        }
+        let remaining = usize::try_from(local.min(session)).unwrap_or(usize::MAX);
+        self.permit = inner.min(remaining);
+        Ok(self.permit)
     }
 
     fn consume(&mut self, len: usize) -> StreamResult<()> {
@@ -117,19 +110,12 @@ impl OutboundBudget {
                 "write exceeds the permitted length"
             )));
         }
-        let len = u64::try_from(len).map_err(|_| cap_exceeded())?;
-        if len > self.remaining {
-            return Err(cap_exceeded());
-        }
-        self.remaining -= len;
+        self.local.take(len)?;
         self.permit = 0;
-        self.can_drain_check = self.remaining == 0;
+        self.session.try_consume(len as u64)?;
+        self.can_drain_check = self.local.remaining() == 0 || self.session.remaining() == 0;
         Ok(())
     }
-}
-
-fn cap_exceeded() -> StreamError {
-    StreamError::Closed
 }
 
 #[cfg(test)]

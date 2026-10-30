@@ -6,6 +6,7 @@ use wasmtime_wasi::p2::SocketError;
 use wasmtime_wasi::sockets::WasiSocketsCtxView;
 
 use super::bridge::CallDeadline;
+use super::byte_budget::NetworkBudget;
 use super::net::NetworkPolicy;
 use super::state::WasmState;
 
@@ -21,6 +22,7 @@ pub(crate) struct TrackedSocketsView<'a> {
     inner: WasiSocketsCtxView<'a>,
     policy: NetworkPolicy,
     deadline: CallDeadline,
+    budget: NetworkBudget,
 }
 
 impl<'a> TrackedSocketsView<'a> {
@@ -28,11 +30,13 @@ impl<'a> TrackedSocketsView<'a> {
         inner: WasiSocketsCtxView<'a>,
         policy: NetworkPolicy,
         deadline: CallDeadline,
+        budget: NetworkBudget,
     ) -> Self {
         Self {
             inner,
             policy,
             deadline,
+            budget,
         }
     }
 

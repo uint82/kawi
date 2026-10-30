@@ -13,5 +13,6 @@ strip = true
 
 [dependencies]
 wit-bindgen = "0.57.1"
+wasi = "0.13.3"
 
 [workspace]

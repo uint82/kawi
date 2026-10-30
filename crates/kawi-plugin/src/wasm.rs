@@ -3,11 +3,15 @@ mod bindings;
 #[cfg(feature = "wasm")]
 mod bridge;
 #[cfg(feature = "wasm")]
+mod byte_budget;
+#[cfg(feature = "wasm")]
 mod component;
 #[cfg(feature = "wasm")]
 mod connection_cap;
 #[cfg(feature = "wasm")]
 mod convert;
+#[cfg(feature = "wasm")]
+mod inbound_cap;
 #[cfg(feature = "wasm")]
 mod limits;
 #[cfg(feature = "wasm")]
@@ -26,6 +30,8 @@ mod session;
 mod state;
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 mod test_resolver;
+#[cfg(all(test, feature = "wasm"))]
+mod test_streams;
 #[cfg(feature = "wasm")]
 mod wasi;
 #[cfg(feature = "wasm")]
