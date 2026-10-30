@@ -133,7 +133,7 @@ The runtime refuses the component with a message naming the unauthorized import.
 
 ### The component hash does not match
 
-Run `kawi plugin build <dir>` again. Do not edit `sha256` manually. If the component is replaced after load, restart or reload the plugin so the hash is checked again.
+Run `kawi plugin build <dir>` again. Do not edit `sha256` manually. If the component is replaced after load, run `:plugin restart <name>` so the manifest is reread and the hash is checked again.
 
 ### The plugin traps or stays in backoff
 
