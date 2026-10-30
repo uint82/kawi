@@ -69,8 +69,9 @@ impl WasmState {
 
     pub(crate) fn tracked_sockets(&mut self) -> super::connection_cap::TrackedSocketsView<'_> {
         let policy = self.network.clone();
+        let deadline = self.bridge.deadline();
         let sockets = <Self as WasiSocketsView>::sockets(self);
-        super::connection_cap::TrackedSocketsView::new(sockets, policy)
+        super::connection_cap::TrackedSocketsView::new(sockets, policy, deadline)
     }
 
     pub fn drain_output(&mut self) {

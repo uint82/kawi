@@ -10,16 +10,17 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-bytes.workspace = true
+bytes = { workspace = true, optional = true }
 kawi-jsonrpc = { path = "../kawi-jsonrpc" }
 kawi-process = { path = "../kawi-process" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+tokio = { workspace = true, optional = true }
 toml.workspace = true
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }
 
 [features]
-wasm = ["dep:wasmtime", "dep:wasmtime-wasi"]
+wasm = ["dep:bytes", "dep:tokio", "dep:wasmtime", "dep:wasmtime-wasi"]
 wasm-test-network = ["wasm"]

@@ -1,58 +1,14 @@
-use wasmtime::component::{HasData, Linker, Resource};
-use wasmtime_wasi::p2::bindings::sockets::network::{ErrorCode, Network};
-use wasmtime_wasi::p2::bindings::sync::sockets::network::{Host as NetworkHost, HostNetwork};
+use wasmtime::component::Resource;
+use wasmtime_wasi::p2::bindings::sync::sockets::network::{ErrorCode, Network};
 use wasmtime_wasi::p2::bindings::sync::sockets::tcp::{
-    self, Duration, HostTcpSocket, InputStream, IpAddressFamily, IpSocketAddress, OutputStream,
-    Pollable, ShutdownType, TcpSocket,
+    Duration, HostTcpSocket, InputStream, IpAddressFamily, IpSocketAddress, OutputStream, Pollable,
+    ShutdownType, TcpSocket,
 };
 use wasmtime_wasi::p2::SocketError;
 use wasmtime_wasi::sockets::WasiSocketsCtxView;
 
-use super::net::NetworkPolicy;
-use super::outbound_cap::cap_output_stream;
-use super::state::WasmState;
-
-pub(crate) struct TrackedSockets;
-
-impl HasData for TrackedSockets {
-    type Data<'a> = TrackedSocketsView<'a>;
-}
-
-pub(crate) struct TrackedSocketsView<'a> {
-    inner: WasiSocketsCtxView<'a>,
-    policy: NetworkPolicy,
-}
-
-impl<'a> TrackedSocketsView<'a> {
-    pub(crate) fn new(inner: WasiSocketsCtxView<'a>, policy: NetworkPolicy) -> Self {
-        Self { inner, policy }
-    }
-
-    fn release(&self, handle: u32) {
-        self.policy.release_connection(handle);
-    }
-}
-
-impl tcp::Host for TrackedSocketsView<'_> {}
-
-impl NetworkHost for TrackedSocketsView<'_> {
-    fn convert_error_code(&mut self, error: SocketError) -> wasmtime::Result<ErrorCode> {
-        <WasiSocketsCtxView<'_> as NetworkHost>::convert_error_code(&mut self.inner, error)
-    }
-
-    fn network_error_code(
-        &mut self,
-        error: Resource<wasmtime_wasi::p2::bindings::sync::sockets::network::Error>,
-    ) -> wasmtime::Result<Option<ErrorCode>> {
-        <WasiSocketsCtxView<'_> as NetworkHost>::network_error_code(&mut self.inner, error)
-    }
-}
-
-impl HostNetwork for TrackedSocketsView<'_> {
-    fn drop(&mut self, resource: Resource<Network>) -> wasmtime::Result<()> {
-        <WasiSocketsCtxView<'_> as HostNetwork>::drop(&mut self.inner, resource)
-    }
-}
+use super::super::outbound_cap::cap_output_stream;
+use super::TrackedSocketsView;
 
 impl HostTcpSocket for TrackedSocketsView<'_> {
     fn start_bind(
@@ -103,7 +59,7 @@ impl HostTcpSocket for TrackedSocketsView<'_> {
         let socket = this.rep();
         let (input, output) =
             <WasiSocketsCtxView<'_> as HostTcpSocket>::finish_connect(&mut self.inner, this)?;
-        let output = cap_output_stream(self.inner.table, socket, output)?;
+        let output = cap_output_stream(self.inner.table, socket, output, self.deadline.clone())?;
         Ok((input, output))
     }
 
@@ -291,9 +247,4 @@ impl HostTcpSocket for TrackedSocketsView<'_> {
         self.release(handle);
         result
     }
-}
-
-pub(crate) fn add_to_linker(linker: &mut Linker<WasmState>) -> wasmtime::Result<()> {
-    linker.allow_shadowing(true);
-    tcp::add_to_linker::<WasmState, TrackedSockets>(linker, WasmState::tracked_sockets)
 }

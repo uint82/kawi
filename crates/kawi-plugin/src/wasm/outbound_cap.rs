@@ -7,15 +7,18 @@ use wasmtime_wasi::p2::{
     StreamResult,
 };
 
+use super::bridge::CallDeadline;
+
 const MAX_OUTBOUND_BYTES_PER_CONNECTION: u64 = 8 * 1024 * 1024;
 
 pub(crate) fn cap_output_stream(
     table: &mut ResourceTable,
     socket: u32,
     output: Resource<OutputStream>,
+    deadline: CallDeadline,
 ) -> Result<Resource<OutputStream>, SocketError> {
     let inner = table.delete(output)?;
-    let capped: OutputStream = Box::new(CappedOutputStream::new(inner));
+    let capped: OutputStream = Box::new(CappedOutputStream::new(inner, deadline));
     let socket: Resource<TcpSocket> = Resource::new_borrow(socket);
     Ok(table.push_child(capped, &socket)?)
 }
@@ -23,20 +26,32 @@ pub(crate) fn cap_output_stream(
 struct CappedOutputStream {
     inner: DynOutputStream,
     budget: OutboundBudget,
+    deadline: CallDeadline,
 }
 
 impl CappedOutputStream {
-    fn new(inner: DynOutputStream) -> Self {
+    fn new(inner: DynOutputStream, deadline: CallDeadline) -> Self {
         Self {
             inner,
             budget: OutboundBudget::new(MAX_OUTBOUND_BYTES_PER_CONNECTION),
+            deadline,
         }
+    }
+
+    fn ensure_call_active(&self) -> StreamResult<()> {
+        if self.deadline.expired() {
+            return Err(StreamError::LastOperationFailed(wasmtime::format_err!(
+                "network write exceeded the invocation budget"
+            )));
+        }
+        Ok(())
     }
 }
 
 #[async_trait]
 impl OutputStreamTrait for CappedOutputStream {
     fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
+        self.ensure_call_active()?;
         self.budget.consume(bytes.len())?;
         self.inner.write(bytes)
     }
@@ -46,6 +61,7 @@ impl OutputStreamTrait for CappedOutputStream {
     }
 
     fn check_write(&mut self) -> StreamResult<usize> {
+        self.ensure_call_active()?;
         let inner = self.inner.check_write()?;
         self.budget.permit(inner)
     }
@@ -58,7 +74,11 @@ impl OutputStreamTrait for CappedOutputStream {
 #[async_trait]
 impl Pollable for CappedOutputStream {
     async fn ready(&mut self) {
-        self.inner.ready().await;
+        let Some(remaining) = self.deadline.remaining() else {
+            self.inner.ready().await;
+            return;
+        };
+        let _ = tokio::time::timeout(remaining, self.inner.ready()).await;
     }
 }
 
@@ -113,38 +133,5 @@ fn cap_exceeded() -> StreamError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn permits_at_most_the_remaining_budget() {
-        let mut budget = OutboundBudget::new(10);
-        assert_eq!(budget.permit(8).unwrap(), 8);
-        budget.consume(8).unwrap();
-        assert_eq!(budget.permit(8).unwrap(), 2);
-    }
-
-    #[test]
-    fn rejects_writes_above_the_permit() {
-        let mut budget = OutboundBudget::new(10);
-        budget.permit(4).unwrap();
-        assert!(matches!(budget.consume(5), Err(StreamError::Trap(_))));
-    }
-
-    #[test]
-    fn allows_one_drain_check_after_exhaustion() {
-        let mut budget = OutboundBudget::new(4);
-        budget.permit(4).unwrap();
-        budget.consume(4).unwrap();
-        assert_eq!(budget.permit(1).unwrap(), 1);
-        assert!(matches!(budget.permit(1), Err(StreamError::Closed)));
-    }
-
-    #[test]
-    fn permits_zero_writes_without_consuming_budget() {
-        let mut budget = OutboundBudget::new(4);
-        budget.permit(4).unwrap();
-        budget.consume(0).unwrap();
-        assert_eq!(budget.permit(4).unwrap(), 4);
-    }
-}
+#[path = "outbound_cap/tests.rs"]
+mod tests;

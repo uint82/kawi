@@ -22,7 +22,7 @@ pub struct CallDeadline {
 }
 
 impl CallDeadline {
-    fn new(timeout: Duration) -> Self {
+    pub(crate) fn new(timeout: Duration) -> Self {
         Self {
             timeout,
             deadline: Arc::new(Mutex::new(None)),
@@ -43,14 +43,14 @@ impl CallDeadline {
             .unwrap_or_else(|error| error.into_inner()) = None;
     }
 
-    fn remaining(&self) -> Option<Duration> {
+    pub(crate) fn remaining(&self) -> Option<Duration> {
         self.deadline
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .map(|deadline| deadline.saturating_duration_since(Instant::now()))
     }
 
-    fn expired(&self) -> bool {
+    pub(crate) fn expired(&self) -> bool {
         self.remaining()
             .is_some_and(|remaining| remaining.is_zero())
     }
@@ -97,6 +97,10 @@ impl HostBridge {
 
     pub(crate) fn call_expired(&self) -> bool {
         self.deadline.expired()
+    }
+
+    pub(crate) fn deadline(&self) -> CallDeadline {
+        self.deadline.clone()
     }
 
     pub(crate) fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
