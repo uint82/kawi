@@ -96,23 +96,35 @@ The manifest is a request. It is not consent.
 Users grant capabilities in `$XDG_CONFIG_HOME/kawi/permissions.toml`:
 
 ```toml
+[plugins.trim.approved]
+"editor.read" = true
+"editor.write" = true
+"ui.message" = true
+
 [plugins.trim.grant]
 "editor.read" = true
 "editor.write" = true
 "ui.message" = true
 
+[plugins.gitsigns.approved]
+"editor.read" = true
+"process.spawn" = { commands = ["git"] }
+
 [plugins.gitsigns.grant]
 "editor.read" = true
 "process.spawn" = { commands = ["git"] }
 
-[plugins.example]
-request_hash = "sha256:6f0f2b6e..."
+[plugins.example.approved]
+"editor.read" = true
+"fs.read" = { paths = ["$WORKSPACE/src"] }
 
 [plugins.example.grant]
 "ui.message" = false
+"editor.read" = true
+"fs.read" = { paths = ["$WORKSPACE/src"] }
 ```
 
-`grant` is a table with the same string-or-table shape as the manifest request. `false` revokes a default-tier capability. This keeps the format valid TOML and avoids heterogeneous arrays.
+`approved` uses the same string-or-table shape as the manifest request and records the request set the user approved. `grant` is a table with the same shape. `false` in `grant` revokes a default-tier capability. This keeps the format valid TOML and avoids heterogeneous arrays.
 
 Rules:
 
@@ -129,21 +141,21 @@ Rules:
 
 Kawi watches the parent directory of `permissions.toml` and reloads it after a debounced change. Reloads use the same atomic fail-closed swap as `:plugin reload`. A malformed save drops every plugin to the default tier and warns instead of keeping the previous grants. Kawi suppresses the reload triggered by its own grant writes. Revocation clears any one-shot allowances. Host-method grants apply to the next call; a change to an `fs.*` or `process.spawn` scope restarts the affected plugin so the kernel ruleset matches the new grants.
 
-`request_hash` is optional. When present, it is the SHA-256 of the canonical request set. The hash input is compact UTF-8 JSON with no whitespace:
+`approved` records the request set the user has approved. It uses the same shape as a manifest request. Kawi compares it with the current manifest request set per capability:
 
-```json
-{"capabilities":{"editor.read":true,"fs.read":{"paths":["$WORKSPACE/src"]}}}
-```
+| Change | Grant behavior |
+| --- | --- |
+| unchanged | keep the grant |
+| narrowed | keep the grant, intersected with the new request |
+| added | withhold until approved |
+| widened | withhold until approved; never carry the old grant over the widened scope |
+| removed | no access; an existing grant is stale |
 
-Canonicalization applies these rules:
+An incomparable change that both adds and removes scope is treated as widened because it contains a new item that was never approved. Reordering does not change the diff.
 
-- Capability names and scope keys are sorted lexicographically.
-- Scope arrays are deduplicated and sorted after lexical normalization.
-- Paths reject `..` components and normalize `.` and duplicate separators. Hashing does not expand variables, resolve the PATH, or resolve symlinks.
-- Hostnames are lowercased. Command strings keep their case.
-- Unknown or invalid entries are omitted from the hash and reported separately.
+Both sets are canonical. Capability names and scope keys are sorted lexicographically, scope arrays are deduplicated and sorted after lexical normalization, paths reject `..` and normalize `.` and duplicate separators, and hostnames are lowercased. Command strings keep their case. Canonicalization does not expand variables, resolve the PATH, or resolve symlinks. Unknown or invalid entries are omitted and reported separately.
 
-Reordering a manifest does not change the hash. Widening a scope does. A mismatch warns that the plugin request changed and withholds all grants except the default tier until the user updates the grant file. This is conservative because the permissions file stores only one hash, so Kawi cannot identify which individual request changed. Adding, widening, or shrinking a request re-flags the plugin as changed.
+`request_hash` is optional and retained for older files. When the `approved` table is absent and the hash matches the current request set, Kawi treats the current request set as approved. A missing or corrupt approved record with no matching hash treats every request as new. A malformed approved table fails closed for that plugin and produces a warning.
 
 ## Effective grant
 
@@ -195,13 +207,15 @@ The `invoke_command` context is editor state. Without `editor.read`, Kawi replac
 
 ## Consent prompt
 
-A denial opens a host prompt with three choices: allow once, allow always, or deny. The prompt is the normal consent path. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow. WASM startup imports offer only allow always and deny because linking is fixed at instantiation.
+A denial opens a host prompt. For a single ungranted request the prompt offers allow once, allow always, or deny. When a plugin has added or widened requests, one prompt lists every pending change with a per-item choice plus allow all and deny all. Process plugins offer allow once, allow always, and deny per item. WASM startup imports offer only allow always and deny because linking is fixed at instantiation. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
 
 - Only real keyboard input answers a prompt. Synthetic keys from `keys.send`, macro replay, mouse events, and pasted text are ignored while a prompt is open.
 - Plugin-originated messages cannot replace the prompt text.
-- Plugin names, changed-capability summaries, and other rendered values are stripped of control characters and terminal escape sequences. The host renders only its own labels and sanitized values.
-- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning.
-- On a request hash mismatch the prompt lists the added or widened requests. Allow always stores the current request hash and removes other changed grants so the plugin must be re-approved one capability at a time.
+- Plugin names, capability names, change labels, and other rendered values are stripped of control characters and terminal escape sequences. The host renders only its own labels and sanitized values.
+- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning for process plugins.
+- The prompt stores the approved request set in `permissions.toml`. Allowed additions and widenings enter the approved set. Denied additions stay absent. A denied widening keeps the previous approved scope so the plugin still reports a widening on the next load.
+- Unchanged and narrowed requests keep their grants. Removed requests leave the approved set and their grants are cleaned up on the next write.
+- A batch applies in one file write and restarts the plugin once after it finishes. A plugin with queued prompts waits until its queue drains.
 - One prompt is active at a time, at most eight wait in the queue, duplicates are collapsed, and an unanswered prompt expires after 30 seconds as a denial.
 
 ## Failure behavior
@@ -269,7 +283,7 @@ Landlock is not a complete process boundary. It does not restrict hostnames or n
 - Unknown plugins and stale grants.
 - Grants for capabilities the plugin does not request.
 - Requests without grants, including unresolved `$WORKSPACE`.
-- Request hash mismatches, shown as changed with grants withheld.
+- Changed request sets, shown with added, widened, narrowed, and removed capabilities.
 - Subscriptions that cannot receive events.
 - Advisory grants labeled `advisory` and fully enforced grants labeled `enforced`.
 
@@ -285,14 +299,4 @@ gitsigns 0.2.0 ready
 
 Enforcement is deny by default. A plugin with no `[capabilities]` table receives only the default tier. Existing plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
 
-The grant file remains the durable consent surface; the prompt is the interactive path that writes it.
-
-## Follow-ups
-
-The remaining enforcement follow-up:
-
-- Fuzz the host import boundary, including network and process execution.
-
-Other roadmap items:
-
-- Re-approval review for several changed requests at once instead of one capability at a time.
+The grant file remains the durable consent surface; the prompt is the interactive path that writes it. Files created before the approved request set existed need either a matching `request_hash` or an `approved` table before non-default grants apply.
