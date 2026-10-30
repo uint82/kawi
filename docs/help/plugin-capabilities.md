@@ -88,6 +88,8 @@ Rules:
 - `true` for a scoped capability is invalid and produces a warning.
 - Unknown capability names and unknown scope keys produce warnings and are ignored.
 - Registering commands and default keybindings needs no capability. They only publish names.
+- A command may optionally declare `capabilities = ["editor.read"]` to gate invocation. The gate must be a subset of the plugin request table. It limits who may invoke the command and does not grant access. Each host call is still checked against the effective grant.
+- An ungated command is invokable whenever the plugin can run. `:doctor` hints about ungated commands when `editor.write` is granted.
 
 The manifest is a request. It is not consent.
 
@@ -154,6 +156,15 @@ Kawi watches the parent directory of `permissions.toml` and reloads it after a d
 An incomparable change that both adds and removes scope is treated as widened because it contains a new item that was never approved. Reordering does not change the diff.
 
 Both sets are canonical. Capability names and scope keys are sorted lexicographically, scope arrays are deduplicated and sorted after lexical normalization, paths reject `..` and normalize `.` and duplicate separators, and hostnames are lowercased. Command strings keep their case. Canonicalization does not expand variables, resolve the PATH, or resolve symlinks. Unknown or invalid entries are omitted and reported separately.
+
+Command gates are recorded with the approved request set:
+
+```toml
+[plugins.example.command_gates]
+format = ["editor.write"]
+```
+
+Adding a command gate is reported as narrowed access. Removing a gate is reported as widened access and appears in the reapproval prompt. A gate that names a capability outside the request table is rejected and the plugin is not loaded.
 
 `request_hash` is optional and retained for older files. When the `approved` table is absent and the hash matches the current request set, Kawi treats the current request set as approved. A missing or corrupt approved record with no matching hash treats every request as new. A malformed approved table fails closed for that plugin and produces a warning.
 

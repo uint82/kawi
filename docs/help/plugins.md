@@ -44,6 +44,8 @@ globs = ["*.rs"]
 id = "format"
 title = "Format buffer"
 description = "Format the current buffer"
+capabilities = ["editor.write"]
+coalesce_queued = false
 
 [commands.keybindings]
 normal = ["<leader>pf"]
@@ -53,6 +55,8 @@ The plugin name is the namespace. The command above is `example.format`, and you
 
 - `command` is an executable and its arguments. `${plugin_dir}` resolves to the plugin directory, which is also the working directory.
 - `timeout_ms` applies to initialization and each invocation. The default is `5000`. The range is `100` to `60000`.
+- `capabilities` on a command optionally restricts who may invoke it. The listed capabilities must be a subset of the plugin request table. Ungated commands run whenever the plugin runs.
+- `coalesce_queued` collapses identical queued invocations of the same command and args while another invocation is running. The default is `false`.
 - `subscribes` lists events delivered to a running plugin. Delivery never starts a plugin.
 - `debounce` optionally delays an event per subscription. `buffer_changed` is also coalesced per buffer.
 - `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.
@@ -82,7 +86,13 @@ Use `:commands` to discover plugin command names. Plugin commands appear with a 
 5. Kawi sends `invoke_command` or events.
 6. A crashed plugin restarts on the next invocation with exponential backoff. Five consecutive failures disable it until `:plugin restart`.
 
-Kawi supports one in-flight invocation per plugin. A plugin may call back into the host while an invocation is running. Events continue to flow during an invocation. A timed-out invocation is canceled and the process is restarted.
+Kawi supports one in-flight invocation per plugin. Invocations that arrive while another command is running enter a bounded FIFO queue. The queue holds four commands for ten seconds by default. A full queue rejects the command and logs a rejection. An expired queued command is dropped and logged.
+
+The editor context is captured when a queued command starts, not when it is queued. Authorization and command capability gates are checked again at dequeue. Revoking a capability before a queued command starts prevents that command from running. A crash, restart, or timeout drops the queue without replaying it.
+
+A plugin may call back into the host while an invocation is running. Events continue to flow during an invocation. A timed-out invocation is canceled, its queue is dropped, and the process is restarted.
+
+`:plugin list` shows `busy` and the queue depth. Kawi also shows a transient `busy, N queued` message when a command is queued. `:plugin logs <plugin>` reports queued, rejected, and dropped counts.
 
 ## Events
 
