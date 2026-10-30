@@ -13,6 +13,7 @@ use kawi_watch::{Fingerprint, WatchService};
 use serde_json::Value;
 
 use super::coalesce::PendingBufferEvent;
+use super::queue::{QueueCounters, QueuedInvocation};
 
 mod capability;
 mod support;
@@ -38,6 +39,11 @@ pub(crate) struct PluginRuntime {
     pub(super) catalog: PluginCatalog,
     pub(super) targets: Vec<PluginCommandTarget>,
     pub(super) bindings: Vec<Binding>,
+    pub(super) queues: BTreeMap<String, VecDeque<QueuedInvocation>>,
+    pub(super) queue_stats: BTreeMap<String, QueueCounters>,
+    pub(super) in_flight: BTreeSet<String>,
+    pub(super) busy_messages: BTreeMap<String, Instant>,
+    pub(super) queue_wait_override: Option<Duration>,
     pub(super) logs: BTreeMap<String, VecDeque<String>>,
     pub(super) known_buffers: BTreeMap<u64, BufferInfo>,
     pub(super) pending: BTreeMap<(String, u64), PendingBufferEvent>,
@@ -66,6 +72,8 @@ pub(crate) struct PluginRuntime {
 pub(crate) struct PluginCommandTarget {
     pub(super) plugin: String,
     pub(super) command: String,
+    pub(super) required: Vec<Capability>,
+    pub(super) coalesce: bool,
 }
 
 impl PluginRuntime {
@@ -75,21 +83,18 @@ impl PluginRuntime {
             .map(|target| (target.plugin.as_str(), target.command.as_str()))
     }
 
-    pub(crate) fn invoke(
+    pub(crate) fn invoke_named(
         &self,
-        target: u32,
+        plugin: &str,
+        command: &str,
         args: Value,
         context: InvocationContext,
     ) -> Result<(), PluginError> {
-        let target = self
-            .targets
-            .get(target as usize)
-            .ok_or_else(|| PluginError::Spawn("unknown plugin command".to_string()))?;
         let host = self
             .host
             .as_ref()
             .ok_or_else(|| PluginError::Spawn("plugin host is not running".to_string()))?;
-        host.invoke(&target.plugin, &target.command, args, context)?;
+        host.invoke(plugin, command, args, context)?;
         Ok(())
     }
 
@@ -166,10 +171,18 @@ impl PluginRuntime {
         if let Some(dropped) = self.throttled_messages.get(plugin) {
             lines.push(format!("ui.message rate limited: {dropped} dropped"));
         }
+        let counters = self.queue_counters(plugin);
+        if counters.queued > 0 || counters.rejected > 0 || counters.dropped > 0 {
+            lines.push(format!(
+                "queue: {} queued, {} rejected, {} dropped",
+                counters.queued, counters.rejected, counters.dropped
+            ));
+        }
         lines
     }
 
-    pub(crate) fn restart(&self, plugin: Option<&str>) -> Result<(), PluginError> {
+    pub(crate) fn restart(&mut self, plugin: Option<&str>) -> Result<(), PluginError> {
+        self.drop_queues(plugin);
         let Some(host) = self.host.as_ref() else {
             return Ok(());
         };
@@ -182,7 +195,8 @@ impl PluginRuntime {
         }
     }
 
-    pub(crate) fn shutdown(&self) {
+    pub(crate) fn shutdown(&mut self) {
+        self.drop_queues(None);
         if let Some(host) = self.host.as_ref() {
             host.shutdown();
         }
@@ -211,6 +225,14 @@ impl PluginRuntime {
             .retain(|(plugin, _)| known.contains(plugin.as_str()));
         self.sandboxed
             .retain(|plugin| known.contains(plugin.as_str()));
+        self.queues
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.queue_stats
+            .retain(|plugin, _| known.contains(plugin.as_str()));
+        self.in_flight
+            .retain(|plugin| known.contains(plugin.as_str()));
+        self.busy_messages
+            .retain(|plugin, _| known.contains(plugin.as_str()));
     }
 
     pub(crate) fn push_log(&mut self, plugin: &str, line: &str) {

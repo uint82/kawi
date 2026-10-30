@@ -8,6 +8,7 @@ mod host_methods;
 mod invoke;
 mod load;
 mod notify;
+mod queue;
 mod reload;
 mod runtime;
 mod text;

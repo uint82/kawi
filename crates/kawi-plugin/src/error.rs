@@ -27,7 +27,7 @@ impl fmt::Display for PluginError {
             Self::Timeout => write!(formatter, "plugin request timed out"),
             Self::ProcessExited => write!(formatter, "plugin process exited"),
             Self::Trap(message) => write!(formatter, "plugin trapped: {message}"),
-            Self::QueueFull => write!(formatter, "plugin event queue is full"),
+            Self::QueueFull => write!(formatter, "plugin queue is full"),
             Self::Protocol(message) => write!(formatter, "plugin protocol error: {message}"),
             Self::Initialize(message) => {
                 write!(formatter, "plugin initialization failed: {message}")

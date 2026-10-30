@@ -33,8 +33,14 @@ impl App {
                     .plugins
                     .status(name)
                     .map(status_label)
-                    .map(|status| super::text::sanitize(&status))
                     .unwrap_or_else(|| "stopped".to_string());
+                let depth = self.plugins.queue_depth(name);
+                let status = if depth > 0 {
+                    format!("busy ({depth} queued)")
+                } else {
+                    status
+                };
+                let status = super::text::sanitize(&status);
                 let commands = plugin
                     .manifest
                     .commands
