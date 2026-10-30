@@ -163,6 +163,15 @@ impl ConformanceHost {
         self.set_grants(&[]);
     }
 
+    pub(crate) fn revoke_everything(&self) {
+        self.set_grants(&[]);
+        let mut grants = self.registry.snapshot();
+        for effective in grants.values_mut() {
+            effective.granted.clear();
+        }
+        self.registry.replace(grants);
+    }
+
     pub(crate) fn set_grants(&self, capabilities: &[Capability]) {
         write_grants(&self.grants_path, capabilities, None, &self.catalog);
         let state = load_permission_state(&self.catalog, &self.grants_path);
