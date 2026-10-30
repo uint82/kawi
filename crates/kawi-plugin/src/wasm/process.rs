@@ -79,32 +79,42 @@ impl ProcessRunner {
     }
 
     fn authorize(&self, command: &str) -> Result<std::path::PathBuf, RpcError> {
-        let name = &self.plugin.manifest.name;
-        if !self.capabilities.has(name, Capability::ProcessSpawn) {
-            return Err(RpcError::capability_denied(
-                Capability::ProcessSpawn.name(),
-                None,
-            ));
-        }
-        let requested = kawi_process::find_executable_in(command, &self.plugin.dir)
-            .ok_or_else(|| command_not_found(command))?;
-        let Some(Scope::Commands(commands)) =
-            self.capabilities.scope(name, Capability::ProcessSpawn)
-        else {
-            return Err(capability_denied(command));
-        };
-        if commands.iter().any(|granted| {
-            kawi_process::find_executable_in(granted, &self.plugin.dir)
-                .is_some_and(|granted| same_executable(&granted, &requested))
-        }) {
-            Ok(requested)
-        } else {
-            Err(capability_denied(command))
-        }
+        authorize_command(
+            &self.plugin.manifest.name,
+            &self.capabilities,
+            command,
+            |command| kawi_process::find_executable_in(command, &self.plugin.dir),
+        )
     }
 
     pub fn sandbox(&self) -> kawi_process::SandboxPolicy {
         crate::process::sandbox_policy(&self.plugin, &self.capabilities, &self.environment).policy
+    }
+}
+
+pub(crate) fn authorize_command(
+    plugin: &str,
+    capabilities: &CapabilityRegistry,
+    command: &str,
+    resolve: impl Fn(&str) -> Option<std::path::PathBuf>,
+) -> Result<std::path::PathBuf, RpcError> {
+    if !capabilities.has(plugin, Capability::ProcessSpawn) {
+        return Err(RpcError::capability_denied(
+            Capability::ProcessSpawn.name(),
+            None,
+        ));
+    }
+    let requested = resolve(command).ok_or_else(|| command_not_found(command))?;
+    let Some(Scope::Commands(commands)) = capabilities.scope(plugin, Capability::ProcessSpawn)
+    else {
+        return Err(capability_denied(command));
+    };
+    if commands.iter().any(|granted| {
+        resolve(granted).is_some_and(|granted| same_executable(&granted, &requested))
+    }) {
+        Ok(requested)
+    } else {
+        Err(capability_denied(command))
     }
 }
 
