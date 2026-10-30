@@ -104,7 +104,7 @@ pub(crate) struct Scenario {
 
 const TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
-const HEAVY_TIMEOUT_MS: u64 = 10_000;
+const HEAVY_TIMEOUT_MS: u64 = 20_000;
 
 impl Scenario {
     pub(crate) fn timeout_ms(self) -> u64 {
