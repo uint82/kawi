@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 #[cfg(feature = "wasm")]
 use std::net::IpAddr;
+use std::net::Ipv6Addr;
 use std::path::Path;
 
 use serde_json::{Map, Value};
@@ -30,6 +31,12 @@ impl HostPort {
         };
         if host.is_empty() || port == 0 {
             return Err("hosts must use host:port".to_string());
+        }
+        if host.contains(['[', ']']) {
+            return Err("invalid host brackets".to_string());
+        }
+        if is_ipv6 && host.parse::<Ipv6Addr>().is_err() {
+            return Err("bracketed hosts must be IPv6 addresses".to_string());
         }
         if host.contains('*') {
             return Err("host wildcards are not supported".to_string());

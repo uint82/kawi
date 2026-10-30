@@ -95,6 +95,17 @@ fn normalizes_bracketed_ipv6_hosts() {
 }
 
 #[test]
+fn rejects_malformed_bracketed_hosts() {
+    let (requests, warnings) = requests(
+        r#"
+"net.connect" = { hosts = ["[[]]:443", "[example.com]:443", "example.com]:443"] }
+"#,
+    );
+    assert!(!requests.contains(Capability::NetConnect));
+    assert_eq!(warnings.len(), 1);
+}
+
+#[test]
 fn rejects_hosts_without_ports_and_zero_ports() {
     let (requests, warnings) = requests(
         r#"
