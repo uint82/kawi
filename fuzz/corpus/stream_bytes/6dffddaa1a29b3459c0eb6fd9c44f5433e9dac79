@@ -1,0 +1,4 @@
+session 3
+permit 8
+data 0102030405
+r 8

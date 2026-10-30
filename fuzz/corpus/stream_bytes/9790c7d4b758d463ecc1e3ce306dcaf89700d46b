@@ -1,0 +1,7 @@
+session 64
+permit 3
+c
+w 01020304
+c
+z 1
+f
