@@ -12,6 +12,8 @@ mod process;
 mod protocol;
 mod wasm;
 
+#[cfg(feature = "fuzz")]
+pub use wasm::fuzz;
 #[cfg(feature = "wasm")]
 pub use wasm::{
     import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,

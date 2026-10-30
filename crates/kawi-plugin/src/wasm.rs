@@ -10,6 +10,8 @@ mod component;
 mod connection_cap;
 #[cfg(feature = "wasm")]
 mod convert;
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
 #[cfg(feature = "wasm")]
 mod inbound_cap;
 #[cfg(feature = "wasm")]
@@ -30,7 +32,7 @@ mod session;
 mod state;
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 mod test_resolver;
-#[cfg(all(test, feature = "wasm"))]
+#[cfg(all(feature = "wasm", any(test, feature = "fuzz")))]
 mod test_streams;
 #[cfg(feature = "wasm")]
 mod wasi;

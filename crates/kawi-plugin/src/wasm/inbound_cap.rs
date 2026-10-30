@@ -24,7 +24,7 @@ pub(crate) fn cap_input_stream(
     Ok(table.push_child(capped, &socket)?)
 }
 
-struct CappedInputStream {
+pub(crate) struct CappedInputStream {
     inner: DynInputStream,
     local: ConnectionBudget,
     session: SessionBudget,
@@ -32,7 +32,11 @@ struct CappedInputStream {
 }
 
 impl CappedInputStream {
-    fn new(inner: DynInputStream, deadline: CallDeadline, session: SessionBudget) -> Self {
+    pub(crate) fn new(
+        inner: DynInputStream,
+        deadline: CallDeadline,
+        session: SessionBudget,
+    ) -> Self {
         Self {
             inner,
             local: ConnectionBudget::new(),

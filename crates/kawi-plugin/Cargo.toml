@@ -24,3 +24,4 @@ wasmtime-wasi = { workspace = true, optional = true }
 [features]
 wasm = ["dep:bytes", "dep:tokio", "dep:wasmtime", "dep:wasmtime-wasi"]
 wasm-test-network = ["wasm"]
+fuzz = ["wasm"]
