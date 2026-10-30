@@ -82,6 +82,37 @@ fn splice_counts_bytes() {
 }
 
 #[test]
+fn splice_stops_at_the_connection_cap() {
+    let cap = MAX_BYTES_PER_CONNECTION;
+    let limit = cap + 1;
+    let (stream, written) = capped(cap as usize);
+    let output: DynOutputStream = Box::new(stream);
+    let source: DynInputStream =
+        Box::new(SourceStream::new(Bytes::from(vec![0_u8; limit as usize])));
+    let mut table = ResourceTable::new();
+    let output = table.push(output).unwrap();
+    let source = table.push(source).unwrap();
+    let output = output.rep();
+    let source = source.rep();
+    let count = HostOutputStreamResource::splice(
+        &mut table,
+        Resource::new_borrow(output),
+        Resource::new_borrow(source),
+        limit,
+    )
+    .unwrap();
+    assert_eq!(count, cap);
+    assert_eq!(written.lock().unwrap().len(), cap as usize);
+    assert!(HostOutputStreamResource::splice(
+        &mut table,
+        Resource::new_borrow(output),
+        Resource::new_borrow(source),
+        1
+    )
+    .is_err());
+}
+
+#[test]
 fn blocking_write_stops_at_the_connection_cap() {
     let (mut stream, written) = capped(64 * 1024);
     let bytes = Bytes::from(vec![0_u8; MAX_BYTES_PER_CONNECTION as usize + 1]);

@@ -2,8 +2,9 @@ mod inbound;
 mod outbound;
 mod restart;
 mod session;
+mod splice;
 
-use std::io::Read;
+use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -16,6 +17,8 @@ use super::super::super::scenario::{network_case, Scenario};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const READ_CHUNK: usize = 256 * 1024;
+pub(super) const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const WRITE_CHUNK: usize = 256 * 1024;
 pub(super) const CONNECTION_BYTES: u64 = 8 * 1024 * 1024;
 pub(super) const SESSION_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -33,7 +36,11 @@ pub(crate) fn run_network_probe(
         "write-strict" => outbound::run_no_reader(host, case.target),
         "write-straddle" => outbound::run_straddle(host, case.target),
         "write-session" => session::run(host, case.target),
+        "write-close" => session::run_close(host, case.target),
+        "mixed-cap" => session::run_mixed(host, case.target),
+        "splice-cap" => splice::run(host, case.target),
         "read-cap" => inbound::run(host, case.target),
+        "read-straddle" => inbound::run_straddle(host, case.target),
         "read-strict" => inbound::run_no_sender(host, case.target),
         _ => host.invoke(case.command, json!([host.network_target(case.target)])),
     }
@@ -68,6 +75,36 @@ pub(super) fn drain(stream: &mut TcpStream) -> Result<u64, PluginError> {
 pub(super) fn drain_allowed(host: &ConformanceHost) -> Result<u64, PluginError> {
     let mut stream = accept(host)?;
     drain(&mut stream)
+}
+
+pub(super) fn send_bytes(stream: &mut TcpStream, limit: usize) -> Result<usize, PluginError> {
+    let chunk = [0_u8; WRITE_CHUNK];
+    let mut sent = 0;
+    while sent < limit {
+        let remaining = (limit - sent).min(WRITE_CHUNK);
+        match stream.write(&chunk[..remaining]) {
+            Ok(0) => break,
+            Ok(count) => sent += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if is_terminal_send_error(&error) => break,
+            Err(error) => {
+                return Err(PluginError::Protocol(format!(
+                    "send network bytes: {error}"
+                )))
+            }
+        }
+    }
+    Ok(sent)
+}
+
+fn is_terminal_send_error(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::WouldBlock
+            | io::ErrorKind::TimedOut
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::ConnectionReset
+    )
 }
 
 pub(super) fn parse_count(value: Option<&str>, label: &str) -> Result<u64, PluginError> {
@@ -108,4 +145,15 @@ pub(super) fn assert_plugin_ready(host: &ConformanceHost) -> Result<(), PluginEr
     Err(PluginError::Protocol(format!(
         "cap hit changed plugin status to {status:?}"
     )))
+}
+
+pub(super) fn assert_healthy_after_cap(host: &ConformanceHost) -> Result<(), PluginError> {
+    assert_plugin_ready(host)?;
+    let result = host.invoke("ping", json!(null))?;
+    if result.as_str() != Some("pong") {
+        return Err(PluginError::Protocol(format!(
+            "ping after cap returned {result}"
+        )));
+    }
+    assert_plugin_ready(host)
 }

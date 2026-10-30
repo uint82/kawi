@@ -1,6 +1,4 @@
-use std::io::{self, Write};
-use std::net::{Shutdown, TcpStream};
-use std::time::Duration;
+use std::net::Shutdown;
 
 use serde_json::{json, Value};
 
@@ -8,27 +6,33 @@ use kawi_plugin::PluginError;
 
 use super::super::super::super::harness::ConformanceHost;
 use super::super::super::super::scenario::NetworkTarget;
-use super::{accept, parse_counted, CONNECTION_BYTES};
+use super::{
+    accept, assert_healthy_after_cap, parse_count, parse_counted, send_bytes, CONNECTION_BYTES,
+    WRITE_TIMEOUT,
+};
 
 const SEND_LIMIT: usize = 9 * 1024 * 1024;
-const SEND_CHUNK: usize = 256 * 1024;
-const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) fn run(host: &ConformanceHost, target: NetworkTarget) -> Result<Value, PluginError> {
     let request = host.start_invocation("read-cap", json!([host.network_target(target)]))?;
     let mut stream = accept(host)?;
-    stream
-        .set_write_timeout(Some(WRITE_TIMEOUT))
-        .map_err(|error| PluginError::Protocol(format!("set write timeout: {error}")))?;
-    let sent = send_bytes(&mut stream, SEND_LIMIT)?;
-    let _ = stream.shutdown(Shutdown::Write);
-    if sent < CONNECTION_BYTES as usize {
-        return Err(PluginError::Protocol(format!(
-            "sent {sent} bytes, expected at least {CONNECTION_BYTES}"
-        )));
-    }
+    send_inbound(&mut stream)?;
     let result = host.wait_for_finished(request)?;
     assert_inbound_cap(&result)?;
+    assert_healthy_after_cap(host)?;
+    Ok(result)
+}
+
+pub(super) fn run_straddle(
+    host: &ConformanceHost,
+    target: NetworkTarget,
+) -> Result<Value, PluginError> {
+    let request = host.start_invocation("read-straddle", json!([host.network_target(target)]))?;
+    let mut stream = accept(host)?;
+    send_inbound(&mut stream)?;
+    let result = host.wait_for_finished(request)?;
+    assert_inbound_straddle(&result)?;
+    assert_healthy_after_cap(host)?;
     Ok(result)
 }
 
@@ -41,34 +45,18 @@ pub(super) fn run_no_sender(
     host.wait_for_finished(request)
 }
 
-fn send_bytes(stream: &mut TcpStream, limit: usize) -> Result<usize, PluginError> {
-    let chunk = [0_u8; SEND_CHUNK];
-    let mut sent = 0;
-    while sent < limit {
-        let remaining = (limit - sent).min(SEND_CHUNK);
-        match stream.write(&chunk[..remaining]) {
-            Ok(0) => break,
-            Ok(count) => sent += count,
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) if is_terminal_send_error(&error) => break,
-            Err(error) => {
-                return Err(PluginError::Protocol(format!(
-                    "send inbound bytes: {error}"
-                )))
-            }
-        }
+fn send_inbound(stream: &mut std::net::TcpStream) -> Result<(), PluginError> {
+    stream
+        .set_write_timeout(Some(WRITE_TIMEOUT))
+        .map_err(|error| PluginError::Protocol(format!("set write timeout: {error}")))?;
+    let sent = send_bytes(stream, SEND_LIMIT)?;
+    let _ = stream.shutdown(Shutdown::Write);
+    if sent < CONNECTION_BYTES as usize {
+        return Err(PluginError::Protocol(format!(
+            "sent {sent} bytes, expected at least {CONNECTION_BYTES}"
+        )));
     }
-    Ok(sent)
-}
-
-fn is_terminal_send_error(error: &io::Error) -> bool {
-    matches!(
-        error.kind(),
-        io::ErrorKind::WouldBlock
-            | io::ErrorKind::TimedOut
-            | io::ErrorKind::BrokenPipe
-            | io::ErrorKind::ConnectionReset
-    )
+    Ok(())
 }
 
 fn assert_inbound_cap(result: &Value) -> Result<(), PluginError> {
@@ -81,6 +69,35 @@ fn assert_inbound_cap(result: &Value) -> Result<(), PluginError> {
     if outcome != "eof" {
         return Err(PluginError::Protocol(format!(
             "guest read ended with {outcome}, expected eof"
+        )));
+    }
+    Ok(())
+}
+
+fn assert_inbound_straddle(result: &Value) -> Result<(), PluginError> {
+    let text = result
+        .as_str()
+        .ok_or_else(|| PluginError::Protocol("straddle read returned no text".to_string()))?;
+    let mut parts = text.splitn(3, ':');
+    let prefix = parse_count(parts.next(), "straddle prefix")?;
+    let straddle = parse_count(parts.next(), "straddle read")?;
+    let outcome = parts.next().ok_or_else(|| {
+        PluginError::Protocol(format!("straddle read returned unexpected text: {text}"))
+    })?;
+    if prefix != CONNECTION_BYTES - 1 {
+        return Err(PluginError::Protocol(format!(
+            "straddle prefix read {prefix} bytes, expected {}",
+            CONNECTION_BYTES - 1
+        )));
+    }
+    if straddle != 1 {
+        return Err(PluginError::Protocol(format!(
+            "straddle read returned {straddle}, expected 1"
+        )));
+    }
+    if outcome != "eof" {
+        return Err(PluginError::Protocol(format!(
+            "read after the cap ended with {outcome}, expected eof"
         )));
     }
     Ok(())

@@ -141,8 +141,18 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },
+        "wasm.net.outbound_cap_splice" => NetworkCase {
+            command: "splice-cap",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
         "wasm.net.outbound_session_cap" => NetworkCase {
             command: "write-session",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.outbound_session_close" => NetworkCase {
+            command: "write-close",
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },
@@ -151,8 +161,18 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },
+        "wasm.net.inbound_cap_straddle" => NetworkCase {
+            command: "read-straddle",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
         "wasm.net.inbound_cap_no_sender" => NetworkCase {
             command: "read-strict",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.session_mixed" => NetworkCase {
+            command: "mixed-cap",
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },

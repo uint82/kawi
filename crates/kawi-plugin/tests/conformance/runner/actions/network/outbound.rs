@@ -5,7 +5,7 @@ use kawi_plugin::PluginError;
 use super::super::super::super::harness::ConformanceHost;
 use super::super::super::super::scenario::NetworkTarget;
 use super::{
-    accept, assert_plugin_ready, assert_received, drain_allowed, parse_count, parse_counted,
+    accept, assert_healthy_after_cap, assert_received, drain_allowed, parse_count, parse_counted,
     CONNECTION_BYTES,
 };
 
@@ -18,7 +18,7 @@ pub(super) fn run(
     let received = drain_allowed(host)?;
     let result = host.wait_for_finished(request)?;
     assert_outbound_cap(received, &result)?;
-    assert_plugin_ready(host)?;
+    assert_healthy_after_cap(host)?;
     Ok(result)
 }
 
@@ -41,6 +41,7 @@ pub(super) fn run_straddle(
     assert_received(received, CONNECTION_BYTES)?;
     let (prefix, straddle, outcome) = parse_straddle(&result)?;
     assert_straddle(prefix, straddle, outcome)?;
+    assert_healthy_after_cap(host)?;
     Ok(result)
 }
 
