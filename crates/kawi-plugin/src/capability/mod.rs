@@ -1,3 +1,4 @@
+mod diff;
 mod permissions;
 mod registry;
 mod scope;
@@ -8,6 +9,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+pub use diff::{diff, reconcile_approved, CapabilityChange, ChangeKind};
 pub use permissions::{
     effective, parse_permissions, EffectiveCapabilities, PermissionsFile, PluginPermissions,
 };

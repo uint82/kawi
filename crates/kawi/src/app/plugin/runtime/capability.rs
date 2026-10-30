@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
-use kawi_plugin::{load_permission_state, Capability, RpcError, Scope};
+use kawi_plugin::{load_permission_state, Capability, ChangeKind, RpcError, Scope};
 use kawi_watch::{Fingerprint, WatchService};
 
 use super::support::{changed_restart_plugins, denial_lines, describe_capabilities, same_path};
@@ -48,6 +48,15 @@ impl PluginRuntime {
 
     pub(crate) fn changed_capabilities(&self, plugin: &str) -> Vec<Capability> {
         self.capabilities.get(plugin).changed_capabilities.clone()
+    }
+
+    pub(crate) fn change_kind(&self, plugin: &str, capability: Capability) -> Option<ChangeKind> {
+        self.capabilities
+            .get(plugin)
+            .changes
+            .into_iter()
+            .find(|change| change.capability == capability)
+            .map(|change| change.kind)
     }
 
     pub(crate) fn allow_next(&mut self, plugin: &str, capability: Capability) {
@@ -254,7 +263,12 @@ impl PluginRuntime {
             lines.push(format!("ungranted: {missing}"));
         }
         if effective.changed {
-            lines.push("changed: request hash mismatch".to_string());
+            let summary = if effective.changed_requests.is_empty() {
+                "request set changed".to_string()
+            } else {
+                effective.changed_requests.join(", ")
+            };
+            lines.push(format!("changed: {summary}"));
         }
         let stale = describe_capabilities(effective.stale.iter().copied(), wasm, sandboxed);
         if stale != "none" {

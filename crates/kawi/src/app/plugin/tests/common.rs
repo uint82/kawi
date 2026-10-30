@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use kawi_buffer::Buffer;
 use kawi_plugin::PluginStatus;
+use toml_edit::{DocumentMut, Item, Table};
 
 use crate::app::App;
 use crate::keymap::Flavor;
@@ -64,7 +65,7 @@ pub(super) fn load_plugins_with_permissions(
     root: &std::path::Path,
     permissions: &str,
 ) -> Vec<String> {
-    fs::write(root.join("permissions.toml"), permissions).unwrap();
+    write_permissions(root, permissions);
     app.plugins.load(
         crate::app::plugin::PluginLoadContext {
             dir: root,
@@ -77,6 +78,51 @@ pub(super) fn load_plugins_with_permissions(
         },
         true,
     )
+}
+
+pub(super) fn write_permissions(root: &std::path::Path, permissions: &str) {
+    let text = with_approved(root, permissions);
+    fs::write(root.join("permissions.toml"), text).unwrap();
+}
+
+fn with_approved(root: &std::path::Path, permissions: &str) -> String {
+    let Ok(mut document) = permissions.parse::<DocumentMut>() else {
+        return permissions.to_string();
+    };
+    if document.get("plugins").is_none() {
+        document.insert("plugins", Item::Table(Table::new()));
+    }
+    let catalog = kawi_plugin::load_catalog(root);
+    for plugin in &catalog.plugins {
+        let name = plugin.manifest.name.as_str();
+        let Some(plugins) = document.get_mut("plugins").and_then(Item::as_table_mut) else {
+            return permissions.to_string();
+        };
+        if !plugins.contains_key(name) {
+            plugins.insert(name, Item::Table(Table::new()));
+        }
+        let Some(table) = plugins.get_mut(name).and_then(Item::as_table_mut) else {
+            continue;
+        };
+        if table.contains_key("approved") || table.contains_key("request_hash") {
+            continue;
+        }
+        let Ok(manifest_text) = fs::read_to_string(&plugin.path) else {
+            continue;
+        };
+        let Ok(manifest) = manifest_text.parse::<DocumentMut>() else {
+            continue;
+        };
+        let Some(capabilities) = manifest.get("capabilities").and_then(Item::as_table) else {
+            continue;
+        };
+        let mut approved = Table::new();
+        for (key, value) in capabilities.iter() {
+            approved.insert(key, value.clone());
+        }
+        table.insert("approved", Item::Table(approved));
+    }
+    document.to_string()
 }
 
 pub(super) fn grant_all(root: &std::path::Path) {

@@ -1,25 +1,30 @@
 use super::*;
+use kawi_plugin::{Capability, ChangeKind};
 
 fn request(plugin: &str, capability: Capability) -> GrantRequest {
+    request_with(plugin, &[capability])
+}
+
+fn request_with(plugin: &str, capabilities: &[Capability]) -> GrantRequest {
     GrantRequest {
         plugin: plugin.to_string(),
-        capability,
         changed: false,
         changed_requests: Vec::new(),
         kind: GrantKind::Call,
         request_hash: "hash".to_string(),
+        items: capabilities
+            .iter()
+            .map(|capability| GrantItem::new(*capability, None, GrantKind::Call))
+            .collect(),
     }
 }
 
 fn startup_request(plugin: &str, capability: Capability, request_hash: &str) -> GrantRequest {
-    GrantRequest {
-        plugin: plugin.to_string(),
-        capability,
-        changed: false,
-        changed_requests: Vec::new(),
-        kind: GrantKind::Startup,
-        request_hash: request_hash.to_string(),
-    }
+    let mut request = request(plugin, capability);
+    request.kind = GrantKind::Startup;
+    request.request_hash = request_hash.to_string();
+    request.items[0].change = Some(ChangeKind::Added);
+    request
 }
 
 #[test]
@@ -75,7 +80,7 @@ fn startup_requests_stay_suppressed_until_the_hash_changes() {
 }
 
 #[test]
-fn startup_requests_are_presented_one_at_a_time() {
+fn startup_requests_are_batched_into_one_prompt() {
     let now = Instant::now();
     let mut queue = GrantQueue::default();
     let capabilities = [
@@ -83,24 +88,39 @@ fn startup_requests_are_presented_one_at_a_time() {
         Capability::UiMessage,
         Capability::DiagnosticsPublish,
     ];
-    for capability in capabilities {
-        let expected = if capability == Capability::EditorRead {
+    for (index, capability) in capabilities.into_iter().enumerate() {
+        let expected = if index == 0 {
             Enqueue::Activated
         } else {
-            Enqueue::Queued
+            Enqueue::Merged
         };
         assert_eq!(
-            queue.enqueue(startup_request("a", capability, "hash"), now),
+            queue.enqueue(startup_request("a", capability, "hash").clone(), now),
             expected
         );
     }
-    assert_eq!(queue.pending_count(), 2);
+    assert_eq!(queue.pending_count(), 0);
     assert!(queue.has_plugin_requests("a"));
     assert_eq!(queue.active_capability(), Some(Capability::EditorRead));
+    let prompt = queue.take_active().unwrap();
+    assert!(prompt.is_batch());
+    assert_eq!(prompt.labels().len(), capabilities.len());
+}
+
+#[test]
+fn merged_startup_batches_stay_suppressed_after_a_denial() {
+    let now = Instant::now();
+    let mut queue = GrantQueue::default();
+    queue.enqueue(startup_request("a", Capability::EditorRead, "hash"), now);
+    queue.enqueue(startup_request("a", Capability::EditorWrite, "hash"), now);
     let _ = queue.take_active();
-    assert!(queue.activate_next(now));
-    assert_eq!(queue.active_capability(), Some(Capability::UiMessage));
-    assert_eq!(queue.pending_count(), 1);
+    let mut batch = startup_request("a", Capability::EditorRead, "hash");
+    batch.items.push(GrantItem::new(
+        Capability::EditorWrite,
+        Some(ChangeKind::Added),
+        GrantKind::Startup,
+    ));
+    assert_eq!(queue.enqueue(batch, now), Enqueue::Suppressed);
 }
 
 #[test]
@@ -141,4 +161,33 @@ fn changed_summary_is_bounded() {
         changed_request_summary(&request),
         " Changed: cap 0 added, cap 1 added."
     );
+}
+
+#[test]
+fn batch_items_can_be_toggled_and_set_in_bulk() {
+    let now = Instant::now();
+    let mut queue = GrantQueue::default();
+    queue.enqueue(
+        request_with("a", &[Capability::EditorRead, Capability::EditorWrite]),
+        now,
+    );
+    let mut prompt = queue.take_active().unwrap();
+    assert!(prompt.is_batch());
+    prompt.toggle_selected();
+    assert!(prompt.labels()[0].contains("allow once"));
+    prompt.move_by(1);
+    prompt.toggle_selected();
+    assert!(prompt.labels()[1].contains("allow once"));
+    prompt.allow_all();
+    assert!(prompt
+        .request()
+        .items
+        .iter()
+        .all(|item| item.choice == GrantChoice::Always));
+    prompt.deny_all();
+    assert!(prompt
+        .request()
+        .items
+        .iter()
+        .all(|item| item.choice == GrantChoice::Deny));
 }

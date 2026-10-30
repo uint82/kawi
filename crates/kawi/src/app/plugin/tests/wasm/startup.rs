@@ -47,6 +47,22 @@ fn allow_always(app: &mut App) {
         .unwrap();
 }
 
+fn wait_for_batch_prompt(app: &mut App, count: usize) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.plugin_grants.active_capabilities().len() < count && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.plugin_grants.active_capabilities().len(), count);
+}
+
+fn allow_all(app: &mut App) {
+    app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+        .unwrap();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+}
+
 fn wait_for_ready(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while app.plugins.status("wasm") != Some(PluginStatus::Ready) && Instant::now() < deadline {
@@ -170,20 +186,12 @@ fn denied_startup_prompt_stays_quiet_until_the_request_changes() {
     wait_for_start_failure(&mut app);
     assert!(!app.plugin_grants.is_active());
     let logs = app.plugins.logs("wasm").len();
-    fs::write(
-        root.join("permissions.toml"),
-        "[plugins.wasm.grant]\n\"editor.write\" = false\n",
-    )
-    .unwrap();
+    write_permissions(&root, "[plugins.wasm.grant]\n\"editor.write\" = false\n");
     app.plugins.reload_permissions();
     wait_for_log_growth(&mut app, "wasm", logs);
     assert!(!app.plugin_grants.is_active());
     let logs = app.plugins.logs("wasm").len();
-    fs::write(
-        root.join("permissions.toml"),
-        "[plugins.wasm.grant]\n\"editor.write\" = true\n",
-    )
-    .unwrap();
+    write_permissions(&root, "[plugins.wasm.grant]\n\"editor.write\" = true\n");
     wait_for_log_growth(&mut app, "wasm", logs);
     assert!(!app.plugin_grants.is_active());
     fs::remove_dir_all(root).unwrap();
@@ -258,18 +266,15 @@ fn multiple_missing_imports_are_batched_and_invoked() {
         Capability::UiMessage,
         Capability::DiagnosticsPublish,
     ];
-    let mut seen = BTreeSet::new();
-    for index in 0..capabilities.len() {
-        wait_for_grant_prompt(&mut app);
-        seen.insert(app.plugin_grants.active_capability().unwrap());
-        allow_always(&mut app);
-        if index + 1 < capabilities.len() {
-            assert!(app.deferred_plugin_restarts.contains("wasm"));
-            assert!(app.plugin_grants.is_active());
-        }
-    }
+    wait_for_batch_prompt(&mut app, capabilities.len());
+    let seen = app
+        .plugin_grants
+        .active_capabilities()
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     assert_eq!(seen, BTreeSet::from(capabilities));
-    assert!(app.deferred_plugin_restarts.is_empty());
+    allow_all(&mut app);
+    assert!(!app.plugin_grants.is_active());
     wait_for_ready(&mut app);
     assert_grant_file(&root, &capabilities);
     let target = plugin_target(&app, "wasm.ping");
