@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phase 3 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. The default build does not compile or execute WebAssembly plugins.
+Status: phases 1-4 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. The default build does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
 
 ## Principles
 
@@ -99,17 +99,20 @@ Implemented:
 - Network policy tests for DNS pinning, rebinding, mixed answers, resolver failure, resolver timeout, connection caps, filtered name lookup, mapped addresses, and address classification.
 - Guest restart-closure, connection-cap, connection-reuse, and byte cap rows run in the default WASM build. The cap rows cover exact inbound and outbound limits, straddling short reads and writes, a vectored write path, a splice path, a peer that stops reading, a peer that stops sending, mixed-direction session accounting, repeated close and reconnect, and the shared session total. Hostname-positive, rebinding, mixed-answer, and all-private rows use the debug-only `wasm-test-network` feature. Without that feature the scripted rows are reported as not-supported under `TestResolverRequired` instead of running without a resolver.
 - Release builds for the default and `wasm` feature sets, plus a feature-graph check that fails if `wasm-test-network` is enabled.
+- Fuzz targets for network address parsing, pinned-set policy, byte-counting wrappers, JSON-RPC framing, host-method authorization, editor and diagnostics semantics, sanitization, error normalization, and mock process authorization.
 
-Still required:
+## Fuzzing
 
-- Fuzzing of the host import boundary.
+The `fuzz` workspace is excluded from the main workspace and runs on nightly with `cargo-fuzz` and `libfuzzer-sys`. Targets call host-side functions directly and use fake streams, a fake resolver, and a mock process executor. They assert capability denials produce no editor effect, edits preserve UTF-8 and revisions, diagnostics respect the 1000/4096/256 caps, sanitized text has no control characters, errors use the conformance normalization set, and ungranted commands are denied without spawning.
+
+Run targets with `fuzz/run.sh smoke` for a short PR check or `fuzz/run.sh nightly` for the longer scheduled budget. The runner sets `-max_len`, `-rss_limit_mb`, and `-malloc_limit_mb` per mode. PR CI builds every target and smoke-runs each one. Nightly CI runs longer, caches the corpus, and uploads crash artifacts.
 
 ## Rollout
 
-1. Contract, manifest fields, hash binding, component inspection, and engine foundation. This phase.
+1. Contract, manifest fields, hash binding, component inspection, and engine foundation. Complete.
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement. Complete.
-4. Shared conformance suite and fuzzing in CI. The conformance suite and socket fixtures are complete; fuzzing remains.
+4. Shared conformance suite and fuzzing in CI. Complete.
 5. Process runtime deprecation once the WASM authoring path is practical.
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.
