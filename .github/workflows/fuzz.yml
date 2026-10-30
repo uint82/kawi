@@ -1,0 +1,100 @@
+name: fuzz
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/kawi-plugin/**"
+      - "crates/kawi-jsonrpc/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/kawi-plugin/**"
+      - "crates/kawi-jsonrpc/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "fuzz -> target"
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Build fuzz targets
+        working-directory: fuzz
+        run: cargo fuzz build
+      - name: Test fuzz harness
+        working-directory: fuzz
+        run: cargo test --lib
+      - name: Smoke fuzz targets
+        working-directory: fuzz
+        run: sh run.sh smoke
+      - name: Upload fuzz artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-smoke-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+
+  scheduled:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - network_policy
+          - stream_bytes
+          - process_framing
+          - authorization
+          - host_imports
+          - process_run
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "fuzz -> target"
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+      - name: Build fuzz target
+        working-directory: fuzz
+        run: cargo fuzz build ${{ matrix.target }}
+      - name: Fuzz target
+        working-directory: fuzz
+        run: FUZZ_SECONDS=120 sh run.sh nightly ${{ matrix.target }}
+      - name: Upload fuzz artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore
