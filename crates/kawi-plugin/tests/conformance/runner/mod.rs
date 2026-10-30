@@ -193,6 +193,22 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
         Action::MidCodepointPosition => run_mid_codepoint(&host, runtime, scenario),
         Action::NetworkProbe => run_network_probe(&host, runtime, scenario),
         Action::NetworkScripted => run_network_scripted(&host, runtime, scenario),
+        Action::Trim => host.invoke(command, json!(null)),
+        Action::TrimDenied => {
+            host.activate_ready();
+            let grants = scenario
+                .grants
+                .iter()
+                .copied()
+                .filter(|capability| *capability != kawi_plugin::Capability::EditorWrite)
+                .collect::<Vec<_>>();
+            host.set_grants(&grants);
+            host.invoke(command, json!(null))
+        }
+        Action::TrimStale => {
+            host.set_stale_once();
+            host.invoke(command, json!(null))
+        }
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);
@@ -202,7 +218,51 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.observation().logs.join(" | ")
         ));
     }
+    if matches!(scenario.action, Action::Trim | Action::TrimStale) {
+        assert_trim_edits(&host, scenario)?;
+    }
     assert_denial_was_enforced(&host, scenario, &result)
+}
+
+fn assert_trim_edits(host: &ConformanceHost, scenario: &Scenario) -> Result<(), String> {
+    let observation = host.observation();
+    let requests = observation
+        .host_requests
+        .iter()
+        .filter(|request| request.method == "editor.apply_edit")
+        .collect::<Vec<_>>();
+    let expected_requests = if scenario.action == Action::TrimStale {
+        2
+    } else {
+        1
+    };
+    if requests.len() != expected_requests {
+        return Err(format!(
+            "expected {expected_requests} apply_edit calls, observed {}",
+            requests.len()
+        ));
+    }
+    let edits = requests
+        .last()
+        .and_then(|request| request.params.get("edits"))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "apply_edit request is missing edits".to_string())?;
+    let expected = serde_json::json!([
+        {
+            "start": { "line": 0, "byte_column": 2 },
+            "end": { "line": 0, "byte_column": 4 },
+            "text": "",
+        },
+        {
+            "start": { "line": 1, "byte_column": 4 },
+            "end": { "line": 1, "byte_column": 5 },
+            "text": "",
+        },
+    ]);
+    if serde_json::Value::Array(edits.clone()) != expected {
+        return Err(format!("unexpected trim edits: {edits:?}"));
+    }
+    Ok(())
 }
 
 fn assert_denial_was_enforced(
@@ -222,17 +282,20 @@ fn assert_denial_was_enforced(
     if !result.is_err() {
         return Err(format!("denial {capability} returned a successful result"));
     }
+    let method = match capability {
+        "editor.read" => "editor.get_state",
+        "editor.write" => "editor.apply_edit",
+        _ => return Ok(()),
+    };
     let observation = host.observation();
     let denied = observation
         .host_requests
         .iter()
-        .any(|request| request.denied && request.method == "editor.get_state");
+        .any(|request| request.denied && request.method == method);
     if denied {
         Ok(())
     } else {
-        Err(format!(
-            "host never denied editor.get_state for {capability}"
-        ))
+        Err(format!("host never denied {method} for {capability}"))
     }
 }
 

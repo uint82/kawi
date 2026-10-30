@@ -96,7 +96,7 @@ fn validate_wasm(manifest: &mut PluginManifest, dir: &Path) -> Artifact {
     Artifact::ready(Some(computed))
 }
 
-fn validate_component_path(component: &str) -> Result<(), String> {
+pub fn validate_component_path(component: &str) -> Result<(), String> {
     if component.trim().is_empty() {
         return Err("component must not be empty".to_string());
     }

@@ -32,8 +32,8 @@ pub use environment::HostEnvironment;
 pub use error::PluginError;
 pub use host::{PluginHost, PluginHostEvent, PluginStatus};
 pub use manifest::{
-    load_catalog, ActivationEvent, LoadedPlugin, PluginCatalog, PluginCommand, PluginManifest,
-    PluginRuntime, PluginWarning,
+    load_catalog, validate_component_path, validate_plugin_name, ActivationEvent, LoadedPlugin,
+    PluginCatalog, PluginCommand, PluginManifest, PluginRuntime, PluginWarning,
 };
 pub use outcome::{normalize_error, normalize_result, normalize_rpc, Outcome};
 pub use process::NotifyOutcome;

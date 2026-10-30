@@ -1,11 +1,11 @@
 ---
 title = "Plugins"
 aliases = ["plugin"]
-related = ["plugin-protocol", "plugin-capabilities", "keymaps", "configuration", "troubleshooting"]
+related = ["plugin-protocol", "plugin-capabilities", "plugin-authoring", "keymaps", "configuration", "troubleshooting"]
 ---
 # Plugins
 
-Kawi supports process plugins that communicate over JSON-RPC 2.0. Plugins are trusted code and run with your full user permissions.
+Kawi supports process plugins that communicate over JSON-RPC 2.0 and WebAssembly plugins that use a versioned component contract. Process plugins are trusted code and run with your full user permissions. WASM plugins are the restricted path and are the recommended authoring target. See [Writing a WASM plugin](help:plugin-authoring).
 
 Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
 

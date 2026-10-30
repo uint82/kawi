@@ -27,7 +27,11 @@ skip = [
     { crate = "syn@2.0.119", reason = "proc-macro dependencies span syn 2 and syn 3" },
     { crate = "thiserror@1.0.69", reason = "portable-pty's filedescriptor 0.8 still requires thiserror 1" },
     { crate = "thiserror-impl@1.0.69", reason = "portable-pty's filedescriptor 0.8 still requires thiserror 1" },
-    { crate = "wasm-encoder@0.261.0", reason = "wasmtime 50 uses wasm-encoder 0.262 through wat" },
+    { crate = "wasm-encoder@0.261.0", reason = "wasmtime 50 uses wasm-tools 0.261 and the guest SDK uses 0.262" },
+    { crate = "wasm-metadata@0.261.0", reason = "wasmtime 50 uses wasm-tools 0.261 and the guest SDK uses 0.262" },
+    { crate = "wasmparser@0.261.0", reason = "wasmtime 50 uses wasm-tools 0.261 and the guest SDK uses 0.262" },
+    { crate = "wit-component@0.261.0", reason = "wasmtime 50 uses wasm-tools 0.261 and the guest SDK uses 0.262" },
+    { crate = "wit-parser@0.261.0", reason = "wasmtime 50 uses wasm-tools 0.261 and the guest SDK uses 0.262" },
     { crate = "windows-sys@0.60.2", reason = "transitive Windows dependencies use different windows-sys generations" },
 ]
 

@@ -36,7 +36,7 @@ Epoch accounting excludes time spent blocked in host calls because the guest is 
 
 ## Contract
 
-The WIT package is `kawi:plugin@0.1.0` in `crates/kawi-plugin/wit/plugin.wit`.
+The WIT package is `kawi:plugin@0.1.0` in `crates/kawi-plugin-sdk/wit/plugin.wit`. The SDK owns the contract and the runtime consumes the same file.
 
 Interfaces:
 
@@ -113,6 +113,6 @@ Fuzzing is complete. Run targets with `fuzz/run.sh smoke` for the 30 second PR c
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement. Complete.
 4. Shared conformance suite and fuzzing in CI. Complete.
-5. Process runtime deprecation once the WASM authoring path is practical.
+5. Process runtime deprecation once the WASM authoring path is practical. Criteria defined in [plugin-deprecation](plugin-deprecation.md).
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.

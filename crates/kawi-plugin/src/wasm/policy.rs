@@ -215,6 +215,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_newer_kawi_interface_versions() {
+        let requested = BTreeSet::from(Capability::ALL);
+        assert_eq!(
+            unauthorized_imports(["kawi:plugin/editor-read@0.2.0"].into_iter(), &requested),
+            vec!["kawi:plugin/editor-read@0.2.0"]
+        );
+    }
+
+    #[test]
     fn rejects_unknown_kawi_and_wasi_interfaces() {
         let requested = BTreeSet::from(Capability::ALL);
         assert_eq!(
@@ -228,7 +237,7 @@ mod tests {
 
     #[test]
     fn wit_package_matches_the_import_table() {
-        let wit = include_str!("../../wit/plugin.wit");
+        let wit = include_str!("../../../kawi-plugin-sdk/wit/plugin.wit");
         assert!(wit.contains("package kawi:plugin@0.1.0;"));
         for rule in WASM_IMPORTS
             .iter()

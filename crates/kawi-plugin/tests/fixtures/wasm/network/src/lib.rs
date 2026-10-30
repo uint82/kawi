@@ -1,5 +1,5 @@
 wit_bindgen::generate!({
-    path: "../../../../wit",
+    path: "../../../../../kawi-plugin-sdk/wit",
     world: "host",
 });
 

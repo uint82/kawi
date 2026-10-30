@@ -1,0 +1,15 @@
+[package]
+name = "wasm-trim"
+version = "0.1.0"
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kawi-plugin-sdk = { version = "0.0.1", path = "../../crates/kawi-plugin-sdk" }

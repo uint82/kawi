@@ -1,11 +1,11 @@
 ---
 title = "Plugin capabilities"
 aliases = ["permissions"]
-related = ["plugins", "plugin-protocol", "configuration", "troubleshooting"]
+related = ["plugins", "plugin-protocol", "plugin-authoring", "configuration", "troubleshooting"]
 ---
 # Plugin capabilities
 
-Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else.
+Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else. See [Writing a WASM plugin](help:plugin-authoring) for the authoring path.
 
 Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, and `diagnostics.read` events for process plugins. On Linux with a full Landlock ABI, Landlock enforces `fs.read`, `fs.write`, and `process.spawn` for process plugins. The WebAssembly runtime enforces `net.connect` with a deny-by-default WASI socket policy. Landlock cannot scope network destinations, so `net.connect` remains advisory for process plugins. On other platforms every filesystem, process, and network scope remains advisory for process plugins.
 

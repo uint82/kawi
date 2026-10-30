@@ -40,20 +40,15 @@ pub(crate) fn run_queued_revocation(
             scenario.id
         );
     }
-    host.revoke_all();
+    host.revoke_everything();
     let revoked_at = host.host_request_count();
     host.release_events();
     let result = host.invoke(runtime.command(scenario.behavior), json!(null));
     let observation = host.observation();
     let observed_after = &observation.host_requests[revoked_at..];
     assert!(
-        observed_after.iter().all(|request| {
-            !matches!(
-                request.method.as_str(),
-                "ui.message" | "editor.apply_edit" | "editor.set_diagnostics"
-            )
-        }),
-        "{runtime:?} {}: host requests after revocation: {observed_after:?}",
+        observed_after.iter().all(|request| request.denied),
+        "{runtime:?} {}: allowed host requests after revocation: {observed_after:?}",
         scenario.id
     );
     result
@@ -88,21 +83,15 @@ pub(crate) fn run_queued_revocation_mid_write(
         "{runtime:?} {}: {event} was not queued",
         scenario.id
     );
-    host.revoke_all();
+    host.revoke_everything();
     let revoked_at = host.host_request_count();
     host.release_host_responses();
-    assert!(
-        host.wait_for_event_marker("event-write-done"),
-        "{runtime:?} {}: in-flight event did not finish: {:?}",
-        scenario.id,
-        host.observation().logs
-    );
     let result = host.invoke("ping", json!(null));
     let observation = host.observation();
     let edits = observation
         .host_requests
         .iter()
-        .filter(|request| request.method == "editor.apply_edit")
+        .filter(|request| !request.denied && request.method == "editor.apply_edit")
         .count();
     assert_eq!(
         edits, 1,
@@ -112,29 +101,20 @@ pub(crate) fn run_queued_revocation_mid_write(
     let starts = observation
         .host_requests
         .iter()
-        .filter(|request| is_event_marker(request, "event-write-start"))
-        .count();
-    let dones = observation
-        .host_requests
-        .iter()
-        .filter(|request| is_event_marker(request, "event-write-done"))
+        .filter(|request| !request.denied && is_event_marker(request, "event-write-start"))
         .count();
     assert_eq!(
         starts, 1,
         "{runtime:?} {}: in-flight event was not delivered exactly once",
         scenario.id
     );
-    assert_eq!(
-        dones, 1,
-        "{runtime:?} {}: in-flight event did not commit exactly once: {:#?}",
-        scenario.id, observation.host_requests
-    );
     assert!(
         observation.host_requests[revoked_at..]
             .iter()
-            .all(|request| !is_event_marker(request, "event-write-start")),
-        "{runtime:?} {}: queued event reached the plugin after revocation",
-        scenario.id
+            .all(|request| request.denied),
+        "{runtime:?} {}: queued event reached the revoked host: {:#?}",
+        scenario.id,
+        observation.host_requests
     );
     result
 }

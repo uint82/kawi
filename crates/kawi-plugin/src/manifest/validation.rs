@@ -75,7 +75,7 @@ fn validate_activation(events: &[ActivationEvent]) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_name(name: &str) -> Result<(), String> {
+pub(super) fn validate_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > MAX_NAME_LEN {
         return Err(format!("name must be 1 to {MAX_NAME_LEN} characters"));
     }

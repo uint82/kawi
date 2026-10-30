@@ -1,3 +1,12 @@
+[rows."authoring.trim"]
+status = "pass"
+
+[rows."authoring.trim_stale"]
+status = "pass"
+
+[rows."authoring.trim_denied"]
+status = "pass"
+
 [rows."core.echo"]
 status = "pass"
 

@@ -36,6 +36,7 @@ pub(crate) enum Behavior {
     EventFileSaved,
     EventModeChanged,
     EventDiagnosticsChanged,
+    Trim,
 }
 
 impl Behavior {
@@ -64,6 +65,7 @@ impl Behavior {
             | Self::EventFileSaved
             | Self::EventModeChanged
             | Self::EventDiagnosticsChanged => "event-host",
+            Self::Trim => "trim",
         }
     }
 
@@ -93,6 +95,7 @@ impl Behavior {
             | Self::EventFileSaved
             | Self::EventModeChanged
             | Self::EventDiagnosticsChanged => "events.wasm",
+            Self::Trim => "trim.wasm",
         }
     }
 
@@ -102,6 +105,7 @@ impl Behavior {
             Self::DiagnosticsLarge => "diagnostics",
             Self::ControlText => "control",
             Self::NetworkProbe => "connect",
+            Self::Trim => "trim",
             Self::Trap | Self::TrapThenRecover => "ping",
             _ => "ping",
         }
@@ -117,6 +121,7 @@ impl Behavior {
     pub(crate) fn process_command(self) -> &'static str {
         match self {
             Self::Echo => "ping",
+            Self::Trim => "trim",
             Self::DiagnosticsLarge => "diagnostics",
             _ => "probe",
         }
@@ -162,6 +167,11 @@ impl Behavior {
             ],
             Self::UngrantedImport => &[Capability::EditorRead],
             Self::EventDiagnosticsChanged => DIAGNOSTICS_READ_UI,
+            Self::Trim => &[
+                Capability::EditorRead,
+                Capability::EditorWrite,
+                Capability::UiMessage,
+            ],
             Self::EventBufferChanged
             | Self::EventBufferOpened
             | Self::EventFileOpened
@@ -181,6 +191,10 @@ impl Behavior {
 
     pub(crate) fn is_network(self) -> bool {
         matches!(self, Self::NetworkProbe | Self::NetworkProbeHeavy)
+    }
+
+    pub(crate) fn trim_text(self) -> Option<&'static str> {
+        (self == Self::Trim).then_some("é  \nbeta\t\n")
     }
 
     pub(crate) fn event(self) -> Option<&'static str> {
@@ -212,7 +226,8 @@ impl Behavior {
             | Self::MidCodepoint
             | Self::ControlText
             | Self::NetworkProbe
-            | Self::NetworkProbeHeavy => None,
+            | Self::NetworkProbeHeavy
+            | Self::Trim => None,
         }
     }
 }

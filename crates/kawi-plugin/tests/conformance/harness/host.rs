@@ -10,8 +10,9 @@ use std::time::Instant;
 use serde_json::Value;
 
 use kawi_plugin::{
-    load_catalog, load_permission_state, CapabilityRegistry, HostEnvironment, InvocationContext,
-    NotifyOutcome, PluginCatalog, PluginError, PluginHost, PluginStatus, Position,
+    load_catalog, load_permission_state, Capability, CapabilityRegistry, HostEnvironment,
+    InvocationContext, NotifyOutcome, PluginCatalog, PluginError, PluginHost, PluginStatus,
+    Position,
 };
 
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
@@ -90,7 +91,9 @@ impl ConformanceHost {
         ));
         let (finished_tx, finished) = mpsc::channel();
         let observation = Arc::new(Mutex::new(Observation::default()));
-        let policy = Arc::new(Mutex::new(Policy::new()));
+        let mut policy = Policy::new();
+        policy.state_text = scenario.behavior.trim_text().map(str::to_string);
+        let policy = Arc::new(Mutex::new(policy));
         let stop = Arc::new(AtomicBool::new(false));
         let driver = Driver {
             host: Arc::clone(&host),
@@ -157,7 +160,20 @@ impl ConformanceHost {
     }
 
     pub(crate) fn revoke_all(&self) {
-        write_grants(&self.grants_path, &[], None, &self.catalog);
+        self.set_grants(&[]);
+    }
+
+    pub(crate) fn revoke_everything(&self) {
+        self.set_grants(&[]);
+        let mut grants = self.registry.snapshot();
+        for effective in grants.values_mut() {
+            effective.granted.clear();
+        }
+        self.registry.replace(grants);
+    }
+
+    pub(crate) fn set_grants(&self, capabilities: &[Capability]) {
+        write_grants(&self.grants_path, capabilities, None, &self.catalog);
         let state = load_permission_state(&self.catalog, &self.grants_path);
         assert!(state.file_error.is_none(), "{:?}", state.file_error);
         self.registry.replace(state.grants);

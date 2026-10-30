@@ -1,6 +1,14 @@
 import json
 import sys
 
+MAX_STALE_RETRIES = 2
+
+
+class HostError(Exception):
+    def __init__(self, error):
+        super().__init__(error.get("message", "host call failed"))
+        self.error = error
+
 
 class Client:
     def __init__(self):
@@ -70,19 +78,7 @@ def trim_edits(state):
     return edits
 
 
-def trim_buffer(client):
-    state = client.request("editor.get_state", {"include_text": True})
-    if state is None:
-        return None
-    if "error" in state:
-        error = state["error"]
-        client.write({
-            "jsonrpc": "2.0",
-            "method": "ui.message",
-            "params": {"message": error.get("message", "capability denied")},
-        })
-        return {"error": error}
-    value = state["result"]
+def apply_trim(client, value, retries=0):
     edits = trim_edits(value)
     if not edits:
         return {"message": "no trailing whitespace"}
@@ -93,7 +89,40 @@ def trim_buffer(client):
     })
     if response is None:
         return None
-    return response.get("result") or {"error": response.get("error")}
+    error = response.get("error")
+    if not error:
+        return response.get("result")
+    if error.get("code") != -32010 or retries >= MAX_STALE_RETRIES:
+        raise HostError(error)
+    state = client.request("editor.get_state", {"include_text": True})
+    if state is None:
+        return None
+    if "error" in state:
+        raise HostError(state["error"])
+    return apply_trim(client, state["result"], retries + 1)
+
+
+def trim_buffer(client):
+    state = client.request("editor.get_state", {"include_text": True})
+    if state is None:
+        return None
+    if "error" in state:
+        error = HostError(state["error"])
+        report_error(client, error)
+        raise error
+    try:
+        return apply_trim(client, state["result"])
+    except HostError as error:
+        report_error(client, error)
+        raise
+
+
+def report_error(client, error):
+    client.write({
+        "jsonrpc": "2.0",
+        "method": "ui.message",
+        "params": {"message": str(error)},
+    })
 
 
 def main():
@@ -110,7 +139,15 @@ def main():
                 "result": initialize_result(),
             })
         elif method == "invoke_command":
-            result = trim_buffer(client)
+            try:
+                result = trim_buffer(client)
+            except HostError as error:
+                client.write({
+                    "jsonrpc": "2.0",
+                    "id": message["id"],
+                    "error": error.error,
+                })
+                continue
             if result is None:
                 return
             client.write({
@@ -121,7 +158,11 @@ def main():
         elif method == "event":
             params = message.get("params", {})
             if params.get("event") == "file_saved":
-                if trim_buffer(client) is None:
+                try:
+                    result = trim_buffer(client)
+                except HostError:
+                    continue
+                if result is None:
                     return
         elif method == "shutdown":
             return

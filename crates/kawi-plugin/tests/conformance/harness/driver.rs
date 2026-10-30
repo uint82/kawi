@@ -11,7 +11,9 @@ use kawi_plugin::{
 };
 
 use super::editor::{apply_edit, diagnostics_invalid, oversized_state_value, state_value};
-use super::model::{DeferredResponse, Finished, HostRequestRecord, Observation, Policy};
+use super::model::{
+    DeferredResponse, Finished, HostPolicy, HostRequestRecord, Observation, Policy,
+};
 use super::DRIVER_POLL;
 
 pub(crate) struct Driver {
@@ -78,16 +80,9 @@ impl Driver {
             self.mark_responded(index);
             return;
         }
-        let (withhold, withhold_method, stale_revision, invalid_position, oversize_response) =
-            self.policy_snapshot();
-        let result = host_result(
-            method,
-            &params,
-            stale_revision,
-            invalid_position,
-            oversize_response,
-        );
-        if withhold || withhold_method.as_deref() == Some(method) {
+        let policy = self.take_host_policy(method);
+        let result = host_result(method, &params, &policy);
+        if policy.withhold || policy.withhold_method.as_deref() == Some(method) {
             self.defer_response(plugin, id, result, index);
             return;
         }
@@ -127,18 +122,11 @@ impl Driver {
         }
     }
 
-    fn policy_snapshot(&self) -> (bool, Option<String>, bool, bool, bool) {
-        let policy = self
-            .policy
+    fn take_host_policy(&self, method: &str) -> HostPolicy {
+        self.policy
             .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        (
-            policy.withhold,
-            policy.withhold_method.clone(),
-            policy.stale_revision,
-            policy.invalid_position,
-            policy.oversize_response,
-        )
+            .unwrap_or_else(|error| error.into_inner())
+            .take_host_policy(method)
     }
 
     fn defer_response(
@@ -186,27 +174,21 @@ fn capability_denied(method: &str) -> RpcError {
     }
 }
 
-fn host_result(
-    method: &str,
-    params: &Value,
-    stale_revision: bool,
-    invalid_position: bool,
-    oversize_response: bool,
-) -> Result<Value, RpcError> {
+fn host_result(method: &str, params: &Value, policy: &HostPolicy) -> Result<Value, RpcError> {
     match method {
-        "editor.get_state" if oversize_response => Ok(oversized_state_value()),
-        "editor.get_state" => Ok(state_value()),
-        "editor.apply_edit" if invalid_position => {
+        "editor.get_state" if policy.oversize_response => Ok(oversized_state_value()),
+        "editor.get_state" => Ok(state_value(policy.state_text.as_deref())),
+        "editor.apply_edit" if policy.invalid_position => {
             Err(RpcError::invalid_position("edit position is out of range"))
         }
-        "editor.apply_edit" if stale_revision => Err(RpcError::stale_revision(
+        "editor.apply_edit" if policy.stale_revision => Err(RpcError::stale_revision(
             params
                 .get("revision")
                 .and_then(Value::as_u64)
                 .unwrap_or_default(),
             7,
         )),
-        "editor.apply_edit" => apply_edit(params),
+        "editor.apply_edit" => apply_edit(params, policy.state_text.as_deref()),
         "editor.set_diagnostics" => match diagnostics_invalid(params) {
             Some(error) => Err(error),
             None => Ok(Value::Null),

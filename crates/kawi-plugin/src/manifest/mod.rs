@@ -11,7 +11,7 @@ use crate::capability::{parse_capability_requests, CapabilityRequests};
 mod runtime;
 mod validation;
 
-pub use runtime::PluginRuntime;
+pub use runtime::{validate_component_path, PluginRuntime};
 
 const MANIFEST_FILE: &str = "plugin.toml";
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -229,6 +229,10 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
             None
         }
     }
+}
+
+pub fn validate_plugin_name(name: &str) -> Result<(), String> {
+    validation::validate_name(name)
 }
 
 fn default_timeout_ms() -> u64 {
