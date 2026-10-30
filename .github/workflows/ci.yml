@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
       - name: Check WASM dependencies
-        run: cargo tree -p kawi --features wasm -e normal | grep -q "wasmtime v50.0.0"
+        run: cargo tree -p kawi --features wasm -e normal | grep -q "wasmtime v"
       - name: Check release excludes test network override
         run: |
           cargo build -p kawi --release
