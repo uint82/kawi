@@ -7,6 +7,7 @@ use wasmtime_wasi::p2::bindings::sync::sockets::tcp::{
 use wasmtime_wasi::p2::SocketError;
 use wasmtime_wasi::sockets::WasiSocketsCtxView;
 
+use super::super::inbound_cap::cap_input_stream;
 use super::super::outbound_cap::cap_output_stream;
 use super::TrackedSocketsView;
 
@@ -59,7 +60,20 @@ impl HostTcpSocket for TrackedSocketsView<'_> {
         let socket = this.rep();
         let (input, output) =
             <WasiSocketsCtxView<'_> as HostTcpSocket>::finish_connect(&mut self.inner, this)?;
-        let output = cap_output_stream(self.inner.table, socket, output, self.deadline.clone())?;
+        let input = cap_input_stream(
+            self.inner.table,
+            socket,
+            input,
+            self.deadline.clone(),
+            self.budget.clone(),
+        )?;
+        let output = cap_output_stream(
+            self.inner.table,
+            socket,
+            output,
+            self.deadline.clone(),
+            self.budget.clone(),
+        )?;
         Ok((input, output))
     }
 

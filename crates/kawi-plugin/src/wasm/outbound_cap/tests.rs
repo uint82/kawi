@@ -2,74 +2,32 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use wasmtime_wasi::p2::bindings::sync::io::streams::HostOutputStream as HostOutputStreamResource;
-use wasmtime_wasi::p2::{DynInputStream, InputStream as InputStreamTrait};
+use wasmtime_wasi::p2::{DynInputStream, DynOutputStream};
 use wasmtime_wasi::runtime::in_tokio;
 
 use super::*;
-
-struct RecordingStream {
-    written: Arc<Mutex<Vec<u8>>>,
-    permit: usize,
-}
-
-impl RecordingStream {
-    fn new(permit: usize) -> (Self, Arc<Mutex<Vec<u8>>>) {
-        let written = Arc::new(Mutex::new(Vec::new()));
-        (
-            Self {
-                written: Arc::clone(&written),
-                permit,
-            },
-            written,
-        )
-    }
-}
-
-#[async_trait]
-impl OutputStreamTrait for RecordingStream {
-    fn write(&mut self, bytes: Bytes) -> StreamResult<()> {
-        self.written
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .extend_from_slice(&bytes);
-        Ok(())
-    }
-
-    fn flush(&mut self) -> StreamResult<()> {
-        Ok(())
-    }
-
-    fn check_write(&mut self) -> StreamResult<usize> {
-        Ok(self.permit)
-    }
-}
-
-#[async_trait]
-impl Pollable for RecordingStream {
-    async fn ready(&mut self) {}
-}
-
-struct SourceStream {
-    data: Bytes,
-}
-
-#[async_trait]
-impl InputStreamTrait for SourceStream {
-    fn read(&mut self, size: usize) -> StreamResult<Bytes> {
-        let len = self.data.len().min(size);
-        Ok(self.data.split_to(len))
-    }
-}
-
-#[async_trait]
-impl Pollable for SourceStream {
-    async fn ready(&mut self) {}
-}
+use crate::wasm::byte_budget::MAX_BYTES_PER_CONNECTION;
+use crate::wasm::test_streams::{RecordingStream, SourceStream};
 
 fn capped(permit: usize) -> (CappedOutputStream, Arc<Mutex<Vec<u8>>>) {
+    capped_with_session(permit, MAX_BYTES_PER_CONNECTION)
+}
+
+fn capped_with_session(permit: usize, session: u64) -> (CappedOutputStream, Arc<Mutex<Vec<u8>>>) {
     let (inner, written) = RecordingStream::new(permit);
     let deadline = CallDeadline::new(Duration::from_secs(1));
-    (CappedOutputStream::new(Box::new(inner), deadline), written)
+    (
+        CappedOutputStream::new(
+            Box::new(inner),
+            deadline,
+            SessionBudget::with_limit(session),
+        ),
+        written,
+    )
+}
+
+fn budget(session: u64) -> OutboundBudget {
+    OutboundBudget::new(SessionBudget::with_limit(session))
 }
 
 #[test]
@@ -114,9 +72,7 @@ fn blocking_write_zeroes_and_flush_counts_bytes() {
 fn splice_counts_bytes() {
     let (stream, written) = capped(64 * 1024);
     let output: DynOutputStream = Box::new(stream);
-    let source: DynInputStream = Box::new(SourceStream {
-        data: Bytes::from_static(b"hello"),
-    });
+    let source: DynInputStream = Box::new(SourceStream::new(Bytes::from_static(b"hello")));
     let mut table = ResourceTable::new();
     let output = table.push(output).unwrap();
     let source = table.push(source).unwrap();
@@ -126,20 +82,32 @@ fn splice_counts_bytes() {
 }
 
 #[test]
-fn blocking_write_stops_at_the_cap() {
+fn blocking_write_stops_at_the_connection_cap() {
     let (mut stream, written) = capped(64 * 1024);
-    let bytes = Bytes::from(vec![0_u8; MAX_OUTBOUND_BYTES_PER_CONNECTION as usize + 1]);
+    let bytes = Bytes::from(vec![0_u8; MAX_BYTES_PER_CONNECTION as usize + 1]);
     let result = in_tokio(async { stream.blocking_write_and_flush(bytes).await });
     assert!(result.is_err());
     assert_eq!(
         written.lock().unwrap().len(),
-        MAX_OUTBOUND_BYTES_PER_CONNECTION as usize
+        MAX_BYTES_PER_CONNECTION as usize
     );
 }
 
 #[test]
-fn permits_at_most_the_remaining_budget() {
-    let mut budget = OutboundBudget::new(10);
+fn blocking_write_stops_at_the_session_cap() {
+    let (mut stream, written) = capped_with_session(64 * 1024, 4);
+    let result = in_tokio(async {
+        stream
+            .blocking_write_and_flush(Bytes::from_static(b"abcde"))
+            .await
+    });
+    assert!(result.is_err());
+    assert_eq!(&*written.lock().unwrap(), b"abcd");
+}
+
+#[test]
+fn permits_at_most_the_session_budget() {
+    let mut budget = budget(10);
     assert_eq!(budget.permit(8).unwrap(), 8);
     budget.consume(8).unwrap();
     assert_eq!(budget.permit(8).unwrap(), 2);
@@ -147,14 +115,14 @@ fn permits_at_most_the_remaining_budget() {
 
 #[test]
 fn rejects_writes_above_the_permit() {
-    let mut budget = OutboundBudget::new(10);
+    let mut budget = budget(10);
     budget.permit(4).unwrap();
     assert!(matches!(budget.consume(5), Err(StreamError::Trap(_))));
 }
 
 #[test]
 fn allows_one_drain_check_after_exhaustion() {
-    let mut budget = OutboundBudget::new(4);
+    let mut budget = budget(4);
     budget.permit(4).unwrap();
     budget.consume(4).unwrap();
     assert_eq!(budget.permit(1).unwrap(), 1);
@@ -163,7 +131,7 @@ fn allows_one_drain_check_after_exhaustion() {
 
 #[test]
 fn permits_zero_writes_without_consuming_budget() {
-    let mut budget = OutboundBudget::new(4);
+    let mut budget = budget(4);
     budget.permit(4).unwrap();
     budget.consume(0).unwrap();
     assert_eq!(budget.permit(4).unwrap(), 4);
