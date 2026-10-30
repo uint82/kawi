@@ -43,6 +43,10 @@ jobs:
         run: crates/kawi-plugin/tests/fixtures/wasm/build-network.sh
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
+      - name: Build WASM trim example
+        run: sh examples/wasm-trim/build.sh
+      - name: Check WASM trim example is current
+        run: git diff --exit-code -- examples/wasm-trim
       - name: Conformance
         run: cargo test -p kawi-plugin --test conformance -- --nocapture
       - name: Conformance WASM feature
@@ -68,6 +72,8 @@ jobs:
             echo "wasm-test-network must not be enabled in the wasm build" >&2
             exit 1
           fi
+      - name: Lint WASM trim example
+        run: cargo clippy -p wasm-trim --target wasm32-wasip2 -- -D warnings
       - name: Lint WASM feature
         run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
       - name: Lint WASM test network feature
@@ -78,6 +84,8 @@ jobs:
         run: cargo test -p kawi-plugin --features wasm
       - name: Test WASM app feature
         run: cargo test -p kawi --features wasm --bin kawi app::plugin::tests::wasm
+      - name: Test plugin scaffold
+        run: cargo test -p kawi --features wasm --bin kawi plugin_cli::tests::scaffold_builds_and_runs -- --ignored
   supply-chain:
     runs-on: ubuntu-latest
     strategy:
