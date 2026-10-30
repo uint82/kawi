@@ -4,15 +4,25 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use kawi_buffer::content_hash;
 use notify::event::{AccessKind, AccessMode, EventKind};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 
+mod clock;
+mod debounce;
+
+#[cfg(test)]
+mod tests;
+
+use clock::WatchOptions;
+use debounce::Debounce;
+
 const DEBOUNCE: Duration = Duration::from_millis(75);
 const TICK: Duration = Duration::from_millis(10);
+const WATCH_READY_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fingerprint {
@@ -48,12 +58,19 @@ pub struct WatchService {
 }
 
 enum Command {
-    Watch(BTreeSet<PathBuf>),
+    Watch {
+        directories: BTreeSet<PathBuf>,
+        ready: Sender<()>,
+    },
     Shutdown,
 }
 
 impl WatchService {
     pub fn new(wake: Sender<()>) -> Result<Self> {
+        Self::with_options(wake, WatchOptions::new(DEBOUNCE, TICK))
+    }
+
+    fn with_options(wake: Sender<()>, options: WatchOptions) -> Result<Self> {
         let (raw_events, raw_receiver) = mpsc::channel();
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
@@ -70,7 +87,14 @@ impl WatchService {
         let worker = thread::Builder::new()
             .name("kawi-watch".to_string())
             .spawn(move || {
-                run_worker(watcher, raw_receiver, command_receiver, events, wake);
+                run_worker(
+                    watcher,
+                    raw_receiver,
+                    command_receiver,
+                    events,
+                    wake,
+                    options,
+                );
             })
             .context("spawn file watcher")?;
         Ok(Self {
@@ -81,8 +105,15 @@ impl WatchService {
     }
 
     pub fn watch_directories<'a>(&self, directories: impl IntoIterator<Item = &'a Path>) {
-        let watched = directories.into_iter().map(Path::to_path_buf).collect();
-        let _ = self.commands.send(Command::Watch(watched));
+        let directories = directories.into_iter().map(Path::to_path_buf).collect();
+        let (ready, installed) = mpsc::channel();
+        if self
+            .commands
+            .send(Command::Watch { directories, ready })
+            .is_ok()
+        {
+            let _ = installed.recv_timeout(WATCH_READY_TIMEOUT);
+        }
     }
 
     pub fn try_recv_paths(&self) -> Vec<PathBuf> {
@@ -111,34 +142,31 @@ fn run_worker(
     commands: Receiver<Command>,
     output: Sender<Vec<PathBuf>>,
     wake: Sender<()>,
+    options: WatchOptions,
 ) {
     let mut watched = BTreeSet::new();
-    let mut pending = BTreeSet::new();
-    let mut last_event = None;
+    let mut debounce = Debounce::new(options.debounce);
     loop {
         while let Ok(command) = commands.try_recv() {
             match command {
-                Command::Watch(parents) => sync_watches(&mut watcher, &mut watched, &parents),
+                Command::Watch { directories, ready } => {
+                    sync_watches(&mut watcher, &mut watched, &directories);
+                    let _ = ready.send(());
+                }
                 Command::Shutdown => return,
             }
         }
-        match events.recv_timeout(TICK) {
-            Ok(paths) => {
-                pending.extend(paths);
-                last_event = Some(Instant::now());
-            }
+        let now = options.clock.now();
+        let timeout = debounce.wait_timeout(now, options.tick);
+        match events.recv_timeout(timeout) {
+            Ok(paths) => debounce.push(paths, options.clock.now()),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
-        let Some(seen) = last_event else {
+        let Some(batch) = debounce.take_ready(options.clock.now()) else {
             continue;
         };
-        if seen.elapsed() < DEBOUNCE || pending.is_empty() {
-            continue;
-        }
-        let batch = std::mem::take(&mut pending);
-        last_event = None;
-        if output.send(batch.into_iter().collect()).is_ok() {
+        if output.send(batch).is_ok() {
             let _ = wake.send(());
         }
     }
@@ -166,66 +194,5 @@ fn interesting(kind: &EventKind) -> bool {
         EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
         EventKind::Access(_) => false,
         _ => true,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_dir(name: &str) -> PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let dir = std::env::temp_dir().join(format!(
-            "kawi_watch_{}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed),
-            name
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("directory");
-        dir
-    }
-
-    #[test]
-    fn fingerprints_match_identical_content() {
-        let dir = temp_dir("fingerprint");
-        let path = dir.join("a.txt");
-        fs::write(&path, "alpha\n").expect("write");
-        let first = Fingerprint::read(&path).expect("first");
-        fs::write(&path, "alpha\n").expect("rewrite");
-        let second = Fingerprint::read(&path).expect("second");
-        assert!(first.matches(&second));
-        assert!(first.modified().is_some());
-        fs::write(&path, "beta\n").expect("change");
-        let third = Fingerprint::read(&path).expect("third");
-        assert!(!first.matches(&third));
-        fs::remove_dir_all(dir).expect("cleanup");
-    }
-
-    #[test]
-    fn watcher_reports_writes_and_renames() {
-        let dir = temp_dir("events");
-        let path = dir.join("a.txt");
-        let temp = dir.join("a.tmp");
-        fs::write(&path, "alpha\n").expect("write");
-        let (wake, _wake_rx) = mpsc::channel();
-        let service = WatchService::new(wake).expect("service");
-        service.watch_directories([dir.as_path()]);
-        thread::sleep(Duration::from_millis(100));
-        fs::write(&temp, "beta\n").expect("temp");
-        fs::rename(&temp, &path).expect("rename");
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let mut seen = false;
-        while Instant::now() < deadline {
-            if service.try_recv_paths().iter().any(|event| event == &path) {
-                seen = true;
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert!(seen, "rename target was not reported");
-        drop(service);
-        fs::remove_dir_all(dir).expect("cleanup");
     }
 }
