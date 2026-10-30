@@ -155,6 +155,22 @@ mod tests {
     }
 
     #[test]
+    fn round_trips_large_float_message() {
+        let body = b"7010e090";
+        let input = [
+            format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes(),
+            body,
+        ]
+        .concat();
+        let mut reader = Cursor::new(input);
+        let value = read_message(&mut reader).unwrap().expect("message");
+        let mut encoded = Vec::new();
+        write_message(&mut encoded, &value).unwrap();
+        let mut reader = Cursor::new(encoded);
+        assert!(read_message(&mut reader).unwrap().is_some());
+    }
+
+    #[test]
     fn rejects_large_claim_without_large_read() {
         let header = format!("Content-Length: {MAX_MESSAGE_BYTES}\r\n\r\n");
         let mut reader = TrackingReader::new(header.into_bytes());
