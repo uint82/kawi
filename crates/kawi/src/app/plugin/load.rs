@@ -2,7 +2,8 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use kawi_plugin::{
-    load_catalog, load_permission_state, HostEnvironment, LoadedPlugin, PluginCommand, PluginHost,
+    load_catalog, load_permission_state, HostEnvironment, LoadedPlugin, PluginCatalog,
+    PluginCommand, PluginHost,
 };
 
 use super::{PluginCommandTarget, PluginRuntime};
@@ -39,6 +40,10 @@ impl PluginRuntime {
             leaders,
             wake,
         } = context;
+        self.plugins_dir = Some(dir.to_path_buf());
+        self.permissions_path = Some(permissions.to_path_buf());
+        self.workspace = Some(workspace.to_path_buf());
+        self.wake = Some(wake.clone());
         let catalog = load_catalog(dir);
         let permission_state = load_permission_state(&catalog, permissions);
         let mut warnings = catalog
@@ -46,12 +51,42 @@ impl PluginRuntime {
             .iter()
             .map(ToString::to_string)
             .chain(permission_state.warnings.iter().cloned())
-            .map(|warning| super::text::sanitize(&warning))
             .collect::<Vec<_>>();
-        self.permissions_path = Some(permissions.to_path_buf());
         self.watch_permissions(permissions, wake.clone());
         self.capabilities.replace(permission_state.grants);
-        let mut pending_bindings = Vec::new();
+        warnings.append(&mut self.reconcile_commands(&catalog, commands, keymaps, leaders));
+        self.replace_host(&catalog, permissions, workspace, wake);
+        self.catalog = catalog;
+        self.retain_known_plugin_state();
+        warnings
+            .into_iter()
+            .map(|warning| super::text::sanitize(&warning))
+            .collect()
+    }
+
+    pub(super) fn reconcile_commands(
+        &mut self,
+        catalog: &PluginCatalog,
+        commands: &mut CommandRegistry,
+        keymaps: &mut KeymapResolver,
+        leaders: &[KeyChord],
+    ) -> Vec<String> {
+        let mut warnings = Vec::new();
+        let removed = self
+            .catalog
+            .plugins
+            .iter()
+            .map(|plugin| plugin.manifest.name.clone())
+            .collect::<Vec<_>>();
+        for plugin in removed {
+            commands.remove_plugin(&plugin);
+        }
+        let previous = std::mem::take(&mut self.bindings);
+        for binding in &previous {
+            keymaps.unbind_source(binding.mode, &binding.keys, BindingSource::Plugin);
+        }
+        self.targets.clear();
+        let mut bindings = Vec::new();
         for plugin in &catalog.plugins {
             for contribution in &plugin.manifest.commands {
                 let name = plugin.command_name(contribution);
@@ -68,40 +103,47 @@ impl PluginRuntime {
                             plugin: plugin.manifest.name.clone(),
                             command: contribution.id.clone(),
                         });
-                        let (mut bindings, mut binding_warnings) =
+                        let (mut plugin_bindings, mut binding_warnings) =
                             plugin_bindings(plugin, contribution, id, leaders);
-                        pending_bindings.append(&mut bindings);
+                        bindings.append(&mut plugin_bindings);
                         warnings.append(&mut binding_warnings);
                     }
                     Err(error) => warnings.push(format!("{}: {error}", plugin.path.display())),
                 }
             }
         }
-        for binding in &pending_bindings {
+        for binding in &bindings {
             keymaps.bind(binding.clone());
         }
-        self.bindings = pending_bindings;
-        if !catalog.plugins.is_empty() {
-            let (events, receiver) = mpsc::channel();
-            let environment = HostEnvironment::from_paths(
-                Some(workspace.to_path_buf()),
-                permissions.parent().map(Path::to_path_buf),
-            );
-            self.host = Some(PluginHost::start(
-                &catalog,
-                self.capabilities.clone(),
-                environment,
-                events,
-                wake,
-            ));
-            self.events = Some(receiver);
-        }
-        self.catalog = catalog;
-        self.retain_known_plugin_state();
+        self.bindings = bindings;
         warnings
-            .into_iter()
-            .map(|warning| super::text::sanitize(&warning))
-            .collect()
+    }
+
+    pub(super) fn replace_host(
+        &mut self,
+        catalog: &PluginCatalog,
+        permissions: &Path,
+        workspace: &Path,
+        wake: std::sync::mpsc::Sender<()>,
+    ) {
+        if catalog.plugins.is_empty() {
+            self.host = None;
+            self.events = None;
+            return;
+        }
+        let (events, receiver) = mpsc::channel();
+        let environment = HostEnvironment::from_paths(
+            Some(workspace.to_path_buf()),
+            permissions.parent().map(Path::to_path_buf),
+        );
+        self.host = Some(PluginHost::start(
+            catalog,
+            self.capabilities.clone(),
+            environment,
+            events,
+            wake,
+        ));
+        self.events = Some(receiver);
     }
 }
 

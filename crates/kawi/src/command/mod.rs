@@ -42,8 +42,9 @@ pub(crate) struct CommandSpec {
 }
 
 pub(crate) struct CommandRegistry {
-    specs: Vec<CommandSpec>,
+    specs: Vec<Option<CommandSpec>>,
     index: HashMap<String, CommandId>,
+    retired: HashMap<String, CommandId>,
 }
 
 impl CommandRegistry {
@@ -56,7 +57,7 @@ impl CommandRegistry {
             for alias in builtin.aliases {
                 insert_name(&mut index, alias, id);
             }
-            specs.push(CommandSpec {
+            specs.push(Some(CommandSpec {
                 name: builtin.name.to_string(),
                 aliases: builtin
                     .aliases
@@ -66,9 +67,13 @@ impl CommandRegistry {
                 description: builtin.description.to_string(),
                 handler: builtin.handler,
                 source: CommandSource::Builtin,
-            });
+            }));
         }
-        Self { specs, index }
+        Self {
+            specs,
+            index,
+            retired: HashMap::new(),
+        }
     }
 
     pub(crate) fn find(&self, name: &str) -> Option<CommandId> {
@@ -76,11 +81,11 @@ impl CommandRegistry {
     }
 
     pub(crate) fn spec(&self, id: CommandId) -> Option<&CommandSpec> {
-        self.specs.get(id.0 as usize)
+        self.specs.get(id.0 as usize).and_then(Option::as_ref)
     }
 
     pub(crate) fn specs(&self) -> impl Iterator<Item = &CommandSpec> {
-        self.specs.iter()
+        self.specs.iter().filter_map(Option::as_ref)
     }
 
     pub(crate) fn register_plugin(
@@ -93,16 +98,41 @@ impl CommandRegistry {
         if self.index.contains_key(&name) {
             return Err(format!("command name already exists: {name}"));
         }
-        let id = CommandId(self.specs.len() as u32);
-        self.index.insert(name.clone(), id);
-        self.specs.push(CommandSpec {
-            name,
+        let spec = CommandSpec {
+            name: name.clone(),
             aliases: Vec::new(),
             description,
             handler: CommandHandler::Plugin(target),
             source: CommandSource::Plugin(plugin),
-        });
+        };
+        let id = if let Some(id) = self.retired.remove(&name) {
+            self.specs[id.0 as usize] = Some(spec);
+            id
+        } else {
+            let id = CommandId(self.specs.len() as u32);
+            self.specs.push(Some(spec));
+            id
+        };
+        self.index.insert(name, id);
         Ok(id)
+    }
+
+    pub(crate) fn remove_plugin(&mut self, plugin: &str) {
+        let removed = self
+            .specs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, spec)| {
+                let spec = spec.as_ref()?;
+                matches!(&spec.source, CommandSource::Plugin(name) if name == plugin)
+                    .then(|| (CommandId(index as u32), spec.name.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (id, name) in removed {
+            self.index.remove(&name);
+            self.retired.insert(name, id);
+            self.specs[id.0 as usize] = None;
+        }
     }
 }
 

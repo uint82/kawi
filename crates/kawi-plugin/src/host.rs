@@ -8,11 +8,8 @@ use serde_json::Value;
 use crate::capability::{is_event_allowed, Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
-use crate::manifest::{PluginCatalog, PluginRuntime};
 use crate::payload_size::payload_too_large;
-use crate::process::{start_worker, NotifyOutcome};
-
-use self::wasm::wasm_worker;
+use crate::process::NotifyOutcome;
 use crate::protocol::{InvocationContext, RpcError, INTERNAL_ERROR};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +53,7 @@ pub enum PluginHostEvent {
 }
 
 mod host_worker;
+mod lifecycle;
 mod wasm;
 
 use self::host_worker::HostWorker;
@@ -64,56 +62,12 @@ pub struct PluginHost {
     workers: HashMap<String, HostWorker>,
     capabilities: CapabilityRegistry,
     next_request: AtomicU64,
+    environment: HostEnvironment,
+    events: Sender<PluginHostEvent>,
+    wake: Sender<()>,
 }
 
 impl PluginHost {
-    pub fn start(
-        catalog: &PluginCatalog,
-        capabilities: CapabilityRegistry,
-        environment: HostEnvironment,
-        events: Sender<PluginHostEvent>,
-        wake: Sender<()>,
-    ) -> Self {
-        let workers: HashMap<String, HostWorker> = catalog
-            .plugins
-            .iter()
-            .cloned()
-            .map(|plugin| {
-                let name = plugin.manifest.name.clone();
-                let worker = match plugin.manifest.runtime {
-                    PluginRuntime::Process => HostWorker::Process(start_worker(
-                        plugin,
-                        capabilities.clone(),
-                        environment.clone(),
-                        events.clone(),
-                        wake.clone(),
-                    )),
-                    PluginRuntime::Wasm => {
-                        wasm_worker(plugin, &capabilities, &environment, &events, &wake)
-                    }
-                };
-                (name, worker)
-            })
-            .collect();
-        for plugin in &catalog.plugins {
-            if plugin
-                .manifest
-                .activation_events
-                .iter()
-                .any(|event| event.event == "on_startup")
-            {
-                if let Some(worker) = workers.get(&plugin.manifest.name) {
-                    let _ = worker.activate();
-                }
-            }
-        }
-        Self {
-            workers,
-            capabilities,
-            next_request: AtomicU64::new(1),
-        }
-    }
-
     pub fn notify(
         &self,
         plugin: &str,

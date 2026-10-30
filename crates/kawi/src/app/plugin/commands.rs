@@ -115,16 +115,27 @@ impl App {
     fn restart_plugins(&mut self, name: &str) {
         let name = name.trim();
         let target = (!name.is_empty()).then_some(name);
-        match self.plugins.restart(target) {
-            Ok(()) => {
+        match self
+            .plugins
+            .reload(&mut self.commands, &mut self.keymaps, &self.leaders, target)
+        {
+            Ok(warnings) => {
+                self.refresh_command_completion();
+                if !warnings.is_empty() {
+                    self.show_pager(warnings);
+                    return;
+                }
                 let message = match target {
-                    Some(name) => format!("Plugin restarted: {name}"),
-                    None => "Plugins restarted".to_string(),
+                    Some(name) if self.plugins.contains(name) => {
+                        format!("Plugin reloaded: {name}")
+                    }
+                    Some(name) => format!("Plugin removed: {name}"),
+                    None => "Plugins reloaded".to_string(),
                 };
                 self.show_message(message);
             }
             Err(error) => self.show_message(format!(
-                "Cannot restart plugin: {}",
+                "Cannot reload plugin: {}",
                 super::text::sanitize(&error.to_string())
             )),
         }

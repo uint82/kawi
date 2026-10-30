@@ -56,7 +56,7 @@ The plugin name is the namespace. The command above is `example.format`, and you
 - `subscribes` lists events delivered to a running plugin. Delivery never starts a plugin.
 - `debounce` optionally delays an event per subscription. `buffer_changed` is also coalesced per buffer.
 - `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.
-- Commands and default keybindings are loaded from the manifest at startup. No process starts until an invocation or activation event.
+- Commands and default keybindings are loaded from the manifest at startup and whenever `:plugin restart` reloads manifests. No process starts until an invocation or activation event.
 - Plugin keybindings have lower precedence than user mappings. They survive `:map reload`.
 - Count and register prefixes are reserved and cannot start a plugin binding.
 
@@ -65,8 +65,8 @@ The plugin name is the namespace. The command above is `example.format`, and you
 - `:plugin list` shows installed plugins, versions, status, effective capabilities, and commands.
 - `:plugin grant <plugin> <capability>` opens the consent prompt for a requested capability.
 - `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event. Filesystem and execute scope changes restart the affected plugin so Landlock re-applies. Kawi also reloads the file automatically after a debounced external save.
-- `:plugin restart` restarts every plugin process.
-- `:plugin restart example` restarts one plugin and clears its crash backoff.
+- `:plugin restart` reloads every manifest, reconciles commands and keybindings, and restarts every plugin.
+- `:plugin restart example` reloads one manifest, reconciles its commands and keybindings, restarts that plugin, and clears its crash backoff.
 - `:plugin logs` shows all plugin logs.
 - `:plugin inspect <plugin>` shows the runtime, computed and declared component hashes, request hash, requested capabilities, and WASM imports when the `wasm` feature is enabled.
 - `:plugin logs example` shows one plugin's log.
@@ -76,10 +76,11 @@ Use `:commands` to discover plugin command names. Plugin commands appear with a 
 ## Lifecycle
 
 1. Kawi reads manifests and registers static commands and keybindings.
-2. The first invocation or activation event starts the plugin process.
-3. Kawi performs capability negotiation with `initialize`.
-4. Kawi sends `invoke_command` or events.
-5. A crashed plugin restarts on the next invocation with exponential backoff. Five consecutive failures disable it until `:plugin restart`.
+2. `:plugin restart` rereads manifests, reconciles commands and keybindings, and restarts the selected plugin or all plugins.
+3. The first invocation or activation event starts the plugin process.
+4. Kawi performs capability negotiation with `initialize`.
+5. Kawi sends `invoke_command` or events.
+6. A crashed plugin restarts on the next invocation with exponential backoff. Five consecutive failures disable it until `:plugin restart`.
 
 Kawi supports one in-flight invocation per plugin. A plugin may call back into the host while an invocation is running. Events continue to flow during an invocation. A timed-out invocation is canceled and the process is restarted.
 

@@ -8,6 +8,7 @@ use kawi_plugin::PluginStatus;
 use toml_edit::{DocumentMut, Item, Table};
 
 use crate::app::App;
+use crate::command::CommandHandler;
 use crate::keymap::Flavor;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -246,4 +247,20 @@ pub(super) fn method_capability(method: &str) -> &'static str {
         "ui.message" => "ui.message",
         other => panic!("unexpected method: {other}"),
     }
+}
+
+pub(super) fn invoke_plugin(app: &mut App, name: &str) -> Option<String> {
+    let command = app.commands.find(name).expect("plugin command");
+    let target = match app.commands.spec(command).expect("command spec").handler {
+        CommandHandler::Plugin(target) => target,
+        other => panic!("unexpected handler: {other:?}"),
+    };
+    app.message = None;
+    app.run_plugin_command(target, None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.message.is_none() && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    app.message.clone()
 }
