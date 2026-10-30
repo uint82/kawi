@@ -1033,11 +1033,13 @@ name = "kawi-plugin"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bytes",
  "kawi-jsonrpc",
  "kawi-process",
  "serde",
  "serde_json",
  "sha2",
+ "tokio",
  "toml",
  "wasmtime",
  "wasmtime-wasi",

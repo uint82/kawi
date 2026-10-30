@@ -15,6 +15,8 @@ mod name_lookup;
 #[cfg(feature = "wasm")]
 mod net;
 #[cfg(feature = "wasm")]
+mod outbound_cap;
+#[cfg(feature = "wasm")]
 mod policy;
 #[cfg(feature = "wasm")]
 mod process;

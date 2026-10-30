@@ -121,6 +121,26 @@ pub(crate) fn network_case(id: &str) -> NetworkCase {
             target: NetworkTarget::Allowed,
             grant: NetworkGrant::Local,
         },
+        "wasm.net.outbound_cap" => NetworkCase {
+            command: "write-cap",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.outbound_cap_no_reader" => NetworkCase {
+            command: "write-strict",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.outbound_cap_straddle" => NetworkCase {
+            command: "write-straddle",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
+        "wasm.net.outbound_cap_vectored" => NetworkCase {
+            command: "write-vectored",
+            target: NetworkTarget::Allowed,
+            grant: NetworkGrant::Local,
+        },
         "wasm.net.restart_closes_socket" => NetworkCase {
             command: "hold",
             target: NetworkTarget::Allowed,

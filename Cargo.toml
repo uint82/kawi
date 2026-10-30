@@ -22,6 +22,7 @@ rust-version = "1.98.0"
 
 # external
 anyhow = "1"
+bytes = "1"
 crossterm = "0.29"
 libc = "0.2"
 notify = "8"
@@ -32,6 +33,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 signal-hook = "0.3"
+tokio = { version = "1", features = ["time"] }
 toml = "0.9"
 toml_edit = "0.23"
 unicode-segmentation = "1"
