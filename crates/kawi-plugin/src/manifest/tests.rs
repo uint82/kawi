@@ -214,3 +214,59 @@ fn warns_on_invalid_capability_requests_without_skipping_the_plugin() {
 }
 
 mod wasm;
+
+#[test]
+fn rejects_command_gate_outside_plugin_requests() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replace(
+        "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"",
+        "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"\ncapabilities = [\"editor.write\"]",
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.plugins.is_empty());
+    assert!(
+        catalog.warnings[0]
+            .message
+            .contains("command ping requires editor.write"),
+        "{}",
+        catalog.warnings[0].message
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn includes_command_gates_in_the_request_hash() {
+    let ungated_root = temp_dir();
+    write_manifest(&ungated_root, "echo", &valid_manifest("echo"));
+    let gated_root = temp_dir();
+    let body = valid_manifest("echo")
+        .replace(
+            "[[commands]]",
+            "[capabilities]\n\"editor.write\" = true\n\n[[commands]]",
+        )
+        .replace(
+            "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"",
+            "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"\ncapabilities = [\"editor.write\"]",
+        );
+    write_manifest(&gated_root, "echo", &body);
+    let ungated = load_catalog(&ungated_root);
+    let gated = load_catalog(&gated_root);
+    assert_ne!(
+        ungated.plugins[0]
+            .manifest
+            .capability_requests
+            .request_hash(),
+        gated.plugins[0].manifest.capability_requests.request_hash()
+    );
+    assert_eq!(
+        gated.plugins[0]
+            .manifest
+            .capability_requests
+            .command_gate("ping")
+            .map(|gate| gate.iter().copied().collect::<Vec<_>>()),
+        Some(vec![Capability::EditorWrite])
+    );
+    fs::remove_dir_all(gated_root).unwrap();
+    fs::remove_dir_all(ungated_root).unwrap();
+}

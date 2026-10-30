@@ -111,6 +111,17 @@ impl PluginHost {
                 "invocation payload exceeds the maximum size".to_string(),
             ));
         }
+        if let Some(capability) = worker
+            .requirements(command)
+            .unwrap_or_default()
+            .iter()
+            .find(|capability| !self.capabilities.has(plugin, **capability))
+        {
+            return Err(PluginError::Rpc(RpcError::capability_denied(
+                capability.name(),
+                None,
+            )));
+        }
         let request = self.next_request.fetch_add(1, Ordering::Relaxed);
         worker.invoke(request, command.to_string(), args, context)?;
         Ok(request)

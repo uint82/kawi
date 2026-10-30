@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::super::*;
 use super::support::*;
 
@@ -189,4 +191,58 @@ fn missing_or_corrupt_approved_record_marks_everything_new() {
         .warnings
         .iter()
         .any(|warning| warning.contains("approved request record is corrupt")));
+}
+
+#[test]
+fn added_command_gate_is_reported() {
+    let mut requests = requests(r#""editor.write" = true"#);
+    requests.set_command_gates(BTreeMap::from([(
+        "run".to_string(),
+        BTreeSet::from([Capability::EditorWrite]),
+    )]));
+    let file = parse_permissions(
+        r#"
+[plugins.plugin.approved]
+"editor.write" = true
+
+[plugins.plugin.grant]
+"editor.write" = true
+"#,
+    )
+    .expect("permissions");
+    let granted = effective(&requests, file.plugins.get("plugin"));
+    assert!(granted.changed);
+    assert!(granted
+        .changed_requests
+        .iter()
+        .any(|label| label == "command run requires editor.write"));
+    assert!(granted.changed_capabilities.is_empty());
+}
+
+#[test]
+fn removed_command_gate_is_reported_as_widening() {
+    let requests = requests(r#""editor.write" = true"#);
+    let file = parse_permissions(
+        r#"
+[plugins.plugin.approved]
+"editor.write" = true
+
+[plugins.plugin.command_gates]
+run = ["editor.write"]
+
+[plugins.plugin.grant]
+"editor.write" = true
+"#,
+    )
+    .expect("permissions");
+    let granted = effective(&requests, file.plugins.get("plugin"));
+    assert!(granted.changed);
+    assert!(granted
+        .changed_requests
+        .iter()
+        .any(|label| label == "command run no longer requires editor.write"));
+    assert!(granted
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("command gate removed")));
 }

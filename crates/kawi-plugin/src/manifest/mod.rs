@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::capability::{parse_capability_requests, CapabilityRequests};
+use crate::capability::{
+    parse_capability_requests, Capability, CapabilityRegistry, CapabilityRequests,
+};
 
 mod runtime;
 mod validation;
@@ -67,6 +69,10 @@ pub struct PluginCommand {
     #[serde(default)]
     pub description: String,
     #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub coalesce_queued: bool,
+    #[serde(default)]
     pub keybindings: BTreeMap<String, Vec<String>>,
 }
 
@@ -100,6 +106,40 @@ impl fmt::Display for PluginWarning {
 impl LoadedPlugin {
     pub fn command_name(&self, command: &PluginCommand) -> String {
         format!("{}.{}", self.manifest.name, command.id)
+    }
+
+    pub fn command(&self, id: &str) -> Option<&PluginCommand> {
+        self.manifest
+            .commands
+            .iter()
+            .find(|command| command.id == id)
+    }
+
+    pub fn command_requirements(&self) -> BTreeMap<String, Vec<Capability>> {
+        self.manifest
+            .commands
+            .iter()
+            .map(|command| {
+                let capabilities = command
+                    .capabilities
+                    .iter()
+                    .filter_map(|name| Capability::parse(name))
+                    .collect();
+                (command.id.clone(), capabilities)
+            })
+            .collect()
+    }
+
+    pub fn denied_command(
+        &self,
+        registry: &CapabilityRegistry,
+        command: &str,
+    ) -> Option<Capability> {
+        self.command(command)?
+            .capabilities
+            .iter()
+            .filter_map(|name| Capability::parse(name))
+            .find(|capability| !registry.has(&self.manifest.name, *capability))
     }
 
     pub fn resolved_command(&self) -> Vec<OsString> {
@@ -203,6 +243,32 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
             }
             let (mut requests, capability_warnings) =
                 parse_capability_requests(&manifest.capabilities);
+            let gates = match validation::command_capabilities(&manifest.commands) {
+                Ok(gates) => gates,
+                Err(message) => {
+                    warnings.push(PluginWarning {
+                        path: path.clone(),
+                        message,
+                    });
+                    return None;
+                }
+            };
+            for (id, capabilities) in &gates {
+                if let Some(capability) = capabilities
+                    .iter()
+                    .find(|capability| !requests.contains(**capability))
+                {
+                    warnings.push(PluginWarning {
+                        path: path.clone(),
+                        message: format!(
+                            "command {id} requires {}, which the plugin does not request",
+                            capability.name()
+                        ),
+                    });
+                    return None;
+                }
+            }
+            requests.set_command_gates(gates);
             if let Some(hash) = artifact.computed_hash.as_deref() {
                 requests.set_artifact_hash(hash);
             }

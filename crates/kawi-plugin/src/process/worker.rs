@@ -14,7 +14,7 @@ use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{send_event, set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
-use crate::protocol::{InvocationContext, InvokeParams};
+use crate::protocol::{InvocationContext, InvokeParams, RpcError};
 
 pub(super) struct InvocationJob {
     pub(super) request: u64,
@@ -142,6 +142,12 @@ impl Worker {
     }
 
     fn invoke(&mut self, job: InvocationJob) -> Result<Value, PluginError> {
+        if let Some(capability) = self.plugin.denied_command(&self.capabilities, &job.command) {
+            return Err(PluginError::Rpc(RpcError::capability_denied(
+                capability.name(),
+                None,
+            )));
+        }
         self.backoff.check()?;
         self.ensure_alive();
         if self.connection.is_none() {

@@ -1,10 +1,11 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::capability::Capability;
 use crate::error::PluginError;
 use crate::host::PluginStatus;
 use crate::process::NotifyOutcome;
@@ -34,6 +35,7 @@ pub(crate) struct WasmWorkerHandle {
     pub(super) event_filter: Arc<Mutex<BTreeSet<String>>>,
     pub(super) pending: PendingCalls,
     pub(super) cancel: Arc<AtomicBool>,
+    pub(super) requirements: Arc<BTreeMap<String, Vec<Capability>>>,
 }
 
 impl WasmWorkerHandle {
@@ -86,6 +88,10 @@ impl WasmWorkerHandle {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone()
+    }
+
+    pub(crate) fn requirements(&self, command: &str) -> Option<&[Capability]> {
+        self.requirements.get(command).map(Vec::as_slice)
     }
 
     pub(crate) fn restart(&self) -> Result<(), PluginError> {

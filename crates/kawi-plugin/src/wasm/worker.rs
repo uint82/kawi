@@ -40,6 +40,7 @@ pub(crate) fn start_wasm_worker(
         event_filter: Arc::clone(&event_filter),
         pending: Arc::clone(&pending),
         cancel: Arc::clone(&cancel),
+        requirements: Arc::new(plugin.command_requirements()),
     };
     let name = plugin.manifest.name.clone();
     let worker = WasmWorker {
@@ -163,6 +164,21 @@ impl WasmWorker {
         args: Value,
         _context: InvocationContext,
     ) {
+        if let Some(capability) = self.plugin.denied_command(&self.capabilities, &command) {
+            send_event(
+                &self.events,
+                &self.wake,
+                PluginHostEvent::InvocationFinished {
+                    plugin: self.plugin.manifest.name.clone(),
+                    request,
+                    result: Err(PluginError::Rpc(RpcError::capability_denied(
+                        capability.name(),
+                        None,
+                    ))),
+                },
+            );
+            return;
+        }
         if let Err(error) = self.backoff.check() {
             send_event(
                 &self.events,

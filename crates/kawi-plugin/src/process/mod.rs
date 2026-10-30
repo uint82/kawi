@@ -9,6 +9,7 @@ pub(crate) use sandbox::policy as sandbox_policy;
 pub(crate) use backoff::Backoff;
 mod worker;
 
+use std::collections::BTreeMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -18,7 +19,7 @@ use serde_json::Value;
 
 use self::connection::WriterSlot;
 use self::worker::{Worker, WorkerContext};
-use crate::capability::CapabilityRegistry;
+use crate::capability::{Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{set_status, PluginHostEvent, PluginStatus};
@@ -43,6 +44,7 @@ pub(crate) struct WorkerHandle {
     status: Arc<Mutex<PluginStatus>>,
     event_filter: Arc<Mutex<std::collections::BTreeSet<String>>>,
     restart: Arc<AtomicBool>,
+    requirements: Arc<BTreeMap<String, Vec<Capability>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +113,10 @@ impl WorkerHandle {
             .clone()
     }
 
+    pub(crate) fn requirements(&self, command: &str) -> Option<&[Capability]> {
+        self.requirements.get(command).map(Vec::as_slice)
+    }
+
     pub(crate) fn restart(&self) -> Result<(), PluginError> {
         self.restart
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -128,12 +134,14 @@ pub(crate) fn start_disabled_worker(
 ) -> WorkerHandle {
     let (commands, receiver) = mpsc::channel();
     let status = Arc::new(Mutex::new(PluginStatus::Disabled));
+    let requirements = Arc::new(plugin.command_requirements());
     let handle = WorkerHandle {
         commands,
         writer: Arc::new(Mutex::new(None)),
         status,
         event_filter: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
         restart: Arc::new(AtomicBool::new(false)),
+        requirements,
     };
     let name = plugin.manifest.name.clone();
     thread::spawn(move || {
@@ -168,12 +176,14 @@ pub(crate) fn start_worker(
     let status = Arc::new(Mutex::new(PluginStatus::Stopped));
     let event_filter = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let restart = Arc::new(AtomicBool::new(false));
+    let requirements = Arc::new(plugin.command_requirements());
     let handle = WorkerHandle {
         commands,
         writer: Arc::clone(&writer),
         status: Arc::clone(&status),
         event_filter: Arc::clone(&event_filter),
         restart: Arc::clone(&restart),
+        requirements,
     };
     let name = plugin.manifest.name.clone();
     let error_events = events.clone();

@@ -68,6 +68,17 @@ pub(crate) enum Action {
     Trim,
     TrimStale,
     TrimDenied,
+    GatedInvoke,
+    GatedRevokeThenInvoke,
+}
+
+impl Action {
+    pub(crate) fn command_gate(self) -> Option<Capability> {
+        match self {
+            Self::GatedInvoke | Self::GatedRevokeThenInvoke => Some(Capability::EditorWrite),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
