@@ -2,3 +2,5 @@
 
 .difftest/
 testdata/
+/fuzz/target
+/fuzz/artifacts

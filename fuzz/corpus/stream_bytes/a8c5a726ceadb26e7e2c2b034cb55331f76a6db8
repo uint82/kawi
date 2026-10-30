@@ -1,0 +1,10 @@
+session 3
+permit 3
+4
+r 4 4
+r 4
+Ãrr
+r 4
+*r 8
+data 0102015202
+r 8eethod
