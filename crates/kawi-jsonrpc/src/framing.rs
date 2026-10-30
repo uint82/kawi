@@ -97,7 +97,7 @@ fn read_header_line(reader: &mut impl BufRead) -> Result<Option<String>> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::io::Cursor;
+    use std::io::{self, BufRead, Cursor, Read};
 
     #[test]
     fn round_trips_a_message() {
@@ -155,6 +155,14 @@ mod tests {
     }
 
     #[test]
+    fn rejects_large_claim_without_large_read() {
+        let header = format!("Content-Length: {MAX_MESSAGE_BYTES}\r\n\r\n");
+        let mut reader = TrackingReader::new(header.into_bytes());
+        assert!(read_message(&mut reader).is_err());
+        assert!(reader.max_read <= INITIAL_BODY_CAPACITY);
+    }
+
+    #[test]
     fn rejects_oversized_header_line() {
         let mut input = vec![b'a'; MAX_HEADER_LINE + 2];
         input.push(b'\n');
@@ -175,5 +183,36 @@ mod tests {
         let mut buffer = Vec::new();
         assert!(write_message(&mut buffer, &message).is_err());
         assert!(buffer.is_empty());
+    }
+
+    struct TrackingReader {
+        inner: Cursor<Vec<u8>>,
+        max_read: usize,
+    }
+
+    impl TrackingReader {
+        fn new(data: Vec<u8>) -> Self {
+            Self {
+                inner: Cursor::new(data),
+                max_read: 0,
+            }
+        }
+    }
+
+    impl Read for TrackingReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.max_read = self.max_read.max(buffer.len());
+            self.inner.read(buffer)
+        }
+    }
+
+    impl BufRead for TrackingReader {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            self.inner.fill_buf()
+        }
+
+        fn consume(&mut self, amount: usize) {
+            self.inner.consume(amount);
+        }
     }
 }
