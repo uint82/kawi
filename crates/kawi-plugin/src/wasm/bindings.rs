@@ -1,4 +1,4 @@
 wasmtime::component::bindgen!({
-    path: "wit",
+    path: "../kawi-plugin-sdk/wit",
     world: "host",
 });
