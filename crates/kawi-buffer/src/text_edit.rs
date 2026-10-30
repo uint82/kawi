@@ -1,3 +1,5 @@
+use std::fmt;
+
 use ropey::Rope;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +13,49 @@ pub struct TextEdit {
 pub enum TextEditError {
     InvalidRange,
     Overlapping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PositionError {
+    LineOutOfRange { line: usize },
+    ColumnOutOfRange { byte_column: usize },
+    NotCharBoundary { byte_column: usize },
+}
+
+impl fmt::Display for PositionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LineOutOfRange { line } => write!(formatter, "line {line} is out of range"),
+            Self::ColumnOutOfRange { byte_column } => {
+                write!(formatter, "byte column {byte_column} is out of range")
+            }
+            Self::NotCharBoundary { byte_column } => {
+                write!(
+                    formatter,
+                    "byte column {byte_column} is not a UTF-8 boundary"
+                )
+            }
+        }
+    }
+}
+
+pub fn char_offset_at(
+    text: &Rope,
+    line: usize,
+    byte_column: usize,
+) -> Result<usize, PositionError> {
+    if line >= text.len_lines() {
+        return Err(PositionError::LineOutOfRange { line });
+    }
+    let line_text = text.line(line);
+    if byte_column > line_text.len_bytes() {
+        return Err(PositionError::ColumnOutOfRange { byte_column });
+    }
+    let character = line_text.byte_to_char(byte_column);
+    if line_text.char_to_byte(character) != byte_column {
+        return Err(PositionError::NotCharBoundary { byte_column });
+    }
+    Ok(text.line_to_char(line) + character)
 }
 
 fn ordered_edits(edits: &[TextEdit]) -> Result<Vec<&TextEdit>, TextEditError> {
@@ -89,6 +134,26 @@ mod tests {
         assert_eq!(
             apply_text_edits(&text, &[edit(1, 3, "x"), edit(0, 2, "y")]),
             Err(TextEditError::Overlapping)
+        );
+    }
+
+    #[test]
+    fn resolves_byte_columns_to_char_offsets() {
+        let text = Rope::from_str("é\nx");
+        assert_eq!(char_offset_at(&text, 0, 0), Ok(0));
+        assert_eq!(char_offset_at(&text, 0, 2), Ok(1));
+        assert_eq!(char_offset_at(&text, 1, 0), Ok(2));
+        assert_eq!(
+            char_offset_at(&text, 0, 1),
+            Err(PositionError::NotCharBoundary { byte_column: 1 })
+        );
+        assert_eq!(
+            char_offset_at(&text, 2, 0),
+            Err(PositionError::LineOutOfRange { line: 2 })
+        );
+        assert_eq!(
+            char_offset_at(&text, 0, 4),
+            Err(PositionError::ColumnOutOfRange { byte_column: 4 })
         );
     }
 

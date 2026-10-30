@@ -1,5 +1,6 @@
 use std::fmt;
 
+mod diagnostics;
 mod events;
 mod sanitize;
 
@@ -12,6 +13,7 @@ pub use events::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use diagnostics::validate_diagnostics;
 pub use sanitize::sanitize;
 
 pub const PROTOCOL_VERSION: u64 = 1;

@@ -1,12 +1,11 @@
-use kawi_buffer::{validate_text_edits, TextEdit};
+use kawi_buffer::{char_offset_at, validate_text_edits, TextEdit};
 use kawi_editor::Mode;
 use std::path::{Path, PathBuf};
 
 use kawi_plugin::{
-    ApplyEditParams, ApplyEditResult, DiagnosticSummary, GetStateParams, GetStateResult,
-    InvocationContext, Position, RpcError, Selection, SetDiagnosticsParams, UiMessageParams,
-    INTERNAL_ERROR, MAX_DIAGNOSTIC_CODE_BYTES, MAX_DIAGNOSTIC_MESSAGE_BYTES,
-    MAX_PLUGIN_DIAGNOSTICS,
+    validate_diagnostics, ApplyEditParams, ApplyEditResult, DiagnosticSummary, GetStateParams,
+    GetStateResult, InvocationContext, Position, RpcError, Selection, SetDiagnosticsParams,
+    UiMessageParams, INTERNAL_ERROR,
 };
 use ropey::Rope;
 use serde_json::Value;
@@ -57,11 +56,6 @@ impl App {
         }
         let params: SetDiagnosticsParams =
             serde_json::from_value(params).map_err(invalid_params)?;
-        if params.diagnostics.len() > MAX_PLUGIN_DIAGNOSTICS {
-            return Err(RpcError::invalid_params(format!(
-                "at most {MAX_PLUGIN_DIAGNOSTICS} diagnostics are accepted"
-            )));
-        }
         let buffer = self.editor.buffer_number() as u64;
         if params.buffer != buffer {
             return Err(RpcError::stale_buffer(params.buffer, buffer));
@@ -75,7 +69,7 @@ impl App {
                 "editor.set_diagnostics requires a named buffer",
             ));
         }
-        validate_diagnostic_sizes(&params.diagnostics)?;
+        validate_diagnostics(&params.diagnostics)?;
         let path = PathBuf::from(self.editor.filename());
         let snapshot = self.editor.document_snapshot();
         let diagnostics = params
@@ -185,27 +179,8 @@ fn protocol_edits(
 }
 
 pub(super) fn position_to_char(snapshot: &Rope, position: &Position) -> Result<usize, RpcError> {
-    if position.line >= snapshot.len_lines() {
-        return Err(RpcError::invalid_position(format!(
-            "line {} is out of range",
-            position.line
-        )));
-    }
-    let line = snapshot.line(position.line);
-    if position.byte_column > line.len_bytes() {
-        return Err(RpcError::invalid_position(format!(
-            "byte column {} is out of range",
-            position.byte_column
-        )));
-    }
-    let character = line.byte_to_char(position.byte_column);
-    if line.char_to_byte(character) != position.byte_column {
-        return Err(RpcError::invalid_position(format!(
-            "byte column {} is not a UTF-8 boundary",
-            position.byte_column
-        )));
-    }
-    Ok(snapshot.line_to_char(position.line) + character)
+    char_offset_at(snapshot, position.line, position.byte_column)
+        .map_err(|error| RpcError::invalid_position(error.to_string()))
 }
 
 fn position_at(snapshot: &Rope, line: usize, column: usize) -> Position {
@@ -230,26 +205,6 @@ fn mode_name(mode: Mode) -> &'static str {
 
 fn invalid_params(error: serde_json::Error) -> RpcError {
     RpcError::invalid_params(error.to_string())
-}
-
-fn validate_diagnostic_sizes(diagnostics: &[DiagnosticSummary]) -> Result<(), RpcError> {
-    for diagnostic in diagnostics {
-        if diagnostic.message.len() > MAX_DIAGNOSTIC_MESSAGE_BYTES {
-            return Err(RpcError::invalid_params(format!(
-                "diagnostic message exceeds {MAX_DIAGNOSTIC_MESSAGE_BYTES} bytes"
-            )));
-        }
-        if diagnostic
-            .code
-            .as_ref()
-            .is_some_and(|code| code.len() > MAX_DIAGNOSTIC_CODE_BYTES)
-        {
-            return Err(RpcError::invalid_params(format!(
-                "diagnostic code exceeds {MAX_DIAGNOSTIC_CODE_BYTES} bytes"
-            )));
-        }
-    }
-    Ok(())
 }
 
 fn plugin_problem(
