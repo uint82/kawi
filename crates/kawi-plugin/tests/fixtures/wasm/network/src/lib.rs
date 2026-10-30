@@ -3,7 +3,7 @@ wit_bindgen::generate!({
     world: "host",
 });
 
-use std::io::{self, Write};
+use std::io::{self, IoSlice, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::Mutex;
 
@@ -16,6 +16,7 @@ static HELD: Mutex<Option<TcpStream>> = Mutex::new(None);
 
 const CAPABILITY_DENIED: i32 = -32012;
 const NETWORK_CAPABILITY: &str = "net.connect";
+const OUTBOUND_CAP: usize = 8 * 1024 * 1024;
 const WRITE_LIMIT: usize = 9 * 1024 * 1024;
 const WRITE_CHUNK: usize = 64 * 1024;
 
@@ -66,6 +67,9 @@ impl Guest for Plugin {
                 Ok(text("reused"))
             }
             "write-cap" => write_until_error(address),
+            "write-strict" => write_strict(address),
+            "write-straddle" => write_straddle(address),
+            "write-vectored" => write_vectored_cap(address),
             "hold" => TcpStream::connect(address)
                 .map(|stream| {
                     *HELD.lock().expect("held socket lock") = Some(stream);
@@ -108,24 +112,73 @@ impl Guest for Plugin {
 }
 
 fn write_until_error(address: &str) -> Result<Argument, Error> {
+    let (written, outcome) = write_bytes(address)?;
+    Ok(text(format!("{written}:{outcome}")))
+}
+
+fn write_strict(address: &str) -> Result<Argument, Error> {
+    let (_, outcome) = write_bytes(address)?;
+    Err(failure(outcome))
+}
+
+fn write_straddle(address: &str) -> Result<Argument, Error> {
+    let mut stream = TcpStream::connect(address).map_err(failure)?;
+    let chunk = [0_u8; WRITE_CHUNK];
+    let prefix = OUTBOUND_CAP - 1;
+    let mut written = 0;
+    while written + WRITE_CHUNK <= prefix {
+        write_exact(&mut stream, &chunk)?;
+        written += WRITE_CHUNK;
+    }
+    write_exact(&mut stream, &chunk[..prefix - written])?;
+    let straddle = stream.write(&[1, 2]).map_err(failure)?;
+    let next = match stream.write(&[3]) {
+        Ok(count) => format!("ok:{count}"),
+        Err(error) => format!("error:{error}"),
+    };
+    Ok(text(format!("{prefix}:{straddle}:{next}")))
+}
+
+fn write_exact(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        match stream.write(&bytes[offset..]) {
+            Ok(0) => return Err(failure("write returned zero")),
+            Ok(count) => offset += count,
+            Err(error) => return Err(failure(error)),
+        }
+    }
+    Ok(())
+}
+
+fn write_vectored_cap(address: &str) -> Result<Argument, Error> {
+    let (written, outcome) = write_bytes_with(address, |stream, bytes| {
+        let (first, second) = bytes.split_at(bytes.len() / 2);
+        let slices = [IoSlice::new(first), IoSlice::new(second)];
+        stream.write_vectored(&slices)
+    })?;
+    Ok(text(format!("{written}:{outcome}")))
+}
+
+fn write_bytes(address: &str) -> Result<(usize, String), Error> {
+    write_bytes_with(address, TcpStream::write)
+}
+
+fn write_bytes_with(
+    address: &str,
+    mut write: impl FnMut(&mut TcpStream, &[u8]) -> io::Result<usize>,
+) -> Result<(usize, String), Error> {
     let mut stream = TcpStream::connect(address).map_err(failure)?;
     let chunk = [0_u8; WRITE_CHUNK];
     let mut written = 0;
-    let mut outcome = "none".to_string();
     while written < WRITE_LIMIT {
-        match stream.write(&chunk) {
-            Ok(0) => {
-                outcome = "zero".to_string();
-                break;
-            }
+        match write(&mut stream, &chunk) {
+            Ok(0) => return Ok((written, "zero".to_string())),
             Ok(count) => written += count,
-            Err(error) => {
-                outcome = error.to_string();
-                break;
-            }
+            Err(error) => return Ok((written, error.to_string())),
         }
     }
-    Ok(text(format!("{written}:{outcome}")))
+    Ok((written, "none".to_string()))
 }
 
 export!(Plugin);

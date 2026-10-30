@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use kawi_plugin::PluginError;
+use kawi_plugin::{PluginError, PluginStatus};
 
-use super::super::super::harness::{ConformanceHost, Runtime};
+use super::super::super::harness::{ConformanceHost, Runtime, PLUGIN_NAME};
 use super::super::super::scenario::{network_case, NetworkTarget, Scenario};
 
 const EXPECTED_OUTBOUND_BYTES: u64 = 8 * 1024 * 1024;
@@ -19,17 +19,99 @@ pub(crate) fn run_network_probe(
     let case = network_case(scenario.id);
     match case.command {
         "hold" => run_restart_close(host),
-        "write-cap" => run_outbound_cap(host, case.target),
+        "write-cap" => run_outbound_cap(host, case.target, "write-cap"),
+        "write-vectored" => run_outbound_cap(host, case.target, "write-vectored"),
+        "write-strict" => run_outbound_cap_no_reader(host, case.target),
+        "write-straddle" => run_outbound_cap_straddle(host, case.target),
         _ => host.invoke(case.command, json!([host.network_target(case.target)])),
     }
 }
 
-fn run_outbound_cap(host: &ConformanceHost, target: NetworkTarget) -> Result<Value, PluginError> {
-    let request = host.start_invocation("write-cap", json!([host.network_target(target)]))?;
+fn run_outbound_cap(
+    host: &ConformanceHost,
+    target: NetworkTarget,
+    command: &str,
+) -> Result<Value, PluginError> {
+    let request = host.start_invocation(command, json!([host.network_target(target)]))?;
     let received = drain_allowed(host)?;
     let result = host.wait_for_finished(request)?;
     assert_outbound_cap(received, &result)?;
+    assert_plugin_ready(host)?;
     Ok(result)
+}
+
+fn assert_plugin_ready(host: &ConformanceHost) -> Result<(), PluginError> {
+    let status = host.host.status(PLUGIN_NAME);
+    if status == Some(PluginStatus::Ready) {
+        return Ok(());
+    }
+    Err(PluginError::Protocol(format!(
+        "cap hit changed plugin status to {status:?}"
+    )))
+}
+
+fn run_outbound_cap_no_reader(
+    host: &ConformanceHost,
+    target: NetworkTarget,
+) -> Result<Value, PluginError> {
+    let request = host.start_invocation("write-strict", json!([host.network_target(target)]))?;
+    let _stream = host
+        .accept_allowed()
+        .map_err(|error| PluginError::Protocol(format!("accept capped socket: {error}")))?;
+    host.wait_for_finished(request)
+}
+
+fn run_outbound_cap_straddle(
+    host: &ConformanceHost,
+    target: NetworkTarget,
+) -> Result<Value, PluginError> {
+    let request = host.start_invocation("write-straddle", json!([host.network_target(target)]))?;
+    let received = drain_allowed(host)?;
+    let result = host.wait_for_finished(request)?;
+    assert_received(received)?;
+    let (prefix, straddle, outcome) = parse_straddle(&result)?;
+    assert_straddle(prefix, straddle, outcome)?;
+    Ok(result)
+}
+
+fn parse_straddle(result: &Value) -> Result<(u64, u64, &str), PluginError> {
+    let text = result
+        .as_str()
+        .ok_or_else(|| PluginError::Protocol("straddle write returned no text".to_string()))?;
+    let mut parts = text.splitn(3, ':');
+    let prefix = parse_count(parts.next(), "straddle prefix")?;
+    let straddle = parse_count(parts.next(), "straddle write")?;
+    let outcome = parts.next().ok_or_else(|| {
+        PluginError::Protocol(format!("straddle write returned unexpected text: {text}"))
+    })?;
+    Ok((prefix, straddle, outcome))
+}
+
+fn parse_count(value: Option<&str>, label: &str) -> Result<u64, PluginError> {
+    value
+        .ok_or_else(|| PluginError::Protocol(format!("missing {label} count")))?
+        .parse::<u64>()
+        .map_err(|error| PluginError::Protocol(format!("invalid {label} count: {error}")))
+}
+
+fn assert_straddle(prefix: u64, straddle: u64, outcome: &str) -> Result<(), PluginError> {
+    if prefix != EXPECTED_OUTBOUND_BYTES - 1 {
+        return Err(PluginError::Protocol(format!(
+            "straddle prefix wrote {prefix} bytes, expected {}",
+            EXPECTED_OUTBOUND_BYTES - 1
+        )));
+    }
+    if straddle != 1 {
+        return Err(PluginError::Protocol(format!(
+            "straddle write returned {straddle}, expected 1"
+        )));
+    }
+    if outcome.starts_with("ok:") {
+        return Err(PluginError::Protocol(format!(
+            "write after the cap succeeded: {outcome}"
+        )));
+    }
+    Ok(())
 }
 
 fn drain_allowed(host: &ConformanceHost) -> Result<u64, PluginError> {

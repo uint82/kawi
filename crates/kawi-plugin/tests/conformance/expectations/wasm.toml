@@ -160,6 +160,15 @@ status = "pass"
 [rows."wasm.net.outbound_cap"]
 status = "pass"
 
+[rows."wasm.net.outbound_cap_no_reader"]
+status = "pass"
+
+[rows."wasm.net.outbound_cap_straddle"]
+status = "pass"
+
+[rows."wasm.net.outbound_cap_vectored"]
+status = "pass"
+
 [rows."wasm.net.rebind_private"]
 status = "pass"
 
