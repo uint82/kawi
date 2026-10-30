@@ -1,3 +1,4 @@
+mod authoring;
 mod core_parity;
 mod faults;
 mod network;
@@ -11,6 +12,7 @@ use super::Scenario;
 static SCENARIOS: LazyLock<Vec<Scenario>> = LazyLock::new(|| {
     let mut rows = Vec::new();
     rows.extend_from_slice(core_parity::ROWS);
+    rows.extend_from_slice(authoring::ROWS);
     rows.extend_from_slice(faults::ROWS);
     rows.extend_from_slice(wasm::ROWS);
     rows.extend_from_slice(payloads::ROWS);

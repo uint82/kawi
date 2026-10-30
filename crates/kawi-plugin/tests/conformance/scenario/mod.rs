@@ -21,6 +21,7 @@ pub(crate) enum Group {
     Oversize,
     InputHygiene,
     Network,
+    Authoring,
 }
 
 impl Group {
@@ -35,6 +36,7 @@ impl Group {
             Self::Oversize => "oversize",
             Self::InputHygiene => "input-hygiene",
             Self::Network => "network",
+            Self::Authoring => "authoring",
         }
     }
 }
@@ -63,6 +65,9 @@ pub(crate) enum Action {
     MidCodepointPosition,
     NetworkProbe,
     NetworkScripted,
+    Trim,
+    TrimStale,
+    TrimDenied,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

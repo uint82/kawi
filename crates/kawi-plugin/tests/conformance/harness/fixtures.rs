@@ -135,22 +135,36 @@ pub(crate) fn write_manifest(plugins: &Path, spec: ManifestSpec<'_>) {
     let capabilities = capability_table(behavior, spec.network);
     let subscribes = subscribes_line(behavior);
     let manifest = match spec.runtime {
-        Runtime::Process => process_manifest(behavior, timeout_ms, &subscribes, &capabilities),
+        Runtime::Process => {
+            process_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities)
+        }
         Runtime::Wasm => wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities),
     };
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
 }
 
+fn process_command(directory: &Path, behavior: Behavior) -> String {
+    if behavior == Behavior::Trim {
+        let source =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/trim/plugin.py");
+        let script = directory.join("trim.py");
+        fs::copy(source, &script).unwrap();
+        return format!("[\"python3\", {:?}]", script.to_string_lossy());
+    }
+    let executable = env!("CARGO_BIN_EXE_fake-plugin");
+    format!("[{executable:?}, {:?}]", behavior.process_mode())
+}
+
 fn process_manifest(
+    directory: &Path,
     behavior: Behavior,
     timeout_ms: u64,
     subscribes: &str,
     capabilities: &str,
 ) -> String {
-    let executable = env!("CARGO_BIN_EXE_fake-plugin");
+    let command = process_command(directory, behavior);
     format!(
-        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [{executable:?}, {:?}]\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n[[commands]]\nid = \"probe\"\ntitle = \"Probe\"\n",
-        behavior.process_mode()
+        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = {command}\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n[[commands]]\nid = \"probe\"\ntitle = \"Probe\"\n"
     )
 }
 
@@ -161,10 +175,9 @@ fn wasm_manifest(
     subscribes: &str,
     capabilities: &str,
 ) -> String {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/wasm")
-        .join(behavior.wasm_component());
-    let bytes = fs::read(source).unwrap();
+    let source = wasm_component_source(behavior);
+    let bytes = fs::read(&source)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", source.display()));
     let bytes = if behavior.oversizes_component() {
         pad_component(bytes)
     } else {
@@ -180,6 +193,15 @@ fn wasm_manifest(
     format!(
         "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\nruntime = \"wasm\"\ncomponent = \"plugin.wasm\"\nsha256 = \"sha256:{hash}\"\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}"
     )
+}
+
+fn wasm_component_source(behavior: Behavior) -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if behavior == Behavior::Trim {
+        return root.join("../../examples/wasm-trim/trim.wasm");
+    }
+    root.join("tests/fixtures/wasm")
+        .join(behavior.wasm_component())
 }
 
 fn subscribes_line(behavior: Behavior) -> String {
