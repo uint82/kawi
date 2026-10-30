@@ -1,10 +1,12 @@
 [package]
 name = "kawi-plugin-sdk"
 version.workspace = true
+description = "Rust SDK for Kawi WebAssembly plugins"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 categories.workspace = true
+keywords = ["kawi", "plugin", "wasm", "component"]
 repository.workspace = true
 rust-version.workspace = true
 
