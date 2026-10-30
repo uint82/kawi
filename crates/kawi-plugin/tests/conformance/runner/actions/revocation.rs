@@ -76,6 +76,7 @@ pub(crate) fn run_queued_revocation_mid_write(
         "{runtime:?} {}: plugin never issued its edit",
         scenario.id
     );
+    host.block_queued_events();
     assert_eq!(
         host.notify(event, event_payload(event)),
         NotifyOutcome::Queued,
