@@ -1,0 +1,6 @@
+session 64
+permit 8
+data 0102030405060708
+r 4
+r 4
+r 1

@@ -66,6 +66,16 @@ impl NetworkPolicy {
         &self.warnings
     }
 
+    #[cfg(feature = "fuzz")]
+    pub(crate) fn allowed(&self) -> &BTreeSet<SocketAddr> {
+        &self.allowed
+    }
+
+    #[cfg(feature = "fuzz")]
+    pub(crate) fn names(&self) -> &BTreeMap<String, Vec<IpAddr>> {
+        &self.names
+    }
+
     pub(crate) fn resolve_name(&self, name: &str) -> Result<Vec<IpAddr>, io::Error> {
         if !self.name_lookup {
             return Err(io::Error::new(
@@ -218,7 +228,7 @@ fn is_allowed_resolved(host: &HostPort, ip: IpAddr) -> bool {
     is_public_ip(ip) || (TEST_LOOPBACK_HOSTNAME && host.host() == "localhost" && ip.is_loopback())
 }
 
-fn is_public_ip(ip: IpAddr) -> bool {
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => is_public_ipv4(ip),
         IpAddr::V6(ip) => is_public_ipv6(ip),

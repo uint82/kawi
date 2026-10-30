@@ -1,64 +1,8 @@
-use kawi_plugin::{PluginError, RpcError, CAPABILITY_DENIED, PLUGIN_UNAVAILABLE};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Outcome {
-    Success,
-    Denied(String),
-    Crashed,
-    Timeout,
-    Protocol,
-    QueueFull,
-}
-
-impl Outcome {
-    pub(super) fn denied(capability: &str) -> Self {
-        Self::Denied(capability.to_string())
-    }
-}
-
-pub(super) fn normalize_result(result: &Result<serde_json::Value, PluginError>) -> Outcome {
-    match result {
-        Ok(_) => Outcome::Success,
-        Err(error) => normalize_error(error),
-    }
-}
-
-pub(super) fn normalize_error(error: &PluginError) -> Outcome {
-    match error {
-        PluginError::Timeout => Outcome::Timeout,
-        PluginError::QueueFull => Outcome::QueueFull,
-        PluginError::Protocol(_) => Outcome::Protocol,
-        PluginError::Rpc(error) => normalize_rpc(error),
-        PluginError::Spawn(_)
-        | PluginError::ProcessExited
-        | PluginError::Trap(_)
-        | PluginError::Initialize(_)
-        | PluginError::MissingCapabilities(_)
-        | PluginError::Backoff { .. }
-        | PluginError::Disabled
-        | PluginError::Restart
-        | PluginError::Shutdown => Outcome::Crashed,
-    }
-}
-
-pub(super) fn normalize_rpc(error: &RpcError) -> Outcome {
-    if error.code == PLUGIN_UNAVAILABLE {
-        return Outcome::Crashed;
-    }
-    if error.code != CAPABILITY_DENIED {
-        return Outcome::Protocol;
-    }
-    let capability = error
-        .data
-        .as_ref()
-        .and_then(|data| data.get("capability"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("unknown");
-    Outcome::denied(capability)
-}
+pub(super) use kawi_plugin::{normalize_error, normalize_result, normalize_rpc, Outcome};
 
 #[cfg(test)]
 mod tests {
+    use kawi_plugin::{PluginError, RpcError, CAPABILITY_DENIED};
     use serde_json::json;
 
     use super::*;

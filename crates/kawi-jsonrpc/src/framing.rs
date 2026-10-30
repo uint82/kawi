@@ -1,9 +1,10 @@
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 
 const MAX_HEADER_LINE: usize = 8 * 1024;
 const MAX_HEADER_BYTES: usize = 32 * 1024;
+const INITIAL_BODY_CAPACITY: usize = 8 * 1024;
 pub const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 
 pub fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
@@ -13,10 +14,15 @@ pub fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
     if length > MAX_MESSAGE_BYTES {
         bail!("jsonrpc message exceeds {MAX_MESSAGE_BYTES} bytes");
     }
-    let mut body = vec![0; length];
+    let mut body = Vec::with_capacity(length.min(INITIAL_BODY_CAPACITY));
     reader
-        .read_exact(&mut body)
+        .by_ref()
+        .take(length as u64)
+        .read_to_end(&mut body)
         .context("read jsonrpc message body")?;
+    if body.len() != length {
+        bail!("unexpected end of stream in jsonrpc message body");
+    }
     let value = serde_json::from_slice(&body).context("parse jsonrpc message json")?;
     Ok(Some(value))
 }
@@ -73,6 +79,8 @@ fn read_headers(reader: &mut impl BufRead) -> Result<Option<usize>> {
 fn read_header_line(reader: &mut impl BufRead) -> Result<Option<String>> {
     let mut line = Vec::new();
     let read = reader
+        .by_ref()
+        .take((MAX_HEADER_LINE + 1) as u64)
         .read_until(b'\n', &mut line)
         .context("read jsonrpc header")?;
     if read == 0 {
@@ -89,7 +97,7 @@ fn read_header_line(reader: &mut impl BufRead) -> Result<Option<String>> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::io::Cursor;
+    use std::io::{self, BufRead, Cursor, Read};
 
     #[test]
     fn round_trips_a_message() {
@@ -140,6 +148,29 @@ mod tests {
     }
 
     #[test]
+    fn rejects_truncated_large_body() {
+        let header = format!("Content-Length: {MAX_MESSAGE_BYTES}\r\n\r\n");
+        let mut reader = Cursor::new(header.into_bytes());
+        assert!(read_message(&mut reader).is_err());
+    }
+
+    #[test]
+    fn rejects_large_claim_without_large_read() {
+        let header = format!("Content-Length: {MAX_MESSAGE_BYTES}\r\n\r\n");
+        let mut reader = TrackingReader::new(header.into_bytes());
+        assert!(read_message(&mut reader).is_err());
+        assert!(reader.max_read <= INITIAL_BODY_CAPACITY);
+    }
+
+    #[test]
+    fn rejects_oversized_header_line() {
+        let mut input = vec![b'a'; MAX_HEADER_LINE + 2];
+        input.push(b'\n');
+        let mut reader = Cursor::new(input);
+        assert!(read_message(&mut reader).is_err());
+    }
+
+    #[test]
     fn rejects_oversized_messages() {
         let header = format!("Content-Length: {}\r\n\r\n", MAX_MESSAGE_BYTES + 1);
         let mut reader = Cursor::new(header.into_bytes());
@@ -152,5 +183,36 @@ mod tests {
         let mut buffer = Vec::new();
         assert!(write_message(&mut buffer, &message).is_err());
         assert!(buffer.is_empty());
+    }
+
+    struct TrackingReader {
+        inner: Cursor<Vec<u8>>,
+        max_read: usize,
+    }
+
+    impl TrackingReader {
+        fn new(data: Vec<u8>) -> Self {
+            Self {
+                inner: Cursor::new(data),
+                max_read: 0,
+            }
+        }
+    }
+
+    impl Read for TrackingReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.max_read = self.max_read.max(buffer.len());
+            self.inner.read(buffer)
+        }
+    }
+
+    impl BufRead for TrackingReader {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            self.inner.fill_buf()
+        }
+
+        fn consume(&mut self, amount: usize) {
+            self.inner.consume(amount);
+        }
     }
 }

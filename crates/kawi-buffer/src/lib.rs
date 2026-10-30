@@ -18,5 +18,7 @@ pub use hash::content_hash;
 pub use history_nav::{UndoLeaf, UndoOffset};
 pub use history_persist::{HistoryDelta, HistoryEntry, PersistedHistory};
 pub use line_adjust::LineAdjust;
-pub use text_edit::{apply_text_edits, validate_text_edits, TextEdit, TextEditError};
+pub use text_edit::{
+    apply_text_edits, char_offset_at, validate_text_edits, PositionError, TextEdit, TextEditError,
+};
 pub use undo_store::{UndoStore, UndoStoreError};

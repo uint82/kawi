@@ -1,5 +1,6 @@
 [graph]
 all-features = true
+exclude = ["kawi-fuzz"]
 
 [licenses]
 confidence-threshold = 0.9
