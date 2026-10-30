@@ -42,7 +42,7 @@ fn parse_directory(args: &[String]) -> Result<PathBuf> {
 fn print_plugin(plugin: &kawi_plugin::LoadedPlugin) -> Result<()> {
     println!("name: {}", plugin.manifest.name);
     println!("version: {}", plugin.manifest.version);
-    println!("runtime: {:?}", plugin.manifest.runtime);
+    println!("runtime: {}", plugin.manifest.runtime.label());
     if let Some(component) = plugin.manifest.component.as_deref() {
         println!("component: {component}");
     }
