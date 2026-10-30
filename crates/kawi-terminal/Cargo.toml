@@ -11,6 +11,6 @@ rust-version.workspace = true
 [dependencies]
 anyhow.workspace = true
 crossterm.workspace = true
-kawi-process = { path = "../kawi-process" }
+kawi-process.workspace = true
 portable-pty.workspace = true
 vt100.workspace = true

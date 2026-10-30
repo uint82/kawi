@@ -10,7 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 crossterm.workspace = true
-kawi-buffer = { path = "../kawi-buffer" }
+kawi-buffer.workspace = true
 ignore = "0.4"
 grep-searcher = "0.1"
 grep-regex = "0.1"

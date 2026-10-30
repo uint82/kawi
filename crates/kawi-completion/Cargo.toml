@@ -9,5 +9,5 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-kawi-buffer = { path = "../kawi-buffer" }
+kawi-buffer.workspace = true
 serde_json.workspace = true

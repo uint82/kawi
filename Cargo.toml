@@ -21,6 +21,22 @@ rust-version = "1.98.0"
 
 
 
+kawi-buffer = { version = "0.0.1", path = "crates/kawi-buffer" }
+kawi-completion = { version = "0.0.1", path = "crates/kawi-completion" }
+kawi-editor = { version = "0.0.1", path = "crates/kawi-editor" }
+kawi-git = { version = "0.0.1", path = "crates/kawi-git" }
+kawi-help = { version = "0.0.1", path = "crates/kawi-help" }
+kawi-jsonrpc = { version = "0.0.1", path = "crates/kawi-jsonrpc" }
+kawi-lsp = { version = "0.0.1", path = "crates/kawi-lsp" }
+kawi-picker = { version = "0.0.1", path = "crates/kawi-picker" }
+kawi-plugin = { version = "0.0.1", path = "crates/kawi-plugin" }
+kawi-process = { version = "0.0.1", path = "crates/kawi-process" }
+kawi-syntax = { version = "0.0.1", path = "crates/kawi-syntax" }
+kawi-task = { version = "0.0.1", path = "crates/kawi-task" }
+kawi-terminal = { version = "0.0.1", path = "crates/kawi-terminal" }
+kawi-tui = { version = "0.0.1", path = "crates/kawi-tui" }
+kawi-watch = { version = "0.0.1", path = "crates/kawi-watch" }
+
 # external
 anyhow = "1"
 bytes = "1"
@@ -35,8 +51,8 @@ serde_json = "1"
 sha2 = "0.10"
 signal-hook = "0.3"
 tokio = { version = "1", features = ["time"] }
-toml = "0.9"
-toml_edit = "0.23"
+toml = "1.1"
+toml_edit = "0.25"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 vt100 = "0.18"

@@ -10,5 +10,5 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-kawi-buffer = { path = "../kawi-buffer" }
+kawi-buffer.workspace = true
 notify.workspace = true

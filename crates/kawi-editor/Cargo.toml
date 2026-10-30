@@ -10,7 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-kawi-buffer = { path = "../kawi-buffer" }
-kawi-syntax = { path = "../kawi-syntax" }
+kawi-buffer.workspace = true
+kawi-syntax.workspace = true
 memchr = "2.8.3"
 ropey = "1.6.1"
