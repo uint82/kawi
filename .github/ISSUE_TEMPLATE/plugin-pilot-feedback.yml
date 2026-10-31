@@ -1,0 +1,99 @@
+name: Plugin pilot feedback
+description: Report friction from the Kawi WebAssembly plugin external validation pilot.
+title: "[plugin pilot] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for friction in authoring, SDK helpers, install, grants, inspect, logs, or migration.
+        Do not include secrets or private data. Report security issues through the repository security advisory flow.
+  - type: input
+    id: participant
+    attributes:
+      label: Pilot author or plugin
+      description: Link the plugin repository or name the pilot author.
+      placeholder: "https://github.com/..."
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Include the Kawi version, SDK version, and target.
+      placeholder: "Kawi 0.1.0, kawi-plugin-sdk 0.1.0, wasm32-wasip2"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Friction area
+      options:
+        - Authoring guide
+        - SDK helpers
+        - Install
+        - Grants
+        - Inspect
+        - Logs
+        - Migration
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocker
+        - Major
+        - Minor
+        - Observation
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did the documentation or command lead you to expect?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Leave empty when no workaround exists.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Remove secrets, paths, and private data before posting.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed secrets and private data from logs.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
