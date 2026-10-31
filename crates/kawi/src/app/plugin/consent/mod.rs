@@ -66,55 +66,39 @@ impl App {
         }
     }
 
-    pub(crate) fn handle_plugin_grant_key(&mut self, key: KeyEvent) -> bool {
+    pub(crate) fn handle_plugin_grant_key(&mut self, key: KeyEvent) {
         if !GrantPrompt::accepts_key(key) {
-            return false;
+            return;
         }
         let Some(mut prompt) = self.plugin_grants.take_active() else {
-            return false;
+            return;
         };
         if let Some(delta) = navigation_key(key) {
             prompt.move_by(delta);
             self.plugin_grants.restore_active(prompt);
-            return true;
+            return;
         }
-        if prompt.is_batch() {
-            match key.code {
-                KeyCode::Char('a') => {
-                    prompt.allow_all();
-                    self.plugin_grants.restore_active(prompt);
-                    return true;
-                }
-                KeyCode::Char('d') => {
-                    prompt.deny_all();
-                    self.plugin_grants.restore_active(prompt);
-                    return true;
-                }
-                KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right => {
-                    prompt.toggle_selected();
-                    self.plugin_grants.restore_active(prompt);
-                    return true;
-                }
-                _ => {}
-            }
+        if prompt.is_batch() && update_batch_choice(&mut prompt, key) {
+            self.plugin_grants.restore_active(prompt);
+            return;
         }
         match key.code {
             KeyCode::Esc => {
                 self.deny_request(prompt.request());
                 self.advance_grant();
             }
-            KeyCode::Enter => {
-                let request = prompt.request().clone();
-                if prompt.is_batch() {
-                    self.apply_batch(request);
-                } else {
-                    let choice = prompt.choice();
-                    self.apply_grant(request, choice);
-                }
-            }
+            KeyCode::Enter => self.apply_grant_prompt(prompt),
             _ => self.plugin_grants.restore_active(prompt),
         }
-        true
+    }
+
+    fn apply_grant_prompt(&mut self, prompt: GrantPrompt) {
+        if prompt.is_batch() {
+            self.apply_batch(prompt.into_request());
+        } else {
+            let choice = prompt.choice();
+            self.apply_grant(prompt.into_request(), choice);
+        }
     }
 
     pub(super) fn expire_plugin_grants(&mut self) {
@@ -158,4 +142,14 @@ impl App {
             changed_request_summary(request)
         ));
     }
+}
+
+fn update_batch_choice(prompt: &mut GrantPrompt, key: KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char('a') => prompt.allow_all(),
+        KeyCode::Char('d') => prompt.deny_all(),
+        KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right => prompt.toggle_selected(),
+        _ => return false,
+    }
+    true
 }
