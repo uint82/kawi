@@ -427,8 +427,8 @@ fn parse_named(text: &str) -> Command {
                 text: text.to_string(),
             }
         }
-        ("plugin", _) => Command::Plugin {
-            text: text.to_string(),
+        ("plugin", rest) => Command::Plugin {
+            text: rest.join(" "),
         },
         _ => Command::Unknown,
     }
@@ -1175,6 +1175,22 @@ mod tests {
             parse("help getting started"),
             Command::Help {
                 topic: Some("getting started".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn parses_plugin_subcommands_without_the_command_name() {
+        assert_eq!(
+            parse("plugin list"),
+            Command::Plugin {
+                text: "list".to_string()
+            }
+        );
+        assert_eq!(
+            parse("plugin grant trim editor.read"),
+            Command::Plugin {
+                text: "grant trim editor.read".to_string()
             }
         );
     }
