@@ -32,6 +32,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - name: Test
         run: cargo test --workspace --no-default-features
+      - name: Package SDK
+        run: cargo publish --dry-run -p kawi-plugin-sdk
       - name: Install wasm-tools
         uses: taiki-e/install-action@v2
         with:
