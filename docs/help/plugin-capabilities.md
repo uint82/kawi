@@ -48,7 +48,7 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 
 ### Commands
 
-`process.spawn` takes `commands`, an array of executable names or absolute paths. Kawi resolves bare names with the host PATH at the time of the call. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
+`process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Kawi resolves bare names with the host PATH when grants are evaluated and again at the time of the call. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
 
 ### Hosts
 
