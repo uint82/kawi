@@ -40,6 +40,22 @@ fn root_items() -> [&'static str; 8] {
     ]
 }
 
+fn find_items() -> [&'static str; 5] {
+    [
+        "f/p  project files",
+        "k  open buffers",
+        "r  search and replace",
+        "s  live grep",
+        "w  grep current word",
+    ]
+}
+
+fn bind_leader_mapping(app: &mut App, keys: &str) {
+    let command = format!("nmap {keys} mode.visual");
+    app.run_command(kawi_editor::parse(&command))
+        .expect("mapping");
+}
+
 #[test]
 fn root_menu_lists_every_group() {
     let mut app = app();
@@ -48,20 +64,28 @@ fn root_menu_lists_every_group() {
 }
 
 #[test]
+fn resolver_pending_leader_shows_the_root_menu() {
+    let mut app = app();
+    bind_leader_mapping(&mut app, "<leader>pp");
+    app.handle_key(key(KeyCode::Char(' '))).expect("leader");
+    assert_eq!(items(&app), root_items());
+}
+
+#[test]
+fn resolver_pending_group_shows_the_group_menu() {
+    let mut app = app();
+    bind_leader_mapping(&mut app, "<leader>ffx");
+    app.handle_key(key(KeyCode::Char(' '))).expect("leader");
+    app.handle_key(key(KeyCode::Char('f'))).expect("group");
+    assert_eq!(items(&app), find_items());
+}
+
+#[test]
 fn group_menu_replaces_the_root_menu() {
     let mut app = app();
     app.handle_key(key(KeyCode::Char(' '))).expect("leader");
     app.handle_key(key(KeyCode::Char('f'))).expect("group");
-    assert_eq!(
-        items(&app),
-        [
-            "f/p  project files",
-            "k  open buffers",
-            "r  search and replace",
-            "s  live grep",
-            "w  grep current word",
-        ]
-    );
+    assert_eq!(items(&app), find_items());
 }
 
 #[test]
