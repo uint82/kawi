@@ -112,6 +112,6 @@ Fuzzing is complete. Run targets with `fuzz/run.sh smoke` for the 30 second PR c
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement. Complete.
 4. Shared conformance suite and fuzzing in CI. Complete.
-5. Process runtime deprecation once the WASM authoring path is practical. In progress. WASM is enabled by default, process plugins are labeled as a trusted compatibility runtime, and the migration guide is published. Removal waits for external validation and the release window defined in [plugin-deprecation](plugin-deprecation.md).
+5. Process runtime deprecation once the WASM authoring path is practical. In progress. WASM is enabled by default, process plugins are labeled as a trusted compatibility runtime, and the migration guide is published. Removal waits for the [external validation pilot](plugin-external-validation.md) and the release window defined in [plugin-deprecation](plugin-deprecation.md).
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.
