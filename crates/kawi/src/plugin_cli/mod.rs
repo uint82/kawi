@@ -13,7 +13,8 @@ Usage:
   kawi plugin build [directory]
   kawi plugin inspect [directory]
 
-The build and inspect commands require a wasm plugin directory.";
+The build and inspect commands require a wasm plugin directory.
+The default SDK is fetched from crates.io. Use --sdk-path for an unreleased checkout.";
 
 pub(crate) fn run(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {

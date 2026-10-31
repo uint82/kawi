@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-const SDK_VERSION: &str = "0.0.1";
+const SDK_VERSION: &str = "0.1.0";
 const DEFAULT_SHA256: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 const BUILD_SCRIPT: &str = "\
@@ -151,8 +151,13 @@ mod tests {
     #[test]
     fn sdk_path_keeps_the_version_requirement() {
         let dependency = sdk_dependency(Some(Path::new("/tmp/sdk")));
-        assert!(dependency.contains("version = \"0.0.1\""));
+        assert!(dependency.contains("version = \"0.1.0\""));
         assert!(dependency.contains("path = \"/tmp/sdk\""));
+    }
+
+    #[test]
+    fn default_dependency_uses_the_published_sdk() {
+        assert_eq!(sdk_dependency(None), "kawi-plugin-sdk = \"0.1.0\"");
     }
 
     #[test]
