@@ -5,6 +5,7 @@ pub struct CommandCompletion {
     option_values: BTreeMap<String, Vec<String>>,
     boolean_options: Vec<String>,
     help_topics: Vec<String>,
+    plugin_commands: Vec<String>,
 }
 
 impl CommandCompletion {
@@ -12,11 +13,13 @@ impl CommandCompletion {
         option_values: BTreeMap<String, Vec<String>>,
         boolean_options: Vec<String>,
         help_topics: Vec<String>,
+        plugin_commands: Vec<String>,
     ) -> Self {
         Self {
             option_values,
             boolean_options,
             help_topics,
+            plugin_commands,
         }
     }
 
@@ -33,5 +36,9 @@ impl CommandCompletion {
 
     pub fn help_topics(&self) -> &[String] {
         &self.help_topics
+    }
+
+    pub fn plugin_commands(&self) -> &[String] {
+        &self.plugin_commands
     }
 }

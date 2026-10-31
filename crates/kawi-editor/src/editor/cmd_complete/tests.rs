@@ -32,6 +32,14 @@ fn completion() -> CommandCompletion {
             "option".to_string(),
             "options".to_string(),
         ],
+        vec![
+            "grant".to_string(),
+            "inspect".to_string(),
+            "list".to_string(),
+            "logs".to_string(),
+            "reload".to_string(),
+            "restart".to_string(),
+        ],
     )
 }
 
@@ -220,6 +228,32 @@ fn cancel_clears_completion() {
     complete(&mut e, false);
     e.apply(Action::CancelCommand);
     assert_eq!(e.completion, None);
+}
+
+#[test]
+fn completes_plugin_subcommands() {
+    let mut e = editor_with("x");
+    type_command(&mut e, "plugin ");
+    complete(&mut e, false);
+    assert_eq!(e.command_text(), "plugin grant");
+    complete(&mut e, false);
+    assert_eq!(e.command_text(), "plugin inspect");
+}
+
+#[test]
+fn completes_plugin_subcommands_without_a_space() {
+    let mut e = editor_with("x");
+    type_command(&mut e, "plugin");
+    complete(&mut e, false);
+    assert_eq!(e.command_text(), "plugin grant");
+}
+
+#[test]
+fn completes_plugin_subcommand_prefixes() {
+    let mut e = editor_with("x");
+    type_command(&mut e, "plugin ins");
+    complete(&mut e, false);
+    assert_eq!(e.command_text(), "plugin inspect");
 }
 
 #[test]
