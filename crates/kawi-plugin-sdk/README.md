@@ -50,7 +50,7 @@ The authoring guide covers scaffolding, building, installing, granting, and trou
 
 https://github.com/uint82/kawi/blob/main/docs/help/plugin-authoring.md
 
-The WIT contract is the source of truth for host methods, events, capabilities, and error codes.
+The WIT contract is the source of truth for host methods, events, and error codes. Capability names and scopes are defined in the authoring guide and the plugin capability reference.
 
 ## License
 

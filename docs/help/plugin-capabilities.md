@@ -23,7 +23,7 @@ Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, 
 | `process.spawn` | commands | Spawn the granted executables |
 | `net.connect` | hosts | Open outbound TCP connections to the granted hosts |
 
-Names are stable. Unknown capabilities are ignored with a warning. New capabilities are additive and bump only the protocol minor version.
+Names are stable. Unknown capabilities are ignored with a warning. New capabilities are additive and bump only the protocol or WIT minor version.
 
 ## Scopes
 
@@ -31,39 +31,39 @@ Unscoped capabilities use `true` in both requests and grants. Scoped capabilitie
 
 ### Paths
 
-`fs.read` and `fs.write` take `paths`, an array of directories or files. An import that exposes multiple capabilities, such as WASI filesystem read and write, must have every exposed capability requested by the manifest. A grant for any one of the requested capabilities is enough to instantiate the plugin, so read-only access still grants only `fs.read`.
+`fs.read` and `fs.write` take `paths`, an array of directories or files. An import that exposes multiple capabilities, such as WASI filesystem read and write, must have every exposed capability requested by the manifest. A grant for any one of the requested capabilities is enough to instantiate the plugin, so read-only access still grants only `fs.read`. WebAssembly preopens require directories, so a file grant is skipped with a warning for WebAssembly plugins.
 
 Paths may start with these variables:
 
-- `$WORKSPACE`: the active workspace roots
+- `$WORKSPACE`: the active workspace root
 - `$PLUGIN_DIR`: the plugin directory
 - `$CONFIG`: `$XDG_CONFIG_HOME/kawi`
 - `$HOME`: the user home directory
 
-Other variables are rejected. Kawi expands variables when it builds the Landlock ruleset at spawn time. `$WORKSPACE` is the active project root, which falls back to the current directory when no project is open, captured for the life of the plugin process.
+Other variables are rejected. Kawi expands variables when it builds the Landlock ruleset or WASI preopens. `$WORKSPACE` is the active project root, which falls back to the current directory when no project is open, captured for the life of the plugin process or WebAssembly session.
 
-Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant paths are canonicalized when the sandbox is built and symlinks are resolved before the rule is installed, so a symlink that escapes a grant does not match. A grant path that does not exist is skipped until the path exists and the plugin restarts.
+Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant paths are canonicalized when the sandbox or WASI preopens are built and symlinks are resolved before the rule is installed, so a symlink that escapes a grant does not match. A grant path that does not exist is skipped with a log line until the path exists and the plugin restarts.
 
-Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. A grant for a file covers exactly that file. A grant never widens a request.
+Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. For process plugins, a grant for a file covers exactly that file. A grant never widens a request.
 
 ### Commands
 
-`process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Kawi resolves bare names with the host PATH when grants are evaluated and again at the time of the call. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
+`process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Kawi resolves bare names with the host PATH when permissions are evaluated and again when a WebAssembly `process-run` call is authorized. The process runtime resolves them again when it builds the Landlock ruleset. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
 
 ### Hosts
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
 
-The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set, but a long-lived session keeps stale addresses. Restart, or a grant change that restarts the plugin, builds a new session and re-resolves. Loopback, private, link-local, shared, documentation, benchmarking, multicast, and reserved answers are rejected unless the grant names the address literally. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. Outbound TCP connect is the only permitted network operation. TCP connect is allowed only to a pinned address; UDP, listen, and accept are denied. Resolver failure fails closed. A failed or timed-out resolution emits a `network warning` in `:plugin list` and `:plugin logs`; the plugin still starts, and the warning does not count toward the five-failure disable.
+The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set, but a long-lived session keeps stale addresses. Restart, or a grant change that restarts the plugin, builds a new session and re-resolves. Loopback, private, link-local, shared, documentation, benchmarking, multicast, reserved, 6to4, Teredo, ORCHID, and IPv4-mapped answers are rejected unless the grant names a connectable address literally. Unspecified, broadcast, and multicast addresses are always denied. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. The only permitted outbound operation is TCP connect. TCP connect is allowed only to a pinned address; UDP, listen, and accept are denied. The runtime permits the wildcard ephemeral bind that connect needs. Resolver failure fails closed. A failed or timed-out resolution emits a `network warning` in `:plugin list` and `:plugin logs`; the plugin still starts, and the warning does not count toward the five-failure disable.
 
-Each session allows at most 64 simultaneous TCP connections. A connection releases its slot when the guest drops the socket or shuts down both directions, so connect-and-disconnect loops do not exhaust the cap. The cap is per plugin session, not global. Denied attempts do not consume a slot. Each connection also has an 8 MiB inbound cap and an 8 MiB outbound cap. Reads are limited to the remaining budget, so a read that crosses the cap returns a short read; the next read returns EOF. Writes are limited by the permit, so a write that crosses the cap is shortened to the remaining budget; the next write fails as closed, and the socket stays open for reads. Socket readiness waits use the invocation budget in both directions, so a peer that stops reading or sending cannot hold the call past that budget. A handled cap hit is a normal stream error and does not count as a crash; an unhandled one follows the normal invocation failure path. The conformance suite checks the plugin is still ready immediately after each cap and then makes a successful call. Reconnecting starts fresh per-connection budgets. All streams in a session share a 64 MiB byte total across inbound and outbound. The session total is the binding limit for wide fan-out: 64 connections times 16 MiB per connection is 1 GiB of per-connection headroom, so a plugin hits the session total before it can use every per-connection cap. Budget work per invocation, not per connection. When the session total is exhausted, reads return EOF and writes fail as closed. The caps apply to WASI TCP streams, not process plugins. The session total is shared across both directions, so a plugin that reads a large amount has less room to write. The caps count bytes at the WASI stream boundary, not kernel buffers. Restart closes sockets held by the guest; the conformance suite verifies EOF on a held connection. Hostname-positive connect, rebinding, mixed answers, and all-private answers are guest-tested under the debug-only `wasm-test-network` feature. The byte cap rows run in the default WASM build and cover exact inbound and outbound limits, straddling short reads and writes, a vectored write path, a splice path, a peer that stops reading, a peer that stops sending, mixed-direction session accounting, repeated close and reconnect, and the shared session total. The test resolver is scripted per session and counts calls, so the suite asserts that a live session resolves once, that later answers cannot widen the pinned set, and that restart re-resolves. The default build still denies loopback hostnames and uses the real resolver. An all-private answer produces a clean name lookup error rather than an empty address list, and never a trap. Resolution runs while the session is built, not inside an invocation, so its five-second cap is a bounded startup cost. A timeout fails closed and leaves the worker restartable.
+Each session allows at most 64 simultaneous TCP connections. A connection releases its slot when the guest drops the socket or shuts down both directions, so connect-and-disconnect loops do not exhaust the cap. The cap is per plugin session, not global. Denied attempts do not consume a slot. Each connection also has an 8 MiB inbound cap and an 8 MiB outbound cap. Reads are limited to the remaining budget, so a read that crosses the cap returns a short read; the next read returns EOF. Writes are limited by the permit, so a write that crosses the cap is shortened to the remaining budget; the next write fails as closed, and the socket stays open for reads. Socket readiness waits use the invocation budget in both directions, so a peer that stops reading or sending cannot hold the call past that budget. A handled cap hit is a normal stream error and does not count as a crash; an unhandled one follows the normal invocation failure path. The conformance suite checks the plugin is still ready immediately after each cap and then makes a successful call. Reconnecting starts fresh per-connection budgets. All streams in a session share a 64 MiB byte total across inbound and outbound. The session total is the binding limit for wide fan-out: 64 connections times 16 MiB per connection is 1 GiB of per-connection headroom, so a plugin hits the session total before it can use every per-connection cap. Budget accounting is per byte. When the session total is exhausted, reads return EOF and writes fail as closed. The caps apply to WASI TCP streams, not process plugins. The session total is shared across both directions, so a plugin that reads a large amount has less room to write. The caps count bytes at the WASI stream boundary, not kernel buffers. Restart closes sockets held by the guest; the conformance suite verifies EOF on a held connection. Hostname-positive connect, rebinding, mixed answers, and all-private answers are guest-tested under the debug-only `wasm-test-network` feature. The byte cap rows run in the default WASM build and cover exact inbound and outbound limits, straddling short reads and writes, a vectored write path, a splice path, a peer that stops reading, a peer that stops sending, mixed-direction session accounting, repeated close and reconnect, and the shared session total. The test resolver is scripted per session and counts calls, so the suite asserts that a live session resolves once, that later answers cannot widen the pinned set, and that restart re-resolves. The default build still denies loopback hostnames and uses the real resolver. An all-private answer produces a clean name lookup error rather than an empty address list, and never a trap. Resolution runs while the session is built, not inside an invocation, so its five-second cap is a bounded startup cost. A timeout fails closed and leaves the worker restartable.
 
 ### Subsumption summary
 
 | Scope | A grant covers a request when |
 | --- | --- |
 | none | both are unscoped |
-| paths | the granted canonical path is the requested path or a descendant component prefix |
+| paths | the requested canonical path is the granted path or a descendant of the granted path |
 | commands | both resolve to the same canonical executable path |
 | hosts | host and port match exactly |
 
@@ -134,14 +134,14 @@ Rules:
 - Every entry in the `grant` table must be a request in the manifest. Unrequested grants add no access and are reported as stale by doctor.
 - Grants for unknown plugins add no access and are reported as stale by doctor.
 - A scoped grant must be equal to or narrower than the request scope.
-- Multiple grants for one capability are combined.
+- Multiple entries in a scope array are combined into one scope for that capability.
 - `false` is valid only for default-tier capabilities. It revokes that default. Using it for any other capability warns and is ignored.
 - A missing grant file grants only the default tier.
 - A malformed grant file fails closed: every plugin receives only the default tier, with a startup error and doctor output. Kawi does not grant everything and does not abort startup.
 - An invalid scope in one entry drops that entry only. Other valid grants in the file still apply.
 - Kawi warns when the grant file is writable by group or other users.
 
-Kawi watches the parent directory of `permissions.toml` and reloads it after a debounced change. Reloads use the same atomic fail-closed swap as `:plugin reload`. A malformed save drops every plugin to the default tier and warns instead of keeping the previous grants. Kawi suppresses the reload triggered by its own grant writes. Revocation clears any one-shot allowances. Host-method grants apply to the next call; a change to an `fs.*` or `process.spawn` scope restarts the affected plugin so the kernel ruleset matches the new grants.
+Kawi watches the parent directory of `permissions.toml` and reloads it after a debounced change. Reloads use the same atomic fail-closed swap as `:plugin reload`. A malformed save drops every plugin to the default tier and warns instead of keeping the previous grants. Kawi suppresses the reload triggered by its own grant writes. Revocation clears any one-shot allowances. For process plugins, host-method grants apply to the next call, and a change to an `fs.*` or `process.spawn` scope restarts the plugin so the kernel ruleset matches the new grants. WebAssembly plugins restart when any effective grant changes because linking is fixed at instantiation.
 
 `approved` records the request set the user has approved. It uses the same shape as a manifest request. Kawi compares it with the current manifest request set per capability:
 
@@ -155,7 +155,7 @@ Kawi watches the parent directory of `permissions.toml` and reloads it after a d
 
 An incomparable change that both adds and removes scope is treated as widened because it contains a new item that was never approved. Reordering does not change the diff.
 
-Both sets are canonical. Capability names and scope keys are sorted lexicographically, scope arrays are deduplicated and sorted after lexical normalization, paths reject `..` and normalize `.` and duplicate separators, and hostnames are lowercased. Command strings keep their case. Canonicalization does not expand variables, resolve the PATH, or resolve symlinks. Unknown or invalid entries are omitted and reported separately.
+The request and approved sets are canonical. Capability names and scope keys are sorted lexicographically, scope arrays are deduplicated and sorted after lexical normalization, paths reject `..` and normalize `.` and duplicate separators, and hostnames are lowercased. Command strings keep their case. Canonicalization of those sets does not expand variables, resolve the PATH, or resolve symlinks. Effective command grants are resolved and canonicalized separately when permissions are evaluated. Unknown or invalid entries are omitted and reported separately.
 
 Command gates are recorded with the approved request set:
 
@@ -164,7 +164,7 @@ Command gates are recorded with the approved request set:
 format = ["editor.write"]
 ```
 
-Adding a command gate is reported as narrowed access. Removing a gate is reported as widened access and appears in the reapproval prompt. A gate that names a capability outside the request table is rejected and the plugin is not loaded.
+Adding a command gate is reported in the changed-request summary and does not withhold grants. Removing a gate is reported as a widening and produces a warning; it appears in the changed-request summary, not as a separate approval item. A gate that names a capability outside the request table is rejected and the plugin is not loaded.
 
 `request_hash` is optional and retained for older files. When the `approved` table is absent and the hash matches the current request set, Kawi treats the current request set as approved. A missing or corrupt approved record with no matching hash treats every request as new. A malformed approved table fails closed for that plugin and produces a warning.
 
@@ -212,21 +212,21 @@ Host requests are checked against the current grants on every call. A JSON-RPC n
 
 Events are checked when they enter the queue and again when the writer writes them to the plugin pipe. Revoking a grant therefore drops events already queued for a stalled plugin. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability. Event payloads that carry paths, including `buffer_opened`, `file_opened`, and `file_saved`, use the same gate.
 
-The `host_capabilities` and `events` fields in `initialize` are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so host-method revocation applies to the next message without restarting the plugin. Filesystem and execute scopes are fixed for the life of the process and change on restart.
+The `host_capabilities` and `events` fields in the process `initialize` result are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so process host-method revocation applies to the next message without restarting the plugin. Process filesystem and execute scopes are fixed for the life of the process and change on restart. WebAssembly plugins do not receive these fields; `init` receives only the protocol version, and any effective grant change restarts the instance.
 
-The `invoke_command` context is editor state. Without `editor.read`, Kawi replaces it with an empty context: buffer and revision `0`, no path or language, normal mode, cursor at the origin, and no selection. Command arguments are caller-supplied command input from configuration or keybindings, not editor state, and are passed through.
+The process `invoke_command` context is editor state. Without `editor.read`, Kawi replaces it with an empty context: buffer and revision `0`, no path or language, normal mode, cursor at the origin, and no selection. WebAssembly `invoke-command` receives only the command id and scalar arguments; request `editor.read` and call `editor.get_state` when it needs editor state. Command arguments are caller-supplied command input from configuration or keybindings, not editor state, and are passed through.
 
 ## Consent prompt
 
-A denial opens a host prompt. For a single ungranted request the prompt offers allow once, allow always, or deny. When a plugin has added or widened requests, one prompt lists every pending change with a per-item choice plus allow all and deny all. Process plugins offer allow once, allow always, and deny per item. WASM startup imports offer only allow always and deny because linking is fixed at instantiation. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
+An ungranted host call or import opens a host prompt. Denied notifications and command gate denials are rejected without a prompt. For a single ungranted request the prompt offers allow once, allow always, or deny. When a plugin has added or widened requests, one prompt lists every pending change with a per-item choice plus allow all and deny all. Process plugins offer allow once, allow always, and deny per item. WASM startup imports offer only allow always and deny because linking is fixed at instantiation. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
 
 - Only real keyboard input answers a prompt. Synthetic keys from `keys.send`, macro replay, mouse events, and pasted text are ignored while a prompt is open.
 - Plugin-originated messages cannot replace the prompt text.
 - Plugin names, capability names, change labels, and other rendered values are stripped of control characters and terminal escape sequences. The host renders only its own labels and sanitized values.
-- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning for process plugins.
+- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning for call prompts.
 - The prompt stores the approved request set in `permissions.toml`. Allowed additions and widenings enter the approved set. Denied additions stay absent. A denied widening keeps the previous approved scope so the plugin still reports a widening on the next load.
 - Unchanged and narrowed requests keep their grants. Removed requests leave the approved set and their grants are cleaned up on the next write.
-- A batch applies in one file write and restarts the plugin once after it finishes. A plugin with queued prompts waits until its queue drains.
+- A batch applies in one file write. The plugin restarts once after it finishes when the runtime needs a new sandbox or instance. A plugin with queued prompts waits until its queue drains.
 - One prompt is active at a time, at most eight wait in the queue, duplicates are collapsed, and an unanswered prompt expires after 30 seconds as a denial.
 
 ## Failure behavior
@@ -261,7 +261,7 @@ An unmet request:
 
 The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. `:plugin list` and `kawi doctor` keep showing missing grants and the permissions lines after a prompt is dismissed. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
 
-Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` or run `:plugin reload` to change host-method and event grants immediately. Kawi restarts a plugin when its filesystem or execute scope changes so Landlock re-applies the ruleset.
+Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` or run `:plugin reload` to change host-method and event grants immediately. Kawi restarts a process plugin when its filesystem or execute scope changes so Landlock re-applies the ruleset. Kawi restarts a WebAssembly plugin when any effective grant changes.
 
 `ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and counted in `:plugin logs`.
 
@@ -293,21 +293,15 @@ Landlock is not a complete process boundary. It does not restrict hostnames or n
 - Parse errors in `permissions.toml`.
 - Unknown plugins and stale grants.
 - Grants for capabilities the plugin does not request.
-- Requests without grants, including unresolved `$WORKSPACE`.
+- Requests without grants.
 - Changed request sets, shown with added, widened, narrowed, and removed capabilities.
 - Subscriptions that cannot receive events.
 - Advisory grants labeled `advisory` and fully enforced grants labeled `enforced`.
 
-`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced)`. Process `net.connect` is labeled `(advisory)`:
-
-```text
-gitsigns 0.2.0 ready
-  caps: editor.read, editor.write, process.spawn (enforced), net.connect (advisory)
-  ungranted: fs.read
-```
+`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced)`. Process `net.connect` is labeled `(advisory)`. Each plugin row shows its name, version, runtime, status, granted capabilities, and commands; missing, changed, stale, and denied capabilities follow as separate lines.
 
 ## Migration
 
-Enforcement is deny by default. A plugin with no `[capabilities]` table receives only the default tier. Existing plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
+Enforcement is deny by default. A plugin with no `[capabilities]` table is limited to the default tier. A WebAssembly component must still request every imported capability, including default-tier ones. Existing process plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
 
 The grant file remains the durable consent surface; the prompt is the interactive path that writes it. Files created before the approved request set existed need either a matching `request_hash` or an `approved` table before non-default grants apply.

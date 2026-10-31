@@ -43,7 +43,7 @@ The command writes a crate with:
 
 - `Cargo.toml` using `kawi-plugin-sdk`
 - `src/lib.rs` implementing the plugin lifecycle
-- `plugin.toml` declaring runtime, component, capabilities, and commands
+- `plugin.toml` declaring runtime, component, timeout, activation events, and commands
 - `build.sh` wrapping the build and hash step
 - `.gitignore` for the local target directory
 
@@ -77,12 +77,12 @@ cp -r hello-plugin "${XDG_CONFIG_HOME:-$HOME/.config}/kawi/plugins/"
 Start Kawi and inspect the manifest before granting anything:
 
 ```sh
-kawi plugin inspect hello-plugin
+kawi plugin inspect "${XDG_CONFIG_HOME:-$HOME/.config}/kawi/plugins/hello-plugin"
 ```
 
 The output lists the manifest requests and the component imports. Imports must be a subset of the requested capabilities. A component that imports `kawi:plugin/editor-read` must request `editor.read`, even if it never calls the import.
 
-Grant capabilities through the prompt or explicitly:
+The scaffold requests no host capabilities. After adding a request such as `"editor.read" = true` to `[capabilities]` and rebuilding, grant it through the prompt or explicitly:
 
 ```vim
 :plugin grant hello-plugin editor.read
@@ -102,27 +102,27 @@ For the bundled WASM trim example, run `:trim.trim` or the configured keybinding
 
 ## Capability model from the author side
 
-- `[capabilities]` in `plugin.toml` is the request. The host does not grant it automatically.
+- `[capabilities]` in `plugin.toml` is the request. The host does not grant it automatically. A WebAssembly component must request every imported capability, including default-tier capabilities such as `ui.message`.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]` and does not replace per-call authorization.
 - The user grants, narrows, or denies each request in `permissions.toml`.
-- A missing or corrupt approved record treats every request as new. The user sees the changed set in one prompt.
+- A missing or corrupt approved record without a matching `request_hash` treats every request as new. The user sees the changed set in one prompt.
 - A denied call returns `Error` with code `-32012`, a message, and the capability name. Handle it by reporting a useful message or stopping the operation.
 - A plugin cannot use an import that it did not request. The host rejects the component before it runs.
-- The default tier currently covers `ui.message`. Editor read, editor write, diagnostics publish, filesystem, process, and network require explicit grants.
+- The default tier currently covers `ui.message`. Editor read, editor write, diagnostics read, diagnostics publish, filesystem, process, and network require explicit grants.
 
 ## Contract details
 
 - Positions use zero-based lines and UTF-8 byte columns, not character columns. A multibyte codepoint advances the byte column by its encoded length. Use `kawi_plugin_sdk::position_at` and `byte_offset` instead of counting characters.
 - `editor.get_state` returns a revision. Pass that revision to `editor.apply_edit`. A stale revision returns code `-32010`.
 - `kawi_plugin_sdk::apply_edit_with_retry` fetches fresh state, rebuilds edits, and retries a bounded number of times. Request `editor.read` and `editor.write` to use it.
-- `buffer_changed` includes an origin. Ignore changes with origin `plugin:<name>` when your own edit would trigger a loop.
+- `buffer_changed` includes an origin. Kawi excludes your own edits, so do not filter by origin to avoid loops. A `mixed` origin includes your own edit or changes from several sources; resync when `full_resync` is true.
 - The editor coalesces and orders events. A `file_saved` event is a good trigger for a full-buffer operation such as trim.
 - Diagnostics accept at most 1000 items per buffer. Each message is at most 4096 bytes and each code is at most 256 bytes.
 - The invocation budget defaults to 5 seconds and can be set from 100 ms to 60 seconds with `timeout_ms`. A timeout traps the call and counts toward restart backoff.
 - WebAssembly threads are not enabled. Do not start threads or rely on shared memory.
 - There is no ambient network access. `net.connect` is deny by default and WASI sockets are the only network surface.
 - Network limits are 64 simultaneous TCP connections, 8 MiB inbound and 8 MiB outbound per connection, and 64 MiB shared per session. A session that exceeds a cap gets a short read or a closed write, not an unbounded allocation.
-- WASI filesystem access is scoped by the plugin grants. The component can only see preopened paths inside granted scopes.
+- WASI filesystem access is scoped by the plugin grants. The component can only see preopened paths inside granted scopes. Preopens are directories; a file grant is skipped with a log line.
 
 ## Real edit example
 
