@@ -86,14 +86,14 @@ fn next_revision(params: &Value) -> u64 {
 }
 
 pub(super) fn oversized_state_value() -> Value {
-    let mut value = state_value(None);
+    let mut value = state_value(1, None);
     value["text"] = json!("x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1));
     value
 }
 
-pub(super) fn state_value(text: Option<&str>) -> Value {
+pub(super) fn state_value(buffer: u64, text: Option<&str>) -> Value {
     json!({
-        "buffer": 1,
+        "buffer": buffer,
         "revision": 7,
         "path": "/tmp/conformance.rs",
         "language": "rust",

@@ -4,6 +4,12 @@ status = "pass"
 [rows."authoring.trim_stale"]
 status = "pass"
 
+[rows."authoring.trim_stale_exhausted"]
+status = "pass"
+
+[rows."authoring.trim_buffer_changed"]
+status = "pass"
+
 [rows."authoring.trim_denied"]
 status = "pass"
 

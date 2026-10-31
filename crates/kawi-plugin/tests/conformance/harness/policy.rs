@@ -15,6 +15,13 @@ impl ConformanceHost {
             .stale_once = true;
     }
 
+    pub(crate) fn set_state_buffer_after_stale(&self, buffer: u64) {
+        self.policy
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .state_buffer_after_stale = Some(buffer);
+    }
+
     pub(crate) fn set_oversize_response(&self, oversize: bool) {
         self.policy
             .lock()
