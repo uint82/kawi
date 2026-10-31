@@ -62,7 +62,7 @@ The plugin name is the namespace. The command above is `example.format`, and you
 - `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.
 - Commands and default keybindings are loaded from the manifest at startup and whenever `:plugin restart` reloads manifests. No process starts until an invocation or activation event.
 - Plugin keybindings have lower precedence than user mappings. They survive `:map reload`.
-- Count and register prefixes are reserved and cannot start a plugin binding.
+- Count and register prefixes are reserved and cannot start a plugin binding. `kawi doctor` reports rejected bindings.
 
 ## Commands
 

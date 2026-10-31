@@ -101,7 +101,7 @@ Use `:nmap`, `:imap`, and `:vmap` for runtime mappings. Use `:nunmap`, `:iunmap`
 
 ## Precedence
 
-Configured mappings are checked before the built-in keymap. A complete match runs its command. A pending prefix waits for more input or the timeout. An unmatched sequence is replayed to the built-in keymap, so Vim operators, counts, registers, and leader menus keep working. Counts and register prefixes are reserved and cannot start a mapping.
+Configured mappings are checked before the built-in keymap. A complete match runs its command. A pending prefix waits for more input or the timeout. An unmatched sequence is replayed to the built-in keymap, so Vim operators, counts, registers, and leader menus keep working. Counts and register prefixes are reserved and cannot start a mapping. `kawi doctor` reports rejected mappings and plugin bindings.
 
 Mappings are command-based and apply to every keymap preset. The preset controls the built-in keys; it does not filter user mappings. Plugin default mappings use lower precedence than user mappings and survive `:map reload`.
 
