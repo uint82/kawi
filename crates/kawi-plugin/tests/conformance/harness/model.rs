@@ -70,6 +70,8 @@ pub(crate) struct Policy {
     pub(crate) oversize_response: bool,
     pub(crate) withhold: bool,
     pub(crate) withhold_method: Option<String>,
+    pub(crate) state_buffer: u64,
+    pub(crate) state_buffer_after_stale: Option<u64>,
     pub(crate) state_text: Option<String>,
     pub(crate) deferred: Vec<DeferredResponse>,
 }
@@ -80,6 +82,7 @@ pub(crate) struct HostPolicy {
     pub(crate) oversize_response: bool,
     pub(crate) withhold: bool,
     pub(crate) withhold_method: Option<String>,
+    pub(crate) state_buffer: u64,
     pub(crate) state_text: Option<String>,
 }
 
@@ -99,6 +102,8 @@ impl Policy {
             oversize_response: false,
             withhold: false,
             withhold_method: None,
+            state_buffer: 1,
+            state_buffer_after_stale: None,
             state_text: None,
             deferred: Vec::new(),
         }
@@ -107,6 +112,9 @@ impl Policy {
     pub(crate) fn take_host_policy(&mut self, method: &str) -> HostPolicy {
         let stale_revision = if method == "editor.apply_edit" && self.stale_once {
             self.stale_once = false;
+            if let Some(buffer) = self.state_buffer_after_stale.take() {
+                self.state_buffer = buffer;
+            }
             true
         } else {
             self.stale_revision
@@ -117,6 +125,7 @@ impl Policy {
             oversize_response: self.oversize_response,
             withhold: self.withhold,
             withhold_method: self.withhold_method.clone(),
+            state_buffer: self.state_buffer,
             state_text: self.state_text.clone(),
         }
     }

@@ -9,7 +9,7 @@ The process runtime must not be removed until every criterion below is true and 
 ## Progress
 
 - Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI.
-- Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry and denied editor write.
+- Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry, retry exhaustion, buffer identity changes, and denied editor write.
 - External validation: pending. No plugin from an independent author has completed a release cycle yet.
 - Default and migration window: open. The `wasm` feature is enabled by default, `:plugin list` marks process plugins as a trusted compatibility runtime, and the migration guide is published. Deprecation warnings and the two-minor-release window start after external validation.
 - Capability decision: complete. No capability keeps the process runtime alive.
@@ -27,7 +27,7 @@ Removal remains blocked until external validation completes and the deprecation 
 ## Port coverage
 
 - A WASM echo plugin and a WASM trim plugin pass the same conformance scenarios as their process fixtures.
-- The trim scenario covers `editor.get_state`, UTF-8 byte columns, `editor.apply_edit`, a stale revision retry, and a denied editor write.
+- The trim scenario covers `editor.get_state`, UTF-8 byte columns, `editor.apply_edit`, a stale revision retry, retry exhaustion, a changed buffer identity, and a denied editor write.
 - The scaffold output builds, loads, and runs its command in CI.
 - The conformance matrix reports no skipped scenario for a WASM capability that has shipped.
 

@@ -177,7 +177,10 @@ fn capability_denied(method: &str) -> RpcError {
 fn host_result(method: &str, params: &Value, policy: &HostPolicy) -> Result<Value, RpcError> {
     match method {
         "editor.get_state" if policy.oversize_response => Ok(oversized_state_value()),
-        "editor.get_state" => Ok(state_value(policy.state_text.as_deref())),
+        "editor.get_state" => Ok(state_value(
+            policy.state_buffer,
+            policy.state_text.as_deref(),
+        )),
         "editor.apply_edit" if policy.invalid_position => {
             Err(RpcError::invalid_position("edit position is out of range"))
         }

@@ -67,6 +67,8 @@ pub(crate) enum Action {
     NetworkScripted,
     Trim,
     TrimStale,
+    TrimStaleExhausted,
+    TrimBufferChanged,
     TrimDenied,
     GatedInvoke,
     GatedRevokeThenInvoke,

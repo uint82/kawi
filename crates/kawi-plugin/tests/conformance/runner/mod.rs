@@ -20,6 +20,13 @@ use actions::{
     run_restart_with_pending_host_call, run_trap_then_recover,
 };
 
+const NORMAL_APPLY_EDITS: usize = 1;
+const SINGLE_RETRY_APPLY_EDITS: usize = 2;
+const EXHAUSTED_RETRY_APPLY_EDITS: usize = 3;
+const EXHAUSTED_RETRY_STATE_CALLS: usize = 3;
+const BUFFER_CHANGE_APPLY_EDITS: usize = 1;
+const BUFFER_CHANGE_STATE_CALLS: usize = 2;
+
 struct RowResult {
     runtime: Runtime,
     scenario: &'static Scenario,
@@ -215,6 +222,15 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.set_stale_once();
             host.invoke(command, json!(null))
         }
+        Action::TrimStaleExhausted => {
+            host.set_stale_revision(true);
+            host.invoke(command, json!(null))
+        }
+        Action::TrimBufferChanged => {
+            host.set_stale_once();
+            host.set_state_buffer_after_stale(2);
+            host.invoke(command, json!(null))
+        }
     };
     let observed = normalize_result(&result);
     let expected = expected_outcome(scenario.expected);
@@ -224,8 +240,17 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.observation().logs.join(" | ")
         ));
     }
-    if matches!(scenario.action, Action::Trim | Action::TrimStale) {
-        assert_trim_edits(&host, scenario)?;
+    match scenario.action {
+        Action::Trim | Action::TrimStale => assert_trim_edits(&host, scenario)?,
+        Action::TrimStaleExhausted => assert_trim_failure(
+            &host,
+            EXHAUSTED_RETRY_APPLY_EDITS,
+            EXHAUSTED_RETRY_STATE_CALLS,
+        )?,
+        Action::TrimBufferChanged => {
+            assert_trim_failure(&host, BUFFER_CHANGE_APPLY_EDITS, BUFFER_CHANGE_STATE_CALLS)?
+        }
+        _ => {}
     }
     assert_denial_was_enforced(&host, scenario, &result)
 }
@@ -238,9 +263,9 @@ fn assert_trim_edits(host: &ConformanceHost, scenario: &Scenario) -> Result<(), 
         .filter(|request| request.method == "editor.apply_edit")
         .collect::<Vec<_>>();
     let expected_requests = if scenario.action == Action::TrimStale {
-        2
+        SINGLE_RETRY_APPLY_EDITS
     } else {
-        1
+        NORMAL_APPLY_EDITS
     };
     if requests.len() != expected_requests {
         return Err(format!(
@@ -269,6 +294,41 @@ fn assert_trim_edits(host: &ConformanceHost, scenario: &Scenario) -> Result<(), 
         return Err(format!("unexpected trim edits: {edits:?}"));
     }
     Ok(())
+}
+
+fn assert_trim_failure(
+    host: &ConformanceHost,
+    expected_apply_edits: usize,
+    expected_state_calls: usize,
+) -> Result<(), String> {
+    let observation = host.observation();
+    let apply_edits = count_requests(&observation, "editor.apply_edit");
+    let state_calls = count_requests(&observation, "editor.get_state");
+    if apply_edits != expected_apply_edits {
+        return Err(format!(
+            "expected {expected_apply_edits} apply_edit calls, observed {apply_edits}"
+        ));
+    }
+    if state_calls != expected_state_calls {
+        return Err(format!(
+            "expected {expected_state_calls} get_state calls, observed {state_calls}"
+        ));
+    }
+    if observation.applied_edits != 0 {
+        return Err(format!(
+            "expected no applied edits, observed {}",
+            observation.applied_edits
+        ));
+    }
+    Ok(())
+}
+
+fn count_requests(observation: &super::harness::Observation, method: &str) -> usize {
+    observation
+        .host_requests
+        .iter()
+        .filter(|request| request.method == method)
+        .count()
 }
 
 fn assert_denial_was_enforced(
