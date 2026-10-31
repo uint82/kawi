@@ -7,9 +7,8 @@ use crate::keymap::{Binding, KeymapResolver};
 use kawi_editor::BufferInfo;
 use kawi_plugin::{
     Capability, CapabilityRegistry, InvocationContext, LoadedPlugin, PluginCatalog, PluginError,
-    PluginHost, PluginHostEvent, PluginStatus, RpcError,
+    PluginHost, PluginHostEvent, PluginLock, PluginStatus, RpcError,
 };
-use kawi_watch::{Fingerprint, WatchService};
 use serde_json::Value;
 
 use super::coalesce::PendingBufferEvent;
@@ -52,8 +51,10 @@ pub(crate) struct PluginRuntime {
     pub(super) last_diagnostics_revision: u64,
     pub(super) resync_buffers: BTreeSet<(String, u64)>,
     pub(super) pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
-    pub(super) plugins_dir: Option<PathBuf>,
-    pub(super) permissions_path: Option<PathBuf>,
+    pub(super) installed_dir: Option<PathBuf>,
+    pub(super) dev_dir: Option<PathBuf>,
+    pub(super) lock: PluginLock,
+    pub(super) dev_plugins: BTreeSet<String>,
     pub(super) workspace: Option<PathBuf>,
     pub(super) wake: Option<std::sync::mpsc::Sender<()>>,
     pub(super) capabilities: CapabilityRegistry,
@@ -62,11 +63,7 @@ pub(crate) struct PluginRuntime {
     pub(super) last_message: BTreeMap<String, Instant>,
     pub(super) throttled_messages: BTreeMap<String, u64>,
     pub(super) diagnostic_windows: BTreeMap<String, DiagnosticWindow>,
-    pub(super) allow_once: BTreeSet<(String, Capability)>,
     pub(super) sandboxed: BTreeSet<String>,
-    pub(super) permissions_watch: Option<WatchService>,
-    pub(super) permissions_wake: Option<std::sync::mpsc::Sender<()>>,
-    pub(super) last_permission_write: Option<Fingerprint>,
 }
 
 pub(crate) struct PluginCommandTarget {
@@ -149,6 +146,29 @@ impl PluginRuntime {
         }
     }
 
+    pub(crate) fn is_dev(&self, plugin: &str) -> bool {
+        self.dev_plugins.contains(plugin)
+    }
+
+    pub(crate) fn set_lock(&mut self, lock: PluginLock) {
+        self.lock = lock;
+    }
+
+    #[cfg(all(test, feature = "wasm"))]
+    pub(crate) fn restart(&mut self, plugin: Option<&str>) -> Result<(), PluginError> {
+        let host = self
+            .host
+            .as_ref()
+            .ok_or_else(|| PluginError::Spawn("plugin host is not running".to_string()))?;
+        match plugin {
+            Some(plugin) => host.restart(plugin),
+            None => {
+                host.restart_all();
+                Ok(())
+            }
+        }
+    }
+
     pub(crate) fn status(&self, plugin: &str) -> Option<PluginStatus> {
         self.host.as_ref()?.status(plugin)
     }
@@ -181,20 +201,6 @@ impl PluginRuntime {
         lines
     }
 
-    pub(crate) fn restart(&mut self, plugin: Option<&str>) -> Result<(), PluginError> {
-        self.drop_queues(plugin);
-        let Some(host) = self.host.as_ref() else {
-            return Ok(());
-        };
-        match plugin {
-            Some(plugin) => host.restart(plugin),
-            None => {
-                host.restart_all();
-                Ok(())
-            }
-        }
-    }
-
     pub(crate) fn shutdown(&mut self) {
         self.drop_queues(None);
         if let Some(host) = self.host.as_ref() {
@@ -221,8 +227,6 @@ impl PluginRuntime {
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.warnings
             .retain(|plugin, _| known.contains(plugin.as_str()));
-        self.allow_once
-            .retain(|(plugin, _)| known.contains(plugin.as_str()));
         self.sandboxed
             .retain(|plugin| known.contains(plugin.as_str()));
         self.queues

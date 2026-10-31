@@ -81,13 +81,8 @@ impl App {
         Ok(Value::Null)
     }
 
-    fn plugin_message(&mut self, plugin: &str, params: Value) -> Result<Value, RpcError> {
+    fn plugin_message(&mut self, _plugin: &str, params: Value) -> Result<Value, RpcError> {
         let params: UiMessageParams = serde_json::from_value(params).map_err(invalid_params)?;
-        if self.plugin_grants.is_active() {
-            self.plugins
-                .push_log(plugin, "ui.message suppressed while a grant prompt is open");
-            return Ok(Value::Null);
-        }
         let message = super::text::sanitize(&params.message);
         self.show_message(message);
         Ok(Value::Null)
