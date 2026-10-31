@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with explicit capabilities. This guide walks through creating, building, installing, granting, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. It pins `wit-bindgen` 0.63.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.1.0 on crates.io. It pins `wit-bindgen` 0.63.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ Install the WebAssembly target:
 rustup target add wasm32-wasip2
 ```
 
-Install the component linker used by this repository:
+Install the component linker required by the WASM build:
 
 ```sh
 cargo install wasm-component-ld --version 0.5.31 --locked
@@ -31,12 +31,12 @@ cargo install --path crates/kawi
 
 Build with `--no-default-features` only when you intentionally want to omit the WebAssembly runtime.
 
-The SDK is not published yet. When scaffolding from this repository, pass the SDK path explicitly. Omit `--sdk-path` to use the future crates.io dependency.
+The scaffold uses the crates.io SDK by default. Pass `--sdk-path` only when developing against an unreleased checkout.
 
 ## Scaffold
 
 ```sh
-kawi plugin new hello-plugin --sdk-path /path/to/kawi/crates/kawi-plugin-sdk
+kawi plugin new hello-plugin
 ```
 
 The command writes a crate with:
