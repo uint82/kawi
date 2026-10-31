@@ -46,12 +46,12 @@ fn app_with_hidden_explorer() -> App {
     app
 }
 
-fn bind_leader_prefixed_command(app: &mut App) {
-    let command = app.commands.find("mode.visual").expect("command");
+fn bind_command(app: &mut App, name: &str, keys: &str) {
+    let command = app.commands.find(name).expect("command");
     let binding = Binding::new(
         command,
         KeyContext::Normal,
-        KeySequence::parse("<leader>pp", &default_leaders()).expect("keys"),
+        KeySequence::parse(keys, &default_leaders()).expect("keys"),
         BindingSource::User,
     );
     app.apply_keymaps(KeymapLoad {
@@ -125,8 +125,33 @@ fn leader_toggle_opens_and_closes_without_waiting() {
 #[test]
 fn leader_toggle_closes_with_leader_prefixed_mappings() {
     let mut app = app_with_hidden_explorer();
-    bind_leader_prefixed_command(&mut app);
+    bind_command(&mut app, "mode.visual", "<leader>pp");
     assert_leader_toggle_round_trip(&mut app);
+}
+
+#[test]
+fn leader_command_runs_with_focused_explorer() {
+    let dir = temp_dir("explorer_leader_command");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    bind_command(&mut app, "mode.visual", "<leader>pp");
+    press(&mut app, KeyCode::Char(' '));
+    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Char('p'));
+    assert_eq!(app.editor.mode(), Mode::Visual);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn configured_mapping_runs_with_focused_explorer() {
+    let dir = temp_dir("explorer_configured_mapping");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    bind_command(&mut app, "mode.visual", "gx");
+    press(&mut app, KeyCode::Char('g'));
+    press(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.editor.mode(), Mode::Visual);
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
