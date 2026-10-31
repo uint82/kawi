@@ -124,6 +124,10 @@ For the bundled WASM trim example, run `:trim.trim` or the configured keybinding
 - Network limits are 64 simultaneous TCP connections, 8 MiB inbound and 8 MiB outbound per connection, and 64 MiB shared per session. A session that exceeds a cap gets a short read or a closed write, not an unbounded allocation.
 - WASI filesystem access is scoped by the plugin grants. The component can only see preopened paths inside granted scopes.
 
+## Real edit example
+
+`examples/wasm-trim` is the reference for a real edit. It reads state with `editor.get_state`, computes zero-based line and UTF-8 byte-column edits, and calls `apply_edit_with_retry`. The helper retries a stale revision twice, refuses to continue when the buffer identity changes, and returns `STALE_REVISION` after the retry budget. Report that error instead of applying the edits to a new buffer. The process trim example follows the same rules against the JSON-RPC contract.
+
 ## Troubleshooting
 
 ### The plugin requests a capability that is not granted
