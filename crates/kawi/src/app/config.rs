@@ -41,10 +41,15 @@ impl App {
         self.apply_keymaps(keymap_load);
         self.apply_config(&loaded.config);
         let workspace = self.project_root();
+        self.plugin_manager.configure(&paths);
+        if let Some(warning) = self.plugin_manager.warning() {
+            warnings.push(warning.to_string());
+        }
         let plugin_warnings = self.plugins.load(
             crate::app::plugin::PluginLoadContext {
-                dir: &paths.plugins,
-                permissions: &paths.permissions,
+                installed: &paths.installed_plugins,
+                dev: &paths.plugins,
+                lock: self.plugin_manager.lock(),
                 workspace: &workspace,
                 commands: &mut self.commands,
                 keymaps: &mut self.keymaps,

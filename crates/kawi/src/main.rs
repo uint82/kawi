@@ -11,10 +11,10 @@ mod keymap;
 mod leader;
 mod mouse;
 mod options;
-mod permission_lines;
 mod persist;
 mod plugin_cli;
 mod plugin_labels;
+mod plugin_manager;
 mod recovery;
 mod session;
 mod state;
@@ -287,7 +287,8 @@ mod tests {
             config_log: dir.join("config.log"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
-            permissions: dir.join("permissions.toml"),
+            installed_plugins: dir.join("installed-plugins"),
+            plugin_lock: dir.join("plugins.lock"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

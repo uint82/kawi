@@ -1,9 +1,10 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::mpsc;
 
 use kawi_plugin::{
-    load_catalog, load_permission_state, HostEnvironment, LoadedPlugin, PluginCatalog,
-    PluginCommand, PluginHost,
+    load_catalog, load_managed_catalog, EffectiveCapabilities, HostEnvironment, LoadedPlugin,
+    PluginCatalog, PluginCommand, PluginHost, PluginLock,
 };
 
 use super::{PluginCommandTarget, PluginRuntime};
@@ -12,8 +13,9 @@ use crate::keymap::KeyChord;
 use crate::keymap::{has_reserved_prefix, Binding, BindingSource, KeyContext, KeymapResolver};
 
 pub(crate) struct PluginLoadContext<'a> {
-    pub(crate) dir: &'a Path,
-    pub(crate) permissions: &'a Path,
+    pub(crate) installed: &'a Path,
+    pub(crate) dev: &'a Path,
+    pub(crate) lock: &'a PluginLock,
     pub(crate) workspace: &'a Path,
     pub(crate) commands: &'a mut CommandRegistry,
     pub(crate) keymaps: &'a mut KeymapResolver,
@@ -26,36 +28,31 @@ impl PluginRuntime {
         if !enabled {
             self.host = None;
             self.events = None;
-            self.catalog = kawi_plugin::PluginCatalog::default();
+            self.catalog = PluginCatalog::default();
             self.targets.clear();
             self.bindings.clear();
             return Vec::new();
         }
         let PluginLoadContext {
-            dir,
-            permissions,
+            installed,
+            dev,
+            lock,
             workspace,
             commands,
             keymaps,
             leaders,
             wake,
         } = context;
-        self.plugins_dir = Some(dir.to_path_buf());
-        self.permissions_path = Some(permissions.to_path_buf());
+        self.installed_dir = Some(installed.to_path_buf());
+        self.dev_dir = Some(dev.to_path_buf());
+        self.lock = lock.clone();
         self.workspace = Some(workspace.to_path_buf());
         self.wake = Some(wake.clone());
-        let catalog = load_catalog(dir);
-        let permission_state = load_permission_state(&catalog, permissions);
-        let mut warnings = catalog
-            .warnings
-            .iter()
-            .map(ToString::to_string)
-            .chain(permission_state.warnings.iter().cloned())
-            .collect::<Vec<_>>();
-        self.watch_permissions(permissions, wake.clone());
-        self.capabilities.replace(permission_state.grants);
+        let (catalog, dev_plugins, mut warnings) = load_catalogs(installed, dev, lock, true);
+        self.dev_plugins = dev_plugins;
+        self.capabilities.replace(capability_grants(&catalog));
         warnings.append(&mut self.reconcile_commands(&catalog, commands, keymaps, leaders));
-        self.replace_host(&catalog, permissions, workspace, wake);
+        self.replace_host(&catalog, workspace, wake);
         self.catalog = catalog;
         self.retain_known_plugin_state();
         warnings
@@ -128,7 +125,6 @@ impl PluginRuntime {
     pub(super) fn replace_host(
         &mut self,
         catalog: &PluginCatalog,
-        permissions: &Path,
         workspace: &Path,
         wake: std::sync::mpsc::Sender<()>,
     ) {
@@ -138,9 +134,10 @@ impl PluginRuntime {
             return;
         }
         let (events, receiver) = mpsc::channel();
+        let config = self.dev_dir.as_deref().and_then(Path::parent);
         let environment = HostEnvironment::from_paths(
             Some(workspace.to_path_buf()),
-            permissions.parent().map(Path::to_path_buf),
+            config.map(Path::to_path_buf),
         );
         self.host = Some(PluginHost::start(
             catalog,
@@ -151,6 +148,61 @@ impl PluginRuntime {
         ));
         self.events = Some(receiver);
     }
+}
+
+pub(super) fn load_catalogs(
+    installed: &Path,
+    dev: &Path,
+    lock: &PluginLock,
+    warn_dev: bool,
+) -> (PluginCatalog, BTreeSet<String>, Vec<String>) {
+    let mut catalog = load_managed_catalog(installed, lock);
+    let mut warnings = catalog
+        .warnings
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let managed_names = lock.plugins.keys().cloned().collect::<BTreeSet<_>>();
+    let mut dev_catalog = load_catalog(dev);
+    warnings.extend(dev_catalog.warnings.iter().map(ToString::to_string));
+    let mut dev_names = BTreeSet::new();
+    for plugin in dev_catalog.plugins.drain(..) {
+        if managed_names.contains(&plugin.manifest.name)
+            || !dev_names.insert(plugin.manifest.name.clone())
+        {
+            warnings.push(format!(
+                "{}: duplicate development plugin {}",
+                plugin.path.display(),
+                plugin.manifest.name
+            ));
+            continue;
+        }
+        if warn_dev {
+            warnings.push(format!(
+                "{}: development plugin loaded from {}; use :plugin install for managed plugins",
+                plugin.path.display(),
+                dev.display()
+            ));
+        }
+        catalog.plugins.push(plugin);
+    }
+    catalog.warnings.clear();
+    (catalog, dev_names, warnings)
+}
+
+pub(super) fn capability_grants(
+    catalog: &PluginCatalog,
+) -> BTreeMap<String, EffectiveCapabilities> {
+    catalog
+        .plugins
+        .iter()
+        .map(|plugin| {
+            (
+                plugin.manifest.name.clone(),
+                plugin.manifest.capability_requests.granted(),
+            )
+        })
+        .collect()
 }
 
 fn command_description(contribution: &PluginCommand) -> String {
