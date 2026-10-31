@@ -90,6 +90,27 @@ fn relative_commands_are_rejected() {
 }
 
 #[test]
+fn equivalent_request_spellings_are_not_partial() {
+    let absolute = canonical_command("sh");
+    let request = format!(r#""process.spawn" = {{ commands = ["sh", "{absolute}"] }}"#);
+    let granted = effective_for(
+        &request,
+        r#"
+[plugins.plugin.grant]
+"process.spawn" = { commands = ["sh"] }
+"#,
+    );
+    assert_eq!(
+        granted.scope(Capability::ProcessSpawn),
+        Some(&Scope::Commands(vec![absolute]))
+    );
+    assert!(!granted
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("partially")));
+}
+
+#[test]
 fn partial_grants_warn_but_still_grant_the_subset() {
     let permissions = format!(
         r#"

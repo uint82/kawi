@@ -30,6 +30,10 @@ fn path_grants_narrow_requests() {
         granted.scope(Capability::FsRead),
         Some(&Scope::Paths(vec!["$WORKSPACE/src".to_string()]))
     );
+    assert!(granted
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("partially")));
 }
 
 #[test]

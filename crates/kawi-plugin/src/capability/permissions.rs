@@ -57,9 +57,9 @@ pub fn parse_permissions(text: &str) -> Result<PermissionsFile, String> {
 
 pub fn scope_is_partial(requested: &Scope, granted: &Scope) -> bool {
     match (requested, granted) {
-        (Scope::Paths(requested), Scope::Paths(granted))
-        | (Scope::Commands(requested), Scope::Commands(granted))
-        | (Scope::Hosts(requested), Scope::Hosts(granted)) => granted.len() < requested.len(),
+        (Scope::Paths(_), Scope::Paths(_))
+        | (Scope::Commands(_), Scope::Commands(_))
+        | (Scope::Hosts(_), Scope::Hosts(_)) => !granted.covers(requested),
         _ => false,
     }
 }

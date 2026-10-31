@@ -155,3 +155,14 @@ fn resolves_a_bare_grant_at_call_time() {
     let output = runner.run("/bin/echo", &["ok".to_string()], 1_000).unwrap();
     assert_eq!(output.stdout.trim(), "ok");
 }
+
+#[test]
+fn rejects_relative_commands_at_call_time() {
+    let runner = ProcessRunner::new(
+        plugin(),
+        registry(Some(Scope::Commands(vec!["/bin/sh".to_string()]))),
+        HostEnvironment::default(),
+    );
+    let error = runner.run("./sh", &[], 1_000).unwrap_err();
+    assert_eq!(error.code, crate::protocol::PLUGIN_UNAVAILABLE);
+}
