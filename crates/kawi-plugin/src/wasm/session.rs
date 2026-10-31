@@ -1,14 +1,11 @@
 use std::collections::BTreeSet;
-use std::path::Path;
 use std::time::Duration;
 
 use serde_json::Value;
 use wasmtime::component::{HasSelf, Linker};
 use wasmtime::{Store, UpdateDeadline};
-use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
-use wasmtime_wasi::FsPerms;
 
-use crate::capability::{Capability, CapabilityRegistry, Scope};
+use crate::capability::{Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
@@ -26,7 +23,8 @@ use super::net::NetworkPolicy;
 use super::policy::missing_import_capabilities;
 use super::process::ProcessRunner;
 use super::state::{output_pipes, HostBridge, PendingCalls, WasmState};
-use super::{WasiConfig, WasmRuntime};
+use super::wasi_setup::{build_wasi, WasiSetup};
+use super::WasmRuntime;
 
 const WALL_CLOCK_CHECK_TICKS: u64 = 1;
 const MAX_COMPONENT_BYTES: u64 = 64 * 1024 * 1024;
@@ -207,13 +205,28 @@ impl Session {
                 },
             );
         }
+        let mut warnings = Vec::new();
         let wasi = build_wasi(
-            plugin,
-            capabilities,
-            network.clone(),
-            stdout.clone(),
-            stderr.clone(),
+            WasiSetup {
+                plugin,
+                capabilities,
+                environment,
+                network: network.clone(),
+                stdout: stdout.clone(),
+                stderr: stderr.clone(),
+            },
+            &mut warnings,
         )?;
+        for warning in warnings {
+            send_event(
+                &events,
+                &wake,
+                PluginHostEvent::Log {
+                    plugin: plugin.manifest.name.clone(),
+                    line: warning,
+                },
+            );
+        }
         let timeout = Duration::from_millis(plugin.manifest.timeout_ms);
         let bridge = HostBridge::new(
             plugin.manifest.name.clone(),
@@ -243,48 +256,4 @@ impl Session {
         store.data_mut().clear_call();
         Ok(Self { store, instance })
     }
-}
-
-fn build_wasi(
-    plugin: &LoadedPlugin,
-    capabilities: &CapabilityRegistry,
-    network: NetworkPolicy,
-    stdout: MemoryOutputPipe,
-    stderr: MemoryOutputPipe,
-) -> Result<wasmtime_wasi::WasiCtx, PluginError> {
-    let mut config = WasiConfig::new()
-        .stdout(stdout)
-        .stderr(stderr)
-        .network(network);
-    config = add_preopens(
-        config,
-        plugin,
-        capabilities,
-        Capability::FsRead,
-        FsPerms::ReadOnly,
-    )?;
-    config = add_preopens(
-        config,
-        plugin,
-        capabilities,
-        Capability::FsWrite,
-        FsPerms::ReadWrite,
-    )?;
-    Ok(config.build())
-}
-
-fn add_preopens(
-    mut config: WasiConfig,
-    plugin: &LoadedPlugin,
-    capabilities: &CapabilityRegistry,
-    capability: Capability,
-    perms: FsPerms,
-) -> Result<WasiConfig, PluginError> {
-    let Some(Scope::Paths(paths)) = capabilities.scope(&plugin.manifest.name, capability) else {
-        return Ok(config);
-    };
-    for path in paths {
-        config = config.preopen(Path::new(&path), &path, perms)?;
-    }
-    Ok(config)
 }

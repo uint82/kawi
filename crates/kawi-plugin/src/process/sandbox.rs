@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use kawi_process::SandboxPolicy;
 
 use crate::capability::{Capability, CapabilityRegistry, Scope};
-use crate::environment::HostEnvironment;
+use crate::environment::{expand_path, HostEnvironment};
 use crate::manifest::LoadedPlugin;
 
 #[cfg(target_os = "linux")]
@@ -128,7 +128,7 @@ impl<'a> Planner<'a> {
     }
 
     fn add_file_path(&mut self, capability: Capability, raw: &str) {
-        let Some(expanded) = expand_path(raw, self.plugin, self.environment) else {
+        let Some(expanded) = expand_path(raw, &self.plugin.dir, self.environment) else {
             self.warn(&format!(
                 "sandbox skipped granted {} path {raw}: variable is unset",
                 capability.name()
@@ -214,30 +214,6 @@ fn runtime_prefix(path: &Path) -> Option<PathBuf> {
     existing(prefix)
 }
 
-fn expand_path(raw: &str, plugin: &LoadedPlugin, environment: &HostEnvironment) -> Option<PathBuf> {
-    let expanded = if let Some(rest) = raw.strip_prefix("$WORKSPACE") {
-        environment
-            .workspace
-            .as_ref()?
-            .join(rest.trim_start_matches('/'))
-    } else if let Some(rest) = raw.strip_prefix("$PLUGIN_DIR") {
-        plugin.dir.join(rest.trim_start_matches('/'))
-    } else if let Some(rest) = raw.strip_prefix("$CONFIG") {
-        environment
-            .config
-            .as_ref()?
-            .join(rest.trim_start_matches('/'))
-    } else if let Some(rest) = raw.strip_prefix("$HOME") {
-        environment
-            .home
-            .as_ref()?
-            .join(rest.trim_start_matches('/'))
-    } else {
-        PathBuf::from(raw)
-    };
-    Some(expanded)
-}
-
 fn resolve_command(command: &str, directory: &Path) -> Option<PathBuf> {
     if Path::new(command).is_absolute() {
         return Some(PathBuf::from(command));
@@ -260,57 +236,4 @@ fn existing_paths(paths: &[&str]) -> Vec<PathBuf> {
         .iter()
         .filter_map(|path| existing(Path::new(path)))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn expands_plugin_and_environment_paths() {
-        let plugin = LoadedPlugin {
-            computed_hash: None,
-            disabled_reason: None,
-            manifest: crate::manifest::PluginManifest {
-                name: "sample".to_string(),
-                version: "0.1.0".to_string(),
-                protocol: 1,
-                description: String::new(),
-                runtime: crate::manifest::PluginRuntime::Process,
-                component: None,
-                sha256: None,
-                command: vec!["/bin/true".to_string()],
-                timeout_ms: 1000,
-                commands: Vec::new(),
-                subscribes: Vec::new(),
-                debounce: Default::default(),
-                activation_events: Vec::new(),
-                capabilities: Default::default(),
-                capability_requests: Default::default(),
-            },
-            dir: PathBuf::from("/plugins/sample"),
-            path: PathBuf::from("/plugins/sample/plugin.toml"),
-        };
-        let environment = HostEnvironment {
-            workspace: Some(PathBuf::from("/work")),
-            config: Some(PathBuf::from("/config")),
-            home: Some(PathBuf::from("/home/user")),
-        };
-        assert_eq!(
-            expand_path("$WORKSPACE/src", &plugin, &environment),
-            Some(PathBuf::from("/work/src"))
-        );
-        assert_eq!(
-            expand_path("$PLUGIN_DIR/data", &plugin, &environment),
-            Some(PathBuf::from("/plugins/sample/data"))
-        );
-        assert_eq!(
-            expand_path("$CONFIG/kawi", &plugin, &environment),
-            Some(PathBuf::from("/config/kawi"))
-        );
-        assert_eq!(
-            expand_path("$HOME/.cache", &plugin, &environment),
-            Some(PathBuf::from("/home/user/.cache"))
-        );
-    }
 }
