@@ -1043,7 +1043,7 @@ impl App {
         if let Some(result) = self.handle_signature_key(key) {
             return Ok(result);
         }
-        if self.explorer.is_focused() && !self.is_leader_input(key) {
+        if self.explorer.is_focused() && !self.is_mapping_input(key) {
             return self.handle_explorer_key(key);
         }
         if self.handle_directory_key(key)? {
@@ -1067,8 +1067,10 @@ impl App {
         self.handle_mapped_key(key)
     }
 
-    fn is_leader_input(&self, key: KeyEvent) -> bool {
-        self.keymap.leader_path().is_some() || self.keymap.is_leader_prefix(key, self.editor.mode())
+    fn is_mapping_input(&self, key: KeyEvent) -> bool {
+        self.keymaps.has_pending()
+            || self.keymap.leader_path().is_some()
+            || self.keymap.is_leader_prefix(key, self.editor.mode())
     }
 
     fn handle_mapped_key(&mut self, key: KeyEvent) -> Result<bool> {

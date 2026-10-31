@@ -141,6 +141,10 @@ impl KeymapResolver {
             .then(|| KeySequence::from_chords(self.pending.clone()).to_string())
     }
 
+    pub(crate) fn has_pending(&self) -> bool {
+        self.pending_context.is_some()
+    }
+
     pub(crate) fn clear_pending(&mut self) {
         self.pending.clear();
         self.pending_context = None;
