@@ -515,6 +515,32 @@ fn typed_grant_command_opens_the_same_prompt() {
 }
 
 #[test]
+fn grant_prompt_keys_do_not_quit() {
+    let root = temp_dir("prompt_no_quit");
+    denied_manifest(&root);
+    let mut app = app();
+    load_plugins_with_permissions(&mut app, &root, "");
+    app.handle_plugin_command("grant denied editor.read");
+    assert!(app.plugin_grants.is_active());
+    let quit = app
+        .handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(!quit);
+    assert!(app.plugin_grants.is_active());
+    let quit = app
+        .handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(!quit);
+    assert!(app.plugin_grants.is_active());
+    let quit = app
+        .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!quit);
+    assert!(!app.plugin_grants.is_active());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn hash_change_prompt_lists_added_requests() {
     let root = temp_dir("prompt_hash_diff");
     denied_manifest(&root);
