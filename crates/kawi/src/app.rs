@@ -980,7 +980,7 @@ impl App {
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
         if self.plugin_grants.is_active() {
             if self.synthetic_input_depth == 0 {
-                return Ok(self.handle_plugin_grant_key(key));
+                self.handle_plugin_grant_key(key);
             }
             return Ok(false);
         }
