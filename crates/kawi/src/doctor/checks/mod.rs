@@ -4,6 +4,7 @@ mod keymaps;
 mod languages;
 mod paths;
 mod permissions;
+mod plugin_keybindings;
 mod probe;
 mod session;
 mod state;
@@ -24,6 +25,7 @@ pub(crate) fn collect(target: &Path, workspace: &Path, paths: Option<&StatePaths
         paths_check,
         config::check(paths),
         keymaps::check(paths),
+        plugin_keybindings::check(paths),
         languages::check(paths),
         permissions::check(paths),
         tasks::check(paths, workspace),
