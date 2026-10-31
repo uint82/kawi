@@ -174,7 +174,6 @@ fn read_capabilities(plugin: &str, path: &str) -> CapabilityRegistry {
         plugin.to_string(),
         EffectiveCapabilities {
             granted: BTreeMap::from([(Capability::FsRead, Scope::Paths(vec![path.to_string()]))]),
-            ..Default::default()
         },
     )]));
     registry

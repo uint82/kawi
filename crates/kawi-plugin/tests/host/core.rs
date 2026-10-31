@@ -276,7 +276,6 @@ fn registry_with_scope(
         plugin.to_string(),
         EffectiveCapabilities {
             granted: BTreeMap::from([(capability, scope)]),
-            ..EffectiveCapabilities::default()
         },
     )]));
     registry

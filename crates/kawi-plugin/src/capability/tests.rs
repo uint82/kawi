@@ -139,10 +139,7 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
     granted.insert(Capability::UiMessage, Scope::Unscoped);
     registry.replace(std::collections::BTreeMap::from([(
         "plugin".to_string(),
-        EffectiveCapabilities {
-            granted,
-            ..EffectiveCapabilities::default()
-        },
+        EffectiveCapabilities { granted },
     )]));
     let advertised = advertised_host_methods(&registry, "plugin");
     for method in crate::protocol::HOST_METHODS {

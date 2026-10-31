@@ -1,9 +1,6 @@
 mod command;
-mod diff;
-mod permissions;
 mod registry;
 mod scope;
-mod state;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,15 +9,10 @@ use sha2::{Digest, Sha256};
 
 #[cfg(feature = "wasm")]
 pub(crate) use command::resolve as resolve_command;
-pub use diff::{diff, reconcile_approved, CapabilityChange, ChangeKind};
-pub use permissions::{
-    effective, parse_permissions, EffectiveCapabilities, PermissionsFile, PluginPermissions,
-};
 pub use registry::CapabilityRegistry;
 #[cfg(feature = "wasm")]
 pub(crate) use scope::HostPort;
 pub use scope::{intersect_scope, Scope};
-pub use state::{load_permission_state, PermissionState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Capability {
@@ -84,15 +76,26 @@ impl Capability {
         )
     }
 
-    pub fn is_default(self) -> bool {
-        self == Self::UiMessage
-    }
-
     pub fn is_advisory(self) -> bool {
         matches!(
             self,
             Self::FsRead | Self::FsWrite | Self::ProcessSpawn | Self::NetConnect
         )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EffectiveCapabilities {
+    pub granted: BTreeMap<Capability, Scope>,
+}
+
+impl EffectiveCapabilities {
+    pub fn has(&self, capability: Capability) -> bool {
+        self.granted.contains_key(&capability)
+    }
+
+    pub fn scope(&self, capability: Capability) -> Option<&Scope> {
+        self.granted.get(&capability)
     }
 }
 
@@ -134,7 +137,34 @@ impl CapabilityRequests {
         self.commands = gates;
     }
 
-    pub fn canonical_json(&self) -> String {
+    pub fn granted(&self) -> EffectiveCapabilities {
+        EffectiveCapabilities {
+            granted: self.scopes.clone(),
+        }
+    }
+
+    pub fn added_capabilities(&self, previous: &Self) -> Vec<Capability> {
+        self.scopes
+            .keys()
+            .filter(|capability| !previous.scopes.contains_key(capability))
+            .copied()
+            .collect()
+    }
+
+    pub fn widened_capabilities(&self, previous: &Self) -> Vec<Capability> {
+        self.scopes
+            .iter()
+            .filter(|(capability, scope)| {
+                previous
+                    .scopes
+                    .get(capability)
+                    .is_none_or(|old| !old.covers(scope))
+            })
+            .map(|(capability, _)| *capability)
+            .collect()
+    }
+
+    fn declarations_value(&self) -> Value {
         let capabilities = self
             .scopes
             .iter()
@@ -166,10 +196,17 @@ impl CapabilityRequests {
                 .collect::<Map<_, _>>();
             root.insert("commands".to_string(), Value::Object(commands));
         }
-        if let Some(artifact) = &self.artifact {
-            root.insert("component".to_string(), Value::String(artifact.clone()));
+        Value::Object(root)
+    }
+
+    pub fn canonical_json(&self) -> String {
+        let mut value = self.declarations_value();
+        if let Some(object) = value.as_object_mut() {
+            if let Some(artifact) = &self.artifact {
+                object.insert("component".to_string(), Value::String(artifact.clone()));
+            }
         }
-        serde_json::to_string(&Value::Object(root)).unwrap_or_default()
+        serde_json::to_string(&value).unwrap_or_default()
     }
 
     pub fn set_artifact_hash(&mut self, hash: &str) {

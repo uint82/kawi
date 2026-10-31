@@ -37,10 +37,7 @@ fn registry(granted: Option<Scope>) -> CapabilityRegistry {
         .unwrap_or_default();
     registry.replace(BTreeMap::from([(
         "runner".to_string(),
-        EffectiveCapabilities {
-            granted,
-            ..Default::default()
-        },
+        EffectiveCapabilities { granted },
     )]));
     registry
 }
