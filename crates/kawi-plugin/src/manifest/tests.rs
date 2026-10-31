@@ -1,5 +1,7 @@
 use super::*;
 use crate::capability::Capability;
+use std::fs;
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -219,6 +221,18 @@ fn warns_on_invalid_capability_requests_without_skipping_the_plugin() {
         .warnings
         .iter()
         .all(|warning| warning.message.contains("capabilities:")));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn warns_when_plugin_directory_contains_permissions_file() {
+    let root = temp_dir();
+    write_manifest(&root, "echo", &valid_manifest("echo"));
+    fs::write(root.join("echo").join(PERMISSIONS_FILE), "").unwrap();
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings.iter().any(|warning| warning
+        .message
+        .contains("only the user config file is read")));
     fs::remove_dir_all(root).unwrap();
 }
 
