@@ -283,6 +283,65 @@ fn trim_plugin_applies_a_real_edit() {
 }
 
 #[test]
+fn echo_plugin_recovers_after_timeout() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("echo_retry");
+    let dir = root.join("echo");
+    fs::create_dir_all(&dir).unwrap();
+    let source =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/echo");
+    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
+    let manifest = fs::read_to_string(source.join("plugin.toml"))
+        .unwrap()
+        .replace("timeout_ms = 5000", "timeout_ms = 1000");
+    fs::write(dir.join("plugin.toml"), manifest).unwrap();
+    let mut app = app();
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let command = app.commands.find("echo.retry").expect("retry command");
+    let target = match app.commands.spec(command).expect("spec").handler {
+        CommandHandler::Plugin(target) => target,
+        other => panic!("unexpected handler: {other:?}"),
+    };
+    app.run_plugin_command(target, None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        app.poll_plugins();
+        let timed_out = app
+            .message
+            .as_deref()
+            .is_some_and(|message| message.contains("timed out"));
+        if timed_out
+            && matches!(
+                app.plugins.status("echo"),
+                Some(PluginStatus::Backoff { .. })
+            )
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "plugin did not time out");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    app.run_plugin_command(target, None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.message.as_deref() != Some("recovered after timeout") && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.message.as_deref(), Some("recovered after timeout"));
+    assert_eq!(app.plugins.status("echo"), Some(PluginStatus::Ready));
+    assert!(!dir.join(".retry-once").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn publishes_scoped_diagnostics_for_the_current_revision() {
     let dir = temp_dir("diagnostics");
     let path = dir.join("alpha.txt");
