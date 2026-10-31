@@ -121,7 +121,7 @@ See [Plugin protocol](help:plugin-protocol) for framing, capability negotiation,
 
 The repository includes two Python examples:
 
-- `examples/plugins/echo` registers `echo.ping` and `echo.hello`.
+- `examples/plugins/echo` registers `echo.ping`, `echo.hello`, and `echo.retry`. `echo.retry` hangs once, times out, and succeeds on the next invocation after backoff. Run `:echo.retry` twice to exercise the retry path.
 - `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command. It is a trim-after-save plugin: the saved file is not trimmed until the next save, and the buffer becomes dirty after trimming. It is not a format-before-save hook. This is the real-edit reference: it reads `editor.get_state`, checks buffer identity and revision, applies UTF-8 byte edits, retries a stale revision twice, and fails without editing a different buffer. `examples/wasm-trim` is the same plugin on the WASM runtime.
 
 Copy either directory to `~/.config/kawi/plugins` to try it.
