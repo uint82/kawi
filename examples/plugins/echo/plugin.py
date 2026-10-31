@@ -1,5 +1,10 @@
 import json
 import sys
+import time
+from pathlib import Path
+
+RETRY_MARKER = Path(__file__).with_name(".retry-once")
+RETRY_HANG_SECONDS = 120
 
 
 def read_message():
@@ -24,6 +29,30 @@ def write_message(message):
     sys.stdout.buffer.flush()
 
 
+def request_host(method, params, request_id):
+    write_message({
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "method": method,
+        "params": params,
+    })
+    while True:
+        reply = read_message()
+        if reply is None:
+            return False
+        if reply.get("id") == request_id:
+            return True
+
+
+def exercise_retry():
+    if RETRY_MARKER.exists():
+        RETRY_MARKER.unlink()
+        return {"message": "recovered after timeout"}
+    RETRY_MARKER.write_text("", encoding="ascii")
+    time.sleep(RETRY_HANG_SECONDS)
+    return None
+
+
 def main():
     while True:
         message = read_message()
@@ -44,19 +73,23 @@ def main():
             })
         elif method == "invoke_command":
             params = message.get("params", {})
+            command = params.get("command")
             name = (params.get("args") or {}).get("name", "world")
-            if params.get("command") == "hello":
-                host_id = 900
+            if command == "hello":
+                if not request_host("ui.message", {"message": f"pong {name}"}, 900):
+                    return
+            elif command == "retry":
+                result = exercise_retry()
+                if result is None:
+                    return
+                if not request_host("ui.message", {"message": result["message"]}, 901):
+                    return
                 write_message({
                     "jsonrpc": "2.0",
-                    "id": host_id,
-                    "method": "ui.message",
-                    "params": {"message": f"pong {name}"},
+                    "id": message["id"],
+                    "result": result,
                 })
-                while True:
-                    reply = read_message()
-                    if reply is None or reply.get("id") == host_id:
-                        break
+                continue
             write_message({
                 "jsonrpc": "2.0",
                 "id": message["id"],

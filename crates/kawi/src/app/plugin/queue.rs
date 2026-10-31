@@ -46,7 +46,7 @@ impl PluginRuntime {
     ) -> Result<QueueOutcome, PluginError> {
         let (plugin, command, coalesce) = self.resolved_target(target)?;
         self.ensure_command_allowed(&plugin, &command)?;
-        self.ensure_invokable(&plugin)?;
+        self.ensure_enabled(&plugin)?;
         if !self.in_flight.contains(&plugin) {
             self.in_flight.insert(plugin);
             return Ok(QueueOutcome::Start);
@@ -236,14 +236,14 @@ impl PluginRuntime {
         }
     }
 
-    fn ensure_invokable(&self, plugin: &str) -> Result<(), PluginError> {
-        match self.status(plugin) {
-            Some(kawi_plugin::PluginStatus::Backoff { remaining_ms }) => {
-                Err(PluginError::Backoff { remaining_ms })
-            }
-            Some(kawi_plugin::PluginStatus::Disabled) => Err(PluginError::Disabled),
-            _ => Ok(()),
+    fn ensure_enabled(&self, plugin: &str) -> Result<(), PluginError> {
+        if matches!(
+            self.status(plugin),
+            Some(kawi_plugin::PluginStatus::Disabled)
+        ) {
+            return Err(PluginError::Disabled);
         }
+        Ok(())
     }
 }
 
