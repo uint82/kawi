@@ -4,7 +4,6 @@ use kawi_tui::text::display_width;
 
 use super::super::App;
 use super::OverlayData;
-use crate::keymap::Keymap;
 use crate::leader::{self, LeaderPath};
 use crate::vim::guide::GuideRow;
 
@@ -41,7 +40,7 @@ impl KeyMenuData {
 
 impl App {
     pub(super) fn leader_overlay(&self) -> Option<OverlayData<'_>> {
-        let path = self.keymap.leader_path()?;
+        let path = self.pending_leader_path()?;
         let visual = self.editor.mode().is_visual();
         let rows = leader_rows(path, visual);
         let breadcrumb = leader_breadcrumb(path);
