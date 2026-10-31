@@ -8,7 +8,7 @@ The process runtime must not be removed until every criterion below is true and 
 
 ## Progress
 
-- Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI.
+- Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI. `kawi-plugin-sdk` 0.1.0 is published by the release workflow.
 - Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry, retry exhaustion, buffer identity changes, and denied editor write.
 - External validation: pending. No plugin from an independent author has completed a release cycle yet.
 - Default and migration window: open. The `wasm` feature is enabled by default, `:plugin list` marks process plugins as a trusted compatibility runtime, and the migration guide is published. Deprecation warnings and the two-minor-release window start after external validation.
@@ -19,7 +19,7 @@ Removal remains blocked until external validation completes and the deprecation 
 ## Authoring readiness
 
 - The WASM authoring guide and `kawi plugin new` template are shipped and exercised by CI.
-- The SDK is published with the versioned WIT package, and a mismatched SDK reports a clear build or load error.
+- `kawi-plugin-sdk` 0.1.0 is packaged with the versioned WIT package and published by the release workflow. A mismatched SDK reports a clear build or load error. See [plugin-sdk-release](plugin-sdk-release.md).
 - `kawi plugin build` updates the component path and SHA-256 without manual editing.
 - `kawi plugin inspect` prints requested capabilities and component imports before a plugin is installed.
 - A Rust-free path is documented honestly. Other component languages are supported only when a maintained binding path exists.

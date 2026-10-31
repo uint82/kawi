@@ -21,17 +21,29 @@ const COMMAND: &str = "hello";
 #[test]
 #[ignore = "builds a nested cargo project"]
 fn scaffold_builds_and_runs() {
+    let sdk = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../kawi-plugin-sdk");
+    scaffold_and_run(Options {
+        name: PLUGIN_NAME.to_string(),
+        sdk_path: Some(sdk),
+    });
+}
+
+#[test]
+#[ignore = "builds a nested cargo project from crates.io"]
+fn published_scaffold_builds_and_runs() {
+    scaffold_and_run(Options {
+        name: PLUGIN_NAME.to_string(),
+        sdk_path: None,
+    });
+}
+
+fn scaffold_and_run(options: Options) {
     let root = temp_root();
     let plugins = root.join("plugins");
     let config = root.join("config");
     fs::create_dir_all(&plugins).unwrap();
     fs::create_dir_all(&config).unwrap();
-    let directory = plugins.join(PLUGIN_NAME);
-    let sdk = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../kawi-plugin-sdk");
-    let options = Options {
-        name: PLUGIN_NAME.to_string(),
-        sdk_path: Some(sdk),
-    };
+    let directory = plugins.join(&options.name);
     scaffold::create_project(&directory, &options).unwrap();
     super::build::run(&[directory.to_string_lossy().to_string()]).unwrap();
 
@@ -58,14 +70,13 @@ fn scaffold_builds_and_runs() {
         event_tx,
         wake,
     );
-    host.activate(PLUGIN_NAME).unwrap();
-    wait_ready(&host);
-    let request = host
-        .invoke(PLUGIN_NAME, COMMAND, Value::Null, context())
-        .unwrap();
+    let name = options.name.as_str();
+    host.activate(name).unwrap();
+    wait_ready(&host, name);
+    let request = host.invoke(name, COMMAND, Value::Null, context()).unwrap();
     let (finished, result) = finished_rx.recv_timeout(INVOCATION_TIMEOUT).unwrap();
     assert_eq!(finished, request);
-    assert_eq!(result.unwrap(), json!(format!("hello from {PLUGIN_NAME}")));
+    assert_eq!(result.unwrap(), json!(format!("hello from {name}")));
     host.shutdown();
     drop(host);
     drop(wake_rx);
@@ -73,13 +84,13 @@ fn scaffold_builds_and_runs() {
     fs::remove_dir_all(root).unwrap();
 }
 
-fn wait_ready(host: &PluginHost) {
+fn wait_ready(host: &PluginHost, name: &str) {
     let deadline = Instant::now() + START_TIMEOUT;
     loop {
-        match host.status(PLUGIN_NAME) {
+        match host.status(name) {
             Some(PluginStatus::Ready) => return,
             Some(PluginStatus::Disabled) | Some(PluginStatus::Error(_)) => {
-                panic!("scaffold did not start: {:?}", host.status(PLUGIN_NAME))
+                panic!("scaffold did not start: {:?}", host.status(name))
             }
             _ if Instant::now() >= deadline => panic!("scaffold did not become ready"),
             _ => thread::sleep(STATUS_POLL),

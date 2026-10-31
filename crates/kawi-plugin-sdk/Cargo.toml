@@ -1,7 +1,10 @@
 [package]
 name = "kawi-plugin-sdk"
-version.workspace = true
+version = "0.1.0"
 description = "Rust SDK for Kawi WebAssembly plugins"
+readme = "README.md"
+homepage = "https://github.com/uint82/kawi"
+documentation = "https://docs.rs/kawi-plugin-sdk"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -9,6 +12,7 @@ categories.workspace = true
 keywords = ["kawi", "plugin", "wasm", "component"]
 repository.workspace = true
 rust-version.workspace = true
+include = ["src/**", "wit/**", "README.md", "CHANGELOG.md"]
 
 [dependencies]
 wit-bindgen = "=0.63.0"

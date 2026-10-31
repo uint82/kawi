@@ -31,7 +31,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
 - **Process plugins.** Trusted compatibility runtime for JSON-RPC plugins that contribute commands, default keybindings, event subscriptions, and plugin-published diagnostics. Deny-by-default capabilities include interactive consent prompts and Linux Landlock filesystem and process-execution scopes.
-- **WASM plugins.** WebAssembly components enabled by default with a versioned component contract, Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
+- **WASM plugins.** WebAssembly components enabled by default with a versioned component contract, published Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.

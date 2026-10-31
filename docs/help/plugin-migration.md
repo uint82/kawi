@@ -101,7 +101,7 @@ Both runtimes use zero-based lines and UTF-8 byte columns. A byte column inside 
 
 ## Build and install
 
-1. Run `kawi plugin new <name> --sdk-path <path>` to scaffold a Rust component.
+1. Run `kawi plugin new <name>` to scaffold a Rust component against the published SDK. Pass `--sdk-path <path>` only for an unreleased checkout.
 2. Port the lifecycle exports, host calls, and event handling.
 3. Run `kawi plugin build <name>` to build the component and update `sha256`.
 4. Run `kawi plugin inspect <name>` and compare the requested capabilities with the component imports.
