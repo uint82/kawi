@@ -267,12 +267,7 @@ fn restart_starts_plugin_with_reloaded_manifest() {
         return;
     }
     let root = temp_dir("reload_worker");
-    let dir = root.join("echo");
-    fs::create_dir_all(&dir).unwrap();
-    let source =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/echo");
-    fs::copy(source.join("plugin.toml"), dir.join("plugin.toml")).unwrap();
-    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
+    let dir = copy_example_plugin(&root, "echo");
     let mut app = app();
     load_plugins(&mut app, &root);
     assert_eq!(

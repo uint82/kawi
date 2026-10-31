@@ -1,6 +1,7 @@
 use std::fs;
 use std::time::{Duration, Instant};
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use kawi_editor::Action;
 use kawi_plugin::{
@@ -213,6 +214,68 @@ fn plugin_context_carries_the_current_cursor() {
     assert_eq!(context.mode, "normal");
 }
 
+fn feed_command_line(app: &mut App, text: &str) {
+    app.handle_key(KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE))
+        .unwrap();
+    for character in text.chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
+            .unwrap();
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+}
+
+fn wait_for_message(app: &mut App, expected: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.message.as_deref() != Some(expected) && Instant::now() < deadline {
+        app.poll_plugins();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.message.as_deref(), Some(expected));
+}
+
+#[test]
+fn command_line_dispatches_and_repeats_plugin_commands() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("command_line");
+    copy_example_plugin(&root, "echo");
+    let mut app = app();
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    feed_command_line(&mut app, "echo.hello");
+    wait_for_message(&mut app, "pong world");
+    std::thread::sleep(Duration::from_millis(1100));
+    app.poll_plugins();
+    app.message = None;
+    for key in [KeyCode::Char('@'), KeyCode::Char(':')] {
+        app.handle_key(KeyEvent::new(key, KeyModifiers::NONE))
+            .unwrap();
+    }
+    wait_for_message(&mut app, "pong world");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn command_line_rejects_plugin_command_arguments() {
+    let root = temp_dir("command_line_args");
+    manifest(&root);
+    let mut app = app();
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    feed_command_line(&mut app, "echo.ping extra");
+    assert_eq!(
+        app.message.as_deref(),
+        Some("E488: Trailing characters: extra")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn invokes_a_plugin_and_serves_host_requests() {
     if std::process::Command::new("python3")
@@ -223,12 +286,7 @@ fn invokes_a_plugin_and_serves_host_requests() {
         return;
     }
     let root = temp_dir("invoke");
-    let dir = root.join("echo");
-    fs::create_dir_all(&dir).unwrap();
-    let source =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/echo");
-    fs::copy(source.join("plugin.toml"), dir.join("plugin.toml")).unwrap();
-    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
+    copy_example_plugin(&root, "echo");
     let mut app = app();
     let warnings = load_plugins(&mut app, &root);
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -292,12 +350,8 @@ fn echo_plugin_recovers_after_timeout() {
         return;
     }
     let root = temp_dir("echo_retry");
-    let dir = root.join("echo");
-    fs::create_dir_all(&dir).unwrap();
-    let source =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/echo");
-    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
-    let manifest = fs::read_to_string(source.join("plugin.toml"))
+    let dir = copy_example_plugin(&root, "echo");
+    let manifest = fs::read_to_string(dir.join("plugin.toml"))
         .unwrap()
         .replace("timeout_ms = 5000", "timeout_ms = 1000");
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
