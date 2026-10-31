@@ -13,7 +13,7 @@ Process plugins remain available as a trusted compatibility runtime. WASM is the
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | The versioned `kawi:plugin@0.1.0` WIT package |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.1.0` |
 | `timeout_ms`, `commands`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Unchanged names and scope shapes |
 
@@ -32,7 +32,9 @@ A WASM manifest cannot declare `command`. A process manifest cannot declare `com
 
 `init` receives the host protocol version and runs once per instance. An error from `init` is a start failure. A trap is a crash and uses the same backoff and five-strike disable path as a process exit.
 
-Command arguments and results use the `argument` variant. JSON numbers map to `integer` or `float`, strings to `text`, booleans to `boolean`, and null to `null`. A process plugin returns arbitrary JSON. A WASM plugin returns one `argument`.
+Command arguments and results use the `argument` variant. JSON numbers map to `integer` or `float`, strings to `text`, booleans to `boolean`, and null to `null`. Arrays and objects are not representable in this variant. A process plugin returns arbitrary JSON. A WASM plugin receives scalar arguments and returns one `argument`.
+
+`invoke-command` receives only the command id and arguments. The editor context is not passed to the component. Request `editor.read` and call `editor-read.get-state` when the command needs the buffer, cursor, selection, or mode.
 
 ## Host methods
 
@@ -43,7 +45,7 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `ui.message` | `ui-message.message` |
 | `editor.set_diagnostics` | `diagnostics-publish.set` |
 | Process execution through `process.spawn` | `process-run.run` |
-| Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write` |
+| Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
 An import that is not requested by the manifest is rejected before instantiation. An import that is requested but not granted fails startup with the missing capability. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
@@ -104,7 +106,7 @@ Both runtimes use zero-based lines and UTF-8 byte columns. A byte column inside 
 1. Run `kawi plugin new <name>` to scaffold a Rust component against the published SDK. Pass `--sdk-path <path>` only for an unreleased checkout.
 2. Port the lifecycle exports, host calls, and event handling.
 3. Run `kawi plugin build <name>` to build the component and update `sha256`.
-4. Run `kawi plugin inspect <name>` and compare the requested capabilities with the component imports.
+4. Run `kawi plugin inspect <directory>` or `:plugin inspect <name>` and compare the requested capabilities with the component imports.
 5. Install the directory under `$XDG_CONFIG_HOME/kawi/plugins` and grant the requested capabilities.
 
 Both runtimes can be installed at the same time. Keep the process plugin until the WASM plugin passes the same conformance scenarios and the grant flow is verified.

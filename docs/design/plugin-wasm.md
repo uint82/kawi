@@ -22,7 +22,6 @@ Limits:
 
 - Epoch interruption with a per-call deadline.
 - A wall-clock budget from the manifest `timeout_ms` per call, checked through the epoch callback and applied to host request and socket readiness waits.
-- Optional fuel metering when deterministic accounting is required.
 - A 64 MiB memory limit, a 1,048,576 element table limit, and a 512 KiB stack limit.
 - A 64 MiB component size limit.
 - An 8 MiB inbound cap and an 8 MiB outbound cap per TCP connection.
@@ -49,7 +48,7 @@ Interfaces:
 
 Positions use line and UTF-8 byte column. Revision checks, origin handling, and error codes match the JSON-RPC protocol.
 
-`fs.read`, `fs.write`, and network access use WASI instead of custom interfaces. WASI preopens are derived only from grants. The network is denied by default.
+`fs.read`, `fs.write`, and network access use WASI instead of custom interfaces. WASI preopens are derived only from grants and must be directories; a file grant is skipped with a warning. The network is denied by default.
 
 ## Network
 

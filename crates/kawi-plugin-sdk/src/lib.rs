@@ -18,3 +18,13 @@ pub use error::{
 pub use kawi::plugin::types;
 pub use kawi::plugin::{diagnostics_publish, editor_read, editor_write, process_run, ui_message};
 pub use offsets::{byte_offset, position_at};
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn wit_package_version_matches_the_crate_version() {
+        let wit = include_str!("../wit/plugin.wit");
+        let expected = format!("package kawi:plugin@{};", env!("CARGO_PKG_VERSION"));
+        assert!(wit.contains(&expected));
+    }
+}

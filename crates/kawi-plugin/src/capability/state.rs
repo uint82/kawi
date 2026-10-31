@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::manifest::PluginCatalog;
 
-use super::{effective, parse_permissions, EffectiveCapabilities};
+use super::{effective, event_capability, parse_permissions, EffectiveCapabilities};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PermissionState {
@@ -33,6 +33,7 @@ pub fn load_permission_state(catalog: &PluginCatalog, path: &Path) -> Permission
             None
         }
     };
+    permission_file_warnings(path, &mut state.warnings);
     for plugin in &catalog.plugins {
         let name = plugin.manifest.name.as_str();
         let entry = permissions
@@ -53,6 +54,7 @@ pub fn load_permission_state(catalog: &PluginCatalog, path: &Path) -> Permission
                 .warnings
                 .push(format!("{name}: stale grant: {}", capability.name()));
         }
+        subscription_warnings(plugin, &effective, &mut state.warnings);
         state.grants.insert(name.to_string(), effective);
     }
     if let Some(permissions) = &permissions {
@@ -72,6 +74,44 @@ pub fn load_permission_state(catalog: &PluginCatalog, path: &Path) -> Permission
     state.warnings.dedup();
     state
 }
+
+fn subscription_warnings(
+    plugin: &crate::manifest::LoadedPlugin,
+    effective: &EffectiveCapabilities,
+    warnings: &mut Vec<String>,
+) {
+    let name = plugin.manifest.name.as_str();
+    for event in &plugin.manifest.subscribes {
+        let Some(capability) = event_capability(event) else {
+            continue;
+        };
+        if effective.has(capability) || plugin.manifest.capability_requests.contains(capability) {
+            continue;
+        }
+        warnings.push(format!(
+            "{name}: subscription {event} requires {}",
+            capability.name()
+        ));
+    }
+}
+
+#[cfg(unix)]
+fn permission_file_warnings(path: &Path, warnings: &mut Vec<String>) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(metadata) = fs::metadata(path) else {
+        return;
+    };
+    if metadata.permissions().mode() & 0o022 != 0 {
+        warnings.push(format!(
+            "{}: permissions are writable by group or other users",
+            path.display()
+        ));
+    }
+}
+
+#[cfg(not(unix))]
+fn permission_file_warnings(_path: &Path, _warnings: &mut Vec<String>) {}
 
 #[cfg(test)]
 mod tests;

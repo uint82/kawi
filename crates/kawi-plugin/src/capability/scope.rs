@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 
 use super::command;
 use super::Capability;
+use crate::environment::is_path_variable;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct HostPort {
@@ -221,7 +222,7 @@ fn normalize_path(path: &str) -> Result<String, String> {
     }
     if let Some(variable) = path.strip_prefix('$') {
         let name = variable.split('/').next().unwrap_or_default();
-        if !matches!(name, "WORKSPACE" | "PLUGIN_DIR" | "CONFIG" | "HOME") {
+        if !is_path_variable(name) {
             return Err(format!("unknown path variable: ${name}"));
         }
     } else if !path.starts_with('/') {

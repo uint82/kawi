@@ -37,6 +37,8 @@ mod test_streams;
 #[cfg(feature = "wasm")]
 mod wasi;
 #[cfg(feature = "wasm")]
+mod wasi_setup;
+#[cfg(feature = "wasm")]
 pub(crate) mod worker;
 
 #[cfg(feature = "wasm")]
