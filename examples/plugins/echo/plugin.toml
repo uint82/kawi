@@ -23,3 +23,8 @@ description = "Show a message through the host"
 
 [commands.keybindings]
 normal = ["<leader>ph"]
+
+[[commands]]
+id = "retry"
+title = "Exercise timeout retry"
+description = "Hang once, time out, then succeed after backoff"
