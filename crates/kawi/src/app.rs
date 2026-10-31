@@ -1068,9 +1068,18 @@ impl App {
     }
 
     fn is_mapping_input(&self, key: KeyEvent) -> bool {
-        self.keymaps.has_pending()
-            || self.keymap.leader_path().is_some()
-            || self.keymap.is_leader_prefix(key, self.editor.mode())
+        self.is_builtin_mapping_input(key) || self.is_configured_mapping_input(key)
+    }
+
+    fn is_builtin_mapping_input(&self, key: KeyEvent) -> bool {
+        self.keymap.leader_path().is_some() || self.keymap.is_leader_prefix(key, self.editor.mode())
+    }
+
+    fn is_configured_mapping_input(&self, key: KeyEvent) -> bool {
+        KeyContext::from_mode(self.editor.mode()).is_some_and(|context| {
+            self.keymaps
+                .is_pending_or_prefix(context, KeyChord::from_event(key))
+        })
     }
 
     fn handle_mapped_key(&mut self, key: KeyEvent) -> Result<bool> {
