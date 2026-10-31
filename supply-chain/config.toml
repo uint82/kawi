@@ -4,6 +4,9 @@
 [cargo-vet]
 version = "0.10"
 
+[policy.kawi-plugin-sdk]
+audit-as-crates-io = true
+
 [[exemptions.addr2line]]
 version = "0.26.1"
 criteria = "safe-to-deploy"
@@ -386,6 +389,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.itoa]]
 version = "1.0.18"
+criteria = "safe-to-deploy"
+
+[[exemptions.kawi-plugin-sdk]]
+version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.kqueue]]
