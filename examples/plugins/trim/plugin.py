@@ -1,6 +1,7 @@
 import json
 import sys
 
+STALE_REVISION = -32010
 MAX_STALE_RETRIES = 2
 
 
@@ -78,13 +79,23 @@ def trim_edits(state):
     return edits
 
 
-def apply_trim(client, value, retries=0):
-    edits = trim_edits(value)
+def request_state(client):
+    response = client.request("editor.get_state", {"include_text": True})
+    if response is None:
+        return None
+    if "error" in response:
+        raise HostError(response["error"])
+    return response["result"]
+
+
+def apply_trim(client, state, retries=0):
+    buffer = state["buffer"]
+    edits = trim_edits(state)
     if not edits:
         return {"message": "no trailing whitespace"}
     response = client.request("editor.apply_edit", {
-        "buffer": value["buffer"],
-        "revision": value["revision"],
+        "buffer": buffer,
+        "revision": state["revision"],
         "edits": edits,
     })
     if response is None:
@@ -92,26 +103,22 @@ def apply_trim(client, value, retries=0):
     error = response.get("error")
     if not error:
         return response.get("result")
-    if error.get("code") != -32010 or retries >= MAX_STALE_RETRIES:
+    if error.get("code") != STALE_REVISION or retries >= MAX_STALE_RETRIES:
         raise HostError(error)
-    state = client.request("editor.get_state", {"include_text": True})
-    if state is None:
+    fresh = request_state(client)
+    if fresh is None:
         return None
-    if "error" in state:
-        raise HostError(state["error"])
-    return apply_trim(client, state["result"], retries + 1)
+    if fresh["buffer"] != buffer:
+        raise HostError(error)
+    return apply_trim(client, fresh, retries + 1)
 
 
 def trim_buffer(client):
-    state = client.request("editor.get_state", {"include_text": True})
-    if state is None:
-        return None
-    if "error" in state:
-        error = HostError(state["error"])
-        report_error(client, error)
-        raise error
     try:
-        return apply_trim(client, state["result"])
+        state = request_state(client)
+        if state is None:
+            return None
+        return apply_trim(client, state)
     except HostError as error:
         report_error(client, error)
         raise
