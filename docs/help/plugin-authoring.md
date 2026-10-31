@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 ---
 # Writing a WASM plugin
 
-WASM plugins run in a WebAssembly component with explicit capabilities. This guide walks through creating, building, installing, granting, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
+WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
 The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.1.0 on crates.io. It pins `wit-bindgen` 0.63.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
@@ -47,7 +47,7 @@ The command writes a crate with:
 - `build.sh` wrapping the build and hash step
 - `.gitignore` for the local target directory
 
-The generated plugin exposes a `hello` command and requests no host capabilities.
+The generated plugin exposes a `hello` command and declares no host APIs.
 
 ## Build
 
@@ -65,34 +65,56 @@ It copies the component to the path in `plugin.toml`, computes SHA-256 over the 
 
 `build.sh` is a thin wrapper around the same command.
 
-## Install and grant
+## Publish a release
 
-Copy the plugin directory into the Kawi plugin directory:
+Managed installation expects a GitHub release. The release commit must contain `plugin.toml` at the repository root. The release must include the component as an asset whose file name matches the manifest `component` file name.
+
+```toml
+name = "hello-plugin"
+version = "0.1.0"
+protocol = 1
+runtime = "wasm"
+component = "hello-plugin.wasm"
+sha256 = "sha256:..."
+```
+
+Attach `hello-plugin.wasm` to the release. Kawi downloads that asset, checks it against `sha256`, and validates the component imports before installing.
+
+A plugin author does not need to publish a registry entry. The repository is the package identity, and the release tag or commit is the version.
+
+## Install
+
+For a released plugin:
+
+```vim
+:plugin install owner/repo
+:plugin install owner/repo@v0.1.0
+```
+
+Kawi resolves the release, reads the manifest, checks the API version, and shows one confirmation with the repository, author, commit, API version, checksum, and declared host APIs. Enter installs and enables the plugin. The commit and checksum are pinned in `$XDG_CONFIG_HOME/kawi/plugins.lock`.
+
+There is no grant step. Installing the plugin is the trust decision. Declared host APIs are enabled automatically.
+
+## Develop locally
+
+Copy the plugin directory into the development plugin directory:
 
 ```sh
 mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/kawi/plugins"
 cp -r hello-plugin "${XDG_CONFIG_HOME:-$HOME/.config}/kawi/plugins/"
 ```
 
-Start Kawi and inspect the manifest before granting anything:
+Start Kawi. It prints a development plugin warning and marks the plugin as `development` in `:plugin list`.
+
+Inspect the manifest and component imports before running it:
 
 ```sh
 kawi plugin inspect "${XDG_CONFIG_HOME:-$HOME/.config}/kawi/plugins/hello-plugin"
 ```
 
-The output lists the manifest requests and the component imports. Imports must be a subset of the requested capabilities. A component that imports `kawi:plugin/editor-read` must request `editor.read`, even if it never calls the import.
+The output lists the declared host APIs and the component imports. Imports must be a subset of the declarations. A component that imports `kawi:plugin/editor-read` must declare `editor.read`, even if it never calls the import.
 
-The scaffold requests no host capabilities. After adding a request such as `"editor.read" = true` to `[capabilities]` and rebuilding, grant it through the prompt or explicitly:
-
-```vim
-:plugin grant hello-plugin editor.read
-```
-
-The grant is written to `$XDG_CONFIG_HOME/kawi/permissions.toml`. The approved request set is stored alongside the grant. An updated manifest that adds or widens a request reopens consent for only the changed capabilities.
-
-## Run
-
-The default plugin directory is `$XDG_CONFIG_HOME/kawi/plugins`. Plugin commands are namespaced by plugin name. The scaffold command is:
+The default development plugin directory is `$XDG_CONFIG_HOME/kawi/plugins`. Plugin commands are namespaced by plugin name. The scaffold command is:
 
 ```vim
 :hello-plugin.hello
@@ -100,21 +122,22 @@ The default plugin directory is `$XDG_CONFIG_HOME/kawi/plugins`. Plugin commands
 
 For the bundled WASM trim example, run `:trim.trim` or the configured keybinding.
 
-## Capability model from the author side
+Development plugins are not managed by `:plugin install`, `:plugin update`, `:plugin disable`, or `:plugin remove`. Edit or remove them directly.
 
-- `[capabilities]` in `plugin.toml` is the request. The host does not grant it automatically. A WebAssembly component must request every imported capability, including default-tier capabilities such as `ui.message`.
-- `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]` and does not replace per-call authorization.
-- The user grants, narrows, or denies each request in `permissions.toml`.
-- A missing or corrupt approved record without a matching `request_hash` treats every request as new. The user sees the changed set in one prompt.
-- A denied call returns `Error` with code `-32012`, a message, and the capability name. Handle it by reporting a useful message or stopping the operation.
-- A plugin cannot use an import that it did not request. The host rejects the component before it runs.
-- The default tier currently covers `ui.message`. Editor read, editor write, diagnostics read, diagnostics publish, filesystem, process, and network require explicit grants.
+## Host API declarations
+
+- `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, including `ui.message`.
+- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant.
+- `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
+- A component that imports an undeclared interface is rejected before it runs.
+- A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
+- On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
 
 ## Contract details
 
 - Positions use zero-based lines and UTF-8 byte columns, not character columns. A multibyte codepoint advances the byte column by its encoded length. Use `kawi_plugin_sdk::position_at` and `byte_offset` instead of counting characters.
 - `editor.get_state` returns a revision. Pass that revision to `editor.apply_edit`. A stale revision returns code `-32010`.
-- `kawi_plugin_sdk::apply_edit_with_retry` fetches fresh state, rebuilds edits, and retries a bounded number of times. Request `editor.read` and `editor.write` to use it.
+- `kawi_plugin_sdk::apply_edit_with_retry` fetches fresh state, rebuilds edits, and retries a bounded number of times. Declare `editor.read` and `editor.write` to use it.
 - `buffer_changed` includes an origin. Kawi excludes your own edits, so do not filter by origin to avoid loops. A `mixed` origin includes your own edit or changes from several sources; resync when `full_resync` is true.
 - The editor coalesces and orders events. A `file_saved` event is a good trigger for a full-buffer operation such as trim.
 - Diagnostics accept at most 1000 items per buffer. Each message is at most 4096 bytes and each code is at most 256 bytes.
@@ -122,7 +145,7 @@ For the bundled WASM trim example, run `:trim.trim` or the configured keybinding
 - WebAssembly threads are not enabled. Do not start threads or rely on shared memory.
 - There is no ambient network access. `net.connect` is deny by default and WASI sockets are the only network surface.
 - Network limits are 64 simultaneous TCP connections, 8 MiB inbound and 8 MiB outbound per connection, and 64 MiB shared per session. A session that exceeds a cap gets a short read or a closed write, not an unbounded allocation.
-- WASI filesystem access is scoped by the plugin grants. The component can only see preopened paths inside granted scopes. Preopens are directories; a file grant is skipped with a log line.
+- WASI filesystem access is scoped by declared `fs.read` and `fs.write` paths. The component can only see preopened paths inside those scopes. Preopens are directories; a file path is skipped with a log line.
 
 ## Real edit example
 
@@ -130,25 +153,21 @@ For the bundled WASM trim example, run `:trim.trim` or the configured keybinding
 
 ## Troubleshooting
 
-### The plugin requests a capability that is not granted
+### The component imports an API that is not declared
 
-Run `kawi plugin inspect <dir>` and compare the `requests` lines with `permissions.toml`. Grant the missing capability with `:plugin grant <plugin> <capability>`.
-
-### The component imports a capability that is not requested
-
-The runtime refuses the component with a message naming the unauthorized import. Add the capability to `[capabilities]`, rebuild, and approve the new request.
+The runtime refuses the component with a message naming the unauthorized import. Add the API to `[capabilities]`, rebuild, and publish a new release.
 
 ### The component hash does not match
 
-Run `kawi plugin build <dir>` again. Do not edit `sha256` manually. If the component is replaced after load, run `:plugin restart <name>` so the manifest is reread and the hash is checked again.
+Run `kawi plugin build <dir>` again. Do not edit `sha256` manually. For a managed plugin, publish a new release and run `:plugin update`. For a development plugin, run `:plugin restart <name>`.
 
 ### The plugin traps or stays in backoff
 
 Open `:plugin logs <name>`. A trap is reported with the WebAssembly error. Repeated traps increase restart backoff. Fix the trap rather than lowering the timeout.
 
-### A grant is denied
+### A host call is denied
 
-A denied call returns `-32012`. Show the error through `ui.message` only if that capability is granted. Otherwise log a local message and return a clear plugin error.
+A denied call returns `-32012`. The component tried to use an interface it did not declare or a host method outside the declared API. Add the declaration and publish a new release, or remove the call.
 
 ## Honest scope
 

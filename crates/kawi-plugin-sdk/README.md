@@ -46,7 +46,7 @@ kawi_plugin_sdk::export!(Plugin);
 
 ## Documentation
 
-The authoring guide covers scaffolding, building, installing, granting, and troubleshooting:
+The authoring guide covers scaffolding, building, installing, releasing, and troubleshooting:
 
 https://github.com/uint82/kawi/blob/main/docs/help/plugin-authoring.md
 

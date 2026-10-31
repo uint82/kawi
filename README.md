@@ -30,8 +30,8 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
-- **Process plugins.** Trusted compatibility runtime for JSON-RPC plugins that contribute commands, default keybindings, event subscriptions, and plugin-published diagnostics. Deny-by-default capabilities include interactive consent prompts and Linux Landlock filesystem and process-execution scopes.
-- **WASM plugins.** WebAssembly components enabled by default with a versioned component contract, published Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
+- **Development plugins.** Local process and WASM plugins for development, loaded with a warning and optional Linux Landlock filesystem and process-execution scopes.
+- **Managed WASM plugins.** Install GitHub releases with checksum verification, a pinned lockfile, explicit updates, and a versioned component contract. Includes a published Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.
@@ -116,7 +116,7 @@ keyguide_delay = 250
 
 Options can be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
 
-Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Process plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes belong in `$XDG_CONFIG_HOME/kawi/themes`. Do not load untrusted plugins: they run with your full permissions.
+Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Managed plugins are installed with `:plugin install owner/repo`. Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes belong in `$XDG_CONFIG_HOME/kawi/themes`.
 
 See the [configuration guide](docs/help/configuration.md) and [theme guide](docs/help/themes.md) for details.
 
@@ -127,7 +127,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Keybindings](docs/help/keybindings.md)
 - [Keymaps](docs/help/keymaps.md)
 - [Plugins](docs/help/plugins.md)
-- [Plugin capabilities](docs/help/plugin-capabilities.md)
+- [Plugin host APIs](docs/help/plugin-capabilities.md)
 - [Writing a WASM plugin](docs/help/plugin-authoring.md)
 - [Migrating a process plugin to WASM](docs/help/plugin-migration.md)
 - [Configuration](docs/help/configuration.md)

@@ -5,94 +5,130 @@ related = ["plugin-protocol", "plugin-capabilities", "plugin-authoring", "plugin
 ---
 # Plugins
 
-Kawi supports process plugins that communicate over JSON-RPC 2.0 and WebAssembly plugins that use a versioned component contract. Process plugins are trusted code and run with your full user permissions. WASM plugins are the restricted path and are the recommended authoring target. The WebAssembly runtime is enabled by default and can be omitted with `--no-default-features`. See [Writing a WASM plugin](help:plugin-authoring) and [Migrating a process plugin to WASM](help:plugin-migration).
+Kawi installs managed plugins from GitHub releases. A managed plugin is a WebAssembly component with a versioned manifest. Kawi verifies the release artifact, pins the resolved commit and checksum, and enables the plugin after one confirmation. There is no permission file and no per-capability prompt.
 
-Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, normally `~/.config/kawi/plugins`. It never loads plugins from a project directory.
+Local plugins in `$XDG_CONFIG_HOME/kawi/plugins` are a separate development mode. They are loaded with a warning and are never updated or removed by `:plugin`. Process plugins remain available only in this development mode and run as trusted code with your full user permissions.
 
-Plugins request capabilities in their manifest, and users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`. See [Plugin capabilities](help:plugin-capabilities). Denials open a consent prompt. On Linux with a full Landlock ABI, Landlock enforces filesystem and process-execution scopes. The WebAssembly runtime is enabled by default and executes components with a deny-by-default WIT contract, manifest-bound component hashes, WASI preopens from capability scopes, lifecycle calls, editor host calls, events, authorized process execution, wall-clock call limits, and cancellation of blocked host calls on restart. Start `kawi --no-plugins` to skip plugin discovery, hashing, and WebAssembly compilation entirely. WebAssembly network scopes are enforced with DNS pinning, filtered guest name lookup, and non-public address rejection. Process network scopes and older ABI filesystem scopes remain advisory.
+Installed plugins live in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`. Kawi never loads plugins from a project directory.
 
-Each plugin lives in its own directory:
+## Install
 
 ```text
-~/.config/kawi/plugins/example/plugin.toml
-~/.config/kawi/plugins/example/plugin.py
+:plugin install owner/repo
+:plugin install owner/repo@v1.2.3
 ```
+
+The source may also be a GitHub URL. Without a reference, Kawi uses the latest release. Kawi resolves the release tag to a commit, reads `plugin.toml` at that commit, checks the plugin API version, and downloads the prebuilt `.wasm` release asset named by `component`.
+
+Before installing, Kawi shows one confirmation with the repository, author, commit, API version, checksum, and declared host APIs. Enter installs and enables the plugin. Esc cancels.
+
+The release must contain:
+
+- `plugin.toml` at the repository root for the release commit.
+- A release asset whose file name matches the manifest `component` file name.
+- `runtime = "wasm"`.
+- `protocol` matching the Kawi plugin API version.
+- `sha256` matching the component bytes.
+
+Kawi downloads into a staging directory, verifies the checksum, validates the component, and only then moves it into place. A failed download or validation leaves the previous installation untouched.
+
+## Lockfile
+
+Kawi pins each managed plugin in `plugins.lock`:
+
+```toml
+version = 1
+
+[plugins.echo]
+source = "owner/repo"
+reference = "v1.2.3"
+commit = "0123456789abcdef0123456789abcdef01234567"
+sha256 = "sha256:..."
+api = 1
+enabled = true
+```
+
+The lockfile is machine-managed. `reference` is omitted when the plugin was installed from the latest release. The commit and checksum are the identity used for updates.
+
+On startup Kawi ignores an installed plugin that is missing from the lockfile, or whose component hash or API version does not match the locked values. A corrupt lockfile blocks `:plugin` mutations until you fix or remove it.
+
+## Commands
+
+- `:plugin install <owner/repo[@ref]>` resolves, verifies, confirms, installs, and enables a managed plugin.
+- `:plugin update <plugin>` resolves the configured source again. If the commit is unchanged, Kawi reports that the plugin is up to date. If the API surface is unchanged, Kawi updates immediately and reports the new commit. If a host API was added or widened, Kawi shows one confirmation with the new commit and the changed APIs.
+- `:plugin disable <plugin>` keeps the plugin installed but stops loading it.
+- `:plugin enable <plugin>` loads a disabled plugin again.
+- `:plugin remove <plugin>` confirms, removes the installed directory, and removes the lockfile entry.
+- `:plugin list` shows installed and development plugins, versions, runtimes, status, source, commit, declared host APIs, and commands.
+- `:plugin reload` reloads manifests from disk.
+- `:plugin restart [plugin]` restarts one plugin or every plugin.
+- `:plugin logs [plugin]` shows plugin logs.
+- `:plugin inspect <plugin>` shows the manifest, declared host APIs, component hash, and WebAssembly imports.
+
+Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
+
+## Host APIs
+
+Plugins declare the host APIs they use in `plugin.toml`:
+
+```toml
+[capabilities]
+"editor.read" = true
+"editor.write" = true
+"ui.message" = true
+```
+
+Declarations are a compatibility and audit surface, not a user grant. Kawi enables every declared API for a managed plugin. The WebAssembly component can only import interfaces that it declared. A component that imports an undeclared interface fails to load. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
+
+Available host APIs are `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
 ## Manifest
 
 ```toml
-name = "example"
+name = "echo"
 version = "0.1.0"
 protocol = 1
+runtime = "wasm"
 description = "Example plugin"
-command = ["python3", "${plugin_dir}/plugin.py"]
+component = "echo.wasm"
+sha256 = "sha256:..."
 timeout_ms = 5000
-subscribes = ["buffer_changed", "file_saved"]
+subscribes = ["file_saved"]
 
-[debounce]
-buffer_changed = 100
+[capabilities]
+"ui.message" = true
 
 [[activation_events]]
 event = "on_command"
 
-[[activation_events]]
-event = "on_file_open"
-filetypes = ["rust"]
-globs = ["*.rs"]
-
 [[commands]]
-id = "format"
-title = "Format buffer"
-description = "Format the current buffer"
-capabilities = ["editor.write"]
-coalesce_queued = false
+id = "ping"
+title = "Ping the plugin"
 
 [commands.keybindings]
-normal = ["<leader>pf"]
+normal = ["<leader>pp"]
 ```
 
-The plugin name is the namespace. The command above is `example.format`, and you can bind it in `keymaps.toml` like any built-in command.
+The plugin name is the namespace. The command above is `echo.ping`, and you can bind it in `keymaps.toml` like any built-in command.
 
-- `command` is an executable and its arguments. `${plugin_dir}` resolves to the plugin directory, which is also the working directory.
+- `component` is a path relative to the plugin directory. Managed releases use the file name as the release asset name.
+- `sha256` is required for WASM plugins. `kawi plugin build` updates it.
 - `timeout_ms` applies to initialization and each invocation. The default is `5000`. The range is `100` to `60000`.
-- `capabilities` on a command optionally restricts who may invoke it. The listed capabilities must be a subset of the plugin request table. Ungated commands run whenever the plugin runs.
-- `coalesce_queued` collapses identical queued invocations of the same command and args while another invocation is running. The default is `false`.
+- `capabilities` declares host APIs and command gates. A command gate must be a subset of the plugin declarations.
 - `subscribes` lists events delivered to a running plugin. Delivery never starts a plugin.
-- `debounce` optionally delays an event per subscription. `buffer_changed` is also coalesced per buffer.
+- `debounce` optionally delays an event per subscription.
 - `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.
-- Commands and default keybindings are loaded from the manifest at startup and whenever `:plugin restart` reloads manifests. No process starts until an invocation or activation event.
-- Plugin keybindings have lower precedence than user mappings. They survive `:map reload`.
-- Count and register prefixes are reserved and cannot start a plugin binding. `kawi doctor` reports rejected bindings.
-
-## Commands
-
-- `:plugin list` shows installed plugins, versions, runtime, status, effective capabilities, and commands. Process plugins are marked as a trusted compatibility runtime.
-- `:plugin grant <plugin> <capability>` opens the consent prompt for a requested capability.
-- `:plugin reload` reloads `permissions.toml` and applies revocations to the next host call or event. Filesystem and execute scope changes restart the affected plugin so Landlock re-applies. Kawi also reloads the file automatically after a debounced external save.
-- `:plugin restart` reloads every manifest, reconciles commands and keybindings, and restarts every plugin.
-- `:plugin restart example` reloads one manifest, reconciles its commands and keybindings, restarts that plugin, and clears its crash backoff.
-- `:plugin logs` shows all plugin logs.
-- `:plugin inspect <plugin>` shows the runtime, computed and declared component hashes, request hash, requested capabilities, and WASM imports when the `wasm` feature is enabled.
-- `:plugin logs example` shows one plugin's log.
-
-Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
 
 ## Lifecycle
 
-1. Kawi reads manifests and registers static commands and keybindings.
-2. `:plugin restart` rereads manifests, reconciles commands and keybindings, and restarts the selected plugin or all plugins.
-3. The first invocation or activation event starts the plugin process.
-4. Kawi performs capability negotiation with `initialize`.
+1. Kawi reads installed and development manifests and registers static commands and keybindings.
+2. The first invocation or activation event starts the plugin.
+3. Kawi validates the component hash and imports before instantiation.
+4. Kawi calls `init` with the host protocol version.
 5. Kawi sends `invoke_command` or events.
 6. A crashed plugin restarts on the next invocation with exponential backoff. Five consecutive failures disable it until `:plugin restart`.
 
 Kawi supports one in-flight invocation per plugin. Invocations that arrive while another command is running enter a bounded FIFO queue. The queue holds four commands for ten seconds by default. A full queue rejects the command and logs a rejection. An expired queued command is dropped and logged.
-
-The editor context is captured when a queued command starts, not when it is queued. Authorization and command capability gates are checked again at dequeue. Revoking a capability before a queued command starts prevents that command from running. A crash, restart, or timeout drops the queue without replaying it.
-
-A plugin may call back into the host while an invocation is running. Events continue to flow during an invocation. A timed-out invocation is canceled, its queue is dropped, and the process is restarted.
-
-`:plugin list` shows `busy` and the queue depth. Kawi also shows a transient `busy, N queued` message when a command is queued. `:plugin logs <plugin>` reports queued, rejected, and dropped counts.
 
 ## Events
 
@@ -101,10 +137,10 @@ Kawi sends `buffer_changed`, `buffer_opened`, `file_opened`, `buffer_closed`, `f
 - Delivery is separate from activation. A stopped plugin receives nothing and is not started by an event.
 - Each plugin has a bounded queue. Buffer changes are coalesced per buffer, optional debounce applies, and other events are dropped with a log line when the queue is full.
 - `buffer_changed` carries the buffer identifier, revision, previous revision, origin, UTF-8 byte edits, and a `full_resync` flag. Apply edits in order, or call `editor.get_state` when the revision does not match.
-- Origins are `user`, `undo`, `plugin:<name>`, `external_reload`, and `mixed`. A plugin does not receive its own edits. Mixed origins force a resync instead of partial filtering.
-- `:plugin logs example` reports queue overflows. An overflow forces a resync on the next delivered change. Crashes and restarts clear queued events.
+- Origins are `user`, `undo`, `plugin:<name>`, `external_reload`, and `mixed`. A plugin does not receive its own edits.
+- `:plugin logs <plugin>` reports queue overflows. An overflow forces a resync on the next delivered change.
 
-Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics.publish` can publish diagnostics for the current named buffer through `editor.set_diagnostics`. Kawi prefixes the source with the plugin name, so plugins cannot spoof another provider. Publishing an empty list clears that plugin's diagnostics for the buffer.
+Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics.publish` can publish diagnostics for the current named buffer. Kawi prefixes the source with the plugin name, so plugins cannot spoof another provider. Publishing an empty list clears that plugin's diagnostics for the buffer.
 
 ## Host methods
 
@@ -115,15 +151,14 @@ Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics
 
 Positions are zero-based and use line plus UTF-8 byte column. Kawi rejects byte columns inside a code point.
 
-See [Plugin protocol](help:plugin-protocol) for framing, capability negotiation, JSON shapes, and error codes.
+See [Plugin protocol](help:plugin-protocol) for the process development protocol and [Writing a WASM plugin](help:plugin-authoring) for the component contract.
 
-## Example
+## Development plugins
 
-The repository includes two Python examples:
+Copy a plugin directory into `$XDG_CONFIG_HOME/kawi/plugins` to run it locally. Kawi prints a startup warning and marks the plugin as `development` in `:plugin list`. Development plugins can be process plugins or WASM plugins. They are trusted local code, they are not pinned in the lockfile, and `:plugin disable` and `:plugin remove` do not manage them.
 
-- `examples/plugins/echo` registers `echo.ping`, `echo.hello`, and `echo.retry`. `echo.retry` hangs once, times out, and succeeds on the next invocation after backoff. Run `:echo.retry` twice to exercise the retry path.
-- `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command. It is a trim-after-save plugin: the saved file is not trimmed until the next save, and the buffer becomes dirty after trimming. It is not a format-before-save hook. This is the real-edit reference: it reads `editor.get_state`, checks buffer identity and revision, applies UTF-8 byte edits, retries a stale revision twice, and fails without editing a different buffer. `examples/wasm-trim` is the same plugin on the WASM runtime.
+The repository includes two Python examples and a WASM example:
 
-Copy either directory to `~/.config/kawi/plugins` to try it.
-
-Standard output is protocol-only. Write logs to standard error and read them with `:plugin logs`.
+- `examples/plugins/echo` registers `echo.ping`, `echo.hello`, and `echo.retry`.
+- `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command.
+- `examples/wasm-trim` is the same trim plugin on the WASM runtime.

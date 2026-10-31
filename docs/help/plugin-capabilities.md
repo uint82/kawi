@@ -1,307 +1,86 @@
 ---
-title = "Plugin capabilities"
+title = "Plugin host APIs"
 aliases = ["permissions"]
 related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration", "configuration", "troubleshooting"]
 ---
-# Plugin capabilities
+# Plugin host APIs
 
-Capabilities define what a plugin may ask Kawi to do. The plugin requests capabilities in its manifest. The user grants capabilities in a separate file that the plugin does not control. Kawi enforces the intersection and denies everything else. See [Writing a WASM plugin](help:plugin-authoring) for the authoring path.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision.
 
-Kawi enforces the `editor.*` and `ui.*` host methods, `editor.set_diagnostics`, and `diagnostics.read` events for process plugins. On Linux with a full Landlock ABI, Landlock enforces `fs.read`, `fs.write`, and `process.spawn` for process plugins. The WebAssembly runtime enforces `net.connect` with a deny-by-default WASI socket policy. Landlock cannot scope network destinations, so `net.connect` remains advisory for process plugins. On other platforms every filesystem, process, and network scope remains advisory for process plugins.
+Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
-## Capability list
+## API list
 
-| Capability | Scope | Notes |
+| API | Scope | Meaning |
 | --- | --- | --- |
-| `editor.read` | none | Buffer text, metadata, cursor, selection, mode, revisions, and editor events |
-| `editor.write` | none | `editor.apply_edit` and future buffer mutations |
-| `ui.message` | none | Status messages. Default tier |
-| `diagnostics.read` | none | Host diagnostic events |
-| `diagnostics.publish` | none | `editor.set_diagnostics` for the current buffer |
-| `fs.read` | paths | Read files under the granted paths |
-| `fs.write` | paths | Write files under the granted paths |
-| `process.spawn` | commands | Spawn the granted executables |
-| `net.connect` | hosts | Open outbound TCP connections to the granted hosts |
+| `editor.read` | none | Read editor state and receive editor events |
+| `editor.write` | none | Apply text edits |
+| `ui.message` | none | Show status messages |
+| `diagnostics.read` | none | Receive diagnostics events |
+| `diagnostics.publish` | none | Publish diagnostics for the current buffer |
+| `fs.read` | `paths` | Read files under the declared paths |
+| `fs.write` | `paths` | Write files under the declared paths |
+| `process.spawn` | `commands` | Spawn the declared executables |
+| `net.connect` | `hosts` | Open outbound TCP connections to the declared hosts |
 
-Names are stable. Unknown capabilities are ignored with a warning. New capabilities are additive and bump only the protocol or WIT minor version.
-
-## Scopes
-
-Unscoped capabilities use `true` in both requests and grants. Scoped capabilities use tables.
-
-### Paths
-
-`fs.read` and `fs.write` take `paths`, an array of directories or files. An import that exposes multiple capabilities, such as WASI filesystem read and write, must have every exposed capability requested by the manifest. A grant for any one of the requested capabilities is enough to instantiate the plugin, so read-only access still grants only `fs.read`. WebAssembly preopens require directories, so a file grant is skipped with a warning for WebAssembly plugins.
-
-Paths may start with these variables:
-
-- `$WORKSPACE`: the active workspace root
-- `$PLUGIN_DIR`: the plugin directory
-- `$CONFIG`: `$XDG_CONFIG_HOME/kawi`
-- `$HOME`: the user home directory
-
-Other variables are rejected. Kawi expands variables when it builds the Landlock ruleset or WASI preopens. `$WORKSPACE` is the active project root, which falls back to the current directory when no project is open, captured for the life of the plugin process or WebAssembly session.
-
-Expanded paths must be absolute. Kawi rejects `..` components before resolving. Grant paths are canonicalized when the sandbox or WASI preopens are built and symlinks are resolved before the rule is installed, so a symlink that escapes a grant does not match. A grant path that does not exist is skipped with a log line until the path exists and the plugin restarts.
-
-Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. For process plugins, a grant for a file covers exactly that file. A grant never widens a request.
-
-### Commands
-
-`process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Kawi resolves bare names with the host PATH when permissions are evaluated and again when a WebAssembly `process-run` call is authorized. The process runtime resolves them again when it builds the Landlock ruleset. Request and grant entries are both resolved and canonicalized to absolute executable paths. A grant covers only the same canonical path. Matching is never by name alone. A bare grant for `git` does not cover a request for an absolute path that resolves elsewhere. An executable that cannot be resolved is denied. Arguments are not scoped.
-
-### Hosts
-
-`net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Kawi lowercases hostnames before comparison. Matching is exact. `api.example.com:443` is not covered by a grant for `*.example.com:443`, and wildcards are invalid in version 1. Port ranges are not supported.
-
-The WebAssembly runtime resolves hostname grants once per session with a five-second cap and pins the resulting addresses. Only globally routable answers are pinned; mixed answers keep only the public addresses. The session does not re-resolve hostnames, so TTL expiry cannot widen the pinned set, but a long-lived session keeps stale addresses. Restart, or a grant change that restarts the plugin, builds a new session and re-resolves. Loopback, private, link-local, shared, documentation, benchmarking, multicast, reserved, 6to4, Teredo, ORCHID, and IPv4-mapped answers are rejected unless the grant names a connectable address literally. Unspecified, broadcast, and multicast addresses are always denied. A DNS name that rebinds to a different or non-public address is denied for the life of the session. IP literal grants allow that exact address and port, including loopback and private addresses. WASI name lookup is filtered to granted hostnames and returns only their pinned public addresses; arbitrary names are denied before DNS. The only permitted outbound operation is TCP connect. TCP connect is allowed only to a pinned address; UDP, listen, and accept are denied. The runtime permits the wildcard ephemeral bind that connect needs. Resolver failure fails closed. A failed or timed-out resolution emits a `network warning` in `:plugin list` and `:plugin logs`; the plugin still starts, and the warning does not count toward the five-failure disable.
-
-Each session allows at most 64 simultaneous TCP connections. A connection releases its slot when the guest drops the socket or shuts down both directions, so connect-and-disconnect loops do not exhaust the cap. The cap is per plugin session, not global. Denied attempts do not consume a slot. Each connection also has an 8 MiB inbound cap and an 8 MiB outbound cap. Reads are limited to the remaining budget, so a read that crosses the cap returns a short read; the next read returns EOF. Writes are limited by the permit, so a write that crosses the cap is shortened to the remaining budget; the next write fails as closed, and the socket stays open for reads. Socket readiness waits use the invocation budget in both directions, so a peer that stops reading or sending cannot hold the call past that budget. A handled cap hit is a normal stream error and does not count as a crash; an unhandled one follows the normal invocation failure path. The conformance suite checks the plugin is still ready immediately after each cap and then makes a successful call. Reconnecting starts fresh per-connection budgets. All streams in a session share a 64 MiB byte total across inbound and outbound. The session total is the binding limit for wide fan-out: 64 connections times 16 MiB per connection is 1 GiB of per-connection headroom, so a plugin hits the session total before it can use every per-connection cap. Budget accounting is per byte. When the session total is exhausted, reads return EOF and writes fail as closed. The caps apply to WASI TCP streams, not process plugins. The session total is shared across both directions, so a plugin that reads a large amount has less room to write. The caps count bytes at the WASI stream boundary, not kernel buffers. Restart closes sockets held by the guest; the conformance suite verifies EOF on a held connection. Hostname-positive connect, rebinding, mixed answers, and all-private answers are guest-tested under the debug-only `wasm-test-network` feature. The byte cap rows run in the default WASM build and cover exact inbound and outbound limits, straddling short reads and writes, a vectored write path, a splice path, a peer that stops reading, a peer that stops sending, mixed-direction session accounting, repeated close and reconnect, and the shared session total. The test resolver is scripted per session and counts calls, so the suite asserts that a live session resolves once, that later answers cannot widen the pinned set, and that restart re-resolves. The default build still denies loopback hostnames and uses the real resolver. An all-private answer produces a clean name lookup error rather than an empty address list, and never a trap. Resolution runs while the session is built, not inside an invocation, so its five-second cap is a bounded startup cost. A timeout fails closed and leaves the worker restartable.
-
-### Subsumption summary
-
-| Scope | A grant covers a request when |
-| --- | --- |
-| none | both are unscoped |
-| paths | the requested canonical path is the granted path or a descendant of the granted path |
-| commands | both resolve to the same canonical executable path |
-| hosts | host and port match exactly |
-
-## Manifest request
-
-Plugins request capabilities in `plugin.toml`:
+Unscoped APIs use `true`. Scoped APIs use tables:
 
 ```toml
 [capabilities]
 "editor.read" = true
 "editor.write" = true
 "ui.message" = true
-"fs.read" = { paths = ["$WORKSPACE"] }
-"process.spawn" = { commands = ["git"] }
+"fs.read" = { paths = ["$WORKSPACE/src"] }
+"process.spawn" = { commands = ["git", "rg"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
 ```
 
-Rules:
+## Paths
 
-- Unscoped capabilities must be `true`.
-- Scoped capabilities must be a table with the documented key.
-- `true` for a scoped capability is invalid and produces a warning.
-- Unknown capability names and unknown scope keys produce warnings and are ignored.
-- Registering commands and default keybindings needs no capability. They only publish names.
-- A command may optionally declare `capabilities = ["editor.read"]` to gate invocation. The gate must be a subset of the plugin request table. It limits who may invoke the command and does not grant access. Each host call is still checked against the effective grant.
-- An ungated command is invokable whenever the plugin can run. `:doctor` hints about ungated commands when `editor.write` is granted.
+`fs.read` and `fs.write` take `paths`, an array of directories or files. Paths may use `$WORKSPACE`, `$PLUGIN_DIR`, `$CONFIG`, and `$HOME`. Other variables are rejected. Expanded paths must be absolute and must not contain `..`.
 
-The manifest is a request. It is not consent.
+Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. WebAssembly preopens require directories, so a file path is skipped with a warning for WASM plugins.
 
-## Grant file
+## Commands
 
-Users grant capabilities in `$XDG_CONFIG_HOME/kawi/permissions.toml`:
+`process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Bare names are resolved with the host `PATH` when the sandbox is built. Arguments are not scoped.
 
-```toml
-[plugins.trim.approved]
-"editor.read" = true
-"editor.write" = true
-"ui.message" = true
+## Hosts
 
-[plugins.trim.grant]
-"editor.read" = true
-"editor.write" = true
-"ui.message" = true
+`net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Hostnames are lowercased before comparison. Wildcards and port ranges are not supported.
 
-[plugins.gitsigns.approved]
-"editor.read" = true
-"process.spawn" = { commands = ["git"] }
+The WebAssembly runtime resolves declared hostnames once per session with a five-second cap and pins the resulting public addresses. Loopback, private, link-local, shared, documentation, benchmarking, multicast, reserved, 6to4, Teredo, ORCHID, and IPv4-mapped answers are rejected unless the declaration names a connectable address literally. The session never re-resolves. Restart builds a new session and resolves again. WASI name lookup is filtered to declared hostnames. Only outbound TCP connect is permitted.
 
-[plugins.gitsigns.grant]
-"editor.read" = true
-"process.spawn" = { commands = ["git"] }
+## Command gates
 
-[plugins.example.approved]
-"editor.read" = true
-"fs.read" = { paths = ["$WORKSPACE/src"] }
-
-[plugins.example.grant]
-"ui.message" = false
-"editor.read" = true
-"fs.read" = { paths = ["$WORKSPACE/src"] }
-```
-
-`approved` uses the same string-or-table shape as the manifest request and records the request set the user approved. `grant` is a table with the same shape. `false` in `grant` revokes a default-tier capability. This keeps the format valid TOML and avoids heterogeneous arrays.
-
-Rules:
-
-- The grant file lives in user configuration. Kawi never reads a grant file from a plugin directory and warns when one is present there.
-- Every entry in the `grant` table must be a request in the manifest. Unrequested grants add no access and are reported as stale by doctor.
-- Grants for unknown plugins add no access and are reported as stale by doctor.
-- A scoped grant must be equal to or narrower than the request scope.
-- Multiple entries in a scope array are combined into one scope for that capability.
-- `false` is valid only for default-tier capabilities. It revokes that default. Using it for any other capability warns and is ignored.
-- A missing grant file grants only the default tier.
-- A malformed grant file fails closed: every plugin receives only the default tier, with a startup error and doctor output. Kawi does not grant everything and does not abort startup.
-- An invalid scope in one entry drops that entry only. Other valid grants in the file still apply.
-- Kawi warns when the grant file is writable by group or other users.
-
-Kawi watches the parent directory of `permissions.toml` and reloads it after a debounced change. Reloads use the same atomic fail-closed swap as `:plugin reload`. A malformed save drops every plugin to the default tier and warns instead of keeping the previous grants. Kawi suppresses the reload triggered by its own grant writes. Revocation clears any one-shot allowances. For process plugins, host-method grants apply to the next call, and a change to an `fs.*` or `process.spawn` scope restarts the plugin so the kernel ruleset matches the new grants. WebAssembly plugins restart when any effective grant changes because linking is fixed at instantiation.
-
-`approved` records the request set the user has approved. It uses the same shape as a manifest request. Kawi compares it with the current manifest request set per capability:
-
-| Change | Grant behavior |
-| --- | --- |
-| unchanged | keep the grant |
-| narrowed | keep the grant, intersected with the new request |
-| added | withhold until approved |
-| widened | withhold until approved; never carry the old grant over the widened scope |
-| removed | no access; an existing grant is stale |
-
-An incomparable change that both adds and removes scope is treated as widened because it contains a new item that was never approved. Reordering does not change the diff.
-
-The request and approved sets are canonical. Capability names and scope keys are sorted lexicographically, scope arrays are deduplicated and sorted after lexical normalization, paths reject `..` and normalize `.` and duplicate separators, and hostnames are lowercased. Command strings keep their case. Canonicalization of those sets does not expand variables, resolve the PATH, or resolve symlinks. Effective command grants are resolved and canonicalized separately when permissions are evaluated. Unknown or invalid entries are omitted and reported separately.
-
-Command gates are recorded with the approved request set:
+A command may declare `capabilities = ["editor.read"]` to restrict invocation. The gate must be a subset of the plugin declarations. It does not add access. Every host call is still checked against the declared APIs.
 
 ```toml
-[plugins.example.command_gates]
-format = ["editor.write"]
+[[commands]]
+id = "format"
+title = "Format buffer"
+capabilities = ["editor.write"]
 ```
 
-Adding a command gate is reported in the changed-request summary and does not withhold grants. Removing a gate is reported as a widening and produces a warning; it appears in the changed-request summary, not as a separate approval item. A gate that names a capability outside the request table is rejected and the plugin is not loaded.
+An ungated command runs whenever the plugin runs.
 
-`request_hash` is optional and retained for older files. When the `approved` table is absent and the hash matches the current request set, Kawi treats the current request set as approved. A missing or corrupt approved record with no matching hash treats every request as new. A malformed approved table fails closed for that plugin and produces a warning.
+## Enforcement
 
-## Effective grant
+- WebAssembly plugins can only import interfaces declared in the manifest. An undeclared import fails before instantiation.
+- WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
+- WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
+- Host-mediated editor, UI, and diagnostics calls require the matching declaration.
+- Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
+- Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. Network scope is advisory for process plugins.
 
-The effective grant for a plugin is:
+## Updates
 
-1. The default tier, currently `ui.message`, unless the grant table sets `"ui.message" = false`.
-2. The explicit `grant` table for that plugin.
-3. Intersected with the manifest request set.
-
-Only default-tier capabilities may be revoked with `false`. A grant for a capability the plugin did not request adds no access. A plugin update that adds a request never gains access because the new request is outside the existing grant. The plugin starts with the intersection and warns about the rest. Kawi stores no mutable grant state inside the plugin directory.
-
-Scope narrowing examples:
-
-- Request `fs.read = { paths = ["$WORKSPACE"] }`, grant `"fs.read" = { paths = ["$WORKSPACE/src"] }`: covers `src` only.
-- Request `paths = ["$WORKSPACE/src"]`, grant `paths = ["$WORKSPACE"]`: does not cover the request.
-- Request `process.spawn = { commands = ["git", "rg"] }`, grant `"process.spawn" = { commands = ["git"] }`: grants `git` only and warns about `rg`.
-- Request `net.connect = { hosts = ["api.example.com:443"] }`, grant `"net.connect" = { hosts = ["api.example.com:443"] }`: exact match.
-
-## Enforcement table
-
-| Method or event | Capability |
-| --- | --- |
-| `initialize` | none |
-| `invoke_command` | none |
-| `shutdown` | none |
-| `$/cancelRequest` | none |
-| `on_startup`, `on_command`, `on_file_open` | none |
-| `editor.get_state` | `editor.read` |
-| `editor.apply_edit` | `editor.write` |
-| `ui.message` | `ui.message` |
-| `editor.set_diagnostics` | `diagnostics.publish` |
-| `buffer_changed` | `editor.read` |
-| `buffer_opened` | `editor.read` |
-| `file_opened` | `editor.read` |
-| `buffer_closed` | `editor.read` |
-| `file_saved` | `editor.read` |
-| `mode_changed` | `editor.read` |
-| `diagnostics_changed` | `diagnostics.read` |
-
-Kawi authorizes a host method before reading its parameters, looking up a buffer, or comparing revisions. A plugin without `editor.read` cannot use `-32010` stale-revision errors to probe buffer existence or revision numbers. Unknown methods return `-32601`; known methods without an effective grant return `CAPABILITY_DENIED`.
-
-Host requests are checked against the current grants on every call. A JSON-RPC notification has no id, so a denied notification is dropped and recorded in `:plugin logs` instead of receiving an error response.
-
-Events are checked when they enter the queue and again when the writer writes them to the plugin pipe. Revoking a grant therefore drops events already queued for a stalled plugin. A plugin without `editor.read` receives no editor events, even if it subscribes to them. A plugin without `diagnostics.read` receives no diagnostic events. Startup and doctor warn when a subscription is unusable because of a missing capability. Event payloads that carry paths, including `buffer_opened`, `file_opened`, and `file_saved`, use the same gate.
-
-The `host_capabilities` and `events` fields in the process `initialize` result are derived from the same table as enforcement. Kawi advertises only methods and events covered by the effective grant at initialization time. Enforcement continues to use the current grants, so process host-method revocation applies to the next message without restarting the plugin. Process filesystem and execute scopes are fixed for the life of the process and change on restart. WebAssembly plugins do not receive these fields; `init` receives only the protocol version, and any effective grant change restarts the instance.
-
-The process `invoke_command` context is editor state. Without `editor.read`, Kawi replaces it with an empty context: buffer and revision `0`, no path or language, normal mode, cursor at the origin, and no selection. WebAssembly `invoke-command` receives only the command id and scalar arguments; request `editor.read` and call `editor.get_state` when it needs editor state. Command arguments are caller-supplied command input from configuration or keybindings, not editor state, and are passed through.
-
-## Consent prompt
-
-An ungranted host call or import opens a host prompt. Denied notifications and command gate denials are rejected without a prompt. For a single ungranted request the prompt offers allow once, allow always, or deny. When a plugin has added or widened requests, one prompt lists every pending change with a per-item choice plus allow all and deny all. Process plugins offer allow once, allow always, and deny per item. WASM startup imports offer only allow always and deny because linking is fixed at instantiation. `:plugin grant <plugin> <capability>` opens the same prompt for the typed flow.
-
-- Only real keyboard input answers a prompt. Synthetic keys from `keys.send`, macro replay, mouse events, and pasted text are ignored while a prompt is open.
-- Plugin-originated messages cannot replace the prompt text.
-- Plugin names, capability names, change labels, and other rendered values are stripped of control characters and terminal escape sequences. The host renders only its own labels and sanitized values.
-- Allow once covers the next call. Allow always rewrites `permissions.toml` with `toml_edit`, preserves comments and unrelated grants, re-reads the file before merging, and writes atomically. A failed write falls back to allow once with a warning for call prompts.
-- The prompt stores the approved request set in `permissions.toml`. Allowed additions and widenings enter the approved set. Denied additions stay absent. A denied widening keeps the previous approved scope so the plugin still reports a widening on the next load.
-- Unchanged and narrowed requests keep their grants. Removed requests leave the approved set and their grants are cleaned up on the next write.
-- A batch applies in one file write. The plugin restarts once after it finishes when the runtime needs a new sandbox or instance. A plugin with queued prompts waits until its queue drains.
-- One prompt is active at a time, at most eight wait in the queue, duplicates are collapsed, and an unanswered prompt expires after 30 seconds as a denial.
-
-## Failure behavior
-
-Missing capability:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 7,
-  "error": {
-    "code": -32012,
-    "message": "capability denied: fs.write",
-    "data": {
-      "capability": "fs.write",
-      "scope": {
-        "paths": ["$WORKSPACE/src"]
-      }
-    }
-  }
-}
-```
-
-`-32011` is already `INVALID_POSITION`. Reusing it would make errors ambiguous, so `CAPABILITY_DENIED` is a new additive code, `-32012`.
-
-An unmet request:
-
-- Produces a startup warning naming the plugin and the capability.
-- Appears in `kawi doctor`.
-- Appears in `:plugin list`.
-- Does not prevent the plugin from running with its granted subset.
-
-The first denial for each plugin and capability records a log entry with the missing capability and the TOML grant to add. Later denials increment a counter instead of flooding `:plugin logs`. `:plugin list` and `kawi doctor` keep showing missing grants and the permissions lines after a prompt is dismissed. Error data contains only the missing capability and its requested scope, never the effective grants or editor state.
-
-Grant checks read a swappable registry, not a grant snapshot captured at spawn. Edit `permissions.toml` or run `:plugin reload` to change host-method and event grants immediately. Kawi restarts a process plugin when its filesystem or execute scope changes so Landlock re-applies the ruleset. Kawi restarts a WebAssembly plugin when any effective grant changes.
-
-`ui.message` is throttled to one message per plugin per second. Throttled messages are dropped and counted in `:plugin logs`.
-
-A malformed `permissions.toml` during `:plugin reload` is fail-closed. Kawi swaps in the default tier and warns instead of keeping the previous grants or granting everything. The registry swap is one atomic replacement, so no call sees a partially loaded grant set.
-
-## Advisory status
-
-Process plugins call the host for editor and UI methods, and the kernel sandbox covers direct operating system access where the platform supports it:
-
-- Enforced everywhere: `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish`.
-- Enforced on Linux with Landlock: `fs.read`, `fs.write`, and the execute half of `process.spawn`.
-- Enforced for WebAssembly: `net.connect`, including DNS pinning, filtered guest name lookup, non-public address rejection, connection caps, restart socket closure, and guest conformance rows for rebinding and mixed answers.
-- Advisory for process plugins: `net.connect` on every platform, `fs.*` and `process.spawn` off Linux, and every filesystem scope on older Landlock ABIs that cannot enforce rename or truncate restrictions.
-
-Each spawned plugin receives a Landlock ruleset in the child between fork and exec, after `no_new_privs` is set. The ruleset is deny by default. The baseline read-only allowlist covers common runtime roots: `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, `/nix/store`, `/run/current-system/sw`, the dynamic loader and ELF interpreter, runtime prefixes derived from the plugin executable (including virtualenv prefixes), `/etc/ld.so.cache`, TLS and DNS configuration, `/proc/self`, and `/dev/urandom`. `/dev/null` and the plugin directory are writable. A plugin that needs any other file must request `fs.read` or `fs.write`; it must request `process.spawn` to execute anything beyond the interpreter named in its manifest.
-
-A granted path that does not exist is skipped with a log line instead of aborting the spawn or widening access. A granted executable that cannot be resolved is likewise skipped with a log line. A plugin that dies during startup logs the spawn error together with the sandbox status.
-
-`process.spawn` grants are resolved to canonical executable paths at spawn time. Landlock allows `EXECUTE` on those paths, which closes the command-name race between grant checking and execution. Arguments are not scoped. `net.connect` cannot be enforced by Landlock because it scopes ports, not hostnames; WebAssembly plugins use the WASI socket policy instead.
-
-The ruleset is best effort and follows the ABI the running kernel supports. Full enforcement requires an ABI that includes rename and truncate restrictions. If Landlock is unavailable the plugin starts unsandboxed. If the ABI is older, the plugin still starts under the partial ruleset. `:plugin list` marks a scope `enforced` only after a full ruleset was applied at spawn; unavailable and partial results stay `advisory`. A spawn fails visibly if an available ruleset cannot be applied.
-
-Landlock is not a complete process boundary. It does not restrict hostnames or network destinations, so `net.connect` remains advisory for process plugins. Depending on the ABI it also may not stop connections to local sockets such as D-Bus or an ssh-agent, and it does not restrict signals or ptrace between same-user processes. Filesystem and executable scopes are enforced, but a process plugin remains same-user code. The WebAssembly runtime is the path to a complete boundary.
+Kawi compares the declared API surface when you run `:plugin update`. Added or widened APIs require one confirmation that shows the new commit and the changed APIs. Removed or narrowed APIs do not prompt. A component hash change without an API change updates without a prompt.
 
 ## Doctor and plugin list
 
-`kawi doctor` reports:
+`:plugin list` shows each plugin's declared APIs without starting it. `kawi doctor` checks installed plugin directories, the lockfile, and development plugins. It reports missing installed directories, malformed lockfiles, and plugin manifest warnings.
 
-- Parse errors in `permissions.toml`.
-- Unknown plugins and stale grants.
-- Grants for capabilities the plugin does not request.
-- Requests without grants.
-- Changed request sets, shown with added, widened, narrowed, and removed capabilities.
-- Subscriptions that cannot receive events.
-- Advisory grants labeled `advisory` and fully enforced grants labeled `enforced`.
+## Development plugins
 
-`:plugin list` shows effective, missing, stale, and changed capabilities without spawning the plugin. It also shows the first denial for each plugin and capability with the exact permissions line to add. Process filesystem and execute scopes are labeled `(enforced)` only after a spawn applied a full Landlock ruleset. WebAssembly `net.connect` is labeled `(enforced)`. Process `net.connect` is labeled `(advisory)`. Each plugin row shows its name, version, runtime, status, granted capabilities, and commands; missing, changed, stale, and denied capabilities follow as separate lines.
-
-## Migration
-
-Enforcement is deny by default. A plugin with no `[capabilities]` table is limited to the default tier. A WebAssembly component must still request every imported capability, including default-tier ones. Existing process plugins must add a request section and users must grant it. The bundled examples request the capabilities they use.
-
-The grant file remains the durable consent surface; the prompt is the interactive path that writes it. Files created before the approved request set existed need either a matching `request_hash` or an `approved` table before non-default grants apply.
+Development plugins are not in the lockfile and are not managed by `:plugin install`, `:plugin update`, `:plugin disable`, or `:plugin remove`. They are loaded from `$XDG_CONFIG_HOME/kawi/plugins` with a startup warning. Remove or edit them directly.

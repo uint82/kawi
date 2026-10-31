@@ -36,7 +36,7 @@ Removal remains blocked until external validation completes and the deprecation 
 The pilot protocol, release-cycle definition, and friction form are in [plugin-external-validation](plugin-external-validation.md).
 
 - At least one plugin written by someone who did not build the host is published and used for a release cycle.
-- The external author reports no blocker in the authoring guide, SDK helpers, install flow, grant flow, inspect flow, logs, or migration.
+- The external author reports no blocker in the authoring guide, SDK helpers, install flow, host API review, inspect flow, logs, or migration.
 - Documentation gaps found during that trial are fixed before deprecation warnings begin.
 
 ## Default and migration window
@@ -53,7 +53,7 @@ Process plugins stay available only if a capability cannot be expressed safely i
 
 Decisions:
 
-- `process.spawn` is not process-only. The WASM runtime exposes the separately reviewed `process-run` host interface and requires the same `process.spawn` grant. It stays a host-mediated capability in both runtimes.
+- `process.spawn` is not process-only. The WASM runtime exposes the separately reviewed `process-run` host interface and requires the same `process.spawn` declaration. It stays a host-mediated capability in both runtimes.
 - Non-Rust component languages have no maintained binding path. The Rust SDK is the supported authoring path. Other component languages may target the WIT contract without support, and that does not keep the process runtime alive.
 - No plugin may require the process runtime through a documented compatibility exception. Exceptions would be listed here before removal. None are approved.
 

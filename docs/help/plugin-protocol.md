@@ -5,11 +5,11 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its granted events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its declared events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
 
 ## Trust model
 
-Process plugins run as your user. Kawi loads plugins only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by capabilities. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to granted scopes; see [Plugin capabilities](help:plugin-capabilities).
+Process plugins run as your user in development mode. Kawi loads them only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by the manifest declarations. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to declared scopes. Managed installs use WASM; see [Plugin host APIs](help:plugin-capabilities).
 
 Each plugin lives in its own directory:
 
@@ -126,7 +126,7 @@ Plugin response:
 }
 ```
 
-Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares an unknown host capability. Calling an unknown method returns `-32601`; a known method without an effective capability grant returns `-32012`.
+Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares an unknown host capability. Calling an unknown method returns `-32601`; a known method outside the declared host APIs returns `-32012`.
 
 Kawi sends only events present in both the manifest `subscribes` list and the plugin `events` list. A plugin that returns no `events` receives no notifications.
 
@@ -209,7 +209,7 @@ Events are post-hoc notifications. They never wait for a plugin response. Kawi d
 
 Notifications and requests share one ordered pipe per plugin. Ordering is guaranteed per plugin and per event type. `editor.get_state` always returns live state and includes the current revision.
 
-When a plugin loses its event grants, queued events are dropped. An event already being handled may finish, including any host call already in flight; revocation does not cancel that call.
+When a plugin stops, queued events are dropped. An event already being handled may finish, including any host call already in flight.
 
 Each plugin has a bounded event queue. Kawi coalesces or debounces `buffer_changed`; other events are dropped with a log line when the queue is full. An overflow marks the buffer for resync, so the next delivered change has `full_resync: true`. A crash or restart clears queued events and forces resync.
 
