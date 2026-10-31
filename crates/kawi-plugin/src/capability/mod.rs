@@ -1,3 +1,4 @@
+mod command;
 mod diff;
 mod permissions;
 mod registry;

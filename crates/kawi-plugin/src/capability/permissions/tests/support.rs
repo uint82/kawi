@@ -6,6 +6,14 @@ pub(super) fn requests(text: &str) -> CapabilityRequests {
     parse_capability_requests(value.as_table().expect("table")).0
 }
 
+pub(super) fn canonical_command(command: &str) -> String {
+    let path = kawi_process::find_executable(command).expect("command on PATH");
+    std::fs::canonicalize(path)
+        .expect("canonical command")
+        .to_string_lossy()
+        .into_owned()
+}
+
 pub(super) fn raw_effective_for(
     request_text: &str,
     permissions_text: &str,
