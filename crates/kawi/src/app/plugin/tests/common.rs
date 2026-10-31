@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use kawi_buffer::Buffer;
-use kawi_plugin::PluginStatus;
-use toml_edit::{DocumentMut, Item, Table};
+use kawi_plugin::{PluginLock, PluginStatus};
 
 use crate::app::App;
 use crate::command::CommandHandler;
@@ -63,25 +62,28 @@ pub(super) fn copy_example_plugin(root: &Path, name: &str) -> PathBuf {
     dir
 }
 
-pub(super) fn load_plugins(app: &mut App, root: &std::path::Path) -> Vec<String> {
-    grant_all(root);
-    load_plugins_with_permissions(
-        app,
-        root,
-        &fs::read_to_string(root.join("permissions.toml")).unwrap(),
-    )
+pub(super) fn configure_plugin_manager(app: &mut App, root: &std::path::Path) {
+    app.plugin_manager.configure_for_test(
+        root.join("installed"),
+        root.to_path_buf(),
+        root.join("plugins.lock"),
+    );
 }
 
-pub(super) fn load_plugins_with_permissions(
-    app: &mut App,
-    root: &std::path::Path,
-    permissions: &str,
-) -> Vec<String> {
-    write_permissions(root, permissions);
+pub(super) fn load_plugins(app: &mut App, root: &std::path::Path) -> Vec<String> {
+    load_plugins_raw(app, root)
+        .into_iter()
+        .filter(|warning| !warning.contains("development plugin loaded"))
+        .collect()
+}
+
+pub(super) fn load_plugins_raw(app: &mut App, root: &std::path::Path) -> Vec<String> {
+    let lock = PluginLock::default();
     app.plugins.load(
         crate::app::plugin::PluginLoadContext {
-            dir: root,
-            permissions: &root.join("permissions.toml"),
+            installed: &root.join("installed"),
+            dev: root,
+            lock: &lock,
             workspace: root,
             commands: &mut app.commands,
             keymaps: &mut app.keymaps,
@@ -90,75 +92,6 @@ pub(super) fn load_plugins_with_permissions(
         },
         true,
     )
-}
-
-pub(super) fn write_permissions(root: &std::path::Path, permissions: &str) {
-    let text = with_approved(root, permissions);
-    fs::write(root.join("permissions.toml"), text).unwrap();
-}
-
-fn with_approved(root: &std::path::Path, permissions: &str) -> String {
-    let Ok(mut document) = permissions.parse::<DocumentMut>() else {
-        return permissions.to_string();
-    };
-    if document.get("plugins").is_none() {
-        document.insert("plugins", Item::Table(Table::new()));
-    }
-    let catalog = kawi_plugin::load_catalog(root);
-    for plugin in &catalog.plugins {
-        let name = plugin.manifest.name.as_str();
-        let Some(plugins) = document.get_mut("plugins").and_then(Item::as_table_mut) else {
-            return permissions.to_string();
-        };
-        if !plugins.contains_key(name) {
-            plugins.insert(name, Item::Table(Table::new()));
-        }
-        let Some(table) = plugins.get_mut(name).and_then(Item::as_table_mut) else {
-            continue;
-        };
-        if table.contains_key("approved") || table.contains_key("request_hash") {
-            continue;
-        }
-        let Ok(manifest_text) = fs::read_to_string(&plugin.path) else {
-            continue;
-        };
-        let Ok(manifest) = manifest_text.parse::<DocumentMut>() else {
-            continue;
-        };
-        let Some(capabilities) = manifest.get("capabilities").and_then(Item::as_table) else {
-            continue;
-        };
-        let mut approved = Table::new();
-        for (key, value) in capabilities.iter() {
-            approved.insert(key, value.clone());
-        }
-        table.insert("approved", Item::Table(approved));
-    }
-    document.to_string()
-}
-
-pub(super) fn grant_all(root: &std::path::Path) {
-    let mut text = String::new();
-    for entry in fs::read_dir(root).unwrap().flatten() {
-        let path = entry.path();
-        let manifest_path = path.join("plugin.toml");
-        if !manifest_path.is_file() {
-            continue;
-        }
-        let manifest: toml::Value =
-            toml::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
-        let Some(capabilities) = manifest.get("capabilities").and_then(toml::Value::as_table)
-        else {
-            continue;
-        };
-        let name = path.file_name().unwrap().to_string_lossy();
-        text.push_str(&format!("[plugins.{name}.grant]\n"));
-        for capability in capabilities.keys() {
-            text.push_str(&format!("\"{capability}\" = true\n"));
-        }
-        text.push('\n');
-    }
-    fs::write(root.join("permissions.toml"), text).unwrap();
 }
 
 pub(super) fn event_manifest(root: &std::path::Path, mode: &str, debounce: Option<u64>) -> PathBuf {
@@ -191,73 +124,6 @@ pub(super) fn wait_for_plugin(app: &mut App, plugin: &str) {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(app.plugins.status(plugin), Some(PluginStatus::Ready));
-}
-
-pub(super) fn denied_manifest(root: &std::path::Path) {
-    let dir = root.join("denied");
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        r#"name = "denied"
-version = "0.1.0"
-protocol = 1
-command = ["/bin/true"]
-
-[capabilities]
-"editor.read" = true
-"editor.write" = true
-"ui.message" = true
-
-[[commands]]
-id = "ping"
-title = "Ping"
-"#,
-    )
-    .unwrap();
-}
-
-pub(super) fn gating_manifest(root: &std::path::Path) -> PathBuf {
-    let dir = root.join("gating");
-    fs::create_dir_all(&dir).unwrap();
-    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/app/plugin/test_data/gating_plugin.py");
-    fs::copy(source, dir.join("gating_plugin.py")).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        r#"name = "gating"
-version = "0.1.0"
-protocol = 1
-command = ["python3", "${plugin_dir}/gating_plugin.py"]
-timeout_ms = 5000
-subscribes = ["buffer_changed", "buffer_opened", "file_opened", "file_saved"]
-
-[capabilities]
-"editor.read" = true
-
-[[activation_events]]
-event = "on_startup"
-"#,
-    )
-    .unwrap();
-    dir
-}
-
-pub(super) fn denied_error(app: &App, method: &str) -> kawi_plugin::RpcError {
-    let capability = app
-        .plugins
-        .denied_capability("denied", method)
-        .expect("capability");
-    app.plugins.capability_error("denied", capability)
-}
-
-pub(super) fn method_capability(method: &str) -> &'static str {
-    match method {
-        "editor.get_state" => "editor.read",
-        "editor.apply_edit" => "editor.write",
-        "editor.set_diagnostics" => "diagnostics.publish",
-        "ui.message" => "ui.message",
-        other => panic!("unexpected method: {other}"),
-    }
 }
 
 pub(super) fn invoke_plugin(app: &mut App, name: &str) -> Option<String> {

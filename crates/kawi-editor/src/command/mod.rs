@@ -1188,9 +1188,9 @@ mod tests {
             }
         );
         assert_eq!(
-            parse("plugin grant trim editor.read"),
+            parse("plugin install owner/repo"),
             Command::Plugin {
-                text: "grant trim editor.read".to_string()
+                text: "install owner/repo".to_string()
             }
         );
     }
