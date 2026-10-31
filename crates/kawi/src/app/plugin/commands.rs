@@ -4,6 +4,8 @@ use super::super::command_text::split_command;
 use super::super::App;
 use super::consent::GrantKind;
 
+pub(crate) const SUBCOMMANDS: &[&str] = &["grant", "list", "reload", "restart", "logs", "inspect"];
+
 impl App {
     pub(crate) fn handle_plugin_command(&mut self, text: &str) {
         let text = text.trim();

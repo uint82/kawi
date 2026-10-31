@@ -9,7 +9,12 @@ use crate::options::{self, OptionContext, OptionKind, OptionSpec};
 impl App {
     pub(super) fn refresh_command_completion(&mut self) {
         let (option_values, boolean_options) = self.option_completions();
-        let completion = CommandCompletion::new(option_values, boolean_options, help_topics());
+        let completion = CommandCompletion::new(
+            option_values,
+            boolean_options,
+            help_topics(),
+            plugin_commands(),
+        );
         self.editor.set_command_completion(completion);
     }
 
@@ -40,6 +45,13 @@ fn add_option_completion(
     for name in std::iter::once(spec.name).chain(spec.aliases.iter().copied()) {
         option_values.insert(name.to_string(), values.clone());
     }
+}
+
+fn plugin_commands() -> Vec<String> {
+    super::plugin::SUBCOMMANDS
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
 }
 
 fn help_topics() -> Vec<String> {
@@ -132,6 +144,22 @@ mod tests {
         type_command(&mut app, "set no");
         complete(&mut app);
         assert_eq!(app.editor.command_text(), "set noauto_completion");
+    }
+
+    #[test]
+    fn completes_plugin_subcommands() {
+        let mut app = app();
+        type_command(&mut app, "plugin ");
+        complete(&mut app);
+        assert_eq!(app.editor.command_text(), "plugin grant");
+    }
+
+    #[test]
+    fn completes_plugin_subcommands_without_a_space() {
+        let mut app = app();
+        type_command(&mut app, "plugin");
+        complete(&mut app);
+        assert_eq!(app.editor.command_text(), "plugin grant");
     }
 
     #[test]

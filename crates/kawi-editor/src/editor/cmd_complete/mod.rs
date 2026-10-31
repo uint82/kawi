@@ -8,6 +8,7 @@ use crate::paths;
 
 mod help;
 mod options;
+mod plugin;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CompletionState {
@@ -114,6 +115,9 @@ impl Editor {
 
     fn completion_candidates(&self) -> Option<(usize, Vec<String>)> {
         let text = self.command.text();
+        if text == "plugin" {
+            return plugin::candidates(&self.command_completion, text, 0, "");
+        }
         let (start, pattern) = last_token(text);
         if start == 0 {
             return Some((0, matching(COMMAND_NAMES.iter().copied(), pattern)));
@@ -122,6 +126,7 @@ impl Editor {
         match command {
             "set" => options::candidates(&self.command_completion, text, start, pattern),
             "h" | "help" => help::candidates(&self.command_completion, text, start, pattern),
+            "plugin" => plugin::candidates(&self.command_completion, text, start, pattern),
             _ => {
                 let candidates = match completion_kind(command)? {
                     CompletionKind::File => file_candidates(
