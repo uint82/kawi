@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 mod autosave;
 mod code_action;
 mod command_completion;
+mod command_execute;
 mod command_text;
 mod completion;
 mod config;
@@ -104,8 +105,8 @@ use crate::options::SignColumnMode;
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
-    parse, Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, QuickfixCommand,
-    SearchOutcome, TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
+    Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, QuickfixCommand, SearchOutcome,
+    TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
@@ -1940,14 +1941,6 @@ impl App {
             self.show_pager(lines);
         }
         Ok(false)
-    }
-
-    fn handle_execute(&mut self) -> Result<bool> {
-        let text = self.editor.command_text().to_string();
-        self.last_command = Some(text.clone());
-        let command = parse(&text);
-        self.editor.apply(Action::CancelCommand);
-        self.run_command(command)
     }
 
     fn run_command(&mut self, command: Command) -> Result<bool> {

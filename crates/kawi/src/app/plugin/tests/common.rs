@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -50,6 +50,17 @@ normal = ["<leader>pp"]
 "#,
     )
     .unwrap();
+}
+
+pub(super) fn copy_example_plugin(root: &Path, name: &str) -> PathBuf {
+    let dir = root.join(name);
+    fs::create_dir_all(&dir).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/plugins")
+        .join(name);
+    fs::copy(source.join("plugin.toml"), dir.join("plugin.toml")).unwrap();
+    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
+    dir
 }
 
 pub(super) fn load_plugins(app: &mut App, root: &std::path::Path) -> Vec<String> {

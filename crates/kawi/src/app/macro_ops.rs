@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_editor::{parse, Mode, RegisterKind};
+use kawi_editor::{Mode, RegisterKind};
 
 use super::App;
 use crate::app::macro_codec::{decode_keys, encode_key};
@@ -148,8 +148,7 @@ impl App {
         };
         let count = self.editor.take_count();
         for _ in 0..count {
-            let command = parse(&text);
-            if self.run_command(command)? {
+            if self.execute_command_text(&text)? {
                 return Ok(true);
             }
         }
