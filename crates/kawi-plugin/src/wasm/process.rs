@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::capability::{Capability, CapabilityRegistry, Scope};
+use crate::capability::{resolve_command, Capability, CapabilityRegistry, Scope};
 use crate::environment::HostEnvironment;
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{RpcError, PLUGIN_UNAVAILABLE};
@@ -83,7 +83,7 @@ impl ProcessRunner {
             &self.plugin.manifest.name,
             &self.capabilities,
             command,
-            |command| kawi_process::find_executable_in(command, &self.plugin.dir),
+            resolve_command,
         )
     }
 
@@ -109,21 +109,14 @@ pub(crate) fn authorize_command(
     else {
         return Err(capability_denied(command));
     };
-    if commands.iter().any(|granted| {
-        resolve(granted).is_some_and(|granted| same_executable(&granted, &requested))
-    }) {
+    if commands
+        .iter()
+        .any(|granted| resolve(granted).is_some_and(|granted| granted == requested))
+    {
         Ok(requested)
     } else {
         Err(capability_denied(command))
     }
-}
-
-fn same_executable(left: &std::path::Path, right: &std::path::Path) -> bool {
-    left == right
-        || match (left.canonicalize(), right.canonicalize()) {
-            (Ok(left), Ok(right)) => left == right,
-            _ => false,
-        }
 }
 
 fn command_not_found(command: &str) -> RpcError {

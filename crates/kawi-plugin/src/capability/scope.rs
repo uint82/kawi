@@ -7,6 +7,7 @@ use std::path::Path;
 
 use serde_json::{Map, Value};
 
+use super::command;
 use super::Capability;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -91,8 +92,8 @@ impl Scope {
             (Self::Paths(outer), Self::Paths(inner)) => inner
                 .iter()
                 .all(|inner| outer.iter().any(|outer| path_within(inner, outer))),
-            (Self::Commands(outer), Self::Commands(inner))
-            | (Self::Hosts(outer), Self::Hosts(inner)) => {
+            (Self::Commands(outer), Self::Commands(inner)) => command::covers(outer, inner),
+            (Self::Hosts(outer), Self::Hosts(inner)) => {
                 inner.iter().all(|inner| outer.contains(inner))
             }
             _ => false,
@@ -188,9 +189,7 @@ fn parse_commands(values: &[toml::Value]) -> Result<Vec<String>, String> {
         let command = value
             .as_str()
             .ok_or_else(|| "commands must be strings".to_string())?;
-        if command.trim().is_empty() {
-            return Err("commands must not be empty".to_string());
-        }
+        command::validate(command)?;
         commands.insert(command.to_string());
     }
     Ok(commands.into_iter().collect())
@@ -256,8 +255,7 @@ pub fn intersect_scope(requested: &Scope, granted: &Scope) -> Option<Scope> {
 }
 
 fn intersect_commands(requested: &[String], granted: &[String]) -> Option<Scope> {
-    // TODO: resolve command names at spawn time before intersection.
-    exact_values(requested, granted).map(Scope::Commands)
+    command::intersect(requested, granted).map(Scope::Commands)
 }
 
 fn intersect_hosts(requested: &[String], granted: &[String]) -> Option<Scope> {

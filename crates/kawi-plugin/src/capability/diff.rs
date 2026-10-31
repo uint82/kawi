@@ -142,6 +142,9 @@ fn scope_change(previous: &Scope, next: &Scope) -> ChangeKind {
     if previous == next {
         return ChangeKind::Unchanged;
     }
+    if next.covers(previous) && previous.covers(next) {
+        return ChangeKind::Unchanged;
+    }
     if next.covers(previous) {
         return ChangeKind::Widened;
     }

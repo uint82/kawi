@@ -30,6 +30,10 @@ fn path_grants_narrow_requests() {
         granted.scope(Capability::FsRead),
         Some(&Scope::Paths(vec!["$WORKSPACE/src".to_string()]))
     );
+    assert!(granted
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("partially")));
 }
 
 #[test]
@@ -46,21 +50,13 @@ fn broader_path_grants_do_not_cover_requests() {
 }
 
 #[test]
-fn command_and_host_grants_are_exact() {
+fn host_grants_are_exact() {
     let granted = effective_for(
-        r#"
-"process.spawn" = { commands = ["git", "rg"] }
-"net.connect" = { hosts = ["api.example.com:443", "other.example.com:443"] }
-"#,
+        r#""net.connect" = { hosts = ["api.example.com:443", "other.example.com:443"] }"#,
         r#"
 [plugins.plugin.grant]
-"process.spawn" = { commands = ["git"] }
 "net.connect" = { hosts = ["API.EXAMPLE.COM:443"] }
 "#,
-    );
-    assert_eq!(
-        granted.scope(Capability::ProcessSpawn),
-        Some(&Scope::Commands(vec!["git".to_string()]))
     );
     assert_eq!(
         granted.scope(Capability::NetConnect),
@@ -98,25 +94,6 @@ fn invalid_entries_are_ignored_and_malformed_files_fail_parse() {
 }
 
 #[test]
-fn partial_grants_warn_but_still_grant_the_subset() {
-    let granted = effective_for(
-        r#""process.spawn" = { commands = ["git", "rg"] }"#,
-        r#"
-[plugins.plugin.grant]
-"process.spawn" = { commands = ["git"] }
-"#,
-    );
-    assert_eq!(
-        granted.scope(Capability::ProcessSpawn),
-        Some(&Scope::Commands(vec!["git".to_string()]))
-    );
-    assert!(granted
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("partially")));
-}
-
-#[test]
 fn rejects_parent_and_relative_paths_and_normalizes_trailing_slashes() {
     let granted = effective_for(
         r#""fs.read" = { paths = ["/home/u/proj/"] }"#,
@@ -148,18 +125,6 @@ fn path_subsumption_uses_components_not_string_prefixes() {
     );
     assert!(!granted.has(Capability::FsRead));
     assert_eq!(granted.missing, vec![Capability::FsRead]);
-}
-
-#[test]
-fn command_scopes_compare_canonical_strings() {
-    let granted = effective_for(
-        r#""process.spawn" = { commands = ["git"] }"#,
-        r#"
-[plugins.plugin.grant]
-"process.spawn" = { commands = ["/usr/bin/git"] }
-"#,
-    );
-    assert!(!granted.has(Capability::ProcessSpawn));
 }
 
 #[test]

@@ -147,6 +147,23 @@ fn mixed_changes_keep_unchanged_and_narrowed_requests() {
 }
 
 #[test]
+fn equivalent_command_spellings_are_unchanged() {
+    let absolute = canonical_command("sh");
+    let permissions = format!(
+        r#"
+[plugins.plugin.approved]
+"process.spawn" = {{ commands = ["{absolute}"] }}
+
+[plugins.plugin.grant]
+"process.spawn" = {{ commands = ["{absolute}"] }}
+"#
+    );
+    let granted = effective_for(r#""process.spawn" = { commands = ["sh"] }"#, &permissions);
+    assert!(!granted.changed);
+    assert!(granted.has(Capability::ProcessSpawn));
+}
+
+#[test]
 fn flipping_between_two_states_repeats_the_same_diff() {
     let approved = r#"
 [plugins.plugin.approved]

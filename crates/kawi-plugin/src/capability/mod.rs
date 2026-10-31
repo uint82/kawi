@@ -1,3 +1,4 @@
+mod command;
 mod diff;
 mod permissions;
 mod registry;
@@ -9,6 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+#[cfg(feature = "wasm")]
+pub(crate) use command::resolve as resolve_command;
 pub use diff::{diff, reconcile_approved, CapabilityChange, ChangeKind};
 pub use permissions::{
     effective, parse_permissions, EffectiveCapabilities, PermissionsFile, PluginPermissions,
