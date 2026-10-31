@@ -30,8 +30,8 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
-- **Process plugins.** Extend Kawi with JSON-RPC plugins that contribute commands, default keybindings, event subscriptions, and plugin-published diagnostics. Deny-by-default capabilities include interactive consent prompts and Linux Landlock filesystem and process-execution scopes.
-- **WASM plugins.** Feature-gated WebAssembly components with a versioned component contract, Rust SDK, build tooling, authoring guide, and conformance-backed trim example.
+- **Process plugins.** Trusted compatibility runtime for JSON-RPC plugins that contribute commands, default keybindings, event subscriptions, and plugin-published diagnostics. Deny-by-default capabilities include interactive consent prompts and Linux Landlock filesystem and process-execution scopes.
+- **WASM plugins.** WebAssembly components enabled by default with a versioned component contract, Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.
@@ -129,6 +129,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Plugins](docs/help/plugins.md)
 - [Plugin capabilities](docs/help/plugin-capabilities.md)
 - [Writing a WASM plugin](docs/help/plugin-authoring.md)
+- [Migrating a process plugin to WASM](docs/help/plugin-migration.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
 - [Troubleshooting](docs/help/troubleshooting.md)

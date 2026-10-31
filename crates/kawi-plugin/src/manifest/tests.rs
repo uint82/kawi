@@ -59,6 +59,15 @@ fn loads_a_manifest_and_resolves_the_plugin_dir() {
 }
 
 #[test]
+fn labels_process_and_wasm_runtimes() {
+    assert_eq!(
+        PluginRuntime::Process.label(),
+        "process (trusted compatibility runtime)"
+    );
+    assert_eq!(PluginRuntime::Wasm.label(), "wasm");
+}
+
+#[test]
 fn rejects_unknown_fields() {
     let root = temp_dir();
     let body = valid_manifest("echo").replacen("name = ", "unexpected = true\nname = ", 1);

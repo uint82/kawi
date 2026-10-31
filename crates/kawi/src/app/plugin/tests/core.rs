@@ -67,6 +67,7 @@ fn lists_plugins_without_starting_them() {
     app.handle_plugin_command("list");
     let lines = app.pager.as_ref().expect("pager");
     assert!(lines[0].contains("echo"));
+    assert!(lines[0].contains("process (trusted compatibility runtime)"));
     assert!(lines[0].contains("stopped"));
     fs::remove_dir_all(root).unwrap();
 }

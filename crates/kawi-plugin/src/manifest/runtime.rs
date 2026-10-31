@@ -10,6 +10,8 @@ use super::PluginManifest;
 const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_LEN: usize = 64;
 const COMPONENT_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x0d, 0x00, 0x01, 0x00];
+const PROCESS_LABEL: &str = "process (trusted compatibility runtime)";
+const WASM_LABEL: &str = "wasm";
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -17,6 +19,15 @@ pub enum PluginRuntime {
     #[default]
     Process,
     Wasm,
+}
+
+impl PluginRuntime {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Process => PROCESS_LABEL,
+            Self::Wasm => WASM_LABEL,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

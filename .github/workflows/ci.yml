@@ -16,6 +16,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -26,9 +29,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --no-default-features
       - name: Install wasm-tools
         uses: taiki-e/install-action@v2
         with:
@@ -55,15 +58,17 @@ jobs:
         run: cargo test -p kawi-plugin --features wasm,wasm-test-network --test conformance -- --nocapture
       - name: Check default dependencies
         run: |
-          if cargo tree -p kawi -e normal | grep -q wasmtime; then
+          cargo tree -p kawi -e normal | grep -q "wasmtime v"
+          if cargo tree -p kawi --no-default-features -e normal | grep -q wasmtime; then
+            echo "the no-default-features build must not include wasmtime" >&2
             exit 1
           fi
       - name: Check WASM dependencies
-        run: cargo tree -p kawi --features wasm -e normal | grep -q "wasmtime v"
+        run: cargo tree -p kawi --no-default-features --features wasm -e normal | grep -q "wasmtime v"
       - name: Check release excludes test network override
         run: |
           cargo build -p kawi --release
-          cargo build -p kawi --release --features wasm
+          cargo build -p kawi --release --no-default-features
           if cargo tree -p kawi -e features -i kawi-plugin | grep -q 'kawi-plugin feature "wasm-test-network"'; then
             echo "wasm-test-network must not be enabled in the default build" >&2
             exit 1
@@ -80,12 +85,14 @@ jobs:
         run: cargo clippy -p kawi-plugin --all-targets --features wasm,wasm-test-network -- -D warnings
       - name: Check WASM feature
         run: cargo check -p kawi --features wasm
+      - name: Check no-WASM feature
+        run: cargo check -p kawi --no-default-features
       - name: Test WASM feature
         run: cargo test -p kawi-plugin --features wasm
       - name: Test WASM app feature
         run: cargo test -p kawi --features wasm --bin kawi app::plugin::tests::wasm
       - name: Test plugin scaffold
-        run: cargo test -p kawi --features wasm --bin kawi plugin_cli::tests::scaffold_builds_and_runs -- --ignored
+        run: cargo test -p kawi --bin kawi plugin_cli::tests::scaffold_builds_and_runs -- --ignored
   supply-chain:
     runs-on: ubuntu-latest
     strategy:

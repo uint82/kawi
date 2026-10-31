@@ -36,6 +36,23 @@ fn inspect_reports_a_wasm_manifest_and_hash() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn lists_wasm_plugins_with_the_wasm_runtime_label() {
+    let root = temp_dir("list-wasm");
+    write_plugin(&root, None);
+    let mut app = app();
+    load_plugins(&mut app, &root);
+    app.handle_plugin_command("list");
+    let lines = app.pager.as_ref().expect("pager");
+    assert!(lines
+        .iter()
+        .any(|line| line.contains("wasm") && line.contains(" wasm ")));
+    assert!(!lines
+        .iter()
+        .any(|line| line.contains("trusted compatibility runtime")));
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[cfg(feature = "wasm")]
 #[test]
 fn wasm_network_capability_is_labeled_enforced() {

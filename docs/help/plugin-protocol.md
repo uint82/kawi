@@ -1,11 +1,11 @@
 ---
 title = "Plugin protocol"
 aliases = ["plugin-protocol-v1"]
-related = ["plugins", "plugin-capabilities", "configuration", "keymaps"]
+related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migration", "configuration", "keymaps"]
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its granted events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins will implement the same contract in a later release.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its granted events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
 
 ## Trust model
 

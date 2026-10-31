@@ -50,9 +50,10 @@ impl App {
                     .join(", ");
                 let capabilities = self.plugins.capability_lines(name).join("; ");
                 format!(
-                    "{:<16} {:<8} {:<20} {:<24} {}",
+                    "{:<16} {:<8} {:<40} {:<20} {:<24} {}",
                     name,
                     super::text::sanitize(&plugin.manifest.version),
+                    plugin.manifest.runtime.label(),
                     status,
                     capabilities,
                     commands
@@ -164,7 +165,7 @@ impl App {
                 "version: {}",
                 super::text::sanitize(&plugin.manifest.version)
             ),
-            format!("runtime: {:?}", plugin.manifest.runtime).to_lowercase(),
+            format!("runtime: {}", plugin.manifest.runtime.label()),
         ];
         if let Some(component) = plugin.manifest.component.as_deref() {
             lines.push(format!("component: {}", super::text::sanitize(component)));

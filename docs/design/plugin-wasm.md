@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phases 1-4 implemented behind the `wasm` feature. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. The default build does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
+Status: phases 1-4 implemented. The `wasm` feature is enabled by default and can be omitted with `--no-default-features`. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event for both runtimes. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. A build with `--no-default-features` does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
 
 ## Principles
 
@@ -77,7 +77,7 @@ sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 "editor.read" = true
 ```
 
-`runtime` defaults to `process`. Process plugins cannot declare `component` or `sha256`. WASM plugins cannot declare `command`. The component path must stay inside the plugin directory. The declared hash must match the file at load time.
+`runtime` defaults to `process` for compatibility. New plugins should set `runtime = "wasm"`. Process plugins cannot declare `component` or `sha256`. WASM plugins cannot declare `command`. The component path must stay inside the plugin directory. The declared hash must match the file at load time.
 
 ## Inspection
 
@@ -113,6 +113,6 @@ Fuzzing is complete. Run targets with `fuzz/run.sh smoke` for the 30 second PR c
 2. Lifecycle execution behind the feature flag with WASI scoping and host interfaces. Complete.
 3. Network enforcement. Complete.
 4. Shared conformance suite and fuzzing in CI. Complete.
-5. Process runtime deprecation once the WASM authoring path is practical. Criteria defined in [plugin-deprecation](plugin-deprecation.md).
+5. Process runtime deprecation once the WASM authoring path is practical. In progress. WASM is enabled by default, process plugins are labeled as a trusted compatibility runtime, and the migration guide is published. Removal waits for external validation and the release window defined in [plugin-deprecation](plugin-deprecation.md).
 
 Process plugins stay supported as a labeled trusted compatibility runtime until the deprecation criteria are met.

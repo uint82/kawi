@@ -1,10 +1,20 @@
 # Process plugin deprecation criteria
 
-Status: criteria defined, no removal scheduled.
+Status: authoring readiness and port coverage complete, default and migration window open, external validation pending, no removal scheduled.
 
 Process plugins remain supported as a labeled trusted compatibility runtime. WASM is the complete mediation path because it does not rely on the user's operating system sandbox for the host boundary.
 
 The process runtime must not be removed until every criterion below is true and tested.
+
+## Progress
+
+- Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI.
+- Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry and denied editor write.
+- External validation: pending. No plugin from an independent author has completed a release cycle yet.
+- Default and migration window: open. The `wasm` feature is enabled by default, `:plugin list` marks process plugins as a trusted compatibility runtime, and the migration guide is published. Deprecation warnings and the two-minor-release window start after external validation.
+- Capability decision: complete. No capability keeps the process runtime alive.
+
+Removal remains blocked until external validation completes and the deprecation warnings have run for at least two minor releases.
 
 ## Authoring readiness
 
@@ -39,10 +49,10 @@ The process runtime must not be removed until every criterion below is true and 
 
 Process plugins stay available only if a capability cannot be expressed safely in the WASM runtime. The remaining candidate is `process.spawn`, because executing arbitrary host processes is a different trust boundary than WASI sockets and filesystem scopes.
 
-Before removal, decide explicitly:
+Decisions:
 
-- whether `process.spawn` remains a process-only capability or moves to a separately reviewed WASM host process API
-- whether non-Rust component languages have a supported SDK path
-- whether any plugin can require the process runtime for a documented compatibility exception
+- `process.spawn` is not process-only. The WASM runtime exposes the separately reviewed `process-run` host interface and requires the same `process.spawn` grant. It stays a host-mediated capability in both runtimes.
+- Non-Rust component languages have no maintained binding path. The Rust SDK is the supported authoring path. Other component languages may target the WIT contract without support, and that does not keep the process runtime alive.
+- No plugin may require the process runtime through a documented compatibility exception. Exceptions would be listed here before removal. None are approved.
 
-If any answer keeps the process runtime alive, it stays labeled and supported. It does not stay as an undocumented fallback.
+No capability keeps the process runtime alive. If a future exception is approved, the process runtime stays labeled and supported. It does not stay as an undocumented fallback.
