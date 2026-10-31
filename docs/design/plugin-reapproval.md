@@ -1,6 +1,6 @@
 # Batched plugin re-approval
 
-Status: implemented.
+Status: superseded by the install-time trust model. Managed plugins no longer use `permissions.toml`, per-capability approval, or re-approval prompts. The update flow now prompts once only when the declared host API surface grows.
 
 ## Problem
 

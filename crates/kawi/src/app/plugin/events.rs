@@ -1,7 +1,6 @@
 use kawi_plugin::{PluginHostEvent, PluginStatus};
 
 use super::super::App;
-use super::consent::GrantKind;
 
 impl App {
     pub(crate) fn poll_plugins(&mut self) -> bool {
@@ -12,18 +11,9 @@ impl App {
         for event in events {
             redraw |= self.handle_plugin_event(event);
         }
-        if let Some(warnings) = self.plugins.poll_permission_changes() {
-            redraw = true;
-            if warnings.is_empty() {
-                self.show_message("Plugin permissions reloaded".to_string());
-            } else {
-                self.show_pager(warnings);
-            }
-        }
         self.plugins.flush_activation_events();
         self.plugins
             .sync_plugin_state(&mut self.editor, &mut self.problems);
-        self.expire_plugin_grants();
         redraw
     }
 
@@ -65,7 +55,6 @@ impl App {
             PluginHostEvent::CapabilityRequired { plugin, capability } => {
                 if !self.plugins.has_capability(&plugin, capability) {
                     self.plugins.record_denial(&plugin, capability);
-                    self.request_plugin_grant(&plugin, capability, GrantKind::Startup);
                 }
                 false
             }
@@ -85,12 +74,7 @@ impl App {
         params: serde_json::Value,
     ) -> bool {
         if let Some(capability) = self.plugins.denied_capability(plugin, method) {
-            if self.plugins.take_allow_next(plugin, capability) {
-                self.plugins.clear_denial(plugin, capability);
-                return self.handle_authorized_request(plugin, id, method, params);
-            }
             self.plugins.record_denial(plugin, capability);
-            self.request_plugin_grant(plugin, capability, GrantKind::Call);
             if !id.is_null() {
                 let error = self.plugins.capability_error(plugin, capability);
                 let _ = self.plugins.respond(plugin, id, Err(error));

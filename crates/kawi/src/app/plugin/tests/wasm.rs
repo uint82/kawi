@@ -30,7 +30,7 @@ fn inspect_reports_a_wasm_manifest_and_hash() {
         .any(|line| line.contains(&format!("sha256: sha256:{hash}"))));
     assert!(lines
         .iter()
-        .any(|line| line.contains("requests: editor.read")));
+        .any(|line| line.contains("declares: editor.read")));
     #[cfg(feature = "wasm")]
     assert!(lines.iter().any(|line| line == "imports:"));
     fs::remove_dir_all(root).unwrap();
@@ -68,11 +68,7 @@ fn wasm_network_capability_is_labeled_enforced() {
         "\"net.connect\" = { hosts = [\"127.0.0.1:443\"] }\n",
     );
     let mut app = app();
-    load_plugins_with_permissions(
-        &mut app,
-        &root,
-        "[plugins.wasm.grant]\n\"net.connect\" = { hosts = [\"127.0.0.1:443\"] }\n",
-    );
+    load_plugins(&mut app, &root);
     let lines = app.plugins.capability_lines("wasm");
     assert!(
         lines
@@ -98,11 +94,7 @@ fn wasm_resolution_warning_is_listed_without_counting_as_failure() {
         "\"net.connect\" = { hosts = [\"localhost:443\"] }\n",
     );
     let mut app = app();
-    load_plugins_with_permissions(
-        &mut app,
-        &root,
-        "[plugins.wasm.grant]\n\"editor.read\" = true\n\"net.connect\" = { hosts = [\"localhost:443\"] }\n",
-    );
+    load_plugins(&mut app, &root);
     app.plugins.restart(Some("wasm")).unwrap();
     wait_until_ready(&mut app);
     app.poll_plugins();
@@ -231,8 +223,6 @@ fn write_plugin_manifest_with(
 }
 
 #[cfg(feature = "wasm")]
-mod startup;
-
 #[cfg(feature = "wasm")]
 #[test]
 fn inspect_detects_a_component_replaced_after_load() {
@@ -264,12 +254,13 @@ sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
     )
     .unwrap();
     std::fs::write(dir.join("plugin.wasm"), b"not a component").unwrap();
-    std::fs::write(root.join("permissions.toml"), "").unwrap();
     let mut app = super::common::app();
+    let lock = kawi_plugin::PluginLock::default();
     let warnings = app.plugins.load(
         crate::app::plugin::PluginLoadContext {
-            dir: &root,
-            permissions: &root.join("permissions.toml"),
+            installed: &root.join("installed"),
+            dev: &root,
+            lock: &lock,
             workspace: &root,
             commands: &mut app.commands,
             keymaps: &mut app.keymaps,

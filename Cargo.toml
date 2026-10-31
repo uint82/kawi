@@ -54,6 +54,7 @@ signal-hook = "0.3"
 tokio = { version = "1", features = ["time"] }
 toml = "1.1"
 toml_edit = "0.25"
+ureq = { version = "2", default-features = false, features = ["tls"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 vt100 = "0.18"

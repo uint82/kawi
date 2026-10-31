@@ -5,9 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::capability::parse_capability_requests;
 
 use super::validation;
-use super::{
-    LoadedPlugin, PluginCatalog, PluginManifest, PluginWarning, MANIFEST_FILE, PERMISSIONS_FILE,
-};
+use super::{LoadedPlugin, PluginCatalog, PluginManifest, PluginWarning, MANIFEST_FILE};
 
 pub fn load_catalog(dir: &Path) -> PluginCatalog {
     let mut catalog = PluginCatalog::default();
@@ -74,14 +72,6 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
             return None;
         }
     };
-    if dir.join(PERMISSIONS_FILE).is_file() {
-        warnings.push(PluginWarning {
-            path: dir.join(PERMISSIONS_FILE),
-            message: format!(
-                "plugin directory contains {PERMISSIONS_FILE}; only the user config file is read"
-            ),
-        });
-    }
     match validation::validate_manifest(&mut manifest, dir) {
         Ok(artifact) => {
             if let Some(reason) = &artifact.disabled_reason {
@@ -110,7 +100,7 @@ fn load_plugin(dir: &Path, warnings: &mut Vec<PluginWarning>) -> Option<LoadedPl
                     warnings.push(PluginWarning {
                         path: path.clone(),
                         message: format!(
-                            "command {id} requires {}, which the plugin does not request",
+                            "command {id} requires {}, which the plugin does not declare",
                             capability.name()
                         ),
                     });

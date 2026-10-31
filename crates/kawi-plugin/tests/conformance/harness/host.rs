@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -10,9 +11,9 @@ use std::time::Instant;
 use serde_json::Value;
 
 use kawi_plugin::{
-    load_catalog, load_permission_state, Capability, CapabilityRegistry, HostEnvironment,
+    load_catalog, Capability, CapabilityRegistry, EffectiveCapabilities, HostEnvironment,
     InvocationContext, NotifyOutcome, PluginCatalog, PluginError, PluginHost, PluginStatus,
-    Position,
+    Position, Scope,
 };
 
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
@@ -21,7 +22,7 @@ use super::super::scenario::resolver_script;
 use super::super::scenario::Behavior;
 use super::super::scenario::{network_endpoint, NetworkTarget, Scenario};
 use super::driver::Driver;
-use super::fixtures::{temp_root, write_grants, write_manifest, ManifestSpec, NetworkSetup};
+use super::fixtures::{temp_root, write_manifest, ManifestSpec, NetworkSetup};
 use super::model::{Finished, Observation, Policy, Runtime};
 use super::{INVOCATION_TIMEOUT, PLUGIN_NAME, START_TIMEOUT, STATUS_POLL};
 
@@ -31,7 +32,6 @@ pub(crate) struct ConformanceHost {
     #[cfg(feature = "wasm")]
     pub(crate) behavior: Behavior,
     pub(crate) root: PathBuf,
-    grants_path: PathBuf,
     catalog: PluginCatalog,
     pub(crate) host: Arc<PluginHost>,
     driver: Option<JoinHandle<()>>,
@@ -53,7 +53,6 @@ impl ConformanceHost {
         let root = temp_root();
         let config = root.join("config");
         let plugins = root.join("plugins");
-        let grants_path = config.join("permissions.toml");
         fs::create_dir_all(&config).unwrap();
         fs::create_dir_all(&plugins).unwrap();
         let network = network_setup(&root, scenario);
@@ -66,19 +65,15 @@ impl ConformanceHost {
             },
         );
         let catalog = load_catalog(&plugins);
-        write_grants(
-            &grants_path,
-            scenario.grants,
-            network.setup.as_ref(),
-            &catalog,
-        );
         if !scenario.behavior.expects_load_warning() {
             assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
         }
-        let state = load_permission_state(&catalog, &grants_path);
-        assert!(state.file_error.is_none(), "{:?}", state.file_error);
         let registry = CapabilityRegistry::default();
-        registry.replace(state.grants);
+        registry.replace(grants_for(
+            &catalog,
+            scenario.grants,
+            network.setup.as_ref(),
+        ));
         let (event_tx, events) = mpsc::channel();
         let (wake, wake_rx) = mpsc::channel();
         let environment = HostEnvironment::from_paths(Some(root.clone()), Some(config));
@@ -110,7 +105,6 @@ impl ConformanceHost {
             #[cfg(feature = "wasm")]
             behavior: scenario.behavior,
             root,
-            grants_path,
             catalog,
             host,
             driver: Some(driver),
@@ -164,19 +158,12 @@ impl ConformanceHost {
     }
 
     pub(crate) fn revoke_everything(&self) {
-        self.set_grants(&[]);
-        let mut grants = self.registry.snapshot();
-        for effective in grants.values_mut() {
-            effective.granted.clear();
-        }
-        self.registry.replace(grants);
+        self.registry.replace(BTreeMap::new());
     }
 
     pub(crate) fn set_grants(&self, capabilities: &[Capability]) {
-        write_grants(&self.grants_path, capabilities, None, &self.catalog);
-        let state = load_permission_state(&self.catalog, &self.grants_path);
-        assert!(state.file_error.is_none(), "{:?}", state.file_error);
-        self.registry.replace(state.grants);
+        self.registry
+            .replace(grants_for(&self.catalog, capabilities, None));
     }
 
     pub(crate) fn invoke(&self, command: &str, args: Value) -> Result<Value, PluginError> {
@@ -369,4 +356,40 @@ fn context() -> InvocationContext {
         },
         selection: None,
     }
+}
+
+fn grants_for(
+    catalog: &PluginCatalog,
+    capabilities: &[Capability],
+    network: Option<&NetworkSetup>,
+) -> BTreeMap<String, EffectiveCapabilities> {
+    catalog
+        .plugins
+        .iter()
+        .map(|plugin| {
+            let mut granted = BTreeMap::new();
+            match network {
+                Some(network) => {
+                    granted.insert(
+                        Capability::FsRead,
+                        Scope::Paths(vec![network.workspace.display().to_string()]),
+                    );
+                    if let Some(grant) = &network.grant {
+                        granted.insert(Capability::NetConnect, Scope::Hosts(vec![grant.clone()]));
+                    }
+                }
+                None => {
+                    for capability in capabilities {
+                        if let Some(scope) = plugin.manifest.capability_requests.get(*capability) {
+                            granted.insert(*capability, scope.clone());
+                        }
+                    }
+                }
+            }
+            (
+                plugin.manifest.name.clone(),
+                EffectiveCapabilities { granted },
+            )
+        })
+        .collect()
 }

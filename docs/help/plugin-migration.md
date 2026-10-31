@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted compatibility runtime. WASM is the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.1.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and install flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.1.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -15,7 +15,7 @@ Process plugins remain available as a trusted compatibility runtime. WASM is the
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
 | `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.1.0` |
 | `timeout_ms`, `commands`, `subscribes`, `debounce`, `activation_events` | Unchanged |
-| `capabilities` | Unchanged names and scope shapes |
+| `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
 A WASM manifest cannot declare `command`. A process manifest cannot declare `component` or `sha256`. Run `kawi plugin build <directory>` after every change so the component path and hash stay current.
 
@@ -48,7 +48,7 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
-An import that is not requested by the manifest is rejected before instantiation. An import that is requested but not granted fails startup with the missing capability. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
+An import that is not declared by the manifest is rejected before instantiation. Kawi enables every declared API for a managed plugin, so a declared import does not need a grant. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
 
 ## Events
 
@@ -62,20 +62,20 @@ An import that is not requested by the manifest is rejected before instantiation
 | `mode_changed` | `mode-changed` |
 | `diagnostics_changed` | `diagnostics-changed` |
 
-Field names change from snake case to kebab case. Positions and revisions keep the same meaning. A plugin receives only events present in its manifest `subscribes` list and only when the matching capability is granted.
+Field names change from snake case to kebab case. Positions and revisions keep the same meaning. A plugin receives only events present in its manifest `subscribes` list and only when the matching host API is declared.
 
-## Capabilities
+## Host APIs
 
-Capability names and scope shapes are the same in both runtimes. The default tier, grant file, approval diff, command gates, and consent prompt apply to both.
+Host API names and scope shapes are the same in both runtimes. There is no grant file and no consent prompt. A managed WASM plugin receives every API declared in its manifest. Command gates still limit invocation.
 
-| Capability | Process enforcement | WASM enforcement |
+| Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
 | `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` host interface |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
 
-WASM startup prompts offer persistent grants only because linking is fixed at instantiation. Process prompts can still offer allow once.
+Process plugins are development-only trusted code. Managed installs require WASM.
 
 ## Errors
 
@@ -106,7 +106,7 @@ Both runtimes use zero-based lines and UTF-8 byte columns. A byte column inside 
 1. Run `kawi plugin new <name>` to scaffold a Rust component against the published SDK. Pass `--sdk-path <path>` only for an unreleased checkout.
 2. Port the lifecycle exports, host calls, and event handling.
 3. Run `kawi plugin build <name>` to build the component and update `sha256`.
-4. Run `kawi plugin inspect <directory>` or `:plugin inspect <name>` and compare the requested capabilities with the component imports.
-5. Install the directory under `$XDG_CONFIG_HOME/kawi/plugins` and grant the requested capabilities.
+4. Run `kawi plugin inspect <directory>` or `:plugin inspect <name>` and compare the declared host APIs with the component imports.
+5. For local development, install the directory under `$XDG_CONFIG_HOME/kawi/plugins`. For managed use, publish a GitHub release with `plugin.toml` and the component asset, then run `:plugin install owner/repo`.
 
-Both runtimes can be installed at the same time. Keep the process plugin until the WASM plugin passes the same conformance scenarios and the grant flow is verified.
+Both runtimes can be installed at the same time. Keep the process plugin in development mode until the WASM plugin passes the same conformance scenarios.

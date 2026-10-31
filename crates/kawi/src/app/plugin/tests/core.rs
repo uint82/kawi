@@ -67,9 +67,10 @@ fn lists_plugins_without_starting_them() {
     load_plugins(&mut app, &root);
     app.handle_plugin_command("list");
     let lines = app.pager.as_ref().expect("pager");
-    assert!(lines[0].contains("echo"));
-    assert!(lines[0].contains("process (trusted compatibility runtime)"));
-    assert!(lines[0].contains("stopped"));
+    assert!(lines[0].starts_with("name"));
+    assert!(lines[1].contains("echo"));
+    assert!(lines[1].contains("process (trusted compatibility runtime)"));
+    assert!(lines[1].contains("stopped"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -709,4 +710,55 @@ fn stopping_a_plugin_clears_its_diagnostics() {
         assert!(app.problems.problems_for_path(&path).is_empty());
     }
     fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn declared_capabilities_are_granted_without_a_permission_file() {
+    let root = temp_dir("auto_grant");
+    copy_example_plugin(&root, "trim");
+    let mut app = app();
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(app
+        .plugins
+        .has_capability("trim", kawi_plugin::Capability::EditorRead));
+    assert!(app
+        .plugins
+        .has_capability("trim", kawi_plugin::Capability::EditorWrite));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn development_plugins_report_a_warning() {
+    let root = temp_dir("dev_warning");
+    manifest(&root);
+    let mut app = app();
+    let warnings = load_plugins_raw(&mut app, &root);
+    assert!(warnings
+        .iter()
+        .any(|warning| warning.contains("development plugin loaded")));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn install_command_confirms_then_installs_and_enables() {
+    let root = temp_dir("install_prompt");
+    let mut app = app();
+    configure_plugin_manager(&mut app, &root);
+    app.plugin_manager
+        .set_client(Box::new(crate::plugin_manager::test_client::client("")));
+    load_plugins(&mut app, &root);
+    app.handle_plugin_command("install owner/repo");
+    assert!(app.is_plugin_prompt_active());
+    assert!(app
+        .message
+        .as_deref()
+        .is_some_and(|message| message.contains("Install echo")));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!app.is_plugin_prompt_active());
+    assert!(app.plugins.contains("echo"));
+    assert!(root.join("installed/echo/plugin.wasm").is_file());
+    assert!(root.join("plugins.lock").is_file());
+    fs::remove_dir_all(root).unwrap();
 }

@@ -151,7 +151,7 @@ mod tests {
         let mut app = app();
         type_command(&mut app, "plugin ");
         complete(&mut app);
-        assert_eq!(app.editor.command_text(), "plugin grant");
+        assert_eq!(app.editor.command_text(), "plugin disable");
     }
 
     #[test]
@@ -159,7 +159,7 @@ mod tests {
         let mut app = app();
         type_command(&mut app, "plugin");
         complete(&mut app);
-        assert_eq!(app.editor.command_text(), "plugin grant");
+        assert_eq!(app.editor.command_text(), "plugin disable");
     }
 
     #[test]

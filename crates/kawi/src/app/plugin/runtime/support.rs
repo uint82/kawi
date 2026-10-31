@@ -1,8 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
+use kawi_plugin::Capability;
 
-use kawi_plugin::{Capability, EffectiveCapabilities, PluginCatalog, PluginRuntime, Scope};
-
-use crate::permission_lines::grant_lines;
 use crate::plugin_labels::WASM_NETWORK_ENFORCEMENT;
 
 pub(super) fn describe_capabilities(
@@ -38,72 +35,12 @@ fn describe_capability(capability: Capability, wasm: bool, sandboxed: bool) -> S
     capability.name().to_string()
 }
 
-pub(super) fn denial_lines(
-    plugin: &str,
-    capability: Capability,
-    scope: Option<Scope>,
-) -> [String; 3] {
-    let [hint, assignment] = grant_lines(plugin, capability, scope.as_ref());
-    [format!("denied {}", capability.name()), hint, assignment]
-}
-
-pub(super) fn changed_restart_plugins(
-    catalog: &PluginCatalog,
-    previous: &BTreeMap<String, EffectiveCapabilities>,
-    next: &BTreeMap<String, EffectiveCapabilities>,
-) -> BTreeSet<String> {
-    catalog
-        .plugins
-        .iter()
-        .filter(|plugin| {
-            restart_required(
-                plugin.manifest.runtime,
-                previous.get(&plugin.manifest.name),
-                next.get(&plugin.manifest.name),
-            )
-        })
-        .map(|plugin| plugin.manifest.name.clone())
-        .collect()
-}
-
-fn restart_required(
-    runtime: PluginRuntime,
-    previous: Option<&EffectiveCapabilities>,
-    next: Option<&EffectiveCapabilities>,
-) -> bool {
-    match runtime {
-        PluginRuntime::Process => sandbox_scope_changed(previous, next),
-        PluginRuntime::Wasm => granted_capabilities_changed(previous, next),
-    }
-}
-
-fn granted_capabilities_changed(
-    previous: Option<&EffectiveCapabilities>,
-    next: Option<&EffectiveCapabilities>,
-) -> bool {
-    previous.map(|effective| &effective.granted) != next.map(|effective| &effective.granted)
-}
-
-fn sandbox_scope_changed(
-    previous: Option<&EffectiveCapabilities>,
-    next: Option<&EffectiveCapabilities>,
-) -> bool {
+pub(super) fn denial_lines(capability: Capability) -> [String; 2] {
     [
-        Capability::FsRead,
-        Capability::FsWrite,
-        Capability::ProcessSpawn,
+        format!("denied {}", capability.name()),
+        format!(
+            "{} is not declared by the plugin manifest",
+            capability.name()
+        ),
     ]
-    .into_iter()
-    .any(|capability| {
-        previous.and_then(|effective| effective.scope(capability))
-            != next.and_then(|effective| effective.scope(capability))
-    })
-}
-
-pub(super) fn same_path(left: &std::path::Path, right: &std::path::Path) -> bool {
-    left == right
-        || match (std::fs::canonicalize(left), std::fs::canonicalize(right)) {
-            (Ok(left), Ok(right)) => left == right,
-            _ => false,
-        }
 }

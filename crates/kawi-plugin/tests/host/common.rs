@@ -158,10 +158,7 @@ pub(super) fn registry_for(plugin: &str, capabilities: &[Capability]) -> Capabil
         .collect();
     registry.replace(std::collections::BTreeMap::from([(
         plugin.to_string(),
-        EffectiveCapabilities {
-            granted,
-            ..EffectiveCapabilities::default()
-        },
+        EffectiveCapabilities { granted },
     )]));
     registry
 }
@@ -172,7 +169,6 @@ pub(super) fn registry_without_editor_read() -> CapabilityRegistry {
         "fake".to_string(),
         EffectiveCapabilities {
             granted: std::collections::BTreeMap::from([(Capability::UiMessage, Scope::Unscoped)]),
-            ..EffectiveCapabilities::default()
         },
     )]));
     registry

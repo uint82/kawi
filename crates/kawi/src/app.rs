@@ -125,8 +125,8 @@ pub struct App {
     commands: CommandRegistry,
     keymaps: KeymapResolver,
     plugins: plugin::PluginRuntime,
-    plugin_grants: plugin::GrantQueue,
-    deferred_plugin_restarts: BTreeSet<String>,
+    plugin_manager: crate::plugin_manager::PluginManager,
+    plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
     send_keys_depth: usize,
@@ -233,8 +233,8 @@ impl App {
             commands: CommandRegistry::new(),
             keymaps: KeymapResolver::new(),
             plugins: plugin::PluginRuntime::default(),
-            plugin_grants: plugin::GrantQueue::default(),
-            deferred_plugin_restarts: BTreeSet::new(),
+            plugin_manager: crate::plugin_manager::PluginManager::default(),
+            plugin_prompt: None,
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
             send_keys_depth: 0,
@@ -537,8 +537,6 @@ impl App {
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
-            let timeout =
-                shortest_timeout(timeout, self.plugin_grants.wait_timeout(Instant::now()));
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -792,7 +790,7 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.plugin_grants.is_active() {
+        if self.is_plugin_prompt_active() {
             return self.handle_noop();
         }
         self.window_prefix = false;
@@ -978,9 +976,9 @@ impl App {
     }
 
     fn handle_key_inner(&mut self, key: KeyEvent) -> Result<bool> {
-        if self.plugin_grants.is_active() {
+        if self.is_plugin_prompt_active() {
             if self.synthetic_input_depth == 0 {
-                self.handle_plugin_grant_key(key);
+                self.handle_plugin_prompt_key(key);
             }
             return Ok(false);
         }
@@ -1241,7 +1239,7 @@ impl App {
     }
 
     fn process_key(&mut self, key: KeyEvent) -> Result<bool> {
-        if self.plugin_grants.is_active() {
+        if self.is_plugin_prompt_active() {
             return Ok(false);
         }
         if self.pager.is_some() {
@@ -1651,7 +1649,7 @@ impl App {
     }
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
-        if self.plugin_grants.is_active() {
+        if self.is_plugin_prompt_active() {
             return Ok(false);
         }
         self.window_prefix = false;

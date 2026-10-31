@@ -48,10 +48,6 @@ fn print_plugin(plugin: &kawi_plugin::LoadedPlugin) -> Result<()> {
     }
     if let Some(hash) = plugin.component_hash() {
         println!("sha256: {hash}");
-        println!(
-            "request hash: {}",
-            plugin.manifest.capability_requests.request_hash()
-        );
     }
     if let Some(hash) = plugin.declared_hash() {
         println!("declared sha256: {hash}");
@@ -61,7 +57,7 @@ fn print_plugin(plugin: &kawi_plugin::LoadedPlugin) -> Result<()> {
     }
     for (capability, scope) in plugin.manifest.capability_requests.iter() {
         println!(
-            "requests: {} {}",
+            "declares: {} {}",
             capability.name(),
             serde_json::Value::Object(scope.to_json_object())
         );

@@ -36,7 +36,7 @@ Options can also be changed at runtime with `:set name=value`, toggled with `:se
 
 ## Keymaps
 
-Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`. Process plugins live in `$XDG_CONFIG_HOME/kawi/plugins`.
+Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`.
 
 ```toml
 leader = [" ", "\\"]
@@ -51,9 +51,11 @@ timeout = 1000
 
 Use `:commands` to discover command names, `:map` to inspect mappings, and `:map reload` to reload the file. See [Keymaps](help:keymaps) for the complete reference.
 
-## Plugin permissions
+## Plugins
 
-Plugins request capabilities in `plugin.toml`. Users grant them in `$XDG_CONFIG_HOME/kawi/permissions.toml`, normally `~/.config/kawi/permissions.toml`. Grants live outside plugin directories and are deny by default. See [Plugin capabilities](help:plugin-capabilities).
+Managed plugins are installed from GitHub with `:plugin install owner/repo`. Installed code lives in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`.
+
+Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. They are loaded with a warning and are not managed by `:plugin`. See [Plugins](help:plugins) and [Plugin host APIs](help:plugin-capabilities).
 
 Directory buffer settings:
 

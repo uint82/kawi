@@ -209,11 +209,7 @@ fn restart_removes_deleted_plugins() {
     fs::remove_dir_all(root.join("echo")).unwrap();
     app.handle_plugin_command("restart echo");
 
-    assert!(app.pager.as_ref().is_some_and(|lines| {
-        lines
-            .iter()
-            .any(|line| line.contains("unknown plugin in permissions: echo"))
-    }));
+    assert_eq!(app.message.as_deref(), Some("Plugin removed: echo"));
     assert!(app.commands.find("echo.ping").is_none());
     assert!(app.plugins.plugins().is_empty());
     assert!(app

@@ -1,123 +1,120 @@
-use kawi_plugin::{Capability, PluginStatus};
+use kawi_plugin::PluginStatus;
 
 use super::super::command_text::split_command;
 use super::super::App;
-use super::consent::GrantKind;
 
-pub(crate) const SUBCOMMANDS: &[&str] = &["grant", "list", "reload", "restart", "logs", "inspect"];
+pub(crate) const SUBCOMMANDS: &[&str] = &[
+    "install", "update", "remove", "disable", "enable", "list", "reload", "restart", "logs",
+    "inspect",
+];
 
 impl App {
     pub(crate) fn handle_plugin_command(&mut self, text: &str) {
         let text = text.trim();
         let (name, rest) = split_command(text);
         match name {
-            "grant" => self.grant_plugin_permission(rest),
+            "install" => self.install_plugin(rest),
+            "update" => self.update_plugin(rest),
+            "remove" => self.remove_plugin(rest),
+            "disable" => self.set_plugin_enabled(rest, false),
+            "enable" => self.set_plugin_enabled(rest, true),
             "list" => self.list_plugins(),
-            "reload" => self.reload_permissions(),
+            "reload" => self.restart_plugins(""),
             "restart" => self.restart_plugins(rest),
             "logs" => self.show_plugin_logs(rest),
             "inspect" => self.inspect_plugin(rest),
             _ => self.show_message(
-                "Usage: plugin grant <plugin> <capability> | list | reload | restart [name] | logs [name] | inspect <plugin>"
+                "Usage: plugin install <owner/repo[@ref]> | update <plugin> | remove <plugin> | disable <plugin> | enable <plugin> | list | reload | restart [name] | logs [name] | inspect <plugin>"
                     .to_string(),
             ),
         }
     }
 
     fn list_plugins(&mut self) {
-        let lines = self
-            .plugins
-            .plugins()
-            .iter()
-            .map(|plugin| {
-                let name = plugin.manifest.name.as_str();
-                let status = self
-                    .plugins
-                    .status(name)
-                    .map(status_label)
-                    .unwrap_or_else(|| "stopped".to_string());
-                let depth = self.plugins.queue_depth(name);
-                let status = if depth > 0 {
-                    format!("busy ({depth} queued)")
-                } else {
-                    status
-                };
-                let status = super::text::sanitize(&status);
-                let commands = plugin
-                    .manifest
-                    .commands
-                    .iter()
-                    .map(|command| plugin.command_name(command))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let capabilities = self.plugins.capability_lines(name).join("; ");
-                format!(
-                    "{:<16} {:<8} {:<40} {:<20} {:<24} {}",
-                    name,
-                    super::text::sanitize(&plugin.manifest.version),
-                    plugin.manifest.runtime.label(),
-                    status,
-                    capabilities,
-                    commands
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut lines = lines;
+        let mut lines = vec![format!(
+            "{:<16} {:<8} {:<8} {:<40} {:<20} {:<24} {}",
+            "name", "version", "runtime", "status", "source", "host apis", "commands"
+        )];
+        lines.extend(self.plugins.plugins().iter().map(|plugin| {
+            let name = plugin.manifest.name.as_str();
+            let status = self
+                .plugins
+                .status(name)
+                .map(status_label)
+                .unwrap_or_else(|| "stopped".to_string());
+            let depth = self.plugins.queue_depth(name);
+            let status = if depth > 0 {
+                format!("busy ({depth} queued)")
+            } else {
+                status
+            };
+            let status = super::text::sanitize(&status);
+            let commands = plugin
+                .manifest
+                .commands
+                .iter()
+                .map(|command| plugin.command_name(command))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let capabilities = self.plugins.capability_lines(name).join("; ");
+            let source = self
+                .plugin_manager
+                .lock()
+                .plugins
+                .get(name)
+                .map(|locked| {
+                    format!(
+                        "{}@{}",
+                        locked.source,
+                        crate::plugin_manager::short_commit(&locked.commit)
+                    )
+                })
+                .unwrap_or_else(|| "development".to_string());
+            format!(
+                "{:<16} {:<8} {:<8} {:<40} {:<20} {:<24} {}",
+                name,
+                super::text::sanitize(&plugin.manifest.version),
+                plugin.manifest.runtime.label(),
+                status,
+                source,
+                capabilities,
+                commands
+            )
+        }));
         for plugin in self.plugins.plugins() {
             let name = plugin.manifest.name.as_str();
             for line in self.plugins.denial_records(name) {
                 lines.push(format!("{name}: {line}"));
             }
         }
+        for (name, locked) in &self.plugin_manager.lock().plugins {
+            if self.plugins.contains(name) {
+                continue;
+            }
+            let source = format!(
+                "{}@{}",
+                locked.source,
+                crate::plugin_manager::short_commit(&locked.commit)
+            );
+            lines.push(format!(
+                "{:<16} {:<8} {:<8} {:<40} {:<20} {:<24} {}",
+                name,
+                "-",
+                "wasm",
+                if locked.enabled {
+                    "not loaded"
+                } else {
+                    "disabled"
+                },
+                super::text::sanitize(&source),
+                "-",
+                "no commands"
+            ));
+        }
         if lines.is_empty() {
             self.show_message("No plugins installed".to_string());
         } else {
             self.show_pager(lines);
-        }
-    }
-
-    fn grant_plugin_permission(&mut self, rest: &str) {
-        let mut parts = rest.split_whitespace();
-        let (Some(plugin), Some(capability)) = (parts.next(), parts.next()) else {
-            self.show_message("Usage: plugin grant <plugin> <capability>".to_string());
-            return;
-        };
-        if parts.next().is_some() {
-            self.show_message("Usage: plugin grant <plugin> <capability>".to_string());
-            return;
-        }
-        let Some(capability) = Capability::parse(capability) else {
-            self.show_message(format!(
-                "Unknown capability: {}",
-                super::text::sanitize(capability)
-            ));
-            return;
-        };
-        if self.plugins.request_scope(plugin, capability).is_none() {
-            self.show_message(format!(
-                "{} does not request {}",
-                super::text::sanitize(plugin),
-                capability.name()
-            ));
-            return;
-        }
-        if self.plugins.has_capability(plugin, capability) {
-            self.show_message(format!(
-                "{} already has {}",
-                super::text::sanitize(plugin),
-                capability.name()
-            ));
-            return;
-        }
-        self.request_plugin_grant(plugin, capability, GrantKind::Call);
-    }
-
-    fn reload_permissions(&mut self) {
-        let warnings = self.plugins.reload_permissions();
-        if warnings.is_empty() {
-            self.show_message("Plugin permissions reloaded".to_string());
-        } else {
-            self.show_pager(warnings);
         }
     }
 
@@ -174,10 +171,6 @@ impl App {
         }
         if let Some(hash) = plugin.component_hash() {
             lines.push(format!("sha256: {}", super::text::sanitize(hash)));
-            lines.push(format!(
-                "request hash: {}",
-                plugin.manifest.capability_requests.request_hash()
-            ));
         }
         if let Some(hash) = plugin.declared_hash() {
             lines.push(format!("declared sha256: {}", super::text::sanitize(hash)));
@@ -187,7 +180,7 @@ impl App {
         }
         for (capability, scope) in plugin.manifest.capability_requests.iter() {
             lines.push(format!(
-                "requests: {} {}",
+                "declares: {} {}",
                 capability.name(),
                 serde_json::Value::Object(scope.to_json_object())
             ));

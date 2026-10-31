@@ -12,7 +12,8 @@ pub struct StatePaths {
     pub config_log: PathBuf,
     pub keymaps: PathBuf,
     pub plugins: PathBuf,
-    pub permissions: PathBuf,
+    pub installed_plugins: PathBuf,
+    pub plugin_lock: PathBuf,
     pub languages: PathBuf,
     pub tasks: PathBuf,
     pub themes: PathBuf,
@@ -27,13 +28,15 @@ pub struct StatePaths {
 impl StatePaths {
     pub fn resolve() -> Option<Self> {
         let config = xdg_dir("XDG_CONFIG_HOME", ".config")?;
+        let data = xdg_dir("XDG_DATA_HOME", ".local/share")?;
         let state = xdg_dir("XDG_STATE_HOME", ".local/state")?;
         Some(Self {
             config: config.join("kawi/config.toml"),
             config_log: state.join("kawi/config.log"),
             keymaps: config.join("kawi/keymaps.toml"),
             plugins: config.join("kawi/plugins"),
-            permissions: config.join("kawi/permissions.toml"),
+            installed_plugins: data.join("kawi/plugins"),
+            plugin_lock: config.join("kawi/plugins.lock"),
             languages: config.join("kawi/languages.toml"),
             tasks: config.join("kawi/tasks.toml"),
             themes: config.join("kawi/themes"),
@@ -118,7 +121,8 @@ mod tests {
             config_log: dir.join("config.log"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
-            permissions: dir.join("permissions.toml"),
+            installed_plugins: dir.join("installed-plugins"),
+            plugin_lock: dir.join("plugins.lock"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

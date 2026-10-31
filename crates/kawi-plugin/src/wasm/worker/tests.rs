@@ -62,7 +62,6 @@ fn grants(plugin: &str, capabilities: &[Capability]) -> CapabilityRegistry {
                 .iter()
                 .map(|capability| (*capability, crate::capability::Scope::Unscoped))
                 .collect(),
-            ..Default::default()
         },
     )]));
     registry

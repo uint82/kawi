@@ -15,7 +15,6 @@ pub use load::load_catalog;
 pub use runtime::{validate_component_path, PluginRuntime};
 
 const MANIFEST_FILE: &str = "plugin.toml";
-pub(crate) const PERMISSIONS_FILE: &str = "permissions.toml";
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
 const PLUGIN_DIR_TOKEN: &str = "${plugin_dir}";
 

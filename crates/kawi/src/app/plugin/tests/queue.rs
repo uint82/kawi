@@ -10,7 +10,6 @@ use super::common::*;
 use crate::app::App;
 use crate::command::CommandHandler;
 
-mod gates;
 mod visibility;
 
 fn queue_plugin(root: &Path) {
@@ -167,40 +166,6 @@ fn identical_queued_commands_coalesce() {
     app.run_plugin_command(target, args(0, true)).unwrap();
     app.run_plugin_command(target, args(0, true)).unwrap();
     assert_eq!(app.plugins.queue_depth("queue"), 1);
-    app.plugins.shutdown();
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn revoked_command_is_denied_at_dequeue() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let (root, mut app, target) = setup("queue_revoke");
-    app.run_plugin_command(target, args(1200, false)).unwrap();
-    app.run_plugin_command(target, args(0, true)).unwrap();
-    write_permissions(&root, "[plugins.queue.grant]\n\"ui.message\" = true\n");
-    app.plugins.reload_permissions();
-    poll_until(&mut app, Duration::from_secs(5), |app| {
-        app.plugins
-            .denial_records("queue")
-            .iter()
-            .any(|line| line.contains("editor.write"))
-    });
-    assert!(app
-        .plugins
-        .logs("queue")
-        .iter()
-        .any(|line| line.contains("denied editor.write")));
-    assert!(!app
-        .message
-        .as_deref()
-        .is_some_and(|message| message.starts_with("revision:")));
-    assert_eq!(app.plugins.queue_depth("queue"), 0);
     app.plugins.shutdown();
     fs::remove_dir_all(root).unwrap();
 }

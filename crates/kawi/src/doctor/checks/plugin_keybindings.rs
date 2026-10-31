@@ -7,11 +7,15 @@ use kawi_plugin::load_catalog;
 const RESERVED_PREFIX_WARNING: &str = "count and register prefixes are reserved";
 
 pub(crate) fn check(paths: &StatePaths) -> Check {
-    let catalog = load_catalog(&paths.plugins);
+    let installed = load_catalog(&paths.installed_plugins);
+    let dev = load_catalog(&paths.plugins);
     let leaders = crate::keymap::config::load(&paths.keymaps, &CommandRegistry::new()).leader;
-    let mut details = vec![format!("plugins: {}", paths.plugins.display())];
+    let mut details = vec![
+        format!("installed: {}", paths.installed_plugins.display()),
+        format!("development: {}", paths.plugins.display()),
+    ];
     let mut level = Level::Ok;
-    for plugin in &catalog.plugins {
+    for plugin in installed.plugins.iter().chain(dev.plugins.iter()) {
         for command in &plugin.manifest.commands {
             for sequences in command.keybindings.values() {
                 for sequence in sequences {

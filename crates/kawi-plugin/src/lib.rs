@@ -5,6 +5,7 @@ pub const NETWORK_WARNING_PREFIX: &str = "network warning: ";
 mod environment;
 mod error;
 mod host;
+mod lockfile;
 mod manifest;
 mod outcome;
 mod payload_size;
@@ -23,14 +24,14 @@ pub use wasm::{
 pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};
 
 pub use capability::{
-    advertised_events, advertised_host_methods, diff, event_capability, host_method_capability,
-    is_event_allowed, is_host_method_allowed, load_permission_state, reconcile_approved,
-    Capability, CapabilityChange, CapabilityRegistry, CapabilityRequests, ChangeKind,
-    EffectiveCapabilities, MethodCapability, PermissionState, Scope,
+    advertised_events, advertised_host_methods, event_capability, host_method_capability,
+    is_event_allowed, is_host_method_allowed, Capability, CapabilityRegistry, CapabilityRequests,
+    EffectiveCapabilities, MethodCapability, Scope,
 };
 pub use environment::HostEnvironment;
 pub use error::PluginError;
 pub use host::{PluginHost, PluginHostEvent, PluginStatus};
+pub use lockfile::{load_managed_catalog, LockedPlugin, PluginLock};
 pub use manifest::{
     load_catalog, validate_component_path, validate_plugin_name, ActivationEvent, LoadedPlugin,
     PluginCatalog, PluginCommand, PluginManifest, PluginRuntime, PluginWarning,

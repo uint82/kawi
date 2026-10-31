@@ -33,12 +33,16 @@ fn completion() -> CommandCompletion {
             "options".to_string(),
         ],
         vec![
-            "grant".to_string(),
+            "disable".to_string(),
+            "enable".to_string(),
             "inspect".to_string(),
+            "install".to_string(),
             "list".to_string(),
             "logs".to_string(),
             "reload".to_string(),
+            "remove".to_string(),
             "restart".to_string(),
+            "update".to_string(),
         ],
     )
 }
@@ -235,9 +239,9 @@ fn completes_plugin_subcommands() {
     let mut e = editor_with("x");
     type_command(&mut e, "plugin ");
     complete(&mut e, false);
-    assert_eq!(e.command_text(), "plugin grant");
+    assert_eq!(e.command_text(), "plugin disable");
     complete(&mut e, false);
-    assert_eq!(e.command_text(), "plugin inspect");
+    assert_eq!(e.command_text(), "plugin enable");
 }
 
 #[test]
@@ -245,7 +249,7 @@ fn completes_plugin_subcommands_without_a_space() {
     let mut e = editor_with("x");
     type_command(&mut e, "plugin");
     complete(&mut e, false);
-    assert_eq!(e.command_text(), "plugin grant");
+    assert_eq!(e.command_text(), "plugin disable");
 }
 
 #[test]

@@ -3,7 +3,6 @@ use kawi_plugin::PluginError;
 use serde_json::Value;
 
 use super::super::App;
-use super::consent::GrantKind;
 use super::queue::{capability_from_error, QueueDrop, QueueOutcome};
 use super::text::sanitize;
 
@@ -80,7 +79,6 @@ impl App {
     ) {
         if let Some(capability) = capability_from_error(error) {
             let first = self.plugins.record_denial(plugin, capability);
-            self.request_plugin_grant(plugin, capability, GrantKind::Call);
             if first {
                 self.show_message(format!(
                     "{}: capability denied: {}",
@@ -88,11 +86,6 @@ impl App {
                     capability.name()
                 ));
             }
-            return;
-        }
-        if self.plugin_grants.is_active() {
-            self.plugins
-                .push_log(plugin, "request failed while a grant prompt is open");
             return;
         }
         let label = if command.is_empty() {

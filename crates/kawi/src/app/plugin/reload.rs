@@ -1,5 +1,6 @@
-use kawi_plugin::{load_catalog, load_permission_state, PluginCatalog, PluginError};
+use kawi_plugin::{PluginCatalog, PluginError};
 
+use super::load::{capability_grants, load_catalogs};
 use super::PluginRuntime;
 use crate::command::CommandRegistry;
 use crate::keymap::KeyChord;
@@ -13,32 +14,22 @@ impl PluginRuntime {
         leaders: &[KeyChord],
         plugin: Option<&str>,
     ) -> Result<Vec<String>, PluginError> {
-        let (Some(dir), Some(permissions), Some(workspace), Some(wake)) = (
-            self.plugins_dir.clone(),
-            self.permissions_path.clone(),
+        let (Some(installed), Some(dev), Some(workspace), Some(wake)) = (
+            self.installed_dir.clone(),
+            self.dev_dir.clone(),
             self.workspace.clone(),
             self.wake.clone(),
         ) else {
             return Ok(Vec::new());
         };
         self.drop_queues(plugin);
-        let loaded = load_catalog(&dir);
+        let (loaded, dev_plugins, mut warnings) =
+            load_catalogs(&installed, &dev, &self.lock, false);
         let catalog = merge_catalog(&self.catalog, loaded, plugin)?;
-        let permission_state = load_permission_state(&catalog, &permissions);
-        let mut warnings = catalog
-            .warnings
-            .iter()
-            .map(ToString::to_string)
-            .chain(permission_state.warnings.iter().cloned())
-            .collect::<Vec<_>>();
-        self.capabilities.replace(permission_state.grants);
+        self.dev_plugins = dev_plugins;
+        self.capabilities.replace(capability_grants(&catalog));
         warnings.append(&mut self.reconcile_commands(&catalog, commands, keymaps, leaders));
-        let context = ReloadContext {
-            permissions: &permissions,
-            workspace: &workspace,
-            wake,
-        };
-        self.reload_host(&catalog, plugin, context)?;
+        self.reload_host(&catalog, plugin, &workspace, wake)?;
         self.catalog = catalog;
         self.reset_message_throttle(plugin);
         self.retain_known_plugin_state();
@@ -65,15 +56,11 @@ impl PluginRuntime {
         &mut self,
         catalog: &PluginCatalog,
         plugin: Option<&str>,
-        context: ReloadContext<'_>,
+        workspace: &std::path::Path,
+        wake: std::sync::mpsc::Sender<()>,
     ) -> Result<(), PluginError> {
         let Some(host) = self.host.as_mut() else {
-            self.replace_host(
-                catalog,
-                context.permissions,
-                context.workspace,
-                context.wake,
-            );
+            self.replace_host(catalog, workspace, wake);
             return Ok(());
         };
         let target = plugin.filter(|name| {
@@ -84,12 +71,6 @@ impl PluginRuntime {
         });
         host.reload(catalog, target)
     }
-}
-
-struct ReloadContext<'a> {
-    permissions: &'a std::path::Path,
-    workspace: &'a std::path::Path,
-    wake: std::sync::mpsc::Sender<()>,
 }
 
 fn merge_catalog(
