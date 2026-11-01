@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. A plugin that implements minor version 1 or earlier still initializes and receives its declared events; it simply does not use `editor.set_diagnostics`. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
 
 ## Trust model
 
@@ -100,8 +100,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 2,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.set_diagnostics", "ui.message"],
+    "protocol_minor": 3,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -116,11 +116,11 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 2,
+    "protocol_minor": 3,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.set_diagnostics", "ui.message"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -277,6 +277,38 @@ Result:
 ```
 
 Edits are applied atomically. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010` and leaves the buffer unchanged. A position inside a UTF-8 code point or outside the buffer returns `-32011` and also leaves the buffer unchanged. Edits must not overlap.
+
+### editor.execute
+
+Request params:
+
+```json
+{"command": "file.save"}
+```
+
+Result is `null`. The command must be a built-in composable command inside the `editor.execute` allowlist. A command outside the allowlist returns `-32012`. An unknown command, a plugin-defined command, `keys.send`, or a command that requires arguments returns `-32602`. The editor runs the command synchronously and reports any execution error as `-32603`. Buffer changes use the `plugin:<name>` origin.
+
+Aliases are accepted when the canonical command is allowed. The canonical ID is used for the allowlist and for `editor.list_commands`.
+
+### editor.list_commands
+
+Request params are `{}`.
+
+Result:
+
+```json
+{
+  "commands": [
+    {
+      "id": "file.save",
+      "description": "save the buffer",
+      "aliases": ["save"]
+    }
+  ]
+}
+```
+
+The result contains only composable commands inside the allowlist, sorted by canonical ID. Plugin-defined commands and commands that require arguments are excluded.
 
 ### editor.set_diagnostics
 

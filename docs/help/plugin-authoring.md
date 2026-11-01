@@ -129,6 +129,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, including `ui.message`.
 - Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
+- `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - A component that imports an undeclared interface is rejected before it runs.
 - A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
 - On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
@@ -138,6 +139,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - Positions use zero-based lines and UTF-8 byte columns, not character columns. A multibyte codepoint advances the byte column by its encoded length. Use `kawi_plugin_sdk::position_at` and `byte_offset` instead of counting characters.
 - `editor.get_state` returns a revision. Pass that revision to `editor.apply_edit`. A stale revision returns code `-32010`.
 - `kawi_plugin_sdk::apply_edit_with_retry` fetches fresh state, rebuilds edits, and retries a bounded number of times. Declare `editor.read` and `editor.write` to use it.
+- `editor_execute::list_commands` returns only commands in the allowlist. `editor_execute::execute` runs a canonical built-in command. Plugin-defined commands, `keys.send`, and commands that require arguments are rejected. The editor runs the command before the host call returns.
 - `buffer_changed` includes an origin. Kawi excludes your own edits, so do not filter by origin to avoid loops. A `mixed` origin includes your own edit or changes from several sources; resync when `full_resync` is true.
 - The editor coalesces and orders events. A `file_saved` event is a good trigger for a full-buffer operation such as trim.
 - Diagnostics accept at most 1000 items per buffer. Each message is at most 4096 bytes and each code is at most 256 bytes.

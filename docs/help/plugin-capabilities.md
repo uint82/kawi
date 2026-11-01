@@ -15,6 +15,7 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | --- | --- | --- |
 | `editor.read` | none | Read editor state and receive editor events |
 | `editor.write` | none | Apply text edits |
+| `editor.execute` | `commands` | Execute the declared built-in editor commands |
 | `ui.message` | none | Show status messages |
 | `diagnostics.read` | none | Receive diagnostics events |
 | `diagnostics.publish` | none | Publish diagnostics for the current buffer |
@@ -29,6 +30,7 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 [capabilities]
 "editor.read" = true
 "editor.write" = true
+"editor.execute" = { commands = ["edit.format", "file.save"] }
 "ui.message" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
@@ -41,9 +43,17 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 
 Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. WebAssembly preopens require directories, so a file path is skipped with a warning for WASM plugins.
 
-## Commands
+## Process commands
 
 `process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Bare names are resolved with the host `PATH` when the sandbox is built. Arguments are not scoped.
+
+## Editor commands
+
+`editor.execute` takes `commands`, an array of built-in editor command IDs. Command IDs are lowercase and may contain dots, hyphens, and underscores. The list must not be empty and wildcards are not supported. Scope entries use canonical IDs such as `file.save` and `edit.format`; aliases are accepted at call time only when the canonical ID is allowed.
+
+The plugin can call `editor.list_commands` to discover the allowed commands and `editor.execute` to run one. Listing returns canonical IDs, descriptions, and aliases. The scope is an allowlist: a command outside the list returns `-32012`. Plugin-defined commands, `keys.send`, and commands that require arguments are not composable and return `-32602`.
+
+The editor runs the command synchronously before responding. Changes made by the command carry the `plugin:<name>` change origin.
 
 ## Hosts
 
@@ -70,6 +80,7 @@ An ungated command runs whenever the plugin runs.
 - WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
 - WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
 - Host-mediated editor, UI, and diagnostics calls require the matching declaration.
+- `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
 - Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
 - Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. Network scope is advisory for process plugins.
 

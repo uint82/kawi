@@ -42,6 +42,8 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | --- | --- |
 | `editor.get_state` | `editor-read.get-state` |
 | `editor.apply_edit` | `editor-write.apply-edit` |
+| `editor.execute` | `editor-execute.execute` |
+| `editor.list_commands` | `editor-execute.list-commands` |
 | `ui.message` | `ui-message.message` |
 | `editor.set_diagnostics` | `diagnostics-publish.set` |
 | Process execution through `process.spawn` | `process-run.run` |
@@ -70,7 +72,7 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
-| `editor.read`, `editor.write`, `ui.message`, `diagnostics.read`, `diagnostics.publish` | Host mediated | Host mediated |
+| `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` host interface |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
