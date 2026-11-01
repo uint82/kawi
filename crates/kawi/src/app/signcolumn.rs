@@ -43,16 +43,14 @@ impl App {
 
     fn plugin_has_signs(&self) -> bool {
         let buffer = self.editor.buffer_number();
-        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
-        self.plugin_decorations.has_signs(buffer, revision)
+        self.plugin_decorations.has_signs(buffer)
     }
 
     fn apply_plugin_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
         let buffer = self.editor.buffer_number();
-        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
         for (sign, plugin) in signs
             .iter_mut()
-            .zip(self.plugin_decorations.signs(buffer, revision, rows))
+            .zip(self.plugin_decorations.signs(buffer, rows))
         {
             if plugin.is_some() {
                 *sign = plugin;
@@ -188,7 +186,7 @@ mod plugin_sign_tests {
     use crate::keymap::Flavor;
     use crate::options::SignColumnMode;
     use kawi_buffer::Buffer;
-    use kawi_plugin::{Decoration, DecorationStyle};
+    use kawi_plugin::{Decoration, DecorationScope, DecorationStyle};
     use kawi_tui::frame::PluginSign;
 
     #[test]
@@ -197,13 +195,12 @@ mod plugin_sign_tests {
         app.handle_resize(80, 24).expect("resize");
         app.signcolumn = SignColumnMode::Auto;
         let buffer = app.editor.buffer_number();
-        let revision = app.editor.buffer_revision();
         let snapshot = app.editor.document_snapshot();
         app.plugin_decorations
             .set(
                 "visual",
                 buffer,
-                revision,
+                DecorationScope::All,
                 &[Decoration::Sign {
                     line: 0,
                     text: "!".to_string(),

@@ -546,6 +546,7 @@ impl App {
             let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.plugin_wait_timeout());
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -564,6 +565,10 @@ impl App {
 
     fn terminal_wait_timeout(&self) -> Option<Duration> {
         self.terminal.needs_poll().then_some(TERMINAL_POLL_INTERVAL)
+    }
+
+    fn plugin_wait_timeout(&self) -> Option<Duration> {
+        self.plugins.pending_deadline(Instant::now())
     }
 
     fn wait_for_frame_budget(&self) -> Result<()> {

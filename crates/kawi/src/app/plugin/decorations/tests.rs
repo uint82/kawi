@@ -1,4 +1,4 @@
-use kawi_plugin::{Decoration, DecorationStyle as PluginStyle, Position};
+use kawi_plugin::{Decoration, DecorationScope, DecorationStyle as PluginStyle, Position};
 use kawi_tui::frame::DecorationStyle;
 use ropey::Rope;
 
@@ -27,7 +27,7 @@ fn set(
     decorations.set(
         "demo",
         1,
-        4,
+        DecorationScope::All,
         decorations_list,
         &Rope::from_str("alpha\nbeta\ngamma\n"),
     )
@@ -41,7 +41,7 @@ fn highlights_are_clipped_to_visible_rows() {
         &[highlight(position(0, 1), position(2, 2), PluginStyle::Info)],
     )
     .unwrap();
-    let spans = decorations.spans(1, 4, &[0, 2, 4]);
+    let spans = decorations.spans(1, &[0, 2, 4]);
     assert_eq!(spans.len(), 2);
     assert_eq!(
         (spans[0].row, spans[0].start, spans[0].end, spans[0].style),
@@ -62,7 +62,7 @@ fn zero_length_highlights_are_ignored() {
         )],
     )
     .unwrap();
-    assert!(decorations.spans(1, 4, &[1]).is_empty());
+    assert!(decorations.spans(1, &[1]).is_empty());
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn virtual_texts_are_grouped_by_row_and_sanitized() {
         ],
     )
     .unwrap();
-    let rows = decorations.virtual_texts(1, 4, &[0, 1, 2]);
+    let rows = decorations.virtual_texts(1, &[0, 1, 2]);
     assert_eq!(rows[0].len(), 0);
     assert_eq!(rows[1].len(), 1);
     assert_eq!(rows[1][0].text, "bad");
@@ -87,7 +87,7 @@ fn virtual_texts_are_grouped_by_row_and_sanitized() {
 }
 
 #[test]
-fn stale_revisions_are_not_rendered() {
+fn decorations_survive_buffer_revision_changes() {
     let mut decorations = PluginDecorations::default();
     set(
         &mut decorations,
@@ -98,11 +98,49 @@ fn stale_revisions_are_not_rendered() {
         )],
     )
     .unwrap();
-    assert!(decorations.spans(1, 5, &[0]).is_empty());
-    assert!(decorations
-        .virtual_texts(1, 5, &[0])
-        .iter()
-        .all(Vec::is_empty));
+    assert_eq!(decorations.spans(1, &[0]).len(), 1);
+    assert_eq!(decorations.virtual_texts(1, &[0])[0].len(), 0);
+}
+
+#[test]
+fn retain_live_keeps_decorations_after_a_revision_change() {
+    let mut decorations = PluginDecorations::default();
+    set(
+        &mut decorations,
+        &[highlight(position(0, 0), position(0, 1), PluginStyle::Info)],
+    )
+    .unwrap();
+    let mut editor = kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("alpha\n"));
+    editor.paste("x");
+    decorations.retain_live(&editor);
+    assert_eq!(decorations.spans(1, &[0]).len(), 1);
+}
+
+#[test]
+fn retain_live_drops_closed_buffers_only() {
+    let mut decorations = PluginDecorations::default();
+    set(
+        &mut decorations,
+        &[highlight(
+            position(0, 0),
+            position(0, 1),
+            PluginStyle::Accent,
+        )],
+    )
+    .unwrap();
+    decorations
+        .set(
+            "demo",
+            2,
+            DecorationScope::All,
+            &[highlight(position(0, 0), position(0, 1), PluginStyle::Info)],
+            &Rope::from_str("alpha\n"),
+        )
+        .unwrap();
+    let editor = kawi_editor::Editor::new(kawi_buffer::Buffer::from_string("alpha\n"));
+    decorations.retain_live(&editor);
+    assert_eq!(decorations.spans(1, &[0]).len(), 1);
+    assert!(decorations.spans(2, &[0]).is_empty());
 }
 
 #[test]
@@ -118,7 +156,7 @@ fn removing_a_plugin_drops_all_of_its_sets() {
     )
     .unwrap();
     decorations.remove_plugin("demo");
-    assert!(decorations.spans(1, 4, &[0]).is_empty());
+    assert!(decorations.spans(1, &[0]).is_empty());
 }
 
 #[test]
@@ -157,7 +195,7 @@ fn signs_are_placed_on_visible_rows() {
         ],
     )
     .unwrap();
-    let signs = decorations.signs(1, 4, &[0, 1, 2]);
+    let signs = decorations.signs(1, &[0, 1, 2]);
     assert_eq!(signs.len(), 3);
     assert!(signs[0].is_none());
     let sign = signs[1].as_ref().expect("sign");
@@ -181,10 +219,7 @@ fn sign_text_is_sanitized_and_limited_to_one_cell() {
     )
     .unwrap();
     assert_eq!(
-        decorations.signs(1, 4, &[0])[0]
-            .as_ref()
-            .expect("sign")
-            .text(),
+        decorations.signs(1, &[0])[0].as_ref().expect("sign").text(),
         "!"
     );
     let error = set(&mut decorations, &[sign(0, "ab", PluginStyle::Warning)]).unwrap_err();
@@ -196,8 +231,8 @@ fn sign_text_is_sanitized_and_limited_to_one_cell() {
 #[test]
 fn signs_report_whether_a_buffer_has_any() {
     let mut decorations = PluginDecorations::default();
-    assert!(!decorations.has_signs(1, 4));
+    assert!(!decorations.has_signs(1));
     set(&mut decorations, &[sign(0, "!", PluginStyle::Info)]).unwrap();
-    assert!(decorations.has_signs(1, 4));
-    assert!(!decorations.has_signs(1, 5));
+    assert!(decorations.has_signs(1));
+    assert!(!decorations.has_signs(2));
 }

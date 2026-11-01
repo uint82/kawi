@@ -5,8 +5,8 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
     ApplyEditParams, ApplyEditResult, ConfigGetParams, ConfigGetResult, ConfigListResult,
-    EditorExecuteParams, GetStateParams, RpcError, SetDecorationsParams, SetDiagnosticsParams,
-    SetStatuslineParams, UiMessageParams, PLUGIN_UNAVAILABLE,
+    DecorationScope, EditorExecuteParams, GetStateParams, RpcError, SetDecorationsParams,
+    SetDiagnosticsParams, SetStatuslineParams, UiMessageParams, PLUGIN_UNAVAILABLE,
 };
 
 pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
@@ -223,6 +223,7 @@ impl editor_decorations::Host for WasmState {
         let params = serialize_params(SetDecorationsParams {
             buffer,
             revision,
+            scope: DecorationScope::Visual,
             decorations: decorations_to_protocol(decorations).map_err(error_from_rpc)?,
         })?;
         self.bridge
@@ -237,6 +238,7 @@ impl editor_signs::Host for WasmState {
         let params = serialize_params(SetDecorationsParams {
             buffer,
             revision,
+            scope: DecorationScope::Signs,
             decorations: signs_to_protocol(signs),
         })?;
         self.bridge

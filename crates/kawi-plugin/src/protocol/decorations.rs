@@ -1,4 +1,30 @@
-use super::{Decoration, RpcError, MAX_DECORATION_TEXT_BYTES, MAX_PLUGIN_DECORATIONS};
+use super::{
+    Decoration, DecorationScope, RpcError, MAX_DECORATION_TEXT_BYTES, MAX_PLUGIN_DECORATIONS,
+};
+
+pub fn validate_decoration_scope(
+    decorations: &[Decoration],
+    scope: DecorationScope,
+) -> Result<(), RpcError> {
+    if scope == DecorationScope::All {
+        return Ok(());
+    }
+    for decoration in decorations {
+        let matches = matches!(
+            (scope, decoration),
+            (
+                DecorationScope::Visual,
+                Decoration::Highlight { .. } | Decoration::VirtualText { .. },
+            ) | (DecorationScope::Signs, Decoration::Sign { .. })
+        );
+        if !matches {
+            return Err(RpcError::invalid_params(
+                "decoration kind does not match scope",
+            ));
+        }
+    }
+    Ok(())
+}
 
 pub fn validate_decorations(decorations: &[Decoration]) -> Result<(), RpcError> {
     if decorations.len() > MAX_PLUGIN_DECORATIONS {
@@ -22,7 +48,7 @@ pub fn validate_decorations(decorations: &[Decoration]) -> Result<(), RpcError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{DecorationStyle, Position};
+    use crate::protocol::{DecorationScope, DecorationStyle, Position, SetDecorationsParams};
 
     fn virtual_text(text: String) -> Decoration {
         Decoration::VirtualText {
@@ -44,6 +70,33 @@ mod tests {
             },
             style: DecorationStyle::Info,
         }
+    }
+
+    fn sign() -> Decoration {
+        Decoration::Sign {
+            line: 0,
+            text: "!".to_string(),
+            style: DecorationStyle::Error,
+        }
+    }
+
+    #[test]
+    fn scope_defaults_to_all() {
+        let params: SetDecorationsParams = serde_json::from_value(serde_json::json!({
+            "buffer": 1,
+            "revision": 2,
+            "decorations": []
+        }))
+        .expect("params");
+        assert_eq!(params.scope, DecorationScope::All);
+    }
+
+    #[test]
+    fn rejects_decorations_outside_scope() {
+        assert!(validate_decoration_scope(&[highlight()], DecorationScope::Visual).is_ok());
+        assert!(validate_decoration_scope(&[sign()], DecorationScope::Signs).is_ok());
+        assert!(validate_decoration_scope(&[sign()], DecorationScope::Visual).is_err());
+        assert!(validate_decoration_scope(&[highlight()], DecorationScope::Signs).is_err());
     }
 
     #[test]

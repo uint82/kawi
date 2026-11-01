@@ -154,6 +154,13 @@ impl PluginRuntime {
         }
     }
 
+    pub(crate) fn pending_deadline(&self, now: Instant) -> Option<Duration> {
+        self.pending
+            .values()
+            .map(|pending| pending.due.saturating_duration_since(now))
+            .min()
+    }
+
     pub(super) fn flush_pending(&mut self, now: Instant) {
         let due = self
             .pending
@@ -246,8 +253,12 @@ mod tests {
     use kawi_editor::BufferChanges;
 
     fn buffer(revision: u64) -> BufferChanges {
+        buffer_at(1, revision)
+    }
+
+    fn buffer_at(number: usize, revision: u64) -> BufferChanges {
         BufferChanges {
-            number: 1,
+            number,
             path: None,
             language: None,
             revision,
@@ -263,6 +274,14 @@ mod tests {
                 text: "x".to_string(),
                 origin: BufferChangeOrigin::User,
             }],
+        }
+    }
+
+    fn change_payload() -> ChangePayload {
+        ChangePayload {
+            origin: "user".to_string(),
+            full_resync: false,
+            changes: vec![edit()],
         }
     }
 
@@ -385,5 +404,27 @@ mod tests {
         assert!(pending.full_resync);
         assert!(pending.changes.is_empty());
         assert_eq!(pending.origin, ORIGIN_MIXED);
+    }
+
+    #[test]
+    fn reports_the_earliest_pending_deadline() {
+        let mut runtime = PluginRuntime::default();
+        let now = Instant::now();
+        runtime.queue_buffer_change("slow", 50, &buffer_at(1, 1), now, change_payload());
+        runtime.queue_buffer_change("fast", 10, &buffer_at(2, 1), now, change_payload());
+        assert_eq!(
+            runtime.pending_deadline(now),
+            Some(Duration::from_millis(10))
+        );
+    }
+
+    #[test]
+    fn reports_an_overdue_pending_deadline_as_zero() {
+        let mut runtime = PluginRuntime::default();
+        let now = Instant::now();
+        runtime.queue_buffer_change("events", 50, &buffer(1), now, change_payload());
+        let key = ("events".to_string(), 1);
+        runtime.pending.get_mut(&key).unwrap().due = now - Duration::from_millis(1);
+        assert_eq!(runtime.pending_deadline(now), Some(Duration::ZERO));
     }
 }

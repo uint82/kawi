@@ -1,6 +1,6 @@
 use kawi_plugin::{
-    Decoration, DecorationStyle, Position, SetDecorationsParams, SetStatuslineParams,
-    StatuslineSegment, INVALID_PARAMS, STALE_REVISION,
+    Decoration, DecorationScope, DecorationStyle, Position, SetDecorationsParams,
+    SetStatuslineParams, StatuslineSegment, INVALID_PARAMS, STALE_REVISION,
 };
 use serde_json::json;
 
@@ -10,9 +10,18 @@ fn set_decorations(
     app: &mut crate::app::App,
     decorations: Vec<Decoration>,
 ) -> Result<serde_json::Value, kawi_plugin::RpcError> {
+    set_decorations_scoped(app, DecorationScope::All, decorations)
+}
+
+fn set_decorations_scoped(
+    app: &mut crate::app::App,
+    scope: DecorationScope,
+    decorations: Vec<Decoration>,
+) -> Result<serde_json::Value, kawi_plugin::RpcError> {
     let params = SetDecorationsParams {
         buffer: app.editor.buffer_number() as u64,
         revision: app.editor.buffer_revision(),
+        scope,
         decorations,
     };
     app.handle_plugin_request(
@@ -22,10 +31,31 @@ fn set_decorations(
     )
 }
 
+fn highlight() -> Decoration {
+    Decoration::Highlight {
+        start: Position {
+            line: 0,
+            byte_column: 0,
+        },
+        end: Position {
+            line: 0,
+            byte_column: 4,
+        },
+        style: DecorationStyle::Info,
+    }
+}
+
+fn sign() -> Decoration {
+    Decoration::Sign {
+        line: 0,
+        text: "!".to_string(),
+        style: DecorationStyle::Error,
+    }
+}
+
 #[test]
 fn stores_highlights_virtual_text_and_signs() {
     let mut app = app();
-    let revision = app.editor.buffer_revision();
     set_decorations(
         &mut app,
         vec![
@@ -54,15 +84,54 @@ fn stores_highlights_virtual_text_and_signs() {
     )
     .unwrap();
     let buffer = app.editor.buffer_number();
+    assert_eq!(app.plugin_decorations.spans(buffer, &[0]).len(), 1);
     assert_eq!(
-        app.plugin_decorations.spans(buffer, revision, &[0]).len(),
+        app.plugin_decorations.virtual_texts(buffer, &[0])[0].len(),
         1
     );
-    assert_eq!(
-        app.plugin_decorations.virtual_texts(buffer, revision, &[0])[0].len(),
-        1
-    );
-    assert!(app.plugin_decorations.has_signs(buffer, revision));
+    assert!(app.plugin_decorations.has_signs(buffer));
+}
+
+#[test]
+fn visual_scope_preserves_signs() {
+    let mut app = app();
+    set_decorations_scoped(&mut app, DecorationScope::Signs, vec![sign()]).unwrap();
+    set_decorations_scoped(&mut app, DecorationScope::Visual, vec![highlight()]).unwrap();
+    let buffer = app.editor.buffer_number();
+    assert_eq!(app.plugin_decorations.spans(buffer, &[0]).len(), 1);
+    assert!(app.plugin_decorations.has_signs(buffer));
+}
+
+#[test]
+fn signs_scope_preserves_visuals() {
+    let mut app = app();
+    set_decorations_scoped(&mut app, DecorationScope::Visual, vec![highlight()]).unwrap();
+    set_decorations_scoped(&mut app, DecorationScope::Signs, vec![sign()]).unwrap();
+    let buffer = app.editor.buffer_number();
+    assert_eq!(app.plugin_decorations.spans(buffer, &[0]).len(), 1);
+    assert!(app.plugin_decorations.has_signs(buffer));
+}
+
+#[test]
+fn all_scope_replaces_visuals_and_signs() {
+    let mut app = app();
+    set_decorations_scoped(&mut app, DecorationScope::Visual, vec![highlight()]).unwrap();
+    set_decorations_scoped(&mut app, DecorationScope::Signs, vec![sign()]).unwrap();
+    set_decorations_scoped(&mut app, DecorationScope::All, Vec::new()).unwrap();
+    let buffer = app.editor.buffer_number();
+    assert!(app.plugin_decorations.spans(buffer, &[0]).is_empty());
+    assert!(!app.plugin_decorations.has_signs(buffer));
+}
+
+#[test]
+fn rejects_decoration_outside_scope() {
+    let mut app = app();
+    let error =
+        set_decorations_scoped(&mut app, DecorationScope::Visual, vec![sign()]).unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
+    let error =
+        set_decorations_scoped(&mut app, DecorationScope::Signs, vec![highlight()]).unwrap_err();
+    assert_eq!(error.code, INVALID_PARAMS);
 }
 
 #[test]

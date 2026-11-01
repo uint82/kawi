@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use kawi_editor::Editor;
 use kawi_plugin::{
-    sanitize, Decoration as ProtocolDecoration, DecorationStyle as PluginStyle, Position, RpcError,
+    sanitize, Decoration as ProtocolDecoration, DecorationScope, DecorationStyle as PluginStyle,
+    Position, RpcError,
 };
 use kawi_tui::frame::{DecorationSpan, DecorationStyle, PluginSign, Sign, VirtualText};
 use kawi_tui::text::display_width;
@@ -16,8 +17,8 @@ pub(crate) struct PluginDecorations {
     sets: BTreeMap<(String, usize), DecorationSet>,
 }
 
+#[derive(Default)]
 struct DecorationSet {
-    revision: u64,
     highlights: Vec<Highlight>,
     virtual_texts: Vec<PluginVirtualText>,
     signs: Vec<SignMark>,
@@ -52,12 +53,27 @@ impl PluginDecorations {
         &mut self,
         plugin: &str,
         buffer: usize,
-        revision: u64,
+        scope: DecorationScope,
         decorations: &[ProtocolDecoration],
         snapshot: &Rope,
     ) -> Result<(), RpcError> {
-        let set = DecorationSet::new(revision, decorations, snapshot)?;
-        self.sets.insert((plugin.to_string(), buffer), set);
+        let incoming = DecorationSet::new(decorations, snapshot)?;
+        let key = (plugin.to_string(), buffer);
+        let set = match scope {
+            DecorationScope::All => incoming,
+            DecorationScope::Visual => {
+                let mut set = self.sets.remove(&key).unwrap_or_default();
+                set.highlights = incoming.highlights;
+                set.virtual_texts = incoming.virtual_texts;
+                set
+            }
+            DecorationScope::Signs => {
+                let mut set = self.sets.remove(&key).unwrap_or_default();
+                set.signs = incoming.signs;
+                set
+            }
+        };
+        self.sets.insert(key, set);
         Ok(())
     }
 
@@ -67,19 +83,19 @@ impl PluginDecorations {
 
     pub(crate) fn retain_live(&mut self, editor: &Editor) {
         self.sets
-            .retain(|(_, buffer), set| editor.buffer_revision_at(*buffer) == Some(set.revision));
+            .retain(|(_, buffer), _| editor.buffer_revision_at(*buffer).is_some());
     }
 
-    pub(crate) fn has_signs(&self, buffer: usize, revision: u64) -> bool {
-        self.sets.iter().any(|((_, number), set)| {
-            *number == buffer && set.revision == revision && !set.signs.is_empty()
-        })
+    pub(crate) fn has_signs(&self, buffer: usize) -> bool {
+        self.sets
+            .iter()
+            .any(|((_, number), set)| *number == buffer && !set.signs.is_empty())
     }
 
-    pub(crate) fn signs(&self, buffer: usize, revision: u64, rows: &[usize]) -> Vec<Option<Sign>> {
+    pub(crate) fn signs(&self, buffer: usize, rows: &[usize]) -> Vec<Option<Sign>> {
         let mut signs = vec![None; rows.len()];
         for ((_, number), set) in &self.sets {
-            if *number != buffer || set.revision != revision {
+            if *number != buffer {
                 continue;
             }
             for mark in &set.signs {
@@ -97,15 +113,10 @@ impl PluginDecorations {
         signs
     }
 
-    pub(crate) fn spans(
-        &self,
-        buffer: usize,
-        revision: u64,
-        rows: &[usize],
-    ) -> Vec<DecorationSpan> {
+    pub(crate) fn spans(&self, buffer: usize, rows: &[usize]) -> Vec<DecorationSpan> {
         let mut spans = Vec::new();
         for ((_, number), set) in &self.sets {
-            if *number != buffer || set.revision != revision {
+            if *number != buffer {
                 continue;
             }
             for highlight in &set.highlights {
@@ -115,17 +126,12 @@ impl PluginDecorations {
         spans
     }
 
-    pub(crate) fn virtual_texts(
-        &self,
-        buffer: usize,
-        revision: u64,
-        rows: &[usize],
-    ) -> Vec<Vec<VirtualText>> {
+    pub(crate) fn virtual_texts(&self, buffer: usize, rows: &[usize]) -> Vec<Vec<VirtualText>> {
         let mut texts = std::iter::repeat_with(Vec::new)
             .take(rows.len())
             .collect::<Vec<Vec<VirtualText>>>();
         for ((_, number), set) in &self.sets {
-            if *number != buffer || set.revision != revision {
+            if *number != buffer {
                 continue;
             }
             for text in &set.virtual_texts {
@@ -140,11 +146,7 @@ impl PluginDecorations {
 }
 
 impl DecorationSet {
-    fn new(
-        revision: u64,
-        decorations: &[ProtocolDecoration],
-        snapshot: &Rope,
-    ) -> Result<Self, RpcError> {
+    fn new(decorations: &[ProtocolDecoration], snapshot: &Rope) -> Result<Self, RpcError> {
         let mut highlights = Vec::new();
         let mut virtual_texts = Vec::new();
         let mut signs = Vec::new();
@@ -168,7 +170,6 @@ impl DecorationSet {
             }
         }
         Ok(Self {
-            revision,
             highlights,
             virtual_texts,
             signs,

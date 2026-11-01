@@ -257,10 +257,21 @@ pub enum Decoration {
     },
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecorationScope {
+    #[default]
+    All,
+    Visual,
+    Signs,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetDecorationsParams {
     pub buffer: u64,
     pub revision: u64,
+    #[serde(default)]
+    pub scope: DecorationScope,
     pub decorations: Vec<Decoration>,
 }
 
