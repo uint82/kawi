@@ -35,6 +35,11 @@ fn falls_back_to_a_parent_scope() {
 
 #[test]
 fn carries_style_attributes() {
+    let palette = parse_palette(BTreeMap::from([(
+        "muted".to_string(),
+        "#5c6370".to_string(),
+    )]))
+    .expect("palette");
     let styles = parse_styles(
         BTreeMap::from([
             (
@@ -82,7 +87,7 @@ fn carries_style_attributes() {
             ("tag".to_string(), StyleValue::Color("red".to_string())),
             ("invalid".to_string(), StyleValue::Color("red".to_string())),
         ]),
-        BTreeMap::from([("muted".to_string(), "#5c6370".to_string())]),
+        palette,
     )
     .expect("styles");
     let comment = styles.style(registry_style("comment")).expect("comment");

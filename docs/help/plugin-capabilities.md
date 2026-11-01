@@ -67,6 +67,24 @@ The editor runs the command synchronously before responding. Changes made by the
 
 `editor.decorations` enables `editor.set_decorations` and the WASM `editor-decorations` and `editor-signs` interfaces. Visual decorations and signs are stored independently, so updating one does not clear the other. The process API uses `scope` to select `all`, `visual`, or `signs`; it defaults to `all`. Decorations are data: the host owns layout, colors, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
 
+Plugins declare named decoration groups in `plugin.toml`:
+
+```toml
+[[decorations]]
+id = "todo"
+color = "info"
+fill = "both"
+italic = true
+
+[[decorations]]
+id = "todo_text"
+color = "info"
+fill = "foreground"
+italic = true
+```
+
+Group IDs are local to the plugin and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `bold`, `italic`, and `underline` set text attributes.
+
 ```json
 {
   "buffer": 1,
@@ -77,25 +95,27 @@ The editor runs the command synchronously before responding. Changes made by the
       "kind": "highlight",
       "start": {"line": 4, "byte_column": 0},
       "end": {"line": 4, "byte_column": 8},
-      "style": "info"
+      "group": "todo"
     },
     {
       "kind": "virtual_text",
       "line": 4,
       "text": "indexed",
-      "style": "muted"
+      "group": "todo_text"
     },
     {
       "kind": "sign",
       "line": 4,
       "text": "!",
-      "style": "error"
+      "group": "todo"
     }
   ]
 }
 ```
 
-Styles are `accent`, `info`, `success`, `warning`, `error`, and `muted`. A sign must occupy exactly one terminal cell. Highlights must be ordered and inside the buffer. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign. Diagnostics outrank plugin signs, and plugin signs outrank Git signs.
+Each decoration sets exactly one of `group` or `style`. `group` must be declared by the plugin. `style` is the legacy built-in fallback and accepts `accent`, `info`, `success`, `warning`, `error`, or `muted`. A sign must occupy exactly one terminal cell. Highlights must be ordered and inside the buffer. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign. Diagnostics outrank plugin signs, and plugin signs outrank Git signs.
+
+Themes customize each group with `[plugin_decorations.<plugin>.<group>]`. Overrides support `foreground`, `background`, `fill`, `bold`, `italic`, and `underline`. See [Themes](help:themes).
 
 `ui.statusline` enables `ui.set_statusline`. A plugin replaces all of its status line segments. Segments are shown where the `plugins` element appears in `[ui.statusline]` and are ordered by descending `priority`, then by plugin name.
 

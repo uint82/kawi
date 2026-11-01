@@ -60,6 +60,7 @@ impl App {
             load_plugins,
         );
         warnings.extend(plugin_warnings);
+        self.rebuild_plugin_styles();
         let _ = crate::config::write_warning_log(&paths.config_log, &warnings);
         if !warnings.is_empty() {
             self.show_startup_warning(config_warning_message(warnings.len(), &paths.config_log));

@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use super::runtime;
-use super::{ActivationEvent, PluginCommand, PluginManifest};
+use super::{ActivationEvent, PluginCommand, PluginDecorationGroup, PluginManifest};
 use crate::capability::Capability;
+use crate::decoration_group::{validate_decoration_group, MAX_DECORATION_GROUPS};
 use crate::protocol::PROTOCOL_VERSION;
 
 const MIN_TIMEOUT_MS: u64 = 100;
@@ -26,10 +27,27 @@ pub(super) fn validate_manifest(
     let artifact = runtime::validate(manifest, dir)?;
     validate_timeout(manifest.timeout_ms)?;
     super::settings::validate(&mut manifest.settings)?;
+    validate_decoration_groups(&manifest.decorations)?;
     validate_commands(&manifest.commands)?;
     validate_subscriptions(manifest)?;
     validate_activation(&manifest.activation_events)?;
     Ok(artifact)
+}
+
+fn validate_decoration_groups(groups: &[PluginDecorationGroup]) -> Result<(), String> {
+    if groups.len() > MAX_DECORATION_GROUPS {
+        return Err(format!(
+            "at most {MAX_DECORATION_GROUPS} decoration groups are accepted"
+        ));
+    }
+    let mut ids = HashSet::new();
+    for group in groups {
+        validate_decoration_group(&group.id)?;
+        if !ids.insert(group.id.as_str()) {
+            return Err(format!("duplicate decoration group: {}", group.id));
+        }
+    }
+    Ok(())
 }
 
 fn validate_subscriptions(manifest: &PluginManifest) -> Result<(), String> {

@@ -41,7 +41,8 @@ fn highlight() -> Decoration {
             line: 0,
             byte_column: 4,
         },
-        style: DecorationStyle::Info,
+        group: None,
+        style: Some(DecorationStyle::Info),
     }
 }
 
@@ -49,7 +50,8 @@ fn sign() -> Decoration {
     Decoration::Sign {
         line: 0,
         text: "!".to_string(),
-        style: DecorationStyle::Error,
+        group: None,
+        style: Some(DecorationStyle::Error),
     }
 }
 
@@ -68,17 +70,20 @@ fn stores_highlights_virtual_text_and_signs() {
                     line: 0,
                     byte_column: 4,
                 },
-                style: DecorationStyle::Info,
+                group: None,
+                style: Some(DecorationStyle::Info),
             },
             Decoration::VirtualText {
                 line: 0,
                 text: "note".to_string(),
-                style: DecorationStyle::Muted,
+                group: None,
+                style: Some(DecorationStyle::Muted),
             },
             Decoration::Sign {
                 line: 0,
                 text: "!".to_string(),
-                style: DecorationStyle::Error,
+                group: None,
+                style: Some(DecorationStyle::Error),
             },
         ],
     )
@@ -154,7 +159,8 @@ fn rejects_stale_revisions_and_invalid_sign_text() {
         vec![Decoration::Sign {
             line: 0,
             text: "ab".to_string(),
-            style: DecorationStyle::Error,
+            group: None,
+            style: Some(DecorationStyle::Error),
         }],
     )
     .unwrap_err();

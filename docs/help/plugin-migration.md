@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.4.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.5.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.4.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.5.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -57,7 +57,7 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
-The WIT interfaces update independently. `editor-decorations.set` preserves signs, and `editor-signs.set` preserves highlights and virtual text. Process plugins get the same behavior with `scope` set to `visual` or `signs`.
+The WIT interfaces update independently. `editor-decorations.set` preserves signs, and `editor-signs.set` preserves highlights and virtual text. Process plugins get the same behavior with `scope` set to `visual` or `signs`. WIT decorations reference manifest-declared `group` strings. Process plugins may use `group` as well; `style` remains a legacy built-in fallback.
 
 An import that is not declared by the manifest is rejected before instantiation. Kawi enables every declared API for a managed plugin, so a declared import does not need a grant. The settings methods are always available because they only expose the plugin's own namespace. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
 

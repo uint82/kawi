@@ -2,15 +2,16 @@ use std::collections::BTreeMap;
 
 use kawi_editor::Editor;
 use kawi_plugin::{
-    sanitize, Decoration as ProtocolDecoration, DecorationScope, DecorationStyle as PluginStyle,
-    Position, RpcError,
+    decoration_ref, Decoration as ProtocolDecoration, DecorationRef, DecorationScope, RpcError,
 };
-use kawi_tui::frame::{DecorationSpan, DecorationStyle, PluginSign, Sign, VirtualText};
-use kawi_tui::text::display_width;
+use kawi_tui::frame::{DecorationSpan, PluginSign, Sign, VirtualText};
 use ropey::Rope;
 
-use super::host_methods::position_to_char;
-use super::style::frame_style;
+use super::style::PluginStyles;
+
+mod items;
+
+use items::{Highlight, PluginVirtualText, SignMark};
 
 #[derive(Default)]
 pub(crate) struct PluginDecorations {
@@ -24,30 +25,6 @@ struct DecorationSet {
     signs: Vec<SignMark>,
 }
 
-struct Highlight {
-    start: LineColumn,
-    end: LineColumn,
-    style: DecorationStyle,
-}
-
-struct PluginVirtualText {
-    line: usize,
-    text: String,
-    style: DecorationStyle,
-}
-
-struct SignMark {
-    line: usize,
-    text: String,
-    style: DecorationStyle,
-}
-
-#[derive(Clone, Copy)]
-struct LineColumn {
-    line: usize,
-    column: usize,
-}
-
 impl PluginDecorations {
     pub(crate) fn set(
         &mut self,
@@ -56,8 +33,9 @@ impl PluginDecorations {
         scope: DecorationScope,
         decorations: &[ProtocolDecoration],
         snapshot: &Rope,
+        styles: &PluginStyles,
     ) -> Result<(), RpcError> {
-        let incoming = DecorationSet::new(decorations, snapshot)?;
+        let incoming = DecorationSet::new(decorations, snapshot, plugin, styles)?;
         let key = (plugin.to_string(), buffer);
         let set = match scope {
             DecorationScope::All => incoming,
@@ -75,6 +53,12 @@ impl PluginDecorations {
         };
         self.sets.insert(key, set);
         Ok(())
+    }
+
+    pub(crate) fn retheme(&mut self, styles: &PluginStyles) {
+        for ((plugin, _), set) in &mut self.sets {
+            set.retheme(plugin, styles);
+        }
     }
 
     pub(crate) fn remove_plugin(&mut self, plugin: &str) {
@@ -146,148 +130,71 @@ impl PluginDecorations {
 }
 
 impl DecorationSet {
-    fn new(decorations: &[ProtocolDecoration], snapshot: &Rope) -> Result<Self, RpcError> {
-        let mut highlights = Vec::new();
-        let mut virtual_texts = Vec::new();
-        let mut signs = Vec::new();
+    fn new(
+        decorations: &[ProtocolDecoration],
+        snapshot: &Rope,
+        plugin: &str,
+        styles: &PluginStyles,
+    ) -> Result<Self, RpcError> {
+        let mut set = Self::default();
         for decoration in decorations {
-            match decoration {
-                ProtocolDecoration::Highlight { start, end, style } => {
-                    if let Some(highlight) = Highlight::new(start, end, *style, snapshot)? {
-                        highlights.push(highlight);
-                    }
+            let appearance = decoration_ref(decoration)?;
+            let style = resolve_style(plugin, &appearance, styles)?;
+            set.push(decoration, appearance, style, snapshot)?;
+        }
+        Ok(set)
+    }
+
+    fn push(
+        &mut self,
+        decoration: &ProtocolDecoration,
+        appearance: DecorationRef,
+        style: kawi_tui::frame::PluginStyle,
+        snapshot: &Rope,
+    ) -> Result<(), RpcError> {
+        match decoration {
+            ProtocolDecoration::Highlight { start, end, .. } => {
+                if let Some(highlight) = Highlight::new(start, end, appearance, style, snapshot)? {
+                    self.highlights.push(highlight);
                 }
-                ProtocolDecoration::VirtualText { line, text, style } => {
-                    if let Some(text) = PluginVirtualText::new(*line, text, *style, snapshot)? {
-                        virtual_texts.push(text);
-                    }
+            }
+            ProtocolDecoration::VirtualText { line, text, .. } => {
+                if let Some(text) =
+                    PluginVirtualText::new(*line, text, appearance, style, snapshot)?
+                {
+                    self.virtual_texts.push(text);
                 }
-                ProtocolDecoration::Sign { line, text, style } => {
-                    if let Some(sign) = SignMark::new(*line, text, *style, snapshot)? {
-                        signs.push(sign);
-                    }
+            }
+            ProtocolDecoration::Sign { line, text, .. } => {
+                if let Some(sign) = SignMark::new(*line, text, appearance, style, snapshot)? {
+                    self.signs.push(sign);
                 }
             }
         }
-        Ok(Self {
-            highlights,
-            virtual_texts,
-            signs,
-        })
-    }
-}
-
-impl Highlight {
-    fn new(
-        start: &Position,
-        end: &Position,
-        style: PluginStyle,
-        snapshot: &Rope,
-    ) -> Result<Option<Self>, RpcError> {
-        let start_offset = position_to_char(snapshot, start)?;
-        let end_offset = position_to_char(snapshot, end)?;
-        if start_offset > end_offset {
-            return Err(RpcError::invalid_position(
-                "decoration start is after its end".to_string(),
-            ));
-        }
-        if start_offset == end_offset {
-            return Ok(None);
-        }
-        Ok(Some(Self {
-            start: line_column(snapshot, start_offset),
-            end: line_column(snapshot, end_offset),
-            style: frame_style(style),
-        }))
+        Ok(())
     }
 
-    fn push_spans(&self, rows: &[usize], spans: &mut Vec<DecorationSpan>) {
-        for row in rows {
-            if *row < self.start.line || *row > self.end.line {
-                continue;
-            }
-            let start = if *row == self.start.line {
-                self.start.column
-            } else {
-                0
-            };
-            let end = if *row == self.end.line {
-                self.end.column
-            } else {
-                usize::MAX
-            };
-            if start >= end {
-                continue;
-            }
-            spans.push(DecorationSpan {
-                row: *row,
-                start,
-                end,
-                style: self.style,
-            });
+    fn retheme(&mut self, plugin: &str, styles: &PluginStyles) {
+        for highlight in &mut self.highlights {
+            highlight.retheme(plugin, styles);
+        }
+        for text in &mut self.virtual_texts {
+            text.retheme(plugin, styles);
+        }
+        for sign in &mut self.signs {
+            sign.retheme(plugin, styles);
         }
     }
 }
 
-impl PluginVirtualText {
-    fn new(
-        line: usize,
-        text: &str,
-        style: PluginStyle,
-        snapshot: &Rope,
-    ) -> Result<Option<Self>, RpcError> {
-        if line >= snapshot.len_lines() {
-            return Err(RpcError::invalid_position(format!(
-                "decoration line {line} is out of range"
-            )));
-        }
-        let text = sanitize(text);
-        if text.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(Self {
-            line,
-            text,
-            style: frame_style(style),
-        }))
-    }
-}
-
-impl SignMark {
-    fn new(
-        line: usize,
-        text: &str,
-        style: PluginStyle,
-        snapshot: &Rope,
-    ) -> Result<Option<Self>, RpcError> {
-        if line >= snapshot.len_lines() {
-            return Err(RpcError::invalid_position(format!(
-                "decoration line {line} is out of range"
-            )));
-        }
-        let text = sanitize(text);
-        if text.is_empty() {
-            return Ok(None);
-        }
-        if display_width(&text) != 1 {
-            return Err(RpcError::invalid_params(
-                "sign text must occupy exactly one cell".to_string(),
-            ));
-        }
-        Ok(Some(Self {
-            line,
-            text,
-            style: frame_style(style),
-        }))
-    }
-}
-
-fn line_column(snapshot: &Rope, offset: usize) -> LineColumn {
-    let line = snapshot.char_to_line(offset);
-    LineColumn {
-        line,
-        column: offset.saturating_sub(snapshot.line_to_char(line)),
-    }
+fn resolve_style(
+    plugin: &str,
+    appearance: &DecorationRef,
+    styles: &PluginStyles,
+) -> Result<kawi_tui::frame::PluginStyle, RpcError> {
+    styles
+        .resolve(plugin, appearance)
+        .ok_or_else(|| RpcError::invalid_params("unknown decoration group"))
 }
 
 #[cfg(test)]

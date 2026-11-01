@@ -127,6 +127,12 @@ subscribes = ["file_saved"]
 [[activation_events]]
 event = "on_command"
 
+[[decorations]]
+id = "todo"
+color = "info"
+fill = "both"
+italic = true
+
 [[commands]]
 id = "ping"
 title = "Ping the plugin"
@@ -141,6 +147,7 @@ The plugin name is the namespace. The command above is `echo.ping`, and you can 
 - `sha256` is required for WASM plugins. `kawi plugin build` updates it.
 - `timeout_ms` applies to initialization and each invocation. The default is `5000`. The range is `100` to `60000`.
 - `capabilities` declares host APIs and command gates. A command gate must be a subset of the plugin declarations.
+- `decorations` declares named decoration groups for highlights, virtual text, and signs. Group IDs are local to the plugin.
 - `subscribes` lists events delivered to a running plugin. Delivery never starts a plugin.
 - `debounce` optionally delays an event per subscription.
 - `activation_events` lists `on_startup`, `on_command`, and `on_file_open` with optional `filetypes` and `globs`.

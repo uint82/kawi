@@ -30,7 +30,7 @@ kawi-jsonrpc = { version = "0.0.1", path = "crates/kawi-jsonrpc" }
 kawi-lsp = { version = "0.0.1", path = "crates/kawi-lsp" }
 kawi-picker = { version = "0.0.1", path = "crates/kawi-picker" }
 kawi-plugin = { version = "0.0.1", path = "crates/kawi-plugin" }
-kawi-plugin-sdk = { version = "0.4.0", path = "crates/kawi-plugin-sdk" }
+kawi-plugin-sdk = { version = "0.5.0", path = "crates/kawi-plugin-sdk" }
 kawi-process = { version = "0.0.1", path = "crates/kawi-process" }
 kawi-syntax = { version = "0.0.1", path = "crates/kawi-syntax" }
 kawi-task = { version = "0.0.1", path = "crates/kawi-task" }

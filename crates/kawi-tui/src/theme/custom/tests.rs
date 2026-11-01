@@ -117,6 +117,29 @@ fn loads_a_custom_bracket_match() {
 }
 
 #[test]
+fn loads_plugin_decoration_overrides() {
+    let text = format!(
+        "{}\n[plugin_decorations.markers.todo]\nforeground = \"#112233\"\nfill = \"foreground\"\nitalic = true\n",
+        theme_text()
+    );
+    let theme = Theme::from_toml("personal", &text).unwrap();
+    let value = theme
+        .plugin_decorations
+        .get("markers", "todo")
+        .expect("override");
+    assert_eq!(
+        value.foreground,
+        Some(Color::Rgb {
+            r: 17,
+            g: 34,
+            b: 51
+        })
+    );
+    assert_eq!(value.fill, Some(crate::frame::PluginFill::Foreground));
+    assert_eq!(value.italic, Some(true));
+}
+
+#[test]
 fn loads_a_custom_code_background() {
     let text = format!("code_background = \"#0a0b0c\"\n{}", theme_text());
     let theme = Theme::from_toml("personal", &text).unwrap();

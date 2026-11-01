@@ -173,6 +173,66 @@ fn rejects_debounce_for_unsubscribed_events() {
 }
 
 #[test]
+fn parses_decoration_groups() {
+    let root = temp_dir();
+    let body = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        r#"
+[[decorations]]
+id = "todo"
+color = "info"
+fill = "both"
+italic = true
+
+[[decorations]]
+id = "todo_text"
+color = "info"
+fill = "foreground"
+italic = true
+
+[[commands]]"#,
+        1,
+    );
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings.is_empty(), "{:?}", catalog.warnings);
+    let groups = &catalog.plugins[0].manifest.decorations;
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].id, "todo");
+    assert_eq!(groups[0].color, crate::protocol::DecorationStyle::Info);
+    assert_eq!(groups[1].fill, crate::protocol::DecorationFill::Foreground);
+    assert!(groups[1].italic);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_invalid_decoration_groups() {
+    let root = temp_dir();
+    let duplicate = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[[decorations]]\nid = \"todo\"\ncolor = \"info\"\n\n[[decorations]]\nid = \"todo\"\ncolor = \"error\"\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &duplicate);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings[0]
+        .message
+        .contains("duplicate decoration group"));
+    fs::remove_dir_all(root).unwrap();
+
+    let root = temp_dir();
+    let reserved = valid_manifest("echo").replacen(
+        "\n[[commands]]",
+        "\n[[decorations]]\nid = \"info\"\ncolor = \"info\"\n\n[[commands]]",
+        1,
+    );
+    write_manifest(&root, "echo", &reserved);
+    let catalog = load_catalog(&root);
+    assert!(catalog.warnings[0].message.contains("reserved"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rejects_unknown_activation_events() {
     let root = temp_dir();
     let body = valid_manifest("echo").replacen(

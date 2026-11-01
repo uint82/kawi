@@ -18,12 +18,14 @@ pub fn decorations_to_protocol(
             WitDecoration::Highlight(highlight) => Ok(Decoration::Highlight {
                 start: position_to_protocol(highlight.start)?,
                 end: position_to_protocol(highlight.end)?,
-                style: decoration_style_to_protocol(highlight.style),
+                group: Some(highlight.group),
+                style: None,
             }),
             WitDecoration::VirtualText(text) => Ok(Decoration::VirtualText {
                 line: text.line as usize,
                 text: text.text,
-                style: decoration_style_to_protocol(text.style),
+                group: Some(text.group),
+                style: None,
             }),
         })
         .collect()
@@ -35,7 +37,8 @@ pub fn signs_to_protocol(signs: Vec<WitSign>) -> Vec<Decoration> {
         .map(|sign| Decoration::Sign {
             line: sign.line as usize,
             text: sign.text,
-            style: decoration_style_to_protocol(sign.style),
+            group: Some(sign.group),
+            style: None,
         })
         .collect()
 }
@@ -80,12 +83,12 @@ mod tests {
             WitDecoration::Highlight(Highlight {
                 start: position(1, 2),
                 end: position(1, 4),
-                style: WitDecorationStyle::Warning,
+                group: "todo".to_string(),
             }),
             WitDecoration::VirtualText(VirtualText {
                 line: 3,
                 text: "note".to_string(),
-                style: WitDecorationStyle::Muted,
+                group: "note".to_string(),
             }),
         ])
         .unwrap();
@@ -100,7 +103,8 @@ mod tests {
                     line: 1,
                     byte_column: 4,
                 },
-                style: DecorationStyle::Warning,
+                group: Some("todo".to_string()),
+                style: None,
             }
         );
         assert_eq!(
@@ -108,7 +112,8 @@ mod tests {
             Decoration::VirtualText {
                 line: 3,
                 text: "note".to_string(),
-                style: DecorationStyle::Muted,
+                group: Some("note".to_string()),
+                style: None,
             }
         );
     }
@@ -118,14 +123,15 @@ mod tests {
         let decorations = signs_to_protocol(vec![WitSign {
             line: 2,
             text: "!".to_string(),
-            style: WitDecorationStyle::Error,
+            group: "fixme".to_string(),
         }]);
         assert_eq!(
             decorations,
             vec![Decoration::Sign {
                 line: 2,
                 text: "!".to_string(),
-                style: DecorationStyle::Error,
+                group: Some("fixme".to_string()),
+                style: None,
             }]
         );
     }

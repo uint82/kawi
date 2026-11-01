@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use crate::capability::{Capability, CapabilityRegistry, CapabilityRequests};
+use crate::protocol::{DecorationFill, DecorationStyle};
 
 mod load;
 mod runtime;
@@ -41,6 +42,8 @@ pub struct PluginManifest {
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default)]
+    pub decorations: Vec<PluginDecorationGroup>,
+    #[serde(default)]
     pub settings: BTreeMap<String, PluginSetting>,
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
@@ -64,6 +67,21 @@ pub struct ActivationEvent {
     pub filetypes: Vec<String>,
     #[serde(default)]
     pub globs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginDecorationGroup {
+    pub id: String,
+    pub color: DecorationStyle,
+    #[serde(default)]
+    pub fill: DecorationFill,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub underline: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
