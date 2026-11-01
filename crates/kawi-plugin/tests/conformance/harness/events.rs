@@ -1,10 +1,8 @@
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use kawi_plugin::NotifyOutcome;
 
 use super::host::ConformanceHost;
-use super::model::Runtime;
-use super::PLUGIN_NAME;
 
 impl ConformanceHost {
     pub(crate) fn stall_events(&self, event: &str, payload: Value) {
@@ -22,23 +20,7 @@ impl ConformanceHost {
         );
     }
 
-    pub(crate) fn block_queued_events(&self) {
-        if self.runtime == Runtime::Process {
-            self.inject_pipe_block();
-        }
-    }
-
     pub(crate) fn release_events(&self) {
         self.release_host_responses();
-    }
-
-    fn inject_pipe_block(&self) {
-        self.host
-            .respond(
-                PLUGIN_NAME,
-                json!(999),
-                Ok(json!({ "pad": "x".repeat(1024 * 1024) })),
-            )
-            .expect("inject pipe block");
     }
 }

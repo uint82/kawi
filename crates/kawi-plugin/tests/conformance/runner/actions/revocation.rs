@@ -72,11 +72,10 @@ pub(crate) fn run_queued_revocation_mid_write(
         scenario.id
     );
     assert!(
-        host.wait_for_host_request("editor.apply_edit"),
-        "{runtime:?} {}: plugin never issued its edit",
+        host.wait_for_deferred("editor.apply_edit"),
+        "{runtime:?} {}: plugin edit was not deferred",
         scenario.id
     );
-    host.block_queued_events();
     assert_eq!(
         host.notify(event, event_payload(event)),
         NotifyOutcome::Queued,
