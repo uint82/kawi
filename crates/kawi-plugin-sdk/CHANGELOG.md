@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 - 2026-11-01
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.4.0 (`kawi:plugin@0.4.0`).
+- Components built against `kawi:plugin@0.3.0` must be rebuilt with this release.
+
+### Added
+
+- Add the `editor-decorations` interface for buffer highlights and virtual text.
+- Add the `editor-signs` interface for gutter signs.
+- Add the `ui-statusline` interface for status line segments.
+- Re-export `editor_decorations`, `editor_signs`, and `ui_statusline`.
+
 ## 0.3.0 - 2026-11-01
 
 ### Breaking
