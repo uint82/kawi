@@ -5,4 +5,5 @@ mod events;
 mod manager;
 mod queue;
 mod reload;
+mod settings;
 mod wasm;

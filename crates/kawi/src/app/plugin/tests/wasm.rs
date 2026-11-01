@@ -262,6 +262,7 @@ sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
             dev: &root,
             lock: &lock,
             workspace: &root,
+            settings: &root.join("plugins.toml"),
             commands: &mut app.commands,
             keymaps: &mut app.keymaps,
             leaders: &app.leaders,

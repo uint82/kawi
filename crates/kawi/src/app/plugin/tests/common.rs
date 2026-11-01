@@ -85,6 +85,7 @@ pub(super) fn load_plugins_raw(app: &mut App, root: &std::path::Path) -> Vec<Str
             dev: root,
             lock: &lock,
             workspace: root,
+            settings: &root.join("plugins.toml"),
             commands: &mut app.commands,
             keymaps: &mut app.keymaps,
             leaders: &app.leaders,
@@ -132,11 +133,19 @@ pub(super) fn invoke_plugin(app: &mut App, name: &str) -> Option<String> {
         CommandHandler::Plugin(target) => target,
         other => panic!("unexpected handler: {other:?}"),
     };
+    let plugin = app
+        .plugins
+        .target(target)
+        .map(|(plugin, _)| plugin.to_string())
+        .expect("plugin target");
     app.message = None;
     app.run_plugin_command(target, None).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
-    while app.message.is_none() && Instant::now() < deadline {
+    while Instant::now() < deadline {
         app.poll_plugins();
+        if !app.plugins.in_flight.contains(&plugin) && app.message.is_some() {
+            break;
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
     app.message.clone()

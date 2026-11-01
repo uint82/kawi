@@ -27,6 +27,8 @@ impl App {
             "editor.list_commands" => self.plugin_list_commands(plugin, params),
             "editor.set_diagnostics" => self.plugin_set_diagnostics(plugin, params),
             "ui.message" => self.plugin_message(plugin, params),
+            "config.get" => self.plugin_config_get(plugin, params),
+            "config.list" => self.plugin_config_list(plugin, params),
             _ => Err(RpcError::method_not_found(method)),
         }
     }
