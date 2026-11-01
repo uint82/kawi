@@ -57,6 +57,8 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
+The WIT interfaces update independently. `editor-decorations.set` preserves signs, and `editor-signs.set` preserves highlights and virtual text. Process plugins get the same behavior with `scope` set to `visual` or `signs`.
+
 An import that is not declared by the manifest is rejected before instantiation. Kawi enables every declared API for a managed plugin, so a declared import does not need a grant. The settings methods are always available because they only expose the plugin's own namespace. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
 
 ## Events

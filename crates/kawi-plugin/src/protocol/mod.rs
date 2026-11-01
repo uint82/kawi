@@ -15,13 +15,13 @@ pub use events::{
 
 use serde_json::Value;
 
-pub use decorations::validate_decorations;
+pub use decorations::{validate_decoration_scope, validate_decorations};
 pub use diagnostics::validate_diagnostics;
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 7;
+pub const PROTOCOL_MINOR: u64 = 8;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
 pub const HOST_METHODS: [&str; 16] = [
     "editor.get_state",

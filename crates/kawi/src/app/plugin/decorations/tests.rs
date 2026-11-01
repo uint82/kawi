@@ -1,4 +1,4 @@
-use kawi_plugin::{Decoration, DecorationStyle as PluginStyle, Position};
+use kawi_plugin::{Decoration, DecorationScope, DecorationStyle as PluginStyle, Position};
 use kawi_tui::frame::DecorationStyle;
 use ropey::Rope;
 
@@ -27,6 +27,7 @@ fn set(
     decorations.set(
         "demo",
         1,
+        DecorationScope::All,
         decorations_list,
         &Rope::from_str("alpha\nbeta\ngamma\n"),
     )
@@ -131,6 +132,7 @@ fn retain_live_drops_closed_buffers_only() {
         .set(
             "demo",
             2,
+            DecorationScope::All,
             &[highlight(position(0, 0), position(0, 1), PluginStyle::Info)],
             &Rope::from_str("alpha\n"),
         )

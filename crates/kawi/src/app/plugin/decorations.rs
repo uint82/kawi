@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use kawi_editor::Editor;
 use kawi_plugin::{
-    sanitize, Decoration as ProtocolDecoration, DecorationStyle as PluginStyle, Position, RpcError,
+    sanitize, Decoration as ProtocolDecoration, DecorationScope, DecorationStyle as PluginStyle,
+    Position, RpcError,
 };
 use kawi_tui::frame::{DecorationSpan, DecorationStyle, PluginSign, Sign, VirtualText};
 use kawi_tui::text::display_width;
@@ -16,6 +17,7 @@ pub(crate) struct PluginDecorations {
     sets: BTreeMap<(String, usize), DecorationSet>,
 }
 
+#[derive(Default)]
 struct DecorationSet {
     highlights: Vec<Highlight>,
     virtual_texts: Vec<PluginVirtualText>,
@@ -51,11 +53,27 @@ impl PluginDecorations {
         &mut self,
         plugin: &str,
         buffer: usize,
+        scope: DecorationScope,
         decorations: &[ProtocolDecoration],
         snapshot: &Rope,
     ) -> Result<(), RpcError> {
-        let set = DecorationSet::new(decorations, snapshot)?;
-        self.sets.insert((plugin.to_string(), buffer), set);
+        let incoming = DecorationSet::new(decorations, snapshot)?;
+        let key = (plugin.to_string(), buffer);
+        let set = match scope {
+            DecorationScope::All => incoming,
+            DecorationScope::Visual => {
+                let mut set = self.sets.remove(&key).unwrap_or_default();
+                set.highlights = incoming.highlights;
+                set.virtual_texts = incoming.virtual_texts;
+                set
+            }
+            DecorationScope::Signs => {
+                let mut set = self.sets.remove(&key).unwrap_or_default();
+                set.signs = incoming.signs;
+                set
+            }
+        };
+        self.sets.insert(key, set);
         Ok(())
     }
 

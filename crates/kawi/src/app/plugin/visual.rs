@@ -1,5 +1,6 @@
 use kawi_plugin::{
-    validate_decorations, validate_statusline, RpcError, SetDecorationsParams, SetStatuslineParams,
+    validate_decoration_scope, validate_decorations, validate_statusline, RpcError,
+    SetDecorationsParams, SetStatuslineParams,
 };
 use serde_json::Value;
 
@@ -15,6 +16,7 @@ impl App {
         let params: SetDecorationsParams =
             serde_json::from_value(params).map_err(invalid_params)?;
         validate_decorations(&params.decorations)?;
+        validate_decoration_scope(&params.decorations, params.scope)?;
         let buffer = usize::try_from(params.buffer)
             .map_err(|_| RpcError::invalid_params("buffer does not fit usize"))?;
         let current = self.editor.buffer_revision_at(buffer).ok_or_else(|| {
@@ -26,8 +28,13 @@ impl App {
         let snapshot = self.editor.buffer_snapshot(buffer).ok_or_else(|| {
             RpcError::stale_buffer(params.buffer, self.editor.buffer_number() as u64)
         })?;
-        self.plugin_decorations
-            .set(plugin, buffer, &params.decorations, &snapshot)?;
+        self.plugin_decorations.set(
+            plugin,
+            buffer,
+            params.scope,
+            &params.decorations,
+            &snapshot,
+        )?;
         Ok(Value::Null)
     }
 

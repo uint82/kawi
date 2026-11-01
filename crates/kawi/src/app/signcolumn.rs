@@ -186,7 +186,7 @@ mod plugin_sign_tests {
     use crate::keymap::Flavor;
     use crate::options::SignColumnMode;
     use kawi_buffer::Buffer;
-    use kawi_plugin::{Decoration, DecorationStyle};
+    use kawi_plugin::{Decoration, DecorationScope, DecorationStyle};
     use kawi_tui::frame::PluginSign;
 
     #[test]
@@ -200,6 +200,7 @@ mod plugin_sign_tests {
             .set(
                 "visual",
                 buffer,
+                DecorationScope::All,
                 &[Decoration::Sign {
                     line: 0,
                     text: "!".to_string(),
