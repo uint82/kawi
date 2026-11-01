@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::channel::{fail_pending, send_log, ReaderContext};
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
-use crate::protocol::{error_response_value, RpcError, HOST_METHODS};
+use crate::protocol::{error_response_value, is_interactive_host_method, RpcError, HOST_METHODS};
 
 pub(super) fn spawn_reader(
     stdout: ChildStdout,
@@ -81,6 +81,11 @@ fn handle_request_or_notification(
         return Ok(());
     }
     let id = value.get("id").cloned().unwrap_or(Value::Null);
+    if is_interactive_host_method(method) {
+        if let Some(id) = id.as_u64() {
+            context.interaction.begin(id);
+        }
+    }
     let params = value.get("params").cloned().unwrap_or(Value::Null);
     send_event(
         &context.events,

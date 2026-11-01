@@ -17,7 +17,7 @@ use std::thread;
 
 use serde_json::Value;
 
-use self::connection::WriterSlot;
+use self::connection::{Interaction, WriterSlot};
 use self::worker::{Worker, WorkerContext};
 use crate::capability::{Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
@@ -44,6 +44,7 @@ pub(crate) struct WorkerHandle {
     status: Arc<Mutex<PluginStatus>>,
     event_filter: Arc<Mutex<std::collections::BTreeSet<String>>>,
     restart: Arc<AtomicBool>,
+    interaction: Arc<Interaction>,
     requirements: Arc<BTreeMap<String, Vec<Capability>>>,
 }
 
@@ -93,6 +94,7 @@ impl WorkerHandle {
         id: Value,
         result: Result<Value, RpcError>,
     ) -> Result<(), PluginError> {
+        let interaction_id = id.as_u64();
         let message = match result {
             Ok(value) => response_value(id, value),
             Err(error) => error_response_value(id, &error),
@@ -103,7 +105,11 @@ impl WorkerHandle {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
             .ok_or(PluginError::ProcessExited)?;
-        writer.try_send(message).map_err(|_| PluginError::QueueFull)
+        let result = writer.try_send(message).map_err(|_| PluginError::QueueFull);
+        if let Some(id) = interaction_id {
+            self.interaction.end(id);
+        }
+        result
     }
 
     pub(crate) fn status(&self) -> PluginStatus {
@@ -141,6 +147,7 @@ pub(crate) fn start_disabled_worker(
         status,
         event_filter: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
         restart: Arc::new(AtomicBool::new(false)),
+        interaction: Arc::new(Interaction::default()),
         requirements,
     };
     let name = plugin.manifest.name.clone();
@@ -176,6 +183,7 @@ pub(crate) fn start_worker(
     let status = Arc::new(Mutex::new(PluginStatus::Stopped));
     let event_filter = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let restart = Arc::new(AtomicBool::new(false));
+    let interaction = Arc::new(Interaction::default());
     let requirements = Arc::new(plugin.command_requirements());
     let handle = WorkerHandle {
         commands,
@@ -183,6 +191,7 @@ pub(crate) fn start_worker(
         status: Arc::clone(&status),
         event_filter: Arc::clone(&event_filter),
         restart: Arc::clone(&restart),
+        interaction: Arc::clone(&interaction),
         requirements,
     };
     let name = plugin.manifest.name.clone();
@@ -203,6 +212,7 @@ pub(crate) fn start_worker(
                     capabilities,
                     environment,
                     restart,
+                    interaction,
                 },
             )
             .run(receiver);

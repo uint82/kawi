@@ -1,5 +1,7 @@
 mod channel;
+mod interaction;
 mod read;
+mod startup;
 mod write;
 
 use std::collections::{BTreeSet, HashMap};
@@ -12,7 +14,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use self::channel::{fail_pending, remove_pending, PendingMap, ReaderContext, WriterContext};
+pub(crate) use self::interaction::Interaction;
 use self::read::spawn_reader;
+use self::startup::{spawn_error_message, validate_initialize};
 use self::write::{spawn_stderr, spawn_writer};
 use crate::capability::{advertised_events, advertised_host_methods, CapabilityRegistry};
 use crate::environment::HostEnvironment;
@@ -21,7 +25,7 @@ use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
     notification_value, request_value, HostInfo, InitializeParams, InitializeResult, InvokeParams,
-    HOST_METHODS, PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
+    PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
 
 pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
@@ -36,6 +40,7 @@ pub(super) struct ConnectionConfig {
     pub(super) capabilities: CapabilityRegistry,
     pub(super) environment: HostEnvironment,
     pub(super) restart: Arc<AtomicBool>,
+    pub(super) interaction: Arc<Interaction>,
 }
 
 pub(super) struct Connection {
@@ -51,6 +56,7 @@ pub(super) struct Connection {
     timeout: Duration,
     sandboxed: kawi_process::SandboxStatus,
     restart: Arc<AtomicBool>,
+    interaction: Arc<Interaction>,
 }
 
 impl Connection {
@@ -67,6 +73,7 @@ impl Connection {
             capabilities,
             environment,
             restart,
+            interaction,
         } = config;
         let command = plugin.resolved_command();
         let executable = command
@@ -133,6 +140,7 @@ impl Connection {
             events: events.clone(),
             wake: wake.clone(),
             plugin: plugin_name.clone(),
+            interaction: Arc::clone(&interaction),
         });
         let writer_context = Arc::new(WriterContext {
             alive: Arc::clone(&alive),
@@ -170,6 +178,7 @@ impl Connection {
             timeout,
             sandboxed,
             restart,
+            interaction,
         })
     }
 
@@ -234,6 +243,7 @@ impl Connection {
 
     pub(super) fn shutdown(&mut self) {
         self.alive.store(false, Ordering::SeqCst);
+        self.interaction.reset();
         *self
             .writer_slot
             .lock()
@@ -257,9 +267,9 @@ impl Connection {
             return Err(PluginError::QueueFull);
         }
         let cancellable = method != "initialize";
-        let deadline = Instant::now() + self.timeout;
+        let started = Instant::now();
         loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
+            let remaining = self.interaction.remaining(started, self.timeout);
             if remaining.is_zero() {
                 return self.cancel_request(id, PluginError::Timeout);
             }
@@ -291,48 +301,4 @@ impl Drop for Connection {
     fn drop(&mut self) {
         self.shutdown();
     }
-}
-
-fn spawn_error_message(
-    plugin: &str,
-    status: kawi_process::SandboxStatus,
-    error: &std::io::Error,
-) -> String {
-    match status {
-        kawi_process::SandboxStatus::Enforced => {
-            format!("{plugin} cannot start under the enforced landlock ruleset: {error}")
-        }
-        kawi_process::SandboxStatus::Partial => {
-            format!("{plugin} cannot start under a partial landlock ruleset: {error}")
-        }
-        kawi_process::SandboxStatus::Unavailable => format!("{plugin}: {error}"),
-    }
-}
-
-fn validate_initialize(result: &InitializeResult) -> Result<(), PluginError> {
-    if result.protocol_version != PROTOCOL_VERSION {
-        return Err(PluginError::Initialize(format!(
-            "unsupported protocol {}, expected {}",
-            result.protocol_version, PROTOCOL_VERSION
-        )));
-    }
-    if !result
-        .plugin_capabilities
-        .iter()
-        .any(|capability| capability == "invoke_command")
-    {
-        return Err(PluginError::Initialize(
-            "plugin does not declare invoke_command".to_string(),
-        ));
-    }
-    if let Some(method) = result
-        .host_capabilities
-        .iter()
-        .find(|method| !HOST_METHODS.contains(&method.as_str()))
-    {
-        return Err(PluginError::Initialize(format!(
-            "plugin declared unknown host capability: {method}"
-        )));
-    }
-    Ok(())
 }
