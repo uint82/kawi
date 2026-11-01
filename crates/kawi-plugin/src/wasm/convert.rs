@@ -3,13 +3,15 @@ use serde_json::Value;
 use crate::error::PluginError;
 use crate::protocol::{
     BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent, DiagnosticSummary,
-    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, GetStateResult, ModeChangedEvent,
-    Position, ProtocolTextEdit, RpcError, INTERNAL_ERROR, INVALID_PARAMS,
+    DiagnosticsChangedEvent, EditorCommandInfo, EditorListCommandsResult, FileOpenedEvent,
+    FileSavedEvent, GetStateResult, ModeChangedEvent, Position, ProtocolTextEdit, RpcError,
+    INTERNAL_ERROR, INVALID_PARAMS,
 };
 
 use super::bindings::kawi::plugin::types::{
-    Argument, BufferChanged, BufferClosed, BufferOpened, Diagnostic, DiagnosticsChanged, Event,
-    FileOpened, FileSaved, ModeChanged, Position as WitPosition, ProcessOutput, Severity, State,
+    Argument, BufferChanged, BufferClosed, BufferOpened, CommandInfo, Diagnostic,
+    DiagnosticsChanged, Event, FileOpened, FileSaved, ModeChanged, Position as WitPosition,
+    ProcessOutput, Severity, State,
 };
 
 pub fn argument_from_json(value: Value) -> Result<Argument, RpcError> {
@@ -71,6 +73,20 @@ pub fn state_from_json(value: Value) -> Result<State, RpcError> {
             .transpose()?,
         text: state.text,
     })
+}
+
+pub fn command_infos_from_json(value: Value) -> Result<Vec<CommandInfo>, RpcError> {
+    let result: EditorListCommandsResult = serde_json::from_value(value)
+        .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+    Ok(result.commands.into_iter().map(command_info).collect())
+}
+
+fn command_info(info: EditorCommandInfo) -> CommandInfo {
+    CommandInfo {
+        id: info.id,
+        description: info.description,
+        aliases: info.aliases,
+    }
 }
 
 pub fn edits_to_protocol(
@@ -282,5 +298,26 @@ fn severity_from_name(name: &str) -> Severity {
         "warning" => Severity::Warning,
         "information" => Severity::Information,
         _ => Severity::Hint,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_command_infos() {
+        let infos = command_infos_from_json(serde_json::json!({
+            "commands": [{
+                "id": "file.save",
+                "description": "save the buffer",
+                "aliases": ["save"],
+            }],
+        }))
+        .expect("command infos");
+        assert_eq!(infos.len(), 1);
+        assert_eq!(infos[0].id, "file.save");
+        assert_eq!(infos[0].description, "save the buffer");
+        assert_eq!(infos[0].aliases, vec!["save"]);
     }
 }

@@ -4,18 +4,21 @@ use wasmtime_wasi::sockets::WasiSocketsView;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
-    ApplyEditParams, ApplyEditResult, GetStateParams, RpcError, SetDiagnosticsParams,
-    UiMessageParams, PLUGIN_UNAVAILABLE,
+    ApplyEditParams, ApplyEditResult, EditorExecuteParams, GetStateParams, RpcError,
+    SetDiagnosticsParams, UiMessageParams, PLUGIN_UNAVAILABLE,
 };
 
 pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
 
-use super::bindings::kawi::plugin::types::{Edit, Error, ProcessOutput, State};
+use super::bindings::kawi::plugin::types::{CommandInfo, Edit, Error, ProcessOutput, State};
 use super::bindings::kawi::plugin::{
-    diagnostics_publish, editor_read, editor_write, process_run, types, ui_message,
+    diagnostics_publish, editor_execute, editor_read, editor_write, process_run, types, ui_message,
 };
 use super::byte_budget::NetworkBudget;
-use super::convert::{diagnostics_to_protocol, edits_to_protocol, error_from_rpc, state_from_json};
+use super::convert::{
+    command_infos_from_json, diagnostics_to_protocol, edits_to_protocol, error_from_rpc,
+    state_from_json,
+};
 use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
@@ -97,9 +100,7 @@ impl types::Host for WasmState {}
 
 impl editor_read::Host for WasmState {
     fn get_state(&mut self, include_text: bool) -> Result<State, Error> {
-        let params = serde_json::to_value(GetStateParams { include_text }).map_err(|error| {
-            error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string()))
-        })?;
+        let params = serialize_params(GetStateParams { include_text })?;
         let value = self
             .bridge
             .request("editor.get_state", params)
@@ -111,12 +112,11 @@ impl editor_read::Host for WasmState {
 impl editor_write::Host for WasmState {
     fn apply_edit(&mut self, buffer: u64, revision: u64, edits: Vec<Edit>) -> Result<u64, Error> {
         let edits = edits_to_protocol(edits).map_err(error_from_rpc)?;
-        let params = serde_json::to_value(ApplyEditParams {
+        let params = serialize_params(ApplyEditParams {
             buffer,
             revision,
             edits,
-        })
-        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))?;
+        })?;
         let value = self
             .bridge
             .request("editor.apply_edit", params)
@@ -128,11 +128,27 @@ impl editor_write::Host for WasmState {
     }
 }
 
+impl editor_execute::Host for WasmState {
+    fn execute(&mut self, command: String) -> Result<(), Error> {
+        let params = serialize_params(EditorExecuteParams { command })?;
+        self.bridge
+            .request("editor.execute", params)
+            .map(|_| ())
+            .map_err(error_from_rpc)
+    }
+
+    fn list_commands(&mut self) -> Result<Vec<CommandInfo>, Error> {
+        let value = self
+            .bridge
+            .request("editor.list_commands", serde_json::Value::Null)
+            .map_err(error_from_rpc)?;
+        command_infos_from_json(value).map_err(error_from_rpc)
+    }
+}
+
 impl ui_message::Host for WasmState {
     fn message(&mut self, text: String) -> Result<(), Error> {
-        let params = serde_json::to_value(UiMessageParams { message: text }).map_err(|error| {
-            error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string()))
-        })?;
+        let params = serialize_params(UiMessageParams { message: text })?;
         self.bridge
             .request("ui.message", params)
             .map(|_| ())
@@ -148,12 +164,11 @@ impl diagnostics_publish::Host for WasmState {
         revision: u64,
         items: Vec<super::bindings::kawi::plugin::types::Diagnostic>,
     ) -> Result<(), Error> {
-        let params = serde_json::to_value(SetDiagnosticsParams {
+        let params = serialize_params(SetDiagnosticsParams {
             buffer,
             revision,
             diagnostics: diagnostics_to_protocol(items),
-        })
-        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))?;
+        })?;
         let value = self
             .bridge
             .request("editor.set_diagnostics", params)
@@ -174,6 +189,11 @@ impl process_run::Host for WasmState {
             .run(&command, &args, timeout_ms)
             .map_err(error_from_rpc)
     }
+}
+
+fn serialize_params<T: serde::Serialize>(params: T) -> Result<serde_json::Value, Error> {
+    serde_json::to_value(params)
+        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))
 }
 
 fn drain(pipe: &MemoryOutputPipe, offset: usize, stream: &str, bridge: &HostBridge) -> usize {

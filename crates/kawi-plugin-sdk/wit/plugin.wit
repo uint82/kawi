@@ -50,6 +50,12 @@ interface types {
     capability: option<string>,
   }
 
+  record command-info {
+    id: string,
+    description: string,
+    aliases: list<string>,
+  }
+
   variant argument {
     null,
     boolean(bool),
@@ -133,6 +139,12 @@ interface editor-write {
   apply-edit: func(buffer: u64, revision: u64, edits: list<edit>) -> result<u64, error>;
 }
 
+interface editor-execute {
+  use types.{command-info, error};
+  execute: func(command: string) -> result<_, error>;
+  list-commands: func() -> result<list<command-info>, error>;
+}
+
 interface ui-message {
   use types.{error};
   message: func(text: string) -> result<_, error>;
@@ -158,6 +170,7 @@ interface lifecycle {
 world host {
   import editor-read;
   import editor-write;
+  import editor-execute;
   import ui-message;
   import diagnostics-publish;
   import process-run;
