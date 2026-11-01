@@ -198,22 +198,19 @@ Declare the visual APIs in `plugin.toml`:
 use kawi_plugin_sdk::types::{Decoration, DecorationStyle, Highlight, Position, VirtualText};
 use kawi_plugin_sdk::editor_decorations;
 
-editor_decorations::set(
-    state.buffer,
-    state.revision,
-    vec![
-        Decoration::Highlight(Highlight {
-            start: Position { line: 0, byte_column: 0 },
-            end: Position { line: 0, byte_column: 4 },
-            style: DecorationStyle::Info,
-        }),
-        Decoration::VirtualText(VirtualText {
-            line: 0,
-            text: "indexed".to_string(),
-            style: DecorationStyle::Muted,
-        }),
-    ],
-)?;
+let decorations = vec![
+    Decoration::Highlight(Highlight {
+        start: Position { line: 0, byte_column: 0 },
+        end: Position { line: 0, byte_column: 4 },
+        style: DecorationStyle::Info,
+    }),
+    Decoration::VirtualText(VirtualText {
+        line: 0,
+        text: "indexed".to_string(),
+        style: DecorationStyle::Muted,
+    }),
+];
+editor_decorations::set(state.buffer, state.revision, &decorations)?;
 ```
 
 `editor_signs::set` publishes gutter signs. A sign must occupy exactly one terminal cell:
@@ -222,15 +219,12 @@ editor_decorations::set(
 use kawi_plugin_sdk::editor_signs;
 use kawi_plugin_sdk::types::DecorationStyle;
 
-editor_signs::set(
-    state.buffer,
-    state.revision,
-    vec![kawi_plugin_sdk::editor_signs::Sign {
-        line: 0,
-        text: "!".to_string(),
-        style: DecorationStyle::Error,
-    }],
-)?;
+let signs = vec![kawi_plugin_sdk::editor_signs::Sign {
+    line: 0,
+    text: "!".to_string(),
+    style: DecorationStyle::Error,
+}];
+editor_signs::set(state.buffer, state.revision, &signs)?;
 ```
 
 `ui_statusline::set` replaces the plugin's status line segments. They appear where the `plugins` element is placed in `[ui.statusline]`:
@@ -238,14 +232,15 @@ editor_signs::set(
 ```rust
 use kawi_plugin_sdk::ui_statusline;
 
-ui_statusline::set(vec![ui_statusline::StatuslineSegment {
+let segments = vec![ui_statusline::StatuslineSegment {
     text: "indexed".to_string(),
     style: kawi_plugin_sdk::types::DecorationStyle::Success,
     priority: 10,
-}])?;
+}];
+ui_statusline::set(&segments)?;
 ```
 
-Decorations are data. The host owns colors, layout, and rendering. They are dropped when the plugin stops or the buffer revision changes, so publish again after a `buffer_changed` event. Diagnostics outrank plugin signs, and plugin signs outrank Git signs. Themes remain separate data packages and are not part of the executable plugin API.
+Decorations are data. The host owns colors, layout, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops, so publish again after a `buffer_changed` event to keep positions current. Diagnostics outrank plugin signs, and plugin signs outrank Git signs. Themes remain separate data packages and are not part of the executable plugin API.
 
 ## Settings
 

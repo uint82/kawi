@@ -65,7 +65,7 @@ The editor runs the command synchronously before responding. Changes made by the
 
 ## Visual customization
 
-`editor.decorations` enables `editor.set_decorations`. A plugin replaces all of its decorations for one buffer and revision in a single call. Decorations are data: the host owns layout, colors, and rendering. They are dropped when the plugin stops or the buffer revision changes.
+`editor.decorations` enables `editor.set_decorations`. A plugin replaces all of its decorations for one buffer and revision in a single call. Decorations are data: the host owns layout, colors, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
 
 ```json
 {

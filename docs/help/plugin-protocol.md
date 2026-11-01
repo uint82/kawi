@@ -374,7 +374,7 @@ Request params:
 
 Result is `null`.
 
-Requires the `editor.decorations` capability. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010`. Kawi replaces all decorations published by that plugin for the buffer; an empty array clears them. Styles are `accent`, `info`, `success`, `warning`, `error`, and `muted`. Highlights must be ordered and inside the buffer. A virtual text or sign line must be inside the buffer. Sign text must occupy exactly one terminal cell. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign; a payload that exceeds a limit returns `-32602`. Decorations are dropped when the plugin stops or the buffer revision changes.
+Requires the `editor.decorations` capability. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010`. Kawi replaces all decorations published by that plugin for the buffer; an empty array clears them. Styles are `accent`, `info`, `success`, `warning`, `error`, and `muted`. Highlights must be ordered and inside the buffer. A virtual text or sign line must be inside the buffer. Sign text must occupy exactly one terminal cell. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign; a payload that exceeds a limit returns `-32602`. Decorations remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
 
 ### ui.set_statusline
 
