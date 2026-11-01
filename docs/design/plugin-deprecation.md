@@ -1,6 +1,6 @@
 # Process plugin deprecation criteria
 
-Status: authoring readiness and port coverage complete, external validation pilot ready, no independent author enrolled, default and migration window open, no removal scheduled.
+Status: authoring readiness and port coverage complete, external validation pilot prepared, awaiting an editor release and independent author, default and migration window open, no removal scheduled.
 
 Process plugins remain supported as a labeled trusted compatibility runtime. WASM is the complete mediation path because it does not rely on the user's operating system sandbox for the host boundary.
 
@@ -10,7 +10,7 @@ The process runtime must not be removed until every criterion below is true and 
 
 - Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI. `kawi-plugin-sdk` 0.3.0 is published by the release workflow.
 - Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry, retry exhaustion, buffer identity changes, and denied editor write.
-- External validation: pilot ready, no independent author enrolled. The protocol, release-cycle definition, and friction form are in [plugin-external-validation](plugin-external-validation.md).
+- External validation: pilot prepared, awaiting an editor release and independent author. The protocol, release-cycle definition, checklists, and feedback and tracking forms are in [plugin-external-validation](plugin-external-validation.md).
 - Default and migration window: open. The `wasm` feature is enabled by default, `:plugin list` marks process plugins as a trusted compatibility runtime, and the migration guide is published. Deprecation warnings and the two-minor-release window start after external validation.
 - Capability decision: complete. No capability keeps the process runtime alive.
 
@@ -33,7 +33,7 @@ Removal remains blocked until external validation completes and the deprecation 
 
 ## External validation
 
-The pilot protocol, release-cycle definition, and friction form are in [plugin-external-validation](plugin-external-validation.md).
+The pilot protocol, release-cycle definition, checklists, and feedback and tracking forms are in [plugin-external-validation](plugin-external-validation.md).
 
 - At least one plugin written by someone who did not build the host is published and used for a release cycle.
 - The external author reports no blocker in the authoring guide, SDK helpers, install flow, host API review, inspect flow, logs, or migration.
