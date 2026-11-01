@@ -210,6 +210,7 @@ impl Theme {
             SegmentStyle::Eol => self.statusline.eol.clone().unwrap_or(base),
             SegmentStyle::Percent => self.statusline.percent.clone().unwrap_or(base),
             SegmentStyle::Position => self.statusline.position.clone().unwrap_or(base),
+            SegmentStyle::Plugin(style) => self.decoration_colors(style),
         }
     }
 }

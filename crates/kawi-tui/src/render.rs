@@ -9,8 +9,9 @@ use std::borrow::Cow;
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu, ReplaceMenu, ReplaceStage,
-    SearchSpan, Selection, TaskPanel, VirtualText, VirtualTextKind, VirtualTextPlacement,
+    CursorStyle, DecorationSpan, DecorationStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu,
+    ReplaceMenu, ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind,
+    VirtualTextPlacement,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -356,7 +357,7 @@ fn draw_one_line(
     )
     .context("move to line start")?;
     if let Some(signs) = pane.signs {
-        match signs.get(screen_row).and_then(|sign| *sign) {
+        match signs.get(screen_row).and_then(Option::as_ref) {
             Some(sign) => {
                 execute!(out, SetForegroundColor(theme.sign_color(sign)))
                     .context("apply sign color")?;
@@ -431,34 +432,78 @@ fn draw_left_virtual_text(
 }
 
 fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> {
-    let Some(text) = draw
+    let diagnostic = draw
         .pane
         .virtual_texts
         .get(draw.screen_row)
-        .and_then(Option::as_ref)
-    else {
-        return Ok(());
-    };
-    let Some((column, clipped)) = virtual_text_layout(draw.line_width, draw.width, text) else {
-        return Ok(());
-    };
-    execute!(
-        out,
-        MoveTo(
-            saturate_u16(
-                draw.pane
-                    .rect
-                    .x
-                    .saturating_add(draw.gutter_width)
-                    .saturating_add(column)
-            ),
-            saturate_u16(draw.pane.rect.y.saturating_add(draw.screen_row))
+        .and_then(Option::as_ref);
+    let plugin = draw
+        .pane
+        .plugin_virtual_texts
+        .get(draw.screen_row)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let segments = virtual_text_segments(
+        draw.line_width,
+        draw.width,
+        diagnostic.into_iter().chain(plugin),
+    );
+    for segment in segments {
+        execute!(
+            out,
+            MoveTo(
+                saturate_u16(
+                    draw.pane
+                        .rect
+                        .x
+                        .saturating_add(draw.gutter_width)
+                        .saturating_add(segment.column)
+                ),
+                saturate_u16(draw.pane.rect.y.saturating_add(draw.screen_row))
+            )
         )
-    )
-    .context("move to virtual text")?;
-    paint::apply_faded_text(out, virtual_text_color(draw.theme, text.kind))?;
-    write!(out, "{clipped}").context("write virtual text")?;
+        .context("move to virtual text")?;
+        paint::apply_faded_text(out, virtual_text_color(draw.theme, segment.text.kind))?;
+        write!(out, "{}", segment.clipped).context("write virtual text")?;
+    }
     finish_virtual_text(out, draw.theme)
+}
+
+struct VirtualTextSegment<'a> {
+    column: usize,
+    text: &'a crate::frame::VirtualText,
+    clipped: &'a str,
+}
+
+fn virtual_text_segments<'a>(
+    line_width: usize,
+    pane_width: usize,
+    texts: impl IntoIterator<Item = &'a crate::frame::VirtualText>,
+) -> Vec<VirtualTextSegment<'a>> {
+    let remaining = pane_width.saturating_sub(line_width);
+    if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
+        return Vec::new();
+    }
+    let mut column = line_width.saturating_add(VIRTUAL_TEXT_GAP);
+    let mut segments = Vec::new();
+    for text in texts {
+        if text.placement == VirtualTextPlacement::BeforeLine || column >= pane_width {
+            continue;
+        }
+        let clipped = truncate_to_display_width(&text.text, pane_width - column);
+        if clipped.is_empty() {
+            continue;
+        }
+        segments.push(VirtualTextSegment {
+            column,
+            text,
+            clipped,
+        });
+        column = column
+            .saturating_add(display_width(clipped))
+            .saturating_add(VIRTUAL_TEXT_GAP);
+    }
+    segments
 }
 
 fn finish_virtual_text<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
@@ -469,34 +514,9 @@ fn finish_virtual_text<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
 fn virtual_text_color(theme: &Theme, kind: VirtualTextKind) -> Color {
     match kind {
         VirtualTextKind::Diagnostic(severity) => theme.diagnostic_color(severity),
+        VirtualTextKind::Plugin(style) => theme.decoration_color(style),
         VirtualTextKind::Metadata => theme.non_text,
     }
-}
-
-fn virtual_text_layout(
-    line_width: usize,
-    pane_width: usize,
-    text: &VirtualText,
-) -> Option<(usize, &str)> {
-    if text.placement == VirtualTextPlacement::BeforeLine {
-        return None;
-    }
-    let remaining = pane_width.saturating_sub(line_width);
-    if remaining < VIRTUAL_TEXT_MIN_COLUMNS {
-        return None;
-    }
-    virtual_text_after_line(line_width, pane_width, text)
-}
-
-fn virtual_text_after_line(
-    line_width: usize,
-    pane_width: usize,
-    text: &VirtualText,
-) -> Option<(usize, &str)> {
-    let column = line_width.saturating_add(VIRTUAL_TEXT_GAP);
-    let text_width = pane_width.saturating_sub(column);
-    let clipped = truncate_to_display_width(&text.text, text_width);
-    (!clipped.is_empty()).then_some((column, clipped))
 }
 
 fn draw_rulers(
@@ -609,6 +629,7 @@ pub enum Tint {
     SearchCurrent,
     Substitute,
     Syntax(SyntaxHighlight),
+    Plugin(DecorationStyle),
     Diagnostic {
         severity: crate::frame::DiagnosticSeverity,
         tag: Option<crate::frame::DiagnosticTag>,
@@ -880,6 +901,9 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     for span in &syntax_spans {
         paint_span(out, pane, span, gutter_width, theme)?;
     }
+    for span in decoration_highlight_spans(pane.decorations, &view) {
+        paint_span(out, pane, &span, gutter_width, theme)?;
+    }
     for span in search_highlight_spans(pane.search_spans, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
@@ -1046,6 +1070,21 @@ fn push_selected_segments(
     }
 }
 
+fn decoration_highlight_spans(spans: &[DecorationSpan], view: &SpanView) -> Vec<HighlightSpan> {
+    spans
+        .iter()
+        .filter_map(|span| {
+            span_segment_at(
+                span.row,
+                span.start,
+                span.end,
+                view,
+                Tint::Plugin(span.style),
+            )
+        })
+        .collect()
+}
+
 fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<HighlightSpan> {
     spans
         .iter()
@@ -1115,6 +1154,13 @@ fn paint_span_at<W: Write>(
         }
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
         Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
+        Tint::Plugin(style) => paint_tinted(
+            out,
+            &span.text,
+            &theme.decoration_colors(style),
+            theme,
+            background,
+        ),
         Tint::Diagnostic { severity, tag } => paint_diagnostic(
             out,
             &span.text,
@@ -1899,6 +1945,7 @@ fn saturate_u16(v: usize) -> u16 {
 mod tests {
     use super::bracket::bracket_match_spans;
     use super::*;
+    use crate::frame::VirtualText;
 
     fn viewport() -> Viewport {
         Viewport::new(10, 20)
@@ -2480,14 +2527,16 @@ mod tests {
     #[test]
     fn virtual_text_sits_after_the_line_and_clips() {
         let text = VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
-        assert_eq!(virtual_text_layout(10, 30, &text), Some((11, "message")));
+        let segments = virtual_text_segments(10, 30, [&text]);
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].column, 11);
+        assert_eq!(segments[0].clipped, "message");
         let long =
             VirtualText::diagnostic("abcdefghijklmnop", crate::frame::DiagnosticSeverity::Error);
-        assert_eq!(
-            virtual_text_layout(0, 14, &long),
-            Some((1, "abcdefghijklm"))
-        );
-        assert_eq!(virtual_text_layout(25, 30, &text), None);
+        let segments = virtual_text_segments(0, 14, [&long]);
+        assert_eq!(segments[0].column, 1);
+        assert_eq!(segments[0].clipped, "abcdefghijklm");
+        assert!(virtual_text_segments(25, 30, [&text]).is_empty());
     }
 
     #[test]
@@ -2495,22 +2544,31 @@ mod tests {
         let text = VirtualText::diagnostic("中abc", crate::frame::DiagnosticSeverity::Warning);
         let line_width = crate::display::screen_len("a\tb", 8);
         assert_eq!(line_width, 9);
-        assert_eq!(
-            virtual_text_layout(line_width, 19, &text),
-            Some((10, "中abc"))
-        );
+        let segments = virtual_text_segments(line_width, 19, [&text]);
+        assert_eq!(segments[0].column, 10);
+        assert_eq!(segments[0].clipped, "中abc");
         let wide = VirtualText::diagnostic("中中中中中", crate::frame::DiagnosticSeverity::Warning);
-        assert_eq!(
-            virtual_text_layout(line_width, 19, &wide),
-            Some((10, "中中中中"))
-        );
+        let segments = virtual_text_segments(line_width, 19, [&wide]);
+        assert_eq!(segments[0].column, 10);
+        assert_eq!(segments[0].clipped, "中中中中");
+    }
+
+    #[test]
+    fn plugin_virtual_text_follows_diagnostics() {
+        let diagnostic =
+            VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
+        let plugin = VirtualText::plugin("note", DecorationStyle::Info);
+        let segments = virtual_text_segments(0, 40, [&diagnostic, &plugin]);
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[1].column, 9);
+        assert_eq!(segments[1].clipped, "note");
     }
 
     #[test]
     fn metadata_virtual_text_is_placed_before_the_line() {
         let text = VirtualText::metadata("-rw-r--r--    13 2026-10-28 14:32");
         assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
-        assert_eq!(virtual_text_layout(4, 50, &text), None);
+        assert!(virtual_text_segments(4, 50, [&text]).is_empty());
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use kawi_editor::Mode;
 
-use crate::frame::DiagnosticSeverity;
+use crate::frame::{DecorationStyle, DiagnosticSeverity};
 pub const REQUIRED_PRIORITY: u8 = u8::MAX;
 pub const BADGE_PADDING: usize = 1;
 
@@ -15,6 +15,7 @@ const DEFAULT_LEFT: &[SegmentId] = &[
 ];
 
 const DEFAULT_RIGHT: &[SegmentId] = &[
+    SegmentId::Plugins,
     SegmentId::FileType,
     SegmentId::Encoding,
     SegmentId::Position,
@@ -86,10 +87,11 @@ pub enum SegmentId {
     Eol,
     Percent,
     Position,
+    Plugins,
 }
 
 impl SegmentId {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Mode,
         Self::File,
         Self::Modified,
@@ -106,6 +108,7 @@ impl SegmentId {
         Self::Eol,
         Self::Percent,
         Self::Position,
+        Self::Plugins,
     ];
 
     pub fn name(self) -> &'static str {
@@ -126,6 +129,7 @@ impl SegmentId {
             Self::Eol => "eol",
             Self::Percent => "percent",
             Self::Position => "position",
+            Self::Plugins => "plugins",
         }
     }
 
@@ -158,6 +162,7 @@ pub enum SegmentStyle {
     Eol,
     Percent,
     Position,
+    Plugin(DecorationStyle),
 }
 
 impl SegmentStyle {
@@ -172,6 +177,7 @@ impl SegmentStyle {
                 | Self::Lsp
                 | Self::Selection
                 | Self::Macro
+                | Self::Plugin(_)
         )
     }
 }

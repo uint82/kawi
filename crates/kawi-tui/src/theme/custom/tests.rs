@@ -319,3 +319,40 @@ fn validation_rejects_an_invalid_custom_builtin_override() {
     fs::write(dir.join("default.toml"), "not valid toml").unwrap();
     assert!(Theme::validate("default", &dir).is_err());
 }
+
+#[test]
+fn parses_theme_package_metadata() {
+    let text = format!(
+        "[package]\nname = \"personal\"\nversion = \"1.2.0\"\ndescription = \"Personal palette\"\nauthor = \"Ada\"\n{}",
+        theme_text()
+    );
+    let theme = Theme::from_toml("personal", &text).unwrap();
+    let package = theme.package.expect("package");
+    assert_eq!(package.name, "personal");
+    assert_eq!(package.version, "1.2.0");
+    assert_eq!(package.description.as_deref(), Some("Personal palette"));
+    assert_eq!(package.author.as_deref(), Some("Ada"));
+}
+
+#[test]
+fn rejects_unknown_package_fields() {
+    let text = format!(
+        "[package]\nname = \"personal\"\nversion = \"1.0.0\"\nunknown = true\n{}",
+        theme_text()
+    );
+    assert!(Theme::from_toml("personal", &text).is_err());
+}
+
+#[test]
+fn loads_theme_packages_from_directories() {
+    let dir = temp_dir("package_dir");
+    let package = dir.join("personal");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(package.join("theme.toml"), theme_text()).unwrap();
+    assert_eq!(Theme::validate("personal", &dir), Ok(()));
+    assert_eq!(
+        Theme::load("personal", &dir).expect("theme").name,
+        "personal"
+    );
+    assert!(Theme::available(&dir).contains(&"personal".to_string()));
+}
