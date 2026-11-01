@@ -40,6 +40,24 @@ impl ConformanceHost {
         }
     }
 
+    pub(crate) fn wait_for_deferred(&self, method: &str) -> bool {
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if self
+                .observation()
+                .host_requests
+                .iter()
+                .any(|request| request.method == method && request.deferred)
+            {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(STATUS_POLL);
+        }
+    }
+
     pub(crate) fn wait_for_host_response(&self, method: &str) -> bool {
         let deadline = Instant::now() + START_TIMEOUT;
         loop {

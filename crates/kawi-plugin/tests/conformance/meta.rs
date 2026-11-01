@@ -4,6 +4,7 @@ use super::expectations::{
     parse, validate, Expectation, ExpectationFile, PROCESS_EXPECTATIONS, TEST_RESOLVER_ROWS,
     WASM_EXPECTATIONS,
 };
+use super::harness::INVOCATION_TIMEOUT;
 use super::report::Report;
 use super::scenario::{
     all_events, all_methods, covered_events, covered_methods, scenarios, Uncovered,
@@ -40,6 +41,16 @@ fn timeout_rows_keep_a_short_budget_and_normal_rows_have_headroom() {
         .find(|scenario| scenario.id == "core.echo")
         .expect("normal scenario");
     assert!(normal.timeout_ms() >= DEFAULT_TIMEOUT_FLOOR_MS);
+}
+
+#[test]
+fn invocation_timeout_exceeds_every_scenario_timeout() {
+    let max_timeout = scenarios()
+        .iter()
+        .map(|scenario| scenario.timeout_ms())
+        .max()
+        .expect("scenarios");
+    assert!(INVOCATION_TIMEOUT.as_millis() > u128::from(max_timeout));
 }
 
 #[test]

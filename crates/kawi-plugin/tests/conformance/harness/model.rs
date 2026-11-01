@@ -31,6 +31,7 @@ pub(crate) struct HostRequestRecord {
     pub(crate) method: String,
     pub(crate) params: Value,
     pub(crate) denied: bool,
+    pub(crate) deferred: bool,
     pub(crate) responded: bool,
 }
 

@@ -105,9 +105,22 @@ impl Driver {
             method: method.to_string(),
             params: params.clone(),
             denied,
+            deferred: false,
             responded: false,
         });
         observation.host_requests.len() - 1
+    }
+
+    fn mark_deferred(&self, index: usize) {
+        if let Some(request) = self
+            .observation
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .host_requests
+            .get_mut(index)
+        {
+            request.deferred = true;
+        }
     }
 
     fn mark_responded(&self, index: usize) {
@@ -146,6 +159,7 @@ impl Driver {
                 result,
                 index,
             });
+        self.mark_deferred(index);
     }
 
     fn observe_log(&self, line: String) {
