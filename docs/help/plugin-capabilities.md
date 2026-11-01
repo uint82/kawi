@@ -98,6 +98,8 @@ mode = "dark"
 
 `config.get` and `config.list` expose the effective values for the calling plugin. They need no capability declaration because they only read that plugin's own namespace. Missing keys return `null`. Invalid values and unknown keys are logged, and invalid values fall back to the manifest default. Kawi reads the file on demand, so edits apply without restarting the plugin.
 
+Users can edit settings through `:plugin settings <plugin>`. The editor validates values against the declared type, choices, and range, preserves existing file formatting, and never writes a value that the manifest rejects. Ctrl+R removes the override and restores the default.
+
 ## Hosts
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Hostnames are lowercased before comparison. Wildcards and port ranges are not supported.
