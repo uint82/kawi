@@ -89,6 +89,7 @@ fn builtin_style(theme: &Theme, style: ProtocolStyle) -> PluginStyle {
         bold: false,
         italic: false,
         underline: false,
+        hidden: false,
     }
 }
 
@@ -128,5 +129,8 @@ fn group_style(theme: &Theme, plugin: &str, group: &PluginDecorationGroup) -> Pl
         underline: overrides
             .and_then(|value| value.underline)
             .unwrap_or(group.underline),
+        hidden: overrides
+            .and_then(|value| value.hidden)
+            .unwrap_or(group.hidden),
     }
 }

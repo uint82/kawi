@@ -1253,6 +1253,9 @@ fn paint_plugin<W: Write>(
         "apply plugin colors",
     )?;
     apply_attributes(out, style.bold, style.italic, style.underline)?;
+    if style.hidden {
+        execute!(out, SetAttribute(Attribute::Hidden)).context("apply plugin hidden")?;
+    }
     write_segment(out, text)?;
     execute!(out, SetAttribute(Attribute::Reset)).context("reset plugin attributes")?;
     paint::apply_colors(
@@ -2585,6 +2588,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 underline: false,
+                hidden: false,
             },
         );
         let segments = virtual_text_segments(0, 40, [&diagnostic, &plugin]);
@@ -2608,6 +2612,31 @@ mod tests {
         let mut base = Vec::new();
         paint::restore_base(&mut base, &theme).unwrap();
         assert!(out.ends_with(&base));
+    }
+
+    #[test]
+    fn hidden_plugin_spans_apply_conceal() {
+        let style = crate::frame::PluginStyle {
+            foreground: crossterm::style::Color::White,
+            background: crossterm::style::Color::Black,
+            accent: crossterm::style::Color::Blue,
+            bold: false,
+            italic: false,
+            underline: false,
+            hidden: true,
+        };
+        let mut out = Vec::new();
+        paint_plugin(
+            &mut out,
+            ":",
+            style,
+            &Theme::default(),
+            crossterm::style::Color::Black,
+        )
+        .expect("paint plugin");
+        let mut hidden = Vec::new();
+        execute!(hidden, SetAttribute(Attribute::Hidden)).expect("hidden sequence");
+        assert!(out.windows(hidden.len()).any(|window| window == hidden));
     }
 
     #[test]

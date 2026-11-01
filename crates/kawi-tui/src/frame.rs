@@ -149,6 +149,7 @@ pub struct PluginStyle {
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
