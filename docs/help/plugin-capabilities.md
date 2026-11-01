@@ -83,7 +83,7 @@ fill = "foreground"
 italic = true
 ```
 
-Group IDs are local to the plugin and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `hidden`, `bold`, `italic`, and `underline` set text attributes.
+Group IDs are local to the plugin and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `hidden`, `bold`, `italic`, and `underline` set text attributes. Hidden text is revealed when the cursor is on it.
 
 ```json
 {

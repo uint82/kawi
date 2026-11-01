@@ -204,7 +204,7 @@ fill = "foreground"
 italic = true
 ```
 
-Group IDs are local to the plugin. They use lowercase letters, digits, hyphens, and underscores, and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `hidden`, `bold`, `italic`, and `underline` set text attributes.
+Group IDs are local to the plugin. They use lowercase letters, digits, hyphens, and underscores, and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `hidden`, `bold`, `italic`, and `underline` set text attributes. Hidden text is revealed when the cursor is on it.
 
 `editor_decorations::set` replaces every decoration the plugin published for one buffer and revision:
 
