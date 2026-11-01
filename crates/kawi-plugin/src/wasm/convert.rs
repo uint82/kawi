@@ -14,9 +14,11 @@ use super::bindings::kawi::plugin::types::{
 
 mod arguments;
 mod plugin_api;
+mod visual;
 
 pub use arguments::{argument_from_json, argument_to_json};
 pub use plugin_api::{command_infos_from_json, setting_value_from_json, settings_from_json};
+pub use visual::{decorations_to_protocol, signs_to_protocol, statusline_to_protocol};
 
 pub fn state_from_json(value: Value) -> Result<State, RpcError> {
     let state: GetStateResult = serde_json::from_value(value)
@@ -212,7 +214,7 @@ fn position_from_protocol(position: Position) -> Result<WitPosition, RpcError> {
     })
 }
 
-fn position_to_protocol(position: WitPosition) -> Result<Position, RpcError> {
+pub(super) fn position_to_protocol(position: WitPosition) -> Result<Position, RpcError> {
     Ok(Position {
         line: usize::try_from(position.line)
             .map_err(|_| RpcError::new(INVALID_PARAMS, "line does not fit usize"))?,

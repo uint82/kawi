@@ -30,6 +30,7 @@ impl App {
         let mut signs = self
             .git_signs_for_rows(rows)
             .unwrap_or_else(|| vec![None; rows.len()]);
+        self.apply_plugin_signs(&mut signs, rows);
         self.apply_diagnostic_signs(&mut signs, rows);
         Some(signs)
     }
@@ -37,6 +38,26 @@ impl App {
     fn has_signs(&self) -> bool {
         self.lsp.has_diagnostics()
             || (self.git_signs && self.git.as_ref().is_some_and(|session| session.has_signs()))
+            || self.plugin_has_signs()
+    }
+
+    fn plugin_has_signs(&self) -> bool {
+        let buffer = self.editor.buffer_number();
+        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
+        self.plugin_decorations.has_signs(buffer, revision)
+    }
+
+    fn apply_plugin_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        let buffer = self.editor.buffer_number();
+        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
+        for (sign, plugin) in signs
+            .iter_mut()
+            .zip(self.plugin_decorations.signs(buffer, revision, rows))
+        {
+            if plugin.is_some() {
+                *sign = plugin;
+            }
+        }
     }
 
     fn git_signs_for_rows(&self, rows: &[usize]) -> Option<Vec<Option<Sign>>> {
@@ -56,7 +77,7 @@ impl App {
                 .lsp
                 .diagnostic_severity(*row)
                 .map(ui_diagnostic_severity);
-            *sign = preferred_sign(*sign, diagnostic);
+            *sign = preferred_sign(sign.take(), diagnostic);
         }
     }
 }
@@ -154,9 +175,64 @@ mod tests {
         let git = Some(Sign::Git(GitSign::Change));
         let diagnostic = Some(UiDiagnosticSeverity::Error);
         assert_eq!(
-            preferred_sign(git, diagnostic),
+            preferred_sign(git.clone(), diagnostic),
             Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
         );
-        assert_eq!(preferred_sign(git, None), git);
+        assert_eq!(preferred_sign(git.clone(), None), git);
+    }
+}
+
+#[cfg(test)]
+mod plugin_sign_tests {
+    use super::*;
+    use crate::keymap::Flavor;
+    use crate::options::SignColumnMode;
+    use kawi_buffer::Buffer;
+    use kawi_plugin::{Decoration, DecorationStyle};
+    use kawi_tui::frame::PluginSign;
+
+    #[test]
+    fn plugin_signs_show_and_outrank_git_signs() {
+        let mut app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
+        app.handle_resize(80, 24).expect("resize");
+        app.signcolumn = SignColumnMode::Auto;
+        let buffer = app.editor.buffer_number();
+        let revision = app.editor.buffer_revision();
+        let snapshot = app.editor.document_snapshot();
+        app.plugin_decorations
+            .set(
+                "visual",
+                buffer,
+                revision,
+                &[Decoration::Sign {
+                    line: 0,
+                    text: "!".to_string(),
+                    style: DecorationStyle::Error,
+                }],
+                &snapshot,
+            )
+            .unwrap();
+        app.update_signcolumn_width();
+        let signs = app.view_signs().expect("signs");
+        assert_eq!(
+            signs[0],
+            Some(Sign::Plugin(PluginSign {
+                text: "!".to_string(),
+                style: kawi_tui::frame::DecorationStyle::Error,
+            }))
+        );
+    }
+
+    #[test]
+    fn diagnostics_outrank_plugin_signs() {
+        let plugin = Some(Sign::Plugin(PluginSign {
+            text: "!".to_string(),
+            style: kawi_tui::frame::DecorationStyle::Error,
+        }));
+        assert_eq!(
+            preferred_sign(plugin.clone(), Some(UiDiagnosticSeverity::Warning)),
+            Some(Sign::Diagnostic(UiDiagnosticSeverity::Warning))
+        );
+        assert_eq!(preferred_sign(plugin.clone(), None), plugin);
     }
 }

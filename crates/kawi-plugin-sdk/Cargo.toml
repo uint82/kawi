@@ -1,6 +1,6 @@
 [package]
 name = "kawi-plugin-sdk"
-version = "0.3.0"
+version = "0.4.0"
 description = "Rust SDK for Kawi WebAssembly plugins"
 readme = "README.md"
 homepage = "https://github.com/uint82/kawi"

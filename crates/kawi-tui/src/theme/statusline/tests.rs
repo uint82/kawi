@@ -64,6 +64,18 @@ fn defaults_follow_theme_colors() {
 }
 
 #[test]
+fn plugin_segments_use_decoration_colors() {
+    let theme = Theme::default();
+    assert_eq!(
+        theme.statusline_colors(
+            SegmentStyle::Plugin(crate::frame::DecorationStyle::Warning),
+            true
+        ),
+        theme.decoration_colors(crate::frame::DecorationStyle::Warning)
+    );
+}
+
+#[test]
 fn overrides_apply_only_to_active_windows() {
     let file: StatusLineFile = toml::from_str(
         r##"

@@ -162,4 +162,5 @@ fn themes_help_lists_builtin_and_custom_discovery() {
     assert!(text.contains("gruvbox-dark"));
     assert!(text.contains("~/.config/kawi/themes"));
     assert!(text.contains("Press Tab"));
+    assert!(text.contains("Theme packages"));
 }

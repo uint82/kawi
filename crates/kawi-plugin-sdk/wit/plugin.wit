@@ -1,4 +1,4 @@
-package kawi:plugin@0.3.0;
+package kawi:plugin@0.4.0;
 
 interface types {
   record position {
@@ -42,6 +42,32 @@ interface types {
     message: string,
     source: option<string>,
     code: option<string>,
+  }
+
+  enum decoration-style {
+    accent,
+    info,
+    success,
+    warning,
+    error,
+    muted,
+  }
+
+  record highlight {
+    start: position,
+    end: position,
+    style: decoration-style,
+  }
+
+  record virtual-text {
+    line: u32,
+    text: string,
+    style: decoration-style,
+  }
+
+  variant decoration {
+    highlight(highlight),
+    virtual-text(virtual-text),
   }
 
   record error {
@@ -194,6 +220,31 @@ interface diagnostics-publish {
   set: func(source: string, buffer: u64, revision: u64, items: list<diagnostic>) -> result<_, error>;
 }
 
+interface editor-decorations {
+  use types.{decoration, error};
+  set: func(buffer: u64, revision: u64, decorations: list<decoration>) -> result<_, error>;
+}
+
+interface editor-signs {
+  use types.{decoration-style, error};
+  record sign {
+    line: u32,
+    text: string,
+    style: decoration-style,
+  }
+  set: func(buffer: u64, revision: u64, signs: list<sign>) -> result<_, error>;
+}
+
+interface ui-statusline {
+  use types.{decoration-style, error};
+  record statusline-segment {
+    text: string,
+    style: decoration-style,
+    priority: u32,
+  }
+  set: func(segments: list<statusline-segment>) -> result<_, error>;
+}
+
 interface process-run {
   use types.{process-output, error};
   run: func(command: string, args: list<string>, timeout-ms: u32) -> result<process-output, error>;
@@ -215,6 +266,9 @@ world host {
   import ui-prompt;
   import ui-progress;
   import diagnostics-publish;
+  import editor-decorations;
+  import editor-signs;
+  import ui-statusline;
   import process-run;
   export lifecycle;
 }

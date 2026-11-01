@@ -24,6 +24,55 @@ Custom themes use the same TOML format as the built-in themes. See [Configuratio
 
 Press Tab after `:set theme` to discover every built-in and custom theme that is currently valid.
 
+## Theme packages
+
+A theme package is data. It is not a plugin, it does not run code, and it cannot register itself through the plugin API. Kawi loads theme packages from the themes directory only.
+
+A package can be a single TOML file such as `personal.toml`, or a directory named after the theme that contains `theme.toml`:
+
+```text
+~/.config/kawi/themes/personal/theme.toml
+```
+
+The directory form is the package format for themes that ship additional data alongside the theme. The theme name is the directory name. A single file with the same name takes precedence when both exist.
+
+Packages may declare optional distribution metadata:
+
+```toml
+[package]
+name = "personal"
+version = "1.2.0"
+description = "A warm palette"
+author = "Ada"
+homepage = "https://example.com/personal"
+
+[base]
+foreground = "#e7e2d6"
+background = "#10171a"
+
+[search_match]
+foreground = "#10171a"
+background = "#f2c27b"
+```
+
+`name` and `version` are required when the table is present. The other fields are optional. Unknown package fields and unknown theme fields are rejected.
+
+## Decorations
+
+Plugins and built-in features use six decoration styles: `accent`, `info`, `success`, `warning`, `error`, and `muted`. Override them in a theme package:
+
+```toml
+[decorations.info]
+foreground = "#10171a"
+background = "#6ed0f0"
+
+[decorations.warning]
+foreground = "#10171a"
+background = "#f2c27b"
+```
+
+Omitted styles derive their colors from the rest of the theme.
+
 ## Status line colors
 
 Status line segments derive their colors from `status`, `diagnostics`, `git`, `selection`, and the base palette. Colored segments use a filled background badge with horizontal padding, and the base background as the default foreground. Padding is dropped before the mode label is shortened. Override individual segments with a `[statusline]` table:

@@ -1,7 +1,7 @@
 use super::segment::{
     Section, Segment, SegmentId, SegmentStyle, StatusBarConfig, BADGE_PADDING, REQUIRED_PRIORITY,
 };
-use super::{GitStatusInfo, StatusInfo};
+use super::{GitStatusInfo, PluginSegment, StatusInfo};
 
 const FILE_PRIORITY: u8 = 200;
 const SELECTION_PRIORITY: u8 = 190;
@@ -12,6 +12,7 @@ const DIAGNOSTICS_PRIORITY: u8 = 170;
 const WORKSPACE_DIAGNOSTICS_PRIORITY: u8 = 165;
 const GIT_PRIORITY: u8 = 160;
 const LSP_PRIORITY: u8 = 150;
+const PLUGIN_PRIORITY: u8 = 155;
 const PERCENT_PRIORITY: u8 = 140;
 const FILETYPE_PRIORITY: u8 = 130;
 const INDENT_PRIORITY: u8 = 120;
@@ -68,6 +69,10 @@ fn push_section(
     ids: &[SegmentId],
 ) {
     for id in ids {
+        if *id == SegmentId::Plugins {
+            push_plugin_segments(segments, info.plugins, active, section);
+            continue;
+        }
         if !active && !matches!(id, SegmentId::File | SegmentId::Modified) {
             continue;
         }
@@ -92,6 +97,32 @@ fn push_section(
             flex: spec.flex,
             min_width: spec.min_width,
             padding,
+        });
+    }
+}
+
+fn push_plugin_segments(
+    segments: &mut Vec<Segment>,
+    plugins: &[PluginSegment],
+    active: bool,
+    section: Section,
+) {
+    if !active {
+        return;
+    }
+    for plugin in plugins {
+        if plugin.text.is_empty() {
+            continue;
+        }
+        segments.push(Segment {
+            id: SegmentId::Plugins,
+            text: plugin.text.clone(),
+            style: SegmentStyle::Plugin(plugin.style),
+            priority: PLUGIN_PRIORITY,
+            section,
+            flex: false,
+            min_width: 0,
+            padding: BADGE_PADDING,
         });
     }
 }
@@ -121,6 +152,7 @@ fn segment_text(
         SegmentId::Eol => info.eol.map(str::to_string),
         SegmentId::Percent => info.percent.map(|percent| format!("{percent}%")),
         SegmentId::Position => active.then(|| position_text(info)),
+        SegmentId::Plugins => None,
     }
 }
 
@@ -195,6 +227,7 @@ fn segment_spec(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig) 
         SegmentId::Indent => (INDENT_PRIORITY, false, 0),
         SegmentId::Encoding => (ENCODING_PRIORITY, false, 0),
         SegmentId::Eol => (EOL_PRIORITY, false, 0),
+        SegmentId::Plugins => (PLUGIN_PRIORITY, false, 0),
     };
     SegmentSpec {
         style,
@@ -228,6 +261,6 @@ fn segment_style(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig)
         SegmentId::Eol => SegmentStyle::Eol,
         SegmentId::Percent => SegmentStyle::Percent,
         SegmentId::Position => SegmentStyle::Position,
-        SegmentId::File => SegmentStyle::Default,
+        SegmentId::File | SegmentId::Plugins => SegmentStyle::Default,
     }
 }

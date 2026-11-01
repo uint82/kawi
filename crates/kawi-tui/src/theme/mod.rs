@@ -6,10 +6,13 @@ pub use style::{SyntaxStyle, SyntaxStyles};
 mod builtin;
 mod color;
 mod custom;
+mod decorations;
 mod error;
 mod statusline;
 mod style;
 
+pub use custom::ThemePackage;
+pub use decorations::DecorationTheme;
 pub use error::ThemeError;
 pub use statusline::StatusLineTheme;
 
@@ -28,6 +31,7 @@ pub struct MatchColors {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Theme {
     pub name: String,
+    pub package: Option<ThemePackage>,
     pub base: BaseColors,
     pub float_background: Color,
     pub code_background: Color,
@@ -49,6 +53,7 @@ pub struct Theme {
     pub diagnostic_warning: Color,
     pub diagnostic_information: Color,
     pub diagnostic_hint: Color,
+    pub decorations: DecorationTheme,
     pub statusline: StatusLineTheme,
     pub syntax: SyntaxStyles,
 }
@@ -73,10 +78,11 @@ impl Theme {
         }
     }
 
-    pub fn sign_color(&self, sign: crate::frame::Sign) -> Color {
+    pub fn sign_color(&self, sign: &crate::frame::Sign) -> Color {
         match sign {
-            crate::frame::Sign::Git(sign) => self.git_sign_color(sign),
-            crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(severity),
+            crate::frame::Sign::Git(sign) => self.git_sign_color(*sign),
+            crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(*severity),
+            crate::frame::Sign::Plugin(sign) => self.decoration_color(sign.style),
         }
     }
 

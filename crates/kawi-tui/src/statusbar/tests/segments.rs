@@ -160,3 +160,53 @@ fn insert_mode_shows_the_insert_badge() {
     let texts = line_texts(&status, 80, &StatusBarConfig::default());
     assert_eq!(texts.first().map(String::as_str), Some("-- INSERT --"));
 }
+
+#[test]
+fn plugin_segments_render_in_the_plugins_element() {
+    let plugins = [
+        super::super::PluginSegment {
+            text: "index".to_string(),
+            style: crate::frame::DecorationStyle::Info,
+        },
+        super::super::PluginSegment {
+            text: "lint".to_string(),
+            style: crate::frame::DecorationStyle::Warning,
+        },
+    ];
+    let mut status = info("a.txt");
+    status.plugins = &plugins;
+    let texts = line_texts(&status, 120, &StatusBarConfig::default());
+    assert!(texts.contains(&"index".to_string()));
+    assert!(texts.contains(&"lint".to_string()));
+}
+
+#[test]
+fn plugin_segments_hide_in_inactive_windows() {
+    let plugins = [super::super::PluginSegment {
+        text: "index".to_string(),
+        style: crate::frame::DecorationStyle::Info,
+    }];
+    let mut status = info("a.txt");
+    status.plugins = &plugins;
+    let segments = build_segments(&status, false, &StatusBarConfig::default());
+    assert!(!segments
+        .iter()
+        .any(|segment| segment.id == SegmentId::Plugins));
+}
+
+#[test]
+fn plugin_segments_follow_the_configured_element_order() {
+    let plugins = [super::super::PluginSegment {
+        text: "index".to_string(),
+        style: crate::frame::DecorationStyle::Info,
+    }];
+    let mut status = info("a.txt");
+    status.plugins = &plugins;
+    let config = StatusBarConfig {
+        left: vec![SegmentId::File, SegmentId::Plugins, SegmentId::Mode],
+        right: vec![SegmentId::Position],
+        ..StatusBarConfig::default()
+    };
+    let texts = line_texts(&status, 80, &config);
+    assert_eq!(texts, vec!["a.txt", "index", "-- NORMAL --", "1:1"]);
+}

@@ -9,6 +9,7 @@ mod reload;
 mod settings;
 mod settings_ui;
 mod ui;
+mod visual;
 mod wasm;
 #[cfg(feature = "wasm")]
 mod wasm_composition;

@@ -4,7 +4,9 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::{BracketMatch, Mode, Viewport, HIGHLIGHT_MATCH_STEP_BUDGET};
 use kawi_syntax::{SyntaxKey, SyntaxSpan};
-use kawi_tui::frame::{DiagnosticSpan, Rect, SearchSpan, Selection, Sign, VirtualText};
+use kawi_tui::frame::{
+    DecorationSpan, DiagnosticSpan, Rect, SearchSpan, Selection, Sign, VirtualText,
+};
 use kawi_tui::statusbar::ModeKind;
 
 use super::{
@@ -24,7 +26,9 @@ pub(crate) struct PaneData<'a> {
     pub gutter: Vec<String>,
     pub signs: Option<Vec<Option<Sign>>>,
     pub diagnostic_spans: Vec<DiagnosticSpan>,
+    pub decorations: Vec<DecorationSpan>,
     pub virtual_texts: Vec<Option<VirtualText>>,
+    pub plugin_virtual_texts: Vec<Vec<VirtualText>>,
     pub left_width: usize,
     pub search_spans: Vec<SearchSpan>,
     pub preview_spans: Vec<SearchSpan>,
@@ -546,12 +550,20 @@ impl App {
                 suppress: self.virtual_text_suppressed(),
             },
         );
+        let buffer = self.editor.buffer_number();
+        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
+        let decorations = self.plugin_decorations.spans(buffer, revision, &rows);
+        let plugin_virtual_texts = self
+            .plugin_decorations
+            .virtual_texts(buffer, revision, &rows);
         PaneData {
             rect,
             active: true,
             signs: self.view_signs_for_rows(&rows),
             diagnostic_spans: self.lsp.diagnostic_spans(&lines, &rows),
+            decorations,
             virtual_texts,
+            plugin_virtual_texts,
             left_width,
             lines,
             gutter,
@@ -691,12 +703,24 @@ impl App {
                 suppress: false,
             },
         );
+        let revision = self
+            .editor
+            .buffer_revision_at(window.buffer)
+            .unwrap_or_default();
+        let decorations = self
+            .plugin_decorations
+            .spans(window.buffer, revision, &rows);
+        let plugin_virtual_texts =
+            self.plugin_decorations
+                .virtual_texts(window.buffer, revision, &rows);
         PaneData {
             rect,
             active: false,
             signs: None,
             diagnostic_spans,
+            decorations,
             virtual_texts,
+            plugin_virtual_texts,
             left_width,
             lines,
             gutter,

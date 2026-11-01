@@ -50,6 +50,14 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "ui.progress_finish",
         reason: "requires interactive editor input; covered by app plugin UI tests",
     },
+    Uncovered {
+        name: "editor.set_decorations",
+        reason: "requires editor buffer state; covered by app plugin visual tests",
+    },
+    Uncovered {
+        name: "ui.set_statusline",
+        reason: "requires editor statusline state; covered by app plugin visual tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
 

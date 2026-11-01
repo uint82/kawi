@@ -120,9 +120,28 @@ pub struct TerminalCursor {
     pub style: CursorStyle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DecorationStyle {
+    Accent,
+    Info,
+    Success,
+    Warning,
+    Error,
+    Muted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecorationSpan {
+    pub row: usize,
+    pub start: usize,
+    pub end: usize,
+    pub style: DecorationStyle,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtualTextKind {
     Diagnostic(DiagnosticSeverity),
+    Plugin(DecorationStyle),
     Metadata,
 }
 
@@ -148,6 +167,14 @@ impl VirtualText {
         }
     }
 
+    pub fn plugin(text: impl Into<String>, style: DecorationStyle) -> Self {
+        Self {
+            text: text.into(),
+            kind: VirtualTextKind::Plugin(style),
+            placement: VirtualTextPlacement::AfterLine,
+        }
+    }
+
     pub fn metadata(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -165,7 +192,9 @@ pub struct PaneFrame<'a> {
     pub gutter: &'a [String],
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
+    pub decorations: &'a [DecorationSpan],
     pub virtual_texts: &'a [Option<VirtualText>],
+    pub plugin_virtual_texts: &'a [Vec<VirtualText>],
     pub left_width: usize,
     pub search_spans: &'a [SearchSpan],
     pub preview_spans: &'a [SearchSpan],
@@ -181,17 +210,25 @@ pub struct PaneFrame<'a> {
     pub status: &'a StatusInfo<'a>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginSign {
+    pub text: String,
+    pub style: DecorationStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sign {
     Git(GitSign),
     Diagnostic(DiagnosticSeverity),
+    Plugin(PluginSign),
 }
 
 impl Sign {
-    pub fn text(self) -> &'static str {
+    pub fn text(&self) -> &str {
         match self {
             Self::Git(sign) => sign.text(),
             Self::Diagnostic(severity) => severity.sign(),
+            Self::Plugin(sign) => &sign.text,
         }
     }
 }

@@ -8,9 +8,24 @@ use super::color::parse_color;
 use super::style::{parse_styles, StyleValue};
 use super::{BaseColors, MatchColors, Theme, ThemeError};
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemePackage {
+    pub name: String,
+    pub version: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ThemeFile {
+    #[serde(default)]
+    package: Option<ThemePackage>,
     #[serde(default)]
     float_background: Option<String>,
     #[serde(default)]
@@ -26,6 +41,8 @@ struct ThemeFile {
     gutter: GutterFile,
     git: GitFile,
     diagnostics: DiagnosticsFile,
+    #[serde(default)]
+    decorations: super::decorations::DecorationsFile,
     #[serde(default)]
     statusline: Option<super::statusline::StatusLineFile>,
     #[serde(default)]
@@ -142,6 +159,7 @@ impl Theme {
         };
         Ok(Self {
             name: name.to_string(),
+            package: file.package,
             base: BaseColors {
                 foreground: base_foreground,
                 background: base_background,
@@ -169,6 +187,7 @@ impl Theme {
                 &file.diagnostics.information,
             )?,
             diagnostic_hint: parse_color("diagnostics.hint", &file.diagnostics.hint)?,
+            decorations: super::decorations::parse(Some(file.decorations))?,
             statusline: super::statusline::parse(file.statusline)?,
             syntax: parse_styles(file.syntax, file.palette)?,
         })
@@ -179,16 +198,28 @@ fn theme_path(name: &str, themes_dir: &Path) -> Result<PathBuf, ThemeError> {
     if !valid_theme_name(name) {
         return Err(ThemeError::invalid(format!("invalid theme name {name:?}")));
     }
-    Ok(themes_dir.join(format!("{name}.toml")))
+    let file = themes_dir.join(format!("{name}.toml"));
+    if file.is_file() {
+        return Ok(file);
+    }
+    let package = themes_dir.join(name).join("theme.toml");
+    if package.is_file() {
+        return Ok(package);
+    }
+    Ok(file)
 }
 
 fn custom_theme_name(entry: &fs::DirEntry) -> Option<String> {
     let path = entry.path();
-    if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("toml") {
-        return None;
+    if path.is_file() && path.extension().and_then(|value| value.to_str()) == Some("toml") {
+        let name = path.file_stem()?.to_str()?;
+        return valid_theme_name(name).then(|| name.to_string());
     }
-    let name = path.file_stem()?.to_str()?;
-    valid_theme_name(name).then(|| name.to_string())
+    if path.is_dir() && path.join("theme.toml").is_file() {
+        let name = path.file_name()?.to_str()?;
+        return valid_theme_name(name).then(|| name.to_string());
+    }
+    None
 }
 
 fn valid_theme_name(name: &str) -> bool {

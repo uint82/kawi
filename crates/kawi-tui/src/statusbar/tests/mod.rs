@@ -30,6 +30,7 @@ fn info<'a>(filename: &'a str) -> StatusInfo<'a> {
         selection: None,
         macro_recording: None,
         percent: None,
+        plugins: &[],
     }
 }
 

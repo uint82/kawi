@@ -225,3 +225,53 @@ pub struct SetDiagnosticsParams {
     pub revision: u64,
     pub diagnostics: Vec<DiagnosticSummary>,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecorationStyle {
+    Accent,
+    Info,
+    Success,
+    Warning,
+    Error,
+    Muted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Decoration {
+    Highlight {
+        start: Position,
+        end: Position,
+        style: DecorationStyle,
+    },
+    VirtualText {
+        line: usize,
+        text: String,
+        style: DecorationStyle,
+    },
+    Sign {
+        line: usize,
+        text: String,
+        style: DecorationStyle,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetDecorationsParams {
+    pub buffer: u64,
+    pub revision: u64,
+    pub decorations: Vec<Decoration>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StatuslineSegment {
+    pub text: String,
+    pub style: DecorationStyle,
+    pub priority: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetStatuslineParams {
+    pub segments: Vec<StatuslineSegment>,
+}

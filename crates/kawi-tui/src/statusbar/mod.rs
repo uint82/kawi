@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::io::Stdout;
 
+use crate::frame::DecorationStyle;
 use crate::theme::Theme;
 
 mod build;
@@ -36,6 +37,12 @@ pub struct StatusArea {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginSegment {
+    pub text: String,
+    pub style: DecorationStyle,
+}
+
 pub struct StatusInfo<'a> {
     pub filename: &'a str,
     pub dirty: bool,
@@ -61,6 +68,7 @@ pub struct StatusInfo<'a> {
     pub selection: Option<&'a str>,
     pub macro_recording: Option<char>,
     pub percent: Option<usize>,
+    pub plugins: &'a [PluginSegment],
 }
 
 pub fn draw_status(
