@@ -44,6 +44,17 @@ impl Guest for Plugin {
 kawi_plugin_sdk::export!(Plugin);
 ```
 
+## Composition
+
+Declare an explicit command allowlist in `plugin.toml`:
+
+```toml
+[capabilities]
+"editor.execute" = { commands = ["edit.format", "file.save"] }
+```
+
+The `editor_execute` module exposes `execute` and `list_commands`. The allowlist uses canonical command IDs, and the host checks every call before running the command.
+
 ## Documentation
 
 The authoring guide covers scaffolding, building, installing, releasing, and troubleshooting:

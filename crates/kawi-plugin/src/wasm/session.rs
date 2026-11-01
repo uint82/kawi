@@ -14,7 +14,7 @@ use crate::protocol::PROTOCOL_VERSION;
 
 use super::bindings::kawi::plugin::types::Argument;
 use super::bindings::kawi::plugin::{
-    diagnostics_publish, editor_read, editor_write, process_run, types, ui_message,
+    diagnostics_publish, editor_execute, editor_read, editor_write, process_run, types, ui_message,
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
@@ -104,6 +104,10 @@ pub(crate) fn add_kawi_interfaces(
     }
     if capabilities.has(plugin, Capability::EditorWrite) {
         editor_write::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::EditorExecute) {
+        editor_execute::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
             .map_err(linker_error)?;
     }
     if capabilities.has(plugin, Capability::UiMessage) {

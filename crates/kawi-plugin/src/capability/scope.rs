@@ -8,8 +8,10 @@ use std::path::Path;
 use serde_json::{Map, Value};
 
 use super::command;
-use super::Capability;
-use crate::environment::is_path_variable;
+
+mod parse;
+
+pub(super) use parse::parse_request_scope;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct HostPort {
@@ -83,6 +85,7 @@ pub enum Scope {
     Unscoped,
     Paths(Vec<String>),
     Commands(Vec<String>),
+    EditorCommands(Vec<String>),
     Hosts(Vec<String>),
 }
 
@@ -94,6 +97,9 @@ impl Scope {
                 .iter()
                 .all(|inner| outer.iter().any(|outer| path_within(inner, outer))),
             (Self::Commands(outer), Self::Commands(inner)) => command::covers(outer, inner),
+            (Self::EditorCommands(outer), Self::EditorCommands(inner)) => {
+                inner.iter().all(|inner| outer.contains(inner))
+            }
             (Self::Hosts(outer), Self::Hosts(inner)) => {
                 inner.iter().all(|inner| outer.contains(inner))
             }
@@ -108,7 +114,7 @@ impl Scope {
             Self::Paths(paths) => {
                 object.insert("paths".to_string(), string_array(paths));
             }
-            Self::Commands(commands) => {
+            Self::Commands(commands) | Self::EditorCommands(commands) => {
                 object.insert("commands".to_string(), string_array(commands));
             }
             Self::Hosts(hosts) => {
@@ -123,132 +129,15 @@ fn string_array(values: &[String]) -> Value {
     Value::Array(values.iter().cloned().map(Value::String).collect())
 }
 
-pub(super) fn parse_request_scope(
-    capability: Capability,
-    value: &toml::Value,
-) -> Result<Scope, String> {
-    if !capability.is_scoped() {
-        return match value {
-            toml::Value::Boolean(true) => Ok(Scope::Unscoped),
-            toml::Value::Boolean(false) => Err("false is not a request".to_string()),
-            _ => Err("unscoped capabilities must be true".to_string()),
-        };
-    }
-    let table = value
-        .as_table()
-        .ok_or_else(|| "scoped capabilities must be a table".to_string())?;
-    parse_scoped_table(capability, table)
-}
-
-fn parse_scoped_table(
-    capability: Capability,
-    table: &toml::map::Map<String, toml::Value>,
-) -> Result<Scope, String> {
-    let key = scope_key(capability);
-    if table.len() != 1 {
-        return Err(format!("expected only the {key} key"));
-    }
-    let values = table
-        .get(key)
-        .ok_or_else(|| format!("missing {key} key"))?
-        .as_array()
-        .ok_or_else(|| format!("{key} must be an array"))?;
-    if values.is_empty() {
-        return Err(format!("{key} must not be empty"));
-    }
-    match capability {
-        Capability::FsRead | Capability::FsWrite => parse_paths(values).map(Scope::Paths),
-        Capability::ProcessSpawn => parse_commands(values).map(Scope::Commands),
-        Capability::NetConnect => parse_hosts(values).map(Scope::Hosts),
-        _ => Err("unscoped capability".to_string()),
-    }
-}
-
-fn scope_key(capability: Capability) -> &'static str {
-    match capability {
-        Capability::FsRead | Capability::FsWrite => "paths",
-        Capability::ProcessSpawn => "commands",
-        Capability::NetConnect => "hosts",
-        _ => "",
-    }
-}
-
-fn parse_paths(values: &[toml::Value]) -> Result<Vec<String>, String> {
-    let mut paths = BTreeSet::new();
-    for value in values {
-        let path = value
-            .as_str()
-            .ok_or_else(|| "paths must be strings".to_string())?;
-        paths.insert(normalize_path(path)?);
-    }
-    Ok(paths.into_iter().collect())
-}
-
-fn parse_commands(values: &[toml::Value]) -> Result<Vec<String>, String> {
-    let mut commands = BTreeSet::new();
-    for value in values {
-        let command = value
-            .as_str()
-            .ok_or_else(|| "commands must be strings".to_string())?;
-        command::validate(command)?;
-        commands.insert(command.to_string());
-    }
-    Ok(commands.into_iter().collect())
-}
-
-fn parse_hosts(values: &[toml::Value]) -> Result<Vec<String>, String> {
-    let mut hosts = BTreeSet::new();
-    for value in values {
-        let host = normalize_host(
-            value
-                .as_str()
-                .ok_or_else(|| "hosts must be strings".to_string())?,
-        )?;
-        hosts.insert(host);
-    }
-    Ok(hosts.into_iter().collect())
-}
-
-fn normalize_host(host: &str) -> Result<String, String> {
-    HostPort::parse(host).map(|host| host.to_string())
-}
-
-fn normalize_path(path: &str) -> Result<String, String> {
-    if path.is_empty() {
-        return Err("paths must not be empty".to_string());
-    }
-    if path.split('/').any(|component| component == "..") {
-        return Err("paths must not contain ..".to_string());
-    }
-    if let Some(variable) = path.strip_prefix('$') {
-        let name = variable.split('/').next().unwrap_or_default();
-        if !is_path_variable(name) {
-            return Err(format!("unknown path variable: ${name}"));
-        }
-    } else if !path.starts_with('/') {
-        return Err("paths must be absolute or start with a variable".to_string());
-    }
-    let mut parts = Vec::new();
-    for component in path.split('/') {
-        if component.is_empty() || component == "." {
-            continue;
-        }
-        parts.push(component);
-    }
-    let normalized = if path.starts_with('/') {
-        format!("/{}", parts.join("/"))
-    } else {
-        parts.join("/")
-    };
-    Ok(normalized)
-}
-
 pub fn intersect_scope(requested: &Scope, granted: &Scope) -> Option<Scope> {
     match (requested, granted) {
         (Scope::Unscoped, Scope::Unscoped) => Some(Scope::Unscoped),
         (Scope::Paths(requested), Scope::Paths(granted)) => intersect_paths(requested, granted),
         (Scope::Commands(requested), Scope::Commands(granted)) => {
             intersect_commands(requested, granted)
+        }
+        (Scope::EditorCommands(requested), Scope::EditorCommands(granted)) => {
+            intersect_editor_commands(requested, granted)
         }
         (Scope::Hosts(requested), Scope::Hosts(granted)) => intersect_hosts(requested, granted),
         _ => None,
@@ -257,6 +146,10 @@ pub fn intersect_scope(requested: &Scope, granted: &Scope) -> Option<Scope> {
 
 fn intersect_commands(requested: &[String], granted: &[String]) -> Option<Scope> {
     command::intersect(requested, granted).map(Scope::Commands)
+}
+
+fn intersect_editor_commands(requested: &[String], granted: &[String]) -> Option<Scope> {
+    exact_values(requested, granted).map(Scope::EditorCommands)
 }
 
 fn intersect_hosts(requested: &[String], granted: &[String]) -> Option<Scope> {

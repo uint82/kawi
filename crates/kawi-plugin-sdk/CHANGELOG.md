@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add the `editor-execute` interface for allowlisted built-in editor commands.
+- Add `editor_execute` re-exports for command execution and discovery.
+
 ## 0.1.0
 
 - Initial public release.

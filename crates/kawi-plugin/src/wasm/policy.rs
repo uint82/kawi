@@ -22,6 +22,10 @@ pub const WASM_IMPORTS: &[ImportRule] = &[
         capabilities: &[Capability::EditorWrite],
     },
     ImportRule {
+        prefix: "kawi:plugin/editor-execute@0.1.0",
+        capabilities: &[Capability::EditorExecute],
+    },
+    ImportRule {
         prefix: "kawi:plugin/ui-message@0.1.0",
         capabilities: &[Capability::UiMessage],
     },
@@ -132,6 +136,10 @@ mod tests {
             Some(&[Capability::EditorRead][..])
         );
         assert_eq!(
+            import_capabilities("kawi:plugin/editor-execute@0.1.0"),
+            Some(&[Capability::EditorExecute][..])
+        );
+        assert_eq!(
             import_capabilities("wasi:sockets/tcp@0.2.12"),
             Some(&[Capability::NetConnect][..])
         );
@@ -206,11 +214,16 @@ mod tests {
             "wasi:filesystem/types@0.2.12",
             "kawi:plugin/editor-read@0.1.0",
             "kawi:plugin/editor-write@0.1.0",
+            "kawi:plugin/editor-execute@0.1.0",
             "wasi:sockets/tcp@0.2.12",
         ];
         assert_eq!(
             unauthorized_imports(imports.into_iter(), &requested),
-            vec!["kawi:plugin/editor-write@0.1.0", "wasi:sockets/tcp@0.2.12"]
+            vec![
+                "kawi:plugin/editor-write@0.1.0",
+                "kawi:plugin/editor-execute@0.1.0",
+                "wasi:sockets/tcp@0.2.12"
+            ]
         );
     }
 
@@ -282,12 +295,14 @@ mod tests {
             requested_import_capabilities(
                 [
                     "kawi:plugin/editor-read@0.1.0",
+                    "kawi:plugin/editor-execute@0.1.0",
                     "wasi:filesystem/types@0.2.12",
                 ]
                 .into_iter()
             ),
             BTreeSet::from([
                 Capability::EditorRead,
+                Capability::EditorExecute,
                 Capability::FsRead,
                 Capability::FsWrite
             ])

@@ -1,4 +1,5 @@
 mod common;
+mod composition;
 mod core;
 mod events;
 mod manager;

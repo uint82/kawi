@@ -219,6 +219,7 @@ fn scope_label(scope: &Scope) -> String {
         Scope::Unscoped => "unscoped".to_string(),
         Scope::Paths(paths) => format!("paths {paths:?}"),
         Scope::Commands(commands) => format!("commands {commands:?}"),
+        Scope::EditorCommands(commands) => format!("editor commands {commands:?}"),
         Scope::Hosts(hosts) => format!("hosts {hosts:?}"),
     }
 }
