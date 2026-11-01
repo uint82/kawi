@@ -82,6 +82,8 @@ pub struct PluginDecorationGroup {
     pub italic: bool,
     #[serde(default)]
     pub underline: bool,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

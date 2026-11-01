@@ -294,6 +294,11 @@ id = "todo_text"
 color = "info"
 fill = "foreground"
 italic = true
+
+[[decorations]]
+id = "todo_colon"
+color = "info"
+hidden = true
 "#,
     )
     .expect("manifest");
@@ -318,4 +323,8 @@ italic = true
         .expect("text group");
     assert_eq!(text.foreground, text.accent);
     assert_eq!(text.background, Theme::default().base.background);
+    let colon = styles
+        .resolve("demo", &DecorationRef::Group("todo_colon".to_string()))
+        .expect("colon group");
+    assert!(colon.hidden);
 }

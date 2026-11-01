@@ -16,6 +16,7 @@ pub struct PluginDecorationOverride {
     pub bold: Option<bool>,
     pub italic: Option<bool>,
     pub underline: Option<bool>,
+    pub hidden: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -50,6 +51,8 @@ struct PluginDecorationFile {
     italic: Option<bool>,
     #[serde(default)]
     underline: Option<bool>,
+    #[serde(default)]
+    hidden: Option<bool>,
 }
 
 pub(super) fn parse(
@@ -86,6 +89,7 @@ fn parse_override(
         bold: entry.bold,
         italic: entry.italic,
         underline: entry.underline,
+        hidden: entry.hidden,
     })
 }
 
@@ -109,6 +113,7 @@ fill = "foreground"
 bold = true
 italic = true
 underline = true
+hidden = true
 "##,
         )
         .expect("overrides");
@@ -120,6 +125,7 @@ underline = true
         assert_eq!(value.bold, Some(true));
         assert_eq!(value.italic, Some(true));
         assert_eq!(value.underline, Some(true));
+        assert_eq!(value.hidden, Some(true));
     }
 
     #[test]
