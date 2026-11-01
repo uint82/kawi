@@ -5,7 +5,8 @@ use kawi_tui::frame::KeyRow;
 
 use super::overlay::keymenu::guide_key_row;
 use super::App;
-use crate::keymap::Keymap;
+use crate::keymap::{KeyChord, KeyCodeSpec, KeyContext, Keymap};
+use crate::leader::{self, LeaderPath};
 use crate::vim::guide::{self, Guide};
 
 pub(super) struct KeyGuideCache {
@@ -34,7 +35,7 @@ impl App {
         if !self.keyguide_enabled {
             return self.clear_keyguide();
         }
-        if self.keymap.leader_path().is_some() {
+        if self.pending_leader_path().is_some() {
             self.keyguide_cache = None;
             return self.update_keyguide_visibility(now);
         }
@@ -53,6 +54,36 @@ impl App {
             self.keyguide_cache = Some(KeyGuideCache::new(prefix, mode, guide));
         }
         self.update_keyguide_visibility(now)
+    }
+
+    pub(super) fn pending_leader_path(&self) -> Option<LeaderPath> {
+        // TODO: unify built-in leader sequences with the keymap resolver when expanding the plugin API.
+        self.keymap
+            .leader_path()
+            .or_else(|| self.resolver_leader_path())
+    }
+
+    fn resolver_leader_path(&self) -> Option<LeaderPath> {
+        let mode = self.editor.mode();
+        if !mode.is_normal_state() {
+            return None;
+        }
+        let context = KeyContext::from_mode(mode)?;
+        if self.keymaps.pending_context() != Some(context) {
+            return None;
+        }
+        let (leader, rest) = self.keymaps.pending_chords().split_first()?;
+        if !self.leaders.contains(leader) {
+            return None;
+        }
+        let Some((group_key, _)) = rest.split_first() else {
+            return Some(LeaderPath::Root);
+        };
+        let group = leader::group(plain_chord(*group_key)?)?;
+        if mode.is_visual() && !group.visual {
+            return None;
+        }
+        Some(LeaderPath::Group(group))
     }
 
     pub(super) fn keyguide_wait_timeout(&self) -> Option<Duration> {
@@ -81,5 +112,15 @@ impl App {
         self.keyguide_visible = false;
         self.keyguide_cache = None;
         changed
+    }
+}
+
+fn plain_chord(chord: KeyChord) -> Option<char> {
+    if chord.ctrl || chord.alt {
+        return None;
+    }
+    match chord.code {
+        KeyCodeSpec::Char(character) => Some(character),
+        _ => None,
     }
 }
