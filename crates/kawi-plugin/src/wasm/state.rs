@@ -223,7 +223,14 @@ impl process_run::Host for WasmState {
     }
 }
 
-fn serialize_params<T: serde::Serialize>(params: T) -> Result<serde_json::Value, Error> {
+pub(super) fn decode_json<T: serde::de::DeserializeOwned>(
+    value: serde_json::Value,
+) -> Result<T, Error> {
+    serde_json::from_value(value)
+        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))
+}
+
+pub(super) fn serialize_params<T: serde::Serialize>(params: T) -> Result<serde_json::Value, Error> {
     serde_json::to_value(params)
         .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))
 }

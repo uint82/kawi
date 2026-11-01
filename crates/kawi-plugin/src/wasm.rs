@@ -30,10 +30,13 @@ mod process;
 mod session;
 #[cfg(feature = "wasm")]
 mod state;
+
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 mod test_resolver;
 #[cfg(all(feature = "wasm", any(test, feature = "fuzz")))]
 mod test_streams;
+#[cfg(feature = "wasm")]
+mod ui_host;
 #[cfg(feature = "wasm")]
 mod wasi;
 #[cfg(feature = "wasm")]

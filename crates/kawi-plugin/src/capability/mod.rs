@@ -1,4 +1,5 @@
 mod command;
+mod method;
 mod registry;
 mod scope;
 
@@ -9,6 +10,10 @@ use sha2::{Digest, Sha256};
 
 #[cfg(feature = "wasm")]
 pub(crate) use command::resolve as resolve_command;
+pub use method::{
+    advertised_events, advertised_host_methods, event_capability, host_method_capability,
+    is_event_allowed, is_host_method_allowed, MethodCapability,
+};
 pub use registry::CapabilityRegistry;
 #[cfg(feature = "wasm")]
 pub(crate) use scope::HostPort;
@@ -20,6 +25,8 @@ pub enum Capability {
     EditorWrite,
     EditorExecute,
     UiMessage,
+    UiPrompt,
+    UiProgress,
     DiagnosticsRead,
     DiagnosticsPublish,
     FsRead,
@@ -29,11 +36,13 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::EditorRead,
         Self::EditorWrite,
         Self::EditorExecute,
         Self::UiMessage,
+        Self::UiPrompt,
+        Self::UiProgress,
         Self::DiagnosticsRead,
         Self::DiagnosticsPublish,
         Self::FsRead,
@@ -48,6 +57,8 @@ impl Capability {
             "editor.write" => Some(Self::EditorWrite),
             "editor.execute" => Some(Self::EditorExecute),
             "ui.message" => Some(Self::UiMessage),
+            "ui.prompt" => Some(Self::UiPrompt),
+            "ui.progress" => Some(Self::UiProgress),
             "diagnostics.read" => Some(Self::DiagnosticsRead),
             "diagnostics.publish" => Some(Self::DiagnosticsPublish),
             "fs.read" => Some(Self::FsRead),
@@ -64,6 +75,8 @@ impl Capability {
             Self::EditorWrite => "editor.write",
             Self::EditorExecute => "editor.execute",
             Self::UiMessage => "ui.message",
+            Self::UiPrompt => "ui.prompt",
+            Self::UiProgress => "ui.progress",
             Self::DiagnosticsRead => "diagnostics.read",
             Self::DiagnosticsPublish => "diagnostics.publish",
             Self::FsRead => "fs.read",
@@ -224,64 +237,6 @@ impl CapabilityRequests {
     pub fn request_hash(&self) -> String {
         let digest = Sha256::digest(self.canonical_json().as_bytes());
         format!("sha256:{digest:x}")
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MethodCapability {
-    Unknown,
-    None,
-    Required(Capability),
-}
-
-pub fn host_method_capability(method: &str) -> MethodCapability {
-    match method {
-        "editor.get_state" => MethodCapability::Required(Capability::EditorRead),
-        "editor.apply_edit" => MethodCapability::Required(Capability::EditorWrite),
-        "editor.execute" | "editor.list_commands" => {
-            MethodCapability::Required(Capability::EditorExecute)
-        }
-        "ui.message" => MethodCapability::Required(Capability::UiMessage),
-        "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
-        "config.get" | "config.list" => MethodCapability::None,
-        _ => MethodCapability::Unknown,
-    }
-}
-
-pub fn is_host_method_allowed(registry: &CapabilityRegistry, plugin: &str, method: &str) -> bool {
-    match host_method_capability(method) {
-        MethodCapability::None => true,
-        MethodCapability::Required(capability) => registry.has(plugin, capability),
-        MethodCapability::Unknown => false,
-    }
-}
-
-pub fn advertised_host_methods(registry: &CapabilityRegistry, plugin: &str) -> Vec<&'static str> {
-    crate::protocol::HOST_METHODS
-        .iter()
-        .copied()
-        .filter(|method| is_host_method_allowed(registry, plugin, method))
-        .collect()
-}
-
-pub fn is_event_allowed(registry: &CapabilityRegistry, plugin: &str, event: &str) -> bool {
-    event_capability(event).is_none_or(|capability| registry.has(plugin, capability))
-}
-
-pub fn advertised_events(registry: &CapabilityRegistry, plugin: &str) -> Vec<&'static str> {
-    crate::protocol::EVENT_NAMES
-        .iter()
-        .copied()
-        .filter(|event| is_event_allowed(registry, plugin, event))
-        .collect()
-}
-
-pub fn event_capability(event: &str) -> Option<Capability> {
-    match event {
-        "buffer_changed" | "buffer_opened" | "file_opened" | "buffer_closed" | "file_saved"
-        | "mode_changed" => Some(Capability::EditorRead),
-        "diagnostics_changed" => Some(Capability::DiagnosticsRead),
-        _ => None,
     }
 }
 
