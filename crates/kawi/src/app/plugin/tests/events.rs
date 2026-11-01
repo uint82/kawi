@@ -76,6 +76,28 @@ fn coalesces_buffer_changes_and_reports_a_resync() {
 }
 
 #[test]
+fn debounced_buffer_change_schedules_a_plugin_wait_timeout() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let root = temp_dir("debounce_wait");
+    event_manifest(&root, "log", Some(50));
+    let mut app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
+    let warnings = load_plugins(&mut app, &root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    wait_for_plugin(&mut app, "events");
+    app.editor.paste("a");
+    app.poll_plugins();
+    let timeout = app.plugin_wait_timeout().expect("plugin wait timeout");
+    assert!(timeout <= Duration::from_millis(50));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn file_open_activation_trims_on_save() {
     if std::process::Command::new("python3")
         .arg("--version")
