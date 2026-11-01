@@ -168,7 +168,7 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
         );
         assert_eq!(
             is_host_method_allowed(&registry, "plugin", method),
-            method == "ui.message"
+            matches!(method, "ui.message" | "config.get" | "config.list")
         );
     }
     let advertised_events = advertised_events(&registry, "plugin");

@@ -243,6 +243,7 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         }
         "ui.message" => MethodCapability::Required(Capability::UiMessage),
         "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
+        "config.get" | "config.list" => MethodCapability::None,
         _ => MethodCapability::Unknown,
     }
 }
