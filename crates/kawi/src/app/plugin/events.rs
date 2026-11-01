@@ -14,6 +14,7 @@ impl App {
         self.plugins.flush_activation_events();
         self.plugins
             .sync_plugin_state(&mut self.editor, &mut self.problems);
+        self.plugin_decorations.retain_live(&self.editor);
         redraw
     }
 
@@ -48,6 +49,8 @@ impl App {
                     let dropped = self.plugins.drop_queues(Some(&plugin));
                     self.log_queue_drops(&dropped, "plugin stopped");
                     self.plugins.clear_plugin_state(&plugin);
+                    self.plugin_decorations.remove_plugin(&plugin);
+                    self.plugin_statusline.remove_plugin(&plugin);
                     self.problems.clear_plugin(&plugin);
                     if let Some((stopped, request)) = self.plugin_ui.remove_plugin(&plugin) {
                         let _ = self.plugins.respond(
@@ -111,6 +114,8 @@ impl App {
             "editor.apply_edit"
                 | "editor.execute"
                 | "editor.set_diagnostics"
+                | "editor.set_decorations"
+                | "ui.set_statusline"
                 | "ui.message"
                 | "ui.input"
                 | "ui.select"

@@ -43,6 +43,7 @@ impl App {
             });
         let data = self.frame_panes(&layout);
         let git = self.git_status.display();
+        let plugin_segments = self.plugin_statusline.segments();
         let statuses: Vec<StatusInfo> = data
             .iter()
             .map(|pane| StatusInfo {
@@ -76,6 +77,7 @@ impl App {
                 selection: pane.selection_status.as_deref(),
                 macro_recording: pane.macro_recording,
                 percent: pane.percent,
+                plugins: &plugin_segments,
             })
             .collect();
         let explorer_focused = self.explorer.is_focused();
@@ -90,7 +92,9 @@ impl App {
                 gutter: &pane.gutter,
                 signs: pane.signs.as_deref(),
                 diagnostic_spans: &pane.diagnostic_spans,
+                decorations: &pane.decorations,
                 virtual_texts: &pane.virtual_texts,
+                plugin_virtual_texts: &pane.plugin_virtual_texts,
                 left_width: pane.left_width,
                 search_spans: &pane.search_spans,
                 preview_spans: &pane.preview_spans,

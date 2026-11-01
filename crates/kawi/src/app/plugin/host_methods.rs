@@ -27,6 +27,8 @@ impl App {
             "editor.execute" => self.plugin_execute_command(plugin, params),
             "editor.list_commands" => self.plugin_list_commands(plugin, params),
             "editor.set_diagnostics" => self.plugin_set_diagnostics(plugin, params),
+            "editor.set_decorations" => self.plugin_set_decorations(plugin, params),
+            "ui.set_statusline" => self.plugin_set_statusline(plugin, params),
             "ui.message" => self.plugin_message(plugin, params),
             "ui.progress_start" => self.plugin_progress_start(plugin, params),
             "ui.progress_update" => self.plugin_progress_update(params),

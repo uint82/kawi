@@ -129,6 +129,8 @@ pub struct App {
     plugin_manager: crate::plugin_manager::PluginManager,
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     plugin_ui: plugin::PluginUi,
+    plugin_decorations: plugin::PluginDecorations,
+    plugin_statusline: plugin::PluginStatusline,
     plugin_settings: Option<plugin::PluginSettingsUi>,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
@@ -239,6 +241,8 @@ impl App {
             plugin_manager: crate::plugin_manager::PluginManager::default(),
             plugin_prompt: None,
             plugin_ui: plugin::PluginUi::default(),
+            plugin_decorations: plugin::PluginDecorations::default(),
+            plugin_statusline: plugin::PluginStatusline::default(),
             plugin_settings: None,
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
@@ -723,6 +727,7 @@ impl App {
             selection: None,
             macro_recording: None,
             percent: None,
+            plugins: &[],
         }
     }
 
