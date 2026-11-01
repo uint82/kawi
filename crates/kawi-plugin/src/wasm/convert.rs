@@ -4,12 +4,12 @@ use crate::error::PluginError;
 use crate::protocol::{
     BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent, DiagnosticSummary,
     DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, GetStateResult, ModeChangedEvent,
-    Position, ProtocolTextEdit, RpcError, INTERNAL_ERROR, INVALID_PARAMS,
+    Position, ProtocolTextEdit, RpcError, UiPromptOutcome, INTERNAL_ERROR, INVALID_PARAMS,
 };
 
 use super::bindings::kawi::plugin::types::{
     BufferChanged, BufferClosed, BufferOpened, Diagnostic, DiagnosticsChanged, Event, FileOpened,
-    FileSaved, ModeChanged, Position as WitPosition, ProcessOutput, Severity, State,
+    FileSaved, ModeChanged, Position as WitPosition, ProcessOutput, PromptOutcome, Severity, State,
 };
 
 mod arguments;
@@ -232,6 +232,15 @@ fn position_to_protocol_lossy(position: WitPosition) -> Position {
     Position {
         line: position.line as usize,
         byte_column: position.byte_column as usize,
+    }
+}
+
+pub fn prompt_outcome_to_wit(outcome: UiPromptOutcome) -> PromptOutcome {
+    match outcome {
+        UiPromptOutcome::Text(value) => PromptOutcome::Text(value),
+        UiPromptOutcome::Selected(value) => PromptOutcome::Selected(value),
+        UiPromptOutcome::Confirmed(value) => PromptOutcome::Confirmed(value),
+        UiPromptOutcome::Canceled => PromptOutcome::Canceled,
     }
 }
 

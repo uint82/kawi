@@ -43,7 +43,7 @@ pub enum PickerOutcome {
 
 pub struct Picker {
     kind: PickerKind,
-    title: &'static str,
+    title: String,
     query: TextInput,
     files: Vec<String>,
     hits: Vec<GrepHit>,
@@ -71,48 +71,48 @@ impl Picker {
         picker
     }
 
-    pub fn locations(title: &'static str, rows: Vec<PickerRow>) -> Self {
+    pub fn locations(title: impl Into<String>, rows: Vec<PickerRow>) -> Self {
         let mut picker = Self::new(PickerKind::Locations, title);
         picker.locations = rows;
         picker.refresh();
         picker
     }
 
-    pub fn git_branches(title: &'static str, rows: Vec<PickerRow>) -> Self {
+    pub fn git_branches(title: impl Into<String>, rows: Vec<PickerRow>) -> Self {
         let mut picker = Self::new(PickerKind::GitBranches, title);
         picker.locations = rows;
         picker.refresh();
         picker
     }
 
-    pub fn git_log(title: &'static str) -> Self {
+    pub fn git_log(title: impl Into<String>) -> Self {
         let mut picker = Self::new(PickerKind::GitLog, title);
         picker.loading = true;
         picker
     }
 
-    pub fn symbols(title: &'static str, rows: Vec<PickerRow>) -> Self {
+    pub fn symbols(title: impl Into<String>, rows: Vec<PickerRow>) -> Self {
         let mut picker = Self::new(PickerKind::Symbols, title);
         picker.locations = rows;
         picker.refresh();
         picker
     }
 
-    pub fn workspace_symbols(title: &'static str) -> Self {
+    pub fn workspace_symbols(title: impl Into<String>) -> Self {
         Self::new(PickerKind::WorkspaceSymbols, title)
     }
 
-    pub fn git_commit_files(title: &'static str, rows: Vec<PickerRow>) -> Self {
+    pub fn git_commit_files(title: impl Into<String>, rows: Vec<PickerRow>) -> Self {
         let mut picker = Self::new(PickerKind::GitCommitFiles, title);
         picker.locations = rows;
         picker.refresh();
         picker
     }
 
-    fn new(kind: PickerKind, title: &'static str) -> Self {
+    fn new(kind: PickerKind, title: impl Into<String>) -> Self {
         Self {
             kind,
-            title,
+            title: title.into(),
             query: TextInput::new(),
             files: Vec::new(),
             hits: Vec::new(),
@@ -129,8 +129,8 @@ impl Picker {
         self.kind
     }
 
-    pub fn title(&self) -> &'static str {
-        self.title
+    pub fn title(&self) -> &str {
+        &self.title
     }
 
     pub fn query(&self) -> &str {

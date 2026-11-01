@@ -13,12 +13,12 @@ pub use edit::apply_edit_with_retry;
 pub use error::{
     error_kind, ErrorKind, CAPABILITY_DENIED, INTERNAL_ERROR, INVALID_PARAMS, INVALID_POSITION,
     INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, PLUGIN_ERROR, PLUGIN_UNAVAILABLE,
-    REQUEST_CANCELED, STALE_REVISION,
+    REQUEST_CANCELED, STALE_REVISION, UI_BUSY,
 };
 pub use kawi::plugin::types;
 pub use kawi::plugin::{
     config_read, diagnostics_publish, editor_execute, editor_read, editor_write, process_run,
-    ui_message,
+    ui_message, ui_progress, ui_prompt,
 };
 pub use offsets::{byte_offset, position_at};
 

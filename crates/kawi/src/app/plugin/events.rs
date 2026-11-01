@@ -1,4 +1,4 @@
-use kawi_plugin::{PluginHostEvent, PluginStatus};
+use kawi_plugin::{PluginHostEvent, PluginStatus, RpcError};
 
 use super::super::App;
 
@@ -49,6 +49,13 @@ impl App {
                     self.log_queue_drops(&dropped, "plugin stopped");
                     self.plugins.clear_plugin_state(&plugin);
                     self.problems.clear_plugin(&plugin);
+                    if let Some((stopped, request)) = self.plugin_ui.remove_plugin(&plugin) {
+                        let _ = self.plugins.respond(
+                            &stopped,
+                            request,
+                            Err(RpcError::unavailable("plugin stopped")),
+                        );
+                    }
                 }
                 true
             }
@@ -101,11 +108,28 @@ impl App {
         }
         let redraw = matches!(
             method,
-            "editor.apply_edit" | "editor.execute" | "editor.set_diagnostics" | "ui.message"
+            "editor.apply_edit"
+                | "editor.execute"
+                | "editor.set_diagnostics"
+                | "ui.message"
+                | "ui.input"
+                | "ui.select"
+                | "ui.confirm"
+                | "ui.progress_start"
+                | "ui.progress_update"
+                | "ui.progress_finish"
         );
         if matches!(method, "editor.apply_edit" | "editor.execute") {
             self.editor
                 .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
+        }
+        if matches!(method, "ui.input" | "ui.select" | "ui.confirm") {
+            if let Some(result) = self.handle_plugin_prompt_request(plugin, &id, method, params) {
+                if !id.is_null() {
+                    let _ = self.plugins.respond(plugin, id, result);
+                }
+            }
+            return true;
         }
         let result = self.handle_plugin_request(plugin, method, params);
         self.editor

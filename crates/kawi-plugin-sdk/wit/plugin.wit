@@ -1,4 +1,4 @@
-package kawi:plugin@0.2.0;
+package kawi:plugin@0.3.0;
 
 interface types {
   record position {
@@ -130,6 +130,13 @@ interface types {
     diagnostics: list<diagnostic>,
   }
 
+  variant prompt-outcome {
+    text(string),
+    selected(string),
+    confirmed(bool),
+    canceled,
+  }
+
   variant event {
     buffer-changed(buffer-changed),
     buffer-opened(buffer-opened),
@@ -168,6 +175,20 @@ interface ui-message {
   message: func(text: string) -> result<_, error>;
 }
 
+interface ui-prompt {
+  use types.{error, prompt-outcome};
+  input: func(title: string, placeholder: option<string>, value: option<string>, max-length: option<u32>) -> result<prompt-outcome, error>;
+  select: func(title: string, options: list<string>, selected: option<u32>) -> result<prompt-outcome, error>;
+  confirm: func(title: string, message: option<string>) -> result<prompt-outcome, error>;
+}
+
+interface ui-progress {
+  use types.{error};
+  start: func(title: string, message: option<string>, fraction: option<f32>) -> result<u64, error>;
+  update: func(id: u64, message: option<string>, fraction: option<f32>) -> result<bool, error>;
+  finish: func(id: u64) -> result<_, error>;
+}
+
 interface diagnostics-publish {
   use types.{diagnostic, error};
   set: func(source: string, buffer: u64, revision: u64, items: list<diagnostic>) -> result<_, error>;
@@ -191,6 +212,8 @@ world host {
   import editor-execute;
   import config-read;
   import ui-message;
+  import ui-prompt;
+  import ui-progress;
   import diagnostics-publish;
   import process-run;
   export lifecycle;

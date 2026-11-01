@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.2.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.2.0 bumps the WIT package, so rebuild components built against 0.1.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.3.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.3.0 bumps the WIT package, so rebuild components built against 0.2.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -135,6 +135,52 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
 - On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
 
+## Interactive UI
+
+Declare the UI APIs in `plugin.toml`:
+
+```toml
+[capabilities]
+"ui.prompt" = true
+"ui.progress" = true
+```
+
+Prompts block until the user responds and return `PromptOutcome`:
+
+```rust
+use kawi_plugin_sdk::types::{Argument, Error, PromptOutcome};
+use kawi_plugin_sdk::{ui_message, ui_prompt, INVALID_PARAMS};
+
+let outcome = ui_prompt::input("Name", Some("Ada"), None, Some(64))?;
+match outcome {
+    PromptOutcome::Text(value) => ui_message::message(&value)?,
+    PromptOutcome::Canceled => return Ok(Argument::Null),
+    _ => return Err(Error {
+        code: INVALID_PARAMS,
+        message: "unexpected prompt outcome".to_string(),
+        capability: None,
+    }),
+}
+```
+
+`ui_prompt::select` takes a title, a non-empty list of unique options, and an optional initial index. `ui_prompt::confirm` takes a title and an optional message. Each prompt returns `text`, `selected`, `confirmed`, or `canceled`. Only one prompt can be active across all plugins. A conflict returns `UI_BUSY`.
+
+Progress is reported with `ui_progress::start`, `ui_progress::update`, and `ui_progress::finish`:
+
+```rust
+use kawi_plugin_sdk::ui_progress;
+
+let id = ui_progress::start("Indexing", Some("src/main.rs"), Some(0.0))?;
+for (step, path) in paths.iter().enumerate() {
+    if ui_progress::update(id, Some(path.as_str()), Some(step as f32 / paths.len() as f32))? {
+        break;
+    }
+}
+ui_progress::finish(id)?;
+```
+
+`ui_progress::update` returns `true` after the user cancels. Stop promptly and call `ui_progress::finish`. Only one progress can be active across all plugins. Prompt calls do not count against `timeout_ms`; progress calls do. Users cancel with `:plugin cancel` or a key binding for `plugin.cancel`.
+
 ## Settings
 
 Declare settings in `plugin.toml`:
@@ -218,4 +264,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.2.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.3.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

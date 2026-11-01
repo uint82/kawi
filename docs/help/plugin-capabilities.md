@@ -17,6 +17,8 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.write` | none | Apply text edits |
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
 | `ui.message` | none | Show status messages |
+| `ui.prompt` | none | Request text input, a selection, or confirmation |
+| `ui.progress` | none | Show cancellable progress |
 | `diagnostics.read` | none | Receive diagnostics events |
 | `diagnostics.publish` | none | Publish diagnostics for the current buffer |
 | `fs.read` | `paths` | Read files under the declared paths |
@@ -32,6 +34,8 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "editor.write" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
 "ui.message" = true
+"ui.prompt" = true
+"ui.progress" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
@@ -54,6 +58,14 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 The plugin can call `editor.list_commands` to discover the allowed commands and `editor.execute` to run one. Listing returns canonical IDs, descriptions, and aliases. The scope is an allowlist: a command outside the list returns `-32012`. Plugin-defined commands, `keys.send`, and commands that require arguments are not composable and return `-32602`.
 
 The editor runs the command synchronously before responding. Changes made by the command carry the `plugin:<name>` change origin.
+
+## Interactive UI
+
+`ui.prompt` enables `ui.input`, `ui.select`, and `ui.confirm`. Each call waits for a user response and returns an outcome of `text`, `selected`, `confirmed`, or `canceled`. Only one prompt can be active at a time across all plugins. A second prompt returns `-32040`.
+
+`ui.progress` enables `ui.progress_start`, `ui.progress_update`, and `ui.progress_finish`. Progress is displayed in the status area. The user cancels with `:plugin cancel` or a key binding for `plugin.cancel`; the next `ui.progress_update` returns `{"canceled": true}`. Only one progress can be active at a time across all plugins. A second progress returns `-32040`.
+
+Prompt calls do not count against the invocation timeout. Progress calls do. Stopping a plugin clears its prompt and progress and fails a pending prompt with `-32030`.
 
 ## Settings
 
@@ -110,7 +122,7 @@ An ungated command runs whenever the plugin runs.
 - WebAssembly plugins can only import interfaces declared in the manifest. An undeclared import fails before instantiation.
 - WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
 - WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
-- Host-mediated editor, UI, and diagnostics calls require the matching declaration. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
+- Host-mediated editor, UI, and diagnostics calls require the matching declaration. Interactive prompts also require an integer JSON-RPC request id. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
 - `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
 - Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
 - Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. Network scope is advisory for process plugins.

@@ -11,6 +11,7 @@ pub const INVALID_POSITION: i32 = -32011;
 pub const CAPABILITY_DENIED: i32 = -32012;
 pub const REQUEST_CANCELED: i32 = -32020;
 pub const PLUGIN_UNAVAILABLE: i32 = -32030;
+pub const UI_BUSY: i32 = -32040;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -23,6 +24,7 @@ pub enum ErrorKind {
     StaleRevision,
     InvalidPosition,
     CapabilityDenied,
+    Busy,
     RequestCanceled,
     Unavailable,
     Other,
@@ -39,6 +41,7 @@ pub fn error_kind(error: &Error) -> ErrorKind {
         STALE_REVISION => ErrorKind::StaleRevision,
         INVALID_POSITION => ErrorKind::InvalidPosition,
         CAPABILITY_DENIED => ErrorKind::CapabilityDenied,
+        UI_BUSY => ErrorKind::Busy,
         REQUEST_CANCELED => ErrorKind::RequestCanceled,
         PLUGIN_UNAVAILABLE => ErrorKind::Unavailable,
         _ => ErrorKind::Other,
@@ -64,6 +67,7 @@ mod tests {
             error_kind(&error(CAPABILITY_DENIED)),
             ErrorKind::CapabilityDenied
         );
+        assert_eq!(error_kind(&error(UI_BUSY)), ErrorKind::Busy);
         assert_eq!(error_kind(&error(42)), ErrorKind::Other);
     }
 }

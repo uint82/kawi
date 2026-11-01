@@ -43,6 +43,16 @@ impl CallDeadline {
             .unwrap_or_else(|error| error.into_inner()) = None;
     }
 
+    fn extend(&self, elapsed: Duration) {
+        let mut deadline = self
+            .deadline
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(value) = deadline.as_mut() {
+            *value += elapsed;
+        }
+    }
+
     pub(crate) fn remaining(&self) -> Option<Duration> {
         self.deadline
             .lock()
@@ -104,11 +114,24 @@ impl HostBridge {
     }
 
     pub(crate) fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-        let timeout = self
-            .deadline
-            .remaining()
-            .unwrap_or(HOST_REQUEST_TIMEOUT)
-            .min(HOST_REQUEST_TIMEOUT);
+        self.request_with_timeout(method, params, false)
+    }
+
+    pub(crate) fn request_interactive(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, RpcError> {
+        self.request_with_timeout(method, params, true)
+    }
+
+    fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        interactive: bool,
+    ) -> Result<Value, RpcError> {
+        let timeout = self.deadline.remaining().unwrap_or(HOST_REQUEST_TIMEOUT);
         if timeout.is_zero() || self.cancel.load(Ordering::SeqCst) {
             return Err(RpcError::new(
                 PLUGIN_UNAVAILABLE,
@@ -128,6 +151,7 @@ impl HostBridge {
                 .remove(&id);
             return Err(RpcError::new(PLUGIN_UNAVAILABLE, "plugin restarting"));
         }
+        let started = Instant::now();
         send_event(
             &self.events,
             &self.wake,
@@ -138,7 +162,16 @@ impl HostBridge {
                 params,
             },
         );
-        let result = response_rx.recv_timeout(timeout);
+        let result = if interactive {
+            response_rx.recv().ok()
+        } else {
+            response_rx
+                .recv_timeout(timeout.min(HOST_REQUEST_TIMEOUT))
+                .ok()
+        };
+        if interactive {
+            self.deadline.extend(started.elapsed());
+        }
         self.pending
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -146,7 +179,7 @@ impl HostBridge {
         if self.cancel.load(Ordering::SeqCst) {
             return Err(RpcError::new(PLUGIN_UNAVAILABLE, "plugin restarting"));
         }
-        result.unwrap_or_else(|_| {
+        result.unwrap_or_else(|| {
             Err(RpcError::new(
                 PLUGIN_UNAVAILABLE,
                 format!("host request timed out: {method}"),

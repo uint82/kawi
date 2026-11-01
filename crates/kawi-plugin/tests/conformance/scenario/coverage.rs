@@ -26,6 +26,30 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "config.list",
         reason: "requires the plugin settings store; covered by app settings and end-to-end tests",
     },
+    Uncovered {
+        name: "ui.input",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
+    Uncovered {
+        name: "ui.select",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
+    Uncovered {
+        name: "ui.confirm",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
+    Uncovered {
+        name: "ui.progress_start",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
+    Uncovered {
+        name: "ui.progress_update",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
+    Uncovered {
+        name: "ui.progress_finish",
+        reason: "requires interactive editor input; covered by app plugin UI tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
 

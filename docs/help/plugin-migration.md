@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.2.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.3.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.2.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.3.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -47,6 +47,8 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `config.get` | `config-read.get` |
 | `config.list` | `config-read.get-all` |
 | `ui.message` | `ui-message.message` |
+| `ui.input`, `ui.select`, `ui.confirm` | `ui-prompt.input`, `ui-prompt.select`, `ui-prompt.confirm` |
+| `ui.progress_start`, `ui.progress_update`, `ui.progress_finish` | `ui-progress.start`, `ui-progress.update`, `ui-progress.finish` |
 | `editor.set_diagnostics` | `diagnostics-publish.set` |
 | Process execution through `process.spawn` | `process-run.run` |
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
@@ -74,7 +76,7 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
-| `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
+| `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `ui.prompt`, `ui.progress`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` host interface |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |

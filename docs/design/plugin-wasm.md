@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phases 1-4 implemented. The install-time trust model in `docs/help/plugins.md` supersedes the grant flow described in older sections. Managed plugins declare host APIs and are trusted at install time; the WASM sandbox still enforces the linked interface set. The `wasm` feature is enabled by default and can be omitted with `--no-default-features`. The release workflow publishes the Rust authoring surface as `kawi-plugin-sdk` 0.2.0 with the `kawi:plugin@0.2.0` WIT package. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event that has a conformance fixture. Editor command composition and plugin settings are covered by app integration tests because they depend on the editor command registry and settings store. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. A build with `--no-default-features` does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
+Status: phases 1-4 implemented. The install-time trust model in `docs/help/plugins.md` supersedes the grant flow described in older sections. Managed plugins declare host APIs and are trusted at install time; the WASM sandbox still enforces the linked interface set. The `wasm` feature is enabled by default and can be omitted with `--no-default-features`. The release workflow publishes the Rust authoring surface as `kawi-plugin-sdk` 0.3.0 with the `kawi:plugin@0.3.0` WIT package. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event that has a conformance fixture. Editor command composition and plugin settings are covered by app integration tests because they depend on the editor command registry and settings store. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. A build with `--no-default-features` does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
 
 ## Principles
 
@@ -35,7 +35,7 @@ Epoch accounting excludes time spent blocked in host calls because the guest is 
 
 ## Contract
 
-The WIT package is `kawi:plugin@0.2.0` in `crates/kawi-plugin-sdk/wit/plugin.wit`. The SDK owns the contract and the runtime consumes the same file. Components built against an earlier package must be rebuilt because the import namespace includes the version.
+The WIT package is `kawi:plugin@0.3.0` in `crates/kawi-plugin-sdk/wit/plugin.wit`. The SDK owns the contract and the runtime consumes the same file. Components built against an earlier package must be rebuilt because the import namespace includes the version.
 
 Interfaces:
 
@@ -43,6 +43,10 @@ Interfaces:
 - `editor-write` requires `editor.write`.
 - `editor-execute` requires `editor.execute`.
 - `config-read` has no capability requirement because it only exposes the plugin's own settings.
+- `ui-prompt` requires `ui.prompt`.
+- `ui-progress` requires `ui.progress`.
+
+Interactive prompt calls suspend the invocation deadline until the host responds. Progress calls remain bounded by the invocation deadline.
 - `ui-message` requires `ui.message`.
 - `diagnostics-publish` requires `diagnostics.publish`.
 - `process-run` requires `process.spawn`.

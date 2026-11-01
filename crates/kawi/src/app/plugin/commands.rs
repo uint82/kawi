@@ -5,7 +5,7 @@ use super::super::App;
 
 pub(crate) const SUBCOMMANDS: &[&str] = &[
     "install", "update", "remove", "disable", "enable", "list", "reload", "restart", "logs",
-    "inspect",
+    "inspect", "cancel",
 ];
 
 impl App {
@@ -23,8 +23,11 @@ impl App {
             "restart" => self.restart_plugins(rest),
             "logs" => self.show_plugin_logs(rest),
             "inspect" => self.inspect_plugin(rest),
+            "cancel" => {
+                let _ = self.cancel_plugin_progress();
+            }
             _ => self.show_message(
-                "Usage: plugin install <owner/repo[@ref]> | update <plugin> | remove <plugin> | disable <plugin> | enable <plugin> | list | reload | restart [name] | logs [name] | inspect <plugin>"
+                "Usage: plugin install <owner/repo[@ref]> | update <plugin> | remove <plugin> | disable <plugin> | enable <plugin> | list | reload | restart [name] | logs [name] | inspect <plugin> | cancel"
                     .to_string(),
             ),
         }

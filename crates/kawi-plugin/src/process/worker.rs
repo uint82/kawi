@@ -32,6 +32,7 @@ pub(super) struct WorkerContext {
     pub(super) capabilities: CapabilityRegistry,
     pub(super) environment: HostEnvironment,
     pub(super) restart: Arc<AtomicBool>,
+    pub(super) interaction: Arc<super::connection::Interaction>,
 }
 
 pub(super) struct Worker {
@@ -44,6 +45,7 @@ pub(super) struct Worker {
     capabilities: CapabilityRegistry,
     environment: HostEnvironment,
     restart: Arc<AtomicBool>,
+    interaction: Arc<super::connection::Interaction>,
     timeout: Duration,
     connection: Option<Connection>,
     backoff: Backoff,
@@ -62,6 +64,7 @@ impl Worker {
             capabilities: context.capabilities,
             environment: context.environment,
             restart: context.restart,
+            interaction: context.interaction,
             timeout,
             connection: None,
             backoff: Backoff::new(),
@@ -187,6 +190,7 @@ impl Worker {
                 capabilities: self.capabilities.clone(),
                 environment: self.environment.clone(),
                 restart: Arc::clone(&self.restart),
+                interaction: Arc::clone(&self.interaction),
             },
         )?;
         if connection.is_sandboxed() {

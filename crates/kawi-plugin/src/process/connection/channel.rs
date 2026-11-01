@@ -20,6 +20,7 @@ pub(super) struct ReaderContext {
     pub(super) events: Sender<PluginHostEvent>,
     pub(super) wake: Sender<()>,
     pub(super) plugin: String,
+    pub(super) interaction: Arc<super::Interaction>,
 }
 
 pub(super) struct WriterContext {
