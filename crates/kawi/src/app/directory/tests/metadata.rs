@@ -17,7 +17,14 @@ fn mouse_maps_metadata_prefix_to_entry_start() {
     let layout = app.window_layout();
     let panes = app.frame_panes(&layout);
     let pane = &panes[0];
-    assert_eq!(pane.left_width, 37);
+    let number = app.editor.buffer_number();
+    let width = app
+        .directory
+        .get(number)
+        .unwrap()
+        .metadata_width(app.directory_options.metadata);
+    assert_eq!(pane.left_width, width);
+    assert!(pane.left_width > 0);
     let column = pane.rect.x.saturating_add(app.editor.gutter_width());
     let click = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),

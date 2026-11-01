@@ -5,10 +5,10 @@ use crate::app::App;
 
 impl App {
     pub(super) fn directory_metadata_width(&self, number: usize) -> usize {
-        if !self.directory.contains(number) {
+        let Some(state) = self.directory.get(number) else {
             return 0;
-        }
-        self.directory_options.metadata.width()
+        };
+        state.metadata_width(self.directory_options.metadata)
     }
 
     pub(in crate::app) fn directory_metadata_texts(

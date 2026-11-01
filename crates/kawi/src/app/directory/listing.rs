@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 
 use super::entry::{entry_kind, is_hidden, is_vcs_directory, Entry, EntryKind};
-use super::metadata::{EntryMetadata, MetadataColumns};
+use super::metadata::{MetadataColumns, MetadataReader, MetadataWidths};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::app) enum SortMode {
@@ -33,6 +33,7 @@ impl SortMode {
 pub(super) struct Listing {
     pub(super) entries: Vec<Entry>,
     pub(super) next_id: u64,
+    pub(super) metadata_widths: MetadataWidths,
 }
 
 impl Listing {
@@ -40,6 +41,7 @@ impl Listing {
         Self {
             entries: Vec::new(),
             next_id: 1,
+            metadata_widths: MetadataWidths::default(),
         }
     }
 }
@@ -77,6 +79,7 @@ pub(super) fn read_listing(
 ) -> io::Result<Listing> {
     let mut entries = Vec::new();
     let mut next_id = first_id;
+    let mut reader = MetadataReader::new();
     for item in fs::read_dir(root)? {
         let item = item?;
         let name = item.file_name();
@@ -104,12 +107,18 @@ pub(super) fn read_listing(
             hidden,
             metadata: metadata
                 .as_ref()
-                .map(|metadata| EntryMetadata::read(metadata, kind)),
+                .map(|metadata| reader.read(metadata, kind)),
         });
         next_id = next_id.saturating_add(1);
     }
     entries.sort_by(|left, right| compare_entries(left, right, sort));
-    Ok(Listing { entries, next_id })
+    let metadata_widths =
+        MetadataWidths::measure(entries.iter().filter_map(|entry| entry.metadata.as_ref()));
+    Ok(Listing {
+        entries,
+        next_id,
+        metadata_widths,
+    })
 }
 
 fn compare_entries(left: &Entry, right: &Entry, sort: SortMode) -> Ordering {
@@ -257,7 +266,12 @@ mod tests {
             .iter()
             .find(|entry| entry.name == "alpha.txt")
             .unwrap();
-        let text = file.metadata.as_ref().unwrap().text(columns).unwrap();
+        let text = file
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap();
         assert!(text.starts_with('-'));
         assert!(text.contains("5B"));
         assert_eq!(text.len(), 35);
@@ -266,8 +280,39 @@ mod tests {
             .iter()
             .find(|entry| entry.name == "sub")
             .unwrap();
-        let text = directory.metadata.as_ref().unwrap().text(columns).unwrap();
+        let text = directory
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap();
         assert!(text.starts_with('d'));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn identity_columns_show_link_count_owner_and_group() {
+        let dir = temp_dir("directory_identity");
+        fs::write(dir.join("alpha.txt"), "hello").unwrap();
+        let columns = MetadataColumns::parse("links,owner,group").unwrap();
+        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let entry = listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == "alpha.txt")
+            .unwrap();
+        let text = entry
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap();
+        let fields: Vec<&str> = text.split_whitespace().collect();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0], "1");
+        assert!(!fields[1].is_empty());
+        assert!(!fields[2].is_empty());
         fs::remove_dir_all(dir).unwrap();
     }
 }

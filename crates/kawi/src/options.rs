@@ -14,10 +14,16 @@ pub(crate) const EXPLORER_WIDTH_DEFAULT: usize = 30;
 pub(crate) const EXPLORER_WIDTH_MIN: usize = 20;
 pub(crate) const EXPLORER_WIDTH_MAX: usize = 60;
 pub(crate) const DIRECTORY_METADATA_PERMISSIONS: &str = "permissions";
+pub(crate) const DIRECTORY_METADATA_LINKS: &str = "links";
+pub(crate) const DIRECTORY_METADATA_OWNER: &str = "owner";
+pub(crate) const DIRECTORY_METADATA_GROUP: &str = "group";
 pub(crate) const DIRECTORY_METADATA_SIZE: &str = "size";
 pub(crate) const DIRECTORY_METADATA_MODIFIED: &str = "modified";
 pub(crate) const DIRECTORY_METADATA_COLUMNS: &[&str] = &[
     DIRECTORY_METADATA_PERMISSIONS,
+    DIRECTORY_METADATA_LINKS,
+    DIRECTORY_METADATA_OWNER,
+    DIRECTORY_METADATA_GROUP,
     DIRECTORY_METADATA_SIZE,
     DIRECTORY_METADATA_MODIFIED,
 ];
@@ -749,7 +755,7 @@ pub(crate) const OPTIONS: [OptionSpec; 46] = [
         scope: OptionScope::Global,
         section: ConfigSection::Explorer,
         config_key: "metadata",
-        default: OptionDefault::Text("permissions,size,modified"),
+        default: OptionDefault::Text("permissions,links,owner,group,size,modified"),
     },
 ];
 

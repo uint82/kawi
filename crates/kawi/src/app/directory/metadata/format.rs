@@ -1,12 +1,13 @@
 use std::fs::Metadata;
 
 use super::super::entry::EntryKind;
-use super::time::MODIFIED_WIDTH;
+use super::identity::IdentityResolver;
 
 pub(super) const PERMISSION_WIDTH: usize = 10;
 pub(super) const SIZE_WIDTH: usize = 7;
 const SIZE_UNITS: [&str; 7] = ["B", "K", "M", "G", "T", "P", "E"];
-pub(super) const TEXT_WIDTH: usize = PERMISSION_WIDTH + 1 + SIZE_WIDTH + 1 + MODIFIED_WIDTH;
+#[cfg(not(unix))]
+const UNKNOWN: &str = "?";
 
 pub(super) fn format_permissions(metadata: &Metadata, kind: EntryKind) -> String {
     #[cfg(unix)]
@@ -78,13 +79,50 @@ fn special_exec_char(special: bool, executable: bool, set: char, unset: char) ->
     }
 }
 
+pub(super) fn format_links(metadata: &Metadata) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        metadata.nlink().to_string()
+    }
+    #[cfg(not(unix))]
+    {
+        UNKNOWN.to_string()
+    }
+}
+
+pub(super) fn format_owner(metadata: &Metadata, identities: &mut IdentityResolver) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        identities.owner(metadata.uid()).to_string()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = identities;
+        UNKNOWN.to_string()
+    }
+}
+
+pub(super) fn format_group(metadata: &Metadata, identities: &mut IdentityResolver) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        identities.group(metadata.gid()).to_string()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = identities;
+        UNKNOWN.to_string()
+    }
+}
+
 pub(super) fn format_size(metadata: &Metadata, kind: EntryKind) -> String {
-    let size = if kind == EntryKind::Directory {
+    if kind == EntryKind::Directory {
         "-".to_string()
     } else {
         human_size(metadata.len())
-    };
-    format!("{size:>width$}", width = SIZE_WIDTH)
+    }
 }
 
 fn human_size(size: u64) -> String {
