@@ -13,12 +13,14 @@ mod queue;
 mod reload;
 mod runtime;
 mod settings;
+mod settings_ui;
 mod text;
 mod ui;
 
 pub(super) use self::commands::SUBCOMMANDS;
 pub(crate) use self::load::PluginLoadContext;
 pub(super) use self::runtime::{PluginCommandTarget, PluginRuntime};
+pub(super) use self::settings_ui::PluginSettingsUi;
 pub(super) use self::ui::PluginUi;
 
 #[cfg(test)]

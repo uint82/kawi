@@ -2,9 +2,9 @@ use std::io::Stdout;
 
 use anyhow::Result;
 use kawi_editor::Mode;
-use kawi_picker::PickerKind;
+use kawi_picker::{Picker, PickerKind};
 use kawi_tui::{
-    frame::{CompletionMenu, Frame, PaneFrame, TaskPanel, TerminalPanel},
+    frame::{CompletionMenu, Frame, PaneFrame, PickerLine, PickerMenu, TaskPanel, TerminalPanel},
     render,
     statusbar::StatusInfo,
     CursorStyle, Selection,
@@ -126,33 +126,21 @@ impl App {
                     .collect()
             })
             .unwrap_or_default();
-        let plugin_picker = self.plugin_ui.picker();
-        let plugin_picker_items: Vec<kawi_tui::frame::PickerLine<'_>> = plugin_picker
-            .map(|state| {
-                state
-                    .rows()
-                    .iter()
-                    .map(|row| kawi_tui::frame::PickerLine {
-                        primary: &row.display,
-                        detail: row.secondary.as_deref(),
-                        deprecated: row.deprecated,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let plugin_picker_menu = plugin_picker.map(|state| kawi_tui::frame::PickerMenu {
-            title: state.title(),
-            query: state.query(),
-            cursor: state.cursor(),
-            items: &plugin_picker_items,
-            selected: state.selected(),
-            loading: state.loading(),
-            status: state.status(),
-            replace_hint: false,
-            file_hint: false,
-            preview_enabled: false,
-            preview: None,
-        });
+        let settings_picker = self
+            .plugin_settings
+            .as_ref()
+            .and_then(|settings| settings.picker());
+        let settings_picker_items = settings_picker.map(picker_lines).unwrap_or_default();
+        let settings_picker_menu =
+            settings_picker.map(|state| picker_menu(state, &settings_picker_items, false, None));
+        let plugin_picker = self
+            .plugin_settings
+            .is_none()
+            .then(|| self.plugin_ui.picker())
+            .flatten();
+        let plugin_picker_items = plugin_picker.map(picker_lines).unwrap_or_default();
+        let plugin_picker_menu =
+            plugin_picker.map(|state| picker_menu(state, &plugin_picker_items, false, None));
         let git_lines = self.git_status.view_lines();
         let git_picker_lines: Vec<kawi_tui::frame::PickerLine<'_>> = git_lines
             .iter()
@@ -162,7 +150,8 @@ impl App {
                 deprecated: false,
             })
             .collect();
-        let picker = plugin_picker_menu
+        let picker = settings_picker_menu
+            .or(plugin_picker_menu)
             .or_else(|| {
                 self.symbol_picker.as_ref().map(|session| {
                     let state = session.picker();
@@ -272,6 +261,11 @@ impl App {
             self.screen_width.max(1),
         );
         let plugin_progress = self.plugin_ui.progress_text();
+        let message = if self.plugin_settings.is_some() {
+            self.message.as_deref().or(plugin_progress.as_deref())
+        } else {
+            plugin_progress.as_deref().or(self.message.as_deref())
+        };
         let frame = Frame {
             panes: &panes,
             separators: &layout.separators,
@@ -284,16 +278,26 @@ impl App {
             task,
             terminal,
             viewport: &viewport,
-            message: plugin_progress.as_deref().or(self.message.as_deref()),
-            prompt: self.plugin_ui.prompt().or_else(|| {
-                self.file_ops_prompt()
-                    .or_else(|| self.rename.as_ref().and_then(rename::RenameSession::prompt))
-                    .or_else(|| {
-                        self.branch_prompt
-                            .as_ref()
-                            .and_then(super::git_branch::BranchPrompt::prompt)
-                    })
-            }),
+            message,
+            prompt: self
+                .plugin_settings
+                .as_ref()
+                .and_then(|settings| settings.prompt())
+                .or_else(|| {
+                    self.plugin_settings
+                        .is_none()
+                        .then(|| self.plugin_ui.prompt())
+                        .flatten()
+                })
+                .or_else(|| {
+                    self.file_ops_prompt()
+                        .or_else(|| self.rename.as_ref().and_then(rename::RenameSession::prompt))
+                        .or_else(|| {
+                            self.branch_prompt
+                                .as_ref()
+                                .and_then(super::git_branch::BranchPrompt::prompt)
+                        })
+                }),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),
@@ -345,5 +349,38 @@ impl App {
         self.editor
             .selection_range()
             .map(|(start, end)| Selection::Range { start, end })
+    }
+}
+
+fn picker_lines(picker: &Picker) -> Vec<PickerLine<'_>> {
+    picker
+        .rows()
+        .iter()
+        .map(|row| PickerLine {
+            primary: &row.display,
+            detail: row.secondary.as_deref(),
+            deprecated: row.deprecated,
+        })
+        .collect()
+}
+
+fn picker_menu<'a>(
+    state: &'a Picker,
+    items: &'a [PickerLine<'a>],
+    preview_enabled: bool,
+    preview: Option<kawi_tui::frame::PickerPreview<'a>>,
+) -> PickerMenu<'a> {
+    PickerMenu {
+        title: state.title(),
+        query: state.query(),
+        cursor: state.cursor(),
+        items,
+        selected: state.selected(),
+        loading: state.loading(),
+        status: state.status(),
+        replace_hint: false,
+        file_hint: false,
+        preview_enabled,
+        preview,
     }
 }

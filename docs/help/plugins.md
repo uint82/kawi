@@ -65,6 +65,7 @@ On startup Kawi ignores an installed plugin that is missing from the lockfile, o
 - `:plugin logs [plugin]` shows plugin logs.
 - `:plugin cancel` cancels the active plugin progress.
 - `:plugin inspect <plugin>` shows the manifest, declared host APIs, settings, component hash, and WebAssembly imports.
+- `:plugin settings [plugin]` opens an editor for declared settings. Without a plugin, Kawi shows a plugin chooser. Enter edits or toggles a value, Ctrl+R resets a setting to its default, and Esc closes the editor. Changes are validated against the manifest and written to `plugins.toml` without removing comments or unrelated tables.
 
 Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
 
@@ -103,7 +104,7 @@ User values live in `plugins.toml` under the plugin name:
 max_items = 25
 ```
 
-Invalid values fall back to the manifest default and are logged. Settings are read on demand, so changes apply without restarting the plugin.
+Invalid values fall back to the manifest default and are logged. Settings are read on demand, so changes apply without restarting the plugin. Use `:plugin settings <plugin>` to edit the same values with type-aware validation.
 
 ## Manifest
 

@@ -149,3 +149,93 @@ fn parse_errors_fall_back_to_defaults() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn writes_values_and_preserves_other_content() {
+    let root = temp_dir("write");
+    manifest(&root);
+    let catalog = load_catalog(&root);
+    fs::write(
+        settings_path(&root),
+        "# keep this\n[echo]\nsize = 4\nother = \"keep\"\n\n[unrelated]\nvalue = true\n",
+    )
+    .unwrap();
+    let mut settings = PluginSettings::default();
+    settings.set_path(settings_path(&root));
+    settings.reload(&catalog);
+    settings
+        .set_value(
+            &catalog,
+            "echo",
+            "mode",
+            toml::Value::String("dark".to_string()),
+        )
+        .unwrap();
+    let text = fs::read_to_string(settings_path(&root)).unwrap();
+    assert!(text.contains("# keep this"));
+    assert!(text.contains("other = \"keep\""));
+    assert!(text.contains("[unrelated]"));
+    assert_eq!(
+        settings.values("echo").expect("values")["mode"],
+        toml::Value::String("dark".to_string())
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn writing_the_default_removes_the_override() {
+    let root = temp_dir("reset");
+    manifest(&root);
+    let catalog = load_catalog(&root);
+    fs::write(settings_path(&root), "[echo]\nsize = 4\nmode = \"dark\"\n").unwrap();
+    let mut settings = PluginSettings::default();
+    settings.set_path(settings_path(&root));
+    settings.reload(&catalog);
+    settings
+        .set_value(&catalog, "echo", "size", toml::Value::Integer(10))
+        .unwrap();
+    let text = fs::read_to_string(settings_path(&root)).unwrap();
+    assert!(!text.contains("size"));
+    assert!(text.contains("mode"));
+    assert_eq!(
+        settings.values("echo").expect("values")["size"],
+        toml::Value::Integer(10)
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_invalid_values_without_writing() {
+    let root = temp_dir("write_invalid");
+    manifest(&root);
+    let catalog = load_catalog(&root);
+    let path = settings_path(&root);
+    let mut settings = PluginSettings::default();
+    settings.set_path(path.clone());
+    settings.reload(&catalog);
+    assert!(settings
+        .set_value(&catalog, "echo", "size", toml::Value::Integer(0))
+        .is_err());
+    assert!(!path.exists());
+    assert!(settings
+        .set_value(&catalog, "echo", "unknown", toml::Value::Boolean(true))
+        .is_err());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn refuses_to_rewrite_a_malformed_file() {
+    let root = temp_dir("write_malformed");
+    manifest(&root);
+    let catalog = load_catalog(&root);
+    let path = settings_path(&root);
+    fs::write(&path, "[echo\n").unwrap();
+    let mut settings = PluginSettings::default();
+    settings.set_path(path.clone());
+    settings.reload(&catalog);
+    assert!(settings
+        .set_value(&catalog, "echo", "size", toml::Value::Integer(4))
+        .is_err());
+    assert_eq!(fs::read_to_string(path).unwrap(), "[echo\n");
+    fs::remove_dir_all(root).unwrap();
+}

@@ -65,6 +65,7 @@ mod status;
 mod symbols;
 mod task;
 mod terminal_ui;
+mod text_input;
 mod undo;
 mod undo_commands;
 #[cfg(test)]
@@ -128,6 +129,7 @@ pub struct App {
     plugin_manager: crate::plugin_manager::PluginManager,
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     plugin_ui: plugin::PluginUi,
+    plugin_settings: Option<plugin::PluginSettingsUi>,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
     send_keys_depth: usize,
@@ -237,6 +239,7 @@ impl App {
             plugin_manager: crate::plugin_manager::PluginManager::default(),
             plugin_prompt: None,
             plugin_ui: plugin::PluginUi::default(),
+            plugin_settings: None,
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
             send_keys_depth: 0,
@@ -792,7 +795,7 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.is_plugin_prompt_active() {
+        if self.is_plugin_prompt_active() || self.plugin_settings.is_some() {
             return self.handle_noop();
         }
         self.window_prefix = false;
@@ -982,6 +985,10 @@ impl App {
             if self.synthetic_input_depth == 0 {
                 self.handle_plugin_prompt_key(key);
             }
+            return Ok(false);
+        }
+        if self.plugin_settings.is_some() {
+            self.handle_plugin_settings_key(key);
             return Ok(false);
         }
         if self.plugin_ui.has_prompt() {
@@ -1668,6 +1675,9 @@ impl App {
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
         if self.is_plugin_prompt_active() {
+            return Ok(false);
+        }
+        if self.paste_plugin_settings(&text) {
             return Ok(false);
         }
         if self.paste_plugin_ui(&text) {

@@ -210,6 +210,8 @@ max_items = 25
 mode = "dark"
 ```
 
+Users can edit them through `:plugin settings hello-plugin`. The editor shows the declared type, default, choices, and range, validates each change, and preserves comments and unrelated tables in `plugins.toml`. Boolean settings toggle on Enter, enumerated strings open a choice picker, and other values use a text prompt. Ctrl+R removes the user override and restores the default.
+
 Read them through the SDK:
 
 ```rust
