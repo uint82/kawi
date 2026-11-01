@@ -10,11 +10,21 @@ pub(crate) struct Uncovered {
 pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
     Uncovered {
         name: "editor.execute",
-        reason: "requires the editor command registry; covered by app composition tests",
+        reason:
+            "requires the editor command registry; covered by app end-to-end process and wasm tests",
     },
     Uncovered {
         name: "editor.list_commands",
-        reason: "requires the editor command registry; covered by app composition tests",
+        reason:
+            "requires the editor command registry; covered by app end-to-end process and wasm tests",
+    },
+    Uncovered {
+        name: "config.get",
+        reason: "requires the plugin settings store; covered by app settings and end-to-end tests",
+    },
+    Uncovered {
+        name: "config.list",
+        reason: "requires the plugin settings store; covered by app settings and end-to-end tests",
     },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
