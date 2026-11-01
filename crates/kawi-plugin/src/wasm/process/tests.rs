@@ -16,6 +16,7 @@ fn plugin() -> LoadedPlugin {
             sha256: None,
             command: Vec::new(),
             timeout_ms: 1_000,
+            settings: Default::default(),
             commands: Vec::new(),
             subscribes: Vec::new(),
             debounce: Default::default(),
