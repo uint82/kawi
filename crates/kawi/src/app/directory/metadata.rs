@@ -6,11 +6,10 @@ use crate::options::{
 };
 
 mod format;
+mod time;
 
-use format::{
-    format_modified, format_permissions, format_size, MISSING_MODIFIED, MODIFIED_WIDTH,
-    PERMISSION_WIDTH, SIZE_WIDTH, TEXT_WIDTH,
-};
+use format::{format_permissions, format_size, PERMISSION_WIDTH, SIZE_WIDTH, TEXT_WIDTH};
+use time::{format_modified, MISSING_MODIFIED, MODIFIED_WIDTH};
 
 const ENTRY_GAP: usize = 2;
 
