@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.1.0 on crates.io. It pins `wit-bindgen` 0.63.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.2.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.2.0 bumps the WIT package, so rebuild components built against 0.1.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -218,4 +218,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.1.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.2.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

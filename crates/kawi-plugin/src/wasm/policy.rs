@@ -10,35 +10,35 @@ pub struct ImportRule {
 
 pub const WASM_IMPORTS: &[ImportRule] = &[
     ImportRule {
-        prefix: "kawi:plugin/types@0.1.0",
+        prefix: "kawi:plugin/types@0.2.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-read@0.1.0",
+        prefix: "kawi:plugin/editor-read@0.2.0",
         capabilities: &[Capability::EditorRead],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-write@0.1.0",
+        prefix: "kawi:plugin/editor-write@0.2.0",
         capabilities: &[Capability::EditorWrite],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-execute@0.1.0",
+        prefix: "kawi:plugin/editor-execute@0.2.0",
         capabilities: &[Capability::EditorExecute],
     },
     ImportRule {
-        prefix: "kawi:plugin/config-read@0.1.0",
+        prefix: "kawi:plugin/config-read@0.2.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-message@0.1.0",
+        prefix: "kawi:plugin/ui-message@0.2.0",
         capabilities: &[Capability::UiMessage],
     },
     ImportRule {
-        prefix: "kawi:plugin/diagnostics-publish@0.1.0",
+        prefix: "kawi:plugin/diagnostics-publish@0.2.0",
         capabilities: &[Capability::DiagnosticsPublish],
     },
     ImportRule {
-        prefix: "kawi:plugin/process-run@0.1.0",
+        prefix: "kawi:plugin/process-run@0.2.0",
         capabilities: &[Capability::ProcessSpawn],
     },
     ImportRule {

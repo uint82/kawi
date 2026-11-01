@@ -1,15 +1,15 @@
 # kawi-plugin-sdk
 
-Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.1.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
+Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.2.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
 
 ## Install
 
 ```toml
 [dependencies]
-kawi-plugin-sdk = "0.1.0"
+kawi-plugin-sdk = "0.2.0"
 ```
 
-The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target.
+The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components built against `kawi:plugin@0.1.0` must be rebuilt with this release because the WIT import namespace is versioned.
 
 ## Example
 

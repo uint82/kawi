@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.1.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.2.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.1.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.2.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
