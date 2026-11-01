@@ -45,16 +45,15 @@ Interfaces:
 - `editor-decorations` requires `editor.decorations` and publishes highlights and virtual text.
 - `editor-signs` requires `editor.decorations` and publishes gutter signs.
 - `config-read` has no capability requirement because it only exposes the plugin's own settings.
+- `ui-message` requires `ui.message`.
 - `ui-prompt` requires `ui.prompt`.
 - `ui-progress` requires `ui.progress`.
-- `ui-statusline` requires `ui.statusline` and publishes status line segments.
-
-Interactive prompt calls suspend the invocation deadline until the host responds. Progress calls remain bounded by the invocation deadline.
-- `ui-message` requires `ui.message`.
 - `ui-statusline` requires `ui.statusline` and publishes status line segments.
 - `diagnostics-publish` requires `diagnostics.publish`.
 - `process-run` requires `process.spawn`.
 - `lifecycle` is exported by the plugin and contains `init`, `invoke-command`, and `on-event`.
+
+Interactive prompt calls suspend the invocation deadline until the host responds. Progress calls remain bounded by the invocation deadline.
 
 Positions use line and UTF-8 byte column. Revision checks, origin handling, and error codes match the JSON-RPC protocol.
 
