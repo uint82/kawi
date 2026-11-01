@@ -30,18 +30,21 @@ The buffer is a normal modified buffer. `:q` closes the window, so with one wind
 
 ## Metadata
 
-Directory metadata is display-only text before each entry name, in permissions, size, and modified order. It is not part of the buffer, so it does not affect editing, search, or writes.
+Directory metadata is display-only text before each entry name, in permissions, links, owner, group, size, and modified order. It is not part of the buffer, so it does not affect editing, search, or writes.
 
 ```toml
 [explorer]
-metadata = ["permissions", "size", "modified"]
+metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 ```
 
 - `permissions` shows Unix mode bits. Other platforms show unknown permissions.
+- `links` shows the hard link count. Other platforms show `?`.
+- `owner` shows the owner name resolved from the user database, falling back to the numeric ID. Other platforms show `?`.
+- `group` shows the group name resolved from the group database, falling back to the numeric ID. Other platforms show `?`.
 - `size` is human readable using powers of 1024. Directories show `-`.
-- `modified` shows local time as `YYYY-MM-DD HH:MM`.
+- `modified` shows local time in `ls` style, such as `Nov  1 20:26` for recent entries and `Nov  1  2025` for older entries.
 
-All three columns are shown by default. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`.
+All six columns are shown by default. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`. Owner and group column widths grow to fit the widest value in the listing.
 
 Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata keep their column space blank.
 
@@ -82,7 +85,7 @@ show_hidden = false
 confirm = true
 trash = true
 sort = "directories"
-metadata = ["permissions", "size", "modified"]
+metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 ```
 
 - `show_hidden` includes dotfiles in new directory buffers.
