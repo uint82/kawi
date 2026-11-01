@@ -25,7 +25,6 @@ fn set_decorations(
 #[test]
 fn stores_highlights_virtual_text_and_signs() {
     let mut app = app();
-    let revision = app.editor.buffer_revision();
     set_decorations(
         &mut app,
         vec![
@@ -54,15 +53,12 @@ fn stores_highlights_virtual_text_and_signs() {
     )
     .unwrap();
     let buffer = app.editor.buffer_number();
+    assert_eq!(app.plugin_decorations.spans(buffer, &[0]).len(), 1);
     assert_eq!(
-        app.plugin_decorations.spans(buffer, revision, &[0]).len(),
+        app.plugin_decorations.virtual_texts(buffer, &[0])[0].len(),
         1
     );
-    assert_eq!(
-        app.plugin_decorations.virtual_texts(buffer, revision, &[0])[0].len(),
-        1
-    );
-    assert!(app.plugin_decorations.has_signs(buffer, revision));
+    assert!(app.plugin_decorations.has_signs(buffer));
 }
 
 #[test]

@@ -27,7 +27,7 @@ impl App {
             RpcError::stale_buffer(params.buffer, self.editor.buffer_number() as u64)
         })?;
         self.plugin_decorations
-            .set(plugin, buffer, current, &params.decorations, &snapshot)?;
+            .set(plugin, buffer, &params.decorations, &snapshot)?;
         Ok(Value::Null)
     }
 

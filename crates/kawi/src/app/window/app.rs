@@ -551,11 +551,8 @@ impl App {
             },
         );
         let buffer = self.editor.buffer_number();
-        let revision = self.editor.buffer_revision_at(buffer).unwrap_or_default();
-        let decorations = self.plugin_decorations.spans(buffer, revision, &rows);
-        let plugin_virtual_texts = self
-            .plugin_decorations
-            .virtual_texts(buffer, revision, &rows);
+        let decorations = self.plugin_decorations.spans(buffer, &rows);
+        let plugin_virtual_texts = self.plugin_decorations.virtual_texts(buffer, &rows);
         PaneData {
             rect,
             active: true,
@@ -703,16 +700,8 @@ impl App {
                 suppress: false,
             },
         );
-        let revision = self
-            .editor
-            .buffer_revision_at(window.buffer)
-            .unwrap_or_default();
-        let decorations = self
-            .plugin_decorations
-            .spans(window.buffer, revision, &rows);
-        let plugin_virtual_texts =
-            self.plugin_decorations
-                .virtual_texts(window.buffer, revision, &rows);
+        let decorations = self.plugin_decorations.spans(window.buffer, &rows);
+        let plugin_virtual_texts = self.plugin_decorations.virtual_texts(window.buffer, &rows);
         PaneData {
             rect,
             active: false,
