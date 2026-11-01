@@ -1,0 +1,88 @@
+name: Plugin pilot tracking
+description: Track the Kawi WebAssembly plugin external validation pilot.
+title: "[plugin pilot tracking] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep this issue current for the full pilot. Record friction in the feedback form, not here.
+        Do not include secrets or private data. Report security issues through the repository security advisory flow.
+  - type: input
+    id: author
+    attributes:
+      label: Pilot author
+      description: GitHub handle and confirmation that the author did not contribute to the host, runtime, or SDK.
+      placeholder: "@author"
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin repository
+      description: Link to the plugin source or published artifact.
+      placeholder: "https://github.com/..."
+    validations:
+      required: true
+  - type: input
+    id: reviewer
+    attributes:
+      label: Reviewer
+      description: Second maintainer or contributor who confirms the exit evidence.
+      placeholder: "@reviewer"
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Record the Kawi release, SDK version, and target.
+      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.3.0, wasm32-wasip2"
+    validations:
+      required: true
+  - type: input
+    id: dates
+    attributes:
+      label: Start and exit review dates
+      description: Record the start date and the planned exit review date.
+      placeholder: "Start 2026-11-02, exit review 2027-01-02"
+    validations:
+      required: true
+  - type: checkboxes
+    id: kickoff
+    attributes:
+      label: Kickoff checks
+      options:
+        - label: The editor release has the WASM runtime enabled by default.
+        - label: kawi-plugin-sdk 0.3.0 is published and the published scaffold build passed.
+        - label: The author meets the independence requirements.
+        - label: The plugin is a real workflow, not a fixture, example copy, or renamed scaffold.
+        - label: The author can publish the plugin source or a release artifact.
+  - type: textarea
+    id: weekly
+    attributes:
+      label: Weekly reviews
+      description: Add one line per weekly review with the date, open blockers, friction, and documentation changes.
+      placeholder: |
+        2026-11-09: No blockers, one minor install friction item opened.
+    validations:
+      required: false
+  - type: textarea
+    id: friction
+    attributes:
+      label: Friction issues
+      description: Link each feedback issue and its fix or accepted workaround.
+      placeholder: |
+        - https://github.com/uint82/kawi/issues/...
+    validations:
+      required: false
+  - type: textarea
+    id: exit
+    attributes:
+      label: Exit review
+      description: Record the exit decision, evidence, and reviewer confirmation.
+      placeholder: |
+        Decision:
+        Evidence:
+        Reviewer confirmation:
+    validations:
+      required: false

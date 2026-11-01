@@ -1,6 +1,6 @@
 name: Plugin pilot feedback
 description: Report friction from the Kawi WebAssembly plugin external validation pilot.
-title: "[plugin pilot] "
+title: "[plugin pilot feedback] "
 body:
   - type: markdown
     attributes:
@@ -16,11 +16,19 @@ body:
     validations:
       required: true
   - type: input
+    id: tracking
+    attributes:
+      label: Tracking issue
+      description: Link the pilot tracking issue when one exists.
+      placeholder: "https://github.com/uint82/kawi/issues/..."
+    validations:
+      required: false
+  - type: input
     id: versions
     attributes:
       label: Versions
       description: Include the Kawi version, SDK version, and target.
-      placeholder: "Kawi 0.1.0, kawi-plugin-sdk 0.1.0, wasm32-wasip2"
+      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.3.0, wasm32-wasip2"
     validations:
       required: true
   - type: dropdown
