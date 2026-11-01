@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::time::SystemTime;
 
 use super::entry::{entry_kind, is_hidden, is_vcs_directory, Entry, EntryKind};
 use super::metadata::{MetadataColumns, MetadataReader, MetadataWidths};
@@ -79,7 +80,7 @@ pub(super) fn read_listing(
 ) -> io::Result<Listing> {
     let mut entries = Vec::new();
     let mut next_id = first_id;
-    let mut reader = MetadataReader::new();
+    let mut reader = MetadataReader::new(SystemTime::now());
     for item in fs::read_dir(root)? {
         let item = item?;
         let name = item.file_name();
@@ -274,7 +275,7 @@ mod tests {
             .unwrap();
         assert!(text.starts_with('-'));
         assert!(text.contains("5B"));
-        assert_eq!(text.len(), 35);
+        assert_eq!(text.len(), 31);
         let directory = listing
             .entries
             .iter()

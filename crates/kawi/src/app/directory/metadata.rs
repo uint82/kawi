@@ -1,4 +1,5 @@
 use std::fs::Metadata;
+use std::time::SystemTime;
 
 use kawi_tui::text::display_width;
 
@@ -165,12 +166,14 @@ impl MetadataWidths {
 
 pub(super) struct MetadataReader {
     identities: IdentityResolver,
+    now: SystemTime,
 }
 
 impl MetadataReader {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(now: SystemTime) -> Self {
         Self {
             identities: IdentityResolver::new(),
+            now,
         }
     }
 
@@ -181,7 +184,10 @@ impl MetadataReader {
             owner: format_owner(metadata, &mut self.identities),
             group: format_group(metadata, &mut self.identities),
             size: format_size(metadata, kind),
-            modified: metadata.modified().ok().map(format_modified),
+            modified: metadata
+                .modified()
+                .ok()
+                .map(|time| format_modified(time, self.now)),
         }
     }
 }
@@ -262,7 +268,7 @@ mod tests {
             owner: "user".to_string(),
             group: "dev".to_string(),
             size: "13".to_string(),
-            modified: Some("2026-10-28 14:32".to_string()),
+            modified: Some("Nov  1 20:26".to_string()),
         }
     }
 
@@ -292,7 +298,7 @@ mod tests {
             owner: 4,
             group: 6,
         };
-        assert_eq!(MetadataColumns::all().width(widths), 52);
+        assert_eq!(MetadataColumns::all().width(widths), 48);
         assert_eq!(
             MetadataColumns::parse("permissions,size")
                 .unwrap()
@@ -312,7 +318,7 @@ mod tests {
         };
         let columns = MetadataColumns::parse("links,owner,group,size,modified").unwrap();
         let text = metadata.text(columns, widths).unwrap();
-        assert_eq!(text, " 2 user dev        13 2026-10-28 14:32");
+        assert_eq!(text, " 2 user dev        13 Nov  1 20:26");
         assert_eq!(columns.width(widths), display_width(&text) + ENTRY_GAP);
         assert_eq!(metadata.text(MetadataColumns::default(), widths), None);
     }

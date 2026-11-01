@@ -51,12 +51,12 @@ fn directory_metadata_loads_with_the_listing() {
     let text = state.metadata_text(0, columns).unwrap();
     assert!(text.starts_with('-'));
     assert!(text.contains("5B"));
-    assert_eq!(text.len(), 35);
+    assert_eq!(text.len(), 31);
     let texts = app.directory_metadata_texts(number, &[0]);
     let text = texts[0].as_ref().unwrap();
     assert_eq!(text.kind, VirtualTextKind::Metadata);
     assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
     let empty = app.directory_metadata_texts(number, &[100]);
-    assert_eq!(empty[0].as_ref().unwrap().text, " ".repeat(37));
+    assert_eq!(empty[0].as_ref().unwrap().text, " ".repeat(33));
     let _ = fs::remove_dir_all(dir);
 }
