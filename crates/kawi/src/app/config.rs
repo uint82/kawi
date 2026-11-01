@@ -51,6 +51,7 @@ impl App {
                 dev: &paths.plugins,
                 lock: self.plugin_manager.lock(),
                 workspace: &workspace,
+                settings: &paths.plugin_settings,
                 commands: &mut self.commands,
                 keymaps: &mut self.keymaps,
                 leaders: &self.leaders,

@@ -185,6 +185,10 @@ impl App {
                 serde_json::Value::Object(scope.to_json_object())
             ));
         }
+        if !plugin.manifest.settings.is_empty() {
+            let settings = plugin.manifest.settings.keys().cloned().collect::<Vec<_>>();
+            lines.push(format!("settings: {}", settings.join(", ")));
+        }
         #[cfg(feature = "wasm")]
         if plugin.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
             && plugin.disabled_reason.is_none()

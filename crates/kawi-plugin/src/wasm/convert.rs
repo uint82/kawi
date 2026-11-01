@@ -3,54 +3,20 @@ use serde_json::Value;
 use crate::error::PluginError;
 use crate::protocol::{
     BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent, DiagnosticSummary,
-    DiagnosticsChangedEvent, EditorCommandInfo, EditorListCommandsResult, FileOpenedEvent,
-    FileSavedEvent, GetStateResult, ModeChangedEvent, Position, ProtocolTextEdit, RpcError,
-    INTERNAL_ERROR, INVALID_PARAMS,
+    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, GetStateResult, ModeChangedEvent,
+    Position, ProtocolTextEdit, RpcError, INTERNAL_ERROR, INVALID_PARAMS,
 };
 
 use super::bindings::kawi::plugin::types::{
-    Argument, BufferChanged, BufferClosed, BufferOpened, CommandInfo, Diagnostic,
-    DiagnosticsChanged, Event, FileOpened, FileSaved, ModeChanged, Position as WitPosition,
-    ProcessOutput, Severity, State,
+    BufferChanged, BufferClosed, BufferOpened, Diagnostic, DiagnosticsChanged, Event, FileOpened,
+    FileSaved, ModeChanged, Position as WitPosition, ProcessOutput, Severity, State,
 };
 
-pub fn argument_from_json(value: Value) -> Result<Argument, RpcError> {
-    match value {
-        Value::Null => Ok(Argument::Null),
-        Value::Bool(value) => Ok(Argument::Boolean(value)),
-        Value::Number(value) => {
-            if let Some(value) = value.as_i64() {
-                return Ok(Argument::Integer(value));
-            }
-            let value = value
-                .as_f64()
-                .ok_or_else(|| RpcError::invalid_params("wasm arguments must be finite numbers"))?;
-            if !value.is_finite() {
-                return Err(RpcError::invalid_params(
-                    "wasm arguments must be finite numbers",
-                ));
-            }
-            Ok(Argument::Float(value))
-        }
-        Value::String(value) => Ok(Argument::Text(value)),
-        _ => Err(RpcError::invalid_params(
-            "wasm arguments must be null, boolean, integer, float, or text",
-        )),
-    }
-}
+mod arguments;
+mod plugin_api;
 
-pub fn argument_to_json(value: Argument) -> Result<Value, PluginError> {
-    match value {
-        Argument::Null => Ok(Value::Null),
-        Argument::Boolean(value) => Ok(Value::Bool(value)),
-        Argument::Integer(value) => Ok(Value::from(value)),
-        Argument::Float(value) if value.is_finite() => Ok(Value::from(value)),
-        Argument::Float(_) => Err(PluginError::Protocol(
-            "wasm plugin returned a non-finite number".to_string(),
-        )),
-        Argument::Text(value) => Ok(Value::String(value)),
-    }
-}
+pub use arguments::{argument_from_json, argument_to_json};
+pub use plugin_api::{command_infos_from_json, setting_value_from_json, settings_from_json};
 
 pub fn state_from_json(value: Value) -> Result<State, RpcError> {
     let state: GetStateResult = serde_json::from_value(value)
@@ -73,20 +39,6 @@ pub fn state_from_json(value: Value) -> Result<State, RpcError> {
             .transpose()?,
         text: state.text,
     })
-}
-
-pub fn command_infos_from_json(value: Value) -> Result<Vec<CommandInfo>, RpcError> {
-    let result: EditorListCommandsResult = serde_json::from_value(value)
-        .map_err(|error| RpcError::invalid_params(error.to_string()))?;
-    Ok(result.commands.into_iter().map(command_info).collect())
-}
-
-fn command_info(info: EditorCommandInfo) -> CommandInfo {
-    CommandInfo {
-        id: info.id,
-        description: info.description,
-        aliases: info.aliases,
-    }
 }
 
 pub fn edits_to_protocol(
@@ -298,26 +250,5 @@ fn severity_from_name(name: &str) -> Severity {
         "warning" => Severity::Warning,
         "information" => Severity::Information,
         _ => Severity::Hint,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn converts_command_infos() {
-        let infos = command_infos_from_json(serde_json::json!({
-            "commands": [{
-                "id": "file.save",
-                "description": "save the buffer",
-                "aliases": ["save"],
-            }],
-        }))
-        .expect("command infos");
-        assert_eq!(infos.len(), 1);
-        assert_eq!(infos[0].id, "file.save");
-        assert_eq!(infos[0].description, "save the buffer");
-        assert_eq!(infos[0].aliases, vec!["save"]);
     }
 }

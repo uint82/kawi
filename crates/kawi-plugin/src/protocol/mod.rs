@@ -3,6 +3,7 @@ use std::fmt;
 mod diagnostics;
 mod events;
 mod sanitize;
+mod types;
 
 pub use events::{
     event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent,
@@ -10,22 +11,23 @@ pub use events::{
     EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER,
 };
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use diagnostics::validate_diagnostics;
 pub use sanitize::sanitize;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 3;
+pub const PROTOCOL_MINOR: u64 = 4;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 6] = [
+pub const HOST_METHODS: [&str; 8] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
     "editor.list_commands",
     "editor.set_diagnostics",
     "ui.message",
+    "config.get",
+    "config.list",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
@@ -43,6 +45,8 @@ pub const INVALID_POSITION: i64 = -32011;
 pub const CAPABILITY_DENIED: i64 = -32012;
 pub const REQUEST_CANCELED: i64 = -32020;
 pub const PLUGIN_UNAVAILABLE: i64 = -32030;
+
+pub use types::*;
 
 pub fn request_value(id: Value, method: &str, params: Value) -> Value {
     serde_json::json!({
@@ -75,149 +79,6 @@ pub fn notification_value(method: &str, params: Value) -> Value {
         "method": method,
         "params": params,
     })
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Position {
-    pub line: usize,
-    pub byte_column: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Selection {
-    pub start: Position,
-    pub end: Position,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InvocationContext {
-    pub buffer: u64,
-    pub revision: u64,
-    pub path: Option<String>,
-    pub language: Option<String>,
-    pub mode: String,
-    pub cursor: Position,
-    pub selection: Option<Selection>,
-}
-
-impl InvocationContext {
-    pub fn redacted() -> Self {
-        Self {
-            buffer: 0,
-            revision: 0,
-            path: None,
-            language: None,
-            mode: "normal".to_string(),
-            cursor: Position {
-                line: 0,
-                byte_column: 0,
-            },
-            selection: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvokeParams {
-    pub command: String,
-    pub args: Value,
-    pub context: InvocationContext,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InitializeParams {
-    pub protocol_version: u64,
-    pub protocol_minor: u64,
-    pub host: HostInfo,
-    pub position_encoding: String,
-    pub host_capabilities: Vec<String>,
-    pub plugin_capabilities: Vec<String>,
-    pub events: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HostInfo {
-    pub name: String,
-    pub version: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InitializeResult {
-    pub protocol_version: u64,
-    #[serde(default)]
-    pub protocol_minor: u64,
-    pub name: String,
-    pub version: String,
-    pub plugin_capabilities: Vec<String>,
-    pub host_capabilities: Vec<String>,
-    #[serde(default)]
-    pub events: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct GetStateParams {
-    pub include_text: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GetStateResult {
-    pub buffer: u64,
-    pub revision: u64,
-    pub path: Option<String>,
-    pub language: Option<String>,
-    pub mode: String,
-    pub cursor: Position,
-    pub selection: Option<Selection>,
-    pub text: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProtocolTextEdit {
-    pub start: Position,
-    pub end: Position,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyEditParams {
-    pub buffer: u64,
-    pub revision: u64,
-    pub edits: Vec<ProtocolTextEdit>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyEditResult {
-    pub revision: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EditorExecuteParams {
-    pub command: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EditorCommandInfo {
-    pub id: String,
-    pub description: String,
-    pub aliases: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EditorListCommandsResult {
-    pub commands: Vec<EditorCommandInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiMessageParams {
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SetDiagnosticsParams {
-    pub buffer: u64,
-    pub revision: u64,
-    pub diagnostics: Vec<DiagnosticSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -331,6 +192,25 @@ mod tests {
         let value = serde_json::to_value(&position).unwrap();
         assert_eq!(value, json!({"line": 3, "byte_column": 9}));
         assert_eq!(serde_json::from_value::<Position>(value).unwrap(), position);
+    }
+
+    #[test]
+    fn config_values_serialize_with_null_for_missing_keys() {
+        let result = ConfigGetResult { value: None };
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            json!({"value": null})
+        );
+        let result = ConfigListResult {
+            settings: vec![ConfigSetting {
+                key: "size".to_string(),
+                value: json!(4),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            json!({"settings": [{"key": "size", "value": 4}]})
+        );
     }
 
     #[test]

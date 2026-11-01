@@ -13,8 +13,10 @@ use serde_json::Value;
 
 use super::coalesce::PendingBufferEvent;
 use super::queue::{QueueCounters, QueuedInvocation};
+use super::settings::PluginSettings;
 
 mod capability;
+mod settings;
 mod support;
 
 const MAX_LOG_LINES: usize = 200;
@@ -64,6 +66,7 @@ pub(crate) struct PluginRuntime {
     pub(super) throttled_messages: BTreeMap<String, u64>,
     pub(super) diagnostic_windows: BTreeMap<String, DiagnosticWindow>,
     pub(super) sandboxed: BTreeSet<String>,
+    pub(super) settings: PluginSettings,
 }
 
 pub(crate) struct PluginCommandTarget {

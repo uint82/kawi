@@ -17,6 +17,7 @@ pub(crate) struct PluginLoadContext<'a> {
     pub(crate) dev: &'a Path,
     pub(crate) lock: &'a PluginLock,
     pub(crate) workspace: &'a Path,
+    pub(crate) settings: &'a Path,
     pub(crate) commands: &'a mut CommandRegistry,
     pub(crate) keymaps: &'a mut KeymapResolver,
     pub(crate) leaders: &'a [KeyChord],
@@ -31,6 +32,7 @@ impl PluginRuntime {
             self.catalog = PluginCatalog::default();
             self.targets.clear();
             self.bindings.clear();
+            self.settings.set_path(context.settings.to_path_buf());
             return Vec::new();
         }
         let PluginLoadContext {
@@ -38,12 +40,14 @@ impl PluginRuntime {
             dev,
             lock,
             workspace,
+            settings,
             commands,
             keymaps,
             leaders,
             wake,
         } = context;
         self.installed_dir = Some(installed.to_path_buf());
+        self.settings.set_path(settings.to_path_buf());
         self.dev_dir = Some(dev.to_path_buf());
         self.lock = lock.clone();
         self.workspace = Some(workspace.to_path_buf());
@@ -54,6 +58,7 @@ impl PluginRuntime {
         warnings.append(&mut self.reconcile_commands(&catalog, commands, keymaps, leaders));
         self.replace_host(&catalog, workspace, wake);
         self.catalog = catalog;
+        warnings.append(&mut self.settings.reload(&self.catalog));
         self.retain_known_plugin_state();
         warnings
             .into_iter()

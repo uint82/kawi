@@ -55,6 +55,37 @@ The plugin can call `editor.list_commands` to discover the allowed commands and 
 
 The editor runs the command synchronously before responding. Changes made by the command carry the `plugin:<name>` change origin.
 
+## Settings
+
+Plugins declare their settings in `plugin.toml`:
+
+```toml
+[settings.max_items]
+type = "integer"
+default = 10
+description = "Maximum number of items"
+minimum = 1
+maximum = 100
+
+[settings.mode]
+type = "string"
+default = "auto"
+description = "Display mode"
+enum = ["auto", "light", "dark"]
+```
+
+Supported types are `boolean`, `integer`, `number`, and `string`. `enum` is available for strings. `minimum` and `maximum` are available for integers and numbers. A default must match its type and satisfy its choices and range.
+
+Users override settings in `$XDG_CONFIG_HOME/kawi/plugins.toml`:
+
+```toml
+[example]
+max_items = 25
+mode = "dark"
+```
+
+`config.get` and `config.list` expose the effective values for the calling plugin. They need no capability declaration because they only read that plugin's own namespace. Missing keys return `null`. Invalid values and unknown keys are logged, and invalid values fall back to the manifest default. Kawi reads the file on demand, so edits apply without restarting the plugin.
+
 ## Hosts
 
 `net.connect` takes `hosts`, an array of exact `host:port` entries. IPv6 uses brackets. Hostnames are lowercased before comparison. Wildcards and port ranges are not supported.
@@ -79,7 +110,7 @@ An ungated command runs whenever the plugin runs.
 - WebAssembly plugins can only import interfaces declared in the manifest. An undeclared import fails before instantiation.
 - WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
 - WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
-- Host-mediated editor, UI, and diagnostics calls require the matching declaration.
+- Host-mediated editor, UI, and diagnostics calls require the matching declaration. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
 - `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
 - Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
 - Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. Network scope is advisory for process plugins.

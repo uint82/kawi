@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
 
 ## Trust model
 
@@ -30,6 +30,12 @@ description = "Example plugin"
 command = ["python3", "${plugin_dir}/plugin.py"]
 timeout_ms = 5000
 subscribes = ["buffer_changed", "file_saved"]
+
+[settings.max_items]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 100
 
 [debounce]
 buffer_changed = 100
@@ -100,8 +106,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 3,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message"],
+    "protocol_minor": 4,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -116,11 +122,11 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 3,
+    "protocol_minor": 4,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "config.get", "config.list"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -344,6 +350,39 @@ Request params:
 ```
 
 Result is `null`. Kawi strips terminal escape sequences and replaces control characters with spaces before displaying the message.
+
+### config.get
+
+Request params:
+
+```json
+{"key": "max_items"}
+```
+
+Result:
+
+```json
+{"value": 25}
+```
+
+An unknown key returns `{"value": null}`. The value is the effective setting after applying the user's `plugins.toml` over the manifest default. `config.get` needs no capability declaration because it only exposes the calling plugin's own namespace.
+
+### config.list
+
+Request params are `{}` or `null`.
+
+Result:
+
+```json
+{
+  "settings": [
+    {"key": "max_items", "value": 25},
+    {"key": "mode", "value": "dark"}
+  ]
+}
+```
+
+Settings are sorted by key. Invalid user values and unknown keys are logged, and invalid values fall back to the manifest default. Kawi reads `$XDG_CONFIG_HOME/kawi/plugins.toml` on demand, so changes apply on the next call without restarting the plugin.
 
 ## Versioning
 

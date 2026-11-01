@@ -46,6 +46,10 @@ jobs:
         run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/network/Cargo.toml -- --check
       - name: Rebuild network fixture
         run: crates/kawi-plugin/tests/fixtures/wasm/build-network.sh
+      - name: Format config fixture
+        run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/config/Cargo.toml -- --check
+      - name: Rebuild config fixture
+        run: crates/kawi-plugin/tests/fixtures/wasm/config/build.sh
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
       - name: Build WASM trim example

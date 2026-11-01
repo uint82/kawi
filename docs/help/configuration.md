@@ -55,7 +55,17 @@ Use `:commands` to discover command names, `:map` to inspect mappings, and `:map
 
 Managed plugins are installed from GitHub with `:plugin install owner/repo`. Installed code lives in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`.
 
-Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. They are loaded with a warning and are not managed by `:plugin`. See [Plugins](help:plugins) and [Plugin host APIs](help:plugin-capabilities).
+Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. They are loaded with a warning and are not managed by `:plugin`.
+
+Plugin settings live in `$XDG_CONFIG_HOME/kawi/plugins.toml`, normally `~/.config/kawi/plugins.toml`, under the plugin name:
+
+```toml
+[echo]
+max_items = 25
+mode = "dark"
+```
+
+Each plugin declares the supported keys, types, defaults, and ranges in its manifest. See [Plugins](help:plugins) and [Plugin host APIs](help:plugin-capabilities).
 
 Directory buffer settings:
 

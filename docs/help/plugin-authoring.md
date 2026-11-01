@@ -126,13 +126,57 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 
 ## Host API declarations
 
-- `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, including `ui.message`.
+- `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, except `config-read`, which needs no declaration.
 - Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
+- Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
 - A component that imports an undeclared interface is rejected before it runs.
 - A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
 - On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
+
+## Settings
+
+Declare settings in `plugin.toml`:
+
+```toml
+[settings.max_items]
+type = "integer"
+default = 10
+description = "Maximum number of items"
+minimum = 1
+maximum = 100
+
+[settings.mode]
+type = "string"
+default = "auto"
+description = "Display mode"
+enum = ["auto", "light", "dark"]
+```
+
+Supported types are `boolean`, `integer`, `number`, and `string`. `enum` is available for strings. `minimum` and `maximum` are available for integers and numbers. Defaults must match the type and satisfy the constraints.
+
+Users override settings in `$XDG_CONFIG_HOME/kawi/plugins.toml`:
+
+```toml
+[hello-plugin]
+max_items = 25
+mode = "dark"
+```
+
+Read them through the SDK:
+
+```rust
+use kawi_plugin_sdk::{config_read, types::SettingValue};
+
+let max_items = match config_read::get("max_items")? {
+    Some(SettingValue::Integer(value)) => value,
+    _ => 10,
+};
+let all = config_read::get_all()?;
+```
+
+`config_read::get` returns `None` for an unknown key. `config_read::get_all` returns settings sorted by key.
 
 ## Contract details
 
@@ -140,6 +184,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - `editor.get_state` returns a revision. Pass that revision to `editor.apply_edit`. A stale revision returns code `-32010`.
 - `kawi_plugin_sdk::apply_edit_with_retry` fetches fresh state, rebuilds edits, and retries a bounded number of times. Declare `editor.read` and `editor.write` to use it.
 - `editor_execute::list_commands` returns only commands in the allowlist. `editor_execute::execute` runs a canonical built-in command. Plugin-defined commands, `keys.send`, and commands that require arguments are rejected. The editor runs the command before the host call returns.
+- `config_read::get` returns one effective setting value as `option<setting-value>`. `config_read::get_all` returns every effective setting. Values come from the manifest defaults overlaid with the user's `plugins.toml`. Invalid user values fall back to their defaults and are logged. Kawi reads the file on demand, so changes apply on the next call without restarting the plugin.
 - `buffer_changed` includes an origin. Kawi excludes your own edits, so do not filter by origin to avoid loops. A `mixed` origin includes your own edit or changes from several sources; resync when `full_resync` is true.
 - The editor coalesces and orders events. A `file_saved` event is a good trigger for a full-buffer operation such as trim.
 - Diagnostics accept at most 1000 items per buffer. Each message is at most 4096 bytes and each code is at most 256 bytes.

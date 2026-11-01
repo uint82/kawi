@@ -9,7 +9,7 @@ Kawi installs managed plugins from GitHub releases. A managed plugin is a WebAss
 
 Local plugins in `$XDG_CONFIG_HOME/kawi/plugins` are a separate development mode. They are loaded with a warning and are never updated or removed by `:plugin`. Process plugins remain available only in this development mode and run as trusted code with your full user permissions.
 
-Installed plugins live in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`. Kawi never loads plugins from a project directory.
+Installed plugins live in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`. Plugin settings live in `$XDG_CONFIG_HOME/kawi/plugins.toml`, normally `~/.config/kawi/plugins.toml`. Kawi never loads plugins from a project directory.
 
 ## Install
 
@@ -63,7 +63,7 @@ On startup Kawi ignores an installed plugin that is missing from the lockfile, o
 - `:plugin reload` reloads manifests from disk.
 - `:plugin restart [plugin]` restarts one plugin or every plugin.
 - `:plugin logs [plugin]` shows plugin logs.
-- `:plugin inspect <plugin>` shows the manifest, declared host APIs, component hash, and WebAssembly imports.
+- `:plugin inspect <plugin>` shows the manifest, declared host APIs, settings, component hash, and WebAssembly imports.
 
 Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
 
@@ -82,6 +82,25 @@ Plugins declare the host APIs they use in `plugin.toml`:
 Declarations are a compatibility and audit surface, not a user grant. Kawi enables every declared API for a managed plugin. The WebAssembly component can only import interfaces that it declared. A component that imports an undeclared interface fails to load. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
 Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
+
+Plugins can declare settings and read their effective values without a capability declaration:
+
+```toml
+[settings.max_items]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 100
+```
+
+User values live in `plugins.toml` under the plugin name:
+
+```toml
+[echo]
+max_items = 25
+```
+
+Invalid values fall back to the manifest default and are logged. Settings are read on demand, so changes apply without restarting the plugin.
 
 ## Manifest
 
@@ -151,6 +170,8 @@ Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics
 - `editor.list_commands` returns the allowed canonical command IDs, descriptions, and aliases.
 - `editor.set_diagnostics` replaces the plugin-published diagnostics for the current buffer. The buffer identifier and revision must match, and the buffer must have a file path.
 - `ui.message` shows a status message.
+- `config.get` returns one effective setting value or `null`.
+- `config.list` returns every effective setting for the plugin, sorted by key.
 
 Positions are zero-based and use line plus UTF-8 byte column. Kawi rejects byte columns inside a code point.
 

@@ -25,6 +25,7 @@ pub(super) fn validate_manifest(
     }
     let artifact = runtime::validate(manifest, dir)?;
     validate_timeout(manifest.timeout_ms)?;
+    super::settings::validate(&mut manifest.settings)?;
     validate_commands(&manifest.commands)?;
     validate_subscriptions(manifest)?;
     validate_activation(&manifest.activation_events)?;

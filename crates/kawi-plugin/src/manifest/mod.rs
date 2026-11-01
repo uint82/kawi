@@ -9,10 +9,14 @@ use crate::capability::{Capability, CapabilityRegistry, CapabilityRequests};
 
 mod load;
 mod runtime;
+mod settings;
+#[cfg(test)]
+mod settings_tests;
 mod validation;
 
 pub use load::load_catalog;
 pub use runtime::{validate_component_path, PluginRuntime};
+pub use settings::{PluginSetting, PluginSettingKind};
 
 const MANIFEST_FILE: &str = "plugin.toml";
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -36,6 +40,8 @@ pub struct PluginManifest {
     pub command: Vec<String>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
+    #[serde(default)]
+    pub settings: BTreeMap<String, PluginSetting>,
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
     #[serde(default)]

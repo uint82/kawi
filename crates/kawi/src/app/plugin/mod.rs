@@ -1,6 +1,7 @@
 mod coalesce;
 mod commands;
 mod composition;
+mod config;
 mod diagnostics;
 mod events;
 mod host_methods;
@@ -11,6 +12,7 @@ mod notify;
 mod queue;
 mod reload;
 mod runtime;
+mod settings;
 mod text;
 
 pub(super) use self::commands::SUBCOMMANDS;

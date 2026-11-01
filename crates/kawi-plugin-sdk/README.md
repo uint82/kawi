@@ -55,6 +55,33 @@ Declare an explicit command allowlist in `plugin.toml`:
 
 The `editor_execute` module exposes `execute` and `list_commands`. The allowlist uses canonical command IDs, and the host checks every call before running the command.
 
+## Settings
+
+Declare plugin settings in `plugin.toml`:
+
+```toml
+[settings.max_items]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 100
+
+[settings.mode]
+type = "string"
+default = "auto"
+enum = ["auto", "light", "dark"]
+```
+
+Users override them in `$XDG_CONFIG_HOME/kawi/plugins.toml`:
+
+```toml
+[example]
+max_items = 25
+mode = "dark"
+```
+
+The `config_read` module exposes `get` and `get_all`. Settings are namespaced to the plugin and are available without a capability declaration. Invalid values fall back to the manifest default and are logged. The host reads the file on demand, so changes apply without restarting the plugin.
+
 ## Documentation
 
 The authoring guide covers scaffolding, building, installing, releasing, and troubleshooting:

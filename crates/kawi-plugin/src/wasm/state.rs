@@ -4,20 +4,24 @@ use wasmtime_wasi::sockets::WasiSocketsView;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
-    ApplyEditParams, ApplyEditResult, EditorExecuteParams, GetStateParams, RpcError,
-    SetDiagnosticsParams, UiMessageParams, PLUGIN_UNAVAILABLE,
+    ApplyEditParams, ApplyEditResult, ConfigGetParams, ConfigGetResult, ConfigListResult,
+    EditorExecuteParams, GetStateParams, RpcError, SetDiagnosticsParams, UiMessageParams,
+    PLUGIN_UNAVAILABLE,
 };
 
 pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
 
-use super::bindings::kawi::plugin::types::{CommandInfo, Edit, Error, ProcessOutput, State};
+use super::bindings::kawi::plugin::types::{
+    CommandInfo, Edit, Error, ProcessOutput, Setting, SettingValue, State,
+};
 use super::bindings::kawi::plugin::{
-    diagnostics_publish, editor_execute, editor_read, editor_write, process_run, types, ui_message,
+    config_read, diagnostics_publish, editor_execute, editor_read, editor_write, process_run,
+    types, ui_message,
 };
 use super::byte_budget::NetworkBudget;
 use super::convert::{
     command_infos_from_json, diagnostics_to_protocol, edits_to_protocol, error_from_rpc,
-    state_from_json,
+    setting_value_from_json, settings_from_json, state_from_json,
 };
 use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
@@ -143,6 +147,34 @@ impl editor_execute::Host for WasmState {
             .request("editor.list_commands", serde_json::Value::Null)
             .map_err(error_from_rpc)?;
         command_infos_from_json(value).map_err(error_from_rpc)
+    }
+}
+
+impl config_read::Host for WasmState {
+    fn get(&mut self, key: String) -> Result<Option<SettingValue>, Error> {
+        let params = serialize_params(ConfigGetParams { key })?;
+        let value = self
+            .bridge
+            .request("config.get", params)
+            .map_err(error_from_rpc)?;
+        let result: ConfigGetResult = serde_json::from_value(value).map_err(|error| {
+            error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string()))
+        })?;
+        result
+            .value
+            .map(|value| setting_value_from_json(value).map_err(error_from_rpc))
+            .transpose()
+    }
+
+    fn get_all(&mut self) -> Result<Vec<Setting>, Error> {
+        let value = self
+            .bridge
+            .request("config.list", serde_json::Value::Null)
+            .map_err(error_from_rpc)?;
+        let result: ConfigListResult = serde_json::from_value(value).map_err(|error| {
+            error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string()))
+        })?;
+        settings_from_json(result.settings).map_err(error_from_rpc)
     }
 }
 

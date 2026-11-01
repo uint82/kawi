@@ -289,6 +289,7 @@ mod tests {
             plugins: dir.join("plugins"),
             installed_plugins: dir.join("installed-plugins"),
             plugin_lock: dir.join("plugins.lock"),
+            plugin_settings: dir.join("plugins.toml"),
             languages: dir.join("languages.toml"),
             tasks: dir.join("tasks.toml"),
             themes: dir.join("themes"),

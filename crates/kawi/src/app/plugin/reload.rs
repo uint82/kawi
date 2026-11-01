@@ -31,6 +31,7 @@ impl PluginRuntime {
         warnings.append(&mut self.reconcile_commands(&catalog, commands, keymaps, leaders));
         self.reload_host(&catalog, plugin, &workspace, wake)?;
         self.catalog = catalog;
+        warnings.append(&mut self.settings.reload(&self.catalog));
         self.reset_message_throttle(plugin);
         self.retain_known_plugin_state();
         Ok(warnings

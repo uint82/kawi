@@ -14,7 +14,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
 | `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.1.0` |
-| `timeout_ms`, `commands`, `subscribes`, `debounce`, `activation_events` | Unchanged |
+| `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
 A WASM manifest cannot declare `command`. A process manifest cannot declare `component` or `sha256`. Run `kawi plugin build <directory>` after every change so the component path and hash stay current.
@@ -44,13 +44,15 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `editor.apply_edit` | `editor-write.apply-edit` |
 | `editor.execute` | `editor-execute.execute` |
 | `editor.list_commands` | `editor-execute.list-commands` |
+| `config.get` | `config-read.get` |
+| `config.list` | `config-read.get-all` |
 | `ui.message` | `ui-message.message` |
 | `editor.set_diagnostics` | `diagnostics-publish.set` |
 | Process execution through `process.spawn` | `process-run.run` |
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
-An import that is not declared by the manifest is rejected before instantiation. Kawi enables every declared API for a managed plugin, so a declared import does not need a grant. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
+An import that is not declared by the manifest is rejected before instantiation. Kawi enables every declared API for a managed plugin, so a declared import does not need a grant. The settings methods are always available because they only expose the plugin's own namespace. Filesystem and network access use WASI instead of custom host methods, so the process JSON-RPC shapes do not carry over.
 
 ## Events
 
@@ -72,7 +74,7 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
-| `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish` | Host mediated | Host mediated |
+| `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` host interface |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
