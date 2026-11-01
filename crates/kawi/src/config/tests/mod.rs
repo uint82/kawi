@@ -3,6 +3,7 @@ use crate::keymap::Flavor;
 use kawi_editor::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 use std::path::PathBuf;
 
+mod statusline;
 mod themes;
 
 fn temp_dir(name: &str) -> PathBuf {
