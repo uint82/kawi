@@ -901,8 +901,17 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     for span in &syntax_spans {
         paint_span(out, pane, span, gutter_width, theme)?;
     }
-    for span in decoration_highlight_spans(pane.decorations, &view) {
-        paint_span(out, pane, &span, gutter_width, theme)?;
+    {
+        let mut painter = DecorationPainter {
+            out,
+            pane,
+            gutter_width,
+            theme,
+        };
+        let cursor = cursor_text_cell(pane, gutter_width);
+        for span in decoration_highlight_spans(pane.decorations, &view) {
+            painter.paint(&span, cursor)?;
+        }
     }
     for span in search_highlight_spans(pane.search_spans, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
@@ -1106,6 +1115,57 @@ fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<
 fn visual_cursor_cell(pane: &PaneFrame<'_>, gutter_width: usize) -> Option<(usize, usize)> {
     pane.selection.as_ref()?;
     Some((pane.row, pane.cursor_col.saturating_sub(gutter_width)))
+}
+
+fn cursor_text_cell(pane: &PaneFrame<'_>, gutter_width: usize) -> Option<(usize, usize)> {
+    Some((
+        pane.cursor_screen_row?,
+        pane.cursor_col.checked_sub(gutter_width)?,
+    ))
+}
+
+fn hidden_cell_offset(span: &HighlightSpan, cursor: (usize, usize)) -> Option<usize> {
+    if span.screen_row != cursor.0 {
+        return None;
+    }
+    let offset = cursor.1.checked_sub(span.from)?;
+    (offset < display_width(&span.text)).then_some(offset)
+}
+
+struct DecorationPainter<'a, 'b> {
+    out: &'a mut Stdout,
+    pane: &'a PaneFrame<'b>,
+    gutter_width: usize,
+    theme: &'a Theme,
+}
+
+impl DecorationPainter<'_, '_> {
+    fn paint(&mut self, span: &HighlightSpan, cursor: Option<(usize, usize)>) -> Result<()> {
+        paint_span(self.out, self.pane, span, self.gutter_width, self.theme)?;
+        let Some(offset) = cursor.and_then(|cursor| hidden_cell_offset(span, cursor)) else {
+            return Ok(());
+        };
+        let Tint::Plugin(style) = span.tint else {
+            return Ok(());
+        };
+        if !style.hidden {
+            return Ok(());
+        }
+        let text = display::slice_screen(&span.text, offset, offset + 1, self.pane.tabstop);
+        if text.is_empty() {
+            return Ok(());
+        }
+        let cell = HighlightSpan {
+            screen_row: span.screen_row,
+            from: span.from + offset,
+            text,
+            tint: Tint::Plugin(PluginStyle {
+                hidden: false,
+                ..style
+            }),
+        };
+        paint_span(self.out, self.pane, &cell, self.gutter_width, self.theme)
+    }
 }
 
 fn paint_span(
@@ -1977,6 +2037,18 @@ mod tests {
         text.lines().map(str::to_string).collect()
     }
 
+    fn plugin_style(hidden: bool) -> PluginStyle {
+        PluginStyle {
+            foreground: crossterm::style::Color::White,
+            background: crossterm::style::Color::Black,
+            accent: crossterm::style::Color::Blue,
+            bold: false,
+            italic: false,
+            underline: false,
+            hidden,
+        }
+    }
+
     fn span_view<'a>(lines: &'a [String], viewport: &'a Viewport) -> SpanView<'a> {
         SpanView {
             window: lines,
@@ -2579,18 +2651,7 @@ mod tests {
     fn plugin_virtual_text_follows_diagnostics() {
         let diagnostic =
             VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
-        let plugin = VirtualText::plugin(
-            "note",
-            crate::frame::PluginStyle {
-                foreground: crossterm::style::Color::White,
-                background: crossterm::style::Color::Black,
-                accent: crossterm::style::Color::Blue,
-                bold: false,
-                italic: false,
-                underline: false,
-                hidden: false,
-            },
-        );
+        let plugin = VirtualText::plugin("note", plugin_style(false));
         let segments = virtual_text_segments(0, 40, [&diagnostic, &plugin]);
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[1].column, 9);
@@ -2616,15 +2677,7 @@ mod tests {
 
     #[test]
     fn hidden_plugin_spans_apply_conceal() {
-        let style = crate::frame::PluginStyle {
-            foreground: crossterm::style::Color::White,
-            background: crossterm::style::Color::Black,
-            accent: crossterm::style::Color::Blue,
-            bold: false,
-            italic: false,
-            underline: false,
-            hidden: true,
-        };
+        let style = plugin_style(true);
         let mut out = Vec::new();
         paint_plugin(
             &mut out,
@@ -2637,6 +2690,20 @@ mod tests {
         let mut hidden = Vec::new();
         execute!(hidden, SetAttribute(Attribute::Hidden)).expect("hidden sequence");
         assert!(out.windows(hidden.len()).any(|window| window == hidden));
+    }
+
+    #[test]
+    fn hidden_cell_offset_matches_the_cursor_cell() {
+        let span = HighlightSpan {
+            screen_row: 2,
+            from: 4,
+            text: "TODO".to_string(),
+            tint: Tint::Plugin(plugin_style(true)),
+        };
+        assert_eq!(hidden_cell_offset(&span, (2, 4)), Some(0));
+        assert_eq!(hidden_cell_offset(&span, (2, 7)), Some(3));
+        assert_eq!(hidden_cell_offset(&span, (2, 8)), None);
+        assert_eq!(hidden_cell_offset(&span, (1, 4)), None);
     }
 
     #[test]
