@@ -281,12 +281,14 @@ fn failure(path: &Path, line: Option<usize>, key: &str, detail: &str) -> String 
     format!("{}: {key}: {}", location(path, line), one_line(detail))
 }
 
-fn location(path: &Path, line: Option<usize>) -> String {
+pub(super) fn location(path: &Path, line: Option<usize>) -> String {
     match line {
         Some(line) => format!("{}:{line}", path.display()),
         None => path.display().to_string(),
     }
 }
+
+mod write;
 
 #[cfg(test)]
 mod tests;
