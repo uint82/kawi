@@ -78,14 +78,16 @@ Plugins declare the host APIs they use in `plugin.toml`:
 "editor.read" = true
 "editor.write" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
+"editor.decorations" = true
 "ui.message" = true
 "ui.prompt" = true
 "ui.progress" = true
+"ui.statusline" = true
 ```
 
 Declarations are a compatibility and audit surface, not a user grant. Kawi enables every declared API for a managed plugin. The WebAssembly component can only import interfaces that it declared. A component that imports an undeclared interface fails to load. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
-Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `ui.prompt`, `ui.progress`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
+Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
 Plugins can declare settings and read their effective values without a capability declaration:
 
@@ -173,6 +175,8 @@ Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics
 - `editor.execute` runs a built-in editor command from the declared allowlist. Plugin commands and commands that require arguments are rejected.
 - `editor.list_commands` returns the allowed canonical command IDs, descriptions, and aliases.
 - `editor.set_diagnostics` replaces the plugin-published diagnostics for the current buffer. The buffer identifier and revision must match, and the buffer must have a file path.
+- `editor.set_decorations` replaces the plugin's highlights, virtual text, and gutter signs for one buffer and revision.
+- `ui.set_statusline` replaces the plugin's status line segments.
 - `ui.message` shows a status message.
 - `config.get` returns one effective setting value or `null`.
 - `config.list` returns every effective setting for the plugin, sorted by key.

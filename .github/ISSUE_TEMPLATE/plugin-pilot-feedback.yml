@@ -28,7 +28,7 @@ body:
     attributes:
       label: Versions
       description: Include the Kawi version, SDK version, and target.
-      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.3.0, wasm32-wasip2"
+      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.4.0, wasm32-wasip2"
     validations:
       required: true
   - type: dropdown

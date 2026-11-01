@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.3.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.3.0 bumps the WIT package, so rebuild components built against 0.2.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.4.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.4.0 bumps the WIT package, so rebuild components built against 0.3.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -131,6 +131,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
+- `editor.decorations` enables highlights, virtual text, and gutter signs. `ui.statusline` enables status line segments.
 - A component that imports an undeclared interface is rejected before it runs.
 - A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
 - On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
@@ -180,6 +181,71 @@ ui_progress::finish(id)?;
 ```
 
 `ui_progress::update` returns `true` after the user cancels. Stop promptly and call `ui_progress::finish`. Only one progress can be active across all plugins. Prompt calls do not count against `timeout_ms`; progress calls do. Users cancel with `:plugin cancel` or a key binding for `plugin.cancel`.
+
+## Visual customization
+
+Declare the visual APIs in `plugin.toml`:
+
+```toml
+[capabilities]
+"editor.decorations" = true
+"ui.statusline" = true
+```
+
+`editor_decorations::set` replaces every decoration the plugin published for one buffer and revision:
+
+```rust
+use kawi_plugin_sdk::types::{Decoration, DecorationStyle, Highlight, Position, VirtualText};
+use kawi_plugin_sdk::editor_decorations;
+
+editor_decorations::set(
+    state.buffer,
+    state.revision,
+    vec![
+        Decoration::Highlight(Highlight {
+            start: Position { line: 0, byte_column: 0 },
+            end: Position { line: 0, byte_column: 4 },
+            style: DecorationStyle::Info,
+        }),
+        Decoration::VirtualText(VirtualText {
+            line: 0,
+            text: "indexed".to_string(),
+            style: DecorationStyle::Muted,
+        }),
+    ],
+)?;
+```
+
+`editor_signs::set` publishes gutter signs. A sign must occupy exactly one terminal cell:
+
+```rust
+use kawi_plugin_sdk::editor_signs;
+use kawi_plugin_sdk::types::DecorationStyle;
+
+editor_signs::set(
+    state.buffer,
+    state.revision,
+    vec![kawi_plugin_sdk::editor_signs::Sign {
+        line: 0,
+        text: "!".to_string(),
+        style: DecorationStyle::Error,
+    }],
+)?;
+```
+
+`ui_statusline::set` replaces the plugin's status line segments. They appear where the `plugins` element is placed in `[ui.statusline]`:
+
+```rust
+use kawi_plugin_sdk::ui_statusline;
+
+ui_statusline::set(vec![ui_statusline::StatuslineSegment {
+    text: "indexed".to_string(),
+    style: kawi_plugin_sdk::types::DecorationStyle::Success,
+    priority: 10,
+}])?;
+```
+
+Decorations are data. The host owns colors, layout, and rendering. They are dropped when the plugin stops or the buffer revision changes, so publish again after a `buffer_changed` event. Diagnostics outrank plugin signs, and plugin signs outrank Git signs. Themes remain separate data packages and are not part of the executable plugin API.
 
 ## Settings
 
@@ -266,4 +332,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.3.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.4.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

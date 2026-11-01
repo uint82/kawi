@@ -16,9 +16,11 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.read` | none | Read editor state and receive editor events |
 | `editor.write` | none | Apply text edits |
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
+| `editor.decorations` | none | Publish buffer highlights, virtual text, and gutter signs |
 | `ui.message` | none | Show status messages |
 | `ui.prompt` | none | Request text input, a selection, or confirmation |
 | `ui.progress` | none | Show cancellable progress |
+| `ui.statusline` | none | Publish status line segments |
 | `diagnostics.read` | none | Receive diagnostics events |
 | `diagnostics.publish` | none | Publish diagnostics for the current buffer |
 | `fs.read` | `paths` | Read files under the declared paths |
@@ -33,9 +35,11 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "editor.read" = true
 "editor.write" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
+"editor.decorations" = true
 "ui.message" = true
 "ui.prompt" = true
 "ui.progress" = true
+"ui.statusline" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
@@ -58,6 +62,52 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 The plugin can call `editor.list_commands` to discover the allowed commands and `editor.execute` to run one. Listing returns canonical IDs, descriptions, and aliases. The scope is an allowlist: a command outside the list returns `-32012`. Plugin-defined commands, `keys.send`, and commands that require arguments are not composable and return `-32602`.
 
 The editor runs the command synchronously before responding. Changes made by the command carry the `plugin:<name>` change origin.
+
+## Visual customization
+
+`editor.decorations` enables `editor.set_decorations`. A plugin replaces all of its decorations for one buffer and revision in a single call. Decorations are data: the host owns layout, colors, and rendering. They are dropped when the plugin stops or the buffer revision changes.
+
+```json
+{
+  "buffer": 1,
+  "revision": 12,
+  "decorations": [
+    {
+      "kind": "highlight",
+      "start": {"line": 4, "byte_column": 0},
+      "end": {"line": 4, "byte_column": 8},
+      "style": "info"
+    },
+    {
+      "kind": "virtual_text",
+      "line": 4,
+      "text": "indexed",
+      "style": "muted"
+    },
+    {
+      "kind": "sign",
+      "line": 4,
+      "text": "!",
+      "style": "error"
+    }
+  ]
+}
+```
+
+Styles are `accent`, `info`, `success`, `warning`, `error`, and `muted`. A sign must occupy exactly one terminal cell. Highlights must be ordered and inside the buffer. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign. Diagnostics outrank plugin signs, and plugin signs outrank Git signs.
+
+`ui.statusline` enables `ui.set_statusline`. A plugin replaces all of its status line segments. Segments are shown where the `plugins` element appears in `[ui.statusline]` and are ordered by descending `priority`, then by plugin name.
+
+```json
+{
+  "segments": [
+    {"text": "indexed 12/12", "style": "success", "priority": 10},
+    {"text": "lint", "style": "warning", "priority": 5}
+  ]
+}
+```
+
+Kawi accepts at most 16 segments and 256 bytes of text per segment. Control characters and terminal escapes are removed before display.
 
 ## Interactive UI
 

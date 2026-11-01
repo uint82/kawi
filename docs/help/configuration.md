@@ -151,13 +151,13 @@ git_signs = true
 
 ## Status line
 
-The status line is built from element lists for the left, center, and right sections. Elements render only when they have content, and empty elements do not leave separators.
+The status line is built from element lists for the left, center, and right sections. Elements render only when they have content, and empty elements do not leave separators. The `plugins` element expands to the segments published by running plugins and is hidden in inactive windows.
 
 ```toml
 [ui.statusline]
 left = ["mode", "file", "modified", "readonly", "git"]
 center = []
-right = ["filetype", "encoding", "position"]
+right = ["plugins", "filetype", "encoding", "position"]
 separator = " "
 color_modes = false
 
@@ -177,7 +177,7 @@ Available elements:
 - `git`, `lsp`
 - `selection`, `macro`
 - `filetype`, `indent`, `encoding`, `eol`
-- `percent`, `position`
+- `percent`, `position`, `plugins`
 
 The `file` element is flexible and truncates from the left when space is short, keeping the end of the path. `mode` and `position` are the last elements to survive. Inactive windows show only the file and modified state.
 
