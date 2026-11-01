@@ -90,7 +90,7 @@ fill = "foreground"
 italic = true
 ```
 
-The optional keys are `foreground`, `background`, `fill`, `bold`, `italic`, and `underline`. `fill` accepts `both`, `foreground`, or `background`. Omitted fields inherit the group defaults and the semantic `[decorations]` colors. Overrides for plugins or groups that are not installed are ignored.
+The optional keys are `foreground`, `background`, `fill`, `bold`, `italic`, `underline`, and `hidden`. `fill` accepts `both`, `foreground`, or `background`. `hidden` conceals the text while preserving its background. Omitted fields inherit the group defaults and the semantic `[decorations]` colors. Overrides for plugins or groups that are not installed are ignored.
 
 ## Status line colors
 
