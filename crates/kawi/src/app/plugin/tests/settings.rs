@@ -3,43 +3,13 @@ use std::fs;
 use kawi_plugin::INVALID_PARAMS;
 use serde_json::{json, Value};
 
-use super::common::{app, load_plugins, manifest, temp_dir};
+use super::common::{
+    app, configurable_plugin, load_plugins, load_settings_plugin, manifest, temp_dir,
+    CONFIGURABLE_PLUGIN,
+};
 use crate::app::App;
 
-const PLUGIN: &str = "configurable";
-
-fn write_plugin(root: &std::path::Path) {
-    let dir = root.join(PLUGIN);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        r#"name = "configurable"
-version = "0.1.0"
-protocol = 1
-command = ["/bin/true"]
-
-[settings.size]
-type = "integer"
-default = 10
-minimum = 1
-maximum = 20
-
-[settings.mode]
-type = "string"
-default = "auto"
-enum = ["auto", "dark"]
-"#,
-    )
-    .unwrap();
-}
-
-fn load(root: &std::path::Path) -> App {
-    write_plugin(root);
-    let mut app = app();
-    let warnings = load_plugins(&mut app, root);
-    assert!(warnings.is_empty(), "{warnings:?}");
-    app
-}
+const PLUGIN: &str = CONFIGURABLE_PLUGIN;
 
 fn get(app: &mut App, key: &str) -> Option<Value> {
     let value = app
@@ -69,7 +39,7 @@ fn list(app: &mut App) -> Vec<(String, Value)> {
 #[test]
 fn gets_defaults_and_missing_values() {
     let root = temp_dir("config-get");
-    let mut app = load(&root);
+    let mut app = load_settings_plugin(&root);
     assert_eq!(get(&mut app, "size"), Some(json!(10)));
     assert_eq!(get(&mut app, "mode"), Some(json!("auto")));
     assert_eq!(get(&mut app, "missing"), None);
@@ -84,7 +54,7 @@ fn applies_user_values_and_lists_them_sorted() {
         "[configurable]\nmode = \"dark\"\nsize = 4\n",
     )
     .unwrap();
-    let mut app = load(&root);
+    let mut app = load_settings_plugin(&root);
     assert_eq!(get(&mut app, "size"), Some(json!(4)));
     assert_eq!(
         list(&mut app),
@@ -99,7 +69,7 @@ fn applies_user_values_and_lists_them_sorted() {
 #[test]
 fn reloads_changed_settings_without_restarting_the_plugin() {
     let root = temp_dir("config-reload");
-    let mut app = load(&root);
+    let mut app = load_settings_plugin(&root);
     assert_eq!(get(&mut app, "size"), Some(json!(10)));
     fs::write(root.join("plugins.toml"), "[configurable]\nsize = 7\n").unwrap();
     assert_eq!(get(&mut app, "size"), Some(json!(7)));
@@ -109,7 +79,7 @@ fn reloads_changed_settings_without_restarting_the_plugin() {
 #[test]
 fn inspect_lists_declared_settings() {
     let root = temp_dir("config-inspect");
-    let mut app = load(&root);
+    let mut app = load_settings_plugin(&root);
     app.handle_plugin_command("inspect configurable");
     let lines = app.pager.as_ref().expect("pager");
     assert!(
@@ -122,7 +92,7 @@ fn inspect_lists_declared_settings() {
 #[test]
 fn invalid_values_fall_back_and_are_logged() {
     let root = temp_dir("config-invalid");
-    write_plugin(&root);
+    configurable_plugin(&root);
     fs::write(root.join("plugins.toml"), "[configurable]\nsize = 0\n").unwrap();
     let mut app = app();
     let warnings = load_plugins(&mut app, &root);
@@ -167,7 +137,7 @@ fn plugins_without_settings_return_empty_values() {
 #[test]
 fn rejects_invalid_setting_keys() {
     let root = temp_dir("config-key");
-    let mut app = load(&root);
+    let mut app = load_settings_plugin(&root);
     for key in ["", &"x".repeat(65), "Bad", "with space"] {
         let error = app
             .handle_plugin_request(PLUGIN, "config.get", json!({ "key": key }))

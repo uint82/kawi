@@ -7,6 +7,7 @@ mod manager;
 mod queue;
 mod reload;
 mod settings;
+mod settings_ui;
 mod ui;
 mod wasm;
 #[cfg(feature = "wasm")]

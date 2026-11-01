@@ -62,6 +62,41 @@ pub(super) fn copy_example_plugin(root: &Path, name: &str) -> PathBuf {
     dir
 }
 
+pub(super) const CONFIGURABLE_PLUGIN: &str = "configurable";
+
+pub(super) fn configurable_plugin(root: &Path) {
+    let dir = root.join(CONFIGURABLE_PLUGIN);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "configurable"
+version = "0.1.0"
+protocol = 1
+command = ["/bin/true"]
+
+[settings.size]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 20
+
+[settings.mode]
+type = "string"
+default = "auto"
+enum = ["auto", "dark"]
+"#,
+    )
+    .unwrap();
+}
+
+pub(super) fn load_settings_plugin(root: &Path) -> App {
+    configurable_plugin(root);
+    let mut app = app();
+    let warnings = load_plugins(&mut app, root);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    app
+}
+
 pub(super) fn configure_plugin_manager(app: &mut App, root: &std::path::Path) {
     app.plugin_manager.configure_for_test(
         root.join("installed"),
