@@ -1,4 +1,5 @@
 use std::fs;
+use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
@@ -6,7 +7,8 @@ use kawi_editor::Mode;
 
 use super::super::App;
 use super::*;
-use crate::keymap::Flavor;
+use crate::keymap::config::KeymapLoad;
+use crate::keymap::{default_leaders, Binding, BindingSource, Flavor, KeyContext, KeySequence};
 use crate::test_support::temp_dir;
 
 fn app_with_explorer(dir: &std::path::Path) -> App {
@@ -20,6 +22,44 @@ fn app_with_explorer(dir: &std::path::Path) -> App {
 fn press(app: &mut App, code: KeyCode) {
     app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
         .expect("key");
+}
+
+fn leader_toggle(app: &mut App) {
+    press(app, KeyCode::Char(' '));
+    press(app, KeyCode::Char('e'));
+    press(app, KeyCode::Char('e'));
+}
+
+fn assert_leader_toggle_round_trip(app: &mut App) {
+    leader_toggle(app);
+    assert!(app.explorer.is_visible());
+    assert!(app.explorer.is_focused());
+    leader_toggle(app);
+    assert!(!app.explorer.is_visible());
+    assert!(!app.explorer.is_focused());
+}
+
+fn app_with_hidden_explorer() -> App {
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.set_screen_size(80, 24);
+    app.explorer.set_enabled(true);
+    app
+}
+
+fn bind_command(app: &mut App, name: &str, keys: &str) {
+    let command = app.commands.find(name).expect("command");
+    let binding = Binding::new(
+        command,
+        KeyContext::Normal,
+        KeySequence::parse(keys, &default_leaders()).expect("keys"),
+        BindingSource::User,
+    );
+    app.apply_keymaps(KeymapLoad {
+        leader: default_leaders(),
+        timeout: Duration::from_secs(1),
+        bindings: vec![binding],
+        warnings: Vec::new(),
+    });
 }
 
 fn row_names(app: &App) -> Vec<&str> {
@@ -70,11 +110,47 @@ fn leader_toggle_closes_the_focused_explorer() {
     let dir = temp_dir("explorer_leader_close");
     fs::write(dir.join("a.txt"), "").unwrap();
     let mut app = app_with_explorer(&dir);
-    press(&mut app, KeyCode::Char(' '));
-    press(&mut app, KeyCode::Char('e'));
-    press(&mut app, KeyCode::Char('e'));
+    leader_toggle(&mut app);
     assert!(!app.explorer.is_visible());
     assert!(!app.explorer.is_focused());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn leader_toggle_opens_and_closes_without_waiting() {
+    let mut app = app_with_hidden_explorer();
+    assert_leader_toggle_round_trip(&mut app);
+}
+
+#[test]
+fn leader_toggle_closes_with_leader_prefixed_mappings() {
+    let mut app = app_with_hidden_explorer();
+    bind_command(&mut app, "mode.visual", "<leader>pp");
+    assert_leader_toggle_round_trip(&mut app);
+}
+
+#[test]
+fn leader_command_runs_with_focused_explorer() {
+    let dir = temp_dir("explorer_leader_command");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    bind_command(&mut app, "mode.visual", "<leader>pp");
+    press(&mut app, KeyCode::Char(' '));
+    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Char('p'));
+    assert_eq!(app.editor.mode(), Mode::Visual);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn configured_mapping_runs_with_focused_explorer() {
+    let dir = temp_dir("explorer_configured_mapping");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    bind_command(&mut app, "mode.visual", "gx");
+    press(&mut app, KeyCode::Char('g'));
+    press(&mut app, KeyCode::Char('x'));
+    assert_eq!(app.editor.mode(), Mode::Visual);
     fs::remove_dir_all(dir).unwrap();
 }
 
