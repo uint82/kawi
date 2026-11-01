@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-11-01
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.3.0 (`kawi:plugin@0.3.0`).
+- Components built against `kawi:plugin@0.2.0` must be rebuilt with this release.
+
+### Added
+
+- Add the `ui-prompt` interface for text input, selection, and confirmation.
+- Add the `ui-progress` interface for cancellable progress reporting.
+- Add `ui_prompt` and `ui_progress` re-exports with typed prompt outcomes.
+- Add the `UI_BUSY` error code and `ErrorKind::Busy`.
+
 ## 0.2.0 - 2026-11-01
 
 ### Breaking

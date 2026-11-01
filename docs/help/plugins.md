@@ -63,6 +63,7 @@ On startup Kawi ignores an installed plugin that is missing from the lockfile, o
 - `:plugin reload` reloads manifests from disk.
 - `:plugin restart [plugin]` restarts one plugin or every plugin.
 - `:plugin logs [plugin]` shows plugin logs.
+- `:plugin cancel` cancels the active plugin progress.
 - `:plugin inspect <plugin>` shows the manifest, declared host APIs, settings, component hash, and WebAssembly imports.
 
 Use `:commands` to discover plugin command names. Plugin commands appear with a `[plugin: name]` marker.
@@ -77,11 +78,13 @@ Plugins declare the host APIs they use in `plugin.toml`:
 "editor.write" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
 "ui.message" = true
+"ui.prompt" = true
+"ui.progress" = true
 ```
 
 Declarations are a compatibility and audit surface, not a user grant. Kawi enables every declared API for a managed plugin. The WebAssembly component can only import interfaces that it declared. A component that imports an undeclared interface fails to load. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
-Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
+Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `ui.message`, `ui.prompt`, `ui.progress`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
 Plugins can declare settings and read their effective values without a capability declaration:
 

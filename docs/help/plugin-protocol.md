@@ -91,7 +91,7 @@ Content-Length: <bytes>\r\n
 4. Kawi sends `invoke_command`.
 5. The process exits when Kawi shuts down or the host sends `shutdown`.
 
-Kawi supports one in-flight invocation per plugin. Calls from the plugin to the host may happen while an invocation is running. A timed-out invocation sends `$/cancelRequest` and restarts the process.
+Kawi supports one in-flight invocation per plugin. Calls from the plugin to the host may happen while an invocation is running. Prompt calls suspend the invocation timeout until the user responds. Other calls, including progress updates, remain bounded by the timeout. A timed-out invocation sends `$/cancelRequest` and restarts the process.
 
 ## Initialize
 
@@ -106,8 +106,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 4,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "config.get", "config.list"],
+    "protocol_minor": 5,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -122,11 +122,11 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 4,
+    "protocol_minor": 5,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "config.get", "config.list"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -351,6 +351,96 @@ Request params:
 
 Result is `null`. Kawi strips terminal escape sequences and replaces control characters with spaces before displaying the message.
 
+### ui.input
+
+Request params:
+
+```json
+{"title": "Name", "placeholder": "Ada", "value": null, "max_length": 64}
+```
+
+Result:
+
+```json
+{"kind": "text", "value": "Ada"}
+```
+
+Result is `{"kind": "canceled"}` when the user cancels. `max_length` is optional, defaults to 1024, and must be between 1 and 4096. The call suspends the invocation timeout until the user responds. Interactive calls require an integer request id and the `ui.prompt` declaration.
+
+### ui.select
+
+Request params:
+
+```json
+{"title": "Target", "options": ["debug", "release"], "selected": 0}
+```
+
+Result:
+
+```json
+{"kind": "selected", "value": "release"}
+```
+
+Result is `{"kind": "canceled"}` when the user cancels. Options must be non-empty, unique, and at most 512 bytes each. `selected` is the initial index and must be within bounds.
+
+### ui.confirm
+
+Request params:
+
+```json
+{"title": "Delete file?", "message": "This cannot be undone"}
+```
+
+Result:
+
+```json
+{"kind": "confirmed", "value": true}
+```
+
+Result is `{"kind": "canceled"}` when the user dismisses the prompt.
+
+### ui.progress_start
+
+Request params:
+
+```json
+{"title": "Indexing", "message": "src/main.rs", "fraction": 0.25}
+```
+
+Result:
+
+```json
+{"id": 1}
+```
+
+`fraction` is optional and must be between 0 and 1. Replaces an active progress only after the user has canceled it.
+
+### ui.progress_update
+
+Request params:
+
+```json
+{"id": 1, "message": "src/lib.rs", "fraction": 0.5}
+```
+
+Result:
+
+```json
+{"canceled": false}
+```
+
+`message` and `fraction` are optional. `canceled` becomes `true` after a cancel request; the plugin should stop and finish the progress.
+
+### ui.progress_finish
+
+Request params:
+
+```json
+{"id": 1}
+```
+
+Result is `null`. Always finish a started progress. An unknown id returns `-32602`.
+
 ### config.get
 
 Request params:
@@ -403,6 +493,7 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32012` | Capability denied |
 | `-32020` | Request canceled |
 | `-32030` | Plugin unavailable |
+| `-32040` | Interactive UI is busy |
 
 Transport failures are host errors, not JSON-RPC errors. A process exit fails in-flight requests with `plugin process exited`.
 
