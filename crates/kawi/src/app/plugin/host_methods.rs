@@ -23,6 +23,8 @@ impl App {
         match method {
             "editor.get_state" => self.plugin_get_state(params),
             "editor.apply_edit" => self.plugin_apply_edit(params),
+            "editor.execute" => self.plugin_execute_command(plugin, params),
+            "editor.list_commands" => self.plugin_list_commands(plugin, params),
             "editor.set_diagnostics" => self.plugin_set_diagnostics(plugin, params),
             "ui.message" => self.plugin_message(plugin, params),
             _ => Err(RpcError::method_not_found(method)),
@@ -198,7 +200,7 @@ fn mode_name(mode: Mode) -> &'static str {
     }
 }
 
-fn invalid_params(error: serde_json::Error) -> RpcError {
+pub(super) fn invalid_params(error: serde_json::Error) -> RpcError {
     RpcError::invalid_params(error.to_string())
 }
 

@@ -1,5 +1,6 @@
 mod coalesce;
 mod commands;
+mod composition;
 mod diagnostics;
 mod events;
 mod host_methods;

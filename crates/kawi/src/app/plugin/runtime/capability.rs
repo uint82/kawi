@@ -21,6 +21,22 @@ impl PluginRuntime {
         self.capabilities.has(plugin, capability)
     }
 
+    pub(crate) fn editor_commands(&self, plugin: &str) -> Vec<String> {
+        match self.capabilities.scope(plugin, Capability::EditorExecute) {
+            Some(Scope::EditorCommands(commands)) => commands,
+            _ => Vec::new(),
+        }
+    }
+
+    pub(crate) fn allows_editor_command(&self, plugin: &str, command: &str) -> bool {
+        match self.capabilities.scope(plugin, Capability::EditorExecute) {
+            Some(Scope::EditorCommands(commands)) => {
+                commands.iter().any(|allowed| allowed == command)
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn is_wasm(&self, plugin: &str) -> bool {
         self.catalog.plugins.iter().any(|loaded| {
             loaded.manifest.name == plugin

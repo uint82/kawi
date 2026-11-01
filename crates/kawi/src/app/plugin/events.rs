@@ -101,9 +101,9 @@ impl App {
         }
         let redraw = matches!(
             method,
-            "editor.apply_edit" | "editor.set_diagnostics" | "ui.message"
+            "editor.apply_edit" | "editor.execute" | "editor.set_diagnostics" | "ui.message"
         );
-        if method == "editor.apply_edit" {
+        if matches!(method, "editor.apply_edit" | "editor.execute") {
             self.editor
                 .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
         }
