@@ -73,6 +73,25 @@ background = "#f2c27b"
 
 Omitted styles derive their colors from the rest of the theme.
 
+### Plugin decoration groups
+
+Plugins declare named decoration groups in their manifest. Override a group with `[plugin_decorations.<plugin>.<group>]`:
+
+```toml
+[plugin_decorations.markers.todo]
+foreground = "#10171a"
+background = "#6ed0f0"
+fill = "both"
+italic = true
+
+[plugin_decorations.markers.todo_text]
+foreground = "#6ed0f0"
+fill = "foreground"
+italic = true
+```
+
+The optional keys are `foreground`, `background`, `fill`, `bold`, `italic`, and `underline`. `fill` accepts `both`, `foreground`, or `background`. Omitted fields inherit the group defaults and the semantic `[decorations]` colors. Overrides for plugins or groups that are not installed are ignored.
+
 ## Status line colors
 
 Status line segments derive their colors from `status`, `diagnostics`, `git`, `selection`, and the base palette. Colored segments use a filled background badge with horizontal padding, and the base background as the default foreground. Padding is dropped before the mode label is shortened. Override individual segments with a `[statusline]` table:

@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.4.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.4.0 bumps the WIT package, so rebuild components built against 0.3.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.5.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.5.0 bumps the WIT package, so rebuild components built against 0.4.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -184,30 +184,44 @@ ui_progress::finish(id)?;
 
 ## Visual customization
 
-Declare the visual APIs in `plugin.toml`:
+Declare the visual APIs and the decoration groups in `plugin.toml`:
 
 ```toml
 [capabilities]
 "editor.decorations" = true
 "ui.statusline" = true
+
+[[decorations]]
+id = "todo"
+color = "info"
+fill = "both"
+italic = true
+
+[[decorations]]
+id = "todo_text"
+color = "info"
+fill = "foreground"
+italic = true
 ```
+
+Group IDs are local to the plugin. They use lowercase letters, digits, hyphens, and underscores, and may not use the built-in style names `accent`, `info`, `success`, `warning`, `error`, or `muted`. `color` selects the semantic base color. `fill` accepts `both`, `foreground`, or `background`. `bold`, `italic`, and `underline` set text attributes.
 
 `editor_decorations::set` replaces every decoration the plugin published for one buffer and revision:
 
 ```rust
-use kawi_plugin_sdk::types::{Decoration, DecorationStyle, Highlight, Position, VirtualText};
 use kawi_plugin_sdk::editor_decorations;
+use kawi_plugin_sdk::types::{Decoration, Highlight, Position, VirtualText};
 
 let decorations = vec![
     Decoration::Highlight(Highlight {
         start: Position { line: 0, byte_column: 0 },
         end: Position { line: 0, byte_column: 4 },
-        style: DecorationStyle::Info,
+        group: "todo".to_string(),
     }),
     Decoration::VirtualText(VirtualText {
         line: 0,
         text: "indexed".to_string(),
-        style: DecorationStyle::Muted,
+        group: "todo_text".to_string(),
     }),
 ];
 editor_decorations::set(state.buffer, state.revision, &decorations)?;
@@ -217,15 +231,31 @@ editor_decorations::set(state.buffer, state.revision, &decorations)?;
 
 ```rust
 use kawi_plugin_sdk::editor_signs;
-use kawi_plugin_sdk::types::DecorationStyle;
 
 let signs = vec![kawi_plugin_sdk::editor_signs::Sign {
     line: 0,
     text: "!".to_string(),
-    style: DecorationStyle::Error,
+    group: "todo".to_string(),
 }];
 editor_signs::set(state.buffer, state.revision, &signs)?;
 ```
+
+Themes customize a group without changing the plugin:
+
+```toml
+[plugin_decorations.markers.todo]
+foreground = "#10171a"
+background = "#6ed0f0"
+fill = "both"
+italic = true
+
+[plugin_decorations.markers.todo_text]
+foreground = "#6ed0f0"
+fill = "foreground"
+italic = true
+```
+
+Theme overrides apply only to declared groups. Colors may use hex values or palette names. A theme may override colors, fill, and attributes independently.
 
 `ui_statusline::set` replaces the plugin's status line segments. They appear where the `plugins` element is placed in `[ui.statusline]`:
 
@@ -327,4 +357,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.4.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.5.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

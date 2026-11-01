@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
 
 ## Trust model
 
@@ -106,7 +106,7 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 8,
+    "protocol_minor": 9,
     "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
@@ -122,7 +122,7 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 8,
+    "protocol_minor": 9,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
@@ -355,19 +355,19 @@ Request params:
       "kind": "highlight",
       "start": {"line": 4, "byte_column": 0},
       "end": {"line": 4, "byte_column": 8},
-      "style": "info"
+      "group": "todo"
     },
     {
       "kind": "virtual_text",
       "line": 4,
       "text": "indexed",
-      "style": "muted"
+      "group": "todo_text"
     },
     {
       "kind": "sign",
       "line": 4,
       "text": "!",
-      "style": "error"
+      "group": "todo"
     }
   ]
 }
@@ -375,7 +375,7 @@ Request params:
 
 Result is `null`.
 
-Requires the `editor.decorations` capability. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010`. `scope` defaults to `all` and accepts `all`, `visual`, or `signs`. `all` replaces every decoration published by that plugin for the buffer. `visual` replaces highlights and virtual text while preserving signs. `signs` replaces signs while preserving highlights and virtual text. An empty array clears the selected scope. A decoration kind outside the selected scope returns `-32602`. Styles are `accent`, `info`, `success`, `warning`, `error`, and `muted`. Highlights must be ordered and inside the buffer. A virtual text or sign line must be inside the buffer. Sign text must occupy exactly one terminal cell. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign; a payload that exceeds a limit returns `-32602`. Decorations remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
+Requires the `editor.decorations` capability. `buffer` and `revision` must match the current buffer. A stale buffer or revision returns `-32010`. `scope` defaults to `all` and accepts `all`, `visual`, or `signs`. `all` replaces every decoration published by that plugin for the buffer. `visual` replaces highlights and virtual text while preserving signs. `signs` replaces signs while preserving highlights and virtual text. An empty array clears the selected scope. A decoration kind outside the selected scope returns `-32602`. Each decoration sets exactly one of `group` or `style`. `group` must be declared in the plugin manifest. `style` is the legacy built-in fallback and accepts `accent`, `info`, `success`, `warning`, `error`, and `muted`. Highlights must be ordered and inside the buffer. A virtual text or sign line must be inside the buffer. Sign text must occupy exactly one terminal cell. Kawi accepts at most 10,000 decorations and 512 bytes of text per virtual text or sign; a payload that exceeds a limit returns `-32602`. Decorations remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
 
 ### ui.set_statusline
 
