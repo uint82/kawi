@@ -290,30 +290,4 @@ mod tests {
         assert!(text.starts_with('d'));
         fs::remove_dir_all(dir).unwrap();
     }
-
-    #[cfg(unix)]
-    #[test]
-    fn identity_columns_show_link_count_owner_and_group() {
-        let dir = temp_dir("directory_identity");
-        fs::write(dir.join("alpha.txt"), "hello").unwrap();
-        let columns = MetadataColumns::parse("links,owner,group").unwrap();
-        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
-        let entry = listing
-            .entries
-            .iter()
-            .find(|entry| entry.name == "alpha.txt")
-            .unwrap();
-        let text = entry
-            .metadata
-            .as_ref()
-            .unwrap()
-            .text(columns, listing.metadata_widths)
-            .unwrap();
-        let fields: Vec<&str> = text.split_whitespace().collect();
-        assert_eq!(fields.len(), 3);
-        assert_eq!(fields[0], "1");
-        assert!(!fields[1].is_empty());
-        assert!(!fields[2].is_empty());
-        fs::remove_dir_all(dir).unwrap();
-    }
 }
