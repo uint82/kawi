@@ -65,6 +65,7 @@ mod status;
 mod symbols;
 mod task;
 mod terminal_ui;
+mod text_input;
 mod undo;
 mod undo_commands;
 #[cfg(test)]

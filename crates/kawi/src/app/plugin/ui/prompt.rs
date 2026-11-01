@@ -1,11 +1,14 @@
 use std::collections::BTreeSet;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use kawi_picker::{Picker, PickerOutcome, PickerRow, TextInput};
 use kawi_plugin::{RpcError, UiConfirmParams, UiInputParams, UiPromptOutcome, UiSelectParams};
 use kawi_tui::frame::PromptMenu;
 use serde_json::Value;
 
+use super::super::super::text_input::{
+    handle_text_input, insert_text, is_cancel, TextInputOutcome,
+};
 use super::super::text::sanitize;
 use super::validation::{
     optional_text, required_text, DEFAULT_INPUT_BYTES, MAX_INPUT_BYTES, MAX_MESSAGE_BYTES,
@@ -141,7 +144,9 @@ impl PromptSession {
 
     pub(super) fn paste(&mut self, text: &str) {
         match &mut self.kind {
-            PromptKind::Input(prompt) => insert_text(prompt, text),
+            PromptKind::Input(prompt) => {
+                insert_text(&mut prompt.input, text, prompt.max_length);
+            }
             PromptKind::Select(picker) => picker.insert_text(text),
             PromptKind::Confirm(_) => {}
         }
@@ -171,44 +176,12 @@ impl PromptSession {
     }
 }
 
-fn insert_text(prompt: &mut InputPrompt, text: &str) {
-    for character in text.chars().filter(|character| !character.is_control()) {
-        if prompt.input.text().chars().count() >= prompt.max_length {
-            break;
-        }
-        prompt.input.insert_char(character);
-    }
-}
-
 fn handle_input_key(prompt: &mut InputPrompt, key: KeyEvent) -> Option<UiPromptOutcome> {
-    if is_cancel(key) {
-        return Some(UiPromptOutcome::Canceled);
+    match handle_text_input(&mut prompt.input, key, prompt.max_length) {
+        TextInputOutcome::Cancel => Some(UiPromptOutcome::Canceled),
+        TextInputOutcome::Submit => Some(UiPromptOutcome::Text(prompt.input.text().to_string())),
+        TextInputOutcome::Consumed => None,
     }
-    match key.code {
-        KeyCode::Enter => return Some(UiPromptOutcome::Text(prompt.input.text().to_string())),
-        KeyCode::Left => prompt.input.move_left(),
-        KeyCode::Right => prompt.input.move_right(),
-        KeyCode::Home => prompt.input.move_home(),
-        KeyCode::End => prompt.input.move_end(),
-        KeyCode::Backspace => prompt.input.backspace(),
-        KeyCode::Delete => prompt.input.delete(),
-        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            prompt.input.clear();
-        }
-        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            prompt.input.delete_word();
-        }
-        KeyCode::Char(character)
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-                && prompt.input.text().chars().count() < prompt.max_length =>
-        {
-            prompt.input.insert_char(character);
-        }
-        _ => {}
-    }
-    None
 }
 
 fn handle_select_key(picker: &mut Picker, key: KeyEvent) -> Option<UiPromptOutcome> {
@@ -228,11 +201,6 @@ fn handle_confirm_key(key: KeyEvent) -> Option<UiPromptOutcome> {
         KeyCode::Char('n' | 'N') => Some(UiPromptOutcome::Confirmed(false)),
         _ => None,
     }
-}
-
-fn is_cancel(key: KeyEvent) -> bool {
-    key.code == KeyCode::Esc
-        || (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c'))
 }
 
 fn select_row(option: &str, index: usize) -> Result<PickerRow, RpcError> {
