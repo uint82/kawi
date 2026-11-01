@@ -5,23 +5,26 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
     ApplyEditParams, ApplyEditResult, ConfigGetParams, ConfigGetResult, ConfigListResult,
-    EditorExecuteParams, GetStateParams, RpcError, SetDiagnosticsParams, UiMessageParams,
-    PLUGIN_UNAVAILABLE,
+    EditorExecuteParams, GetStateParams, RpcError, SetDecorationsParams, SetDiagnosticsParams,
+    SetStatuslineParams, UiMessageParams, PLUGIN_UNAVAILABLE,
 };
 
 pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
 
+use super::bindings::kawi::plugin::editor_signs::Sign as WitSign;
 use super::bindings::kawi::plugin::types::{
-    CommandInfo, Edit, Error, ProcessOutput, Setting, SettingValue, State,
+    CommandInfo, Decoration, Edit, Error, ProcessOutput, Setting, SettingValue, State,
 };
+use super::bindings::kawi::plugin::ui_statusline::StatuslineSegment as WitStatuslineSegment;
 use super::bindings::kawi::plugin::{
-    config_read, diagnostics_publish, editor_execute, editor_read, editor_write, process_run,
-    types, ui_message,
+    config_read, diagnostics_publish, editor_decorations, editor_execute, editor_read,
+    editor_signs, editor_write, process_run, types, ui_message, ui_statusline,
 };
 use super::byte_budget::NetworkBudget;
 use super::convert::{
-    command_infos_from_json, diagnostics_to_protocol, edits_to_protocol, error_from_rpc,
-    setting_value_from_json, settings_from_json, state_from_json,
+    command_infos_from_json, decorations_to_protocol, diagnostics_to_protocol, edits_to_protocol,
+    error_from_rpc, setting_value_from_json, settings_from_json, signs_to_protocol,
+    state_from_json, statusline_to_protocol,
 };
 use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
@@ -207,6 +210,51 @@ impl diagnostics_publish::Host for WasmState {
             .map_err(error_from_rpc)?;
         let _ = value;
         Ok(())
+    }
+}
+
+impl editor_decorations::Host for WasmState {
+    fn set(
+        &mut self,
+        buffer: u64,
+        revision: u64,
+        decorations: Vec<Decoration>,
+    ) -> Result<(), Error> {
+        let params = serialize_params(SetDecorationsParams {
+            buffer,
+            revision,
+            decorations: decorations_to_protocol(decorations).map_err(error_from_rpc)?,
+        })?;
+        self.bridge
+            .request("editor.set_decorations", params)
+            .map(|_| ())
+            .map_err(error_from_rpc)
+    }
+}
+
+impl editor_signs::Host for WasmState {
+    fn set(&mut self, buffer: u64, revision: u64, signs: Vec<WitSign>) -> Result<(), Error> {
+        let params = serialize_params(SetDecorationsParams {
+            buffer,
+            revision,
+            decorations: signs_to_protocol(signs),
+        })?;
+        self.bridge
+            .request("editor.set_decorations", params)
+            .map(|_| ())
+            .map_err(error_from_rpc)
+    }
+}
+
+impl ui_statusline::Host for WasmState {
+    fn set(&mut self, segments: Vec<WitStatuslineSegment>) -> Result<(), Error> {
+        let params = serialize_params(SetStatuslineParams {
+            segments: statusline_to_protocol(segments),
+        })?;
+        self.bridge
+            .request("ui.set_statusline", params)
+            .map(|_| ())
+            .map_err(error_from_rpc)
     }
 }
 

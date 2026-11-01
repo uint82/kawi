@@ -1,8 +1,10 @@
 use std::fmt;
 
+mod decorations;
 mod diagnostics;
 mod events;
 mod sanitize;
+mod statusline;
 mod types;
 
 pub use events::{
@@ -13,18 +15,22 @@ pub use events::{
 
 use serde_json::Value;
 
+pub use decorations::validate_decorations;
 pub use diagnostics::validate_diagnostics;
 pub use sanitize::sanitize;
+pub use statusline::validate_statusline;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 5;
+pub const PROTOCOL_MINOR: u64 = 7;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 14] = [
+pub const HOST_METHODS: [&str; 16] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
     "editor.list_commands",
     "editor.set_diagnostics",
+    "editor.set_decorations",
+    "ui.set_statusline",
     "ui.message",
     "ui.input",
     "ui.select",
@@ -37,6 +43,10 @@ pub const HOST_METHODS: [&str; 14] = [
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];
+pub const MAX_PLUGIN_DECORATIONS: usize = 10_000;
+pub const MAX_DECORATION_TEXT_BYTES: usize = 512;
+pub const MAX_PLUGIN_STATUSLINE_SEGMENTS: usize = 16;
+pub const MAX_STATUSLINE_TEXT_BYTES: usize = 256;
 pub const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
 pub const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
 pub const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
