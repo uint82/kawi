@@ -1,4 +1,4 @@
-package kawi:plugin@0.4.0;
+package kawi:plugin@0.5.0;
 
 interface types {
   record position {
@@ -56,13 +56,13 @@ interface types {
   record highlight {
     start: position,
     end: position,
-    style: decoration-style,
+    group: string,
   }
 
   record virtual-text {
     line: u32,
     text: string,
-    style: decoration-style,
+    group: string,
   }
 
   variant decoration {
@@ -226,11 +226,11 @@ interface editor-decorations {
 }
 
 interface editor-signs {
-  use types.{decoration-style, error};
+  use types.{error};
   record sign {
     line: u32,
     text: string,
-    style: decoration-style,
+    group: string,
   }
   set: func(buffer: u64, revision: u64, signs: list<sign>) -> result<_, error>;
 }

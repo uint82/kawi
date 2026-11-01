@@ -1,6 +1,26 @@
 use super::{
-    Decoration, DecorationScope, RpcError, MAX_DECORATION_TEXT_BYTES, MAX_PLUGIN_DECORATIONS,
+    Decoration, DecorationRef, DecorationScope, RpcError, MAX_DECORATION_TEXT_BYTES,
+    MAX_PLUGIN_DECORATIONS,
 };
+use crate::validate_decoration_group;
+
+pub fn decoration_ref(decoration: &Decoration) -> Result<DecorationRef, RpcError> {
+    let (group, style) = match decoration {
+        Decoration::Highlight { group, style, .. }
+        | Decoration::VirtualText { group, style, .. }
+        | Decoration::Sign { group, style, .. } => (group.as_deref(), *style),
+    };
+    match (group, style) {
+        (Some(group), None) => {
+            validate_decoration_group(group).map_err(RpcError::invalid_params)?;
+            Ok(DecorationRef::Group(group.to_string()))
+        }
+        (None, Some(style)) => Ok(DecorationRef::Style(style)),
+        _ => Err(RpcError::invalid_params(
+            "decoration must set exactly one of group or style",
+        )),
+    }
+}
 
 pub fn validate_decoration_scope(
     decorations: &[Decoration],
@@ -33,6 +53,7 @@ pub fn validate_decorations(decorations: &[Decoration]) -> Result<(), RpcError> 
         )));
     }
     for decoration in decorations {
+        decoration_ref(decoration)?;
         let Decoration::VirtualText { text, .. } = decoration else {
             continue;
         };
@@ -54,7 +75,8 @@ mod tests {
         Decoration::VirtualText {
             line: 0,
             text,
-            style: DecorationStyle::Muted,
+            group: None,
+            style: Some(DecorationStyle::Muted),
         }
     }
 
@@ -68,7 +90,23 @@ mod tests {
                 line: 0,
                 byte_column: 1,
             },
-            style: DecorationStyle::Info,
+            group: None,
+            style: Some(DecorationStyle::Info),
+        }
+    }
+
+    fn grouped_highlight(group: &str) -> Decoration {
+        Decoration::Highlight {
+            start: Position {
+                line: 0,
+                byte_column: 0,
+            },
+            end: Position {
+                line: 0,
+                byte_column: 1,
+            },
+            group: Some(group.to_string()),
+            style: None,
         }
     }
 
@@ -76,8 +114,29 @@ mod tests {
         Decoration::Sign {
             line: 0,
             text: "!".to_string(),
-            style: DecorationStyle::Error,
+            group: None,
+            style: Some(DecorationStyle::Error),
         }
+    }
+
+    #[test]
+    fn accepts_named_groups_and_rejects_ambiguous_decorations() {
+        assert!(validate_decorations(&[grouped_highlight("todo")]).is_ok());
+        assert!(validate_decorations(&[grouped_highlight("info")]).is_err());
+        assert!(validate_decorations(&[grouped_highlight("Todo")]).is_err());
+        let ambiguous = Decoration::Highlight {
+            start: Position {
+                line: 0,
+                byte_column: 0,
+            },
+            end: Position {
+                line: 0,
+                byte_column: 1,
+            },
+            group: Some("todo".to_string()),
+            style: Some(DecorationStyle::Info),
+        };
+        assert!(validate_decorations(&[ambiguous]).is_err());
     }
 
     #[test]

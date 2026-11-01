@@ -34,6 +34,7 @@ impl App {
             params.scope,
             &params.decorations,
             &snapshot,
+            &self.plugin_styles,
         )?;
         Ok(Value::Null)
     }

@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DecorationSpan, DecorationStyle, DiagnosticSpan, Frame, PaneFrame, PromptMenu,
+    CursorStyle, DecorationSpan, DiagnosticSpan, Frame, PaneFrame, PluginStyle, PromptMenu,
     ReplaceMenu, ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind,
     VirtualTextPlacement,
 };
@@ -514,7 +514,7 @@ fn finish_virtual_text<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
 fn virtual_text_color(theme: &Theme, kind: VirtualTextKind) -> Color {
     match kind {
         VirtualTextKind::Diagnostic(severity) => theme.diagnostic_color(severity),
-        VirtualTextKind::Plugin(style) => theme.decoration_color(style),
+        VirtualTextKind::Plugin(style) => style.accent,
         VirtualTextKind::Metadata => theme.non_text,
     }
 }
@@ -629,7 +629,7 @@ pub enum Tint {
     SearchCurrent,
     Substitute,
     Syntax(SyntaxHighlight),
-    Plugin(DecorationStyle),
+    Plugin(PluginStyle),
     Diagnostic {
         severity: crate::frame::DiagnosticSeverity,
         tag: Option<crate::frame::DiagnosticTag>,
@@ -1154,13 +1154,7 @@ fn paint_span_at<W: Write>(
         }
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
         Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
-        Tint::Plugin(style) => paint_tinted(
-            out,
-            &span.text,
-            &theme.decoration_colors(style),
-            theme,
-            background,
-        ),
+        Tint::Plugin(style) => paint_plugin(out, &span.text, style, theme, background),
         Tint::Diagnostic { severity, tag } => paint_diagnostic(
             out,
             &span.text,
@@ -1242,6 +1236,31 @@ fn paint_selected_diagnostic<W: Write>(
     write_segment(out, text)?;
     paint::clear_decorations(out)?;
     paint::restore_base(out, theme)
+}
+
+fn paint_plugin<W: Write>(
+    out: &mut W,
+    text: &str,
+    style: PluginStyle,
+    theme: &Theme,
+    background: Color,
+) -> Result<()> {
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset plugin style")?;
+    paint::apply_colors(
+        out,
+        style.foreground,
+        style.background,
+        "apply plugin colors",
+    )?;
+    apply_attributes(out, style.bold, style.italic, style.underline)?;
+    write_segment(out, text)?;
+    execute!(out, SetAttribute(Attribute::Reset)).context("reset plugin attributes")?;
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        background,
+        "restore plugin span",
+    )
 }
 
 fn paint_tinted<W: Write>(
@@ -2557,7 +2576,17 @@ mod tests {
     fn plugin_virtual_text_follows_diagnostics() {
         let diagnostic =
             VirtualText::diagnostic("message", crate::frame::DiagnosticSeverity::Error);
-        let plugin = VirtualText::plugin("note", DecorationStyle::Info);
+        let plugin = VirtualText::plugin(
+            "note",
+            crate::frame::PluginStyle {
+                foreground: crossterm::style::Color::White,
+                background: crossterm::style::Color::Black,
+                accent: crossterm::style::Color::Blue,
+                bold: false,
+                italic: false,
+                underline: false,
+            },
+        );
         let segments = virtual_text_segments(0, 40, [&diagnostic, &plugin]);
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[1].column, 9);

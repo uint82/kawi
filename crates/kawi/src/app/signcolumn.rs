@@ -186,7 +186,7 @@ mod plugin_sign_tests {
     use crate::keymap::Flavor;
     use crate::options::SignColumnMode;
     use kawi_buffer::Buffer;
-    use kawi_plugin::{Decoration, DecorationScope, DecorationStyle};
+    use kawi_plugin::{Decoration, DecorationRef, DecorationScope, DecorationStyle};
     use kawi_tui::frame::PluginSign;
 
     #[test]
@@ -204,9 +204,11 @@ mod plugin_sign_tests {
                 &[Decoration::Sign {
                     line: 0,
                     text: "!".to_string(),
-                    style: DecorationStyle::Error,
+                    group: None,
+                    style: Some(DecorationStyle::Error),
                 }],
                 &snapshot,
+                &app.plugin_styles,
             )
             .unwrap();
         app.update_signcolumn_width();
@@ -215,16 +217,26 @@ mod plugin_sign_tests {
             signs[0],
             Some(Sign::Plugin(PluginSign {
                 text: "!".to_string(),
-                style: kawi_tui::frame::DecorationStyle::Error,
+                style: app
+                    .plugin_styles
+                    .resolve("visual", &DecorationRef::Style(DecorationStyle::Error),)
+                    .expect("style"),
             }))
         );
+    }
+
+    fn app_style(style: DecorationStyle) -> kawi_tui::frame::PluginStyle {
+        let app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
+        app.plugin_styles
+            .resolve("visual", &DecorationRef::Style(style))
+            .expect("style")
     }
 
     #[test]
     fn diagnostics_outrank_plugin_signs() {
         let plugin = Some(Sign::Plugin(PluginSign {
             text: "!".to_string(),
-            style: kawi_tui::frame::DecorationStyle::Error,
+            style: app_style(DecorationStyle::Error),
         }));
         assert_eq!(
             preferred_sign(plugin.clone(), Some(UiDiagnosticSeverity::Warning)),

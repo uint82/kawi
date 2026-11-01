@@ -44,6 +44,8 @@ struct ThemeFile {
     #[serde(default)]
     decorations: super::decorations::DecorationsFile,
     #[serde(default)]
+    plugin_decorations: super::plugin_decorations::PluginDecorationsFile,
+    #[serde(default)]
     statusline: Option<super::statusline::StatusLineFile>,
     #[serde(default)]
     palette: BTreeMap<String, String>,
@@ -153,6 +155,7 @@ impl Theme {
             None => float_background,
         };
         let selection = file.selection.match_colors("selection")?;
+        let palette = super::style::parse_palette(file.palette)?;
         let bracket_match = match file.bracket.as_ref() {
             Some(bracket) => bracket.matched.match_colors("bracket.match")?,
             None => selection.clone(),
@@ -188,8 +191,12 @@ impl Theme {
             )?,
             diagnostic_hint: parse_color("diagnostics.hint", &file.diagnostics.hint)?,
             decorations: super::decorations::parse(Some(file.decorations))?,
+            plugin_decorations: super::plugin_decorations::parse(
+                file.plugin_decorations,
+                &palette,
+            )?,
             statusline: super::statusline::parse(file.statusline)?,
-            syntax: parse_styles(file.syntax, file.palette)?,
+            syntax: parse_styles(file.syntax, palette)?,
         })
     }
 }

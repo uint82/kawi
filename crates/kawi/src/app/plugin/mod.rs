@@ -27,6 +27,7 @@ pub(crate) use self::load::PluginLoadContext;
 pub(super) use self::runtime::{PluginCommandTarget, PluginRuntime};
 pub(super) use self::settings_ui::PluginSettingsUi;
 pub(super) use self::statusline::PluginStatusline;
+pub(super) use self::style::PluginStyles;
 pub(super) use self::ui::PluginUi;
 
 #[cfg(test)]

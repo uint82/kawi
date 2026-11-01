@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-11-01
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.5.0 (`kawi:plugin@0.5.0`).
+- Components built against `kawi:plugin@0.4.0` must be rebuilt with this release.
+- Replace decoration style enums with manifest-declared decoration groups.
+
+### Added
+
+- Add named decoration groups for highlights, virtual text, and signs.
+- Add theme overrides for plugin decoration groups with fill modes and text attributes.
+
 ## 0.4.0 - 2026-11-01
 
 ### Breaking

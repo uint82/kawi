@@ -226,7 +226,7 @@ pub struct SetDiagnosticsParams {
     pub diagnostics: Vec<DiagnosticSummary>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum DecorationStyle {
     Accent,
@@ -237,23 +237,58 @@ pub enum DecorationStyle {
     Muted,
 }
 
+impl DecorationStyle {
+    pub const ALL: [Self; 6] = [
+        Self::Accent,
+        Self::Info,
+        Self::Success,
+        Self::Warning,
+        Self::Error,
+        Self::Muted,
+    ];
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecorationFill {
+    #[default]
+    Both,
+    Foreground,
+    Background,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecorationRef {
+    Group(String),
+    Style(DecorationStyle),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Decoration {
     Highlight {
         start: Position,
         end: Position,
-        style: DecorationStyle,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style: Option<DecorationStyle>,
     },
     VirtualText {
         line: usize,
         text: String,
-        style: DecorationStyle,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style: Option<DecorationStyle>,
     },
     Sign {
         line: usize,
         text: String,
-        style: DecorationStyle,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style: Option<DecorationStyle>,
     },
 }
 

@@ -130,6 +130,7 @@ impl App {
             .reload(&mut self.commands, &mut self.keymaps, &self.leaders, target)
         {
             Ok(warnings) => {
+                self.rebuild_plugin_styles();
                 self.refresh_command_completion();
                 if !warnings.is_empty() {
                     self.show_pager(warnings);

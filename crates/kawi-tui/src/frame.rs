@@ -1,3 +1,5 @@
+use crossterm::style::Color;
+
 use crate::markdown::MarkdownLine;
 use crate::statusbar::{StatusBarConfig, StatusInfo};
 use crate::theme::Theme;
@@ -130,18 +132,37 @@ pub enum DecorationStyle {
     Muted,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginFill {
+    #[default]
+    Both,
+    Foreground,
+    Background,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PluginStyle {
+    pub foreground: Color,
+    pub background: Color,
+    pub accent: Color,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecorationSpan {
     pub row: usize,
     pub start: usize,
     pub end: usize,
-    pub style: DecorationStyle,
+    pub style: PluginStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtualTextKind {
     Diagnostic(DiagnosticSeverity),
-    Plugin(DecorationStyle),
+    Plugin(PluginStyle),
     Metadata,
 }
 
@@ -167,7 +188,7 @@ impl VirtualText {
         }
     }
 
-    pub fn plugin(text: impl Into<String>, style: DecorationStyle) -> Self {
+    pub fn plugin(text: impl Into<String>, style: PluginStyle) -> Self {
         Self {
             text: text.into(),
             kind: VirtualTextKind::Plugin(style),
@@ -213,7 +234,7 @@ pub struct PaneFrame<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PluginSign {
     pub text: String,
-    pub style: DecorationStyle,
+    pub style: PluginStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

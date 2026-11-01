@@ -130,6 +130,7 @@ pub struct App {
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     plugin_ui: plugin::PluginUi,
     plugin_decorations: plugin::PluginDecorations,
+    plugin_styles: plugin::PluginStyles,
     plugin_statusline: plugin::PluginStatusline,
     plugin_settings: Option<plugin::PluginSettingsUi>,
     keymaps_path: Option<PathBuf>,
@@ -242,6 +243,7 @@ impl App {
             plugin_prompt: None,
             plugin_ui: plugin::PluginUi::default(),
             plugin_decorations: plugin::PluginDecorations::default(),
+            plugin_styles: plugin::PluginStyles::default(),
             plugin_statusline: plugin::PluginStatusline::default(),
             plugin_settings: None,
             keymaps_path: None,
@@ -340,6 +342,7 @@ impl App {
         app.explorer.set_wake(app.events.wake());
         app.directory_loading.set_wake(app.events.wake());
         app.refresh_command_completion();
+        app.rebuild_plugin_styles();
         app
     }
 

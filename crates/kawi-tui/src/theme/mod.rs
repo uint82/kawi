@@ -8,12 +8,14 @@ mod color;
 mod custom;
 mod decorations;
 mod error;
+mod plugin_decorations;
 mod statusline;
 mod style;
 
 pub use custom::ThemePackage;
 pub use decorations::DecorationTheme;
 pub use error::ThemeError;
+pub use plugin_decorations::{PluginDecorationOverride, PluginDecorationOverrides};
 pub use statusline::StatusLineTheme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +56,7 @@ pub struct Theme {
     pub diagnostic_information: Color,
     pub diagnostic_hint: Color,
     pub decorations: DecorationTheme,
+    pub plugin_decorations: PluginDecorationOverrides,
     pub statusline: StatusLineTheme,
     pub syntax: SyntaxStyles,
 }
@@ -82,7 +85,7 @@ impl Theme {
         match sign {
             crate::frame::Sign::Git(sign) => self.git_sign_color(*sign),
             crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(*severity),
-            crate::frame::Sign::Plugin(sign) => self.decoration_color(sign.style),
+            crate::frame::Sign::Plugin(sign) => sign.style.accent,
         }
     }
 

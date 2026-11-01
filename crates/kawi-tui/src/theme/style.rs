@@ -104,16 +104,17 @@ pub(super) struct StyleTable {
 
 pub(super) fn parse_styles(
     values: BTreeMap<String, StyleValue>,
-    palette: BTreeMap<String, String>,
+    palette: BTreeMap<String, Color>,
 ) -> Result<SyntaxStyles, ThemeError> {
-    let palette = parse_palette(palette)?;
     let mut styles = parse_style_map(values, &palette)?;
     validate_base_styles(&styles)?;
     add_aliases(&mut styles);
     Ok(SyntaxStyles::from_keyed(styles))
 }
 
-fn parse_palette(palette: BTreeMap<String, String>) -> Result<BTreeMap<String, Color>, ThemeError> {
+pub(super) fn parse_palette(
+    palette: BTreeMap<String, String>,
+) -> Result<BTreeMap<String, Color>, ThemeError> {
     palette
         .into_iter()
         .map(|(name, value)| {
@@ -174,7 +175,7 @@ fn parse_style(
     }
 }
 
-fn resolve_color(
+pub(super) fn resolve_color(
     field: &str,
     value: &str,
     palette: &BTreeMap<String, Color>,

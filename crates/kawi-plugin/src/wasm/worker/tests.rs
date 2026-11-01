@@ -39,6 +39,7 @@ fn plugin_with_subscriptions(component: &str, subscribes: Vec<String>) -> Loaded
             sha256: None,
             command: Vec::new(),
             timeout_ms: 1_000,
+            decorations: Vec::new(),
             settings: Default::default(),
             commands: Vec::new(),
             subscribes,

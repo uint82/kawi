@@ -315,6 +315,7 @@ impl App {
         match loaded {
             Ok(theme) => {
                 self.theme = theme;
+                self.rebuild_plugin_styles();
                 Ok(())
             }
             Err(error) if error.is_not_found() => {

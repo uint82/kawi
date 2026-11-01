@@ -114,7 +114,7 @@ pub(super) fn load_plugins(app: &mut App, root: &std::path::Path) -> Vec<String>
 
 pub(super) fn load_plugins_raw(app: &mut App, root: &std::path::Path) -> Vec<String> {
     let lock = PluginLock::default();
-    app.plugins.load(
+    let warnings = app.plugins.load(
         crate::app::plugin::PluginLoadContext {
             installed: &root.join("installed"),
             dev: root,
@@ -127,7 +127,9 @@ pub(super) fn load_plugins_raw(app: &mut App, root: &std::path::Path) -> Vec<Str
             wake: app.events.wake(),
         },
         true,
-    )
+    );
+    app.rebuild_plugin_styles();
+    warnings
 }
 
 pub(super) fn event_manifest(root: &std::path::Path, mode: &str, debounce: Option<u64>) -> PathBuf {
