@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use kawi_plugin::{
     validate_diagnostics, ApplyEditParams, ApplyEditResult, DiagnosticSummary, GetStateParams,
     GetStateResult, InvocationContext, Position, RpcError, Selection, SetDiagnosticsParams,
-    UiMessageParams, INTERNAL_ERROR,
+    UiMessageParams, UiProgressFinishParams, UiProgressOpenResult, UiProgressStartParams,
+    UiProgressUpdateParams, UiProgressUpdateResult, INTERNAL_ERROR,
 };
 use ropey::Rope;
 use serde_json::Value;
@@ -27,6 +28,9 @@ impl App {
             "editor.list_commands" => self.plugin_list_commands(plugin, params),
             "editor.set_diagnostics" => self.plugin_set_diagnostics(plugin, params),
             "ui.message" => self.plugin_message(plugin, params),
+            "ui.progress_start" => self.plugin_progress_start(plugin, params),
+            "ui.progress_update" => self.plugin_progress_update(params),
+            "ui.progress_finish" => self.plugin_progress_finish(params),
             "config.get" => self.plugin_config_get(plugin, params),
             "config.list" => self.plugin_config_list(plugin, params),
             _ => Err(RpcError::method_not_found(method)),
@@ -92,6 +96,27 @@ impl App {
         Ok(Value::Null)
     }
 
+    fn plugin_progress_start(&mut self, plugin: &str, params: Value) -> Result<Value, RpcError> {
+        let params: UiProgressStartParams =
+            serde_json::from_value(params).map_err(invalid_params)?;
+        let id = self.plugin_ui.start_progress(plugin, params)?;
+        json_result(UiProgressOpenResult { id })
+    }
+
+    fn plugin_progress_update(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: UiProgressUpdateParams =
+            serde_json::from_value(params).map_err(invalid_params)?;
+        let canceled = self.plugin_ui.update_progress(params)?;
+        json_result(UiProgressUpdateResult { canceled })
+    }
+
+    fn plugin_progress_finish(&mut self, params: Value) -> Result<Value, RpcError> {
+        let params: UiProgressFinishParams =
+            serde_json::from_value(params).map_err(invalid_params)?;
+        self.plugin_ui.finish_progress(params)?;
+        Ok(Value::Null)
+    }
+
     fn plugin_apply_edit(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: ApplyEditParams = serde_json::from_value(params).map_err(invalid_params)?;
         let current_buffer = self.editor.buffer_number() as u64;
@@ -152,6 +177,10 @@ impl App {
             text: include_text.then(|| snapshot.to_string()),
         }
     }
+}
+
+fn json_result<T: serde::Serialize>(value: T) -> Result<Value, RpcError> {
+    serde_json::to_value(value).map_err(|error| RpcError::new(INTERNAL_ERROR, error.to_string()))
 }
 
 fn protocol_edits(

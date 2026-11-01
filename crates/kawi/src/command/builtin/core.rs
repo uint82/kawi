@@ -16,6 +16,12 @@ pub(super) const COMMANDS: &[Builtin] = &[
         description: "send a key sequence",
         handler: CommandHandler::SendKeys,
     },
+    Builtin {
+        name: "plugin.cancel",
+        aliases: &["plugin_cancel"],
+        description: "cancel plugin progress",
+        handler: CommandHandler::PluginCancel,
+    },
     aliased("file.save", &["save"], Action::Save, "save the buffer"),
     aliased("file.quit", &["quit"], Action::Quit, "quit the editor"),
     action(

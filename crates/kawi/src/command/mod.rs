@@ -15,6 +15,7 @@ pub(crate) enum CommandHandler {
     SendKeys,
     Noop,
     Plugin(u32),
+    PluginCancel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

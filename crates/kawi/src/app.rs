@@ -127,6 +127,7 @@ pub struct App {
     plugins: plugin::PluginRuntime,
     plugin_manager: crate::plugin_manager::PluginManager,
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
+    plugin_ui: plugin::PluginUi,
     keymaps_path: Option<PathBuf>,
     leaders: Vec<KeyChord>,
     send_keys_depth: usize,
@@ -235,6 +236,7 @@ impl App {
             plugins: plugin::PluginRuntime::default(),
             plugin_manager: crate::plugin_manager::PluginManager::default(),
             plugin_prompt: None,
+            plugin_ui: plugin::PluginUi::default(),
             keymaps_path: None,
             leaders: crate::keymap::default_leaders(),
             send_keys_depth: 0,
@@ -982,6 +984,10 @@ impl App {
             }
             return Ok(false);
         }
+        if self.plugin_ui.has_prompt() {
+            self.handle_plugin_ui_key(key);
+            return Ok(false);
+        }
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
         }
@@ -1324,6 +1330,7 @@ impl App {
             Some(CommandHandler::Action(action)) => self.dispatch_action(action),
             Some(CommandHandler::SendKeys) => self.handle_send_keys(args.as_ref()),
             Some(CommandHandler::Plugin(target)) => self.run_plugin_command(target, args),
+            Some(CommandHandler::PluginCancel) => self.cancel_plugin_progress(),
             Some(CommandHandler::Noop) | None => Ok(false),
         }
     }
@@ -1661,6 +1668,9 @@ impl App {
 
     fn handle_paste(&mut self, text: String) -> Result<bool> {
         if self.is_plugin_prompt_active() {
+            return Ok(false);
+        }
+        if self.paste_plugin_ui(&text) {
             return Ok(false);
         }
         self.window_prefix = false;

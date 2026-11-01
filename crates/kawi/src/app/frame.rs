@@ -126,6 +126,33 @@ impl App {
                     .collect()
             })
             .unwrap_or_default();
+        let plugin_picker = self.plugin_ui.picker();
+        let plugin_picker_items: Vec<kawi_tui::frame::PickerLine<'_>> = plugin_picker
+            .map(|state| {
+                state
+                    .rows()
+                    .iter()
+                    .map(|row| kawi_tui::frame::PickerLine {
+                        primary: &row.display,
+                        detail: row.secondary.as_deref(),
+                        deprecated: row.deprecated,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let plugin_picker_menu = plugin_picker.map(|state| kawi_tui::frame::PickerMenu {
+            title: state.title(),
+            query: state.query(),
+            cursor: state.cursor(),
+            items: &plugin_picker_items,
+            selected: state.selected(),
+            loading: state.loading(),
+            status: state.status(),
+            replace_hint: false,
+            file_hint: false,
+            preview_enabled: false,
+            preview: None,
+        });
         let git_lines = self.git_status.view_lines();
         let git_picker_lines: Vec<kawi_tui::frame::PickerLine<'_>> = git_lines
             .iter()
@@ -135,24 +162,24 @@ impl App {
                 deprecated: false,
             })
             .collect();
-        let picker = self
-            .symbol_picker
-            .as_ref()
-            .map(|session| {
-                let state = session.picker();
-                kawi_tui::frame::PickerMenu {
-                    title: state.title(),
-                    query: state.query(),
-                    cursor: state.cursor(),
-                    items: &symbol_items,
-                    selected: state.selected(),
-                    loading: state.loading(),
-                    status: state.status(),
-                    replace_hint: false,
-                    file_hint: false,
-                    preview_enabled: true,
-                    preview: symbol_preview,
-                }
+        let picker = plugin_picker_menu
+            .or_else(|| {
+                self.symbol_picker.as_ref().map(|session| {
+                    let state = session.picker();
+                    kawi_tui::frame::PickerMenu {
+                        title: state.title(),
+                        query: state.query(),
+                        cursor: state.cursor(),
+                        items: &symbol_items,
+                        selected: state.selected(),
+                        loading: state.loading(),
+                        status: state.status(),
+                        replace_hint: false,
+                        file_hint: false,
+                        preview_enabled: true,
+                        preview: symbol_preview,
+                    }
+                })
             })
             .or_else(|| {
                 self.picker.as_ref().map(|session| {
@@ -244,6 +271,7 @@ impl App {
             self.screen_height.saturating_sub(2).max(1),
             self.screen_width.max(1),
         );
+        let plugin_progress = self.plugin_ui.progress_text();
         let frame = Frame {
             panes: &panes,
             separators: &layout.separators,
@@ -256,15 +284,16 @@ impl App {
             task,
             terminal,
             viewport: &viewport,
-            message: self.message.as_deref(),
-            prompt: self
-                .file_ops_prompt()
-                .or_else(|| self.rename.as_ref().and_then(rename::RenameSession::prompt))
-                .or_else(|| {
-                    self.branch_prompt
-                        .as_ref()
-                        .and_then(super::git_branch::BranchPrompt::prompt)
-                }),
+            message: plugin_progress.as_deref().or(self.message.as_deref()),
+            prompt: self.plugin_ui.prompt().or_else(|| {
+                self.file_ops_prompt()
+                    .or_else(|| self.rename.as_ref().and_then(rename::RenameSession::prompt))
+                    .or_else(|| {
+                        self.branch_prompt
+                            .as_ref()
+                            .and_then(super::git_branch::BranchPrompt::prompt)
+                    })
+            }),
             command: self.editor.command_prompt(),
             search: self.editor.search_prompt(),
             search_delimiter: self.editor.search_prompt_delimiter(),
