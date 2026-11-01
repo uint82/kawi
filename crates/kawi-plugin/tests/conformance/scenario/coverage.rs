@@ -7,7 +7,16 @@ pub(crate) struct Uncovered {
     pub(crate) reason: &'static str,
 }
 
-pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[];
+pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
+    Uncovered {
+        name: "editor.execute",
+        reason: "requires the editor command registry; covered by app composition tests",
+    },
+    Uncovered {
+        name: "editor.list_commands",
+        reason: "requires the editor command registry; covered by app composition tests",
+    },
+];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
 
 pub(crate) fn covered_methods() -> Vec<&'static str> {

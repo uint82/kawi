@@ -18,6 +18,7 @@ pub use scope::{intersect_scope, Scope};
 pub enum Capability {
     EditorRead,
     EditorWrite,
+    EditorExecute,
     UiMessage,
     DiagnosticsRead,
     DiagnosticsPublish,
@@ -28,9 +29,10 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::EditorRead,
         Self::EditorWrite,
+        Self::EditorExecute,
         Self::UiMessage,
         Self::DiagnosticsRead,
         Self::DiagnosticsPublish,
@@ -44,6 +46,7 @@ impl Capability {
         match name {
             "editor.read" => Some(Self::EditorRead),
             "editor.write" => Some(Self::EditorWrite),
+            "editor.execute" => Some(Self::EditorExecute),
             "ui.message" => Some(Self::UiMessage),
             "diagnostics.read" => Some(Self::DiagnosticsRead),
             "diagnostics.publish" => Some(Self::DiagnosticsPublish),
@@ -59,6 +62,7 @@ impl Capability {
         match self {
             Self::EditorRead => "editor.read",
             Self::EditorWrite => "editor.write",
+            Self::EditorExecute => "editor.execute",
             Self::UiMessage => "ui.message",
             Self::DiagnosticsRead => "diagnostics.read",
             Self::DiagnosticsPublish => "diagnostics.publish",
@@ -72,7 +76,11 @@ impl Capability {
     pub fn is_scoped(self) -> bool {
         matches!(
             self,
-            Self::FsRead | Self::FsWrite | Self::ProcessSpawn | Self::NetConnect
+            Self::EditorExecute
+                | Self::FsRead
+                | Self::FsWrite
+                | Self::ProcessSpawn
+                | Self::NetConnect
         )
     }
 
@@ -230,6 +238,9 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
     match method {
         "editor.get_state" => MethodCapability::Required(Capability::EditorRead),
         "editor.apply_edit" => MethodCapability::Required(Capability::EditorWrite),
+        "editor.execute" | "editor.list_commands" => {
+            MethodCapability::Required(Capability::EditorExecute)
+        }
         "ui.message" => MethodCapability::Required(Capability::UiMessage),
         "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
         _ => MethodCapability::Unknown,

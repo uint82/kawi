@@ -17,11 +17,13 @@ pub use diagnostics::validate_diagnostics;
 pub use sanitize::sanitize;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 2;
+pub const PROTOCOL_MINOR: u64 = 3;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 4] = [
+pub const HOST_METHODS: [&str; 6] = [
     "editor.get_state",
     "editor.apply_edit",
+    "editor.execute",
+    "editor.list_commands",
     "editor.set_diagnostics",
     "ui.message",
 ];
@@ -187,6 +189,23 @@ pub struct ApplyEditParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplyEditResult {
     pub revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EditorExecuteParams {
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EditorCommandInfo {
+    pub id: String,
+    pub description: String,
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EditorListCommandsResult {
+    pub commands: Vec<EditorCommandInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

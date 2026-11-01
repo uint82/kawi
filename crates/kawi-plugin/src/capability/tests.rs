@@ -10,6 +10,7 @@ fn parses_unscoped_and_scoped_requests() {
     let (requests, warnings) = requests(
         r#"
 "editor.read" = true
+"editor.execute" = { commands = ["edit.format", "file.save"] }
 "fs.read" = { paths = ["$WORKSPACE/src", "$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git"] }
 "net.connect" = { hosts = ["API.EXAMPLE.COM:443"] }
@@ -18,6 +19,13 @@ fn parses_unscoped_and_scoped_requests() {
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(requests.get(Capability::EditorRead), Some(&Scope::Unscoped));
     assert_eq!(
+        requests.get(Capability::EditorExecute),
+        Some(&Scope::EditorCommands(vec![
+            "edit.format".to_string(),
+            "file.save".to_string()
+        ]))
+    );
+    assert_eq!(
         requests.get(Capability::FsRead),
         Some(&Scope::Paths(vec!["$WORKSPACE/src".to_string()]))
     );
@@ -25,6 +33,17 @@ fn parses_unscoped_and_scoped_requests() {
         requests.get(Capability::NetConnect),
         Some(&Scope::Hosts(vec!["api.example.com:443".to_string()]))
     );
+}
+
+#[test]
+fn rejects_invalid_editor_commands() {
+    let (requests, warnings) = requests(
+        r#"
+"editor.execute" = { commands = ["", "Edit.Format", "../file", "edit format"] }
+"#,
+    );
+    assert!(!requests.contains(Capability::EditorExecute));
+    assert_eq!(warnings.len(), 1);
 }
 
 #[test]
@@ -160,6 +179,19 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
         );
         assert!(!advertised_events.contains(&event));
     }
+}
+
+#[test]
+fn editor_command_scopes_intersect_and_cover() {
+    let outer = Scope::EditorCommands(vec!["edit.format".to_string(), "file.save".to_string()]);
+    let inner = Scope::EditorCommands(vec!["file.save".to_string()]);
+    assert!(outer.covers(&inner));
+    assert!(!inner.covers(&outer));
+    assert_eq!(intersect_scope(&outer, &inner), Some(inner));
+    assert_eq!(
+        outer.to_json_object().get("commands"),
+        Some(&serde_json::json!(["edit.format", "file.save"]))
+    );
 }
 
 #[test]
