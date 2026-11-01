@@ -56,6 +56,18 @@ interface types {
     aliases: list<string>,
   }
 
+  variant setting-value {
+    boolean(bool),
+    integer(s64),
+    float(f64),
+    text(string),
+  }
+
+  record setting {
+    key: string,
+    value: setting-value,
+  }
+
   variant argument {
     null,
     boolean(bool),
@@ -145,6 +157,12 @@ interface editor-execute {
   list-commands: func() -> result<list<command-info>, error>;
 }
 
+interface config-read {
+  use types.{error, setting, setting-value};
+  get: func(key: string) -> result<option<setting-value>, error>;
+  get-all: func() -> result<list<setting>, error>;
+}
+
 interface ui-message {
   use types.{error};
   message: func(text: string) -> result<_, error>;
@@ -171,6 +189,7 @@ world host {
   import editor-read;
   import editor-write;
   import editor-execute;
+  import config-read;
   import ui-message;
   import diagnostics-publish;
   import process-run;

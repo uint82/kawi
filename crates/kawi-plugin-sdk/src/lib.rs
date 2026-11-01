@@ -17,7 +17,8 @@ pub use error::{
 };
 pub use kawi::plugin::types;
 pub use kawi::plugin::{
-    diagnostics_publish, editor_execute, editor_read, editor_write, process_run, ui_message,
+    config_read, diagnostics_publish, editor_execute, editor_read, editor_write, process_run,
+    ui_message,
 };
 pub use offsets::{byte_offset, position_at};
 
