@@ -195,17 +195,6 @@ impl App {
             }
         }
     }
-
-    fn directory_focus_text(&self, number: usize) -> Option<String> {
-        if number != self.editor.buffer_number() {
-            return None;
-        }
-        let state = self.directory.get(number)?;
-        state
-            .lines
-            .get(self.editor.row())
-            .map(|line| line.text.clone())
-    }
 }
 
 #[cfg(test)]

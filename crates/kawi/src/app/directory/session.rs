@@ -49,6 +49,7 @@ pub(in crate::app) struct DirectoryBuffer {
     pub(super) positions: HashMap<u64, usize>,
     pub(super) metadata_widths: MetadataWidths,
     pub(super) external_changed: bool,
+    pub(super) view_options_pending: bool,
 }
 
 impl DirectoryBuffers {
@@ -165,6 +166,7 @@ impl DirectoryBuffer {
             positions,
             metadata_widths: listing.metadata_widths,
             external_changed: false,
+            view_options_pending: false,
         };
         state.reset_lines();
         state

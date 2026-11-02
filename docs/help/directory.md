@@ -46,11 +46,11 @@ sort_directories_first = true
 - `sort = "kind"` orders directories, regular files, symlinks, FIFOs, sockets, block devices, and character devices.
 - Entries without loaded size or modified metadata sort after entries with that metadata.
 
-Sorting by size or modified reads filesystem metadata even when metadata columns are hidden. Changing a sort option affects the next load, so use `:e` to refresh an open directory buffer.
+Sorting by size or modified reads filesystem metadata even when metadata columns are hidden. Changing a sort option reloads clean open directory buffers immediately and keeps the selected entry. Dirty buffers keep their listing until they are saved or reloaded.
 
 ## Live refresh
 
-The root of every open directory buffer is watched while Kawi runs. External creates, deletes, renames, symlink target changes, and metadata updates reload clean directory buffers automatically.
+The root of every open directory buffer is watched while Kawi runs. External creates, deletes, renames, symlink target changes, and metadata updates reload clean directory buffers automatically. Changing `directory_show_hidden`, `directory_sort`, `directory_sort_reverse`, `directory_sort_directories_first`, or `directory_metadata` also reloads clean directory buffers immediately.
 
 - Dirty directory buffers are never overwritten. Their status shows `[changed]`, Kawi warns once, and the marker clears after a reload or successful save. Saves still recheck the directory and refuse if it changed.
 - The cursor stays on the selected entry when it still exists. Window and scroll state are preserved.
@@ -77,7 +77,7 @@ metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 
 All six columns are shown by default. Set `:set directory_metadata=none` or use `metadata = []` to hide metadata. Use a comma-separated list at runtime, such as `:set directory_metadata=permissions,size`. Owner, group, and size column widths grow to fit the widest value in the listing.
 
-Metadata is read with the listing on the background worker. Changing the option affects the next load, so use `:e` to refresh an open directory buffer. Rows without loaded metadata keep their column space blank.
+Metadata is read with the listing on the background worker. Changing the option reloads clean open directory buffers immediately and leaves dirty buffers untouched until save or reload. Rows without loaded metadata keep their column space blank.
 
 ## Safety
 

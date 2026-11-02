@@ -35,6 +35,17 @@ impl App {
         self.start_directory_display_load(number, false, true)
     }
 
+    pub(in crate::app) fn directory_focus_text(&self, number: usize) -> Option<String> {
+        if number != self.editor.buffer_number() {
+            return None;
+        }
+        let state = self.directory.get(number)?;
+        state
+            .lines
+            .get(self.editor.row())
+            .map(|line| line.text.clone())
+    }
+
     pub(in crate::app) fn start_directory_watch_reload(
         &mut self,
         number: usize,
@@ -44,6 +55,7 @@ impl App {
         {
             return Ok(false);
         }
+        self.apply_pending_directory_view(number);
         self.start_directory_load(number, LoadPurpose::Watch)?;
         Ok(true)
     }
@@ -60,6 +72,7 @@ impl App {
         if !allow_dirty && self.editor.buffer_is_dirty(number).unwrap_or(false) {
             return Err("Save or undo changes before reloading the directory".to_string());
         }
+        self.apply_pending_directory_view(number);
         self.start_directory_load(number, LoadPurpose::Display { initial })
     }
 
