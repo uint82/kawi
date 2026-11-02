@@ -32,6 +32,7 @@ mod git_commit;
 mod git_status;
 mod help;
 mod hover;
+mod identity;
 mod keyguide;
 mod language;
 mod lsp;
