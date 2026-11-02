@@ -180,6 +180,7 @@ impl App {
         };
         let LoadedListing { listing, text } = loaded;
         if self.directory_listing_unchanged(number, &listing) {
+            self.directory.clear_external_change(number);
             self.directory_loading.clear_focus(number);
             return true;
         }

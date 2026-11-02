@@ -5,6 +5,7 @@ use std::sync::mpsc::Sender;
 use kawi_watch::WatchService;
 
 use super::session::DirectoryBuffers;
+use super::verify::EXTERNAL_CHANGE_MESSAGE;
 use crate::app::App;
 
 pub(super) struct DirectoryWatch {
@@ -130,6 +131,15 @@ impl App {
     }
 
     fn refresh_directory_from_watch(&mut self, number: usize) -> bool {
+        if self.directory_loading.is_loading(number) {
+            return false;
+        }
+        if self.editor.buffer_is_dirty(number).unwrap_or(false) {
+            if self.directory.mark_external_change(number) {
+                self.show_message(EXTERNAL_CHANGE_MESSAGE.to_string());
+            }
+            return true;
+        }
         let focus = self.directory_focus_text(number);
         match self.start_directory_watch_reload(number) {
             Ok(true) => {

@@ -45,6 +45,7 @@ fn state() -> DirectoryBuffer {
         removed: BTreeMap::new(),
         positions: HashMap::new(),
         metadata_widths: Default::default(),
+        external_changed: false,
     }
 }
 

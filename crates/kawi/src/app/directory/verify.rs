@@ -9,6 +9,8 @@ use super::planner::{plan, Plan};
 use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
 
+pub(super) const EXTERNAL_CHANGE_MESSAGE: &str = "Directory changed on disk; reload before saving";
+
 impl App {
     pub(super) fn finish_directory_save_check(
         &mut self,
@@ -45,6 +47,7 @@ impl App {
         match self.check_directory_listing(number, listing) {
             Ok(()) => true,
             Err(message) => {
+                self.directory.mark_external_change(number);
                 self.editor.set_buffer_readonly(number, false);
                 self.show_message(message);
                 false
@@ -65,7 +68,7 @@ impl App {
         if unchanged {
             Ok(())
         } else {
-            Err("Directory changed on disk; reload before saving".to_string())
+            Err(EXTERNAL_CHANGE_MESSAGE.to_string())
         }
     }
 

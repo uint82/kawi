@@ -48,6 +48,7 @@ pub(in crate::app) struct DirectoryBuffer {
     pub(super) removed: BTreeMap<String, Vec<u64>>,
     pub(super) positions: HashMap<u64, usize>,
     pub(super) metadata_widths: MetadataWidths,
+    pub(super) external_changed: bool,
 }
 
 impl DirectoryBuffers {
@@ -73,6 +74,29 @@ impl DirectoryBuffers {
 
     pub(in crate::app) fn retain_listed(&mut self, listed: &[usize]) {
         self.states.retain(|number, _| listed.contains(number));
+    }
+
+    pub(in crate::app) fn mark_external_change(&mut self, number: usize) -> bool {
+        let Some(state) = self.states.get_mut(&number) else {
+            return false;
+        };
+        if state.external_changed {
+            return false;
+        }
+        state.external_changed = true;
+        true
+    }
+
+    pub(in crate::app) fn clear_external_change(&mut self, number: usize) {
+        if let Some(state) = self.states.get_mut(&number) {
+            state.external_changed = false;
+        }
+    }
+
+    pub(in crate::app) fn external_changed(&self, number: usize) -> bool {
+        self.states
+            .get(&number)
+            .is_some_and(|state| state.external_changed)
     }
 
     pub(super) fn numbers(&self) -> impl Iterator<Item = usize> + '_ {
@@ -140,6 +164,7 @@ impl DirectoryBuffer {
             removed: BTreeMap::new(),
             positions,
             metadata_widths: listing.metadata_widths,
+            external_changed: false,
         };
         state.reset_lines();
         state
@@ -165,6 +190,7 @@ impl DirectoryBuffer {
         self.next_id = listing.next_id;
         self.metadata_widths = listing.metadata_widths;
         self.revision = revision;
+        self.external_changed = false;
         self.removed.clear();
         self.reset_lines();
     }
