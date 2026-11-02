@@ -366,7 +366,9 @@ undo_exclude = ["*.gpg"]
 show_hidden = true
 confirm = false
 trash = false
-sort = "name"
+sort = "size"
+sort_reverse = true
+sort_directories_first = false
 metadata = ["permissions", "size"]
 "#,
         )
@@ -380,8 +382,10 @@ metadata = ["permissions", "size"]
         assert!(!app.directory_options.trash);
         assert_eq!(
             app.directory_options.sort.key,
-            crate::app::directory::SortKey::Name
+            crate::app::directory::SortKey::Size
         );
+        assert!(app.directory_options.sort.reverse);
+        assert!(!app.directory_options.sort.directories_first);
         assert_eq!(app.directory_options.metadata.name(), "permissions,size");
         let _ = fs::remove_dir_all(dir);
     }

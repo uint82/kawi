@@ -285,6 +285,8 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "directory_metadata",
     "directory_show_hidden",
     "directory_sort",
+    "directory_sort_directories_first",
+    "directory_sort_reverse",
     "directory_trash",
     "expandtab",
     "explorer_enabled",

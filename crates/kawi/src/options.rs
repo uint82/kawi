@@ -273,7 +273,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 46] = [
+pub(crate) const OPTIONS: [OptionSpec; 48] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -753,6 +753,26 @@ pub(crate) const OPTIONS: [OptionSpec; 46] = [
         section: ConfigSection::Explorer,
         config_key: "sort",
         default: OptionDefault::Text("name"),
+    },
+    OptionSpec {
+        name: "directory_sort_reverse",
+        aliases: &["dsrr"],
+        description: "Reverse the directory sort key order.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "sort_reverse",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "directory_sort_directories_first",
+        aliases: &["dsdf"],
+        description: "Group directories before other entries when sorting.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "sort_directories_first",
+        default: OptionDefault::Bool(true),
     },
     OptionSpec {
         name: "directory_metadata",
