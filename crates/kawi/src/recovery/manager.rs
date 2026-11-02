@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use crate::recovery::directory::DirectoryJournal;
+use crate::recovery::directory::DirectoryRecovery;
 use crate::recovery::lock::{self, Lock, LockState};
 use crate::recovery::model::Snapshot;
 use crate::recovery::store::WorkspaceStore;
@@ -38,7 +38,7 @@ pub(crate) enum RecoveryStart {
     Active {
         manager: Box<RecoveryManager>,
         snapshots: Vec<Snapshot>,
-        directory_journal: Option<DirectoryJournal>,
+        directory_recovery: Option<DirectoryRecovery>,
         warning: Option<String>,
     },
 }
@@ -79,7 +79,7 @@ impl RecoveryManager {
             }
         };
         let (snapshots, mut warnings) = store.load_all();
-        let (directory_journal, journal_warning) = directory::load(&store);
+        let (directory_recovery, journal_warning) = directory::load(&store);
         if let Some(warning) = journal_warning {
             warnings.push(warning);
         }
@@ -95,7 +95,7 @@ impl RecoveryManager {
                 active: true,
             }),
             snapshots,
-            directory_journal,
+            directory_recovery,
             warning: (!warnings.is_empty()).then(|| warnings.join("\n")),
         }
     }

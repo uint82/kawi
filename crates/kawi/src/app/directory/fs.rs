@@ -6,11 +6,14 @@ use super::super::file_ops::trash::{TrashDir, TrashError};
 
 pub(super) trait DirectoryFs {
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
-    fn copy(&mut self, from: &Path, to: &Path) -> io::Result<()>;
+    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
+    fn stage_copy(&mut self, from: &Path, stage: &Path) -> io::Result<()>;
+    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()>;
     fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()>;
     fn remove_file(&mut self, path: &Path) -> io::Result<()>;
     fn remove_directory(&mut self, path: &Path) -> io::Result<()>;
     fn remove_tree(&mut self, path: &Path) -> io::Result<()>;
+    fn sync_parent(&self, path: &Path) -> io::Result<()>;
     fn create_file(&mut self, path: &Path) -> io::Result<()>;
     fn create_dir(&mut self, path: &Path) -> io::Result<()>;
     fn exists(&self, path: &Path) -> bool;
@@ -37,8 +40,16 @@ impl DirectoryFs for RealFs {
         file_fs::rename_path(from, to, false).map(|_| ())
     }
 
-    fn copy(&mut self, from: &Path, to: &Path) -> io::Result<()> {
-        file_fs::copy_path(from, to, false)
+    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        file_fs::try_rename_path(from, to, false).map(|_| ())
+    }
+
+    fn stage_copy(&mut self, from: &Path, stage: &Path) -> io::Result<()> {
+        file_fs::stage_copy(from, stage)
+    }
+
+    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()> {
+        file_fs::promote_stage(stage, to)
     }
 
     fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
@@ -66,6 +77,10 @@ impl DirectoryFs for RealFs {
 
     fn remove_tree(&mut self, path: &Path) -> io::Result<()> {
         file_fs::remove_path(path, true)
+    }
+
+    fn sync_parent(&self, path: &Path) -> io::Result<()> {
+        file_fs::sync_parent(path)
     }
 
     fn create_file(&mut self, path: &Path) -> io::Result<()> {

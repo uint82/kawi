@@ -145,7 +145,14 @@ impl App {
             },
             None => false,
         };
-        let outcome = prepared.execute(&mut fs);
+        let promotions = self.recovery.as_ref().map(|manager| manager.store_clone());
+        let mut record_promotion = |operation| match &promotions {
+            Some(store) => store
+                .append_directory_promotion(operation)
+                .map_err(std::io::Error::other),
+            None => Ok(()),
+        };
+        let outcome = prepared.execute(&mut fs, &mut record_promotion);
         for index in &outcome.remaining {
             if let Some(operation) = apply.plan.operations.get(*index) {
                 self.update_applied_operation(operation);
@@ -165,9 +172,12 @@ impl App {
                 self.finish_directory_apply_failure(&apply, &outcome, warning)
             }
             None => {
-                let warning = journal.as_ref().and_then(|journal| {
-                    journal::finish_success(self.recovery.as_ref(), journal, journal_written)
-                });
+                let warning = journal::finish_success(
+                    self.recovery.as_ref(),
+                    journal.as_ref(),
+                    &outcome,
+                    journal_written,
+                );
                 let saved = self.finish_directory_apply_success(&apply);
                 if let Some(warning) = warning {
                     self.show_message(warning);

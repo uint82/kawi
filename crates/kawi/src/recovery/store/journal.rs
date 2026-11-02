@@ -1,4 +1,6 @@
-use std::fs;
+use std::collections::HashSet;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::persist::write_private_atomically;
@@ -7,6 +9,7 @@ use crate::recovery::directory::DirectoryJournal;
 use super::WorkspaceStore;
 
 const DIRECTORY_JOURNAL_NAME: &str = "directory-apply.json";
+const DIRECTORY_PROMOTIONS_NAME: &str = "directory-promotions.log";
 
 impl WorkspaceStore {
     pub(crate) fn save_directory_journal(&self, journal: &DirectoryJournal) -> Result<(), String> {
@@ -27,19 +30,62 @@ impl WorkspaceStore {
     }
 
     pub(crate) fn remove_directory_journal(&self) -> Result<(), String> {
-        remove_file(&self.directory_journal_path())
+        remove_file(&self.directory_journal_path(), "directory journal")
+    }
+
+    pub(crate) fn append_directory_promotion(&self, operation: usize) -> Result<(), String> {
+        let mut file = append_file(&self.directory_promotions_path())
+            .map_err(|error| format!("directory promotions: {error}"))?;
+        writeln!(file, "{operation}")
+            .and_then(|()| file.sync_all())
+            .map_err(|error| format!("directory promotions: {error}"))
+    }
+
+    pub(crate) fn load_directory_promotions(&self) -> Result<HashSet<usize>, String> {
+        let path = self.directory_promotions_path();
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(HashSet::new()),
+            Err(error) => return Err(format!("directory promotions: {error}")),
+        };
+        text.lines()
+            .map(|line| {
+                line.parse::<usize>().map_err(|error| {
+                    format!("{}: invalid promotion record: {error}", path.display())
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn remove_directory_promotions(&self) -> Result<(), String> {
+        remove_file(&self.directory_promotions_path(), "directory promotions")
     }
 
     fn directory_journal_path(&self) -> PathBuf {
         self.directory.join(DIRECTORY_JOURNAL_NAME)
     }
+
+    fn directory_promotions_path(&self) -> PathBuf {
+        self.directory.join(DIRECTORY_PROMOTIONS_NAME)
+    }
 }
 
-fn remove_file(path: &Path) -> Result<(), String> {
+fn append_file(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+fn remove_file(path: &Path, label: &str) -> Result<(), String> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("directory journal: {error}")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("{label}: {error}")),
     }
 }
 
@@ -56,6 +102,22 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn promotions_are_appended_loaded_and_removed() {
+        let root = temp_dir("promotions");
+        let store = WorkspaceStore::create(&root, &root).unwrap();
+        store.append_directory_promotion(2).unwrap();
+        store.append_directory_promotion(5).unwrap();
+        assert_eq!(
+            store.load_directory_promotions().unwrap(),
+            HashSet::from([2, 5])
+        );
+        store.remove_directory_promotions().unwrap();
+        assert!(store.load_directory_promotions().unwrap().is_empty());
+        store.remove_directory_promotions().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
