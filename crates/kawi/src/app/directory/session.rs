@@ -160,9 +160,15 @@ impl DirectoryBuffers {
 
     pub(in crate::app) fn rewrite_path(&mut self, old: &Path, new: &Path) {
         for state in self.states.values_mut() {
-            if let Ok(rest) = state.root.strip_prefix(old) {
-                state.root = new.join(rest);
-            }
+            let Ok(rest) = state.root.strip_prefix(old) else {
+                continue;
+            };
+            state.root = if rest.as_os_str().is_empty() {
+                new.to_path_buf()
+            } else {
+                new.join(rest)
+            };
+            state.deleted = false;
         }
     }
 }

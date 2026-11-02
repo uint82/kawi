@@ -17,6 +17,7 @@ mod metadata;
 mod options;
 mod permissions;
 mod reload;
+mod renames;
 mod wall;
 mod watch;
 

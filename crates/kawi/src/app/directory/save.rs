@@ -203,14 +203,7 @@ impl App {
         use super::planner::Operation;
         match operation {
             Operation::Rename { from, to } => {
-                let adoptions = self.editor.rewrite_buffer_paths(from, to);
-                self.undo.move_prefix(from, to);
-                self.problems.rewrite_paths(from, to);
-                self.explorer.rename_path(from, to);
-                self.directory.rewrite_path(from, to);
-                for adoption in &adoptions {
-                    self.record_saved_buffer_number(adoption.number);
-                }
+                self.rewrite_paths(from, to);
             }
             Operation::Trash(path) => {
                 let numbers = super::super::file_ops::buffer_numbers_under(self, path);

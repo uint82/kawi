@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 use kawi_watch::WatchService;
 
 use super::session::DirectoryBuffers;
 use super::verify::EXTERNAL_CHANGE_MESSAGE;
-use roots::{root_identity, root_identity_changed, root_missing, watched_paths, RootIdentity};
+use roots::{
+    find_moved_root, move_search_paths, root_identity, root_identity_changed, root_missing,
+    watched_paths, RootIdentity,
+};
 
 mod roots;
 use crate::app::App;
@@ -55,6 +58,12 @@ impl DirectoryWatch {
             self.roots.contains(path)
                 && root_identity_changed(path, self.identities.get(path).copied().flatten())
         })
+    }
+
+    fn moved_root(&self, root: &Path) -> Option<PathBuf> {
+        let identity = self.identities.get(root).copied().flatten()?;
+        let search = move_search_paths(&self.roots, root);
+        find_moved_root(identity, &search, root)
     }
 
     fn invalidate(&mut self) {
@@ -128,16 +137,23 @@ impl DirectoryBuffers {
         }
     }
 
+    pub(in crate::app) fn moved_root(&self, root: &Path) -> Option<PathBuf> {
+        self.watch.as_ref()?.moved_root(root)
+    }
+
     pub(in crate::app) fn matching_roots(&self, paths: &[PathBuf]) -> Vec<usize> {
-        self.states
+        let mut roots: Vec<(usize, usize)> = self
+            .states
             .iter()
             .filter(|(_, state)| {
                 paths
                     .iter()
                     .any(|path| path.starts_with(state.root.as_path()))
             })
-            .map(|(number, _)| *number)
-            .collect()
+            .map(|(number, state)| (state.root.components().count(), *number))
+            .collect();
+        roots.sort_unstable();
+        roots.into_iter().map(|(_, number)| number).collect()
     }
 }
 
@@ -168,11 +184,30 @@ impl App {
         redraw
     }
 
+    fn retarget_directory_root(&mut self, old: &Path, new: &Path) {
+        self.rewrite_paths(old, new);
+        self.lsp
+            .did_rename_files(&[(old.to_path_buf(), new.to_path_buf())]);
+        self.lsp.refresh(&self.editor);
+        self.sync_language_settings();
+        self.sync_watched_files();
+        self.refresh_git_status();
+        self.show_message(format!(
+            "Directory moved on disk: {} to {}",
+            old.display(),
+            new.display()
+        ));
+    }
+
     fn refresh_directory_from_watch(&mut self, number: usize) -> bool {
         let Some(root) = self.directory.get(number).map(|state| state.root.clone()) else {
             return false;
         };
         if root_missing(&root) {
+            if let Some(new_root) = self.directory.moved_root(&root) {
+                self.retarget_directory_root(&root, &new_root);
+                return true;
+            }
             if self.directory.mark_deleted(number) {
                 self.show_message(format!("Deleted on disk: {}; buffer kept", root.display()));
             }
