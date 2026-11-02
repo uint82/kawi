@@ -22,7 +22,7 @@ Each line is a name. Directories end with `/`.
 - Use a relative path such as `sub/new.txt` to create parent directories.
 - Move an entry by writing a relative path such as `sub/existing.txt`.
 
-Names are stored as `OsString` values. Unchanged lines are never renamed, so names that cannot be represented in UTF-8 remain untouched.
+Names are stored as `OsString` values. Unchanged lines are never renamed, so existing names remain byte-for-byte intact. Backslashes, control characters, and bytes that are not valid UTF-8 are escaped so each entry occupies exactly one buffer line. Recognized escapes include `\\`, `\a`, `\b`, `\t`, `\n`, `\v`, `\f`, `\r`, and `\xHH`. Editing a line decodes the escapes before applying changes. Use a literal `/` to create or move entries into subdirectories; escaped slashes are rejected.
 
 `Enter` opens the entry under the cursor. `.` toggles hidden entries when the buffer has no unsaved changes.
 
