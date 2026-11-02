@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 
 use super::super::save::SaveAfter;
 use super::diff::{Change, DirectoryLine};
@@ -9,14 +10,18 @@ use super::metadata::{MetadataColumns, MetadataWidths};
 use super::name::escape_name;
 use super::planner::Plan;
 use super::sort::SortOptions;
+use super::watch::DirectoryWatch;
 use matching::{entry_positions, match_existing, original_kinds, pair_renames, remember_removed};
 
 mod matching;
 
 #[derive(Default)]
 pub(in crate::app) struct DirectoryBuffers {
-    states: BTreeMap<usize, DirectoryBuffer>,
+    pub(super) states: BTreeMap<usize, DirectoryBuffer>,
     pending: Option<PendingApply>,
+    pub(super) wake: Option<Sender<()>>,
+    pub(super) watch: Option<DirectoryWatch>,
+    pub(super) watch_failed: bool,
 }
 
 pub(in crate::app) struct DirectoryEdit {
@@ -64,6 +69,10 @@ impl DirectoryBuffers {
 
     pub(super) fn remove(&mut self, number: usize) {
         self.states.remove(&number);
+    }
+
+    pub(in crate::app) fn retain_listed(&mut self, listed: &[usize]) {
+        self.states.retain(|number, _| listed.contains(number));
     }
 
     pub(super) fn numbers(&self) -> impl Iterator<Item = usize> + '_ {

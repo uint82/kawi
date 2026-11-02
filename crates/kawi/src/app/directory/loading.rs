@@ -26,6 +26,7 @@ pub(super) enum LoadPurpose {
     Display {
         initial: bool,
     },
+    Watch,
     Save {
         changes: Vec<Change>,
         force: bool,
@@ -39,11 +40,11 @@ pub(super) enum LoadPurpose {
 
 impl LoadPurpose {
     fn needs_text(&self) -> bool {
-        matches!(self, Self::Display { .. })
+        matches!(self, Self::Display { .. } | Self::Watch)
     }
 
     pub(super) fn needs_metadata(&self) -> bool {
-        matches!(self, Self::Display { .. })
+        matches!(self, Self::Display { .. } | Self::Watch)
     }
 }
 

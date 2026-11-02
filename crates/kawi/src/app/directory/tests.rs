@@ -16,6 +16,7 @@ mod file_types;
 mod metadata;
 mod permissions;
 mod wall;
+mod watch;
 
 pub(super) fn setup(name: &str, files: &[&str], directories: &[&str]) -> (PathBuf, App) {
     let dir = temp_dir(name);
