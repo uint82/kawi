@@ -6,6 +6,7 @@ use kawi_buffer::Buffer;
 use kawi_editor::{parse, Action};
 
 mod delete;
+mod delete_recovery;
 mod recovery;
 mod recovery_support;
 mod rename;

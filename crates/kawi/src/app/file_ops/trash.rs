@@ -75,10 +75,6 @@ impl TrashDir {
         same_device(target, &self.root) && is_writable_location(&self.root)
     }
 
-    pub(in crate::app) fn trash(&self, target: &Path) -> Result<PathBuf, TrashError> {
-        self.trash_as(target, target)
-    }
-
     pub(in crate::app) fn trash_as(
         &self,
         target: &Path,

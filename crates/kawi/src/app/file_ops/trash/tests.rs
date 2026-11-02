@@ -22,7 +22,7 @@ fn trashes_a_file_and_writes_its_info() {
     let target = dir.join("a b.txt");
     fs::write(&target, "alpha\n").unwrap();
     let trash = TrashDir::new(dir.join("Trash"));
-    let moved = trash.trash(&target).unwrap();
+    let moved = trash.trash_as(&target, &target).unwrap();
     assert!(!target.exists());
     assert_eq!(fs::read_to_string(&moved).unwrap(), "alpha\n");
     let info = fs::read_to_string(trash.info_dir().join("a b.txt.trashinfo")).unwrap();
@@ -41,8 +41,8 @@ fn trashes_directories_and_uses_a_unique_name() {
     fs::create_dir_all(&second).unwrap();
     fs::write(first.join("a.txt"), "a\n").unwrap();
     let trash = TrashDir::new(dir.join("Trash"));
-    let moved_first = trash.trash(&first).unwrap();
-    let moved_second = trash.trash(&second).unwrap();
+    let moved_first = trash.trash_as(&first, &first).unwrap();
+    let moved_second = trash.trash_as(&second, &second).unwrap();
     assert_eq!(moved_first.file_name().unwrap(), "first");
     assert_eq!(moved_second.file_name().unwrap(), "second");
     assert!(moved_first.join("a.txt").exists());

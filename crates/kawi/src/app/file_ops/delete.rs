@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -6,7 +7,11 @@ use kawi_editor::paths;
 use super::pending::{DeletePending, PendingFileOp};
 use super::prompt::{DeleteRequest, DeleteSession, FileOpSession};
 use super::trash::TrashDir;
-use super::{absolute_path, buffer_numbers_under, fs as file_fs, App};
+use super::{absolute_path, buffer_numbers_under, fs as file_fs, with_warning, App};
+use crate::app::apply_journal;
+use crate::app::directory::fs::RealFs;
+use crate::app::directory::temporary::{unique_path, TemporaryPath};
+use crate::recovery::{ApplyJournal, JournalCleanup, JournalOperation, JournalPath};
 
 impl App {
     pub(crate) fn open_delete_prompt(&mut self, path: PathBuf, permanent: bool) {
@@ -76,28 +81,27 @@ impl App {
     }
 
     pub(super) fn finish_delete(&mut self, request: DeleteRequest, keep_dirty: bool) {
-        let target = &request.target;
-        let result = if request.permanent {
-            file_fs::remove_path(target, true)
-        } else {
-            match TrashDir::for_target(target) {
-                Some(trash) => trash
-                    .trash(target)
-                    .map(|_| ())
-                    .map_err(|error| match error {
-                        super::trash::TrashError::Io(error) => error,
-                        super::trash::TrashError::Unavailable(message) => {
-                            std::io::Error::other(message)
-                        }
-                    }),
-                None => Err(std::io::Error::other("trash is unavailable")),
+        let target = request.target.clone();
+        let staged = match delete_stage_path(&target) {
+            Ok(staged) => staged,
+            Err(error) => {
+                self.show_message(error);
+                return;
             }
         };
-        if let Err(error) = result {
-            self.show_message(format!("Cannot delete {}: {error}", target.display()));
-            return;
-        }
-        self.lsp.did_delete_files(std::slice::from_ref(target));
+        let warning = match self.delete_target(&request, &staged) {
+            Ok(warning) => warning,
+            Err(error) => {
+                self.show_message(error);
+                return;
+            }
+        };
+        self.finish_deleted_state(&target, keep_dirty);
+        self.show_message(delete_message(&request, &target, warning));
+    }
+
+    fn finish_deleted_state(&mut self, target: &Path, keep_dirty: bool) {
+        self.lsp.did_delete_files(&[target.to_path_buf()]);
         let numbers = buffer_numbers_under(self, target);
         self.undo.remove_prefix(target);
         self.problems.remove_paths(target);
@@ -114,12 +118,72 @@ impl App {
         self.sync_language_settings();
         self.sync_watched_files();
         self.refresh_git_status();
-        let action = if request.permanent {
-            "Deleted"
-        } else {
-            "Trashed"
+    }
+
+    fn delete_target(
+        &self,
+        request: &DeleteRequest,
+        staged: &Path,
+    ) -> Result<Option<String>, String> {
+        let journal = self.create_delete_journal(&request.target, staged)?;
+        let written = match journal.as_ref() {
+            Some(journal) => apply_journal::persist(self.recovery.as_ref(), journal)?,
+            None => false,
         };
-        self.show_message(format!("{action} \"{}\"", target.display()));
+        if let Err(error) = fs::rename(&request.target, staged) {
+            let warning = apply_journal::finish_failure(self.recovery.as_ref(), true, written);
+            return Err(with_warning(
+                format!("Cannot delete {}: {error}", request.target.display()),
+                warning,
+            ));
+        }
+        let cleanup = delete_cleanup(request, staged);
+        Ok(apply_journal::finish_success(
+            self.recovery.as_ref(),
+            journal.as_ref(),
+            &[cleanup],
+            written,
+        ))
+    }
+
+    fn create_delete_journal(
+        &self,
+        target: &Path,
+        staged: &Path,
+    ) -> Result<Option<ApplyJournal>, String> {
+        if self.recovery.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(ApplyJournal::prepared(vec![
+            JournalOperation::Delete {
+                path: JournalPath::from(target.to_path_buf()),
+                staged: JournalPath::from(staged.to_path_buf()),
+            },
+        ])))
+    }
+}
+
+fn delete_message(request: &DeleteRequest, target: &Path, warning: Option<String>) -> String {
+    let action = match (request.permanent, warning.is_some()) {
+        (_, true) => "Removed",
+        (true, false) => "Deleted",
+        (false, false) => "Trashed",
+    };
+    with_warning(format!("{action} \"{}\"", target.display()), warning)
+}
+
+fn delete_stage_path(target: &Path) -> Result<PathBuf, String> {
+    let parent = target.parent().unwrap_or_else(|| Path::new(""));
+    let spec = TemporaryPath::new(target, parent, "kawi-delete", 0);
+    unique_path(&spec, &BTreeSet::new(), &RealFs::new(true))
+        .map_err(|error| format!("Cannot prepare delete for {}: {error}", target.display()))
+}
+
+fn delete_cleanup(request: &DeleteRequest, staged: &Path) -> JournalCleanup {
+    if request.permanent {
+        JournalCleanup::remove(staged.to_path_buf())
+    } else {
+        JournalCleanup::trash(staged.to_path_buf(), request.target.clone())
     }
 }
 
