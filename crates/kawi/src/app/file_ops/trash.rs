@@ -76,15 +76,23 @@ impl TrashDir {
     }
 
     pub(in crate::app) fn trash(&self, target: &Path) -> Result<PathBuf, TrashError> {
+        self.trash_as(target, target)
+    }
+
+    pub(in crate::app) fn trash_as(
+        &self,
+        target: &Path,
+        original: &Path,
+    ) -> Result<PathBuf, TrashError> {
         self.ensure()?;
         if !same_device(target, &self.files_dir()) {
             return Err(TrashError::Unavailable(
                 "trash is on another filesystem".to_string(),
             ));
         }
-        let name = self.unique_name(target)?;
+        let name = self.unique_name(original)?;
         let info = self.info_dir().join(format!("{name}{INFO_SUFFIX}"));
-        write_info(&info, &self.info_path(target))?;
+        write_info(&info, &self.info_path(original))?;
         let destination = self.files_dir().join(&name);
         match fs::rename(target, &destination) {
             Ok(()) => Ok(destination),

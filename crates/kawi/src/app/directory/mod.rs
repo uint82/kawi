@@ -20,6 +20,7 @@ mod save;
 mod save_all;
 mod session;
 mod sort;
+mod temporary;
 mod verify;
 mod watch;
 

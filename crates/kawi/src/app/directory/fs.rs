@@ -7,7 +7,10 @@ use super::super::file_ops::trash::{TrashDir, TrashError};
 pub(super) trait DirectoryFs {
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
     fn copy(&mut self, from: &Path, to: &Path) -> io::Result<()>;
-    fn trash(&mut self, path: &Path) -> io::Result<()>;
+    fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()>;
+    fn remove_file(&mut self, path: &Path) -> io::Result<()>;
+    fn remove_directory(&mut self, path: &Path) -> io::Result<()>;
+    fn remove_tree(&mut self, path: &Path) -> io::Result<()>;
     fn create_file(&mut self, path: &Path) -> io::Result<()>;
     fn create_dir(&mut self, path: &Path) -> io::Result<()>;
     fn exists(&self, path: &Path) -> bool;
@@ -38,16 +41,31 @@ impl DirectoryFs for RealFs {
         file_fs::copy_path(from, to, false)
     }
 
-    fn trash(&mut self, path: &Path) -> io::Result<()> {
+    fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
         if self.permanent_delete {
-            return file_fs::remove_path(path, true);
+            return file_fs::remove_path(staged, true);
         }
-        let trash =
-            TrashDir::for_target(path).ok_or_else(|| io::Error::other("trash is unavailable"))?;
-        trash.trash(path).map(|_| ()).map_err(|error| match error {
-            TrashError::Io(error) => error,
-            TrashError::Unavailable(message) => io::Error::other(message),
-        })
+        let trash = TrashDir::for_target(original)
+            .ok_or_else(|| io::Error::other("trash is unavailable"))?;
+        trash
+            .trash_as(staged, original)
+            .map(|_| ())
+            .map_err(|error| match error {
+                TrashError::Io(error) => error,
+                TrashError::Unavailable(message) => io::Error::other(message),
+            })
+    }
+
+    fn remove_file(&mut self, path: &Path) -> io::Result<()> {
+        std::fs::remove_file(path)
+    }
+
+    fn remove_directory(&mut self, path: &Path) -> io::Result<()> {
+        std::fs::remove_dir(path)
+    }
+
+    fn remove_tree(&mut self, path: &Path) -> io::Result<()> {
+        file_fs::remove_path(path, true)
     }
 
     fn create_file(&mut self, path: &Path) -> io::Result<()> {

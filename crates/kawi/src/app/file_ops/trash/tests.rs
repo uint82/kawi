@@ -50,6 +50,21 @@ fn trashes_directories_and_uses_a_unique_name() {
 }
 
 #[test]
+fn trashes_a_staged_file_under_its_original_name() {
+    let dir = temp_dir("staged");
+    let original = dir.join("a b.txt");
+    let staged = dir.join(".a b.txt.kawi-delete-0-0");
+    fs::write(&staged, "alpha\n").unwrap();
+    let trash = TrashDir::new(dir.join("Trash"));
+    let moved = trash.trash_as(&staged, &original).unwrap();
+    assert!(!staged.exists());
+    assert_eq!(moved.file_name().unwrap(), "a b.txt");
+    let info = fs::read_to_string(trash.info_dir().join("a b.txt.trashinfo")).unwrap();
+    assert!(info.contains("a%20b.txt"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn refuses_to_trash_across_filesystems() {
     let dir = temp_dir("devices");
     let target = dir.join("a.txt");

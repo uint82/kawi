@@ -11,6 +11,7 @@ pub(super) enum Call {
     Rename(PathBuf, PathBuf),
     Copy(PathBuf, PathBuf),
     Trash(PathBuf),
+    Remove(PathBuf),
     CreateFile(PathBuf),
     CreateDirectory(PathBuf),
 }
@@ -76,6 +77,7 @@ impl FakeFs {
 
     fn record(&mut self, call: Call) -> io::Result<()> {
         if self.fail_at == Some(self.calls.len()) {
+            self.fail_at = None;
             return Err(io::Error::other("injected failure"));
         }
         self.calls.push(call);
@@ -98,8 +100,26 @@ impl DirectoryFs for FakeFs {
         Ok(())
     }
 
-    fn trash(&mut self, path: &Path) -> io::Result<()> {
-        self.record(Call::Trash(path.to_path_buf()))?;
+    fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
+        self.record(Call::Trash(original.to_path_buf()))?;
+        self.paths.remove(staged);
+        Ok(())
+    }
+
+    fn remove_file(&mut self, path: &Path) -> io::Result<()> {
+        self.record(Call::Remove(path.to_path_buf()))?;
+        self.paths.remove(path);
+        Ok(())
+    }
+
+    fn remove_directory(&mut self, path: &Path) -> io::Result<()> {
+        self.record(Call::Remove(path.to_path_buf()))?;
+        self.paths.remove(path);
+        Ok(())
+    }
+
+    fn remove_tree(&mut self, path: &Path) -> io::Result<()> {
+        self.record(Call::Remove(path.to_path_buf()))?;
         self.paths.remove(path);
         Ok(())
     }
