@@ -24,20 +24,20 @@ Each line is a name. Directories end with `/`.
 
 Names are stored as `OsString` values. Unchanged lines are never renamed, so existing names remain byte-for-byte intact. Backslashes, control characters, and bytes that are not valid UTF-8 are escaped so each entry occupies exactly one buffer line. Recognized escapes include `\\`, `\a`, `\b`, `\t`, `\n`, `\v`, `\f`, `\r`, and `\xHH`. Editing a line decodes the escapes before applying changes. Use a literal `/` to create or move entries into subdirectories; escaped slashes are rejected.
 
-`Enter` opens the entry under the cursor. `.` toggles hidden entries when the buffer has no unsaved changes.
+`Enter` opens the entry under the cursor. Regular files and symlinks to regular files open in a buffer, and symlinks to directories open as directories. FIFOs, sockets, block devices, and character devices are not opened. Broken symlinks report an error instead of creating a buffer. `.` toggles hidden entries when the buffer has no unsaved changes.
 
 The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. After a successful write the listing reloads from disk and the text undo history is cleared.
 
 ## Metadata
 
-Directory metadata is display-only text before each entry name, in permissions, links, owner, group, size, and modified order. It is not part of the buffer, so it does not affect editing, search, or writes.
+Directory metadata is display-only text before each entry name, in permissions, links, owner, group, size, and modified order. Symlink targets are display-only text after the entry name, escaped like names. Neither is part of the buffer, so neither affects editing, search, or writes.
 
 ```toml
 [explorer]
 metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 ```
 
-- `permissions` shows Unix mode bits. Other platforms show unknown permissions.
+- `permissions` shows Unix mode bits with the `ls` type character: `-` for regular files, `d` for directories, `l` for symlinks, `p` for FIFOs, `s` for sockets, `b` for block devices, and `c` for character devices. Other platforms show unknown permissions.
 - `links` shows the hard link count. Other platforms show `?`.
 - `owner` shows the owner name resolved from the user database, falling back to the numeric ID. Other platforms show `?`.
 - `group` shows the group name resolved from the group database, falling back to the numeric ID. Other platforms show `?`.
