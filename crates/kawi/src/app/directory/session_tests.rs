@@ -5,13 +5,13 @@ use std::path::PathBuf;
 use super::diff::DirectoryLine;
 use super::session::*;
 use crate::app::directory::entry::{Entry, EntryKind};
-use crate::app::directory::sort::SortMode;
+use crate::app::directory::sort::SortOptions;
 
 fn state() -> DirectoryBuffer {
     DirectoryBuffer {
         root: PathBuf::from("/project"),
         show_hidden: false,
-        sort: SortMode::DirectoriesFirst,
+        sort: SortOptions::default(),
         original: vec![
             Entry {
                 id: 1,

@@ -379,8 +379,8 @@ metadata = ["permissions", "size"]
         assert!(!app.directory_options.confirm);
         assert!(!app.directory_options.trash);
         assert_eq!(
-            app.directory_options.sort,
-            crate::app::directory::SortMode::Name
+            app.directory_options.sort.key,
+            crate::app::directory::SortKey::Name
         );
         assert_eq!(app.directory_options.metadata.name(), "permissions,size");
         let _ = fs::remove_dir_all(dir);

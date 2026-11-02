@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 use super::diff::Change;
 use super::loader::{DirectoryLoader, LoadResult};
 use super::metadata::MetadataColumns;
-use super::sort::SortMode;
+use super::sort::SortOptions;
 use crate::app::save::SaveAfter;
 
 #[derive(Default)]
@@ -101,7 +101,7 @@ impl DirectoryLoading {
         number: usize,
         root: PathBuf,
         show_hidden: bool,
-        sort: SortMode,
+        sort: SortOptions,
         columns: MetadataColumns,
         purpose: LoadPurpose,
     ) -> Result<(), String> {
@@ -120,7 +120,7 @@ impl DirectoryLoading {
         &mut self,
         root: PathBuf,
         show_hidden: bool,
-        sort: SortMode,
+        sort: SortOptions,
         columns: MetadataColumns,
         include_text: bool,
     ) -> Result<u64, String> {

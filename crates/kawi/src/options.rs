@@ -740,12 +740,19 @@ pub(crate) const OPTIONS: [OptionSpec; 46] = [
     OptionSpec {
         name: "directory_sort",
         aliases: &["dsr"],
-        description: "Directory buffer sort order.",
-        kind: OptionKind::Enum(OptionValues::Static(&["directories", "name"])),
+        description: "Directory sort key: name, size, modified, extension, or kind.",
+        kind: OptionKind::Enum(OptionValues::Static(&[
+            "name",
+            "size",
+            "modified",
+            "extension",
+            "kind",
+            "directories",
+        ])),
         scope: OptionScope::Global,
         section: ConfigSection::Explorer,
         config_key: "sort",
-        default: OptionDefault::Text("directories"),
+        default: OptionDefault::Text("name"),
     },
     OptionSpec {
         name: "directory_metadata",

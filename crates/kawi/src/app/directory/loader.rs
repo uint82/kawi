@@ -6,7 +6,7 @@ use ropey::Rope;
 
 use super::listing::{listing_text, read_listing, Listing};
 use super::metadata::MetadataColumns;
-use super::sort::SortMode;
+use super::sort::SortOptions;
 
 pub(super) struct DirectoryLoader {
     requests: Sender<LoadRequest>,
@@ -18,7 +18,7 @@ struct LoadRequest {
     id: u64,
     root: PathBuf,
     show_hidden: bool,
-    sort: SortMode,
+    sort: SortOptions,
     columns: MetadataColumns,
     include_text: bool,
 }
@@ -52,7 +52,7 @@ impl DirectoryLoader {
         &mut self,
         root: PathBuf,
         show_hidden: bool,
-        sort: SortMode,
+        sort: SortOptions,
         columns: MetadataColumns,
         include_text: bool,
     ) -> Result<u64, String> {

@@ -1,12 +1,12 @@
 use super::metadata::MetadataColumns;
-use super::sort::SortMode;
+use super::sort::SortOptions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::app) struct DirectoryOptions {
     pub(in crate::app) show_hidden: bool,
     pub(in crate::app) confirm: bool,
     pub(in crate::app) trash: bool,
-    pub(in crate::app) sort: SortMode,
+    pub(in crate::app) sort: SortOptions,
     pub(in crate::app) metadata: MetadataColumns,
 }
 
@@ -16,7 +16,7 @@ impl Default for DirectoryOptions {
             show_hidden: false,
             confirm: true,
             trash: true,
-            sort: SortMode::DirectoriesFirst,
+            sort: SortOptions::default(),
             metadata: MetadataColumns::all(),
         }
     }
