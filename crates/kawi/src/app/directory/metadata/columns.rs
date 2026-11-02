@@ -1,6 +1,6 @@
 use kawi_tui::text::display_width;
 
-use super::format::{PERMISSION_WIDTH, SIZE_WIDTH};
+use super::format::PERMISSION_WIDTH;
 use super::time::MODIFIED_WIDTH;
 use super::EntryMetadata;
 use crate::options::{
@@ -9,7 +9,7 @@ use crate::options::{
 };
 
 const ENTRY_GAP: usize = 2;
-const MIN_IDENTITY_WIDTH: usize = 1;
+const MIN_DYNAMIC_WIDTH: usize = 1;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::app) struct MetadataColumns {
@@ -115,7 +115,7 @@ impl MetadataColumns {
             self.links.then_some(widths.links),
             self.owner.then_some(widths.owner),
             self.group.then_some(widths.group),
-            self.size.then_some(SIZE_WIDTH),
+            self.size.then_some(widths.size),
             self.modified.then_some(MODIFIED_WIDTH),
         ]
     }
@@ -126,14 +126,16 @@ pub(in crate::app::directory) struct MetadataWidths {
     pub(super) links: usize,
     pub(super) owner: usize,
     pub(super) group: usize,
+    pub(super) size: usize,
 }
 
 impl Default for MetadataWidths {
     fn default() -> Self {
         Self {
-            links: MIN_IDENTITY_WIDTH,
-            owner: MIN_IDENTITY_WIDTH,
-            group: MIN_IDENTITY_WIDTH,
+            links: MIN_DYNAMIC_WIDTH,
+            owner: MIN_DYNAMIC_WIDTH,
+            group: MIN_DYNAMIC_WIDTH,
+            size: MIN_DYNAMIC_WIDTH,
         }
     }
 }
@@ -150,6 +152,7 @@ impl MetadataWidths {
             links: self.links.max(display_width(&metadata.links)),
             owner: self.owner.max(display_width(&metadata.owner)),
             group: self.group.max(display_width(&metadata.group)),
+            size: self.size.max(display_width(&metadata.size)),
         }
     }
 }
@@ -183,13 +186,14 @@ mod tests {
             links: 2,
             owner: 4,
             group: 6,
+            size: 3,
         };
-        assert_eq!(MetadataColumns::all().width(widths), 48);
+        assert_eq!(MetadataColumns::all().width(widths), 44);
         assert_eq!(
             MetadataColumns::parse("permissions,size")
                 .unwrap()
                 .width(widths),
-            20
+            16
         );
         assert_eq!(MetadataColumns::default().width(widths), 0);
     }

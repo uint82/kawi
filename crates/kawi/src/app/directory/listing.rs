@@ -274,8 +274,8 @@ mod tests {
             .text(columns, listing.metadata_widths)
             .unwrap();
         assert!(text.starts_with('-'));
-        assert!(text.contains("5B"));
-        assert_eq!(text.len(), 31);
+        let fields: Vec<&str> = text.split_whitespace().collect();
+        assert_eq!(fields.get(1), Some(&"5"));
         let directory = listing
             .entries
             .iter()

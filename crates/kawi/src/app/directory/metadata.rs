@@ -12,9 +12,7 @@ mod time;
 
 pub(in crate::app) use columns::MetadataColumns;
 pub(super) use columns::MetadataWidths;
-use format::{
-    format_group, format_links, format_owner, format_permissions, format_size, SIZE_WIDTH,
-};
+use format::{format_group, format_links, format_owner, format_permissions, format_size};
 use identity::IdentityResolver;
 use time::{format_modified, MISSING_MODIFIED};
 
@@ -37,7 +35,7 @@ impl MetadataReader {
             links: format_links(metadata),
             owner: format_owner(metadata, &mut self.identities),
             group: format_group(metadata, &mut self.identities),
-            size: format_size(metadata, kind),
+            size: format_size(metadata),
             modified: metadata
                 .modified()
                 .ok()
@@ -72,7 +70,7 @@ impl EntryMetadata {
             push_padded(&mut text, &self.group, widths.group, Alignment::Left);
         }
         if columns.size {
-            push_padded(&mut text, &self.size, SIZE_WIDTH, Alignment::Right);
+            push_padded(&mut text, &self.size, widths.size, Alignment::Right);
         }
         if columns.modified {
             push_field(
@@ -138,20 +136,22 @@ mod tests {
             links: 2,
             owner: 4,
             group: 5,
+            size: 2,
         };
         let columns = MetadataColumns::parse("links,owner,group,size,modified").unwrap();
         let text = metadata.text(columns, widths).unwrap();
-        assert_eq!(text, " 2 user dev        13 Nov  1 20:26");
+        assert_eq!(text, " 2 user dev   13 Nov  1 20:26");
         assert_eq!(columns.width(widths), display_width(&text) + 2);
         assert_eq!(metadata.text(MetadataColumns::default(), widths), None);
     }
 
     #[test]
-    fn identity_widths_track_the_widest_value() {
+    fn dynamic_widths_track_the_widest_value() {
         let mut widest = metadata();
         widest.links = "10".to_string();
         widest.owner = "alice".to_string();
         widest.group = "staff".to_string();
+        widest.size = "12345".to_string();
         let widths = MetadataWidths::measure([&metadata(), &widest].into_iter());
         assert_eq!(
             widths,
@@ -159,6 +159,7 @@ mod tests {
                 links: 2,
                 owner: 5,
                 group: 5,
+                size: 5,
             }
         );
         assert_eq!(
