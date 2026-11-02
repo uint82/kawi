@@ -91,6 +91,8 @@ Plans with deletes or multiple changes ask for confirmation. A single rename or 
 
 The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload. Writes to a deleted root are refused. Recreate the root and reload, or use `:e!` to discard the pending changes.
 
+If the process is interrupted during execution, Kawi writes a private recovery journal before the first operation and removes it after a successful apply or a complete rollback. On the next start it offers `r` to roll back reversible operations or `k` to keep the current files and discard the journal. Staged deletes are restored when possible. Completed deletes cannot be restored, and ambiguous paths are left untouched and reported. A journal is kept when rollback fails or recovery finds ambiguous paths.
+
 `:wall` checks every dirty directory buffer and plans their changes together. When the combined plan needs confirmation, Kawi asks once before applying any directory change. If a listing changed on disk or any plan is invalid, no directory changes or file writes are applied. Nested dirty directory buffers must be saved separately, and the refusal names both roots. A uniquely matching delete and create for the same name in different dirty directories is applied as a move. Other deletes follow the trash rule.
 
 ## Commands and keys
