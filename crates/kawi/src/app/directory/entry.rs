@@ -1,6 +1,7 @@
 use std::ffi::{OsStr, OsString};
 
 use super::metadata::EntryMetadata;
+use super::name::escape_name;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::app) enum EntryKind {
@@ -20,15 +21,11 @@ pub(super) struct Entry {
 
 impl Entry {
     pub(super) fn display_name(&self) -> String {
-        let mut name = self.name.to_string_lossy().into_owned();
+        let mut name = escape_name(self.name.as_os_str());
         if self.kind == EntryKind::Directory {
             name.push('/');
         }
         name
-    }
-
-    pub(super) fn line_text(&self) -> String {
-        self.display_name()
     }
 
     pub(super) fn is_directory(&self) -> bool {

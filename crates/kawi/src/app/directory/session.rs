@@ -187,7 +187,7 @@ impl DirectoryBuffer {
             .iter()
             .map(|entry| DirectoryLine {
                 id: Some(entry.id),
-                text: entry.line_text(),
+                text: entry.display_name(),
             })
             .collect();
     }
