@@ -188,12 +188,7 @@ impl App {
 
     fn retarget_directory_root(&mut self, old: &Path, new: &Path) {
         self.rewrite_paths(old, new);
-        self.lsp
-            .did_rename_files(&[(old.to_path_buf(), new.to_path_buf())]);
-        self.lsp.refresh(&self.editor);
-        self.sync_language_settings();
-        self.sync_watched_files();
-        self.refresh_git_status();
+        self.notify_path_move(old, new);
         self.show_message(format!(
             "Directory moved on disk: {} to {}",
             old.display(),
