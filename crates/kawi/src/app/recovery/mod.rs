@@ -31,15 +31,15 @@ impl App {
             RecoveryStart::Active {
                 manager,
                 snapshots,
-                directory_journal,
+                directory_recovery,
                 warning,
             } => {
                 let candidates =
                     self.recovery_candidates(snapshots, restrict_to_open, manager.cwd());
                 register_panic_snapshots(manager.store_clone());
                 self.recovery = Some(*manager);
-                if let Some(journal) = directory_journal {
-                    self.start_directory_recovery(journal);
+                if let Some(recovery) = directory_recovery {
+                    self.start_directory_recovery(recovery);
                 }
                 self.recovery_prompt = RecoveryPrompt::new(candidates);
                 if warning.is_none() {

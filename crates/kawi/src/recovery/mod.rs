@@ -6,7 +6,7 @@ mod panic;
 mod store;
 mod writer;
 
-pub(crate) use directory::{DirectoryJournal, JournalOperation, JournalPath};
+pub(crate) use directory::{DirectoryJournal, DirectoryRecovery, JournalOperation, JournalPath};
 pub(crate) use manager::{BufferObservation, PendingBuffer, RecoveryManager, RecoveryStart};
 pub(crate) use model::{Fingerprint, Snapshot, SnapshotHeader, SNAPSHOT_VERSION};
 pub(crate) use panic::{

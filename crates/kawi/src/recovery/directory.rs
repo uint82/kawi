@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -11,11 +12,19 @@ pub(crate) enum JournalPhase {
     Committed,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DirectoryRecovery {
+    pub journal: DirectoryJournal,
+    pub promotions: HashSet<usize>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct DirectoryJournal {
     pub version: u32,
     pub phase: JournalPhase,
     pub operations: Vec<JournalOperation>,
+    #[serde(default)]
+    pub deferred: Vec<JournalPath>,
 }
 
 impl DirectoryJournal {
@@ -24,16 +33,22 @@ impl DirectoryJournal {
             version: DIRECTORY_JOURNAL_VERSION,
             phase: JournalPhase::Prepared,
             operations,
+            deferred: Vec::new(),
         }
     }
 
-    pub(crate) fn committed(mut self) -> Self {
+    pub(crate) fn committed(mut self, deferred: Vec<JournalPath>) -> Self {
         self.phase = JournalPhase::Committed;
+        self.deferred = deferred;
         self
     }
 
     pub(crate) fn is_prepared(&self) -> bool {
         self.phase == JournalPhase::Prepared
+    }
+
+    pub(crate) fn deferred(&self) -> &[JournalPath] {
+        &self.deferred
     }
 
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, String> {
@@ -55,10 +70,10 @@ fn validate(journal: &DirectoryJournal) -> Result<(), String> {
             journal.version
         ));
     }
-    if journal
-        .operations
-        .iter()
-        .any(|operation| operation.paths().any(|path| !path.is_absolute()))
+    let operation_paths = journal.operations.iter().flat_map(JournalOperation::paths);
+    if operation_paths
+        .chain(journal.deferred.iter().map(JournalPath::as_path))
+        .any(|path| !path.is_absolute())
     {
         return Err("directory journal contains a relative path".to_string());
     }
@@ -71,10 +86,14 @@ pub(crate) enum JournalOperation {
     Rename {
         from: JournalPath,
         to: JournalPath,
+        #[serde(default)]
+        stage: Option<JournalPath>,
     },
     Copy {
         from: JournalPath,
         to: JournalPath,
+        #[serde(default)]
+        stage: Option<JournalPath>,
     },
     CreateDirectory {
         path: JournalPath,
@@ -89,13 +108,19 @@ pub(crate) enum JournalOperation {
 }
 
 impl JournalOperation {
-    fn paths(&self) -> impl Iterator<Item = &PathBuf> {
-        let (first, second) = match self {
-            Self::Rename { from, to } | Self::Copy { from, to } => (Some(from), Some(to)),
-            Self::CreateDirectory { path } | Self::CreateFile { path } => (Some(path), None),
-            Self::Delete { path, staged } => (Some(path), Some(staged)),
+    fn paths(&self) -> impl Iterator<Item = &Path> {
+        let (first, second, stage) = match self {
+            Self::Rename { from, to, stage } | Self::Copy { from, to, stage } => {
+                (Some(from), Some(to), stage.as_ref())
+            }
+            Self::CreateDirectory { path } | Self::CreateFile { path } => (Some(path), None, None),
+            Self::Delete { path, staged } => (Some(path), Some(staged), None),
         };
-        first.into_iter().chain(second).map(|path| &path.0)
+        first
+            .into_iter()
+            .chain(second)
+            .chain(stage)
+            .map(|path| path.as_path())
     }
 }
 
@@ -192,6 +217,7 @@ mod tests {
             JournalOperation::Rename {
                 from: JournalPath::from(PathBuf::from("/project/a.txt")),
                 to: JournalPath::from(PathBuf::from("/project/.a.tmp")),
+                stage: None,
             },
             JournalOperation::Delete {
                 path: JournalPath::from(PathBuf::from("/project/b.txt")),
@@ -206,7 +232,27 @@ mod tests {
         let decoded = DirectoryJournal::from_bytes(&journal.to_bytes().unwrap()).unwrap();
         assert_eq!(decoded, journal);
         assert!(decoded.is_prepared());
-        assert!(!decoded.committed().is_prepared());
+        assert!(!decoded.committed(Vec::new()).is_prepared());
+    }
+
+    #[test]
+    fn stages_and_deferred_sources_round_trip() {
+        let journal = DirectoryJournal::prepared(vec![JournalOperation::Rename {
+            from: JournalPath::from(PathBuf::from("/project/a.txt")),
+            to: JournalPath::from(PathBuf::from("/mnt/b.txt")),
+            stage: Some(JournalPath::from(PathBuf::from(
+                "/mnt/.b.txt.kawi-copy-0-0",
+            ))),
+        }])
+        .committed(vec![JournalPath::from(PathBuf::from(
+            "/project/.a.kawi-move",
+        ))]);
+        let decoded = DirectoryJournal::from_bytes(&journal.to_bytes().unwrap()).unwrap();
+        assert_eq!(decoded, journal);
+        assert_eq!(
+            decoded.deferred(),
+            &[JournalPath::from(PathBuf::from("/project/.a.kawi-move"))]
+        );
     }
 
     #[test]
@@ -219,6 +265,9 @@ mod tests {
         let mut unsupported = journal();
         unsupported.version = DIRECTORY_JOURNAL_VERSION + 1;
         assert!(DirectoryJournal::from_bytes(&unsupported.to_bytes().unwrap()).is_err());
+        let mut deferred = journal();
+        deferred.deferred = vec![JournalPath::from(PathBuf::from("relative"))];
+        assert!(DirectoryJournal::from_bytes(&deferred.to_bytes().unwrap()).is_err());
     }
 
     #[cfg(unix)]

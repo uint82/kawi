@@ -2,21 +2,25 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use super::fs::RealFs;
 use crate::app::App;
-use crate::recovery::DirectoryJournal;
+use crate::recovery::DirectoryRecovery;
 
+mod complete;
+mod report;
 mod rollback;
 
-use rollback::{recover, RecoveryReport};
+use complete::complete;
+use report::RecoveryReport;
+use rollback::recover;
 
 pub(in crate::app) struct PendingRecovery {
-    journal: DirectoryJournal,
+    recovery: DirectoryRecovery,
     shown: bool,
 }
 
 impl PendingRecovery {
-    fn new(journal: DirectoryJournal) -> Self {
+    fn new(recovery: DirectoryRecovery) -> Self {
         Self {
-            journal,
+            recovery,
             shown: false,
         }
     }
@@ -24,7 +28,7 @@ impl PendingRecovery {
     fn lines(&self, width: usize) -> Vec<String> {
         let text = format!(
             "Interrupted directory operation detected.\n\n{} operation(s) may be partially applied.\n\nr roll back reversible changes  k keep current files",
-            self.journal.operations.len()
+            self.recovery.journal.operations.len()
         );
         super::super::pager_lines(&text, width)
     }
@@ -53,8 +57,25 @@ fn choice(key: KeyEvent) -> Option<Choice> {
 }
 
 impl App {
-    pub(in crate::app) fn start_directory_recovery(&mut self, journal: DirectoryJournal) {
-        self.directory_recovery = Some(PendingRecovery::new(journal));
+    pub(in crate::app) fn start_directory_recovery(&mut self, recovery: DirectoryRecovery) {
+        if recovery.journal.is_prepared() {
+            self.directory_recovery = Some(PendingRecovery::new(recovery));
+        } else {
+            self.complete_directory_recovery(&recovery);
+        }
+    }
+
+    fn complete_directory_recovery(&mut self, recovery: &DirectoryRecovery) {
+        let mut fs = RealFs::new(false);
+        let report = complete(&recovery.journal, &mut fs);
+        let mut message = report_message(&report);
+        if report.is_incomplete() {
+            message.push_str("; recovery journal kept");
+        } else if let Some(error) = self.remove_directory_recovery_files() {
+            message.push_str("; ");
+            message.push_str(&error);
+        }
+        self.show_message(message);
     }
 
     pub(in crate::app) fn show_directory_recovery_prompt_if_ready(&mut self) -> bool {
@@ -87,20 +108,20 @@ impl App {
         };
         self.pager = None;
         match selection {
-            Choice::Rollback => self.rollback_directory_recovery(&prompt.journal),
+            Choice::Rollback => self.rollback_directory_recovery(&prompt.recovery),
             Choice::Keep => self.keep_directory_recovery(),
         }
         self.show_recovery_prompt_if_ready();
         false
     }
 
-    fn rollback_directory_recovery(&mut self, journal: &DirectoryJournal) {
+    fn rollback_directory_recovery(&mut self, recovery: &DirectoryRecovery) {
         let mut fs = RealFs::new(false);
-        let report = recover(journal, &mut fs);
+        let report = recover(&recovery.journal, &recovery.promotions, &mut fs);
         let mut message = report_message(&report);
         if report.is_incomplete() {
             message.push_str("; recovery journal kept");
-        } else if let Some(error) = self.remove_directory_journal() {
+        } else if let Some(error) = self.remove_directory_recovery_files() {
             message.push_str("; ");
             message.push_str(&error);
         }
@@ -108,16 +129,17 @@ impl App {
     }
 
     fn keep_directory_recovery(&mut self) {
-        match self.remove_directory_journal() {
+        match self.remove_directory_recovery_files() {
             Some(error) => self.show_message(error),
             None => self.show_message("Directory recovery journal discarded".to_string()),
         }
     }
 
-    fn remove_directory_journal(&self) -> Option<String> {
-        self.recovery
-            .as_ref()?
+    fn remove_directory_recovery_files(&self) -> Option<String> {
+        let manager = self.recovery.as_ref()?;
+        manager
             .remove_directory_journal()
+            .and_then(|()| manager.remove_directory_promotions())
             .err()
             .map(|error| format!("cannot remove directory recovery journal: {error}"))
     }
