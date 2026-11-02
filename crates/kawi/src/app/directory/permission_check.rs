@@ -138,7 +138,7 @@ impl App {
             }
             (PermissionPhase::Apply, Err(error)) => {
                 self.refresh_after_directory_change();
-                self.finish_directory_apply_failure(&pending.apply, &Outcome::failed(error))
+                self.finish_directory_apply_failure(&pending.apply, &Outcome::failed(error), None)
             }
         }
     }

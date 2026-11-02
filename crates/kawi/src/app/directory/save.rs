@@ -1,17 +1,20 @@
-use std::path::PathBuf;
-
 use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
-use super::executor::{execute, Outcome};
+use super::executor::{Outcome, PreparedPlan};
 use super::fs::RealFs;
 use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
 use super::verify::DELETED_SAVE_MESSAGE;
 use crate::app::App;
+use changes::rename_requests;
 use messages::{apply_success_message, failure_message};
 
+mod changes;
+mod journal;
 mod messages;
+
+pub(super) use changes::all_changes;
 
 impl App {
     pub(in crate::app) fn request_directory_save(
@@ -127,7 +130,22 @@ impl App {
     ) -> bool {
         let changes = all_changes(&apply.edits);
         let mut fs = RealFs::new(permanent_delete);
-        let outcome = execute(&apply.plan, &mut fs);
+        let prepared = match PreparedPlan::new(&apply.plan, &fs) {
+            Ok(prepared) => prepared,
+            Err(error) => return self.cancel_prepared_apply(&apply, error),
+        };
+        let journal = match self.create_directory_journal(&prepared) {
+            Ok(journal) => journal,
+            Err(error) => return self.cancel_prepared_apply(&apply, error),
+        };
+        let journal_written = match journal.as_ref() {
+            Some(journal) => match journal::persist(self.recovery.as_ref(), journal) {
+                Ok(written) => written,
+                Err(error) => return self.cancel_prepared_apply(&apply, error),
+            },
+            None => false,
+        };
+        let outcome = prepared.execute(&mut fs);
         for index in &outcome.remaining {
             if let Some(operation) = apply.plan.operations.get(*index) {
                 self.update_applied_operation(operation);
@@ -141,21 +159,55 @@ impl App {
         }
         self.refresh_after_directory_change();
         match outcome.error {
-            Some(_) => self.finish_directory_apply_failure(&apply, &outcome),
-            None => self.finish_directory_apply_success(&apply),
+            Some(_) => {
+                let warning =
+                    journal::finish_failure(self.recovery.as_ref(), &outcome, journal_written);
+                self.finish_directory_apply_failure(&apply, &outcome, warning)
+            }
+            None => {
+                let warning = journal.as_ref().and_then(|journal| {
+                    journal::finish_success(self.recovery.as_ref(), journal, journal_written)
+                });
+                let saved = self.finish_directory_apply_success(&apply);
+                if let Some(warning) = warning {
+                    self.show_message(warning);
+                }
+                saved
+            }
         }
+    }
+
+    fn cancel_prepared_apply(&mut self, apply: &PendingApply, error: String) -> bool {
+        self.cancel_directory_apply(&apply.edits);
+        self.show_message(error);
+        false
+    }
+
+    fn create_directory_journal(
+        &self,
+        prepared: &PreparedPlan<'_>,
+    ) -> Result<Option<crate::recovery::DirectoryJournal>, String> {
+        if self.recovery.is_none() {
+            return Ok(None);
+        }
+        journal::create(prepared).map(Some)
     }
 
     pub(super) fn finish_directory_apply_failure(
         &mut self,
         apply: &PendingApply,
         outcome: &Outcome,
+        warning: Option<String>,
     ) -> bool {
         let reload_error = self.reload_directories(&apply.edits);
         let mut message = failure_message(&apply.plan, outcome);
         if let Some(reload_error) = reload_error {
             message.push_str("; ");
             message.push_str(&reload_error);
+        }
+        if let Some(warning) = warning {
+            message.push_str("; ");
+            message.push_str(&warning);
         }
         self.show_message(message);
         false
@@ -218,29 +270,6 @@ impl App {
         }
     }
 
-    fn notify_lsp_changes(&mut self, changes: &[Change]) {
-        let renames: Vec<(PathBuf, PathBuf)> = changes
-            .iter()
-            .filter_map(|change| match change {
-                Change::Rename { from, to, .. } => Some((from.clone(), to.clone())),
-                _ => None,
-            })
-            .collect();
-        if !renames.is_empty() {
-            self.lsp.did_rename_files(&renames);
-        }
-        let deletes: Vec<PathBuf> = changes
-            .iter()
-            .filter_map(|change| match change {
-                Change::Delete { path, .. } => Some(path.clone()),
-                _ => None,
-            })
-            .collect();
-        if !deletes.is_empty() {
-            self.lsp.did_delete_files(&deletes);
-        }
-    }
-
     pub(super) fn refresh_after_directory_change(&mut self) {
         self.lsp.refresh(&self.editor);
         self.sync_language_settings();
@@ -248,22 +277,4 @@ impl App {
         self.refresh_git_status();
         self.explorer.refresh();
     }
-}
-
-fn rename_requests(edits: &[DirectoryEdit]) -> Vec<(PathBuf, PathBuf)> {
-    edits
-        .iter()
-        .flat_map(|edit| edit.changes.iter())
-        .filter_map(|change| match change {
-            Change::Rename { from, to, .. } => Some((from.clone(), to.clone())),
-            _ => None,
-        })
-        .collect()
-}
-
-pub(super) fn all_changes(edits: &[DirectoryEdit]) -> Vec<Change> {
-    edits
-        .iter()
-        .flat_map(|edit| edit.changes.iter().cloned())
-        .collect()
 }
