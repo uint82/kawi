@@ -216,6 +216,7 @@ pub struct App {
     events: EventQueue,
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
+    directory_recovery: Option<directory::PendingRecovery>,
     undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
@@ -329,6 +330,7 @@ impl App {
             events: EventQueue::new(),
             recovery: None,
             recovery_prompt: None,
+            directory_recovery: None,
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
@@ -1013,6 +1015,9 @@ impl App {
         if self.plugin_ui.has_prompt() {
             self.handle_plugin_ui_key(key);
             return Ok(false);
+        }
+        if self.directory_recovery_prompt_visible() {
+            return Ok(self.handle_directory_recovery_prompt_key(key));
         }
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);

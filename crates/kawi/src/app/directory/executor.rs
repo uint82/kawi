@@ -1,12 +1,13 @@
-use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use super::fs::DirectoryFs;
 use super::planner::{Operation, Plan};
-use super::temporary::{unique_path, TemporaryPath};
+use staged::StagedDelete;
 
-const DELETE_MARKER: &str = "kawi-delete";
+mod staged;
+
+pub(in crate::app::directory) use staged::PreparedPlan;
 
 pub(super) struct Outcome {
     pub(super) completed: usize,
@@ -39,38 +40,44 @@ enum Removal {
     Tree,
 }
 
-struct StagedDelete {
-    operation: usize,
-    original: PathBuf,
-    staged: PathBuf,
-    finalized: bool,
-}
-
 struct Execution<'a, F> {
     plan: &'a Plan,
     fs: &'a mut F,
-    reserved: BTreeSet<PathBuf>,
     undo: Vec<Undo>,
     deletes: Vec<StagedDelete>,
+    delete_positions: Vec<Option<usize>>,
     completed: usize,
 }
 
+#[cfg(test)]
 pub(super) fn execute(plan: &Plan, fs: &mut impl DirectoryFs) -> Outcome {
-    let mut execution = Execution::new(plan, fs);
-    let error = execution.apply_plan();
-    execution.finish(error)
+    match PreparedPlan::new(plan, fs) {
+        Ok(prepared) => prepared.execute(fs),
+        Err(error) => Outcome::failed(error),
+    }
 }
 
 impl<'a, F: DirectoryFs> Execution<'a, F> {
-    fn new(plan: &'a Plan, fs: &'a mut F) -> Self {
+    fn new(plan: &'a Plan, fs: &'a mut F, deletes: Vec<StagedDelete>) -> Self {
+        let mut delete_positions = vec![None; plan.operations.len()];
+        for (position, delete) in deletes.iter().enumerate() {
+            if let Some(slot) = delete_positions.get_mut(delete.operation) {
+                *slot = Some(position);
+            }
+        }
         Self {
             plan,
             fs,
-            reserved: reserved_paths(plan),
-            undo: Vec::new(),
-            deletes: Vec::new(),
+            undo: Vec::with_capacity(plan.operations.len()),
+            deletes,
+            delete_positions,
             completed: 0,
         }
+    }
+
+    fn run(mut self) -> Outcome {
+        let error = self.apply_plan();
+        self.finish(error)
     }
 
     fn apply_plan(&mut self) -> Option<String> {
@@ -113,25 +120,24 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
                     kind: Removal::File,
                 });
             }
-            Operation::Trash(path) => self.stage_delete(index, path)?,
+            Operation::Trash(_) => self.stage_delete(index)?,
         }
         Ok(())
     }
 
-    fn stage_delete(&mut self, index: usize, path: &Path) -> io::Result<()> {
-        let parent = path.parent().unwrap_or_else(|| Path::new(""));
-        let spec = TemporaryPath::new(path, parent, DELETE_MARKER, index);
-        let staged = unique_path(&spec, &self.reserved, self.fs).map_err(io::Error::other)?;
-        self.reserved.insert(staged.clone());
-        self.fs.rename(path, &staged)?;
-        let delete = self.deletes.len();
-        self.deletes.push(StagedDelete {
-            operation: index,
-            original: path.to_path_buf(),
-            staged,
-            finalized: false,
-        });
-        self.undo.push(Undo::RestoreDelete(delete));
+    fn stage_delete(&mut self, operation: usize) -> io::Result<()> {
+        let position = self
+            .delete_positions
+            .get(operation)
+            .copied()
+            .flatten()
+            .ok_or_else(|| io::Error::other("delete was not prepared"))?;
+        let (original, staged) = {
+            let delete = &self.deletes[position];
+            (delete.original.clone(), delete.staged.clone())
+        };
+        self.fs.rename(&original, &staged)?;
+        self.undo.push(Undo::RestoreDelete(position));
         Ok(())
     }
 
@@ -213,24 +219,6 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
             }
         }
     }
-}
-
-fn reserved_paths(plan: &Plan) -> BTreeSet<PathBuf> {
-    let mut paths = BTreeSet::new();
-    for operation in &plan.operations {
-        match operation {
-            Operation::Rename { from, to } | Operation::Copy { from, to } => {
-                paths.insert(from.clone());
-                paths.insert(to.clone());
-            }
-            Operation::CreateDirectory(path)
-            | Operation::CreateFile(path)
-            | Operation::Trash(path) => {
-                paths.insert(path.clone());
-            }
-        }
-    }
-    paths
 }
 
 fn describe(operation: &Operation) -> String {
