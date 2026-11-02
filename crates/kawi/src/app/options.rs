@@ -83,6 +83,12 @@ impl App {
         spec: &'static OptionSpec,
         value: OptionValue,
     ) -> Result<()> {
+        if let Some(changed) = self.apply_directory_option(spec.name, &value) {
+            if changed {
+                self.reload_directory_listings();
+            }
+            return Ok(());
+        }
         match spec.name {
             "keymap" => self.apply_keymap_value(&value)?,
             "theme" => self.apply_theme_value(&value)?,
@@ -216,33 +222,6 @@ impl App {
             "explorer_enabled" => {
                 self.explorer.set_enabled(value.as_bool().unwrap_or(false));
                 self.sync_terminal_panel_size();
-            }
-            "directory_show_hidden" => {
-                self.directory_options.show_hidden = value.as_bool().unwrap_or(false);
-            }
-            "directory_confirm" => {
-                self.directory_options.confirm = value.as_bool().unwrap_or(true);
-            }
-            "directory_trash" => {
-                self.directory_options.trash = value.as_bool().unwrap_or(true);
-            }
-            "directory_sort" => {
-                self.directory_options.sort.key = value
-                    .as_text()
-                    .and_then(super::directory::SortKey::parse)
-                    .unwrap_or_default();
-            }
-            "directory_sort_reverse" => {
-                self.directory_options.sort.reverse = value.as_bool().unwrap_or(false);
-            }
-            "directory_sort_directories_first" => {
-                self.directory_options.sort.directories_first = value.as_bool().unwrap_or(true);
-            }
-            "directory_metadata" => {
-                self.directory_options.metadata = value
-                    .as_text()
-                    .and_then(super::directory::MetadataColumns::parse)
-                    .unwrap_or_default();
             }
             "explorer_width" => {
                 self.explorer.set_width(
