@@ -26,7 +26,7 @@ Names are stored as `OsString` values. Unchanged lines are never renamed, so exi
 
 `Enter` opens the entry under the cursor. Regular files and symlinks to regular files open in a buffer, and symlinks to directories open as directories. FIFOs, sockets, block devices, and character devices are not opened. Broken symlinks report an error instead of creating a buffer. `.` toggles hidden entries when the buffer has no unsaved changes.
 
-The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. After a successful write the listing reloads from disk and the text undo history is cleared.
+The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. `:e!` discards pending listing edits and reloads from disk. After a successful write the listing reloads from disk and the text undo history is cleared.
 
 ## Sorting
 
@@ -57,6 +57,7 @@ The root of every open directory buffer is watched while Kawi runs. External cre
 - Listings produced by Kawi's own writes are compared with the current buffer, so an identical listing does not reload twice.
 - A nested directory buffer watches its own root. Changes inside a subdirectory also refresh the parent when that subdirectory's metadata changes.
 - If a watched root is removed, recreated, or replaced, Kawi re-arms the watch and reloads the directory.
+- A deleted root is marked `[deleted]` in the status bar and its listing stays readable. Recreating the root and reloading clears the status.
 - If filesystem notifications are unavailable, Kawi reports it and `:e` remains the manual refresh path.
 
 ## Metadata
@@ -87,13 +88,14 @@ Deletes go to the freedesktop trash by default. Unlike symlinks, the link itself
 
 Plans with deletes or multiple changes ask for confirmation. A single rename or create applies immediately. Permission checks use effective IDs, run in the background while planning and again immediately before execution, and are discarded if the editor quits. A failed check stops the plan before any operation. Checks are advisory: root may bypass restrictions, while ACL changes, read-only mounts, immutable attributes, and races can still cause failures during execution. Execution stops at the first filesystem error and does not roll back operations already applied. The message names the operation, path, and error, lists what was applied, and reloads the listing from disk. Recursive checks for permanent directory deletion stop after 50 ms or 4096 entries so a large tree cannot stall the editor. When no writable trash exists for the target filesystem, preflight refuses and suggests permanent deletion with `directory_trash=false`.
 
-The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload.
+The directory is checked again before applying. If entries changed since the buffer loaded, Kawi refuses the write and asks you to reload. Writes to a deleted root are refused. Recreate the root and reload, or use `:e!` to discard the pending changes.
 
 `:wall` checks every dirty directory buffer and plans their changes together. When the combined plan needs confirmation, Kawi asks once before applying any directory change. If a listing changed on disk or any plan is invalid, no directory changes or file writes are applied. Nested dirty directory buffers must be saved separately, and the refusal names both roots. A uniquely matching delete and create for the same name in different dirty directories is applied as a move. Other deletes follow the trash rule.
 
 ## Commands and keys
 
 - `:e dir/` open a directory buffer
+- `:e!` discard pending listing edits and reload
 - `kawi .` start in the current directory
 - `-` open the parent directory from a directory buffer
 - `<leader> e -` open the parent directory from any buffer

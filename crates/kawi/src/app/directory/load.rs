@@ -9,6 +9,8 @@ use super::session::DirectoryEdit;
 use crate::app::save::SaveAfter;
 use crate::app::App;
 
+pub(in crate::app) const DIRECTORY_LOADING_MESSAGE: &str = "Directory is still loading";
+
 impl App {
     pub(in crate::app) fn poll_directory_loads(&mut self) -> bool {
         let outcomes = self.directory_loading.drain();
@@ -26,6 +28,17 @@ impl App {
 
     pub(in crate::app) fn start_directory_reload(&mut self, number: usize) -> Result<(), String> {
         self.start_directory_display_load(number, false, false)
+    }
+
+    pub(in crate::app) fn start_directory_force_reload(
+        &mut self,
+        number: usize,
+    ) -> Result<(), String> {
+        if self.directory_loading.is_loading(number) {
+            return Err(DIRECTORY_LOADING_MESSAGE.to_string());
+        }
+        self.apply_pending_directory_view(number);
+        self.start_directory_load(number, LoadPurpose::Display { initial: false })
     }
 
     pub(super) fn start_directory_reload_after_save(
@@ -67,7 +80,7 @@ impl App {
         allow_dirty: bool,
     ) -> Result<(), String> {
         if self.directory_loading.is_loading(number) {
-            return Err("Directory is still loading".to_string());
+            return Err(DIRECTORY_LOADING_MESSAGE.to_string());
         }
         if !allow_dirty && self.editor.buffer_is_dirty(number).unwrap_or(false) {
             return Err("Save or undo changes before reloading the directory".to_string());
@@ -85,7 +98,7 @@ impl App {
         visible: bool,
     ) -> Result<(), String> {
         if self.directory_loading.is_loading(number) {
-            return Err("Directory is still loading".to_string());
+            return Err(DIRECTORY_LOADING_MESSAGE.to_string());
         }
         self.start_directory_load(
             number,
@@ -104,7 +117,7 @@ impl App {
         batch: u64,
     ) -> Result<(), String> {
         if self.directory_loading.is_loading(number) {
-            return Err("Directory is still loading".to_string());
+            return Err(DIRECTORY_LOADING_MESSAGE.to_string());
         }
         self.start_directory_load(number, LoadPurpose::SaveAll { batch })
     }

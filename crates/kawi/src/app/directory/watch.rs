@@ -6,7 +6,7 @@ use kawi_watch::WatchService;
 
 use super::session::DirectoryBuffers;
 use super::verify::EXTERNAL_CHANGE_MESSAGE;
-use roots::{root_identity, root_identity_changed, watched_paths, RootIdentity};
+use roots::{root_identity, root_identity_changed, root_missing, watched_paths, RootIdentity};
 
 mod roots;
 use crate::app::App;
@@ -169,6 +169,16 @@ impl App {
     }
 
     fn refresh_directory_from_watch(&mut self, number: usize) -> bool {
+        let Some(root) = self.directory.get(number).map(|state| state.root.clone()) else {
+            return false;
+        };
+        if root_missing(&root) {
+            if self.directory.mark_deleted(number) {
+                self.show_message(format!("Deleted on disk: {}; buffer kept", root.display()));
+            }
+            return true;
+        }
+        self.directory.clear_deleted(number);
         if self.directory_loading.is_loading(number) {
             return false;
         }

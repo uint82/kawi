@@ -16,6 +16,7 @@ mod file_types;
 mod metadata;
 mod options;
 mod permissions;
+mod reload;
 mod wall;
 mod watch;
 

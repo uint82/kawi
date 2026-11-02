@@ -2139,7 +2139,12 @@ impl App {
                 return Ok(false);
             }
         } else if let Some(number) = self.directory_buffer_number() {
-            if let Err(message) = self.start_directory_reload(number) {
+            let reload = if force {
+                self.start_directory_force_reload(number)
+            } else {
+                self.start_directory_reload(number)
+            };
+            if let Err(message) = reload {
                 self.show_message(message);
             }
             self.reveal_cursor();

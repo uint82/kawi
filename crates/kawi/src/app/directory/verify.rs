@@ -10,6 +10,8 @@ use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
 
 pub(super) const EXTERNAL_CHANGE_MESSAGE: &str = "Directory changed on disk; reload before saving";
+pub(super) const DELETED_SAVE_MESSAGE: &str =
+    "Directory deleted on disk; reload or close the buffer";
 
 impl App {
     pub(super) fn finish_directory_save_check(

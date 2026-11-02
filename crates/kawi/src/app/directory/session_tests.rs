@@ -46,6 +46,7 @@ fn state() -> DirectoryBuffer {
         positions: HashMap::new(),
         metadata_widths: Default::default(),
         external_changed: false,
+        deleted: false,
         view_options_pending: false,
     }
 }

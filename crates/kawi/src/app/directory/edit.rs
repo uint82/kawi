@@ -4,6 +4,7 @@ use kawi_editor::Action;
 
 use super::super::file_ops::absolute_path;
 use super::diff::parse_text;
+use super::load::DIRECTORY_LOADING_MESSAGE;
 use crate::app::App;
 
 const NO_NAME: &str = "E32: No file name";
@@ -130,7 +131,7 @@ impl App {
     pub(super) fn toggle_directory_hidden(&mut self) -> bool {
         let number = self.editor.buffer_number();
         if self.directory_loading.is_loading(number) {
-            self.show_message("Directory is still loading".to_string());
+            self.show_message(DIRECTORY_LOADING_MESSAGE.to_string());
             return true;
         }
         if self.editor.buffer_is_dirty(number).unwrap_or(false) {

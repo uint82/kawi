@@ -51,6 +51,13 @@ pub(super) fn root_identity_changed(path: &Path, previous: Option<RootIdentity>)
     previous != root_identity(path)
 }
 
+pub(super) fn root_missing(path: &Path) -> bool {
+    match fs::metadata(path) {
+        Ok(metadata) => !metadata.is_dir(),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -79,6 +86,13 @@ mod tests {
         fs::write(dir.join("alpha.txt"), "content\n").unwrap();
         assert!(!root_identity_changed(&dir, identity));
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn deleted_roots_are_missing() {
+        let dir = crate::test_support::temp_dir("directory_watch_missing");
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(root_missing(&dir));
     }
 
     #[test]

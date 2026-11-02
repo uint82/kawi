@@ -358,9 +358,13 @@ impl App {
 
     pub(super) fn disk_status(&self, number: usize) -> Option<&'static str> {
         self.disk.status(number).or_else(|| {
-            self.directory
-                .external_changed(number)
-                .then_some(STATUS_CHANGED)
+            if self.directory.deleted(number) {
+                Some(STATUS_DELETED)
+            } else {
+                self.directory
+                    .external_changed(number)
+                    .then_some(STATUS_CHANGED)
+            }
         })
     }
 
@@ -369,7 +373,7 @@ impl App {
     }
 
     pub(super) fn disk_deleted(&self, number: usize) -> bool {
-        self.disk.status(number) == Some(STATUS_DELETED)
+        self.disk.status(number) == Some(STATUS_DELETED) || self.directory.deleted(number)
     }
 
     pub(super) fn has_disk_conflicts(&self) -> bool {

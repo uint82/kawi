@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::Mode;
 
+use super::load::DIRECTORY_LOADING_MESSAGE;
 use crate::app::App;
 use crate::keymap::Keymap;
 
@@ -36,7 +37,7 @@ impl App {
         }
         if self.directory_loading.is_loading(number) {
             if matches!(key.code, KeyCode::Enter | KeyCode::Char('.')) {
-                self.show_message("Directory is still loading".to_string());
+                self.show_message(DIRECTORY_LOADING_MESSAGE.to_string());
                 return Ok(true);
             }
             return Ok(false);
