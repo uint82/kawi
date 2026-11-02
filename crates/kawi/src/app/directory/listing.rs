@@ -1,11 +1,15 @@
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::thread;
 use std::time::SystemTime;
 
 use super::entry::{entry_kind, is_hidden, is_vcs_directory, Entry, EntryKind};
-use super::metadata::{MetadataColumns, MetadataReader, MetadataWidths};
+use super::metadata::{EntryMetadata, MetadataColumns, MetadataReader, MetadataWidths};
 use super::sort::{compare_entries, SortOptions};
+
+const PARALLEL_METADATA_MIN_ENTRIES: usize = 512;
+const MAX_METADATA_WORKERS: usize = 8;
 
 pub(super) struct Listing {
     pub(super) entries: Vec<Entry>,
@@ -55,14 +59,9 @@ pub(super) fn read_listing(
     columns: MetadataColumns,
 ) -> io::Result<Listing> {
     let settings = ListingSettings::new(show_hidden, columns, sort);
-    let mut reader = MetadataReader::new(SystemTime::now());
-    let mut entries = Vec::new();
-    let mut next_id = first_id;
-    for item in fs::read_dir(root)? {
-        if let Some(entry) = read_entry(item?, next_id, &settings, &mut reader)? {
-            entries.push(entry);
-            next_id = next_id.saturating_add(1);
-        }
+    let (mut entries, next_id) = read_entries(root, first_id, &settings)?;
+    if settings.needs_metadata {
+        read_metadata(root, &mut entries, columns);
     }
     entries.sort_by(|left, right| compare_entries(left, right, sort));
     let metadata_widths =
@@ -76,7 +75,6 @@ pub(super) fn read_listing(
 
 struct ListingSettings {
     show_hidden: bool,
-    columns: MetadataColumns,
     needs_metadata: bool,
 }
 
@@ -84,32 +82,37 @@ impl ListingSettings {
     fn new(show_hidden: bool, columns: MetadataColumns, sort: SortOptions) -> Self {
         Self {
             show_hidden,
-            columns,
             needs_metadata: columns.any() || sort.key.needs_metadata(),
         }
     }
 }
 
-fn read_entry(
-    item: fs::DirEntry,
-    id: u64,
+fn read_entries(
+    root: &Path,
+    first_id: u64,
     settings: &ListingSettings,
-    reader: &mut MetadataReader,
-) -> io::Result<Option<Entry>> {
+) -> io::Result<(Vec<Entry>, u64)> {
+    let mut entries = Vec::new();
+    let mut next_id = first_id;
+    for item in fs::read_dir(root)? {
+        if let Some(entry) = read_entry(item?, next_id, settings.show_hidden)? {
+            entries.push(entry);
+            next_id = next_id.saturating_add(1);
+        }
+    }
+    Ok((entries, next_id))
+}
+
+fn read_entry(item: fs::DirEntry, id: u64, show_hidden: bool) -> io::Result<Option<Entry>> {
     let name = item.file_name();
     let hidden = is_hidden(&name);
     let kind = entry_kind(item.file_type()?);
     if kind == EntryKind::Directory && is_vcs_directory(&name) {
         return Ok(None);
     }
-    if hidden && !settings.show_hidden {
+    if hidden && !show_hidden {
         return Ok(None);
     }
-    let metadata = if settings.needs_metadata {
-        fs::symlink_metadata(item.path()).ok()
-    } else {
-        None
-    };
     let symlink_target = if kind == EntryKind::Symlink {
         fs::read_link(item.path())
             .ok()
@@ -117,17 +120,62 @@ fn read_entry(
     } else {
         None
     };
-    let metadata = metadata
-        .as_ref()
-        .map(|metadata| reader.read(metadata, kind, settings.columns));
     Ok(Some(Entry {
         id,
         name,
         kind,
         symlink_target,
         hidden,
-        metadata,
+        metadata: None,
     }))
+}
+
+fn read_metadata(root: &Path, entries: &mut [Entry], columns: MetadataColumns) {
+    let workers = metadata_worker_count(entries.len());
+    if workers <= 1 {
+        read_metadata_range(root, entries, columns, SystemTime::now());
+        return;
+    }
+    let now = SystemTime::now();
+    let chunk_size = entries.len().div_ceil(workers);
+    thread::scope(|scope| {
+        for chunk in entries.chunks_mut(chunk_size) {
+            scope.spawn(move || read_metadata_range(root, chunk, columns, now));
+        }
+    });
+}
+
+fn metadata_worker_count(entries: usize) -> usize {
+    if entries < PARALLEL_METADATA_MIN_ENTRIES {
+        return 1;
+    }
+    thread::available_parallelism()
+        .map(|count| count.get())
+        .unwrap_or(1)
+        .min(MAX_METADATA_WORKERS)
+        .min(entries)
+}
+
+fn read_metadata_range(
+    root: &Path,
+    entries: &mut [Entry],
+    columns: MetadataColumns,
+    now: SystemTime,
+) {
+    let mut reader = MetadataReader::new(now);
+    for entry in entries {
+        entry.metadata = read_entry_metadata(root, entry, columns, &mut reader);
+    }
+}
+
+fn read_entry_metadata(
+    root: &Path,
+    entry: &Entry,
+    columns: MetadataColumns,
+    reader: &mut MetadataReader,
+) -> Option<EntryMetadata> {
+    let metadata = fs::symlink_metadata(root.join(&entry.name)).ok()?;
+    Some(reader.read(&metadata, entry.kind, columns))
 }
 
 #[cfg(test)]
