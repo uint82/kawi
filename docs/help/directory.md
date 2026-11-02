@@ -57,7 +57,8 @@ The root of every open directory buffer is watched while Kawi runs. External cre
 - Listings produced by Kawi's own writes are compared with the current buffer, so an identical listing does not reload twice.
 - A nested directory buffer watches its own root. Changes inside a subdirectory also refresh the parent when that subdirectory's metadata changes.
 - If a watched root is removed, recreated, or replaced, Kawi re-arms the watch and reloads the directory.
-- A deleted root is marked `[deleted]` in the status bar and its listing stays readable. Recreating the root and reloading clears the status.
+- A renamed or moved root inside a watched location retargets its directory buffer and nested directory buffers. The listing, cursor, view, options, and open buffer paths are preserved.
+- A deleted root, or one moved outside watched locations, is marked `[deleted]` in the status bar and its listing stays readable. Recreating the root and reloading clears the status.
 - If filesystem notifications are unavailable, Kawi reports it and `:e` remains the manual refresh path.
 
 ## Metadata
