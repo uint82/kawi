@@ -44,6 +44,8 @@ The explorer closes automatically when the terminal cannot leave its minimum wid
 
 Double click a row to toggle a directory or open a file. The mouse wheel scrolls the tree.
 
+Renames and deletes write a private operation journal before touching the filesystem. Deletes move the target to a hidden staged path before trash or permanent cleanup. If the process is interrupted, the next start offers `r` to roll back prepared operations or `k` to keep current files. Prepared renames and deletes are restored when possible. Committed deletes finish their trash or permanent cleanup on startup, and cross-device renames record promotion progress before promotion.
+
 ## Markers
 
 - `*` marks a buffer with unsaved changes
