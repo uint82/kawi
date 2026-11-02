@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use kawi_editor::Action;
+
 use super::{listing, set_listing, settle, setup};
 
 #[test]
@@ -11,6 +13,24 @@ fn watch_paths_refresh_clean_directory_buffers() {
     assert!(app.handle_directory_watch_paths(&[beta]));
     settle(&mut app);
     assert_eq!(listing(&app), ["alpha.txt", "beta.txt"]);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn watch_refresh_keeps_the_selected_entry() {
+    let (dir, mut app) = setup(
+        "directory_watch_selection",
+        &["alpha.txt", "beta.txt", "gamma.txt"],
+        &[],
+    );
+    app.editor.apply(Action::JumpTo(1, 0));
+    let alpha = dir.join("alpha.txt");
+    fs::remove_file(&alpha).unwrap();
+    assert!(app.handle_directory_watch_paths(&[alpha]));
+    settle(&mut app);
+    assert_eq!(listing(&app), ["beta.txt", "gamma.txt"]);
+    assert_eq!(app.editor.row(), 0);
+    assert_eq!(listing(&app)[app.editor.row()], "beta.txt");
     fs::remove_dir_all(dir).unwrap();
 }
 

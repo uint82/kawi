@@ -236,6 +236,9 @@ impl App {
         if let Some(state) = self.directory.get_mut(number) {
             state.reset_listing(listing, revision);
         }
+        if let Some(view) = view {
+            self.windows.set_view_for_buffer(number, view);
+        }
         let focused = focus.is_some_and(|focus| self.focus_directory_line(number, &focus));
         if !focused && number == self.editor.buffer_number() {
             if let Some(view) = view {

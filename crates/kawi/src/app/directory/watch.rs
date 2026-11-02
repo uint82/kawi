@@ -130,8 +130,15 @@ impl App {
     }
 
     fn refresh_directory_from_watch(&mut self, number: usize) -> bool {
+        let focus = self.directory_focus_text(number);
         match self.start_directory_watch_reload(number) {
-            Ok(reloaded) => reloaded,
+            Ok(true) => {
+                if let Some(text) = focus {
+                    self.directory_loading.defer_focus(number, text);
+                }
+                true
+            }
+            Ok(false) => false,
             Err(message) => {
                 if number == self.editor.buffer_number() {
                     self.show_message(message);
@@ -139,5 +146,16 @@ impl App {
                 false
             }
         }
+    }
+
+    fn directory_focus_text(&self, number: usize) -> Option<String> {
+        if number != self.editor.buffer_number() {
+            return None;
+        }
+        let state = self.directory.get(number)?;
+        state
+            .lines
+            .get(self.editor.row())
+            .map(|line| line.text.clone())
     }
 }
