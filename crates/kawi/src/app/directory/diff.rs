@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 
 use super::entry::{Entry, EntryKind};
+use super::name::{escape_name, unescape_name};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::app) enum Change {
@@ -94,7 +94,7 @@ pub(super) fn diff(
 }
 
 fn target_for_line(root: &Path, entry: &Entry, text: &str) -> Result<(PathBuf, EntryKind), String> {
-    if text == entry.line_text() {
+    if text == entry.display_name() {
         return Ok((root.join(&entry.name), entry.kind));
     }
     let (relative, is_directory) = parse_text(text)?;
@@ -107,7 +107,7 @@ fn target_for_line(root: &Path, entry: &Entry, text: &str) -> Result<(PathBuf, E
         };
         return Err(format!(
             "{} must use {expected}",
-            entry.name.to_string_lossy()
+            escape_name(entry.name.as_os_str())
         ));
     }
     Ok((root.join(relative), entry.kind))
@@ -124,19 +124,11 @@ fn target_for_new_line(root: &Path, text: &str) -> Result<(PathBuf, EntryKind), 
 }
 
 pub(super) fn parse_text(text: &str) -> Result<(PathBuf, bool), String> {
-    let is_directory = text.ends_with('/');
-    let name = if is_directory {
-        &text[..text.len().saturating_sub(1)]
-    } else {
-        text
-    };
+    let (name, is_directory) = split_name(text);
     if name.is_empty() {
         return Err("entry name is empty".to_string());
     }
-    if name.contains('\0') {
-        return Err("entry name contains a NUL byte".to_string());
-    }
-    let path = Path::new(name);
+    let path = PathBuf::from(unescape_name(name)?);
     if path.is_absolute()
         || path
             .components()
@@ -144,7 +136,14 @@ pub(super) fn parse_text(text: &str) -> Result<(PathBuf, bool), String> {
     {
         return Err(format!("invalid entry name {name}"));
     }
-    Ok((PathBuf::from(OsString::from(name)), is_directory))
+    Ok((path, is_directory))
+}
+
+fn split_name(text: &str) -> (&str, bool) {
+    match text.strip_suffix('/') {
+        Some(name) => (name, true),
+        None => (text, false),
+    }
 }
 
 fn record_target(
@@ -252,6 +251,27 @@ mod tests {
             path: root().join("b.txt"),
             kind: EntryKind::File,
         }));
+    }
+
+    #[test]
+    fn escaped_names_are_decoded() {
+        assert_eq!(parse_text(r"a\nb").unwrap(), (PathBuf::from("a\nb"), false));
+        assert_eq!(parse_text(r"a\\b").unwrap(), (PathBuf::from("a\\b"), false));
+    }
+
+    #[test]
+    fn escaped_unchanged_lines_produce_no_changes() {
+        let entries = [
+            entry(1, "a\nb", EntryKind::File),
+            entry(2, "a\\b", EntryKind::File),
+        ];
+        assert!(diff(
+            &root(),
+            &entries,
+            &[line(Some(1), r"a\nb"), line(Some(2), r"a\\b")]
+        )
+        .unwrap()
+        .is_empty());
     }
 
     #[test]

@@ -58,7 +58,7 @@ pub(super) fn listing_text(listing: &Listing) -> String {
         if index > 0 {
             text.push('\n');
         }
-        text.push_str(&entry.line_text());
+        text.push_str(&entry.display_name());
     }
     text
 }

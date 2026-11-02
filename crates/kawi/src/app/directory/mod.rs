@@ -10,6 +10,7 @@ mod loader;
 mod loading;
 mod metadata;
 mod moves;
+mod name;
 mod open;
 mod options;
 mod permission_check;
