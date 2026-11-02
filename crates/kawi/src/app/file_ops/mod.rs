@@ -200,6 +200,13 @@ pub(super) fn path_under(path: &Path, root: &Path) -> bool {
             .is_ok_and(|rest| !rest.as_os_str().is_empty())
 }
 
+pub(super) fn with_warning(message: String, warning: Option<String>) -> String {
+    match warning {
+        Some(warning) => format!("{message}; {warning}"),
+        None => message,
+    }
+}
+
 pub(super) fn rewrite_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
     if path == old {
         return Some(new.to_path_buf());
