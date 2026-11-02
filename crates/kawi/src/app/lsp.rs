@@ -570,6 +570,13 @@ impl LspUi {
         self.display.as_deref()
     }
 
+    pub fn status_report(&self) -> Vec<String> {
+        let Some(languages) = self.languages.as_ref() else {
+            return vec!["lsp: no language configuration loaded".to_string()];
+        };
+        super::lsp_status::report(languages, &self.statuses, &self.status_messages)
+    }
+
     pub fn has_progress(&self) -> bool {
         !self.progress.is_empty()
     }

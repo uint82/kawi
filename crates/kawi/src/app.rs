@@ -40,6 +40,7 @@ mod lsp;
 mod lsp_diagnostics;
 mod lsp_menu;
 mod lsp_navigation;
+mod lsp_status;
 mod lsp_text;
 mod macro_codec;
 mod macro_ops;
@@ -109,8 +110,8 @@ use crate::options::SignColumnMode;
 use crate::state::{self, StatePaths};
 use git::{GitSession, GitStage};
 use kawi_editor::{
-    Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, QuickfixCommand, SearchOutcome,
-    TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
+    Action, Command, Editor, GitCommand, LspCommand, MatchSpan, PickerCommand, QuickfixCommand,
+    SearchOutcome, TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
 use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
@@ -1363,6 +1364,7 @@ impl App {
             Some(CommandHandler::SendKeys) => self.handle_send_keys(args.as_ref()),
             Some(CommandHandler::Plugin(target)) => self.run_plugin_command(target, args),
             Some(CommandHandler::PluginCancel) => self.cancel_plugin_progress(),
+            Some(CommandHandler::LspStatus) => self.show_lsp_status(),
             Some(CommandHandler::Noop) | None => Ok(false),
         }
     }
@@ -2041,6 +2043,7 @@ impl App {
             Command::Git(command) => self.handle_git_command(command),
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
+            Command::Lsp(LspCommand::Status) => self.show_lsp_status(),
             Command::Explorer(command) => self.handle_explorer_command(command),
             Command::Terminal { command, vertical } => {
                 let layout = if vertical {
