@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use super::diff::Change;
 use super::entry::EntryKind;
 use super::fs::DirectoryFs;
+use super::temporary::{unique_path, TemporaryPath};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
@@ -200,21 +201,8 @@ struct TemporaryNames<'a, F> {
 impl<F: DirectoryFs> TemporaryNames<'_, F> {
     fn path(&self, from: &Path, index: usize) -> Result<PathBuf, String> {
         let parent = self.parent(from);
-        let name = from
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "item".to_string());
-        for attempt in 0..10_000 {
-            let candidate = parent.join(format!(".{name}.kawi-move-{index}-{attempt}"));
-            if !self.fs.exists(&candidate) && !self.targets.contains(&candidate) {
-                return Ok(candidate);
-            }
-        }
-        Err(format!(
-            "cannot find a temporary name for {}",
-            from.display()
-        ))
+        let spec = TemporaryPath::new(from, &parent, "kawi-move", index);
+        unique_path(&spec, self.targets, self.fs)
     }
 
     fn parent(&self, from: &Path) -> PathBuf {
