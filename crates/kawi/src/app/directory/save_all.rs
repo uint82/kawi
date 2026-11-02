@@ -6,6 +6,7 @@ use super::diff::Change;
 use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
+use super::verify::DELETED_SAVE_MESSAGE;
 use crate::app::App;
 
 pub(in crate::app) struct PendingSaveAll {
@@ -160,6 +161,9 @@ impl App {
     ) -> Result<(), String> {
         let mut started = Vec::new();
         for number in edits.keys() {
+            if self.reject_deleted_directory_save(*number, false) {
+                return Err(DELETED_SAVE_MESSAGE.to_string());
+            }
             if let Err(message) = self.start_directory_save_all_check(*number, batch) {
                 for number in started {
                     self.editor.set_buffer_readonly(number, false);

@@ -123,3 +123,40 @@ fn save_conflicts_mark_dirty_directory_buffers_changed() {
     assert!(!dir.join("renamed.txt").exists());
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn deleted_roots_mark_buffers_and_keep_the_listing() {
+    let (dir, mut app) = setup("directory_watch_deleted", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    fs::remove_dir_all(&dir).unwrap();
+    assert!(app.handle_directory_watch_paths(from_ref(&dir)));
+    let expected = format!("Deleted on disk: {}; buffer kept", dir.display());
+    assert_eq!(app.disk_status(number), Some("deleted"));
+    assert_eq!(listing(&app), ["alpha.txt"]);
+    assert_eq!(app.last_message(), Some(expected.as_str()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("beta.txt"), "new\n").unwrap();
+    assert!(app.handle_directory_watch_paths(from_ref(&dir)));
+    settle(&mut app);
+    assert_eq!(app.disk_status(number), None);
+    assert_eq!(listing(&app), ["beta.txt"]);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn deleted_roots_refuse_directory_saves() {
+    let (dir, mut app) = setup("directory_watch_deleted_save", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    set_listing(&mut app, "renamed.txt");
+    fs::remove_dir_all(&dir).unwrap();
+    assert!(app.handle_directory_watch_paths(from_ref(&dir)));
+    assert_eq!(app.disk_status(number), Some("deleted"));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
+    assert_eq!(
+        app.last_message(),
+        Some("Directory deleted on disk; reload or close the buffer")
+    );
+    assert_eq!(listing(&app), ["renamed.txt"]);
+    assert!(!dir.exists());
+}

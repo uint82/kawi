@@ -49,6 +49,7 @@ pub(in crate::app) struct DirectoryBuffer {
     pub(super) positions: HashMap<u64, usize>,
     pub(super) metadata_widths: MetadataWidths,
     pub(super) external_changed: bool,
+    pub(super) deleted: bool,
     pub(super) view_options_pending: bool,
 }
 
@@ -98,6 +99,27 @@ impl DirectoryBuffers {
         self.states
             .get(&number)
             .is_some_and(|state| state.external_changed)
+    }
+
+    pub(in crate::app) fn mark_deleted(&mut self, number: usize) -> bool {
+        let Some(state) = self.states.get_mut(&number) else {
+            return false;
+        };
+        if state.deleted {
+            return false;
+        }
+        state.deleted = true;
+        true
+    }
+
+    pub(in crate::app) fn clear_deleted(&mut self, number: usize) {
+        if let Some(state) = self.states.get_mut(&number) {
+            state.deleted = false;
+        }
+    }
+
+    pub(in crate::app) fn deleted(&self, number: usize) -> bool {
+        self.states.get(&number).is_some_and(|state| state.deleted)
     }
 
     pub(super) fn numbers(&self) -> impl Iterator<Item = usize> + '_ {
@@ -166,6 +188,7 @@ impl DirectoryBuffer {
             positions,
             metadata_widths: listing.metadata_widths,
             external_changed: false,
+            deleted: false,
             view_options_pending: false,
         };
         state.reset_lines();
@@ -193,6 +216,7 @@ impl DirectoryBuffer {
         self.metadata_widths = listing.metadata_widths;
         self.revision = revision;
         self.external_changed = false;
+        self.deleted = false;
         self.removed.clear();
         self.reset_lines();
     }

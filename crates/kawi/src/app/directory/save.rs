@@ -8,6 +8,7 @@ use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::planner::Plan;
 use super::session::{DirectoryEdit, PendingApply};
+use super::verify::DELETED_SAVE_MESSAGE;
 use crate::app::App;
 
 impl App {
@@ -39,6 +40,9 @@ impl App {
     }
 
     fn reject_directory_save(&mut self, number: usize, visible: bool) -> bool {
+        if self.reject_deleted_directory_save(number, visible) {
+            return true;
+        }
         if self.reject_running_permission_check(visible) {
             return true;
         }
@@ -47,6 +51,16 @@ impl App {
         }
         if visible {
             self.show_message(DIRECTORY_LOADING_MESSAGE.to_string());
+        }
+        true
+    }
+
+    pub(super) fn reject_deleted_directory_save(&mut self, number: usize, visible: bool) -> bool {
+        if !self.directory.deleted(number) {
+            return false;
+        }
+        if visible {
+            self.show_message(DELETED_SAVE_MESSAGE.to_string());
         }
         true
     }
