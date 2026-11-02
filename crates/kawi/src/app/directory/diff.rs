@@ -174,6 +174,7 @@ mod tests {
             id,
             name: OsString::from(name),
             kind,
+            symlink_target: None,
             hidden: false,
             metadata: None,
         }

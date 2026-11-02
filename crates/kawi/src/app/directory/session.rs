@@ -7,6 +7,7 @@ use super::entry::Entry;
 use super::entry::EntryKind;
 use super::listing::Listing;
 use super::metadata::{MetadataColumns, MetadataWidths};
+use super::name::escape_name;
 use super::planner::Plan;
 use super::sort::SortMode;
 
@@ -170,16 +171,24 @@ impl DirectoryBuffer {
         row: usize,
         columns: MetadataColumns,
     ) -> Option<String> {
+        self.entry_at_row(row)?
+            .metadata
+            .as_ref()?
+            .text(columns, self.metadata_widths)
+    }
+
+    pub(in crate::app) fn symlink_target(&self, row: usize) -> Option<String> {
+        let target = self.entry_at_row(row)?.symlink_target.as_ref()?;
+        Some(escape_name(target.as_os_str()))
+    }
+
+    fn entry_at_row(&self, row: usize) -> Option<&Entry> {
         let line = self.lines.get(row)?;
         if line.text.is_empty() {
             return None;
         }
         let position = *self.positions.get(&line.id?)?;
-        self.original
-            .get(position)?
-            .metadata
-            .as_ref()?
-            .text(columns, self.metadata_widths)
+        self.original.get(position)
     }
 
     fn reset_lines(&mut self) {

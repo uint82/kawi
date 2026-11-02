@@ -20,6 +20,7 @@ pub(super) struct Entry {
     pub(super) id: u64,
     pub(super) name: OsString,
     pub(super) kind: EntryKind,
+    pub(super) symlink_target: Option<OsString>,
     pub(super) hidden: bool,
     pub(super) metadata: Option<EntryMetadata>,
 }

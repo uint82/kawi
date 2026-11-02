@@ -27,7 +27,7 @@ pub(crate) struct PaneData<'a> {
     pub signs: Option<Vec<Option<Sign>>>,
     pub diagnostic_spans: Vec<DiagnosticSpan>,
     pub decorations: Vec<DecorationSpan>,
-    pub virtual_texts: Vec<Option<VirtualText>>,
+    pub virtual_texts: Vec<Vec<VirtualText>>,
     pub plugin_virtual_texts: Vec<Vec<VirtualText>>,
     pub left_width: usize,
     pub search_spans: Vec<SearchSpan>,

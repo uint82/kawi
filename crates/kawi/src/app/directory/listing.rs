@@ -73,10 +73,18 @@ pub(super) fn read_listing(
         } else {
             None
         };
+        let symlink_target = if kind == EntryKind::Symlink {
+            fs::read_link(item.path())
+                .ok()
+                .map(|path| path.into_os_string())
+        } else {
+            None
+        };
         entries.push(Entry {
             id: next_id,
             name,
             kind,
+            symlink_target,
             hidden,
             metadata: metadata
                 .as_ref()

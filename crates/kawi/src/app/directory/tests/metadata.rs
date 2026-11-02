@@ -53,11 +53,46 @@ fn directory_metadata_loads_with_the_listing() {
     assert!(text.starts_with('-'));
     let fields: Vec<&str> = text.split_whitespace().collect();
     assert_eq!(fields.get(1), Some(&"5"));
-    let texts = app.directory_metadata_texts(number, &[0]);
-    let text = texts[0].as_ref().unwrap();
+    let texts = app.directory_virtual_texts(number, &[0]);
+    let text = &texts[0][0];
     assert_eq!(text.kind, VirtualTextKind::Metadata);
     assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
-    let empty = app.directory_metadata_texts(number, &[100]);
-    assert_eq!(empty[0].as_ref().unwrap().text, " ".repeat(width));
+    let empty = app.directory_virtual_texts(number, &[100]);
+    assert_eq!(empty[0][0].text, " ".repeat(width));
     let _ = fs::remove_dir_all(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_targets_are_shown_after_metadata() {
+    use std::os::unix::fs::symlink;
+
+    let dir = temp_dir("directory_symlink_target");
+    fs::write(dir.join("target.txt"), "hello").unwrap();
+    symlink("target.txt", dir.join("link")).unwrap();
+    let columns = MetadataColumns::parse("permissions").unwrap();
+    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
+    app.directory_options.metadata = columns;
+    assert!(app.open_directory_path(&dir, true));
+    settle(&mut app);
+    let number = app.editor.buffer_number();
+    let row = app
+        .directory
+        .get(number)
+        .unwrap()
+        .lines
+        .iter()
+        .position(|line| line.text == "link")
+        .unwrap();
+    let texts = app.directory_virtual_texts(number, &[row]);
+    assert_eq!(texts[0].len(), 2);
+    assert_eq!(texts[0][0].placement, VirtualTextPlacement::BeforeLine);
+    assert_eq!(texts[0][1].kind, VirtualTextKind::Metadata);
+    assert_eq!(texts[0][1].placement, VirtualTextPlacement::AfterLine);
+    assert_eq!(texts[0][1].text, " -> target.txt");
+    app.directory_options.metadata = MetadataColumns::default();
+    let texts = app.directory_virtual_texts(number, &[row]);
+    assert_eq!(texts[0].len(), 1);
+    assert_eq!(texts[0][0].placement, VirtualTextPlacement::AfterLine);
+    fs::remove_dir_all(dir).unwrap();
 }

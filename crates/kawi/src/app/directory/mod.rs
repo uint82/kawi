@@ -42,5 +42,5 @@ pub(in crate::app) use metadata::MetadataColumns;
 pub(in crate::app) use options::DirectoryOptions;
 pub(in crate::app) use permission_check::PendingPermissionCheck;
 pub(in crate::app) use save_all::PendingSaveAll;
-pub(in crate::app) use session::{DirectoryBuffers, PendingApply};
+pub(in crate::app) use session::{DirectoryBuffer, DirectoryBuffers, PendingApply};
 pub(in crate::app) use sort::SortMode;
