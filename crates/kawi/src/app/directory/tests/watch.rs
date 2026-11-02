@@ -72,8 +72,7 @@ fn unrelated_watch_paths_do_not_start_loads() {
 fn deleting_a_directory_buffer_forgets_its_state() {
     let (dir, mut app) = setup("directory_watch_delete", &["alpha.txt"], &[]);
     let number = app.editor.buffer_number();
-    app.handle_delete_buffer(Some(number.to_string()), true)
-        .unwrap();
+    app.handle_delete_buffer(None, true).unwrap();
     assert!(!app.directory.contains(number));
     fs::remove_dir_all(dir).unwrap();
 }
