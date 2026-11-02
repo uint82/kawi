@@ -158,17 +158,8 @@ impl DirectoryBuffers {
         self.pending.take()
     }
 
-    pub(in crate::app) fn rewrite_path(&mut self, old: &Path, new: &Path) -> Vec<usize> {
-        let numbers: Vec<usize> = self
-            .states
-            .iter()
-            .filter(|(_, state)| state.root.starts_with(old))
-            .map(|(number, _)| *number)
-            .collect();
-        for number in &numbers {
-            let Some(state) = self.states.get_mut(number) else {
-                continue;
-            };
+    pub(in crate::app) fn rewrite_path(&mut self, old: &Path, new: &Path) {
+        for state in self.states.values_mut() {
             let Ok(rest) = state.root.strip_prefix(old) else {
                 continue;
             };
@@ -179,7 +170,6 @@ impl DirectoryBuffers {
             };
             state.deleted = false;
         }
-        numbers
     }
 }
 
