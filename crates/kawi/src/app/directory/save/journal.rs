@@ -162,6 +162,7 @@ mod tests {
             completed: 1,
             remaining: Vec::new(),
             rollback_errors: Vec::new(),
+            deferred_deletes: Vec::new(),
             error: Some("failed".to_string()),
         };
         assert!(finish_failure(Some(&manager), &outcome, true).is_none());
@@ -183,6 +184,7 @@ mod tests {
             completed: 1,
             remaining: Vec::new(),
             rollback_errors: vec!["cannot restore".to_string()],
+            deferred_deletes: Vec::new(),
             error: Some("failed".to_string()),
         };
         let warning = finish_failure(Some(&manager), &outcome, true).expect("journal warning");

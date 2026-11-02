@@ -145,7 +145,7 @@ impl App {
             },
             None => false,
         };
-        let outcome = prepared.execute(&mut fs);
+        let outcome = prepared.execute(&mut fs, &mut |_| Ok(()));
         for index in &outcome.remaining {
             if let Some(operation) = apply.plan.operations.get(*index) {
                 self.update_applied_operation(operation);

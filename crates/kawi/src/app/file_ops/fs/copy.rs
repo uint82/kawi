@@ -3,7 +3,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::{remove_path, rename_noreplace};
+use super::{remove_path, rename_noreplace, sync_parent};
 
 static NEXT_STAGED: AtomicU64 = AtomicU64::new(1);
 
@@ -52,9 +52,11 @@ fn staged_suffix() -> u64 {
 
 pub(super) fn promote_copy(staged: &Path, new: &Path, force: bool) -> io::Result<()> {
     if !force {
-        return rename_noreplace(staged, new);
+        rename_noreplace(staged, new)?;
+    } else {
+        fs::rename(staged, new)?;
     }
-    fs::rename(staged, new)
+    sync_parent(new)
 }
 
 pub(super) fn copy_tree(old: &Path, new: &Path) -> io::Result<()> {

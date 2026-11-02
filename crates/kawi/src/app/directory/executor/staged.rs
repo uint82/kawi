@@ -7,6 +7,7 @@ use super::super::temporary::{unique_path, TemporaryPath};
 use super::Execution;
 
 const DELETE_MARKER: &str = "kawi-delete";
+const STAGE_MARKER: &str = "kawi-copy";
 
 pub(super) struct StagedDelete {
     pub(super) operation: usize,
@@ -18,6 +19,8 @@ pub(super) struct StagedDelete {
 pub(in crate::app::directory) struct PreparedPlan<'a> {
     plan: &'a Plan,
     deletes: Vec<StagedDelete>,
+    delete_positions: Vec<Option<usize>>,
+    stages: Vec<Option<PathBuf>>,
 }
 
 impl<'a> PreparedPlan<'a> {
@@ -27,19 +30,39 @@ impl<'a> PreparedPlan<'a> {
     ) -> Result<Self, String> {
         let mut reserved = reserved_paths(plan);
         let mut deletes = Vec::new();
+        let mut delete_positions = vec![None; plan.operations.len()];
+        let mut stages = vec![None; plan.operations.len()];
         for (index, operation) in plan.operations.iter().enumerate() {
-            let Operation::Trash(path) = operation else {
-                continue;
-            };
-            let staged = staged_path(path, index, &mut reserved, fs)?;
-            deletes.push(StagedDelete {
-                operation: index,
-                original: path.clone(),
-                staged,
-                finalized: false,
-            });
+            match operation {
+                Operation::Trash(path) => {
+                    let staged = staged_path(path, index, DELETE_MARKER, &mut reserved, fs)?;
+                    if let Some(slot) = delete_positions.get_mut(index) {
+                        *slot = Some(deletes.len());
+                    }
+                    deletes.push(StagedDelete {
+                        operation: index,
+                        original: path.clone(),
+                        staged,
+                        finalized: false,
+                    });
+                }
+                Operation::Rename { from, to } if from.parent() != to.parent() => {
+                    stages[index] = Some(staged_path(to, index, STAGE_MARKER, &mut reserved, fs)?);
+                }
+                Operation::Copy { to, .. } => {
+                    stages[index] = Some(staged_path(to, index, STAGE_MARKER, &mut reserved, fs)?);
+                }
+                Operation::Rename { .. }
+                | Operation::CreateDirectory(_)
+                | Operation::CreateFile(_) => {}
+            }
         }
-        Ok(Self { plan, deletes })
+        Ok(Self {
+            plan,
+            deletes,
+            delete_positions,
+            stages,
+        })
     }
 
     pub(in crate::app::directory) fn plan(&self) -> &'a Plan {
@@ -47,25 +70,42 @@ impl<'a> PreparedPlan<'a> {
     }
 
     pub(in crate::app::directory) fn staged_path(&self, operation: usize) -> Option<&Path> {
+        let position = self.delete_positions.get(operation).copied().flatten()?;
         self.deletes
-            .iter()
-            .find(|delete| delete.operation == operation)
+            .get(position)
             .map(|delete| delete.staged.as_path())
     }
 
-    pub(in crate::app::directory) fn execute(self, fs: &mut impl DirectoryFs) -> super::Outcome {
-        Execution::new(self.plan, fs, self.deletes).run()
+    pub(in crate::app::directory) fn stage_path(&self, operation: usize) -> Option<&Path> {
+        self.stages.get(operation).and_then(Option::as_deref)
+    }
+
+    pub(in crate::app::directory) fn execute(
+        self,
+        fs: &mut impl DirectoryFs,
+        promotions: &mut dyn FnMut(usize) -> std::io::Result<()>,
+    ) -> super::Outcome {
+        Execution::new(
+            self.plan,
+            fs,
+            self.deletes,
+            self.delete_positions,
+            self.stages,
+            promotions,
+        )
+        .run()
     }
 }
 
 fn staged_path(
     path: &Path,
     index: usize,
+    marker: &str,
     reserved: &mut BTreeSet<PathBuf>,
     fs: &impl DirectoryFs,
 ) -> Result<PathBuf, String> {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let spec = TemporaryPath::new(path, parent, DELETE_MARKER, index);
+    let spec = TemporaryPath::new(path, parent, marker, index);
     let staged = unique_path(&spec, reserved, fs)?;
     reserved.insert(staged.clone());
     Ok(staged)

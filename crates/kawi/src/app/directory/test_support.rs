@@ -26,6 +26,7 @@ pub(super) struct FakeFs {
     denied_read: BTreeSet<PathBuf>,
     denied_entry_remove: BTreeSet<PathBuf>,
     denied_delete: BTreeSet<PathBuf>,
+    cross_device: BTreeSet<(PathBuf, PathBuf)>,
 }
 
 impl FakeFs {
@@ -42,7 +43,14 @@ impl FakeFs {
             denied_read: BTreeSet::new(),
             denied_entry_remove: BTreeSet::new(),
             denied_delete: BTreeSet::new(),
+            cross_device: BTreeSet::new(),
         }
+    }
+
+    pub(super) fn cross_device(mut self, from: &str, to: &str) -> Self {
+        self.cross_device
+            .insert((PathBuf::from(from), PathBuf::from(to)));
+        self
     }
 
     pub(super) fn fail_at(mut self, index: usize) -> Self {
@@ -88,15 +96,31 @@ impl FakeFs {
 impl DirectoryFs for FakeFs {
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
         self.record(Call::Rename(from.to_path_buf(), to.to_path_buf()))?;
-        let is_dir = self.paths.remove(from).unwrap_or(false);
-        self.paths.insert(to.to_path_buf(), is_dir);
+        self.move_path(from, to);
         Ok(())
     }
 
-    fn copy(&mut self, from: &Path, to: &Path) -> io::Result<()> {
-        self.record(Call::Copy(from.to_path_buf(), to.to_path_buf()))?;
-        let is_dir = self.paths.get(from).copied().unwrap_or(false);
-        self.paths.insert(to.to_path_buf(), is_dir);
+    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+        self.record(Call::Rename(from.to_path_buf(), to.to_path_buf()))?;
+        if self
+            .cross_device
+            .contains(&(from.to_path_buf(), to.to_path_buf()))
+        {
+            return Err(io::Error::from(io::ErrorKind::CrossesDevices));
+        }
+        self.move_path(from, to);
+        Ok(())
+    }
+
+    fn stage_copy(&mut self, from: &Path, stage: &Path) -> io::Result<()> {
+        self.record(Call::Copy(from.to_path_buf(), stage.to_path_buf()))?;
+        self.copy_path(from, stage);
+        Ok(())
+    }
+
+    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()> {
+        self.record(Call::Rename(stage.to_path_buf(), to.to_path_buf()))?;
+        self.move_path(stage, to);
         Ok(())
     }
 
@@ -121,6 +145,10 @@ impl DirectoryFs for FakeFs {
     fn remove_tree(&mut self, path: &Path) -> io::Result<()> {
         self.record(Call::Remove(path.to_path_buf()))?;
         self.paths.remove(path);
+        Ok(())
+    }
+
+    fn sync_parent(&self, _path: &Path) -> io::Result<()> {
         Ok(())
     }
 
@@ -164,6 +192,18 @@ impl DirectoryFs for FakeFs {
         self.denied_delete
             .contains(path)
             .then(|| "no trash available on this filesystem".to_string())
+    }
+}
+
+impl FakeFs {
+    fn move_path(&mut self, from: &Path, to: &Path) {
+        let is_dir = self.paths.remove(from).unwrap_or(false);
+        self.paths.insert(to.to_path_buf(), is_dir);
+    }
+
+    fn copy_path(&mut self, from: &Path, to: &Path) {
+        let is_dir = self.paths.get(from).copied().unwrap_or(false);
+        self.paths.insert(to.to_path_buf(), is_dir);
     }
 }
 

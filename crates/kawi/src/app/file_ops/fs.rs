@@ -23,14 +23,27 @@ pub(in crate::app) struct RenameOutcome {
     pub symlink: bool,
 }
 
-pub(in crate::app) fn copy_path(old: &Path, new: &Path, force: bool) -> io::Result<()> {
-    copy_across_filesystems(old, new, force)
-}
-
 pub(in crate::app) fn rename_path(
     old: &Path,
     new: &Path,
     force: bool,
+) -> io::Result<RenameOutcome> {
+    rename_path_with(old, new, force, true)
+}
+
+pub(in crate::app) fn try_rename_path(
+    old: &Path,
+    new: &Path,
+    force: bool,
+) -> io::Result<RenameOutcome> {
+    rename_path_with(old, new, force, false)
+}
+
+fn rename_path_with(
+    old: &Path,
+    new: &Path,
+    force: bool,
+    cross_filesystem: bool,
 ) -> io::Result<RenameOutcome> {
     let source = fs::symlink_metadata(old)?;
     let symlink = source.file_type().is_symlink();
@@ -54,7 +67,7 @@ pub(in crate::app) fn rename_path(
             kind: RenameKind::Moved,
             symlink,
         }),
-        Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
+        Err(error) if cross_filesystem && error.kind() == io::ErrorKind::CrossesDevices => {
             copy_across_filesystems(old, new, force)?;
             remove_path(old, true)?;
             Ok(RenameOutcome {
@@ -64,6 +77,24 @@ pub(in crate::app) fn rename_path(
         }
         Err(error) => Err(error),
     }
+}
+
+pub(in crate::app) fn stage_copy(old: &Path, stage: &Path) -> io::Result<()> {
+    copy::copy_tree(old, stage)
+}
+
+pub(in crate::app) fn promote_stage(stage: &Path, new: &Path) -> io::Result<()> {
+    copy::promote_copy(stage, new, false)
+}
+
+pub(in crate::app) fn sync_parent(path: &Path) -> io::Result<()> {
+    let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    else {
+        return Ok(());
+    };
+    crate::persist::sync_directory(parent).map_err(io::Error::other)
 }
 
 pub(in crate::app) fn remove_path(path: &Path, permanent: bool) -> io::Result<()> {

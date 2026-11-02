@@ -69,6 +69,7 @@ mod tests {
             completed,
             remaining,
             rollback_errors: Vec::new(),
+            deferred_deletes: Vec::new(),
             error: Some("operation failed".to_string()),
         }
     }
