@@ -21,6 +21,7 @@ mod save_all;
 mod session;
 mod sort;
 mod verify;
+mod watch;
 
 #[cfg(test)]
 mod executor_tests;

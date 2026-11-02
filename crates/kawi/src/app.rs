@@ -341,6 +341,7 @@ impl App {
         };
         app.explorer.set_wake(app.events.wake());
         app.directory_loading.set_wake(app.events.wake());
+        app.directory.set_wake(app.events.wake());
         app.refresh_command_completion();
         app.rebuild_plugin_styles();
         app
@@ -450,6 +451,7 @@ impl App {
             self.sync_task();
             self.sync_terminal();
             self.sync_watched_files();
+            self.sync_directory_watch();
             self.maybe_open_conflict();
             self.save_tick();
             self.autosave_tick();
@@ -499,6 +501,8 @@ impl App {
             redraw |= self.completion_tick();
             redraw |= self.poll_file_watch();
             self.sync_watched_files();
+            redraw |= self.poll_directory_watch();
+            self.sync_directory_watch();
             self.maybe_open_conflict();
             self.update_signcolumn_width();
             redraw |= self.lsp.update_display();
@@ -2241,6 +2245,7 @@ impl App {
                 self.reconcile_unlisted_buffers();
                 let listed = self.editor.buffer_numbers();
                 let cancelled = self.directory_loading.retain_listed(&listed);
+                self.directory.retain_listed(&listed);
                 for number in cancelled {
                     self.editor.set_buffer_readonly(number, false);
                 }

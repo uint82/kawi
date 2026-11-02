@@ -37,6 +37,14 @@ impl Entry {
     pub(super) fn is_directory(&self) -> bool {
         self.kind == EntryKind::Directory
     }
+
+    pub(super) fn same_content(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.kind == other.kind
+            && self.symlink_target == other.symlink_target
+            && self.hidden == other.hidden
+            && self.metadata == other.metadata
+    }
 }
 
 pub(super) fn is_hidden(name: &OsStr) -> bool {

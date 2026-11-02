@@ -48,6 +48,16 @@ sort_directories_first = true
 
 Sorting by size or modified reads filesystem metadata even when metadata columns are hidden. Changing a sort option affects the next load, so use `:e` to refresh an open directory buffer.
 
+## Live refresh
+
+The root of every open directory buffer is watched while Kawi runs. External creates, deletes, renames, symlink target changes, and metadata updates reload clean directory buffers automatically.
+
+- Dirty directory buffers are never overwritten. Save, undo, or close them before relying on automatic refresh.
+- The cursor stays on the selected entry when it still exists. Window and scroll state are preserved.
+- Listings produced by Kawi's own writes are compared with the current buffer, so an identical listing does not reload twice.
+- A nested directory buffer watches its own root. Changes inside a subdirectory also refresh the parent when that subdirectory's metadata changes.
+- If filesystem notifications are unavailable, Kawi reports it and `:e` remains the manual refresh path.
+
 ## Metadata
 
 Directory metadata is display-only text before each entry name, in permissions, links, owner, group, size, and modified order. Symlink targets are display-only text after the entry name, escaped like names. Neither is part of the buffer, so neither affects editing, search, or writes.

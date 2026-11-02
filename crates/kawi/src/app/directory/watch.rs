@@ -1,0 +1,161 @@
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+use std::sync::mpsc::Sender;
+
+use kawi_watch::WatchService;
+
+use super::session::DirectoryBuffers;
+use crate::app::App;
+
+pub(super) struct DirectoryWatch {
+    service: WatchService,
+    roots: BTreeSet<PathBuf>,
+}
+
+impl DirectoryWatch {
+    fn new(wake: Sender<()>) -> Result<Self, String> {
+        WatchService::new(wake)
+            .map(|service| Self {
+                service,
+                roots: BTreeSet::new(),
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    fn matches<'a>(&self, roots: impl IntoIterator<Item = &'a PathBuf>) -> bool {
+        let mut count = 0;
+        for root in roots {
+            if !self.roots.contains(root) {
+                return false;
+            }
+            count += 1;
+        }
+        count == self.roots.len()
+    }
+
+    fn sync(&mut self, roots: BTreeSet<PathBuf>) {
+        self.service
+            .watch_directories(roots.iter().map(PathBuf::as_path));
+        self.roots = roots;
+    }
+
+    fn paths(&self) -> Vec<PathBuf> {
+        self.service.try_recv_paths()
+    }
+}
+
+impl DirectoryBuffers {
+    pub(in crate::app) fn set_wake(&mut self, wake: Sender<()>) {
+        self.wake = Some(wake);
+    }
+
+    pub(in crate::app) fn sync_watch(&mut self) -> Option<String> {
+        if self.states.is_empty() {
+            self.watch = None;
+            self.watch_failed = false;
+            return None;
+        }
+        if self.watch.is_none() {
+            if self.watch_failed {
+                return None;
+            }
+            let wake = self.wake.clone()?;
+            match DirectoryWatch::new(wake) {
+                Ok(watch) => self.watch = Some(watch),
+                Err(error) => {
+                    self.watch_failed = true;
+                    return Some(format!("Directory watch unavailable: {error}"));
+                }
+            }
+        }
+        let matches = self
+            .watch
+            .as_ref()
+            .is_some_and(|watch| watch.matches(self.states.values().map(|state| &state.root)));
+        if matches {
+            return None;
+        }
+        let roots = self
+            .states
+            .values()
+            .map(|state| state.root.clone())
+            .collect();
+        if let Some(watch) = self.watch.as_mut() {
+            watch.sync(roots);
+        }
+        None
+    }
+
+    pub(in crate::app) fn watch_paths(&self) -> Vec<PathBuf> {
+        self.watch
+            .as_ref()
+            .map(DirectoryWatch::paths)
+            .unwrap_or_default()
+    }
+
+    pub(in crate::app) fn matching_roots(&self, paths: &[PathBuf]) -> Vec<usize> {
+        self.states
+            .iter()
+            .filter(|(_, state)| {
+                paths
+                    .iter()
+                    .any(|path| path.starts_with(state.root.as_path()))
+            })
+            .map(|(number, _)| *number)
+            .collect()
+    }
+}
+
+impl App {
+    pub(in crate::app) fn sync_directory_watch(&mut self) {
+        if let Some(message) = self.directory.sync_watch() {
+            self.show_message(message);
+        }
+    }
+
+    pub(in crate::app) fn poll_directory_watch(&mut self) -> bool {
+        let paths = self.directory.watch_paths();
+        self.handle_directory_watch_paths(&paths)
+    }
+
+    pub(in crate::app) fn handle_directory_watch_paths(&mut self, paths: &[PathBuf]) -> bool {
+        if paths.is_empty() {
+            return false;
+        }
+        let mut redraw = false;
+        for number in self.directory.matching_roots(paths) {
+            redraw |= self.refresh_directory_from_watch(number);
+        }
+        redraw
+    }
+
+    fn refresh_directory_from_watch(&mut self, number: usize) -> bool {
+        let focus = self.directory_focus_text(number);
+        match self.start_directory_watch_reload(number) {
+            Ok(true) => {
+                if let Some(text) = focus {
+                    self.directory_loading.defer_focus(number, text);
+                }
+                true
+            }
+            Ok(false) => false,
+            Err(message) => {
+                if number == self.editor.buffer_number() {
+                    self.show_message(message);
+                }
+                false
+            }
+        }
+    }
+
+    fn directory_focus_text(&self, number: usize) -> Option<String> {
+        if number != self.editor.buffer_number() {
+            return None;
+        }
+        let state = self.directory.get(number)?;
+        state
+            .lines
+            .get(self.editor.row())
+            .map(|line| line.text.clone())
+    }
+}

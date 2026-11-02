@@ -35,6 +35,19 @@ impl App {
         self.start_directory_display_load(number, false, true)
     }
 
+    pub(in crate::app) fn start_directory_watch_reload(
+        &mut self,
+        number: usize,
+    ) -> Result<bool, String> {
+        if self.directory_loading.is_loading(number)
+            || self.editor.buffer_is_dirty(number).unwrap_or(false)
+        {
+            return Ok(false);
+        }
+        self.start_directory_load(number, LoadPurpose::Watch)?;
+        Ok(true)
+    }
+
     fn start_directory_display_load(
         &mut self,
         number: usize,
@@ -128,6 +141,7 @@ impl App {
             LoadPurpose::Display { initial } => {
                 self.finish_directory_display_load(number, listing, initial)
             }
+            LoadPurpose::Watch => self.finish_directory_watch_load(number, listing),
             LoadPurpose::Save {
                 changes,
                 force,
@@ -154,6 +168,37 @@ impl App {
             return false;
         };
         self.store_directory_listing(number, listing, text)
+    }
+
+    fn finish_directory_watch_load(
+        &mut self,
+        number: usize,
+        listing: Result<LoadedListing, String>,
+    ) -> bool {
+        let Some(loaded) = self.accept_directory_listing(number, listing, false) else {
+            return true;
+        };
+        let LoadedListing { listing, text } = loaded;
+        if self.directory_listing_unchanged(number, &listing) {
+            self.directory_loading.clear_focus(number);
+            return true;
+        }
+        let Some(text) = text else {
+            return false;
+        };
+        self.store_directory_listing(number, listing, text)
+    }
+
+    fn directory_listing_unchanged(&self, number: usize, listing: &Listing) -> bool {
+        let Some(state) = self.directory.get(number) else {
+            return false;
+        };
+        state.original.len() == listing.entries.len()
+            && state
+                .original
+                .iter()
+                .zip(&listing.entries)
+                .all(|(left, right)| left.same_content(right))
     }
 
     fn accept_directory_listing(
@@ -190,6 +235,9 @@ impl App {
         let revision = self.editor.buffer_revision_at(number).unwrap_or_default();
         if let Some(state) = self.directory.get_mut(number) {
             state.reset_listing(listing, revision);
+        }
+        if let Some(view) = view {
+            self.windows.set_view_for_buffer(number, view);
         }
         let focused = focus.is_some_and(|focus| self.focus_directory_line(number, &focus));
         if !focused && number == self.editor.buffer_number() {
