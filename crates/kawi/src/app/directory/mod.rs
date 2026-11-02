@@ -19,6 +19,7 @@ mod planner;
 mod save;
 mod save_all;
 mod session;
+mod sort;
 mod verify;
 
 #[cfg(test)]
@@ -36,10 +37,10 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::app) use listing::SortMode;
 pub(in crate::app) use loading::DirectoryLoading;
 pub(in crate::app) use metadata::MetadataColumns;
 pub(in crate::app) use options::DirectoryOptions;
 pub(in crate::app) use permission_check::PendingPermissionCheck;
 pub(in crate::app) use save_all::PendingSaveAll;
 pub(in crate::app) use session::{DirectoryBuffers, PendingApply};
+pub(in crate::app) use sort::SortMode;

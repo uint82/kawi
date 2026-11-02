@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use super::diff::DirectoryLine;
 use super::session::*;
 use crate::app::directory::entry::{Entry, EntryKind};
-use crate::app::directory::listing::SortMode;
+use crate::app::directory::sort::SortMode;
 
 fn state() -> DirectoryBuffer {
     DirectoryBuffer {

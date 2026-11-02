@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 use super::diff::Change;
-use super::listing::SortMode;
 use super::loader::{DirectoryLoader, LoadResult};
 use super::metadata::MetadataColumns;
+use super::sort::SortMode;
 use crate::app::save::SaveAfter;
 
 #[derive(Default)]

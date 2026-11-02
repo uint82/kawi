@@ -5,9 +5,10 @@ use super::super::save::SaveAfter;
 use super::diff::{Change, DirectoryLine};
 use super::entry::Entry;
 use super::entry::EntryKind;
-use super::listing::{Listing, SortMode};
+use super::listing::Listing;
 use super::metadata::{MetadataColumns, MetadataWidths};
 use super::planner::Plan;
+use super::sort::SortMode;
 
 #[derive(Default)]
 pub(in crate::app) struct DirectoryBuffers {

@@ -4,8 +4,9 @@ use std::thread;
 
 use ropey::Rope;
 
-use super::listing::{listing_text, read_listing, Listing, SortMode};
+use super::listing::{listing_text, read_listing, Listing};
 use super::metadata::MetadataColumns;
+use super::sort::SortMode;
 
 pub(super) struct DirectoryLoader {
     requests: Sender<LoadRequest>,
