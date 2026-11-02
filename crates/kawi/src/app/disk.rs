@@ -357,7 +357,11 @@ impl App {
     }
 
     pub(super) fn disk_status(&self, number: usize) -> Option<&'static str> {
-        self.disk.status(number)
+        self.disk.status(number).or_else(|| {
+            self.directory
+                .external_changed(number)
+                .then_some(STATUS_CHANGED)
+        })
     }
 
     pub(super) fn disk_conflict(&self, number: usize) -> bool {

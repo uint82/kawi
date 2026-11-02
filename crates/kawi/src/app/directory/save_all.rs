@@ -63,6 +63,7 @@ impl App {
             return false;
         }
         if let Err(message) = self.check_directory_listing(number, listing) {
+            self.directory.mark_external_change(number);
             self.abort_save_all(message);
             return true;
         }

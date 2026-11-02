@@ -1,9 +1,10 @@
 use std::fs;
 use std::path::PathBuf;
+use std::slice::from_ref;
 
 use kawi_editor::Action;
 
-use super::{listing, set_listing, settle, setup};
+use super::{listing, set_listing, settle, setup, SaveAfter};
 
 #[test]
 fn watch_paths_refresh_clean_directory_buffers() {
@@ -40,7 +41,7 @@ fn watch_paths_leave_dirty_directory_buffers_untouched() {
     set_listing(&mut app, "renamed.txt");
     let beta = dir.join("beta.txt");
     fs::write(&beta, "new\n").unwrap();
-    assert!(!app.handle_directory_watch_paths(&[beta]));
+    assert!(app.handle_directory_watch_paths(&[beta]));
     settle(&mut app);
     assert_eq!(listing(&app), ["renamed.txt"]);
     assert!(app.editor.is_dirty());
@@ -74,5 +75,52 @@ fn deleting_a_directory_buffer_forgets_its_state() {
     app.handle_delete_buffer(Some(number.to_string()), true)
         .unwrap();
     assert!(!app.directory.contains(number));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn dirty_directory_buffers_show_one_external_change_warning() {
+    let (dir, mut app) = setup("directory_watch_dirty_changed", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    set_listing(&mut app, "renamed.txt");
+    let beta = dir.join("beta.txt");
+    assert!(app.handle_directory_watch_paths(from_ref(&beta)));
+    assert_eq!(app.disk_status(number), Some("changed"));
+    assert_eq!(
+        app.last_message(),
+        Some("Directory changed on disk; reload before saving")
+    );
+    app.show_message("other".to_string());
+    assert!(app.handle_directory_watch_paths(&[beta]));
+    assert_eq!(app.last_message(), Some("other"));
+    assert_eq!(listing(&app), ["renamed.txt"]);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn saving_clears_the_external_change_marker() {
+    let (dir, mut app) = setup("directory_watch_clear", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    set_listing(&mut app, "renamed.txt");
+    assert!(app.handle_directory_watch_paths(&[dir.join("ghost.txt")]));
+    assert_eq!(app.disk_status(number), Some("changed"));
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
+    assert!(dir.join("renamed.txt").exists());
+    assert_eq!(app.disk_status(number), None);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn save_conflicts_mark_dirty_directory_buffers_changed() {
+    let (dir, mut app) = setup("directory_watch_conflict", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    set_listing(&mut app, "renamed.txt");
+    fs::write(dir.join("external.txt"), "external\n").unwrap();
+    assert!(!app.request_save(false, SaveAfter::None, true));
+    settle(&mut app);
+    assert_eq!(app.disk_status(number), Some("changed"));
+    assert!(dir.join("alpha.txt").exists());
+    assert!(!dir.join("renamed.txt").exists());
     fs::remove_dir_all(dir).unwrap();
 }
