@@ -52,10 +52,11 @@ Sorting by size or modified reads filesystem metadata even when metadata columns
 
 The root of every open directory buffer is watched while Kawi runs. External creates, deletes, renames, symlink target changes, and metadata updates reload clean directory buffers automatically.
 
-- Dirty directory buffers are never overwritten. Save, undo, or close them before relying on automatic refresh.
+- Dirty directory buffers are never overwritten. Their status shows `[changed]`, Kawi warns once, and the marker clears after a reload or successful save. Saves still recheck the directory and refuse if it changed.
 - The cursor stays on the selected entry when it still exists. Window and scroll state are preserved.
 - Listings produced by Kawi's own writes are compared with the current buffer, so an identical listing does not reload twice.
 - A nested directory buffer watches its own root. Changes inside a subdirectory also refresh the parent when that subdirectory's metadata changes.
+- If a watched root is removed, recreated, or replaced, Kawi re-arms the watch and reloads the directory.
 - If filesystem notifications are unavailable, Kawi reports it and `:e` remains the manual refresh path.
 
 ## Metadata
