@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use super::diff::DirectoryLine;
 use super::session::*;
 use crate::app::directory::entry::{Entry, EntryKind};
-use crate::app::directory::listing::SortMode;
+use crate::app::directory::sort::SortMode;
 
 fn state() -> DirectoryBuffer {
     DirectoryBuffer {
@@ -17,6 +17,7 @@ fn state() -> DirectoryBuffer {
                 id: 1,
                 name: OsString::from("a"),
                 kind: EntryKind::File,
+                symlink_target: None,
                 hidden: false,
                 metadata: None,
             },
@@ -24,6 +25,7 @@ fn state() -> DirectoryBuffer {
                 id: 2,
                 name: OsString::from("b"),
                 kind: EntryKind::File,
+                symlink_target: None,
                 hidden: false,
                 metadata: None,
             },

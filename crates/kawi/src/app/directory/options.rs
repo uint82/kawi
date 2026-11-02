@@ -1,5 +1,5 @@
-use super::listing::SortMode;
 use super::metadata::MetadataColumns;
+use super::sort::SortMode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::app) struct DirectoryOptions {

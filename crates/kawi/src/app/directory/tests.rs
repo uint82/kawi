@@ -12,6 +12,7 @@ use crate::test_support::temp_dir;
 use super::test_support::{message_text, settle};
 
 mod escaping;
+mod file_types;
 mod metadata;
 mod permissions;
 mod wall;

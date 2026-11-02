@@ -204,6 +204,14 @@ impl VirtualText {
             placement: VirtualTextPlacement::BeforeLine,
         }
     }
+
+    pub fn metadata_suffix(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            kind: VirtualTextKind::Metadata,
+            placement: VirtualTextPlacement::AfterLine,
+        }
+    }
 }
 
 pub struct PaneFrame<'a> {
@@ -215,7 +223,7 @@ pub struct PaneFrame<'a> {
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
     pub decorations: &'a [DecorationSpan],
-    pub virtual_texts: &'a [Option<VirtualText>],
+    pub virtual_texts: &'a [Vec<VirtualText>],
     pub plugin_virtual_texts: &'a [Vec<VirtualText>],
     pub left_width: usize,
     pub search_spans: &'a [SearchSpan],

@@ -417,11 +417,11 @@ fn draw_left_virtual_text(
     if pane.left_width == 0 {
         return Ok(());
     }
-    let text = pane
-        .virtual_texts
-        .get(screen_row)
-        .and_then(Option::as_ref)
-        .filter(|text| text.placement == VirtualTextPlacement::BeforeLine);
+    let text = pane.virtual_texts.get(screen_row).and_then(|texts| {
+        texts
+            .iter()
+            .find(|text| text.placement == VirtualTextPlacement::BeforeLine)
+    });
     if let Some(text) = text {
         paint::apply_faded_text(out, virtual_text_color(theme, text.kind))?;
         write_padded(out, &text.text, pane.left_width)?;
@@ -432,22 +432,19 @@ fn draw_left_virtual_text(
 }
 
 fn draw_virtual_text(out: &mut Stdout, draw: VirtualTextDraw<'_>) -> Result<()> {
-    let diagnostic = draw
+    let primary = draw
         .pane
         .virtual_texts
         .get(draw.screen_row)
-        .and_then(Option::as_ref);
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     let plugin = draw
         .pane
         .plugin_virtual_texts
         .get(draw.screen_row)
         .map(Vec::as_slice)
         .unwrap_or_default();
-    let segments = virtual_text_segments(
-        draw.line_width,
-        draw.width,
-        diagnostic.into_iter().chain(plugin),
-    );
+    let segments = virtual_text_segments(draw.line_width, draw.width, primary.iter().chain(plugin));
     for segment in segments {
         execute!(
             out,
@@ -2663,6 +2660,15 @@ mod tests {
         let text = VirtualText::metadata("-rw-r--r--    13 2026-10-28 14:32");
         assert_eq!(text.placement, VirtualTextPlacement::BeforeLine);
         assert!(virtual_text_segments(4, 50, [&text]).is_empty());
+    }
+
+    #[test]
+    fn metadata_suffix_virtual_text_is_placed_after_the_line() {
+        let text = VirtualText::metadata_suffix(" -> target.txt");
+        assert_eq!(text.placement, VirtualTextPlacement::AfterLine);
+        let segments = virtual_text_segments(4, 50, [&text]);
+        assert_eq!(segments[0].column, 5);
+        assert_eq!(segments[0].clipped, " -> target.txt");
     }
 
     #[test]

@@ -115,7 +115,8 @@ mod tests {
 
     use crate::test_support::temp_dir;
 
-    use super::super::listing::{read_listing, SortMode};
+    use super::super::listing::read_listing;
+    use super::super::sort::SortMode;
     use super::*;
 
     fn metadata() -> EntryMetadata {

@@ -1,3 +1,5 @@
+use std::fs;
+
 use kawi_editor::Action;
 
 use super::super::file_ops::absolute_path;
@@ -5,6 +7,8 @@ use super::diff::parse_text;
 use crate::app::App;
 
 const NO_NAME: &str = "E32: No file name";
+const BROKEN_SYMLINK: &str = "Broken symlink: ";
+const SPECIAL_FILE: &str = "Cannot open special file: ";
 
 impl App {
     pub(in crate::app) fn sync_current_directory(&mut self) {
@@ -52,12 +56,19 @@ impl App {
             return true;
         };
         let target = state.root.join(relative);
-        if !target.exists() {
-            self.show_message("Entry does not exist yet; save the listing first".to_string());
+        let Ok(metadata) = fs::metadata(&target) else {
+            let message = if fs::symlink_metadata(&target).is_ok() {
+                format!("{BROKEN_SYMLINK}{}", line.text)
+            } else {
+                "Entry does not exist yet; save the listing first".to_string()
+            };
+            self.show_message(message);
             return true;
-        }
-        if is_directory || target.is_dir() {
+        };
+        if is_directory || metadata.is_dir() {
             self.open_directory_path(&target, true);
+        } else if !metadata.is_file() {
+            self.show_message(format!("{SPECIAL_FILE}{}", line.text));
         } else if let Err(message) = self.open_file_location(&target, None, None) {
             self.show_message(message);
         }

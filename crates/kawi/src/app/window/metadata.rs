@@ -3,6 +3,8 @@ use kawi_tui::frame::VirtualText;
 use crate::app::diagnostic_ui::VirtualTextRequest;
 use crate::app::App;
 
+const SYMLINK_ARROW: &str = " -> ";
+
 impl App {
     pub(super) fn directory_metadata_width(&self, number: usize) -> usize {
         let Some(state) = self.directory.get(number) else {
@@ -11,23 +13,26 @@ impl App {
         state.metadata_width(self.directory_options.metadata)
     }
 
-    pub(in crate::app) fn directory_metadata_texts(
+    pub(in crate::app) fn directory_virtual_texts(
         &self,
         number: usize,
         rows: &[usize],
-    ) -> Vec<Option<VirtualText>> {
-        let width = self.directory_metadata_width(number);
-        let Some(state) = self.directory.get(number).filter(|_| width > 0) else {
-            return std::iter::repeat_with(|| None).take(rows.len()).collect();
+    ) -> Vec<Vec<VirtualText>> {
+        let Some(state) = self.directory.get(number) else {
+            return empty_virtual_texts(rows.len());
         };
+        let width = state.metadata_width(self.directory_options.metadata);
         let columns = self.directory_options.metadata;
-        let empty = " ".repeat(width);
         rows.iter()
             .map(|row| {
-                let text = state
-                    .metadata_text(*row, columns)
-                    .unwrap_or_else(|| empty.clone());
-                Some(VirtualText::metadata(text))
+                let mut texts = Vec::with_capacity(2);
+                if let Some(text) = metadata_virtual_text(state, *row, columns, width) {
+                    texts.push(text);
+                }
+                if let Some(text) = symlink_virtual_text(state, *row) {
+                    texts.push(text);
+                }
+                texts
             })
             .collect()
     }
@@ -36,11 +41,14 @@ impl App {
         &self,
         number: usize,
         request: VirtualTextRequest<'_>,
-    ) -> Vec<Option<VirtualText>> {
-        if self.directory_metadata_width(number) > 0 {
-            self.directory_metadata_texts(number, request.rows)
+    ) -> Vec<Vec<VirtualText>> {
+        if self.directory.contains(number) {
+            self.directory_virtual_texts(number, request.rows)
         } else {
             self.virtual_texts(request)
+                .into_iter()
+                .map(|text| text.into_iter().collect())
+                .collect()
         }
     }
 
@@ -52,4 +60,33 @@ impl App {
         self.editor.set_gutter_extra_width(width);
         self.editor.reveal_cursor_horizontally();
     }
+}
+
+fn metadata_virtual_text(
+    state: &crate::app::directory::DirectoryBuffer,
+    row: usize,
+    columns: crate::app::directory::MetadataColumns,
+    width: usize,
+) -> Option<VirtualText> {
+    if width == 0 {
+        return None;
+    }
+    let text = state
+        .metadata_text(row, columns)
+        .unwrap_or_else(|| " ".repeat(width));
+    Some(VirtualText::metadata(text))
+}
+
+fn symlink_virtual_text(
+    state: &crate::app::directory::DirectoryBuffer,
+    row: usize,
+) -> Option<VirtualText> {
+    let target = state.symlink_target(row)?;
+    Some(VirtualText::metadata_suffix(format!(
+        "{SYMLINK_ARROW}{target}"
+    )))
+}
+
+fn empty_virtual_texts(count: usize) -> Vec<Vec<VirtualText>> {
+    std::iter::repeat_with(Vec::new).take(count).collect()
 }
