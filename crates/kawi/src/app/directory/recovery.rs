@@ -2,23 +2,24 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use super::fs::RealFs;
 use crate::app::App;
-use crate::recovery::DirectoryRecovery;
+use crate::recovery::ApplyRecovery;
 
 mod complete;
 mod report;
 mod rollback;
 
 use complete::complete;
+pub(in crate::app) use complete::complete_cleanups;
 use report::RecoveryReport;
 use rollback::recover;
 
 pub(in crate::app) struct PendingRecovery {
-    recovery: DirectoryRecovery,
+    recovery: ApplyRecovery,
     shown: bool,
 }
 
 impl PendingRecovery {
-    fn new(recovery: DirectoryRecovery) -> Self {
+    fn new(recovery: ApplyRecovery) -> Self {
         Self {
             recovery,
             shown: false,
@@ -27,7 +28,7 @@ impl PendingRecovery {
 
     fn lines(&self, width: usize) -> Vec<String> {
         let text = format!(
-            "Interrupted directory operation detected.\n\n{} operation(s) may be partially applied.\n\nr roll back reversible changes  k keep current files",
+            "Interrupted apply operation detected.\n\n{} filesystem operation(s) may be partially applied.\n\nr roll back reversible changes  k keep current files",
             self.recovery.journal.operations.len()
         );
         super::super::pager_lines(&text, width)
@@ -57,91 +58,91 @@ fn choice(key: KeyEvent) -> Option<Choice> {
 }
 
 impl App {
-    pub(in crate::app) fn start_directory_recovery(&mut self, recovery: DirectoryRecovery) {
+    pub(in crate::app) fn start_apply_recovery(&mut self, recovery: ApplyRecovery) {
         if recovery.journal.is_prepared() {
-            self.directory_recovery = Some(PendingRecovery::new(recovery));
+            self.apply_recovery = Some(PendingRecovery::new(recovery));
         } else {
-            self.complete_directory_recovery(&recovery);
+            self.complete_apply_recovery(&recovery);
         }
     }
 
-    fn complete_directory_recovery(&mut self, recovery: &DirectoryRecovery) {
+    fn complete_apply_recovery(&mut self, recovery: &ApplyRecovery) {
         let mut fs = RealFs::new(false);
         let report = complete(&recovery.journal, &mut fs);
         let mut message = report_message(&report);
         if report.is_incomplete() {
             message.push_str("; recovery journal kept");
-        } else if let Some(error) = self.remove_directory_recovery_files() {
+        } else if let Some(error) = self.remove_apply_recovery_files() {
             message.push_str("; ");
             message.push_str(&error);
         }
         self.show_message(message);
     }
 
-    pub(in crate::app) fn show_directory_recovery_prompt_if_ready(&mut self) -> bool {
-        let Some(prompt) = self.directory_recovery.as_ref() else {
+    pub(in crate::app) fn show_apply_recovery_prompt_if_ready(&mut self) -> bool {
+        let Some(prompt) = self.apply_recovery.as_ref() else {
             return false;
         };
         if prompt.shown() || self.pager.is_some() {
             return true;
         }
         let lines = prompt.lines(self.screen_width);
-        if let Some(prompt) = self.directory_recovery.as_mut() {
+        if let Some(prompt) = self.apply_recovery.as_mut() {
             prompt.mark_shown();
         }
         self.show_pager(lines);
         true
     }
 
-    pub(in crate::app) fn directory_recovery_prompt_visible(&self) -> bool {
-        self.directory_recovery
+    pub(in crate::app) fn apply_recovery_prompt_visible(&self) -> bool {
+        self.apply_recovery
             .as_ref()
             .is_some_and(PendingRecovery::shown)
     }
 
-    pub(in crate::app) fn handle_directory_recovery_prompt_key(&mut self, key: KeyEvent) -> bool {
+    pub(in crate::app) fn handle_apply_recovery_prompt_key(&mut self, key: KeyEvent) -> bool {
         let Some(selection) = choice(key) else {
             return false;
         };
-        let Some(prompt) = self.directory_recovery.take() else {
+        let Some(prompt) = self.apply_recovery.take() else {
             return false;
         };
         self.pager = None;
         match selection {
-            Choice::Rollback => self.rollback_directory_recovery(&prompt.recovery),
-            Choice::Keep => self.keep_directory_recovery(),
+            Choice::Rollback => self.rollback_apply_recovery(&prompt.recovery),
+            Choice::Keep => self.keep_apply_recovery(),
         }
         self.show_recovery_prompt_if_ready();
         false
     }
 
-    fn rollback_directory_recovery(&mut self, recovery: &DirectoryRecovery) {
+    fn rollback_apply_recovery(&mut self, recovery: &ApplyRecovery) {
         let mut fs = RealFs::new(false);
         let report = recover(&recovery.journal, &recovery.promotions, &mut fs);
         let mut message = report_message(&report);
         if report.is_incomplete() {
             message.push_str("; recovery journal kept");
-        } else if let Some(error) = self.remove_directory_recovery_files() {
+        } else if let Some(error) = self.remove_apply_recovery_files() {
             message.push_str("; ");
             message.push_str(&error);
         }
         self.show_message(message);
     }
 
-    fn keep_directory_recovery(&mut self) {
-        match self.remove_directory_recovery_files() {
+    fn keep_apply_recovery(&mut self) {
+        match self.remove_apply_recovery_files() {
             Some(error) => self.show_message(error),
-            None => self.show_message("Directory recovery journal discarded".to_string()),
+            None => self.show_message("Apply recovery journal discarded".to_string()),
         }
     }
 
-    fn remove_directory_recovery_files(&self) -> Option<String> {
+    fn remove_apply_recovery_files(&self) -> Option<String> {
         let manager = self.recovery.as_ref()?;
         manager
-            .remove_directory_journal()
-            .and_then(|()| manager.remove_directory_promotions())
+            .remove_apply_journal()
+            .and_then(|()| manager.remove_apply_promotions())
             .err()
-            .map(|error| format!("cannot remove directory recovery journal: {error}"))
+            .map(|error| format!("cannot remove apply recovery journal: {error}"))
     }
 }
 
@@ -175,9 +176,9 @@ fn report_message(report: &RecoveryReport) -> String {
         ));
     }
     if parts.is_empty() {
-        "Directory recovery complete".to_string()
+        "Apply recovery complete".to_string()
     } else {
-        format!("Directory recovery: {}", parts.join("; "))
+        format!("Apply recovery: {}", parts.join("; "))
     }
 }
 

@@ -194,7 +194,7 @@ fn staged_cross_filesystem_move_keeps_the_source_until_cleanup() {
     stage_copy(&old, &stage).unwrap();
     assert!(old.exists());
     assert!(stage.exists());
-    promote_stage(&stage, &new).unwrap();
+    promote_stage(&stage, &new, false).unwrap();
     assert!(old.exists());
     assert!(!stage.exists());
     assert_eq!(fs::read_to_string(&new).unwrap(), "alpha\n");

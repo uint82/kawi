@@ -10,7 +10,7 @@ use crate::workspace;
 
 const SNAPSHOT_EXTENSION: &str = "snap";
 
-mod journal;
+mod apply;
 #[cfg(test)]
 mod tests;
 

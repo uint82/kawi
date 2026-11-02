@@ -3,12 +3,12 @@ use std::path::Path;
 use super::super::fs::DirectoryFs;
 
 #[derive(Default)]
-pub(super) struct RecoveryReport {
-    pub(super) restored: usize,
-    pub(super) removed: usize,
-    pub(super) irreversible: Vec<String>,
-    pub(super) skipped: Vec<String>,
-    pub(super) errors: Vec<String>,
+pub(in crate::app) struct RecoveryReport {
+    pub(in crate::app) restored: usize,
+    pub(in crate::app) removed: usize,
+    pub(in crate::app) irreversible: Vec<String>,
+    pub(in crate::app) skipped: Vec<String>,
+    pub(in crate::app) errors: Vec<String>,
 }
 
 impl RecoveryReport {
@@ -51,6 +51,26 @@ pub(super) fn remove_directory(
         Err(error) => report
             .errors
             .push(format!("cannot remove {}: {error}", path.display())),
+    }
+}
+
+pub(super) fn trash(
+    fs: &mut impl DirectoryFs,
+    staged: &Path,
+    original: &Path,
+    report: &mut RecoveryReport,
+) {
+    if !fs.exists(staged) {
+        return;
+    }
+    match fs
+        .trash(staged, original)
+        .and_then(|()| fs.sync_parent(staged))
+    {
+        Ok(()) => report.removed = report.removed.saturating_add(1),
+        Err(error) => report
+            .errors
+            .push(format!("cannot trash {}: {error}", original.display())),
     }
 }
 

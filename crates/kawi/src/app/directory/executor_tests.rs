@@ -35,10 +35,12 @@ fn executor_reports_each_operation_kind() {
         Operation::Rename {
             from: PathBuf::from("/project/a.txt"),
             to: PathBuf::from("/project/.a.tmp"),
+            force: false,
         },
         Operation::Rename {
             from: PathBuf::from("/project/.a.tmp"),
             to: PathBuf::from("/project/b.txt"),
+            force: false,
         },
         Operation::Trash(PathBuf::from("/project/b.txt")),
     ]);
@@ -102,6 +104,7 @@ fn cross_device_rename_promotes_and_defers_source_removal() {
     let plan = plan(vec![Operation::Rename {
         from: PathBuf::from("/project/a.txt"),
         to: PathBuf::from("/mnt/b.txt"),
+        force: false,
     }]);
     let prepared = PreparedPlan::new(&plan, &fs).unwrap();
     let stage = prepared.stage_path(0).unwrap().to_path_buf();
@@ -134,6 +137,7 @@ fn cross_device_rename_rolls_back_the_promoted_target() {
         Operation::Rename {
             from: PathBuf::from("/project/a.txt"),
             to: PathBuf::from("/mnt/b.txt"),
+            force: false,
         },
         Operation::CreateFile(PathBuf::from("/project/c.txt")),
     ]);
@@ -155,6 +159,7 @@ fn failed_promotion_record_removes_the_copy_stage() {
     let plan = plan(vec![Operation::Rename {
         from: PathBuf::from("/project/a.txt"),
         to: PathBuf::from("/mnt/b.txt"),
+        force: false,
     }]);
     let prepared = PreparedPlan::new(&plan, &fs).unwrap();
     let stage = prepared.stage_path(0).unwrap().to_path_buf();

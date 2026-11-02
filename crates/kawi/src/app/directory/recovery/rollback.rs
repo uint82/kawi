@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::recovery::{DirectoryJournal, JournalOperation, JournalPath};
+use crate::recovery::{ApplyJournal, JournalOperation, JournalPath};
 
 use super::super::fs::DirectoryFs;
 use super::report::{remove_directory, remove_file, remove_tree, RecoveryReport};
 
 pub(super) fn recover(
-    journal: &DirectoryJournal,
+    journal: &ApplyJournal,
     promotions: &HashSet<usize>,
     fs: &mut impl DirectoryFs,
 ) -> RecoveryReport {
@@ -26,7 +26,7 @@ pub(super) fn recover(
     report
 }
 
-fn rename_origins(journal: &DirectoryJournal) -> HashMap<PathBuf, PathBuf> {
+fn rename_origins(journal: &ApplyJournal) -> HashMap<PathBuf, PathBuf> {
     journal
         .operations
         .iter()
@@ -48,7 +48,9 @@ fn recover_operation(
     report: &mut RecoveryReport,
 ) {
     match operation {
-        JournalOperation::Rename { from, to, stage } => {
+        JournalOperation::Rename {
+            from, to, stage, ..
+        } => {
             if promotions.contains(&index) {
                 rollback_promoted_rename(fs, from.as_path(), to.as_path(), stage, report);
                 return;

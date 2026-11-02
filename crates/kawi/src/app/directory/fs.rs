@@ -4,12 +4,13 @@ use std::path::Path;
 use super::super::file_ops::fs as file_fs;
 use super::super::file_ops::trash::{TrashDir, TrashError};
 
-pub(super) trait DirectoryFs {
+pub(in crate::app) trait DirectoryFs {
     fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
-    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()>;
+    fn try_rename(&mut self, from: &Path, to: &Path, force: bool) -> io::Result<()>;
     fn stage_copy(&mut self, from: &Path, stage: &Path) -> io::Result<()>;
-    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()>;
+    fn promote_stage(&mut self, stage: &Path, to: &Path, force: bool) -> io::Result<()>;
     fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()>;
+    fn trash(&mut self, staged: &Path, original: &Path) -> io::Result<()>;
     fn remove_file(&mut self, path: &Path) -> io::Result<()>;
     fn remove_directory(&mut self, path: &Path) -> io::Result<()>;
     fn remove_tree(&mut self, path: &Path) -> io::Result<()>;
@@ -25,12 +26,12 @@ pub(super) trait DirectoryFs {
     fn delete_error(&self, path: &Path) -> Option<String>;
 }
 
-pub(super) struct RealFs {
-    pub(super) permanent_delete: bool,
+pub(in crate::app) struct RealFs {
+    pub(in crate::app) permanent_delete: bool,
 }
 
 impl RealFs {
-    pub(super) fn new(permanent_delete: bool) -> Self {
+    pub(in crate::app) fn new(permanent_delete: bool) -> Self {
         Self { permanent_delete }
     }
 }
@@ -40,31 +41,27 @@ impl DirectoryFs for RealFs {
         file_fs::rename_path(from, to, false).map(|_| ())
     }
 
-    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
-        file_fs::try_rename_path(from, to, false).map(|_| ())
+    fn try_rename(&mut self, from: &Path, to: &Path, force: bool) -> io::Result<()> {
+        file_fs::try_rename_path(from, to, force).map(|_| ())
     }
 
     fn stage_copy(&mut self, from: &Path, stage: &Path) -> io::Result<()> {
         file_fs::stage_copy(from, stage)
     }
 
-    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()> {
-        file_fs::promote_stage(stage, to)
+    fn promote_stage(&mut self, stage: &Path, to: &Path, force: bool) -> io::Result<()> {
+        file_fs::promote_stage(stage, to, force)
     }
 
     fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
         if self.permanent_delete {
             return file_fs::remove_path(staged, true);
         }
-        let trash = TrashDir::for_target(original)
-            .ok_or_else(|| io::Error::other("trash is unavailable"))?;
-        trash
-            .trash_as(staged, original)
-            .map(|_| ())
-            .map_err(|error| match error {
-                TrashError::Io(error) => error,
-                TrashError::Unavailable(message) => io::Error::other(message),
-            })
+        trash_staged(staged, original)
+    }
+
+    fn trash(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
+        trash_staged(staged, original)
     }
 
     fn remove_file(&mut self, path: &Path) -> io::Result<()> {
@@ -133,4 +130,16 @@ impl DirectoryFs for RealFs {
                 .to_string()
         })
     }
+}
+
+fn trash_staged(staged: &Path, original: &Path) -> io::Result<()> {
+    let trash =
+        TrashDir::for_target(original).ok_or_else(|| io::Error::other("trash is unavailable"))?;
+    trash
+        .trash_as(staged, original)
+        .map(|_| ())
+        .map_err(|error| match error {
+            TrashError::Io(error) => error,
+            TrashError::Unavailable(message) => io::Error::other(message),
+        })
 }

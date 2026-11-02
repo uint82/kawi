@@ -9,6 +9,7 @@ use std::io::stdout;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+mod apply_journal;
 mod autosave;
 mod code_action;
 mod command_completion;
@@ -216,7 +217,7 @@ pub struct App {
     events: EventQueue,
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
-    directory_recovery: Option<directory::PendingRecovery>,
+    apply_recovery: Option<directory::PendingRecovery>,
     undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
@@ -330,7 +331,7 @@ impl App {
             events: EventQueue::new(),
             recovery: None,
             recovery_prompt: None,
-            directory_recovery: None,
+            apply_recovery: None,
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
@@ -1016,8 +1017,8 @@ impl App {
             self.handle_plugin_ui_key(key);
             return Ok(false);
         }
-        if self.directory_recovery_prompt_visible() {
-            return Ok(self.handle_directory_recovery_prompt_key(key));
+        if self.apply_recovery_prompt_visible() {
+            return Ok(self.handle_apply_recovery_prompt_key(key));
         }
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);

@@ -79,7 +79,7 @@ impl Requirements {
         for operation in operations {
             let label = operation_label(operation);
             match operation {
-                Operation::Rename { from, to } => {
+                Operation::Rename { from, to, .. } => {
                     self.add_missing_writable_parent(from, &label, fs)?;
                     self.add_missing_writable_parent(to, &label, fs)?;
                 }
@@ -241,7 +241,7 @@ fn change_label(change: &Change) -> String {
 
 fn operation_label(operation: &Operation) -> String {
     match operation {
-        Operation::Rename { from, to } => {
+        Operation::Rename { from, to, .. } => {
             format!("move {} to {}", from.display(), to.display())
         }
         Operation::Copy { from, to } => {

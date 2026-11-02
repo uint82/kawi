@@ -5,7 +5,7 @@ use super::fs::DirectoryFs;
 
 const MAX_ATTEMPTS: usize = 10_000;
 
-pub(super) struct TemporaryPath<'a> {
+pub(in crate::app) struct TemporaryPath<'a> {
     parent: &'a Path,
     name: String,
     marker: &'a str,
@@ -14,7 +14,12 @@ pub(super) struct TemporaryPath<'a> {
 }
 
 impl<'a> TemporaryPath<'a> {
-    pub(super) fn new(origin: &'a Path, parent: &'a Path, marker: &'a str, index: usize) -> Self {
+    pub(in crate::app) fn new(
+        origin: &'a Path,
+        parent: &'a Path,
+        marker: &'a str,
+        index: usize,
+    ) -> Self {
         let name = origin
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -30,7 +35,7 @@ impl<'a> TemporaryPath<'a> {
     }
 }
 
-pub(super) fn unique_path(
+pub(in crate::app) fn unique_path(
     spec: &TemporaryPath<'_>,
     reserved: &BTreeSet<PathBuf>,
     fs: &impl DirectoryFs,

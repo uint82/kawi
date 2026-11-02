@@ -39,14 +39,17 @@ pub(in crate::app) fn try_rename_path(
     rename_path_with(old, new, force, false)
 }
 
-fn rename_path_with(
-    old: &Path,
-    new: &Path,
-    force: bool,
-    cross_filesystem: bool,
-) -> io::Result<RenameOutcome> {
+pub(in crate::app) fn check_rename(old: &Path, new: &Path, force: bool) -> io::Result<()> {
+    rename_target_check(old, new, force).map(|_| ())
+}
+
+struct RenameTargetCheck {
+    symlink: bool,
+    case_only: bool,
+}
+
+fn rename_target_check(old: &Path, new: &Path, force: bool) -> io::Result<RenameTargetCheck> {
     let source = fs::symlink_metadata(old)?;
-    let symlink = source.file_type().is_symlink();
     let target = fs::symlink_metadata(new);
     let case_only = target
         .as_ref()
@@ -57,6 +60,19 @@ fn rename_path_with(
     if target_is_directory || (!force && target.is_ok() && !case_only) {
         return Err(already_exists(new));
     }
+    Ok(RenameTargetCheck {
+        symlink: source.file_type().is_symlink(),
+        case_only,
+    })
+}
+
+fn rename_path_with(
+    old: &Path,
+    new: &Path,
+    force: bool,
+    cross_filesystem: bool,
+) -> io::Result<RenameOutcome> {
+    let RenameTargetCheck { symlink, case_only } = rename_target_check(old, new, force)?;
     let result = if force || case_only {
         fs::rename(old, new)
     } else {
@@ -83,8 +99,8 @@ pub(in crate::app) fn stage_copy(old: &Path, stage: &Path) -> io::Result<()> {
     copy::copy_tree(old, stage)
 }
 
-pub(in crate::app) fn promote_stage(stage: &Path, new: &Path) -> io::Result<()> {
-    copy::promote_copy(stage, new, false)
+pub(in crate::app) fn promote_stage(stage: &Path, new: &Path, force: bool) -> io::Result<()> {
+    copy::promote_copy(stage, new, force)
 }
 
 pub(in crate::app) fn sync_parent(path: &Path) -> io::Result<()> {
