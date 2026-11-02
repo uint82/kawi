@@ -1,128 +1,76 @@
 use std::fs::Metadata;
+use std::time::SystemTime;
+
+use kawi_tui::text::display_width;
 
 use super::entry::EntryKind;
-use crate::options::{
-    DIRECTORY_METADATA_MODIFIED, DIRECTORY_METADATA_PERMISSIONS, DIRECTORY_METADATA_SIZE,
-};
 
+mod columns;
 mod format;
+mod identity;
+mod time;
 
-use format::{
-    format_modified, format_permissions, format_size, MISSING_MODIFIED, MODIFIED_WIDTH,
-    PERMISSION_WIDTH, SIZE_WIDTH, TEXT_WIDTH,
-};
+pub(in crate::app) use columns::MetadataColumns;
+pub(super) use columns::MetadataWidths;
+use format::{format_group, format_links, format_owner, format_permissions, format_size};
+use identity::IdentityResolver;
+use time::{format_modified, MISSING_MODIFIED};
 
-const ENTRY_GAP: usize = 2;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(in crate::app) struct MetadataColumns {
-    permissions: bool,
-    size: bool,
-    modified: bool,
+pub(super) struct MetadataReader {
+    identities: IdentityResolver,
+    now: SystemTime,
 }
 
-impl MetadataColumns {
-    pub(in crate::app) fn parse(text: &str) -> Option<Self> {
-        let text = text.trim();
-        if text.eq_ignore_ascii_case("none") {
-            return Some(Self::default());
-        }
-        let mut columns = Self::default();
-        for name in text.split(',').map(str::trim) {
-            if name.is_empty() {
-                return None;
-            }
-            match name {
-                DIRECTORY_METADATA_PERMISSIONS => columns.permissions = true,
-                DIRECTORY_METADATA_SIZE => columns.size = true,
-                DIRECTORY_METADATA_MODIFIED => columns.modified = true,
-                _ => return None,
-            }
-        }
-        Some(columns)
-    }
-
-    pub(in crate::app) fn name(self) -> String {
-        let mut names = Vec::new();
-        if self.permissions {
-            names.push(DIRECTORY_METADATA_PERMISSIONS);
-        }
-        if self.size {
-            names.push(DIRECTORY_METADATA_SIZE);
-        }
-        if self.modified {
-            names.push(DIRECTORY_METADATA_MODIFIED);
-        }
-        if names.is_empty() {
-            "none".to_string()
-        } else {
-            names.join(",")
-        }
-    }
-
-    pub(in crate::app) fn all() -> Self {
+impl MetadataReader {
+    pub(super) fn new(now: SystemTime) -> Self {
         Self {
-            permissions: true,
-            size: true,
-            modified: true,
+            identities: IdentityResolver::new(),
+            now,
         }
     }
 
-    pub(in crate::app) fn width(self) -> usize {
-        let mut width = 0usize;
-        let mut count = 0usize;
-        if self.permissions {
-            width += PERMISSION_WIDTH;
-            count += 1;
+    pub(super) fn read(&mut self, metadata: &Metadata, kind: EntryKind) -> EntryMetadata {
+        EntryMetadata {
+            permissions: format_permissions(metadata, kind),
+            links: format_links(metadata),
+            owner: format_owner(metadata, &mut self.identities),
+            group: format_group(metadata, &mut self.identities),
+            size: format_size(metadata),
+            modified: metadata
+                .modified()
+                .ok()
+                .map(|time| format_modified(time, self.now)),
         }
-        if self.size {
-            width += SIZE_WIDTH;
-            count += 1;
-        }
-        if self.modified {
-            width += MODIFIED_WIDTH;
-            count += 1;
-        }
-        if count == 0 {
-            return 0;
-        }
-        width
-            .saturating_add(count.saturating_sub(1))
-            .saturating_add(ENTRY_GAP)
-    }
-
-    pub(in crate::app) fn is_empty(self) -> bool {
-        !self.permissions && !self.size && !self.modified
-    }
-
-    pub(super) fn any(self) -> bool {
-        !self.is_empty()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct EntryMetadata {
-    permissions: String,
-    size: String,
+    pub(super) permissions: String,
+    pub(super) links: String,
+    pub(super) owner: String,
+    pub(super) group: String,
+    pub(super) size: String,
     modified: Option<String>,
 }
 
 impl EntryMetadata {
-    pub(super) fn read(metadata: &Metadata, kind: EntryKind) -> Self {
-        Self {
-            permissions: format_permissions(metadata, kind),
-            size: format_size(metadata, kind),
-            modified: metadata.modified().ok().map(format_modified),
-        }
-    }
-
-    pub(super) fn text(&self, columns: MetadataColumns) -> Option<String> {
-        let mut text = String::with_capacity(TEXT_WIDTH);
+    pub(super) fn text(&self, columns: MetadataColumns, widths: MetadataWidths) -> Option<String> {
+        let mut text = String::with_capacity(columns.width(widths));
         if columns.permissions {
             push_field(&mut text, &self.permissions);
         }
+        if columns.links {
+            push_padded(&mut text, &self.links, widths.links, Alignment::Right);
+        }
+        if columns.owner {
+            push_padded(&mut text, &self.owner, widths.owner, Alignment::Left);
+        }
+        if columns.group {
+            push_padded(&mut text, &self.group, widths.group, Alignment::Left);
+        }
         if columns.size {
-            push_field(&mut text, &self.size);
+            push_padded(&mut text, &self.size, widths.size, Alignment::Right);
         }
         if columns.modified {
             push_field(
@@ -134,6 +82,12 @@ impl EntryMetadata {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Alignment {
+    Left,
+    Right,
+}
+
 fn push_field(text: &mut String, field: &str) {
     if !text.is_empty() {
         text.push(' ');
@@ -141,55 +95,102 @@ fn push_field(text: &mut String, field: &str) {
     text.push_str(field);
 }
 
+fn push_padded(text: &mut String, field: &str, width: usize, alignment: Alignment) {
+    if !text.is_empty() {
+        text.push(' ');
+    }
+    let padding = width.saturating_sub(display_width(field));
+    if alignment == Alignment::Right {
+        text.extend(std::iter::repeat_n(' ', padding));
+    }
+    text.push_str(field);
+    if alignment == Alignment::Left {
+        text.extend(std::iter::repeat_n(' ', padding));
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use crate::test_support::temp_dir;
+
+    use super::super::listing::{read_listing, SortMode};
     use super::*;
 
-    #[test]
-    fn parses_columns_and_rejects_unknown_names() {
-        assert_eq!(
-            MetadataColumns::parse("permissions,size,modified"),
-            Some(MetadataColumns {
-                permissions: true,
-                size: true,
-                modified: true,
-            })
-        );
-        assert!(MetadataColumns::parse("none").unwrap().is_empty());
-        assert!(!MetadataColumns::parse("size").unwrap().modified);
-        assert!(MetadataColumns::parse("owner").is_none());
-        assert!(MetadataColumns::parse("size,").is_none());
-    }
-
-    #[test]
-    fn names_columns_in_canonical_order() {
-        let columns = MetadataColumns::parse("modified,permissions").unwrap();
-        assert_eq!(columns.name(), "permissions,modified");
-        assert_eq!(MetadataColumns::default().name(), "none");
-    }
-
-    #[test]
-    fn columns_have_fixed_display_widths() {
-        assert_eq!(MetadataColumns::all().width(), 37);
-        assert_eq!(
-            MetadataColumns::parse("permissions,size").unwrap().width(),
-            20
-        );
-        assert_eq!(MetadataColumns::default().width(), 0);
+    fn metadata() -> EntryMetadata {
+        EntryMetadata {
+            permissions: "-rw-r--r--".to_string(),
+            links: "2".to_string(),
+            owner: "user".to_string(),
+            group: "dev".to_string(),
+            size: "13".to_string(),
+            modified: Some("Nov  1 20:26".to_string()),
+        }
     }
 
     #[test]
     fn metadata_text_follows_column_selection() {
-        let metadata = EntryMetadata {
-            permissions: "-rw-r--r--".to_string(),
-            size: "     13".to_string(),
-            modified: Some("2026-10-28 14:32".to_string()),
+        let metadata = metadata();
+        let widths = MetadataWidths {
+            links: 2,
+            owner: 4,
+            group: 5,
+            size: 2,
         };
-        let columns = MetadataColumns::parse("size,modified").unwrap();
+        let columns = MetadataColumns::parse("links,owner,group,size,modified").unwrap();
+        let text = metadata.text(columns, widths).unwrap();
+        assert_eq!(text, " 2 user dev   13 Nov  1 20:26");
+        assert_eq!(columns.width(widths), display_width(&text) + 2);
+        assert_eq!(metadata.text(MetadataColumns::default(), widths), None);
+    }
+
+    #[test]
+    fn dynamic_widths_track_the_widest_value() {
+        let mut widest = metadata();
+        widest.links = "10".to_string();
+        widest.owner = "alice".to_string();
+        widest.group = "staff".to_string();
+        widest.size = "12345".to_string();
+        let widths = MetadataWidths::measure([&metadata(), &widest].into_iter());
         assert_eq!(
-            metadata.text(columns).as_deref(),
-            Some("     13 2026-10-28 14:32")
+            widths,
+            MetadataWidths {
+                links: 2,
+                owner: 5,
+                group: 5,
+                size: 5,
+            }
         );
-        assert_eq!(metadata.text(MetadataColumns::default()), None);
+        assert_eq!(
+            MetadataWidths::measure(std::iter::empty()),
+            MetadataWidths::default()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn identity_columns_show_link_count_owner_and_group() {
+        let dir = temp_dir("directory_identity");
+        fs::write(dir.join("alpha.txt"), "hello").unwrap();
+        let columns = MetadataColumns::parse("links,owner,group").unwrap();
+        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let entry = listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == "alpha.txt")
+            .unwrap();
+        let text = entry
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap();
+        let fields: Vec<&str> = text.split_whitespace().collect();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0], "1");
+        assert!(!fields[1].is_empty());
+        assert!(!fields[2].is_empty());
+        fs::remove_dir_all(dir).unwrap();
     }
 }

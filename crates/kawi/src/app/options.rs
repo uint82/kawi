@@ -574,7 +574,7 @@ mod tests {
         let mut app = app();
         assert_eq!(
             app.directory_options.metadata.name(),
-            "permissions,size,modified"
+            "permissions,links,owner,group,size,modified"
         );
         execute(&mut app, "set directory_metadata=size,permissions");
         assert_eq!(app.directory_options.metadata.name(), "permissions,size");
@@ -585,10 +585,10 @@ mod tests {
         );
         execute(&mut app, "set dmd=none");
         assert!(app.directory_options.metadata.is_empty());
-        execute(&mut app, "set dmd=owner");
+        execute(&mut app, "set dmd=mode");
         assert_eq!(
             app.last_message(),
-            Some("E474: Invalid argument: directory_metadata=owner")
+            Some("E474: Invalid argument: directory_metadata=mode")
         );
     }
 

@@ -288,10 +288,12 @@ fn directory_metadata_accepts_lists_and_rejects_unknown_columns() {
         loaded.config.get("directory_metadata"),
         Some(&OptionValue::Text("none".to_string()))
     );
-    let loaded = load_text("[explorer]\nmetadata = [\"owner\"]\n");
+    let loaded = load_text("[explorer]\nmetadata = [\"mode\"]\n");
     assert_eq!(loaded.warnings.len(), 1);
     assert_eq!(
         loaded.config.get("directory_metadata"),
-        Some(&OptionValue::Text("permissions,size,modified".to_string()))
+        Some(&OptionValue::Text(
+            "permissions,links,owner,group,size,modified".to_string()
+        ))
     );
 }

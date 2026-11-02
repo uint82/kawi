@@ -6,7 +6,7 @@ use super::diff::{Change, DirectoryLine};
 use super::entry::Entry;
 use super::entry::EntryKind;
 use super::listing::{Listing, SortMode};
-use super::metadata::MetadataColumns;
+use super::metadata::{MetadataColumns, MetadataWidths};
 use super::planner::Plan;
 
 #[derive(Default)]
@@ -38,6 +38,7 @@ pub(in crate::app) struct DirectoryBuffer {
     pub(super) revision: u64,
     pub(super) removed: BTreeMap<String, Vec<u64>>,
     pub(super) positions: HashMap<u64, usize>,
+    pub(super) metadata_widths: MetadataWidths,
 }
 
 impl DirectoryBuffers {
@@ -125,6 +126,7 @@ impl DirectoryBuffer {
             revision,
             removed: BTreeMap::new(),
             positions,
+            metadata_widths: listing.metadata_widths,
         };
         state.reset_lines();
         state
@@ -148,6 +150,7 @@ impl DirectoryBuffer {
         self.original = listing.entries;
         self.positions = entry_positions(&self.original);
         self.next_id = listing.next_id;
+        self.metadata_widths = listing.metadata_widths;
         self.revision = revision;
         self.removed.clear();
         self.reset_lines();
@@ -155,6 +158,10 @@ impl DirectoryBuffer {
 
     pub(super) fn root_display(&self) -> String {
         self.root.to_string_lossy().into_owned()
+    }
+
+    pub(in crate::app) fn metadata_width(&self, columns: MetadataColumns) -> usize {
+        columns.width(self.metadata_widths)
     }
 
     pub(in crate::app) fn metadata_text(
@@ -171,7 +178,7 @@ impl DirectoryBuffer {
             .get(position)?
             .metadata
             .as_ref()?
-            .text(columns)
+            .text(columns, self.metadata_widths)
     }
 
     fn reset_lines(&mut self) {
