@@ -57,6 +57,7 @@ mod rename;
 mod replace;
 mod replace_apply;
 mod restore;
+mod retarget;
 mod save;
 mod save_all;
 mod signature;
