@@ -2,7 +2,7 @@ use super::super::planner::Operation;
 
 pub(super) fn describe(operation: &Operation) -> String {
     match operation {
-        Operation::Rename { from, to } => {
+        Operation::Rename { from, to, .. } => {
             format!("cannot rename {} to {}", from.display(), to.display())
         }
         Operation::Copy { from, to } => {
@@ -18,7 +18,7 @@ pub(super) fn describe(operation: &Operation) -> String {
 
 pub(in crate::app::directory) fn applied_description(operation: &Operation) -> String {
     match operation {
-        Operation::Rename { from, to } => {
+        Operation::Rename { from, to, .. } => {
             format!("renamed {} to {}", from.display(), to.display())
         }
         Operation::Copy { from, to } => {

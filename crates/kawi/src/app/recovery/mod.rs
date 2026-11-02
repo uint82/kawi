@@ -31,15 +31,15 @@ impl App {
             RecoveryStart::Active {
                 manager,
                 snapshots,
-                directory_recovery,
+                apply_recovery,
                 warning,
             } => {
                 let candidates =
                     self.recovery_candidates(snapshots, restrict_to_open, manager.cwd());
                 register_panic_snapshots(manager.store_clone());
                 self.recovery = Some(*manager);
-                if let Some(recovery) = directory_recovery {
-                    self.start_directory_recovery(recovery);
+                if let Some(recovery) = apply_recovery {
+                    self.start_apply_recovery(recovery);
                 }
                 self.recovery_prompt = RecoveryPrompt::new(candidates);
                 if warning.is_none() {
@@ -51,7 +51,7 @@ impl App {
     }
 
     pub(super) fn show_recovery_prompt_if_ready(&mut self) {
-        if self.show_directory_recovery_prompt_if_ready() {
+        if self.show_apply_recovery_prompt_if_ready() {
             return;
         }
         let Some(prompt) = self.recovery_prompt.as_ref() else {

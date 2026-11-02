@@ -18,7 +18,7 @@ fn recovery_reverses_applied_operations_in_reverse_order() {
         ("/project/copied", false),
         ("/project/.old.kawi-delete", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![
+    let journal = ApplyJournal::prepared(vec![
         JournalOperation::Delete {
             path: JournalPath::from(PathBuf::from("/project/old.txt")),
             staged: JournalPath::from(PathBuf::from("/project/.old.kawi-delete")),
@@ -27,11 +27,13 @@ fn recovery_reverses_applied_operations_in_reverse_order() {
             from: JournalPath::from(PathBuf::from("/project/a.txt")),
             to: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             stage: None,
+            force: false,
         },
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             to: JournalPath::from(PathBuf::from("/project/b.txt")),
             stage: None,
+            force: false,
         },
         JournalOperation::CreateDirectory {
             path: JournalPath::from(PathBuf::from("/project/newdir")),
@@ -62,7 +64,7 @@ fn recovery_reverses_applied_operations_in_reverse_order() {
 #[test]
 fn finalized_deletes_are_reported_as_irreversible() {
     let mut fs = operation_paths(&[("/project", true)]);
-    let journal = DirectoryJournal::prepared(vec![JournalOperation::Delete {
+    let journal = ApplyJournal::prepared(vec![JournalOperation::Delete {
         path: JournalPath::from(PathBuf::from("/project/old.txt")),
         staged: JournalPath::from(PathBuf::from("/project/.old.kawi-delete")),
     }]);
@@ -79,16 +81,18 @@ fn external_targets_are_left_in_place_when_the_original_still_exists() {
         ("/project/a.txt", false),
         ("/project/b.txt", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![
+    let journal = ApplyJournal::prepared(vec![
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/a.txt")),
             to: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             stage: None,
+            force: false,
         },
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             to: JournalPath::from(PathBuf::from("/project/b.txt")),
             stage: None,
+            force: false,
         },
     ]);
     let report = recover(&journal, &HashSet::new(), &mut fs);
@@ -105,10 +109,11 @@ fn ambiguous_paths_are_skipped_instead_of_removed() {
         ("/project/a.txt", false),
         ("/project/.a.kawi-move", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![JournalOperation::Rename {
+    let journal = ApplyJournal::prepared(vec![JournalOperation::Rename {
         from: JournalPath::from(PathBuf::from("/project/a.txt")),
         to: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
         stage: None,
+        force: false,
     }]);
     let report = recover(&journal, &HashSet::new(), &mut fs);
     assert_eq!(report.skipped.len(), 1);
@@ -125,11 +130,12 @@ fn promoted_cross_device_rename_removes_the_target_and_restores_the_source() {
         ("/project/.a.kawi-move", false),
         ("/mnt/b.txt", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![
+    let journal = ApplyJournal::prepared(vec![
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/a.txt")),
             to: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             stage: None,
+            force: false,
         },
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
@@ -137,6 +143,7 @@ fn promoted_cross_device_rename_removes_the_target_and_restores_the_source() {
             stage: Some(JournalPath::from(PathBuf::from(
                 "/mnt/.b.txt.kawi-copy-1-0",
             ))),
+            force: false,
         },
     ]);
     let report = recover(&journal, &HashSet::from([1]), &mut fs);
@@ -157,11 +164,12 @@ fn unapplied_cross_device_copy_stage_is_removed() {
         ("/project/.a.kawi-move", false),
         ("/mnt/.b.txt.kawi-copy-1-0", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![
+    let journal = ApplyJournal::prepared(vec![
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/a.txt")),
             to: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
             stage: None,
+            force: false,
         },
         JournalOperation::Rename {
             from: JournalPath::from(PathBuf::from("/project/.a.kawi-move")),
@@ -169,6 +177,7 @@ fn unapplied_cross_device_copy_stage_is_removed() {
             stage: Some(JournalPath::from(PathBuf::from(
                 "/mnt/.b.txt.kawi-copy-1-0",
             ))),
+            force: false,
         },
     ]);
     let report = recover(&journal, &HashSet::new(), &mut fs);
@@ -188,7 +197,7 @@ fn unapplied_copy_stage_is_removed_without_removing_the_source() {
         ("/project/a.txt", false),
         ("/mnt/.b.txt.kawi-copy-0-0", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![JournalOperation::Copy {
+    let journal = ApplyJournal::prepared(vec![JournalOperation::Copy {
         from: JournalPath::from(PathBuf::from("/project/a.txt")),
         to: JournalPath::from(PathBuf::from("/mnt/b.txt")),
         stage: Some(JournalPath::from(PathBuf::from(
@@ -212,12 +221,13 @@ fn promotion_intent_with_a_remaining_stage_keeps_the_target() {
         ("/mnt/.b.txt.kawi-copy-0-0", false),
         ("/mnt/b.txt", false),
     ]);
-    let journal = DirectoryJournal::prepared(vec![JournalOperation::Rename {
+    let journal = ApplyJournal::prepared(vec![JournalOperation::Rename {
         from: JournalPath::from(PathBuf::from("/project/a.txt")),
         to: JournalPath::from(PathBuf::from("/mnt/b.txt")),
         stage: Some(JournalPath::from(PathBuf::from(
             "/mnt/.b.txt.kawi-copy-0-0",
         ))),
+        force: false,
     }]);
     let report = recover(&journal, &HashSet::from([0]), &mut fs);
     assert!(report.errors.is_empty());
@@ -231,12 +241,13 @@ fn promotion_intent_with_a_remaining_stage_keeps_the_target() {
 #[test]
 fn promoted_rename_with_a_missing_source_is_reported() {
     let mut fs = operation_paths(&[("/project", true), ("/mnt", true), ("/mnt/b.txt", false)]);
-    let journal = DirectoryJournal::prepared(vec![JournalOperation::Rename {
+    let journal = ApplyJournal::prepared(vec![JournalOperation::Rename {
         from: JournalPath::from(PathBuf::from("/project/a.txt")),
         to: JournalPath::from(PathBuf::from("/mnt/b.txt")),
         stage: Some(JournalPath::from(PathBuf::from(
             "/mnt/.b.txt.kawi-copy-0-0",
         ))),
+        force: false,
     }]);
     let report = recover(&journal, &HashSet::from([0]), &mut fs);
     assert_eq!(report.errors.len(), 1);

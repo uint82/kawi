@@ -6,12 +6,12 @@ use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
 use super::verify::DELETED_SAVE_MESSAGE;
+use crate::app::apply_journal;
 use crate::app::App;
 use changes::rename_requests;
 use messages::{apply_success_message, failure_message};
 
 mod changes;
-mod journal;
 mod messages;
 
 pub(super) use changes::all_changes;
@@ -134,12 +134,12 @@ impl App {
             Ok(prepared) => prepared,
             Err(error) => return self.cancel_prepared_apply(&apply, error),
         };
-        let journal = match self.create_directory_journal(&prepared) {
+        let journal = match self.create_apply_journal(&prepared) {
             Ok(journal) => journal,
             Err(error) => return self.cancel_prepared_apply(&apply, error),
         };
         let journal_written = match journal.as_ref() {
-            Some(journal) => match journal::persist(self.recovery.as_ref(), journal) {
+            Some(journal) => match apply_journal::persist(self.recovery.as_ref(), journal) {
                 Ok(written) => written,
                 Err(error) => return self.cancel_prepared_apply(&apply, error),
             },
@@ -148,7 +148,7 @@ impl App {
         let promotions = self.recovery.as_ref().map(|manager| manager.store_clone());
         let mut record_promotion = |operation| match &promotions {
             Some(store) => store
-                .append_directory_promotion(operation)
+                .append_apply_promotion(operation)
                 .map_err(std::io::Error::other),
             None => Ok(()),
         };
@@ -167,15 +167,24 @@ impl App {
         self.refresh_after_directory_change();
         match outcome.error {
             Some(_) => {
-                let warning =
-                    journal::finish_failure(self.recovery.as_ref(), &outcome, journal_written);
+                let warning = apply_journal::finish_failure(
+                    self.recovery.as_ref(),
+                    outcome.rollback_errors.is_empty(),
+                    journal_written,
+                );
                 self.finish_directory_apply_failure(&apply, &outcome, warning)
             }
             None => {
-                let warning = journal::finish_success(
+                let cleanups = outcome
+                    .deferred_deletes
+                    .iter()
+                    .cloned()
+                    .map(crate::recovery::JournalCleanup::remove)
+                    .collect::<Vec<_>>();
+                let warning = apply_journal::finish_success(
                     self.recovery.as_ref(),
                     journal.as_ref(),
-                    &outcome,
+                    &cleanups,
                     journal_written,
                 );
                 let saved = self.finish_directory_apply_success(&apply);
@@ -193,14 +202,14 @@ impl App {
         false
     }
 
-    fn create_directory_journal(
+    fn create_apply_journal(
         &self,
         prepared: &PreparedPlan<'_>,
-    ) -> Result<Option<crate::recovery::DirectoryJournal>, String> {
+    ) -> Result<Option<crate::recovery::ApplyJournal>, String> {
         if self.recovery.is_none() {
             return Ok(None);
         }
-        journal::create(prepared).map(Some)
+        apply_journal::create_for_plan(prepared).map(Some)
     }
 
     pub(super) fn finish_directory_apply_failure(
@@ -259,7 +268,7 @@ impl App {
     fn update_applied_operation(&mut self, operation: &super::planner::Operation) {
         use super::planner::Operation;
         match operation {
-            Operation::Rename { from, to } => {
+            Operation::Rename { from, to, .. } => {
                 self.rewrite_paths(from, to);
             }
             Operation::Trash(path) => {

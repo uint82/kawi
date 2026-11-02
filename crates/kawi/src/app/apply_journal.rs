@@ -1,11 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use super::super::executor::{Outcome, PreparedPlan};
-use super::super::fs::{DirectoryFs, RealFs};
-use super::super::planner::Operation;
-use crate::recovery::{DirectoryJournal, JournalOperation, JournalPath, RecoveryManager};
+use super::directory::complete_cleanups;
+use super::directory::executor::PreparedPlan;
+use super::directory::fs::RealFs;
+use super::directory::planner::Operation;
+use crate::recovery::{
+    ApplyJournal, JournalCleanup, JournalOperation, JournalPath, RecoveryManager,
+};
 
-pub(super) fn create(prepared: &PreparedPlan<'_>) -> Result<DirectoryJournal, String> {
+pub(in crate::app) fn create_for_plan(prepared: &PreparedPlan<'_>) -> Result<ApplyJournal, String> {
     let operations = prepared
         .plan()
         .operations
@@ -13,7 +16,7 @@ pub(super) fn create(prepared: &PreparedPlan<'_>) -> Result<DirectoryJournal, St
         .enumerate()
         .map(|(index, operation)| journal_operation(prepared, index, operation))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(DirectoryJournal::prepared(operations))
+    Ok(ApplyJournal::prepared(operations))
 }
 
 fn journal_operation(
@@ -22,12 +25,13 @@ fn journal_operation(
     operation: &Operation,
 ) -> Result<JournalOperation, String> {
     match operation {
-        Operation::Rename { from, to } => Ok(JournalOperation::Rename {
+        Operation::Rename { from, to, force } => Ok(JournalOperation::Rename {
             from: JournalPath::from(from.clone()),
             to: JournalPath::from(to.clone()),
             stage: prepared
                 .stage_path(index)
                 .map(|stage| JournalPath::from(stage.to_path_buf())),
+            force: *force,
         }),
         Operation::Copy { from, to } => Ok(JournalOperation::Copy {
             from: JournalPath::from(from.clone()),
@@ -63,96 +67,90 @@ fn stage_path(
         .ok_or_else(|| format!("copy stage was not prepared for {}", target.display()))
 }
 
-pub(super) fn persist(
+pub(in crate::app) fn persist(
     manager: Option<&RecoveryManager>,
-    journal: &DirectoryJournal,
+    journal: &ApplyJournal,
 ) -> Result<bool, String> {
     let Some(manager) = manager else {
         return Ok(false);
     };
-    manager.remove_directory_promotions()?;
-    manager.save_directory_journal(journal)?;
+    manager.remove_apply_promotions()?;
+    manager.save_apply_journal(journal)?;
     Ok(true)
 }
 
-pub(super) fn finish_success(
+pub(in crate::app) fn finish_success(
     manager: Option<&RecoveryManager>,
-    journal: Option<&DirectoryJournal>,
-    outcome: &Outcome,
+    journal: Option<&ApplyJournal>,
+    cleanups: &[JournalCleanup],
     written: bool,
 ) -> Option<String> {
-    let deferred = &outcome.deferred_deletes;
     if !written {
-        return remove_deferred(deferred).err();
+        return cleanup_error(cleanups).err();
     }
     let Some(manager) = manager else {
-        return Some("Directory recovery journal missing; deferred removals kept".to_string());
+        return Some("Apply recovery journal missing; deferred cleanup kept".to_string());
     };
     let Some(journal) = journal else {
-        return Some("Directory recovery journal missing; deferred removals kept".to_string());
+        return Some("Apply recovery journal missing; deferred cleanup kept".to_string());
     };
-    let committed = journal
-        .clone()
-        .committed(deferred.iter().cloned().map(JournalPath::from).collect());
-    if let Err(error) = manager.save_directory_journal(&committed) {
-        return finalize_without_journal(manager, deferred, &error);
+    let committed = journal.clone().committed(cleanups.to_vec());
+    if let Err(error) = manager.save_apply_journal(&committed) {
+        return finalize_without_journal(manager, cleanups, &error);
     }
-    if let Some(error) = remove_deferred(deferred).err() {
-        return Some(format!("{error}; directory recovery journal kept"));
+    if let Some(error) = cleanup_error(cleanups).err() {
+        return Some(format!("{error}; apply recovery journal kept"));
     }
     remove_recovery_files(manager)
         .err()
-        .map(|error| format!("Cannot remove directory recovery journal: {error}"))
+        .map(|error| format!("Cannot remove apply recovery journal: {error}"))
 }
 
 fn finalize_without_journal(
     manager: &RecoveryManager,
-    deferred: &[PathBuf],
+    cleanups: &[JournalCleanup],
     commit_error: &str,
 ) -> Option<String> {
     if let Err(remove_error) = remove_recovery_files(manager) {
         return Some(format!(
-            "Directory recovery journal could not be finalized: {commit_error}; {remove_error}; deferred removals kept"
+            "Apply recovery journal could not be finalized: {commit_error}; {remove_error}; deferred cleanup kept"
         ));
     }
-    remove_deferred(deferred).err()
+    cleanup_error(cleanups).err()
 }
 
-fn remove_deferred(paths: &[PathBuf]) -> Result<(), String> {
+fn cleanup_error(cleanups: &[JournalCleanup]) -> Result<(), String> {
     let mut fs = RealFs::new(true);
-    for path in paths {
-        if !fs.exists(path) {
-            continue;
-        }
-        fs.remove_tree(path)
-            .and_then(|()| fs.sync_parent(path))
-            .map_err(|error| format!("cannot remove {}: {error}", path.display()))?;
+    let report = complete_cleanups(cleanups, &mut fs);
+    if report.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(report.errors.join("; "))
     }
-    Ok(())
 }
 
 fn remove_recovery_files(manager: &RecoveryManager) -> Result<(), String> {
-    manager.remove_directory_journal()?;
-    manager.remove_directory_promotions()
+    manager.remove_apply_journal()?;
+    manager.remove_apply_promotions()
 }
 
-pub(super) fn finish_failure(
+pub(in crate::app) fn finish_failure(
     manager: Option<&RecoveryManager>,
-    outcome: &Outcome,
+    rollback_clean: bool,
     written: bool,
 ) -> Option<String> {
     if !written {
         return None;
     }
-    if !outcome.rollback_errors.is_empty() {
-        return Some("Directory recovery journal kept for the next start".to_string());
+    if !rollback_clean {
+        return Some("Apply recovery journal kept for the next start".to_string());
     }
     let Some(manager) = manager else {
-        return Some("Directory recovery journal kept for the next start".to_string());
+        return Some("Apply recovery journal kept for the next start".to_string());
     };
     remove_recovery_files(manager)
         .err()
-        .map(|error| format!("Cannot remove directory recovery journal after rollback: {error}"))
+        .map(|error| format!("Cannot remove apply recovery journal after rollback: {error}"))
 }
 
 #[cfg(test)]

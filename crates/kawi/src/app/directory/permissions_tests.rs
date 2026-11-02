@@ -49,6 +49,7 @@ fn rename_requires_write_access_to_both_parents() {
         &[Operation::Rename {
             from: PathBuf::from("/one/a.txt"),
             to: PathBuf::from("/two/a.txt"),
+            force: false,
         }],
         &fs,
     )

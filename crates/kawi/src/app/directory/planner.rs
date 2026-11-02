@@ -7,9 +7,16 @@ use super::fs::DirectoryFs;
 use super::temporary::{unique_path, TemporaryPath};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum Operation {
-    Rename { from: PathBuf, to: PathBuf },
-    Copy { from: PathBuf, to: PathBuf },
+pub(in crate::app) enum Operation {
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+        force: bool,
+    },
+    Copy {
+        from: PathBuf,
+        to: PathBuf,
+    },
     CreateDirectory(PathBuf),
     CreateFile(PathBuf),
     Trash(PathBuf),
@@ -17,8 +24,8 @@ pub(super) enum Operation {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::app) struct Plan {
-    pub(super) operations: Vec<Operation>,
-    pub(super) changes: usize,
+    pub(in crate::app) operations: Vec<Operation>,
+    pub(in crate::app) changes: usize,
 }
 
 impl Plan {
@@ -120,10 +127,12 @@ pub(super) fn plan(changes: Vec<Change>, fs: &impl DirectoryFs) -> Result<Plan, 
     for (index, (from, to)) in renames.into_iter().enumerate() {
         let temporary = temporary_names.path(&from, index)?;
         operations.push(Operation::Rename {
+            force: false,
             from: from.clone(),
             to: temporary.clone(),
         });
         finals.push(Operation::Rename {
+            force: false,
             from: temporary,
             to: to.clone(),
         });

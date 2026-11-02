@@ -3,13 +3,13 @@ use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use crate::recovery::directory::DirectoryRecovery;
+use crate::recovery::apply::ApplyRecovery;
 use crate::recovery::lock::{self, Lock, LockState};
 use crate::recovery::model::Snapshot;
 use crate::recovery::store::WorkspaceStore;
 use crate::recovery::writer::SnapshotWriter;
 
-mod directory;
+mod apply;
 
 const IDLE_DELAY: Duration = Duration::from_millis(1_500);
 const MAX_DELAY: Duration = Duration::from_secs(15);
@@ -38,7 +38,7 @@ pub(crate) enum RecoveryStart {
     Active {
         manager: Box<RecoveryManager>,
         snapshots: Vec<Snapshot>,
-        directory_recovery: Option<DirectoryRecovery>,
+        apply_recovery: Option<ApplyRecovery>,
         warning: Option<String>,
     },
 }
@@ -79,7 +79,7 @@ impl RecoveryManager {
             }
         };
         let (snapshots, mut warnings) = store.load_all();
-        let (directory_recovery, journal_warning) = directory::load(&store);
+        let (apply_recovery, journal_warning) = apply::load(&store);
         if let Some(warning) = journal_warning {
             warnings.push(warning);
         }
@@ -95,7 +95,7 @@ impl RecoveryManager {
                 active: true,
             }),
             snapshots,
-            directory_recovery,
+            apply_recovery,
             warning: (!warnings.is_empty()).then(|| warnings.join("\n")),
         }
     }

@@ -10,14 +10,14 @@ mod staged;
 
 pub(in crate::app::directory) use describe::applied_description;
 use describe::describe;
-pub(in crate::app::directory) use staged::PreparedPlan;
+pub(in crate::app) use staged::PreparedPlan;
 
-pub(super) struct Outcome {
-    pub(super) completed: usize,
-    pub(super) remaining: Vec<usize>,
-    pub(super) rollback_errors: Vec<String>,
-    pub(super) deferred_deletes: Vec<PathBuf>,
-    pub(super) error: Option<String>,
+pub(in crate::app) struct Outcome {
+    pub(in crate::app) completed: usize,
+    pub(in crate::app) remaining: Vec<usize>,
+    pub(in crate::app) rollback_errors: Vec<String>,
+    pub(in crate::app) deferred_deletes: Vec<PathBuf>,
+    pub(in crate::app) error: Option<String>,
 }
 
 impl Outcome {
@@ -104,7 +104,7 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
 
     fn apply_operation(&mut self, index: usize, operation: &Operation) -> io::Result<()> {
         match operation {
-            Operation::Rename { from, to } => self.rename(index, from, to)?,
+            Operation::Rename { from, to, force } => self.rename(index, from, to, *force)?,
             Operation::Copy { from, to } => self.copy(index, from, to)?,
             Operation::CreateDirectory(path) => {
                 self.fs.create_dir(path)?;
@@ -125,8 +125,8 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
         Ok(())
     }
 
-    fn rename(&mut self, operation: usize, from: &Path, to: &Path) -> io::Result<()> {
-        match self.fs.try_rename(from, to) {
+    fn rename(&mut self, operation: usize, from: &Path, to: &Path, force: bool) -> io::Result<()> {
+        match self.fs.try_rename(from, to, force) {
             Ok(()) => {
                 self.undo.push(Undo::Rename {
                     from: to.to_path_buf(),
@@ -136,7 +136,7 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
             }
             Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
                 let stage = self.stage(operation)?;
-                self.cross_device_rename(operation, from, to, &stage)
+                self.cross_device_rename(operation, from, to, force, &stage)
             }
             Err(error) => Err(error),
         }
@@ -147,11 +147,12 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
         operation: usize,
         from: &Path,
         to: &Path,
+        force: bool,
         stage: &Path,
     ) -> io::Result<()> {
         self.stage_copy(from, stage)?;
         (self.promotions)(operation)?;
-        self.fs.promote_stage(stage, to)?;
+        self.fs.promote_stage(stage, to, force)?;
         self.undo.push(Undo::Remove {
             path: to.to_path_buf(),
             kind: Removal::Tree,
@@ -163,7 +164,7 @@ impl<'a, F: DirectoryFs> Execution<'a, F> {
     fn copy(&mut self, operation: usize, from: &Path, to: &Path) -> io::Result<()> {
         let stage = self.stage(operation)?;
         self.stage_copy(from, &stage)?;
-        self.fs.promote_stage(&stage, to)?;
+        self.fs.promote_stage(&stage, to, false)?;
         self.undo.push(Undo::Remove {
             path: to.to_path_buf(),
             kind: Removal::Tree,

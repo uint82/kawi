@@ -17,7 +17,7 @@ pub(super) enum Call {
 }
 
 #[derive(Default)]
-pub(super) struct FakeFs {
+pub(in crate::app) struct FakeFs {
     paths: BTreeMap<PathBuf, bool>,
     pub(super) calls: Vec<Call>,
     fail_at: Option<usize>,
@@ -30,7 +30,7 @@ pub(super) struct FakeFs {
 }
 
 impl FakeFs {
-    pub(super) fn new(paths: &[(&str, bool)]) -> Self {
+    pub(in crate::app) fn new(paths: &[(&str, bool)]) -> Self {
         Self {
             paths: paths
                 .iter()
@@ -100,7 +100,7 @@ impl DirectoryFs for FakeFs {
         Ok(())
     }
 
-    fn try_rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
+    fn try_rename(&mut self, from: &Path, to: &Path, _force: bool) -> io::Result<()> {
         self.record(Call::Rename(from.to_path_buf(), to.to_path_buf()))?;
         if self
             .cross_device
@@ -118,13 +118,19 @@ impl DirectoryFs for FakeFs {
         Ok(())
     }
 
-    fn promote_stage(&mut self, stage: &Path, to: &Path) -> io::Result<()> {
+    fn promote_stage(&mut self, stage: &Path, to: &Path, _force: bool) -> io::Result<()> {
         self.record(Call::Rename(stage.to_path_buf(), to.to_path_buf()))?;
         self.move_path(stage, to);
         Ok(())
     }
 
     fn finish_delete(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
+        self.record(Call::Trash(original.to_path_buf()))?;
+        self.paths.remove(staged);
+        Ok(())
+    }
+
+    fn trash(&mut self, staged: &Path, original: &Path) -> io::Result<()> {
         self.record(Call::Trash(original.to_path_buf()))?;
         self.paths.remove(staged);
         Ok(())

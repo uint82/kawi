@@ -16,7 +16,7 @@ pub(super) struct StagedDelete {
     pub(super) finalized: bool,
 }
 
-pub(in crate::app::directory) struct PreparedPlan<'a> {
+pub(in crate::app) struct PreparedPlan<'a> {
     plan: &'a Plan,
     deletes: Vec<StagedDelete>,
     delete_positions: Vec<Option<usize>>,
@@ -24,10 +24,7 @@ pub(in crate::app::directory) struct PreparedPlan<'a> {
 }
 
 impl<'a> PreparedPlan<'a> {
-    pub(in crate::app::directory) fn new(
-        plan: &'a Plan,
-        fs: &impl DirectoryFs,
-    ) -> Result<Self, String> {
+    pub(in crate::app) fn new(plan: &'a Plan, fs: &impl DirectoryFs) -> Result<Self, String> {
         let mut reserved = reserved_paths(plan);
         let mut deletes = Vec::new();
         let mut delete_positions = vec![None; plan.operations.len()];
@@ -46,7 +43,7 @@ impl<'a> PreparedPlan<'a> {
                         finalized: false,
                     });
                 }
-                Operation::Rename { from, to } if from.parent() != to.parent() => {
+                Operation::Rename { from, to, .. } if from.parent() != to.parent() => {
                     stages[index] = Some(staged_path(to, index, STAGE_MARKER, &mut reserved, fs)?);
                 }
                 Operation::Copy { to, .. } => {
@@ -65,22 +62,22 @@ impl<'a> PreparedPlan<'a> {
         })
     }
 
-    pub(in crate::app::directory) fn plan(&self) -> &'a Plan {
+    pub(in crate::app) fn plan(&self) -> &'a Plan {
         self.plan
     }
 
-    pub(in crate::app::directory) fn staged_path(&self, operation: usize) -> Option<&Path> {
+    pub(in crate::app) fn staged_path(&self, operation: usize) -> Option<&Path> {
         let position = self.delete_positions.get(operation).copied().flatten()?;
         self.deletes
             .get(position)
             .map(|delete| delete.staged.as_path())
     }
 
-    pub(in crate::app::directory) fn stage_path(&self, operation: usize) -> Option<&Path> {
+    pub(in crate::app) fn stage_path(&self, operation: usize) -> Option<&Path> {
         self.stages.get(operation).and_then(Option::as_deref)
     }
 
-    pub(in crate::app::directory) fn execute(
+    pub(in crate::app) fn execute(
         self,
         fs: &mut impl DirectoryFs,
         promotions: &mut dyn FnMut(usize) -> std::io::Result<()>,
@@ -115,7 +112,7 @@ fn reserved_paths(plan: &Plan) -> BTreeSet<PathBuf> {
     let mut paths = BTreeSet::new();
     for operation in &plan.operations {
         match operation {
-            Operation::Rename { from, to } | Operation::Copy { from, to } => {
+            Operation::Rename { from, to, .. } | Operation::Copy { from, to } => {
                 paths.insert(from.clone());
                 paths.insert(to.clone());
             }
