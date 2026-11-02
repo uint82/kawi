@@ -8,6 +8,8 @@ use crate::recovery::model::Snapshot;
 use crate::recovery::store::WorkspaceStore;
 use crate::recovery::writer::SnapshotWriter;
 
+mod directory;
+
 const IDLE_DELAY: Duration = Duration::from_millis(1_500);
 const MAX_DELAY: Duration = Duration::from_secs(15);
 
