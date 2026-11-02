@@ -28,10 +28,25 @@ pub(super) struct Entry {
 impl Entry {
     pub(super) fn display_name(&self) -> String {
         let mut name = escape_name(self.name.as_os_str());
-        if self.kind == EntryKind::Directory {
+        if self.is_directory() {
             name.push('/');
         }
         name
+    }
+
+    pub(super) fn display_name_matches(&self, text: &str) -> bool {
+        let text = if self.is_directory() {
+            let Some(text) = text.strip_suffix('/') else {
+                return false;
+            };
+            text
+        } else {
+            text
+        };
+        if needs_escape(&self.name) {
+            return escape_name(self.name.as_os_str()) == text;
+        }
+        self.name == OsStr::new(text)
     }
 
     pub(super) fn is_directory(&self) -> bool {
@@ -45,6 +60,24 @@ impl Entry {
             && self.hidden == other.hidden
             && self.metadata == other.metadata
     }
+}
+
+fn needs_escape(name: &OsStr) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        std::str::from_utf8(name.as_bytes())
+            .map(|text| text.chars().any(char_needs_escape))
+            .unwrap_or(true)
+    }
+    #[cfg(not(unix))]
+    {
+        name.to_string_lossy().chars().any(char_needs_escape)
+    }
+}
+
+fn char_needs_escape(character: char) -> bool {
+    character == '\\' || character.is_control()
 }
 
 pub(super) fn is_hidden(name: &OsStr) -> bool {
@@ -85,4 +118,31 @@ fn special_entry_kind(file_type: FileType) -> EntryKind {
 #[cfg(not(unix))]
 fn special_entry_kind(_file_type: FileType) -> EntryKind {
     EntryKind::File
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, kind: EntryKind) -> Entry {
+        Entry {
+            id: 1,
+            name: OsString::from(name),
+            kind,
+            symlink_target: None,
+            hidden: false,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn display_names_match_plain_escaped_and_directory_names() {
+        assert!(entry("alpha.txt", EntryKind::File).display_name_matches("alpha.txt"));
+        assert!(entry("a\nb", EntryKind::File).display_name_matches("a\\nb"));
+        assert!(entry("a\\b", EntryKind::File).display_name_matches("a\\\\b"));
+        assert!(!entry("a\\b", EntryKind::File).display_name_matches("a\\b"));
+        assert!(entry("src", EntryKind::Directory).display_name_matches("src/"));
+        assert!(!entry("src", EntryKind::Directory).display_name_matches("src"));
+        assert!(!entry("alpha.txt", EntryKind::File).display_name_matches("beta.txt"));
+    }
 }
