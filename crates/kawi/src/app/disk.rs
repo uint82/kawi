@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use kawi_editor::paths;
 use kawi_watch::{Fingerprint, WatchService};
 
+use super::identity::{file_identity, FileIdentity};
 use super::App;
 
 const STATUS_CHANGED: &str = "changed";
@@ -15,8 +16,24 @@ pub(super) struct DiskState {
     watched: BTreeSet<PathBuf>,
 }
 
+#[derive(Clone, Copy)]
+struct ObservedFile {
+    fingerprint: Option<Fingerprint>,
+    identity: Option<FileIdentity>,
+}
+
+impl ObservedFile {
+    fn read(path: &Path) -> Self {
+        Self {
+            fingerprint: Fingerprint::read(path).ok(),
+            identity: file_identity(path),
+        }
+    }
+}
+
 struct DiskFile {
     path: PathBuf,
+    identity: Option<FileIdentity>,
     base: Option<Fingerprint>,
     current: Option<Fingerprint>,
     changed: bool,
@@ -106,7 +123,7 @@ impl DiskState {
             .collect()
     }
 
-    fn observe(&mut self, number: usize, observed: Option<Fingerprint>) -> Observation {
+    fn observe(&mut self, number: usize, observed: ObservedFile) -> Observation {
         let Some(file) = self.files.get_mut(&number) else {
             return Observation::Ignored;
         };
@@ -153,15 +170,26 @@ impl DiskState {
 
 impl DiskFile {
     fn new(path: PathBuf) -> Self {
-        let fingerprint = Fingerprint::read(&path).ok();
-        Self::from_fingerprint(path, fingerprint)
+        let observed = ObservedFile::read(&path);
+        Self::from_observed(path, observed)
     }
 
     fn from_fingerprint(path: PathBuf, fingerprint: Option<Fingerprint>) -> Self {
+        Self::from_observed(
+            path.clone(),
+            ObservedFile {
+                fingerprint,
+                identity: file_identity(&path),
+            },
+        )
+    }
+
+    fn from_observed(path: PathBuf, observed: ObservedFile) -> Self {
         Self {
             path,
-            base: fingerprint,
-            current: fingerprint,
+            identity: observed.identity,
+            base: observed.fingerprint,
+            current: observed.fingerprint,
             changed: false,
             deleted: false,
             conflict: false,
@@ -169,8 +197,11 @@ impl DiskFile {
         }
     }
 
-    fn observe(&mut self, observed: Option<Fingerprint>) -> Observation {
-        let Some(observed) = observed else {
+    fn observe(&mut self, observed: ObservedFile) -> Observation {
+        if observed.fingerprint.is_some() {
+            self.identity = observed.identity;
+        }
+        let Some(observed) = observed.fingerprint else {
             if self.base.is_none() && self.current.is_none() {
                 return Observation::Ignored;
             }
@@ -206,6 +237,7 @@ impl DiskFile {
     }
 
     fn accept(&mut self, fingerprint: Fingerprint) {
+        self.identity = file_identity(&self.path);
         self.base = Some(fingerprint);
         self.current = Some(fingerprint);
         self.changed = false;
@@ -235,6 +267,7 @@ impl DiskFile {
     }
 
     fn record_saved(&mut self, fingerprint: Option<Fingerprint>) {
+        self.identity = file_identity(&self.path);
         self.base = fingerprint;
         self.current = fingerprint;
         self.changed = false;
@@ -279,12 +312,16 @@ impl App {
             let observed = self
                 .disk
                 .path(number)
-                .and_then(|path| Fingerprint::read(path).ok());
+                .map(ObservedFile::read)
+                .unwrap_or(ObservedFile {
+                    fingerprint: None,
+                    identity: None,
+                });
             match self.disk.observe(number, observed) {
                 Observation::Ignored => {}
                 Observation::Same => {}
                 Observation::Deleted => self.report_deleted_file(number),
-                Observation::Changed => self.handle_changed_file(number, observed),
+                Observation::Changed => self.handle_changed_file(number, observed.fingerprint),
             }
             self.close_resolved_conflict(number);
         }

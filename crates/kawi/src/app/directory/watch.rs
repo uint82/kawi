@@ -6,10 +6,8 @@ use kawi_watch::WatchService;
 
 use super::session::DirectoryBuffers;
 use super::verify::EXTERNAL_CHANGE_MESSAGE;
-use roots::{
-    find_moved_root, move_search_paths, root_identity, root_identity_changed, root_missing,
-    watched_paths, RootIdentity,
-};
+use crate::app::identity::{directory_identity, find_moved_entry, FileIdentity};
+use roots::{root_identity_changed, root_missing, watched_paths};
 
 mod roots;
 use crate::app::App;
@@ -17,7 +15,7 @@ use crate::app::App;
 pub(super) struct DirectoryWatch {
     service: WatchService,
     roots: BTreeSet<PathBuf>,
-    identities: BTreeMap<PathBuf, Option<RootIdentity>>,
+    identities: BTreeMap<PathBuf, Option<FileIdentity>>,
 }
 
 impl DirectoryWatch {
@@ -48,7 +46,7 @@ impl DirectoryWatch {
             .watch_directories(watched.iter().map(PathBuf::as_path));
         self.identities = roots
             .iter()
-            .map(|root| (root.clone(), root_identity(root)))
+            .map(|root| (root.clone(), directory_identity(root)))
             .collect();
         self.roots = roots;
     }
@@ -62,8 +60,12 @@ impl DirectoryWatch {
 
     fn moved_root(&self, root: &Path) -> Option<PathBuf> {
         let identity = self.identities.get(root).copied().flatten()?;
-        let search = move_search_paths(&self.roots, root);
-        find_moved_root(identity, &search, root)
+        find_moved_entry(
+            identity,
+            &watched_paths(&self.roots),
+            root,
+            directory_identity,
+        )
     }
 
     fn invalidate(&mut self) {
