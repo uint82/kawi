@@ -1,4 +1,5 @@
 use std::ffi::{OsStr, OsString};
+use std::fs::FileType;
 
 use super::metadata::EntryMetadata;
 use super::name::escape_name;
@@ -8,6 +9,10 @@ pub(in crate::app) enum EntryKind {
     File,
     Directory,
     Symlink,
+    Fifo,
+    Socket,
+    BlockDevice,
+    CharDevice,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,12 +46,34 @@ pub(super) fn is_vcs_directory(name: &OsStr) -> bool {
     matches!(name.to_string_lossy().as_ref(), ".git" | ".hg" | ".svn")
 }
 
-pub(super) fn entry_kind(file_type: std::fs::FileType) -> EntryKind {
+pub(super) fn entry_kind(file_type: FileType) -> EntryKind {
     if file_type.is_symlink() {
         EntryKind::Symlink
     } else if file_type.is_dir() {
         EntryKind::Directory
     } else {
+        special_entry_kind(file_type)
+    }
+}
+
+#[cfg(unix)]
+fn special_entry_kind(file_type: FileType) -> EntryKind {
+    use std::os::unix::fs::FileTypeExt;
+
+    if file_type.is_fifo() {
+        EntryKind::Fifo
+    } else if file_type.is_socket() {
+        EntryKind::Socket
+    } else if file_type.is_block_device() {
+        EntryKind::BlockDevice
+    } else if file_type.is_char_device() {
+        EntryKind::CharDevice
+    } else {
         EntryKind::File
     }
+}
+
+#[cfg(not(unix))]
+fn special_entry_kind(_file_type: FileType) -> EntryKind {
+    EntryKind::File
 }

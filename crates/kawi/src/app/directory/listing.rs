@@ -61,22 +61,18 @@ pub(super) fn read_listing(
         let item = item?;
         let name = item.file_name();
         let hidden = is_hidden(&name);
-        let metadata = if columns.any() {
-            item.metadata().ok()
-        } else {
-            None
-        };
-        let file_type = match metadata.as_ref() {
-            Some(metadata) => metadata.file_type(),
-            None => item.file_type()?,
-        };
-        let kind = entry_kind(file_type);
+        let kind = entry_kind(item.file_type()?);
         if kind == EntryKind::Directory && is_vcs_directory(&name) {
             continue;
         }
         if hidden && !show_hidden {
             continue;
         }
+        let metadata = if columns.any() {
+            fs::symlink_metadata(item.path()).ok()
+        } else {
+            None
+        };
         entries.push(Entry {
             id: next_id,
             name,
@@ -147,6 +143,89 @@ mod tests {
         assert!(listing.entries.iter().any(|entry| entry.name == ".hidden"));
         fs::remove_dir_all(dir).unwrap();
     }
+    fn entry_named<'a>(listing: &'a Listing, name: &str) -> &'a Entry {
+        listing
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_keep_link_kind_and_metadata() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_dir("directory_symlink_kind");
+        fs::write(dir.join("target.txt"), "hello").unwrap();
+        symlink("target.txt", dir.join("link")).unwrap();
+        let columns = MetadataColumns::parse("permissions,size").unwrap();
+        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let link = entry_named(&listing, "link");
+        assert_eq!(link.kind, EntryKind::Symlink);
+        assert_eq!(link.display_name(), "link");
+        let text = link
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap();
+        assert!(text.starts_with('l'));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_to_directories_are_not_directories() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_dir("directory_symlink_sort");
+        fs::create_dir(dir.join("real")).unwrap();
+        symlink("real", dir.join("link")).unwrap();
+        let listing = read_listing(
+            &dir,
+            false,
+            1,
+            SortMode::DirectoriesFirst,
+            MetadataColumns::default(),
+        )
+        .unwrap();
+        let names: Vec<String> = listing.entries.iter().map(Entry::display_name).collect();
+        assert_eq!(names, ["real/", "link"]);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn special_files_keep_their_kind_and_type_character() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::net::UnixListener;
+
+        let dir = temp_dir("directory_special_files");
+        let _listener = UnixListener::bind(dir.join("sock")).unwrap();
+        let fifo = CString::new(dir.join("pipe").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0);
+        let columns = MetadataColumns::parse("permissions").unwrap();
+        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let socket = entry_named(&listing, "sock");
+        assert_eq!(socket.kind, EntryKind::Socket);
+        assert!(permission_text(socket, &listing, columns).starts_with('s'));
+        let pipe = entry_named(&listing, "pipe");
+        assert_eq!(pipe.kind, EntryKind::Fifo);
+        assert!(permission_text(pipe, &listing, columns).starts_with('p'));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn permission_text(entry: &Entry, listing: &Listing, columns: MetadataColumns) -> String {
+        entry
+            .metadata
+            .as_ref()
+            .unwrap()
+            .text(columns, listing.metadata_widths)
+            .unwrap()
+    }
+
     #[test]
     fn metadata_is_read_only_when_columns_are_enabled() {
         let dir = temp_dir("directory_metadata");

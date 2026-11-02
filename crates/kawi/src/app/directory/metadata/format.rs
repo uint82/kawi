@@ -55,6 +55,10 @@ fn type_char(kind: EntryKind) -> char {
         EntryKind::File => '-',
         EntryKind::Directory => 'd',
         EntryKind::Symlink => 'l',
+        EntryKind::Fifo => 'p',
+        EntryKind::Socket => 's',
+        EntryKind::BlockDevice => 'b',
+        EntryKind::CharDevice => 'c',
     }
 }
 
@@ -131,5 +135,9 @@ mod tests {
         assert_eq!(format_mode(EntryKind::Directory, 0o2755), "drwxr-sr-x");
         assert_eq!(format_mode(EntryKind::Directory, 0o1755), "drwxr-xr-t");
         assert_eq!(format_mode(EntryKind::Symlink, 0o777), "lrwxrwxrwx");
+        assert_eq!(format_mode(EntryKind::Fifo, 0o644), "prw-r--r--");
+        assert_eq!(format_mode(EntryKind::Socket, 0o755), "srwxr-xr-x");
+        assert_eq!(format_mode(EntryKind::BlockDevice, 0o660), "brw-rw----");
+        assert_eq!(format_mode(EntryKind::CharDevice, 0o666), "crw-rw-rw-");
     }
 }
