@@ -25,7 +25,7 @@ pub(super) fn root_identity(path: &Path) -> Option<RootIdentity> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = fs::metadata(path).ok()?;
-    Some(RootIdentity {
+    metadata.is_dir().then(|| RootIdentity {
         device: metadata.dev(),
         inode: metadata.ino(),
     })
@@ -41,7 +41,7 @@ pub(super) struct RootIdentity {
 #[cfg(not(unix))]
 pub(super) fn root_identity(path: &Path) -> Option<RootIdentity> {
     let metadata = fs::metadata(path).ok()?;
-    Some(RootIdentity {
+    metadata.is_dir().then(|| RootIdentity {
         modified: metadata.modified().ok(),
         len: metadata.len(),
     })
@@ -130,6 +130,15 @@ mod tests {
         let dir = crate::test_support::temp_dir("directory_watch_missing");
         fs::remove_dir_all(&dir).unwrap();
         assert!(root_missing(&dir));
+    }
+
+    #[test]
+    fn files_have_no_root_identity() {
+        let dir = crate::test_support::temp_dir("directory_watch_file_identity");
+        let file = dir.join("alpha.txt");
+        fs::write(&file, "content\n").unwrap();
+        assert_eq!(root_identity(&file), None);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

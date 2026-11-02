@@ -51,3 +51,18 @@ fn nested_directory_buffers_follow_root_renames() {
     assert_eq!(app.disk_status(nested_number), None);
     fs::remove_dir_all(moved).unwrap();
 }
+
+#[test]
+fn root_moves_outside_watched_locations_mark_buffers_deleted() {
+    let (dir, mut app) = setup("directory_rename_outside", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    let destination = crate::test_support::temp_dir("directory_rename_destination");
+    let moved = destination.join("moved");
+    assert!(app.directory.sync_watch().is_none());
+    fs::rename(&dir, &moved).unwrap();
+    assert!(app.handle_directory_watch_paths(from_ref(&dir)));
+    assert_eq!(app.directory.get(number).unwrap().root, dir);
+    assert_eq!(app.disk_status(number), Some("deleted"));
+    fs::remove_dir_all(moved).unwrap();
+    fs::remove_dir_all(destination).unwrap();
+}
