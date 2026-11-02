@@ -223,7 +223,14 @@ impl Languages {
     }
 
     pub fn server_is_used(&self, name: &str) -> bool {
-        self.languages.iter().any(|language| {
+        self.languages_using(name).next().is_some()
+    }
+
+    pub fn languages_using<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> impl Iterator<Item = &'a LanguageConfig> + 'a {
+        self.languages.iter().filter(move |language| {
             language.enabled && language.servers.iter().any(|server| server == name)
         })
     }
@@ -717,6 +724,14 @@ mod tests {
         let languages = Languages::from_parts(server(), vec![rust()], available);
         assert!(languages.server_is_used("rust-analyzer"));
         assert!(!languages.server_is_used("pyright"));
+        assert_eq!(
+            languages
+                .languages_using("rust-analyzer")
+                .map(|language| language.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rust"]
+        );
+        assert_eq!(languages.languages_using("pyright").count(), 0);
         assert_eq!(
             languages.server_path("rust-analyzer"),
             Some(Path::new("/bin/rust-analyzer"))
