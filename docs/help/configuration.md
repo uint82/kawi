@@ -74,7 +74,9 @@ Directory buffer settings:
 show_hidden = false
 confirm = true
 trash = true
-sort = "directories"
+sort = "name"
+sort_reverse = false
+sort_directories_first = true
 metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 ```
 

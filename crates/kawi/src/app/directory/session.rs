@@ -9,7 +9,7 @@ use super::listing::Listing;
 use super::metadata::{MetadataColumns, MetadataWidths};
 use super::name::escape_name;
 use super::planner::Plan;
-use super::sort::SortMode;
+use super::sort::SortOptions;
 
 #[derive(Default)]
 pub(in crate::app) struct DirectoryBuffers {
@@ -33,7 +33,7 @@ pub(in crate::app) struct PendingApply {
 pub(in crate::app) struct DirectoryBuffer {
     pub(super) root: PathBuf,
     pub(super) show_hidden: bool,
-    pub(super) sort: SortMode,
+    pub(super) sort: SortOptions,
     pub(super) original: Vec<Entry>,
     pub(super) lines: Vec<DirectoryLine>,
     pub(super) next_id: u64,
@@ -114,7 +114,7 @@ impl DirectoryBuffer {
         root: PathBuf,
         listing: Listing,
         show_hidden: bool,
-        sort: SortMode,
+        sort: SortOptions,
         revision: u64,
     ) -> Self {
         let positions = entry_positions(&listing.entries);

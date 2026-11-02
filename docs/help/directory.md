@@ -28,6 +28,26 @@ Names are stored as `OsString` values. Unchanged lines are never renamed, so exi
 
 The buffer is a normal modified buffer. `:q` closes the window, so with one window it exits Kawi. Use `:bd` to close only the directory buffer. `:q` and `:bd` refuse pending listing edits without `!`. After a successful write the listing reloads from disk and the text undo history is cleared.
 
+## Sorting
+
+Listings are sorted after each load. `sort` selects the key: `name`, `size`, `modified`, `extension`, or `kind`. The legacy value `directories` is accepted as an alias for `name`; grouping is controlled by `sort_directories_first`. Natural name order is always the final tie-breaker, so listings stay deterministic.
+
+```toml
+[explorer]
+sort = "name"
+sort_reverse = false
+sort_directories_first = true
+```
+
+- `sort_reverse` reverses the selected key. Directories stay grouped first when `sort_directories_first` is enabled.
+- `sort_directories_first` groups directories before other entries. It is enabled by default.
+- `sort = "size"` orders from smallest to largest. `sort = "modified"` orders from oldest to newest. Use `sort_reverse` for descending order.
+- `sort = "extension"` places entries without an extension first, then compares extensions in natural order.
+- `sort = "kind"` orders directories, regular files, symlinks, FIFOs, sockets, block devices, and character devices.
+- Entries without loaded size or modified metadata sort after entries with that metadata.
+
+Sorting by size or modified reads filesystem metadata even when metadata columns are hidden. Changing a sort option affects the next load, so use `:e` to refresh an open directory buffer.
+
 ## Metadata
 
 Directory metadata is display-only text before each entry name, in permissions, links, owner, group, size, and modified order. Symlink targets are display-only text after the entry name, escaped like names. Neither is part of the buffer, so neither affects editing, search, or writes.
@@ -84,17 +104,21 @@ Open buffers whose paths are renamed are retargeted, buffers under deleted paths
 show_hidden = false
 confirm = true
 trash = true
-sort = "directories"
+sort = "name"
+sort_reverse = false
+sort_directories_first = true
 metadata = ["permissions", "links", "owner", "group", "size", "modified"]
 ```
 
 - `show_hidden` includes dotfiles in new directory buffers.
 - `confirm` asks before deletes and multi-change plans.
 - `trash` sends deletes to the trash. Set it to `false` for permanent deletes.
-- `sort` is `directories` for directories first, or `name` for natural name order.
+- `sort` selects `name`, `size`, `modified`, `extension`, or `kind`. The legacy value `directories` is accepted as an alias for `name`.
+- `sort_reverse` reverses the selected sort key.
+- `sort_directories_first` groups directories before other entries.
 - `metadata` lists the metadata columns to show.
 
-The runtime options are `directory_show_hidden`, `directory_confirm`, `directory_trash`, `directory_sort`, and `directory_metadata`.
+The runtime options are `directory_show_hidden`, `directory_confirm`, `directory_trash`, `directory_sort`, `directory_sort_reverse`, `directory_sort_directories_first`, and `directory_metadata`.
 
 Directory buffers restore in workspace sessions by path. Unsaved listing edits are not persisted across sessions.
 

@@ -275,6 +275,26 @@ fn keymap_values_use_the_runtime_validator() {
 }
 
 #[test]
+fn directory_sort_options_accept_keys_and_flags() {
+    let loaded = load_text(
+        "[explorer]\nsort = \"size\"\nsort_reverse = true\nsort_directories_first = false\n",
+    );
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(
+        loaded.config.get("directory_sort"),
+        Some(&OptionValue::Text("size".to_string()))
+    );
+    assert_eq!(
+        loaded.config.get("directory_sort_reverse"),
+        Some(&OptionValue::Bool(true))
+    );
+    assert_eq!(
+        loaded.config.get("directory_sort_directories_first"),
+        Some(&OptionValue::Bool(false))
+    );
+}
+
+#[test]
 fn directory_metadata_accepts_lists_and_rejects_unknown_columns() {
     let loaded = load_text("[explorer]\nmetadata = [\"size\", \"permissions\"]\n");
     assert!(loaded.warnings.is_empty());

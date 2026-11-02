@@ -227,10 +227,16 @@ impl App {
                 self.directory_options.trash = value.as_bool().unwrap_or(true);
             }
             "directory_sort" => {
-                self.directory_options.sort = value
+                self.directory_options.sort.key = value
                     .as_text()
-                    .and_then(super::directory::SortMode::parse)
+                    .and_then(super::directory::SortKey::parse)
                     .unwrap_or_default();
+            }
+            "directory_sort_reverse" => {
+                self.directory_options.sort.reverse = value.as_bool().unwrap_or(false);
+            }
+            "directory_sort_directories_first" => {
+                self.directory_options.sort.directories_first = value.as_bool().unwrap_or(true);
             }
             "directory_metadata" => {
                 self.directory_options.metadata = value
@@ -430,7 +436,13 @@ impl App {
             "directory_show_hidden" => OptionValue::Bool(self.directory_options.show_hidden),
             "directory_confirm" => OptionValue::Bool(self.directory_options.confirm),
             "directory_trash" => OptionValue::Bool(self.directory_options.trash),
-            "directory_sort" => OptionValue::Text(self.directory_options.sort.name().to_string()),
+            "directory_sort" => {
+                OptionValue::Text(self.directory_options.sort.key.name().to_string())
+            }
+            "directory_sort_reverse" => OptionValue::Bool(self.directory_options.sort.reverse),
+            "directory_sort_directories_first" => {
+                OptionValue::Bool(self.directory_options.sort.directories_first)
+            }
             "directory_metadata" => OptionValue::Text(self.directory_options.metadata.name()),
             "keyguide" => OptionValue::Bool(self.keyguide_enabled),
             "keyguide_delay" => OptionValue::Int(
@@ -589,6 +601,45 @@ mod tests {
         assert_eq!(
             app.last_message(),
             Some("E474: Invalid argument: directory_metadata=mode")
+        );
+    }
+
+    #[test]
+    fn directory_sort_options_apply_and_query() {
+        let mut app = app();
+        assert_eq!(
+            app.directory_options.sort.key,
+            crate::app::directory::SortKey::Name
+        );
+        assert!(!app.directory_options.sort.reverse);
+        assert!(app.directory_options.sort.directories_first);
+        execute(&mut app, "set directory_sort=size");
+        assert_eq!(
+            app.directory_options.sort.key,
+            crate::app::directory::SortKey::Size
+        );
+        execute(&mut app, "set dsr?");
+        assert_eq!(app.last_message(), Some("directory_sort=size"));
+        execute(&mut app, "set directory_sort_reverse");
+        assert!(app.directory_options.sort.reverse);
+        execute(&mut app, "set dsrr?");
+        assert_eq!(app.last_message(), Some("directory_sort_reverse"));
+        execute(&mut app, "set nodirectory_sort_directories_first");
+        assert!(!app.directory_options.sort.directories_first);
+        execute(&mut app, "set dsdf?");
+        assert_eq!(
+            app.last_message(),
+            Some("nodirectory_sort_directories_first")
+        );
+        execute(&mut app, "set directory_sort=directories");
+        assert_eq!(
+            app.directory_options.sort.key,
+            crate::app::directory::SortKey::Name
+        );
+        execute(&mut app, "set directory_sort=mode");
+        assert_eq!(
+            app.last_message(),
+            Some("E474: Invalid argument: directory_sort=mode")
         );
     }
 

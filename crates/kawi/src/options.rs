@@ -273,7 +273,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 46] = [
+pub(crate) const OPTIONS: [OptionSpec; 48] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -740,12 +740,39 @@ pub(crate) const OPTIONS: [OptionSpec; 46] = [
     OptionSpec {
         name: "directory_sort",
         aliases: &["dsr"],
-        description: "Directory buffer sort order.",
-        kind: OptionKind::Enum(OptionValues::Static(&["directories", "name"])),
+        description: "Directory sort key: name, size, modified, extension, or kind.",
+        kind: OptionKind::Enum(OptionValues::Static(&[
+            "name",
+            "size",
+            "modified",
+            "extension",
+            "kind",
+            "directories",
+        ])),
         scope: OptionScope::Global,
         section: ConfigSection::Explorer,
         config_key: "sort",
-        default: OptionDefault::Text("directories"),
+        default: OptionDefault::Text("name"),
+    },
+    OptionSpec {
+        name: "directory_sort_reverse",
+        aliases: &["dsrr"],
+        description: "Reverse the directory sort key order.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "sort_reverse",
+        default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "directory_sort_directories_first",
+        aliases: &["dsdf"],
+        description: "Group directories before other entries when sorting.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Explorer,
+        config_key: "sort_directories_first",
+        default: OptionDefault::Bool(true),
     },
     OptionSpec {
         name: "directory_metadata",

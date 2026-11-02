@@ -29,18 +29,44 @@ impl MetadataReader {
         }
     }
 
-    pub(super) fn read(&mut self, metadata: &Metadata, kind: EntryKind) -> EntryMetadata {
+    pub(super) fn read(
+        &mut self,
+        metadata: &Metadata,
+        kind: EntryKind,
+        columns: MetadataColumns,
+    ) -> EntryMetadata {
+        let modified_time = metadata.modified().ok();
+        let permissions =
+            optional_column(columns.permissions, || format_permissions(metadata, kind));
+        let links = optional_column(columns.links, || format_links(metadata));
+        let owner = optional_column(columns.owner, || {
+            format_owner(metadata, &mut self.identities)
+        });
+        let group = optional_column(columns.group, || {
+            format_group(metadata, &mut self.identities)
+        });
+        let size = optional_column(columns.size, || format_size(metadata));
+        let modified = optional_column(columns.modified, || {
+            modified_time.map(|time| format_modified(time, self.now))
+        });
         EntryMetadata {
-            permissions: format_permissions(metadata, kind),
-            links: format_links(metadata),
-            owner: format_owner(metadata, &mut self.identities),
-            group: format_group(metadata, &mut self.identities),
-            size: format_size(metadata),
-            modified: metadata
-                .modified()
-                .ok()
-                .map(|time| format_modified(time, self.now)),
+            permissions,
+            links,
+            owner,
+            group,
+            size,
+            size_bytes: metadata.len(),
+            modified,
+            modified_time,
         }
+    }
+}
+
+fn optional_column<T: Default>(enabled: bool, format: impl FnOnce() -> T) -> T {
+    if enabled {
+        format()
+    } else {
+        T::default()
     }
 }
 
@@ -51,7 +77,9 @@ pub(super) struct EntryMetadata {
     pub(super) owner: String,
     pub(super) group: String,
     pub(super) size: String,
-    modified: Option<String>,
+    pub(super) size_bytes: u64,
+    pub(super) modified: Option<String>,
+    pub(super) modified_time: Option<SystemTime>,
 }
 
 impl EntryMetadata {
@@ -116,7 +144,7 @@ mod tests {
     use crate::test_support::temp_dir;
 
     use super::super::listing::read_listing;
-    use super::super::sort::SortMode;
+    use super::super::sort::SortOptions;
     use super::*;
 
     fn metadata() -> EntryMetadata {
@@ -126,7 +154,9 @@ mod tests {
             owner: "user".to_string(),
             group: "dev".to_string(),
             size: "13".to_string(),
+            size_bytes: 13,
             modified: Some("Nov  1 20:26".to_string()),
+            modified_time: None,
         }
     }
 
@@ -175,7 +205,7 @@ mod tests {
         let dir = temp_dir("directory_identity");
         fs::write(dir.join("alpha.txt"), "hello").unwrap();
         let columns = MetadataColumns::parse("links,owner,group").unwrap();
-        let listing = read_listing(&dir, false, 1, SortMode::DirectoriesFirst, columns).unwrap();
+        let listing = read_listing(&dir, false, 1, SortOptions::default(), columns).unwrap();
         let entry = listing
             .entries
             .iter()
