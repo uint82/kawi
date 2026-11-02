@@ -4,6 +4,7 @@ use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
 use super::executor::{applied_description, execute};
 use super::fs::RealFs;
+use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::planner::Plan;
 use super::session::{DirectoryEdit, PendingApply};
@@ -45,7 +46,7 @@ impl App {
             return false;
         }
         if visible {
-            self.show_message("Directory is still loading".to_string());
+            self.show_message(DIRECTORY_LOADING_MESSAGE.to_string());
         }
         true
     }

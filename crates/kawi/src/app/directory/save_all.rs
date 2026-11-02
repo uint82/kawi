@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use super::super::save::SaveAfter;
 use super::diff::Change;
+use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
@@ -82,7 +83,7 @@ impl App {
             .iter()
             .find(|number| self.directory_loading.is_loading(**number))?;
         Some(format!(
-            "Directory is still loading: {}",
+            "{DIRECTORY_LOADING_MESSAGE}: {}",
             self.directory
                 .get(*number)
                 .map_or_else(String::new, |state| state.root_display())
