@@ -66,3 +66,14 @@ fn root_moves_outside_watched_locations_mark_buffers_deleted() {
     fs::remove_dir_all(moved).unwrap();
     fs::remove_dir_all(destination).unwrap();
 }
+
+#[test]
+fn retargeting_a_deleted_root_clears_the_marker() {
+    let (dir, mut app) = setup("directory_rename_recovered", &["alpha.txt"], &[]);
+    let number = app.editor.buffer_number();
+    let moved = moved_path(&dir, "moved");
+    assert!(app.directory.mark_deleted(number));
+    app.directory.rewrite_path(&dir, &moved);
+    assert_eq!(app.directory.get(number).unwrap().root, moved);
+    assert!(!app.directory.deleted(number));
+}
