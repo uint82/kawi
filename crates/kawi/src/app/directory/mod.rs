@@ -29,6 +29,8 @@ mod executor_tests;
 #[cfg(test)]
 mod load_tests;
 #[cfg(test)]
+mod perf_tests;
+#[cfg(test)]
 mod permissions_tests;
 #[cfg(test)]
 mod planner_tests;

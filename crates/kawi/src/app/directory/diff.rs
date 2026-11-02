@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use super::entry::{Entry, EntryKind};
@@ -40,10 +40,11 @@ pub(super) fn diff(
     entries: &[Entry],
     lines: &[DirectoryLine],
 ) -> Result<Vec<Change>, String> {
-    let by_id: HashMap<u64, &Entry> = entries.iter().map(|entry| (entry.id, entry)).collect();
-    let mut targets = BTreeMap::new();
-    let mut seen = BTreeSet::new();
-    let mut changes = Vec::new();
+    let mut by_id = HashMap::with_capacity(entries.len());
+    by_id.extend(entries.iter().map(|entry| (entry.id, entry)));
+    let mut targets = HashSet::with_capacity(lines.len());
+    let mut seen = HashSet::with_capacity(entries.len());
+    let mut changes = Vec::with_capacity(entries.len());
     for (index, line) in lines.iter().enumerate() {
         if line.text.is_empty() {
             continue;
@@ -53,30 +54,37 @@ pub(super) fn diff(
                 let entry = by_id
                     .get(&id)
                     .ok_or_else(|| format!("line {} has an unknown entry id", index + 1))?;
-                let (target, kind) = target_for_line(root, entry, &line.text)?;
-                record_target(&mut targets, &target, index)?;
+                let from = root.join(&entry.name);
+                let target = if entry.display_name_matches(&line.text) {
+                    None
+                } else {
+                    Some(target_for_entry(root, entry, &line.text)?)
+                };
+                record_target(&mut targets, target.as_deref().unwrap_or(&from))?;
                 if !seen.insert(id) {
+                    let to = target.unwrap_or_else(|| from.clone());
                     changes.push(Change::Copy {
                         id,
-                        from: root.join(&entry.name),
-                        to: target,
-                        kind,
+                        from,
+                        to,
+                        kind: entry.kind,
                     });
                     continue;
                 }
-                let from = root.join(&entry.name);
-                if from != target {
-                    changes.push(Change::Rename {
-                        id,
-                        from,
-                        to: target,
-                        kind,
-                    });
+                if let Some(target) = target {
+                    if from != target {
+                        changes.push(Change::Rename {
+                            id,
+                            from,
+                            to: target,
+                            kind: entry.kind,
+                        });
+                    }
                 }
             }
             None => {
                 let (target, kind) = target_for_new_line(root, &line.text)?;
-                record_target(&mut targets, &target, index)?;
+                record_target(&mut targets, &target)?;
                 changes.push(Change::Create { path: target, kind });
             }
         }
@@ -93,10 +101,7 @@ pub(super) fn diff(
     Ok(changes)
 }
 
-fn target_for_line(root: &Path, entry: &Entry, text: &str) -> Result<(PathBuf, EntryKind), String> {
-    if text == entry.display_name() {
-        return Ok((root.join(&entry.name), entry.kind));
-    }
+fn target_for_entry(root: &Path, entry: &Entry, text: &str) -> Result<PathBuf, String> {
     let (relative, is_directory) = parse_text(text)?;
     let expects_directory = entry.kind == EntryKind::Directory;
     if is_directory != expects_directory {
@@ -110,7 +115,7 @@ fn target_for_line(root: &Path, entry: &Entry, text: &str) -> Result<(PathBuf, E
             escape_name(entry.name.as_os_str())
         ));
     }
-    Ok((root.join(relative), entry.kind))
+    Ok(root.join(relative))
 }
 
 fn target_for_new_line(root: &Path, text: &str) -> Result<(PathBuf, EntryKind), String> {
@@ -146,12 +151,8 @@ fn split_name(text: &str) -> (&str, bool) {
     }
 }
 
-fn record_target(
-    targets: &mut BTreeMap<PathBuf, usize>,
-    target: &Path,
-    index: usize,
-) -> Result<(), String> {
-    if targets.insert(target.to_path_buf(), index).is_some() {
+fn record_target(targets: &mut HashSet<PathBuf>, target: &Path) -> Result<(), String> {
+    if !targets.insert(target.to_path_buf()) {
         return Err(format!("duplicate target {}", target.display()));
     }
     Ok(())

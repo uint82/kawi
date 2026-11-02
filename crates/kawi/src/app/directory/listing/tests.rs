@@ -237,3 +237,23 @@ fn metadata_is_read_only_when_columns_are_enabled() {
     assert!(text.starts_with('d'));
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn large_listings_load_metadata_for_every_entry() {
+    const ENTRY_COUNT: usize = 600;
+    let dir = temp_dir("directory_large_metadata");
+    for index in 0..ENTRY_COUNT {
+        fs::write(dir.join(format!("file-{index:03}.txt")), "content").unwrap();
+    }
+    let listing = read_listing(
+        &dir,
+        false,
+        1,
+        SortOptions::default(),
+        MetadataColumns::all(),
+    )
+    .unwrap();
+    assert_eq!(listing.entries.len(), ENTRY_COUNT);
+    assert!(listing.entries.iter().all(|entry| entry.metadata.is_some()));
+    fs::remove_dir_all(dir).unwrap();
+}
