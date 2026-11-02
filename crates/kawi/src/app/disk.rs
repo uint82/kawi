@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use kawi_editor::paths;
 use kawi_watch::{Fingerprint, WatchService};
 
-use super::identity::{file_identity, FileIdentity};
+use super::identity::{file_identity, find_moved_entry, FileIdentity};
 use super::App;
 
 const STATUS_CHANGED: &str = "changed";
@@ -28,6 +28,10 @@ impl ObservedFile {
             fingerprint: Fingerprint::read(path).ok(),
             identity: file_identity(path),
         }
+    }
+
+    fn is_missing(&self) -> bool {
+        self.fingerprint.is_none() && self.identity.is_none()
     }
 }
 
@@ -121,6 +125,19 @@ impl DiskState {
             .filter(|(_, file)| paths.iter().any(|path| paths::same_file(path, &file.path)))
             .map(|(number, _)| *number)
             .collect()
+    }
+
+    fn moved_path(&self, number: usize, search: &BTreeSet<PathBuf>) -> Option<PathBuf> {
+        let file = self.files.get(&number)?;
+        let identity = file.identity?;
+        find_moved_entry(identity, search, &file.path, file_identity)
+    }
+
+    fn retarget(&mut self, number: usize, path: PathBuf) {
+        if let Some(file) = self.files.get_mut(&number) {
+            file.path = path;
+            file.identity = None;
+        }
     }
 
     fn observe(&mut self, number: usize, observed: ObservedFile) -> Observation {
@@ -295,6 +312,12 @@ impl App {
         }
     }
 
+    fn file_move_search_paths(&self) -> BTreeSet<PathBuf> {
+        let mut search = self.disk.watched.clone();
+        search.extend(self.directory.watch_paths());
+        search
+    }
+
     pub(super) fn poll_file_watch(&mut self) -> bool {
         let Some(watcher) = self.file_watch.as_ref() else {
             return false;
@@ -308,15 +331,18 @@ impl App {
     }
 
     pub(super) fn handle_disk_paths(&mut self, paths: &[PathBuf]) {
+        let search = self.file_move_search_paths();
         for number in self.disk.matching_buffers(paths) {
-            let observed = self
-                .disk
-                .path(number)
-                .map(ObservedFile::read)
-                .unwrap_or(ObservedFile {
-                    fingerprint: None,
-                    identity: None,
-                });
+            let Some(path) = self.disk.path(number).map(Path::to_path_buf) else {
+                continue;
+            };
+            let mut observed = ObservedFile::read(&path);
+            if observed.is_missing() {
+                if let Some(moved) = self.disk.moved_path(number, &search) {
+                    self.retarget_file(number, &path, &moved);
+                    observed = ObservedFile::read(&moved);
+                }
+            }
             match self.disk.observe(number, observed) {
                 Observation::Ignored => {}
                 Observation::Same => {}
@@ -325,6 +351,17 @@ impl App {
             }
             self.close_resolved_conflict(number);
         }
+    }
+
+    fn retarget_file(&mut self, number: usize, old: &Path, new: &Path) {
+        self.move_paths(old, new);
+        self.disk.retarget(number, new.to_path_buf());
+        self.notify_path_move(old, new);
+        self.show_message(format!(
+            "File moved on disk: {} to {}",
+            old.display(),
+            new.display()
+        ));
     }
 
     fn handle_changed_file(&mut self, number: usize, observed: Option<Fingerprint>) {
@@ -613,6 +650,134 @@ mod tests {
         assert_eq!(app.disk_status(1), Some(STATUS_DELETED));
         assert!(message(&app).contains("Deleted on disk"));
         assert!(message(&app).contains("kept"));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn external_renames_retarget_clean_buffers() {
+        let dir = temp_dir("rename_clean");
+        let path = dir.join("a.txt");
+        let moved = dir.join("b.txt");
+        fs::write(&path, "alpha\ntwo\n").expect("write");
+        let mut app = app_with(&dir, "a.txt");
+        app.editor.apply(Action::JumpTo(1, 1));
+        let revision = app.editor.buffer_revision();
+        let cursor = app.cursor_position();
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), moved.to_string_lossy());
+        assert_eq!(app.editor.buffer_revision(), revision);
+        assert_eq!(app.cursor_position(), cursor);
+        assert_eq!(app.disk_status(1), None);
+        assert!(message(&app).starts_with("File moved on disk"));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn external_renames_keep_dirty_buffers_dirty() {
+        let dir = temp_dir("rename_dirty");
+        let path = dir.join("a.txt");
+        let moved = dir.join("b.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        let mut app = app_with(&dir, "a.txt");
+        edit(&mut app, "x");
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), moved.to_string_lossy());
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["xalpha"]);
+        assert!(app.editor.is_dirty());
+        assert_eq!(app.disk_status(1), None);
+        assert!(!app.disk_conflict(1));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn external_renames_preserve_unresolved_conflicts() {
+        let dir = temp_dir("rename_conflict");
+        let path = dir.join("a.txt");
+        let moved = dir.join("b.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        let mut app = app_with(&dir, "a.txt");
+        edit(&mut app, "x");
+        fs::write(&path, "theirs\n").expect("external");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), moved.to_string_lossy());
+        assert_eq!(app.disk_status(1), Some(STATUS_CHANGED));
+        assert!(app.disk_conflict(1));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn external_renames_find_destinations_in_other_open_directories() {
+        let first = temp_dir("rename_first");
+        let second = temp_dir("rename_second");
+        let path = first.join("a.txt");
+        let other = second.join("b.txt");
+        let moved = second.join("moved.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        fs::write(&other, "beta\n").expect("write");
+        let mut app = app_with(&first, "a.txt");
+        app.editor
+            .open_file_buffer(other.to_str().expect("path"))
+            .expect("open");
+        app.sync_watched_files();
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.buffer_path(1), Some(moved.to_str().unwrap()));
+        assert_eq!(app.disk_status(1), None);
+        fs::remove_dir_all(first).expect("cleanup");
+        fs::remove_dir_all(second).expect("cleanup");
+    }
+
+    #[test]
+    fn recreated_files_refresh_identity_before_renames() {
+        let dir = temp_dir("rename_recreated");
+        let path = dir.join("a.txt");
+        let moved = dir.join("b.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        let mut app = app_with(&dir, "a.txt");
+        fs::remove_file(&path).expect("remove");
+        fs::write(&path, "alpha\n").expect("recreate");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), moved.to_string_lossy());
+        assert_eq!(app.disk_status(1), None);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn external_renames_outside_watched_directories_mark_deleted() {
+        let dir = temp_dir("rename_outside");
+        let path = dir.join("a.txt");
+        let destination = temp_dir("rename_destination");
+        let moved = destination.join("a.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        let mut app = app_with(&dir, "a.txt");
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), path.to_string_lossy());
+        assert_eq!(app.disk_status(1), Some(STATUS_DELETED));
+        assert!(message(&app).starts_with("Deleted on disk"));
+        fs::remove_dir_all(destination).expect("cleanup");
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hardlinked_files_are_not_followed() {
+        let dir = temp_dir("rename_hardlink");
+        let path = dir.join("a.txt");
+        let moved = dir.join("b.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        fs::hard_link(&path, dir.join("link.txt")).expect("hard link");
+        let mut app = app_with(&dir, "a.txt");
+        fs::rename(&path, &moved).expect("rename");
+        app.handle_disk_paths(std::slice::from_ref(&path));
+        assert_eq!(app.editor.filename(), path.to_string_lossy());
+        assert_eq!(app.disk_status(1), Some(STATUS_DELETED));
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
