@@ -6,6 +6,7 @@ related = ["getting-started", "lsp", "pickers", "tasks"]
 # Features
 
 - Vim and Helix keymaps.
+- External file change detection with rename recovery for open buffers.
 - Multiple windows and splits.
 - Opt-in project explorer with file management, Git markers, and diagnostics.
 - Editable directory buffers with diff-on-write renames, copies, creates, and trash deletes.
