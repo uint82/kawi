@@ -2,14 +2,16 @@ use std::path::PathBuf;
 
 use super::super::save::SaveAfter;
 use super::diff::{diff, Change};
-use super::executor::{applied_description, execute};
+use super::executor::{execute, Outcome};
 use super::fs::RealFs;
 use super::load::DIRECTORY_LOADING_MESSAGE;
 use super::permission_check::PermissionPhase;
-use super::planner::Plan;
 use super::session::{DirectoryEdit, PendingApply};
 use super::verify::DELETED_SAVE_MESSAGE;
 use crate::app::App;
+use messages::{apply_success_message, failure_message};
+
+mod messages;
 
 impl App {
     pub(in crate::app) fn request_directory_save(
@@ -126,9 +128,10 @@ impl App {
         let changes = all_changes(&apply.edits);
         let mut fs = RealFs::new(permanent_delete);
         let outcome = execute(&apply.plan, &mut fs);
-        let applied = &apply.plan.operations[..outcome.applied];
-        for operation in applied {
-            self.update_applied_operation(operation);
+        for index in &outcome.remaining {
+            if let Some(operation) = apply.plan.operations.get(*index) {
+                self.update_applied_operation(operation);
+            }
         }
         if outcome.error.is_none() {
             self.notify_lsp_changes(&changes);
@@ -138,7 +141,7 @@ impl App {
         }
         self.refresh_after_directory_change();
         match outcome.error {
-            Some(error) => self.finish_directory_apply_failure(&apply, error, outcome.applied),
+            Some(_) => self.finish_directory_apply_failure(&apply, &outcome),
             None => self.finish_directory_apply_success(&apply),
         }
     }
@@ -146,18 +149,10 @@ impl App {
     pub(super) fn finish_directory_apply_failure(
         &mut self,
         apply: &PendingApply,
-        error: String,
-        applied: usize,
+        outcome: &Outcome,
     ) -> bool {
         let reload_error = self.reload_directories(&apply.edits);
-        let mut message = if applied == 0 {
-            format!("{error}; no operations were applied")
-        } else {
-            format!(
-                "{error}; applied {applied} operation(s): {}; no rollback attempted",
-                applied_operations(&apply.plan, applied)
-            )
-        };
+        let mut message = failure_message(&apply.plan, outcome);
         if let Some(reload_error) = reload_error {
             message.push_str("; ");
             message.push_str(&reload_error);
@@ -255,15 +250,6 @@ impl App {
     }
 }
 
-fn applied_operations(plan: &Plan, applied: usize) -> String {
-    plan.operations
-        .iter()
-        .take(applied)
-        .map(applied_description)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn rename_requests(edits: &[DirectoryEdit]) -> Vec<(PathBuf, PathBuf)> {
     edits
         .iter()
@@ -280,19 +266,4 @@ pub(super) fn all_changes(edits: &[DirectoryEdit]) -> Vec<Change> {
         .iter()
         .flat_map(|edit| edit.changes.iter().cloned())
         .collect()
-}
-
-fn apply_success_message(app: &App, edits: &[DirectoryEdit], plan: &Plan) -> String {
-    if let [edit] = edits {
-        let root = app
-            .directory
-            .get(edit.number)
-            .map_or_else(String::new, |state| state.root_display());
-        return format!("Applied {} change(s) to {root}", plan.changes);
-    }
-    format!(
-        "Applied {} change(s) to {} directories",
-        plan.changes,
-        edits.len()
-    )
 }

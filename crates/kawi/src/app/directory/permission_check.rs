@@ -2,6 +2,7 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread;
 
 use super::diff::Change;
+use super::executor::Outcome;
 use super::fs::RealFs;
 use super::permissions;
 use super::planner::Operation;
@@ -137,7 +138,7 @@ impl App {
             }
             (PermissionPhase::Apply, Err(error)) => {
                 self.refresh_after_directory_change();
-                self.finish_directory_apply_failure(&pending.apply, error, 0)
+                self.finish_directory_apply_failure(&pending.apply, &Outcome::failed(error))
             }
         }
     }

@@ -257,14 +257,13 @@ fn partial_failures_reload_the_listing_from_disk() {
     fs::write(dir.join("new.txt"), "external\n").unwrap();
     app.apply_pending_directory(true);
     settle(&mut app);
-    assert!(dir.join("beta.txt").exists());
-    assert!(!dir.join("alpha.txt").exists());
-    assert_eq!(listing(&app), ["beta.txt", "new.txt"]);
+    assert!(dir.join("alpha.txt").exists());
+    assert!(!dir.join("beta.txt").exists());
+    assert_eq!(listing(&app), ["alpha.txt", "new.txt"]);
     assert!(!app.editor.is_dirty());
     let message = message_text(&app);
-    assert!(message.contains("applied 2 operation(s)"));
-    assert!(message.contains("beta.txt"));
-    assert!(message.contains("no rollback attempted"));
+    assert!(message.contains("rolled back 2 operation(s)"));
+    assert!(message.contains("new.txt"));
     let _ = fs::remove_dir_all(dir);
 }
 
