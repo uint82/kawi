@@ -93,6 +93,9 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("terraform"), vec!["terraform-ls"]);
     assert_eq!(servers_for("nix"), vec!["nixd"]);
     assert_eq!(servers_for("dockerfile"), vec!["docker-langserver"]);
+    assert_eq!(servers_for("markdown"), vec!["marksman"]);
+    assert_eq!(servers_for("latex"), vec!["texlab"]);
+    assert_eq!(servers_for("typst"), vec!["tinymist"]);
 }
 
 #[test]
