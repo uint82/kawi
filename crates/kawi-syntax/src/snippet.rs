@@ -226,6 +226,9 @@ mod tests {
             (LanguageId::Ruby, "def run\n  1\nend"),
             (LanguageId::Php, "<?php function run() { return 1; }"),
             (LanguageId::Lua, "local function run() return 1 end"),
+            (LanguageId::Yaml, "key: value"),
+            (LanguageId::Html, "<div class=\"x\"></div>"),
+            (LanguageId::Css, ".x { color: red; }"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -260,6 +263,9 @@ mod tests {
             (LanguageId::Ruby, "value + 1"),
             (LanguageId::Php, "<?php return 1;"),
             (LanguageId::Lua, "return 1"),
+            (LanguageId::Yaml, "key: value"),
+            (LanguageId::Html, "<div class=\"x\"></div>"),
+            (LanguageId::Css, ".x { color: red; }"),
         ];
         for (language, fragment) in fragments {
             assert!(

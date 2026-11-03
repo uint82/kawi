@@ -22,6 +22,10 @@ fn detects_known_extensions() {
     assert_eq!(LanguageId::from_path("a.rb"), Some(LanguageId::Ruby));
     assert_eq!(LanguageId::from_path("a.php"), Some(LanguageId::Php));
     assert_eq!(LanguageId::from_path("a.lua"), Some(LanguageId::Lua));
+    assert_eq!(LanguageId::from_path("a.yaml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_path("a.yml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_path("a.html"), Some(LanguageId::Html));
+    assert_eq!(LanguageId::from_path("a.css"), Some(LanguageId::Css));
 }
 
 #[test]
@@ -50,6 +54,10 @@ fn normalizes_alias_names() {
     assert_eq!(LanguageId::from_alias("rb"), Some(LanguageId::Ruby));
     assert_eq!(LanguageId::from_alias("php"), Some(LanguageId::Php));
     assert_eq!(LanguageId::from_alias("lua"), Some(LanguageId::Lua));
+    assert_eq!(LanguageId::from_alias("yaml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_alias("yml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_alias("html"), Some(LanguageId::Html));
+    assert_eq!(LanguageId::from_alias("css"), Some(LanguageId::Css));
     assert_eq!(LanguageId::from_alias("brainfuck"), None);
     assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
 }

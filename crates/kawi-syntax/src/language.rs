@@ -23,17 +23,20 @@ pub enum LanguageId {
     Ruby,
     Php,
     Lua,
+    Yaml,
+    Html,
+    Css,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 17]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 20]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 20] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -51,6 +54,9 @@ impl LanguageId {
         Self::Ruby,
         Self::Php,
         Self::Lua,
+        Self::Yaml,
+        Self::Html,
+        Self::Css,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -83,6 +89,9 @@ impl LanguageId {
             "rb" | "ruby" => Some(Self::Ruby),
             "php" => Some(Self::Php),
             "lua" => Some(Self::Lua),
+            "yaml" | "yml" => Some(Self::Yaml),
+            "html" | "htm" => Some(Self::Html),
+            "css" => Some(Self::Css),
             _ => None,
         }
     }
@@ -106,6 +115,9 @@ impl LanguageId {
             Self::Ruby => "ruby",
             Self::Php => "php",
             Self::Lua => "lua",
+            Self::Yaml => "yaml",
+            Self::Html => "html",
+            Self::Css => "css",
         }
     }
 
@@ -127,6 +139,9 @@ impl LanguageId {
             Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
             Self::Php => tree_sitter_php::LANGUAGE_PHP.into(),
             Self::Lua => tree_sitter_lua::LANGUAGE.into(),
+            Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+            Self::Html => tree_sitter_html::LANGUAGE.into(),
+            Self::Css => tree_sitter_css::LANGUAGE.into(),
         }
     }
 
@@ -156,6 +171,9 @@ impl LanguageId {
             Self::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
             Self::Php => tree_sitter_php::HIGHLIGHTS_QUERY.to_string(),
             Self::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
+            Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
+            Self::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
+            Self::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
         };
         let script = include_str!("../queries/script-common.scm");
         let javascript_additions = include_str!("../queries/javascript.scm");
@@ -174,6 +192,7 @@ impl LanguageId {
             Self::C | Self::Cpp => include_str!("../queries/c.scm").to_string(),
             Self::Go | Self::Java | Self::CSharp | Self::Ruby | Self::Php => String::new(),
             Self::Lua => include_str!("../queries/lua.scm").to_string(),
+            Self::Yaml | Self::Html | Self::Css => String::new(),
         };
         format!("{base}\n{additions}")
     }
@@ -209,6 +228,9 @@ impl LanguageId {
             Self::Ruby => 14,
             Self::Php => 15,
             Self::Lua => 16,
+            Self::Yaml => 17,
+            Self::Html => 18,
+            Self::Css => 19,
         }
     }
 
