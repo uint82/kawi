@@ -1,4 +1,4 @@
-package kawi:plugin@0.6.0;
+package kawi:plugin@0.7.0;
 
 interface types {
   record position {
@@ -215,6 +215,42 @@ interface ui-progress {
   finish: func(id: u64) -> result<_, error>;
 }
 
+interface ui-panel {
+  use types.{decoration-style, error};
+
+  record panel-line {
+    text: string,
+    style: option<decoration-style>,
+  }
+
+  record open-params {
+    title: string,
+    status: option<string>,
+    height: option<u32>,
+    focus: bool,
+    lines: list<panel-line>,
+  }
+
+  record open-result {
+    panel: u64,
+    width: u32,
+    height: u32,
+  }
+
+  record update-params {
+    panel: u64,
+    title: option<string>,
+    status: option<string>,
+    height: option<u32>,
+    lines: option<list<panel-line>>,
+  }
+
+  open: func(params: open-params) -> result<open-result, error>;
+  update: func(params: update-params) -> result<_, error>;
+  focus: func(panel: u64) -> result<_, error>;
+  close: func(panel: u64) -> result<_, error>;
+}
+
 interface diagnostics-publish {
   use types.{diagnostic, error};
   set: func(source: string, buffer: u64, revision: u64, items: list<diagnostic>) -> result<_, error>;
@@ -337,6 +373,7 @@ world host {
   import editor-decorations;
   import editor-signs;
   import ui-statusline;
+  import ui-panel;
   import process-run;
   import process-jobs;
   export lifecycle;

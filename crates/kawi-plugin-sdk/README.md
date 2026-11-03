@@ -1,12 +1,12 @@
 # kawi-plugin-sdk
 
-Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.6.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
+Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.7.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
 
 ## Install
 
 ```toml
 [dependencies]
-kawi-plugin-sdk = "0.6.0"
+kawi-plugin-sdk = "0.7.0"
 ```
 
 The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components built against an earlier `kawi:plugin` package must be rebuilt because the WIT import namespace is versioned.
@@ -104,6 +104,35 @@ if outcome == PromptOutcome::Confirmed(true) {
 ```
 
 The `ui_progress` module exposes `start`, `update`, and `finish`. `update` returns `true` after the user cancels the operation. Call `finish` for every started progress. Prompt calls suspend the invocation timeout until the user responds. Progress calls remain bounded by it.
+
+## Panels
+
+Declare `ui.panel` in `plugin.toml` and use `ui_panel` to publish a read-only text panel:
+
+```rust
+use kawi_plugin_sdk::ui_panel;
+
+let panel = ui_panel::open(&ui_panel::OpenParams {
+    title: "Index".to_string(),
+    status: Some("building".to_string()),
+    height: Some(8),
+    focus: true,
+    lines: vec![ui_panel::PanelLine {
+        text: "src/main.rs".to_string(),
+        style: None,
+    }],
+})?;
+ui_panel::update(&ui_panel::UpdateParams {
+    panel: panel.panel,
+    title: None,
+    status: Some("complete".to_string()),
+    height: None,
+    lines: None,
+})?;
+ui_panel::close(panel.panel)?;
+```
+
+Only one panel can be active across all plugins. A second open returns `UI_BUSY`. Each plugin may update only its own panel. The host owns focus, layout, scrolling, and closing. Panel content is limited to 1000 lines, 4096 bytes per line, 1 MiB total, a 256-byte title, and a 256-byte status. There is no raw key input API.
 
 ## Process jobs
 
