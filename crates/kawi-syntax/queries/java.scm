@@ -1,0 +1,5 @@
+(package_declaration (identifier) @module)
+(field_declaration declarator: (variable_declarator name: (identifier) @property))
+(formal_parameter name: (identifier) @variable.parameter)
+(type_parameter (type_identifier) @type.parameter)
+(type_arguments (wildcard "?" @type.builtin))

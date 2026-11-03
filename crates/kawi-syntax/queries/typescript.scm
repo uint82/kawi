@@ -16,3 +16,5 @@
 (optional_parameter
   pattern: (array_pattern
     (identifier) @variable.parameter))
+(type_parameter name: (type_identifier) @type.parameter)
+(predefined_type) @type.builtin

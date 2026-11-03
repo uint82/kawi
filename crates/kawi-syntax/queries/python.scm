@@ -2,7 +2,16 @@
 (typed_default_parameter name: (identifier) @variable.parameter)
 (typed_parameter (identifier) @variable.parameter)
 (lambda_parameters (identifier) @variable.parameter)
-(type (identifier) @type.builtin
+(class_definition name: (identifier) @type)
+(type [(identifier) (none)] @type)
+(type (attribute) @type)
+(type (attribute (identifier) @type))
+(type (subscript value: (attribute (identifier) @type)))
+(type (binary_operator left: (_) @type right: (_) @type))
+(type (subscript value: (_) @type))
+(type (subscript subscript: (_) @type))
+(generic_type (identifier) @type)
+((identifier) @type.builtin
  (#any-of? @type.builtin
   "bool" "bytearray" "bytes" "complex" "dict" "float" "frozenset" "int" "list"
   "memoryview" "object" "range" "set" "str" "tuple" "type"))

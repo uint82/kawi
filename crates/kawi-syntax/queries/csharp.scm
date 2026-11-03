@@ -1,0 +1,6 @@
+(file_scoped_namespace_declaration name: (identifier) @module)
+(using_directive (identifier) @module)
+(type_parameter name: (identifier) @type.parameter)
+(type_parameter_constraints_clause (identifier) @type.parameter)
+(property_declaration name: (identifier) @property)
+(field_declaration (variable_declaration (variable_declarator name: (identifier) @property)))
