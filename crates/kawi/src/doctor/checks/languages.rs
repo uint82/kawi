@@ -8,22 +8,28 @@ struct ServerDetails {
     optional_missing: usize,
 }
 
+struct FormatterDetails {
+    configured: usize,
+    missing: usize,
+}
+
 pub(crate) fn check(paths: &StatePaths) -> Check {
     let languages = Languages::load(&paths.languages);
     let mut details = Vec::new();
     let mut level = file_level(paths, &languages, &mut details);
     let servers = server_details(&languages, &mut details);
-    if servers.missing > 0 {
+    let formatters = formatter_details(&languages, &mut details);
+    if servers.missing > 0 || formatters.missing > 0 {
         level = level.max(Level::Warn);
     } else if servers.optional_missing > 0 {
         level = level.max(Level::Info);
     }
-    if servers.used == 0 {
+    if servers.used == 0 && formatters.configured == 0 {
         level = level.max(Level::Info);
     }
-    let check = Check::new("languages", "Language servers", level, details);
-    if servers.missing > 0 {
-        check.with_hint("Install missing servers or disable them in languages.toml.")
+    let check = Check::new("languages", "Languages", level, details);
+    if servers.missing > 0 || formatters.missing > 0 {
+        check.with_hint("Install missing servers or formatters, or disable them in languages.toml.")
     } else {
         check
     }
@@ -85,6 +91,43 @@ fn server_details(languages: &Languages, details: &mut Vec<String>) -> ServerDet
     result
 }
 
+fn formatter_details(languages: &Languages, details: &mut Vec<String>) -> FormatterDetails {
+    let mut result = FormatterDetails {
+        configured: 0,
+        missing: 0,
+    };
+    for (language, formatter) in languages.formatters() {
+        result.configured += 1;
+        if formatter.command.trim().is_empty() {
+            result.missing += 1;
+            details.push(format!(
+                "formatter {}: no command configured",
+                language.name
+            ));
+            continue;
+        }
+        match kawi_process::find_executable(&formatter.command) {
+            Some(path) => details.push(format!(
+                "formatter {}: {} ({})",
+                language.name,
+                formatter.command,
+                path.display()
+            )),
+            None => {
+                result.missing += 1;
+                details.push(format!(
+                    "formatter {}: {} not found in PATH",
+                    language.name, formatter.command
+                ));
+            }
+        }
+    }
+    if result.configured == 0 {
+        details.push("no external formatters configured".to_string());
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{executable, paths, TestDir};
@@ -102,6 +145,16 @@ mod tests {
         let text = format!(
             "{}[server.fake]\ncommand = {command:?}\n\n\
              [[language]]\nname = \"rust\"\nservers = [\"fake\"]\n",
+            disabled_defaults(paths)
+        );
+        fs::write(&paths.languages, text).unwrap();
+        command.to_string()
+    }
+
+    fn write_formatter_config(paths: &StatePaths, command: &str) -> String {
+        let text = format!(
+            "{}[[language]]\nname = \"rust\"\nservers = []\n\
+             formatter = {{ command = {command:?} }}\n",
             disabled_defaults(paths)
         );
         fs::write(&paths.languages, text).unwrap();
@@ -128,6 +181,31 @@ mod tests {
         let dir = TestDir::new("languages_missing");
         let paths = paths(&dir.path);
         write_config(&paths, "definitely-missing-kawi-server");
+        let check = check(&paths);
+        assert_eq!(check.level, Level::Warn);
+        assert!(check.hint.is_some());
+    }
+
+    #[test]
+    fn reports_a_resolved_formatter_binary() {
+        let dir = TestDir::new("formatter_ok");
+        let paths = paths(&dir.path);
+        let formatter = dir.path.join("fake-formatter");
+        executable(&formatter);
+        let command = write_formatter_config(&paths, formatter.to_str().unwrap());
+        let check = check(&paths);
+        assert_eq!(check.level, Level::Ok);
+        assert!(check
+            .details
+            .iter()
+            .any(|detail| detail.contains("formatter rust") && detail.contains(&command)));
+    }
+
+    #[test]
+    fn warns_when_a_formatter_binary_is_missing() {
+        let dir = TestDir::new("formatter_missing");
+        let paths = paths(&dir.path);
+        write_formatter_config(&paths, "definitely-missing-kawi-formatter");
         let check = check(&paths);
         assert_eq!(check.level, Level::Warn);
         assert!(check.hint.is_some());
