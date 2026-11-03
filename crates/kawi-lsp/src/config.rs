@@ -44,6 +44,39 @@ impl Default for ServerConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FormatterConfig {
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub stdin: bool,
+}
+
+impl FormatterConfig {
+    pub fn command(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn with_args<const N: usize>(mut self, args: [&str; N]) -> Self {
+        self.args = args.into_iter().map(str::to_string).collect();
+        self
+    }
+}
+
+impl Default for FormatterConfig {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            args: Vec::new(),
+            env: BTreeMap::new(),
+            stdin: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LanguageConfig {
     pub name: String,
     pub language_id: String,
@@ -52,6 +85,7 @@ pub struct LanguageConfig {
     pub filenames: Vec<String>,
     pub root_markers: Vec<String>,
     pub servers: Vec<String>,
+    pub formatter: Option<FormatterConfig>,
     pub shiftwidth: Option<usize>,
     pub expandtab: Option<bool>,
     pub indent_after_suffixes: Vec<String>,
@@ -74,6 +108,7 @@ impl LanguageConfig {
             filenames: Vec::new(),
             root_markers: Vec::new(),
             servers: Vec::new(),
+            formatter: None,
             shiftwidth: None,
             expandtab: None,
             indent_after_suffixes: Vec::new(),
@@ -154,6 +189,11 @@ impl LanguageConfig {
 
     pub fn with_servers<const N: usize>(mut self, servers: [&str; N]) -> Self {
         self.servers = servers.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_formatter(mut self, formatter: FormatterConfig) -> Self {
+        self.formatter = Some(formatter);
         self
     }
 
@@ -270,6 +310,19 @@ impl Languages {
             .find(|language| language.matches(path))
     }
 
+    pub fn formatter_for_path(&self, path: &Path) -> Option<&FormatterConfig> {
+        self.language_for_path(path)?.formatter.as_ref()
+    }
+
+    pub fn formatters(&self) -> impl Iterator<Item = (&LanguageConfig, &FormatterConfig)> {
+        self.languages.iter().filter_map(|language| {
+            language
+                .formatter
+                .as_ref()
+                .map(|formatter| (language, formatter))
+        })
+    }
+
     #[cfg(test)]
     fn from_parts(
         servers: BTreeMap<String, ServerConfig>,
@@ -374,6 +427,16 @@ fn validate(
                 _ => {}
             }
         }
+        if language
+            .formatter
+            .as_ref()
+            .is_some_and(|formatter| formatter.command.trim().is_empty())
+        {
+            warnings.push(LanguageWarning::new(format!(
+                "formatter for {} has an empty command",
+                language.name
+            )));
+        }
     }
     warnings
 }
@@ -477,6 +540,70 @@ mod tests {
         assert_eq!(rust.shiftwidth, Some(2));
         assert_eq!(rust.expandtab, Some(true));
         assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn user_languages_set_formatter() {
+        let path = temp_file(
+            "formatter",
+            "[[language]]\nname = \"rust\"\nformatter = { command = \"rustfmt\", args = [\"--edition\", \"2021\"], env = { RUSTFMT = \"1\" }, stdin = false }\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        let formatter = rust.formatter.as_ref().expect("formatter");
+        assert_eq!(formatter.command, "rustfmt");
+        assert_eq!(formatter.args, vec!["--edition", "2021"]);
+        assert_eq!(formatter.env.get("RUSTFMT").map(String::as_str), Some("1"));
+        assert!(!formatter.stdin);
+        assert_eq!(
+            languages
+                .formatter_for_path(Path::new("main.rs"))
+                .expect("formatter")
+                .command,
+            "rustfmt"
+        );
+        assert_eq!(languages.formatters().count(), 1);
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn user_languages_disable_formatter() {
+        let path = temp_file(
+            "formatter_disabled",
+            "[[language]]\nname = \"rust\"\nformatter = false\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.formatter.is_none());
+        assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn invalid_formatter_warns_and_is_ignored() {
+        let path = temp_file(
+            "formatter_invalid",
+            "[[language]]\nname = \"rust\"\nformatter = { args = [\"--check\"] }\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.formatter.is_none());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("formatter command must be a non-empty string"));
+    }
+
+    #[test]
+    fn unknown_formatter_fields_warn_and_are_ignored() {
+        let path = temp_file(
+            "formatter_unknown",
+            "[[language]]\nname = \"rust\"\nformatter = { commnad = \"rustfmt\" }\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.formatter.is_none());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0].message().contains("commnad"));
     }
 
     #[test]

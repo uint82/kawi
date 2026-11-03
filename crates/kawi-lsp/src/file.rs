@@ -1,6 +1,6 @@
 use crate::editing;
 use crate::editing::token_is_valid;
-use crate::{LanguageConfig, LanguageWarning, ServerConfig, MAX_SHIFTWIDTH};
+use crate::{FormatterConfig, LanguageConfig, LanguageWarning, ServerConfig, MAX_SHIFTWIDTH};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -50,6 +50,33 @@ impl ServerOverride {
 }
 
 #[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct FormatterOverride {
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: Option<BTreeMap<String, String>>,
+    stdin: Option<bool>,
+}
+
+impl FormatterOverride {
+    fn overlay(self, mut formatter: FormatterConfig) -> FormatterConfig {
+        if let Some(command) = self.command {
+            formatter.command = command;
+        }
+        if let Some(args) = self.args {
+            formatter.args = args;
+        }
+        if let Some(env) = self.env {
+            formatter.env = env;
+        }
+        if let Some(stdin) = self.stdin {
+            formatter.stdin = stdin;
+        }
+        formatter
+    }
+}
+
+#[derive(Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct LanguageOverride {
     pub(crate) name: String,
@@ -59,6 +86,7 @@ pub(crate) struct LanguageOverride {
     filenames: Option<Vec<String>>,
     root_markers: Option<Vec<String>>,
     servers: Option<Vec<String>>,
+    formatter: Option<Value>,
     shiftwidth: Option<Value>,
     expandtab: Option<Value>,
     indent_after_suffixes: Option<Value>,
@@ -69,6 +97,37 @@ pub(crate) struct LanguageOverride {
     auto_pairs: Option<Value>,
     match_pairs: Option<Value>,
     enabled: Option<bool>,
+}
+
+fn apply_formatter(
+    language: &mut LanguageConfig,
+    value: Value,
+    warnings: &mut Vec<LanguageWarning>,
+) {
+    if matches!(&value, Value::Boolean(false)) {
+        language.formatter = None;
+        return;
+    }
+    let display = value.to_string();
+    let previous = language.formatter.clone();
+    match value.try_into::<FormatterOverride>() {
+        Ok(override_config) => {
+            let formatter = override_config.overlay(previous.unwrap_or_default());
+            if formatter.command.trim().is_empty() {
+                warnings.push(LanguageWarning::new(format!(
+                    "language {}: formatter command must be a non-empty string; keeping the previous formatter",
+                    language.name
+                )));
+            } else {
+                language.formatter = Some(formatter);
+            }
+        }
+        Err(error) => warnings.push(LanguageWarning::new(format!(
+            "language {}: formatter must be a table or false, got {display}: {}; keeping the previous formatter",
+            language.name,
+            error.message()
+        ))),
+    }
 }
 
 fn apply_shiftwidth(
@@ -212,6 +271,9 @@ impl LanguageOverride {
         }
         if let Some(servers) = self.servers {
             language.servers = servers;
+        }
+        if let Some(value) = self.formatter {
+            apply_formatter(&mut language, value, &mut warnings);
         }
         if let Some(enabled) = self.enabled {
             language.enabled = enabled;
