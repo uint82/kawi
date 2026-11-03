@@ -1,12 +1,12 @@
 # kawi-plugin-sdk
 
-Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.5.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
+Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.6.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
 
 ## Install
 
 ```toml
 [dependencies]
-kawi-plugin-sdk = "0.5.0"
+kawi-plugin-sdk = "0.6.0"
 ```
 
 The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components built against an earlier `kawi:plugin` package must be rebuilt because the WIT import namespace is versioned.
@@ -104,6 +104,31 @@ if outcome == PromptOutcome::Confirmed(true) {
 ```
 
 The `ui_progress` module exposes `start`, `update`, and `finish`. `update` returns `true` after the user cancels the operation. Call `finish` for every started progress. Prompt calls suspend the invocation timeout until the user responds. Progress calls remain bounded by it.
+
+## Process jobs
+
+Declare `process.spawn` in `plugin.toml` and use `process_jobs` to open long-running jobs:
+
+```rust
+use kawi_plugin_sdk::process_jobs::{self, JobEvent, OpenParams, StdinMode};
+
+let job = process_jobs::open(&OpenParams {
+    command: "git".to_string(),
+    args: vec!["status".to_string()],
+    cwd: None,
+    env: Vec::new(),
+    stdin: StdinMode::Null,
+})?;
+
+for event in process_jobs::poll(job)? {
+    match event {
+        JobEvent::Output(output) => println!("{}", output.data),
+        JobEvent::Exited(exited) => println!("exited {:?}", exited.exit_code),
+    }
+}
+```
+
+The `process_jobs` module exposes `open`, `write`, `close_stdin`, `signal`, `kill`, `status`, and `poll`. WASM plugins are passive, so the host queues job output and exit events and `poll` drains them on the next plugin call. Process plugins receive the same events through the JSON-RPC event stream.
 
 ## Visual decorations
 
