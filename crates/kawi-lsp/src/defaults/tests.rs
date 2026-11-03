@@ -82,6 +82,9 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("ruby"), vec!["ruby-lsp"]);
     assert_eq!(servers_for("lua"), vec!["lua-language-server"]);
     assert_eq!(servers_for("bash"), vec!["bash-language-server"]);
+    assert_eq!(servers_for("java"), vec!["jdtls"]);
+    assert_eq!(servers_for("kotlin"), vec!["kotlin-language-server"]);
+    assert_eq!(servers_for("csharp"), vec!["csharp-ls"]);
 }
 
 #[test]

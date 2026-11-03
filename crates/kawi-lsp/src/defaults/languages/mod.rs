@@ -1,6 +1,7 @@
 use crate::LanguageConfig;
 
 mod docs;
+mod jvm_dotnet;
 mod scripting;
 mod systems;
 mod web;
@@ -30,6 +31,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
     languages.extend(systems::languages());
     languages.extend(web::languages());
     languages.extend(scripting::languages());
+    languages.extend(jvm_dotnet::languages());
     languages.extend(docs::languages());
     languages
 }
