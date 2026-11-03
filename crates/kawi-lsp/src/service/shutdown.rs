@@ -15,7 +15,7 @@ impl Manager {
         }
     }
 
-    fn shutdown_client(&mut self, key: &ClientKey, client: &mut ClientState) {
+    pub(super) fn shutdown_client(&mut self, key: &ClientKey, client: &mut ClientState) {
         let id = self.request_id();
         if !client
             .client

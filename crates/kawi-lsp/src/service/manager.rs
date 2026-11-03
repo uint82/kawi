@@ -19,6 +19,7 @@ impl Manager {
             events,
             wake,
             clients: HashMap::new(),
+            stopped: HashSet::new(),
             documents: HashMap::new(),
             pending_requests: HashMap::new(),
             pending_replies: HashMap::new(),
@@ -202,6 +203,11 @@ impl Manager {
             Command::WorkspaceDiagnostics => self.request_workspace_diagnostics(),
             Command::WatchedFiles { files } => self.did_change_watched_files(&files),
             Command::Cancel { request } => self.cancel_request(request),
+            Command::Lifecycle {
+                action,
+                path,
+                server,
+            } => self.handle_lifecycle(action, path.as_deref(), server.as_deref()),
             Command::Shutdown => {}
         }
     }

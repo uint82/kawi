@@ -215,6 +215,46 @@ fn wait_for_ready(service: &LspService) {
     });
 }
 
+fn wait_for_state(service: &LspService, state: ServerState) {
+    wait_for(service, |event| {
+        matches!(
+            event,
+            LspEvent::Status(status) if status.server == "fake" && status.state == state
+        )
+    });
+}
+
+fn read_pid(path: &Path) -> u32 {
+    fs::read_to_string(path)
+        .expect("pid file")
+        .trim()
+        .parse()
+        .expect("pid")
+}
+
+fn assert_no_start(service: &LspService, duration: Duration) {
+    let deadline = Instant::now() + duration;
+    while Instant::now() < deadline {
+        while let Some(event) = service.try_recv() {
+            assert!(
+                !matches!(
+                    &event,
+                    LspEvent::Status(status)
+                        if status.server == "fake"
+                            && matches!(
+                                status.state,
+                                ServerState::Starting
+                                    | ServerState::Initializing
+                                    | ServerState::Ready
+                            )
+                ),
+                "unexpected start event: {event:?}"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 fn performs_full_document_sync_and_answers_server_requests() {
     let root = temp_project("full");
@@ -1294,6 +1334,78 @@ fn cancelling_workspace_symbols_sends_cancel_and_drops_the_response() {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn stops_starts_and_restarts_a_client() {
+    let root = temp_project("lifecycle");
+    let (service, pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let first = read_pid(&pid_file);
+    assert!(service.stop(Some(&file), None));
+    wait_for_state(&service, ServerState::Stopped);
+    assert!(service.start(Some(&file), None));
+    wait_for_state(&service, ServerState::Ready);
+    let second = read_pid(&pid_file);
+    assert_ne!(first, second);
+    assert!(service.restart(Some(&file), None));
+    wait_for_state(&service, ServerState::Ready);
+    let third = read_pid(&pid_file);
+    assert_ne!(second, third);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn stopped_client_stays_stopped_when_reopened() {
+    let root = temp_project("lifecycle_stopped");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    assert!(service.stop(Some(&file), None));
+    wait_for_state(&service, ServerState::Stopped);
+    assert!(service.close(&file));
+    assert!(service.open(&file, "fn main() {}\n"));
+    assert_no_start(&service, Duration::from_millis(300));
+    assert!(service.start(Some(&file), None));
+    wait_for_state(&service, ServerState::Ready);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn starts_a_named_server_without_a_buffer() {
+    let root = temp_project("lifecycle_named");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    assert!(service.stop(Some(&file), None));
+    wait_for_state(&service, ServerState::Stopped);
+    assert!(service.start(None, Some("fake")));
+    wait_for_state(&service, ServerState::Ready);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn reports_when_no_lifecycle_targets_match() {
+    let root = temp_project("lifecycle_empty");
+    let (service, _pid_file) = start(&root, "full", 0, Duration::from_secs(5));
+    assert!(service.start(None, Some("missing")));
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::Message { message, .. } if message.contains("no language servers")),
+    );
+    let LspEvent::Message { message, .. } = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(message, "no language servers to start for missing");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }
