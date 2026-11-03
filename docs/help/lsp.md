@@ -29,4 +29,6 @@ Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:di
 
 ## Status
 
-Run `:lsp status` to list every configured server with its state, languages, and command. The `:lsp info` alias shows the same table. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Failure messages appear below the table.
+Run `:lsp status` to list every configured server with its state, languages, and command. The `:lsp info` alias shows the same table. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
+
+Run `:health lsp` for the full language server health check.
