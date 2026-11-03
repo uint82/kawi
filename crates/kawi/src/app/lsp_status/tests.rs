@@ -53,7 +53,7 @@ fn row<'a, 'b>(rows: &'a [StatusRow<'b>], server: &str) -> &'a StatusRow<'b> {
 #[test]
 fn rows_report_configuration_states_and_languages() {
     let (dir, missing, languages) = loaded("rows");
-    let rows = build_rows(&languages, &BTreeMap::new());
+    let rows = build_rows(&languages, &BTreeMap::new(), &BTreeSet::new());
     assert_eq!(row(&rows, "fake").state, "missing");
     assert_eq!(row(&rows, "fake").languages, "rust, python");
     assert_eq!(
@@ -73,7 +73,7 @@ fn runtime_state_overrides_configuration_state() {
     let (dir, _, languages) = loaded("runtime");
     let mut states = BTreeMap::new();
     states.insert("fake".to_string(), ServerState::Ready);
-    let rows = build_rows(&languages, &states);
+    let rows = build_rows(&languages, &states, &BTreeSet::new());
     assert_eq!(row(&rows, "fake").state, "ready");
     let _ = fs::remove_dir_all(dir);
 }
@@ -90,6 +90,8 @@ fn report_renders_table_paths_and_details() {
         states: &states,
         messages: &messages,
         warnings_path: Some(&config_path),
+        current: None,
+        progress: &[],
     });
     assert_eq!(lines[0], TITLE);
     assert_eq!(lines[1], "");
@@ -100,6 +102,36 @@ fn report_renders_table_paths_and_details() {
     assert!(lines
         .iter()
         .any(|line| line.starts_with("idle: ") && line.contains("available-server")));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn report_marks_current_buffer_servers() {
+    let (dir, _, languages) = loaded("current");
+    let current = current_servers(&languages, Some(Path::new("src/main.rs")));
+    let rows = build_rows(&languages, &BTreeMap::new(), &current);
+    assert!(row(&rows, "fake").current);
+    assert!(row(&rows, "idle").current);
+    assert!(!row(&rows, "unused").current);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn report_renders_active_progress() {
+    let (dir, _, languages) = loaded("progress");
+    let states = BTreeMap::new();
+    let messages = BTreeMap::new();
+    let progress = vec!["fake: Indexing 50%".to_string()];
+    let lines = report(&StatusContext {
+        languages: &languages,
+        states: &states,
+        messages: &messages,
+        warnings_path: None,
+        current: None,
+        progress: &progress,
+    });
+    assert!(lines.iter().any(|line| line == PROGRESS));
+    assert!(lines.iter().any(|line| line == "fake: Indexing 50%"));
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -121,6 +153,8 @@ fn report_renders_configuration_warnings() {
         states: &states,
         messages: &messages,
         warnings_path: Some(&path),
+        current: None,
+        progress: &[],
     });
     assert!(lines.iter().any(|line| line == WARNINGS));
     assert!(lines
@@ -142,6 +176,16 @@ fn status_app(name: &str) -> (PathBuf, App) {
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.lsp.load(&path, app.events.wake());
     (dir, app)
+}
+
+#[test]
+fn status_report_includes_active_progress() {
+    let (dir, mut app) = status_app("progress");
+    app.lsp.set_progress_for_test();
+    let lines = app.lsp.status_report();
+    assert!(lines.iter().any(|line| line == PROGRESS));
+    assert!(lines.iter().any(|line| line.contains("Indexing")));
+    let _ = fs::remove_dir_all(dir);
 }
 
 #[test]

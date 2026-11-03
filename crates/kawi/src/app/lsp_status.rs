@@ -1,6 +1,6 @@
 use anyhow::Result;
 use kawi_lsp::{Languages, ServerConfig, ServerState};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use super::lsp::one_line;
@@ -8,24 +8,30 @@ use super::App;
 
 const TITLE: &str = "LSP status";
 const WARNINGS: &str = "WARNINGS";
+const PROGRESS: &str = "PROGRESS";
 const DETAILS: &str = "DETAILS";
 const NO_SERVERS: &str = "no language servers configured";
 const NO_LANGUAGES: &str = "-";
 const NO_COMMAND: &str = "-";
-const COLUMNS: usize = 4;
-const HEADERS: [&str; COLUMNS] = ["SERVER", "STATE", "LANGUAGES", "COMMAND"];
+const NO_CURRENT: &str = "-";
+const CURRENT: &str = "yes";
+const COLUMNS: usize = 5;
+const HEADERS: [&str; COLUMNS] = ["SERVER", "STATE", "LANGUAGES", "CURRENT", "COMMAND"];
 
 pub(super) struct StatusContext<'a> {
     pub(super) languages: &'a Languages,
     pub(super) states: &'a BTreeMap<String, ServerState>,
     pub(super) messages: &'a BTreeMap<String, String>,
     pub(super) warnings_path: Option<&'a Path>,
+    pub(super) current: Option<&'a Path>,
+    pub(super) progress: &'a [String],
 }
 
 struct StatusRow<'a> {
     server: &'a str,
     state: &'static str,
     languages: String,
+    current: bool,
     command: String,
     path: Option<&'a Path>,
 }
@@ -39,7 +45,8 @@ impl App {
 }
 
 pub(super) fn report(context: &StatusContext<'_>) -> Vec<String> {
-    let rows = build_rows(context.languages, context.states);
+    let current = current_servers(context.languages, context.current);
+    let rows = build_rows(context.languages, context.states, &current);
     let mut lines = vec![TITLE.to_string(), String::new()];
     let warnings = render_warnings(context.languages, context.warnings_path);
     if !warnings.is_empty() {
@@ -51,6 +58,11 @@ pub(super) fn report(context: &StatusContext<'_>) -> Vec<String> {
         return lines;
     }
     lines.extend(render_rows(&rows));
+    if !context.progress.is_empty() {
+        lines.push(String::new());
+        lines.push(PROGRESS.to_string());
+        lines.extend(context.progress.iter().cloned());
+    }
     let details = render_details(&rows, context.messages);
     if !details.is_empty() {
         lines.push(String::new());
@@ -59,9 +71,24 @@ pub(super) fn report(context: &StatusContext<'_>) -> Vec<String> {
     lines
 }
 
+fn current_servers<'a>(languages: &'a Languages, current: Option<&Path>) -> BTreeSet<&'a str> {
+    current
+        .and_then(|path| languages.language_for_path(path))
+        .map(|language| {
+            language
+                .servers
+                .iter()
+                .filter(|name| languages.server(name).is_some_and(|config| config.enabled))
+                .map(String::as_str)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn build_rows<'a>(
     languages: &'a Languages,
     states: &BTreeMap<String, ServerState>,
+    current: &BTreeSet<&str>,
 ) -> Vec<StatusRow<'a>> {
     languages
         .servers()
@@ -69,6 +96,7 @@ fn build_rows<'a>(
             server: name,
             state: state_label(languages, name, states),
             languages: languages_label(languages, name),
+            current: current.contains(name),
             command: command_label(config),
             path: languages.server_path(name),
         })
@@ -138,11 +166,25 @@ fn render_rows(rows: &[StatusRow<'_>]) -> Vec<String> {
     let mut lines = vec![row_line(HEADERS, &widths)];
     lines.extend(rows.iter().map(|row| {
         row_line(
-            [row.server, row.state, &row.languages, &row.command],
+            [
+                row.server,
+                row.state,
+                &row.languages,
+                current_label(row.current),
+                &row.command,
+            ],
             &widths,
         )
     }));
     lines
+}
+
+fn current_label(current: bool) -> &'static str {
+    if current {
+        CURRENT
+    } else {
+        NO_CURRENT
+    }
 }
 
 fn column_widths(rows: &[StatusRow<'_>]) -> [usize; COLUMNS] {
@@ -151,21 +193,24 @@ fn column_widths(rows: &[StatusRow<'_>]) -> [usize; COLUMNS] {
         widths[0] = widths[0].max(row.server.len());
         widths[1] = widths[1].max(row.state.len());
         widths[2] = widths[2].max(row.languages.len());
-        widths[3] = widths[3].max(row.command.len());
+        widths[3] = widths[3].max(CURRENT.len());
+        widths[4] = widths[4].max(row.command.len());
     }
     widths
 }
 
 fn row_line(cells: [&str; COLUMNS], widths: &[usize; COLUMNS]) -> String {
     format!(
-        "{:<w0$}  {:<w1$}  {:<w2$}  {}",
+        "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {}",
         cells[0],
         cells[1],
         cells[2],
         cells[3],
+        cells[4],
         w0 = widths[0],
         w1 = widths[1],
-        w2 = widths[2]
+        w2 = widths[2],
+        w3 = widths[3]
     )
     .trim_end()
     .to_string()

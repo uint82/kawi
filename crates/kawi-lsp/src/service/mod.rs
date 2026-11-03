@@ -23,9 +23,11 @@ mod completion_resolve;
 mod completion_snippet;
 mod diagnostics;
 mod document;
+mod events;
 mod file_operations;
 mod formatting;
 mod initialize;
+mod lifecycle;
 mod manager;
 mod markup;
 mod navigation;
@@ -34,6 +36,7 @@ mod pending;
 mod pull_diagnostics;
 mod rename;
 mod request;
+mod shutdown;
 mod signature_help;
 mod symbols;
 mod text_requests;
@@ -84,6 +87,23 @@ pub enum ServerState {
     Missing,
     Failed,
     Stopped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LifecycleAction {
+    Start,
+    Stop,
+    Restart,
+}
+
+impl LifecycleAction {
+    fn verb(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Stop => "stop",
+            Self::Restart => "restart",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -456,6 +476,31 @@ impl LspService {
         })
     }
 
+    pub fn start(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.lifecycle(LifecycleAction::Start, path, server)
+    }
+
+    pub fn stop(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.lifecycle(LifecycleAction::Stop, path, server)
+    }
+
+    pub fn restart(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.lifecycle(LifecycleAction::Restart, path, server)
+    }
+
+    fn lifecycle(
+        &self,
+        action: LifecycleAction,
+        path: Option<&Path>,
+        server: Option<&str>,
+    ) -> bool {
+        self.send(Command::Lifecycle {
+            action,
+            path: path.map(Path::to_path_buf),
+            server: server.map(str::to_string),
+        })
+    }
+
     pub fn definition(&self, path: &Path, position: CursorPosition) -> u64 {
         let request = self.allocate_request();
         self.send(Command::Definition {
@@ -788,6 +833,11 @@ pub(crate) enum Command {
     Cancel {
         request: u64,
     },
+    Lifecycle {
+        action: LifecycleAction,
+        path: Option<PathBuf>,
+        server: Option<String>,
+    },
     Shutdown,
 }
 
@@ -803,6 +853,7 @@ struct Manager {
     events: Sender<LspEvent>,
     wake: Sender<()>,
     clients: HashMap<ClientKey, ClientState>,
+    stopped: HashSet<ClientKey>,
     documents: HashMap<PathBuf, Document>,
     pending_requests: HashMap<u64, navigation::PendingRequest>,
     pending_replies: HashMap<RequestId, pending::PendingReply>,
@@ -820,11 +871,13 @@ struct Manager {
     workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics,
     next_request: i64,
     next_completion_item: u64,
+    next_client_generation: u64,
     initialize_timeout: Duration,
 }
 
 struct ClientState {
     client: Client,
+    generation: u64,
     status: ServerState,
     sync: SyncConfig,
     encoding: PositionEncodingKind,

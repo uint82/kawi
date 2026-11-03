@@ -17,6 +17,9 @@ pub(crate) enum CommandHandler {
     Plugin(u32),
     PluginCancel,
     LspStatus,
+    LspStart,
+    LspStop,
+    LspRestart,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

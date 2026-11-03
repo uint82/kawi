@@ -29,8 +29,19 @@ Press Enter to accept the selected item and Esc to dismiss the list. The menu sh
 
 Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:diagnostics) for diagnostic navigation and display.
 
+## Lifecycle
+
+Use `:lsp start`, `:lsp stop`, and `:lsp restart` to control language servers without leaving the editor.
+
+- `:lsp stop` stops every server used by the current buffer.
+- `:lsp start` starts every server used by the current buffer.
+- `:lsp restart` stops and starts every server used by the current buffer.
+- Add a server name to target that server across all project roots, for example `:lsp restart rust-analyzer`.
+
+A stopped server stays stopped for its project root until you start or restart it. Opening or changing a buffer does not restart it. The commands require either a file buffer or a server name.
+
 ## Status
 
-Run `:lsp status` to open a read-only internal buffer listing every configured server with its state, languages, and command. The `:lsp info` alias shows the same report. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
+Run `:lsp status` to open a read-only internal buffer listing every configured server with its state, languages, current-buffer attachment, and command. The `:lsp info` alias shows the same report. The `CURRENT` column marks servers used by the active buffer. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Active progress appears in a `PROGRESS` section, and resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
 
-Run `:health lsp` for the full language server health check.
+Run `:health lsp` for the full language server health check. The health check validates configuration and binaries; `:lsp status` shows runtime lifecycle errors and server messages.

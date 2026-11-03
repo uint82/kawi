@@ -91,6 +91,24 @@ pub(super) const COMMANDS: &[Builtin] = &[
         description: "show language server status",
         handler: CommandHandler::LspStatus,
     },
+    Builtin {
+        name: "lsp.start",
+        aliases: &[],
+        description: "start language servers for the buffer",
+        handler: CommandHandler::LspStart,
+    },
+    Builtin {
+        name: "lsp.stop",
+        aliases: &[],
+        description: "stop language servers for the buffer",
+        handler: CommandHandler::LspStop,
+    },
+    Builtin {
+        name: "lsp.restart",
+        aliases: &[],
+        description: "restart language servers for the buffer",
+        handler: CommandHandler::LspRestart,
+    },
     action(
         "diagnostic.next",
         Action::DiagnosticNext,

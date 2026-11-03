@@ -11,7 +11,7 @@ related = ["getting-started", "lsp", "formatting", "pickers", "tasks"]
 - Multiple windows and splits.
 - Opt-in project explorer with file management, Git markers, and diagnostics.
 - Editable directory buffers with diff-on-write renames, copies, creates, and trash deletes.
-- Language server support for completion, hover, diagnostics, symbols, rename, formatting, and code actions.
+- Language server support for completion, hover, diagnostics, symbols, rename, formatting, code actions, and lifecycle control.
 - External formatter commands with stdin or file input, format-on-save, and health checks.
 - Fuzzy file, buffer, grep, replace, and symbol pickers with previews.
 - Project-wide diagnostics and quickfix navigation.

@@ -49,6 +49,10 @@ impl Manager {
                 server: server.clone(),
                 root: root.clone(),
             };
+            if self.stopped.contains(&key) {
+                keys.push(key);
+                continue;
+            }
             if !self.clients.contains_key(&key) {
                 self.start_client(key.clone(), &config, &root);
             }

@@ -135,9 +135,12 @@ pub enum QuickfixCommand {
     Close,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LspCommand {
     Status,
+    Start(Option<String>),
+    Stop(Option<String>),
+    Restart(Option<String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -544,6 +547,12 @@ fn parse_quickfix_command(words: &[&str]) -> Command {
 fn parse_lsp_command(words: &[&str]) -> Command {
     match words {
         [] | ["status" | "info"] => Command::Lsp(LspCommand::Status),
+        ["start"] => Command::Lsp(LspCommand::Start(None)),
+        ["start", server] => Command::Lsp(LspCommand::Start(Some((*server).to_string()))),
+        ["stop"] => Command::Lsp(LspCommand::Stop(None)),
+        ["stop", server] => Command::Lsp(LspCommand::Stop(Some((*server).to_string()))),
+        ["restart"] => Command::Lsp(LspCommand::Restart(None)),
+        ["restart", server] => Command::Lsp(LspCommand::Restart(Some((*server).to_string()))),
         _ => Command::Unknown,
     }
 }
@@ -1268,6 +1277,24 @@ mod tests {
         assert_eq!(parse("lsp"), Command::Lsp(LspCommand::Status));
         assert_eq!(parse("lsp status"), Command::Lsp(LspCommand::Status));
         assert_eq!(parse("lsp info"), Command::Lsp(LspCommand::Status));
+        assert_eq!(parse("lsp start"), Command::Lsp(LspCommand::Start(None)));
+        assert_eq!(
+            parse("lsp start rust-analyzer"),
+            Command::Lsp(LspCommand::Start(Some("rust-analyzer".to_string())))
+        );
+        assert_eq!(parse("lsp stop"), Command::Lsp(LspCommand::Stop(None)));
+        assert_eq!(
+            parse("lsp stop rust-analyzer"),
+            Command::Lsp(LspCommand::Stop(Some("rust-analyzer".to_string())))
+        );
+        assert_eq!(
+            parse("lsp restart"),
+            Command::Lsp(LspCommand::Restart(None))
+        );
+        assert_eq!(
+            parse("lsp restart rust-analyzer"),
+            Command::Lsp(LspCommand::Restart(Some("rust-analyzer".to_string())))
+        );
         assert_eq!(parse("lsp nope"), Command::Unknown);
     }
 
