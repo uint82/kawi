@@ -18,6 +18,7 @@ mod visual;
 
 pub use arguments::{argument_from_json, argument_to_json};
 pub use plugin_api::{command_infos_from_json, setting_value_from_json, settings_from_json};
+pub(crate) use visual::decoration_style_to_protocol;
 pub use visual::{decorations_to_protocol, signs_to_protocol, statusline_to_protocol};
 
 pub fn state_from_json(value: Value) -> Result<State, RpcError> {

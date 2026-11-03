@@ -22,6 +22,12 @@ pub(super) const COMMANDS: &[Builtin] = &[
         description: "cancel plugin progress",
         handler: CommandHandler::PluginCancel,
     },
+    Builtin {
+        name: "plugin.panel",
+        aliases: &["plugin_panel"],
+        description: "focus or unfocus the plugin panel",
+        handler: CommandHandler::PluginPanel,
+    },
     aliased("file.save", &["save"], Action::Save, "save the buffer"),
     aliased("file.quit", &["quit"], Action::Quit, "quit the editor"),
     action(

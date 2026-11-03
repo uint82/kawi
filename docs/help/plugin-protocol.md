@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -107,7 +107,7 @@ Host request:
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
     "protocol_minor": 10,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -126,7 +126,7 @@ Plugin response:
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -494,6 +494,72 @@ Request params:
 
 Result is `null`. Always finish a started progress. An unknown id returns `-32602`.
 
+### ui.panel_open
+
+Request params:
+
+```json
+{
+  "title": "Index",
+  "status": "building",
+  "height": 8,
+  "focus": false,
+  "lines": [
+    {"text": "src/main.rs", "style": "success"},
+    {"text": "src/lib.rs"}
+  ]
+}
+```
+
+Result:
+
+```json
+{"panel": 1, "width": 80, "height": 8}
+```
+
+Requires the `ui.panel` capability. Only one plugin panel can be active across all plugins. A second open returns `-32040`. `status` and `height` are optional. `height` is clamped to 4 through 18 and defaults to 8. `focus` requests keyboard focus without stealing it when the panel cannot fit. The result reports the actual width and height, which can be 0 when the editor has no space.
+
+Kawi accepts at most 1000 lines, 4096 bytes per line, 1 MiB of total line text, a 256-byte title, and a 256-byte status. A payload that exceeds a limit returns `-32602`. Control characters and terminal escapes are removed before display. Each line may set a `style` of `accent`, `info`, `success`, `warning`, `error`, or `muted`.
+
+### ui.panel_update
+
+Request params:
+
+```json
+{
+  "panel": 1,
+  "status": "complete",
+  "height": 6,
+  "lines": [
+    {"text": "indexed 42 files", "style": "success"}
+  ]
+}
+```
+
+Result is `null`. Every field except `panel` is optional. Omitted fields keep their current value, and omitted `lines` preserves the current content. The same limits as `ui.panel_open` apply. An unknown panel or a panel owned by another plugin returns `-32060`.
+
+### ui.panel_focus
+
+Request params:
+
+```json
+{"panel": 1}
+```
+
+Result is `null`. Focus moves from the editor, terminal, debug panel, or explorer to the plugin panel. An unknown panel or a panel owned by another plugin returns `-32060`.
+
+### ui.panel_close
+
+Request params:
+
+```json
+{"panel": 1}
+```
+
+Result is `null`. Closing removes the panel and returns focus to the editor. An unknown panel or a panel owned by another plugin returns `-32060`.
+
+The host owns panel layout, focus, scrolling, and closing. The panel is docked above the task panel and reserves at least four editor rows. It hides if the editor becomes too small and is removed when its plugin stops. While focused, `j`, `k`, the arrow keys, the mouse wheel, `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp`, `g`, `G`, `Home`, and `End` scroll; `Esc` or `q` returns focus to the editor; and `x` closes the panel. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API in protocol minor 12.
+
 ### config.get
 
 Request params:
@@ -712,6 +778,7 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32051` | Too many running jobs |
 | `-32052` | Job or job stdin is closed |
 | `-32053` | Job output or input queue is full |
+| `-32060` | Panel not found or owned by another plugin |
 
 Transport failures are host errors, not JSON-RPC errors. A process exit fails in-flight requests with `plugin process exited`.
 

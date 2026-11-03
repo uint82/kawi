@@ -3,23 +3,27 @@ use super::*;
 #[test]
 fn maps_interfaces_to_the_same_capability_names() {
     assert_eq!(
-        import_capabilities("kawi:plugin/editor-read@0.6.0"),
+        import_capabilities("kawi:plugin/editor-read@0.7.0"),
         Some(&[Capability::EditorRead][..])
     );
     assert_eq!(
-        import_capabilities("kawi:plugin/editor-execute@0.6.0"),
+        import_capabilities("kawi:plugin/editor-execute@0.7.0"),
         Some(&[Capability::EditorExecute][..])
     );
     assert_eq!(
-        import_capabilities("kawi:plugin/ui-prompt@0.6.0"),
+        import_capabilities("kawi:plugin/ui-prompt@0.7.0"),
         Some(&[Capability::UiPrompt][..])
     );
     assert_eq!(
-        import_capabilities("kawi:plugin/ui-progress@0.6.0"),
+        import_capabilities("kawi:plugin/ui-progress@0.7.0"),
         Some(&[Capability::UiProgress][..])
     );
     assert_eq!(
-        import_capabilities("kawi:plugin/process-jobs@0.6.0"),
+        import_capabilities("kawi:plugin/ui-panel@0.7.0"),
+        Some(&[Capability::UiPanel][..])
+    );
+    assert_eq!(
+        import_capabilities("kawi:plugin/process-jobs@0.7.0"),
         Some(&[Capability::ProcessSpawn][..])
     );
     assert_eq!(
@@ -95,16 +99,16 @@ fn rejects_imports_beyond_manifest_requests() {
     let imports = [
         "wasi:cli/environment@0.2.12",
         "wasi:filesystem/types@0.2.12",
-        "kawi:plugin/editor-read@0.6.0",
-        "kawi:plugin/editor-write@0.6.0",
-        "kawi:plugin/editor-execute@0.6.0",
+        "kawi:plugin/editor-read@0.7.0",
+        "kawi:plugin/editor-write@0.7.0",
+        "kawi:plugin/editor-execute@0.7.0",
         "wasi:sockets/tcp@0.2.12",
     ];
     assert_eq!(
         unauthorized_imports(imports.into_iter(), &requested),
         vec![
-            "kawi:plugin/editor-write@0.6.0",
-            "kawi:plugin/editor-execute@0.6.0",
+            "kawi:plugin/editor-write@0.7.0",
+            "kawi:plugin/editor-execute@0.7.0",
             "wasi:sockets/tcp@0.2.12"
         ]
     );
@@ -113,7 +117,7 @@ fn rejects_imports_beyond_manifest_requests() {
 #[test]
 fn allows_config_read_without_a_capability_request() {
     assert!(unauthorized_imports(
-        ["kawi:plugin/config-read@0.6.0"].into_iter(),
+        ["kawi:plugin/config-read@0.7.0"].into_iter(),
         &BTreeSet::new()
     )
     .is_empty());
@@ -136,17 +140,17 @@ fn rejects_unknown_kawi_and_wasi_interfaces() {
     let requested = BTreeSet::from(Capability::ALL);
     assert_eq!(
         unauthorized_imports(
-            ["kawi:plugin/unknown@0.6.0", "wasi:unknown/interface@0.2.12",].into_iter(),
+            ["kawi:plugin/unknown@0.7.0", "wasi:unknown/interface@0.2.12",].into_iter(),
             &requested
         ),
-        vec!["kawi:plugin/unknown@0.6.0", "wasi:unknown/interface@0.2.12"]
+        vec!["kawi:plugin/unknown@0.7.0", "wasi:unknown/interface@0.2.12"]
     );
 }
 
 #[test]
 fn wit_package_matches_the_import_table() {
     let wit = include_str!("../../../../kawi-plugin-sdk/wit/plugin.wit");
-    assert!(wit.contains("package kawi:plugin@0.6.0;"));
+    assert!(wit.contains("package kawi:plugin@0.7.0;"));
     for rule in WASM_IMPORTS
         .iter()
         .filter(|rule| rule.prefix.starts_with("kawi:plugin/"))
@@ -189,8 +193,8 @@ fn records_capabilities_used_by_imports() {
     assert_eq!(
         requested_import_capabilities(
             [
-                "kawi:plugin/editor-read@0.6.0",
-                "kawi:plugin/editor-execute@0.6.0",
+                "kawi:plugin/editor-read@0.7.0",
+                "kawi:plugin/editor-execute@0.7.0",
                 "wasi:filesystem/types@0.2.12",
             ]
             .into_iter()

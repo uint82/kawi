@@ -9,10 +9,12 @@ use kawi_syntax::SyntaxSpan;
 mod debug;
 mod explorer;
 mod keymenu;
+mod plugin_panel;
 
 pub use debug::{DebugPanel, DebugRow, DebugRowKind};
 pub use explorer::{ExplorerGit, ExplorerGitKind, ExplorerPanel, ExplorerRow, ExplorerRowKind};
 pub use keymenu::{KeyColumn, KeyMenu, KeyRow};
+pub use plugin_panel::{PluginPanel, PluginPanelLine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -56,6 +58,7 @@ pub struct Frame<'a> {
     pub explorer: Option<ExplorerPanel<'a>>,
     pub debug: Option<DebugPanel<'a>>,
     pub task: Option<TaskPanel<'a>>,
+    pub plugin_panel: Option<PluginPanel<'a>>,
     pub terminal: Option<TerminalPanel<'a>>,
     pub viewport: &'a Viewport,
     pub message: Option<&'a str>,

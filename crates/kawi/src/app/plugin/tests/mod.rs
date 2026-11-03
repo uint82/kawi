@@ -5,6 +5,8 @@ mod end_to_end;
 mod events;
 mod jobs;
 mod manager;
+mod panel;
+mod process_panels;
 mod queue;
 mod reload;
 mod settings;
@@ -16,3 +18,5 @@ mod wasm;
 mod wasm_composition;
 #[cfg(all(feature = "wasm", unix))]
 mod wasm_jobs;
+#[cfg(all(feature = "wasm", unix))]
+mod wasm_panels;

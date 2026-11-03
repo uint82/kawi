@@ -83,11 +83,12 @@ Plugins declare the host APIs they use in `plugin.toml`:
 "ui.prompt" = true
 "ui.progress" = true
 "ui.statusline" = true
+"ui.panel" = true
 ```
 
 Declarations are a compatibility and audit surface, not a user grant. Kawi enables every declared API for a managed plugin. The WebAssembly component can only import interfaces that it declared. A component that imports an undeclared interface fails to load. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
-Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
+Available host APIs are `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, and `net.connect`. Scoped APIs use `paths`, `commands`, or `hosts` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
 Plugins can declare settings and read their effective values without a capability declaration:
 

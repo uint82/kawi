@@ -51,6 +51,22 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         reason: "requires interactive editor input; covered by app plugin UI tests",
     },
     Uncovered {
+        name: "ui.panel_open",
+        reason: "requires editor panel state; covered by app process and wasm panel tests",
+    },
+    Uncovered {
+        name: "ui.panel_update",
+        reason: "requires editor panel state; covered by app process and wasm panel tests",
+    },
+    Uncovered {
+        name: "ui.panel_focus",
+        reason: "requires editor panel state; covered by app process and wasm panel tests",
+    },
+    Uncovered {
+        name: "ui.panel_close",
+        reason: "requires editor panel state; covered by app process and wasm panel tests",
+    },
+    Uncovered {
         name: "editor.set_decorations",
         reason: "requires editor buffer state; covered by app plugin visual tests",
     },

@@ -54,7 +54,7 @@ pub fn statusline_to_protocol(segments: Vec<WitStatuslineSegment>) -> Vec<Status
         .collect()
 }
 
-fn decoration_style_to_protocol(style: WitDecorationStyle) -> ProtocolDecorationStyle {
+pub(crate) fn decoration_style_to_protocol(style: WitDecorationStyle) -> ProtocolDecorationStyle {
     match style {
         WitDecorationStyle::Accent => ProtocolDecorationStyle::Accent,
         WitDecorationStyle::Info => ProtocolDecorationStyle::Info,

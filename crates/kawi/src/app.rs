@@ -137,6 +137,7 @@ pub struct App {
     plugin_manager: crate::plugin_manager::PluginManager,
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     plugin_ui: plugin::PluginUi,
+    plugin_panel: plugin::PluginPanels,
     plugin_decorations: plugin::PluginDecorations,
     plugin_styles: plugin::PluginStyles,
     plugin_statusline: plugin::PluginStatusline,
@@ -253,6 +254,7 @@ impl App {
             plugin_manager: crate::plugin_manager::PluginManager::default(),
             plugin_prompt: None,
             plugin_ui: plugin::PluginUi::default(),
+            plugin_panel: plugin::PluginPanels::default(),
             plugin_decorations: plugin::PluginDecorations::default(),
             plugin_styles: plugin::PluginStyles::default(),
             plugin_statusline: plugin::PluginStatusline::default(),
@@ -719,6 +721,7 @@ impl App {
 
     fn show_pager(&mut self, lines: Vec<String>) {
         self.hover = None;
+        self.plugin_panel.unfocus();
         self.message = None;
         self.pager = Some(lines);
     }
@@ -833,6 +836,12 @@ impl App {
             return self.handle_noop();
         }
         self.window_prefix = false;
+        if let Some(result) = self.handle_plugin_panel_mouse(mouse) {
+            return Ok(result);
+        }
+        if self.plugin_panel.is_focused() {
+            self.unfocus_plugin_panel();
+        }
         if let Some(result) = self.handle_terminal_mouse(mouse) {
             return Ok(result);
         }
@@ -1035,6 +1044,13 @@ impl App {
         }
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
+        }
+        if self.plugin_panel.is_focused() {
+            if key.code == KeyCode::Char(':') {
+                self.unfocus_plugin_panel();
+            } else {
+                return self.handle_plugin_panel_key(key);
+            }
         }
         if self.terminal_focus {
             return self.handle_terminal_key(key);
@@ -1383,6 +1399,7 @@ impl App {
             Some(CommandHandler::SendKeys) => self.handle_send_keys(args.as_ref()),
             Some(CommandHandler::Plugin(target)) => self.run_plugin_command(target, args),
             Some(CommandHandler::PluginCancel) => self.cancel_plugin_progress(),
+            Some(CommandHandler::PluginPanel) => self.toggle_plugin_panel_focus(),
             Some(CommandHandler::LspStatus) => self.show_lsp_status(),
             Some(CommandHandler::LspStart) => self.start_lsp(),
             Some(CommandHandler::LspStop) => self.stop_lsp(),

@@ -16,6 +16,7 @@ pub(crate) enum CommandHandler {
     Noop,
     Plugin(u32),
     PluginCancel,
+    PluginPanel,
     LspStatus,
     LspStart,
     LspStop,

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 - 2026-11-03
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.7.0 (`kawi:plugin@0.7.0`).
+- Components built against `kawi:plugin@0.6.0` must be rebuilt with this release.
+
+### Added
+
+- Add the `ui-panel` interface for opening, updating, focusing, and closing a read-only docked text panel.
+- Add `ui_panel` re-exports with typed panel records and optional line styles.
+- Add `PANEL_NOT_FOUND` and `ErrorKind::PanelNotFound` for panel ownership and lifetime errors.
+
 ## 0.6.0 - 2026-11-03
 
 ### Breaking

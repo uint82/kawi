@@ -15,8 +15,8 @@ use crate::protocol::PROTOCOL_VERSION;
 use super::bindings::kawi::plugin::types::Argument;
 use super::bindings::kawi::plugin::{
     config_read, diagnostics_publish, editor_decorations, editor_execute, editor_read,
-    editor_signs, editor_write, process_jobs, process_run, types, ui_message, ui_progress,
-    ui_prompt, ui_statusline,
+    editor_signs, editor_write, process_jobs, process_run, types, ui_message, ui_panel,
+    ui_progress, ui_prompt, ui_statusline,
 };
 use super::bindings::Host_;
 use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
@@ -138,6 +138,10 @@ pub(crate) fn add_kawi_interfaces(
     }
     if capabilities.has(plugin, Capability::UiStatusline) {
         ui_statusline::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::UiPanel) {
+        ui_panel::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
             .map_err(linker_error)?;
     }
     if capabilities.has(plugin, Capability::ProcessSpawn) {
