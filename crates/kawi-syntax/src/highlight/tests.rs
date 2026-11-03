@@ -7,6 +7,7 @@ use support::{highlight, name_at, request};
 
 mod captures;
 mod languages;
+mod queries;
 mod support;
 
 #[test]
