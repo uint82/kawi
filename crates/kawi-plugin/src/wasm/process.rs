@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::capability::{resolve_command, Capability, CapabilityRegistry, Scope};
+use crate::capability::{resolve_command, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{RpcError, PLUGIN_UNAVAILABLE};
@@ -98,36 +98,11 @@ pub(crate) fn authorize_command(
     command: &str,
     resolve: impl Fn(&str) -> Option<std::path::PathBuf>,
 ) -> Result<std::path::PathBuf, RpcError> {
-    if !capabilities.has(plugin, Capability::ProcessSpawn) {
-        return Err(RpcError::capability_denied(
-            Capability::ProcessSpawn.name(),
-            None,
-        ));
-    }
-    let requested = resolve(command).ok_or_else(|| command_not_found(command))?;
-    let Some(Scope::Commands(commands)) = capabilities.scope(plugin, Capability::ProcessSpawn)
-    else {
-        return Err(capability_denied(command));
-    };
-    if commands
-        .iter()
-        .any(|granted| resolve(granted).is_some_and(|granted| granted == requested))
-    {
-        Ok(requested)
-    } else {
-        Err(capability_denied(command))
-    }
+    crate::capability::authorize_command(plugin, capabilities, command, resolve, command_not_found)
 }
 
 fn command_not_found(command: &str) -> RpcError {
     RpcError::new(PLUGIN_UNAVAILABLE, format!("command not found: {command}"))
-}
-
-fn capability_denied(command: &str) -> RpcError {
-    RpcError::capability_denied(
-        Capability::ProcessSpawn.name(),
-        Some(serde_json::json!({ "command": command })),
-    )
 }
 
 fn read_stream(stream: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {

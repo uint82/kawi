@@ -48,6 +48,7 @@ impl App {
                 ) {
                     let dropped = self.plugins.drop_queues(Some(&plugin));
                     self.log_queue_drops(&dropped, "plugin stopped");
+                    self.plugins.stop_jobs(&plugin);
                     self.plugins.clear_plugin_state(&plugin);
                     self.plugin_decorations.remove_plugin(&plugin);
                     self.plugin_statusline.remove_plugin(&plugin);
@@ -66,6 +67,14 @@ impl App {
                 if !self.plugins.has_capability(&plugin, capability) {
                     self.plugins.record_denial(&plugin, capability);
                 }
+                false
+            }
+            PluginHostEvent::JobEvent {
+                plugin,
+                event,
+                payload,
+            } => {
+                let _ = self.plugins.notify_job(&plugin, &event, payload);
                 false
             }
             PluginHostEvent::Log { .. } => false,

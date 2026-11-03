@@ -66,7 +66,7 @@ impl Driver {
                     .required
                     .push(capability);
             }
-            PluginHostEvent::SandboxApplied { .. } => {}
+            PluginHostEvent::SandboxApplied { .. } | PluginHostEvent::JobEvent { .. } => {}
         }
     }
 

@@ -6,6 +6,7 @@ pub const NETWORK_WARNING_PREFIX: &str = "network warning: ";
 mod environment;
 mod error;
 mod host;
+mod jobs;
 mod lockfile;
 mod manifest;
 mod outcome;

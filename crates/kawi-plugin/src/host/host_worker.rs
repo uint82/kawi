@@ -36,6 +36,16 @@ impl HostWorker {
         }
     }
 
+    pub(super) fn notify_internal(&self, event: &str, payload: Value) -> NotifyOutcome {
+        match self {
+            Self::Process(worker) | Self::Disabled(worker) => {
+                worker.notify_internal(event, payload)
+            }
+            #[cfg(feature = "wasm")]
+            Self::Wasm(_) => NotifyOutcome::NotRunning,
+        }
+    }
+
     pub(super) fn invoke(
         &self,
         request: u64,
