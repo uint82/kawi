@@ -222,6 +222,10 @@ impl Languages {
         self.available.get(name).map(PathBuf::as_path)
     }
 
+    pub fn refresh_availability(&mut self) {
+        self.available = available_servers(&self.servers);
+    }
+
     pub fn server_is_used(&self, name: &str) -> bool {
         self.languages_using(name).next().is_some()
     }
@@ -379,6 +383,15 @@ mod tests {
         let path = dir.join("languages.toml");
         fs::write(&path, text).expect("write");
         path
+    }
+
+    fn executable(path: &Path) {
+        fs::write(path, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
     }
 
     fn server() -> BTreeMap<String, ServerConfig> {
@@ -739,6 +752,25 @@ mod tests {
         assert!(languages
             .servers()
             .any(|(name, config)| name == "rust-analyzer" && config.enabled));
+    }
+
+    #[test]
+    fn refresh_availability_resolves_newly_installed_binaries() {
+        let path = temp_file("refresh", "");
+        let server = path.parent().unwrap().join("late-server");
+        fs::write(
+            &path,
+            format!(
+                "[server.late]\ncommand = {:?}\n\n[[language]]\nname = \"rust\"\nservers = [\"late\"]\n",
+                server.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mut languages = Languages::load(&path);
+        assert!(languages.server_path("late").is_none());
+        executable(&server);
+        languages.refresh_availability();
+        assert_eq!(languages.server_path("late"), Some(server.as_path()));
     }
 
     #[test]

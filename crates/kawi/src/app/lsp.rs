@@ -30,6 +30,7 @@ pub(crate) use symbols::SymbolEvent;
 pub struct LspUi {
     service: Option<LspService>,
     languages: Option<Languages>,
+    languages_path: Option<PathBuf>,
     path: Option<PathBuf>,
     revision: Option<u64>,
     statuses: BTreeMap<String, ServerState>,
@@ -77,6 +78,7 @@ impl LspUi {
         self.delete_files = false;
         self.file_operation = None;
         let languages = Languages::load(path);
+        self.languages_path = Some(path.to_path_buf());
         let warnings = languages.warnings().to_vec();
         match LspService::new(languages.clone(), wake) {
             Ok(service) => {
@@ -570,11 +572,17 @@ impl LspUi {
         self.display.as_deref()
     }
 
-    pub fn status_report(&self) -> Vec<String> {
-        let Some(languages) = self.languages.as_ref() else {
+    pub fn status_report(&mut self) -> Vec<String> {
+        let Some(languages) = self.languages.as_mut() else {
             return vec!["lsp: no language configuration loaded".to_string()];
         };
-        super::lsp_status::report(languages, &self.statuses, &self.status_messages)
+        languages.refresh_availability();
+        super::lsp_status::report(&super::lsp_status::StatusContext {
+            languages,
+            states: &self.statuses,
+            messages: &self.status_messages,
+            warnings_path: self.languages_path.as_deref(),
+        })
     }
 
     pub fn has_progress(&self) -> bool {
@@ -615,8 +623,6 @@ impl LspUi {
         if path != self.path {
             self.text.cancel_all(self.service.as_ref());
             self.close_current();
-            self.statuses.clear();
-            self.status_messages.clear();
             self.progress.clear();
             self.diagnostics.reset();
             self.path = path;
@@ -1079,6 +1085,39 @@ mod tests {
         );
         assert!(ui.update_display());
         assert_eq!(ui.status(), Some("lsp: fake Indexing 50%"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn server_status_survives_buffer_switches() {
+        let root = std::env::temp_dir().join(format!("kawi_lsp_switch_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let first = root.join("first.rs");
+        let second = root.join("second.rs");
+        std::fs::write(&first, "fn first() {}\n").unwrap();
+        std::fs::write(&second, "fn second() {}\n").unwrap();
+        let mut editor = Editor::new(kawi_buffer::Buffer::from_string("fn first() {}\n"));
+        editor
+            .edit_file(Some(first.to_str().unwrap()), true)
+            .unwrap();
+        let mut ui = LspUi {
+            languages: Some(Languages::load(&root.join("languages.toml"))),
+            ..LspUi::default()
+        };
+        ui.sync_document(&editor);
+        ui.statuses.insert("fake".to_string(), ServerState::Ready);
+        ui.status_messages
+            .insert("fake".to_string(), "detail".to_string());
+        editor
+            .edit_file(Some(second.to_str().unwrap()), true)
+            .unwrap();
+        ui.sync_document(&editor);
+        assert_eq!(ui.statuses.get("fake"), Some(&ServerState::Ready));
+        assert_eq!(
+            ui.status_messages.get("fake").map(String::as_str),
+            Some("detail")
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }
