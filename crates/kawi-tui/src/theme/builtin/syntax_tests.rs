@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crossterm::style::Color;
 
 use super::*;
@@ -113,4 +115,35 @@ fn builtin_floats_use_the_editor_background() {
         assert_eq!(theme.float_background, theme.base.background);
         assert_eq!(theme.code_background, theme.base.background);
     }
+}
+
+#[test]
+fn builtin_themes_share_syntax_keys() {
+    let reference = syntax_keys(DEFAULT_THEME);
+    for (name, source) in builtin_theme_sources() {
+        assert_eq!(syntax_keys(source), reference, "{name}");
+    }
+    assert!(reference.contains("type.parameter"));
+}
+
+fn builtin_theme_sources() -> [(&'static str, &'static str); 6] {
+    [
+        ("classic", CLASSIC),
+        ("cobalt", COBALT),
+        ("default", DEFAULT_THEME),
+        ("gruvbox-dark", GRUVBOX_DARK),
+        ("gruvbox-light", GRUVBOX_LIGHT),
+        ("one-dark", ONE_DARK),
+    ]
+}
+
+fn syntax_keys(source: &str) -> BTreeSet<String> {
+    let document: toml::Value = toml::from_str(source).expect("embedded theme");
+    document
+        .get("syntax")
+        .and_then(toml::Value::as_table)
+        .expect("syntax table")
+        .keys()
+        .cloned()
+        .collect()
 }

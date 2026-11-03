@@ -69,27 +69,48 @@ keyword = { fg = "keyword" }
 "keyword.control" = { fg = "keyword", bold = true }
 "keyword.function" = { fg = "keyword", bold = true }
 "keyword.import" = { fg = "keyword", bold = true }
+"keyword.operator" = { fg = "keyword" }
 "keyword.return" = { fg = "keyword", bold = true }
 "keyword.storage" = { fg = "keyword", bold = true }
+function = { fg = "function" }
+"function.builtin" = { fg = "number" }
+"function.call" = { fg = "function" }
+"function.macro" = { fg = "function", italic = true }
+"function.method" = { fg = "function" }
+type = { fg = "type" }
+"type.builtin" = { fg = "type" }
+"type.definition" = { fg = "type" }
+"type.parameter" = { fg = "type" }
+constructor = { fg = "type" }
+namespace = { fg = "type" }
+module = { fg = "type" }
+label = { fg = "fg" }
 string = { fg = "string" }
-escape = { fg = "string" }
+"string.escape" = { fg = "string" }
+"string.regexp" = { fg = "string" }
+"string.special" = { fg = "string" }
+"string.special.key" = { fg = "number" }
 character = { fg = "string" }
-number = { fg = "number" }
 constant = { fg = "number" }
+"constant.builtin" = { fg = "number" }
+"constant.macro" = { fg = "string" }
+number = { fg = "number" }
 boolean = { fg = "number" }
 special = { fg = "number" }
-function = { fg = "function" }
-"function.macro" = { fg = "function", italic = true }
-type = { fg = "type" }
-constructor = { fg = "type" }
-module = { fg = "type" }
-namespace = { fg = "type" }
 variable = { fg = "fg" }
-label = { fg = "fg" }
+"variable.builtin" = { fg = "number" }
+"variable.member" = { fg = "property" }
+"variable.parameter" = { fg = "property" }
 property = { fg = "property" }
+"property.builtin" = { fg = "property" }
 operator = { fg = "property" }
 punctuation = { fg = "punctuation" }
+"punctuation.bracket" = { fg = "punctuation" }
+"punctuation.delimiter" = { fg = "punctuation" }
+"punctuation.special" = { fg = "number" }
 attribute = { fg = "type" }
 decorator = { fg = "type" }
 tag = { fg = "tag" }
+"tag.attribute" = { fg = "property" }
+"tag.delimiter" = { fg = "punctuation" }
 invalid = { fg = "tag" }

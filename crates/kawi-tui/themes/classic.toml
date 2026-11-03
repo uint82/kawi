@@ -81,6 +81,7 @@ function = { fg = "cyan", bold = true }
 type = { fg = "green" }
 "type.builtin" = { fg = "green" }
 "type.definition" = { fg = "green" }
+"type.parameter" = { fg = "green" }
 constructor = { fg = "green" }
 namespace = { fg = "fg" }
 module = { fg = "fg" }
