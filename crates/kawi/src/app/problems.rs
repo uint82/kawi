@@ -1,5 +1,7 @@
 use kawi_buffer::{diff_ropes, RopeChange};
-use kawi_lsp::{Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag};
+use kawi_lsp::{
+    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
+};
 use kawi_task as task;
 use ropey::Rope;
 use std::cell::RefCell;
@@ -216,6 +218,7 @@ struct ProblemKey {
 struct GroupKey {
     source: String,
     path: PathBuf,
+    identifier: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -400,22 +403,39 @@ impl Problems {
         let key = GroupKey {
             source: plugin_source(plugin),
             path: path.to_path_buf(),
+            identifier: None,
         };
         self.ensure_source_rank(&key.source);
         self.replace_group(key, problems);
     }
 
-    pub(super) fn replace_lsp(&mut self, server: &str, path: &Path, diagnostics: Vec<Diagnostic>) {
+    pub(super) fn replace_lsp(&mut self, event: DiagnosticsEvent) {
         let key = GroupKey {
-            source: lsp_source(server),
-            path: path.to_path_buf(),
+            source: lsp_source(&event.server),
+            path: event.path,
+            identifier: event.identifier,
         };
         self.ensure_source_rank(&key.source);
-        let problems = diagnostics
+        let problems = event
+            .diagnostics
             .into_iter()
-            .map(|diagnostic| Problem::from_lsp(key.source.clone(), path, diagnostic))
+            .map(|diagnostic| Problem::from_lsp(key.source.clone(), &key.path, diagnostic))
             .collect();
         self.replace_group(key, problems);
+    }
+
+    #[cfg(test)]
+    pub(super) fn replace_lsp_test(
+        &mut self,
+        server: &str,
+        path: &Path,
+        diagnostics: Vec<Diagnostic>,
+    ) {
+        self.replace_lsp(crate::test_support::diagnostic_event(
+            server,
+            path,
+            diagnostics,
+        ));
     }
 
     pub(super) fn push_task(&mut self, task_name: &str, finding: task::Finding) -> bool {
@@ -424,6 +444,7 @@ impl Problems {
         let key = GroupKey {
             source: source.clone(),
             path: finding.path.clone(),
+            identifier: None,
         };
         self.ensure_source_rank(&source);
         self.push(key, Problem::from_task(source, finding))

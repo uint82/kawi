@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use kawi_lsp::{Diagnostic, DiagnosticsEvent};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const SECTIONS: &[(&str, &[&str])] = &[
@@ -53,6 +54,20 @@ pub(crate) fn custom_theme() -> String {
         text.push('\n');
     }
     text
+}
+
+pub(crate) fn diagnostic_event(
+    server: &str,
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> DiagnosticsEvent {
+    DiagnosticsEvent {
+        server: server.to_string(),
+        identifier: None,
+        path: path.to_path_buf(),
+        version: None,
+        diagnostics,
+    }
 }
 
 pub(crate) fn temp_dir(prefix: &str) -> PathBuf {

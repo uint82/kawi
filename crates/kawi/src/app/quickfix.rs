@@ -18,8 +18,7 @@ impl super::App {
         for update in updates {
             match update {
                 DiagnosticUpdate::Replace(event) => {
-                    self.problems
-                        .replace_lsp(&event.server, &event.path, event.diagnostics);
+                    self.problems.replace_lsp(event);
                 }
                 DiagnosticUpdate::Clear(server) => self.problems.clear_lsp_source(&server),
             }
@@ -390,7 +389,7 @@ mod tests {
         fs::write(&file, "one\ntwo\nthree\n").unwrap();
         let mut app = App::new(Buffer::from_string("text"), Flavor::Vim);
         app.problems
-            .replace_lsp("rust-analyzer", &file, vec![lsp_diagnostic(&file)]);
+            .replace_lsp_test("rust-analyzer", &file, vec![lsp_diagnostic(&file)]);
         app.handle_quickfix_command(kawi_editor::QuickfixCommand::Open)
             .unwrap();
         let row = &app.picker.as_ref().unwrap().picker().rows()[0].display;

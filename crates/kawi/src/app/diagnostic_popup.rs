@@ -150,7 +150,7 @@ mod tests {
         let mut buffer = Buffer::from_string("value\n");
         buffer.path = Some("popup.rs".to_string());
         let mut app = App::new(buffer, Flavor::Vim);
-        app.problems.replace_lsp(
+        app.problems.replace_lsp_test(
             "fake",
             &path,
             vec![diagnostic(0, 0, 5, DiagnosticSeverity::Error, "broken")],
@@ -223,7 +223,7 @@ mod tests {
         let mut buffer = Buffer::from_string("value\n");
         buffer.path = Some("order.rs".to_string());
         let mut app = App::new(buffer, Flavor::Vim);
-        app.problems.replace_lsp(
+        app.problems.replace_lsp_test(
             "a",
             &path,
             vec![
@@ -231,7 +231,7 @@ mod tests {
                 diagnostic(0, 4, 5, DiagnosticSeverity::Warning, "cursor"),
             ],
         );
-        app.problems.replace_lsp(
+        app.problems.replace_lsp_test(
             "b",
             &path,
             vec![diagnostic(0, 0, 1, DiagnosticSeverity::Error, "tie")],

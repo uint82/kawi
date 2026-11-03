@@ -64,7 +64,8 @@ impl DiagnosticState {
 
     fn rebuild(&mut self) {
         self.items.clear();
-        self.items.extend(self.providers.values().flatten().cloned());
+        self.items
+            .extend(self.providers.values().flatten().cloned());
         self.items
             .sort_by_key(|diagnostic| (diagnostic.range.start, diagnostic.range.end));
     }
