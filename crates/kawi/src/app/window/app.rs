@@ -164,6 +164,7 @@ impl App {
     pub(crate) fn window_area(&self) -> Rect {
         let task_height = self.task.panel_height(self.screen_height);
         let terminal_height = self.terminal.panel_height(self.screen_height, task_height);
+        let plugin_panel_height = self.plugin_panel_height();
         let terminal_width = self.terminal_panel_width();
         let explorer_width = self.explorer_width();
         let debug_width = self.debug_panel_width();
@@ -172,6 +173,7 @@ impl App {
             .saturating_sub(1)
             .saturating_sub(task_height)
             .saturating_sub(terminal_height)
+            .saturating_sub(plugin_panel_height)
             .max(1);
         let width = self
             .screen_width
@@ -191,6 +193,7 @@ impl App {
         self.screen_height = usize::from(rows).max(2);
         self.close_explorer_if_unfit();
         self.close_debug_panel_if_unfit();
+        self.close_plugin_panel_if_unfit();
         self.refresh_window_sizes();
     }
 

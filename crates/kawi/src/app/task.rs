@@ -139,6 +139,7 @@ impl App {
             return None;
         }
         let terminal_height = self.terminal.panel_height(self.screen_height, height);
+        let plugin_panel_height = self.plugin_panel_height();
         let terminal_width = self.terminal_panel_width();
         let explorer_width = self.explorer_width();
         let debug_width = self.debug_panel_width();
@@ -147,6 +148,7 @@ impl App {
             self.screen_height
                 .saturating_sub(1)
                 .saturating_sub(terminal_height)
+                .saturating_sub(plugin_panel_height)
                 .saturating_sub(height),
             self.screen_width
                 .saturating_sub(explorer_width)

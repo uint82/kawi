@@ -53,6 +53,9 @@ impl App {
                     self.plugin_decorations.remove_plugin(&plugin);
                     self.plugin_statusline.remove_plugin(&plugin);
                     self.problems.clear_plugin(&plugin);
+                    if self.plugin_panel.remove_plugin(&plugin) {
+                        self.sync_plugin_panel_size();
+                    }
                     if let Some((stopped, request)) = self.plugin_ui.remove_plugin(&plugin) {
                         let _ = self.plugins.respond(
                             &stopped,
@@ -132,6 +135,10 @@ impl App {
                 | "ui.progress_start"
                 | "ui.progress_update"
                 | "ui.progress_finish"
+                | "ui.panel_open"
+                | "ui.panel_update"
+                | "ui.panel_focus"
+                | "ui.panel_close"
         );
         if matches!(method, "editor.apply_edit" | "editor.execute") {
             self.editor

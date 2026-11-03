@@ -1,5 +1,4 @@
 use kawi_buffer::{char_offset_at, validate_text_edits, TextEdit};
-use kawi_editor::Mode;
 use std::path::{Path, PathBuf};
 
 use kawi_plugin::{
@@ -13,6 +12,11 @@ use serde_json::Value;
 
 use super::super::problems::{plugin_source, Problem, ProblemSeverity};
 use super::super::App;
+
+mod util;
+
+use util::mode_name;
+pub(crate) use util::{invalid_params, json_result};
 
 impl App {
     pub(crate) fn handle_plugin_request(
@@ -33,6 +37,10 @@ impl App {
             "ui.progress_start" => self.plugin_progress_start(plugin, params),
             "ui.progress_update" => self.plugin_progress_update(params),
             "ui.progress_finish" => self.plugin_progress_finish(params),
+            "ui.panel_open" => self.plugin_panel_open(plugin, params),
+            "ui.panel_update" => self.plugin_panel_update(plugin, params),
+            "ui.panel_focus" => self.plugin_panel_focus(plugin, params),
+            "ui.panel_close" => self.plugin_panel_close(plugin, params),
             "config.get" => self.plugin_config_get(plugin, params),
             "config.list" => self.plugin_config_list(plugin, params),
             "process.open" => self.plugin_open_job(plugin, params),
@@ -188,10 +196,6 @@ impl App {
     }
 }
 
-pub(super) fn json_result<T: serde::Serialize>(value: T) -> Result<Value, RpcError> {
-    serde_json::to_value(value).map_err(|error| RpcError::new(INTERNAL_ERROR, error.to_string()))
-}
-
 fn protocol_edits(
     snapshot: &Rope,
     edits: &[kawi_plugin::ProtocolTextEdit],
@@ -227,21 +231,6 @@ fn position_at(snapshot: &Rope, line: usize, column: usize) -> Position {
         line,
         byte_column: text.char_to_byte(column.min(text.len_chars())),
     }
-}
-
-fn mode_name(mode: Mode) -> &'static str {
-    match mode {
-        Mode::Normal => "normal",
-        Mode::Insert => "insert",
-        Mode::Replace => "replace",
-        Mode::Command => "command",
-        Mode::Visual | Mode::VisualLine | Mode::VisualBlock => "visual",
-        Mode::Search => "search",
-    }
-}
-
-pub(super) fn invalid_params(error: serde_json::Error) -> RpcError {
-    RpcError::invalid_params(error.to_string())
 }
 
 fn plugin_problem(

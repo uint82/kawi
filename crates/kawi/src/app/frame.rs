@@ -238,6 +238,11 @@ impl App {
             matches: session.matches(),
             files: session.files(),
         });
+        let plugin_panel = self
+            .pager
+            .is_none()
+            .then(|| self.plugin_panel_view())
+            .flatten();
         let debug_rows = self.debug_panel_rows();
         let debug = self.debug_panel_rect().map(|rect| DebugPanel {
             rect,
@@ -303,6 +308,7 @@ impl App {
             replace,
             explorer,
             debug,
+            plugin_panel,
             task,
             terminal,
             viewport: &viewport,
