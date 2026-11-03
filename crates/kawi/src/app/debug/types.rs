@@ -1,4 +1,5 @@
-use kawi_dap::{ExceptionFilter, Thread};
+use kawi_dap::{ExceptionFilter, RunInTerminalRequest, Thread};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(super) struct BreakpointSpec {
@@ -45,6 +46,7 @@ pub(super) struct ConsoleEntry {
 pub(super) struct DebugSessionState {
     pub(super) exception_filters: Vec<ExceptionFilter>,
     pub(super) threads: Vec<Thread>,
+    pub(super) terminal_requests: VecDeque<RunInTerminalRequest>,
 }
 
 impl DebugSessionState {
@@ -52,6 +54,7 @@ impl DebugSessionState {
         Self {
             exception_filters: Vec::new(),
             threads: Vec::new(),
+            terminal_requests: VecDeque::new(),
         }
     }
 }

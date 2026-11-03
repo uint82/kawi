@@ -113,7 +113,7 @@ fn variable_scopes_and_expansion_are_reported() {
 }
 
 #[test]
-fn threads_are_reported() {
+fn threads_and_terminal_requests_are_reported() {
     let path = temp_file("threads");
     let root = path.parent().unwrap().to_path_buf();
     let mut app = app(&path);
@@ -134,5 +134,18 @@ fn threads_are_reported() {
         .lines
         .iter()
         .any(|line| line.contains("[*] 2: worker")));
+
+    app.debug
+        .apply_event(DapEvent::RunInTerminal(RunInTerminalRequest {
+            request_seq: 9,
+            kind: Some("integrated".to_string()),
+            title: None,
+            cwd: Some(root.clone()),
+            args: vec!["program".to_string()],
+            env: BTreeMap::new(),
+            args_can_be_interpreted_by_shell: false,
+        }));
+    let request = app.debug.take_run_in_terminal().expect("terminal request");
+    assert_eq!(request.request_seq, 9);
     let _ = fs::remove_dir_all(root);
 }

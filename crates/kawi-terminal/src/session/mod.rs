@@ -116,6 +116,10 @@ impl PtySession {
         self.child.try_wait()
     }
 
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.process_id()
+    }
+
     pub fn terminate(&mut self) {
         match self.child.try_wait() {
             Ok(Some(_)) | Err(_) => return,
@@ -165,6 +169,10 @@ impl TerminalSession {
             exit: None,
             closed: false,
         })
+    }
+
+    pub fn process_id(&self) -> Option<u32> {
+        self.pty.process_id()
     }
 
     pub fn drain(&mut self) -> bool {

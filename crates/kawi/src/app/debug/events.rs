@@ -48,6 +48,9 @@ impl DebugUi {
                 message,
             } => self.apply_evaluation_failed(expression, context, message),
             DapEvent::ExceptionFilters { filters } => self.apply_exception_filters(filters),
+            DapEvent::RunInTerminal(request) => {
+                self.session.terminal_requests.push_back(request);
+            }
             DapEvent::Error(message) => self.apply_error(message),
             DapEvent::Log(line) => self.push_output("adapter", &line),
             _ => {}

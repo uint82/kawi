@@ -1,8 +1,8 @@
 use super::lsp::editor_path;
 use crate::state::StatePaths;
 use kawi_dap::{
-    DapEvent, DapService, DebugConfig, DebugContext, DebugStatus, ExceptionFilter, Scope,
-    StackFrame, StepKind, Thread, Variable,
+    DapEvent, DapService, DebugConfig, DebugContext, DebugStatus, ExceptionFilter,
+    RunInTerminalRequest, Scope, StackFrame, StepKind, Thread, Variable,
 };
 use kawi_editor::Editor;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -147,6 +147,21 @@ impl DebugUi {
         self.jump.take()
     }
 
+    pub(super) fn take_run_in_terminal(&mut self) -> Option<RunInTerminalRequest> {
+        self.session.terminal_requests.pop_front()
+    }
+
+    pub(super) fn respond_run_in_terminal(
+        &mut self,
+        request_seq: i64,
+        process_id: Option<u32>,
+        message: Option<String>,
+    ) {
+        if let Some(service) = self.service.as_ref() {
+            service.respond_run_in_terminal(request_seq, process_id, message);
+        }
+    }
+
     pub(super) fn display(&self) -> Option<&'static str> {
         match self.status {
             DebugStatus::Idle => None,
@@ -205,6 +220,7 @@ impl DebugUi {
         self.console.clear();
         self.verified.clear();
         self.session.exception_filters.clear();
+        self.session.terminal_requests.clear();
         if !self.exception_filters_touched {
             self.enabled_exception_filters.clear();
         }

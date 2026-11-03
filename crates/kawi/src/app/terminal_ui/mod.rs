@@ -74,6 +74,10 @@ impl TerminalUi {
         self.open
     }
 
+    pub fn process_id(&self) -> Option<u32> {
+        self.session.as_ref().and_then(TerminalSession::process_id)
+    }
+
     pub fn is_running(&self) -> bool {
         self.session
             .as_ref()

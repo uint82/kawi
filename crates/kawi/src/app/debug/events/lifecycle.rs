@@ -16,6 +16,7 @@ impl DebugUi {
         self.clear_frame_state();
         self.pending_report = None;
         self.verified.clear();
+        self.session.terminal_requests.clear();
         for watch in &mut self.watches {
             watch.clear();
         }

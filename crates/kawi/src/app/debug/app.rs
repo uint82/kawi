@@ -1,5 +1,6 @@
 use super::*;
 use crate::app::App;
+use kawi_dap::RunInTerminalRequest;
 
 impl App {
     pub(crate) fn handle_debug_command(
@@ -152,6 +153,7 @@ impl App {
 
     pub(crate) fn sync_debug(&mut self) -> anyhow::Result<bool> {
         let changed = self.debug.poll_events();
+        self.handle_run_in_terminal();
         if let Some(message) = self.debug.take_message() {
             self.show_message(message);
         }
@@ -167,6 +169,58 @@ impl App {
         }
         Ok(changed)
     }
+
+    fn handle_run_in_terminal(&mut self) {
+        let Some(request) = self.debug.take_run_in_terminal() else {
+            return;
+        };
+        let request_seq = request.request_seq;
+        match self.open_run_in_terminal(&request) {
+            Ok(process_id) => {
+                self.debug
+                    .respond_run_in_terminal(request_seq, Some(process_id), None);
+            }
+            Err(message) => {
+                self.debug
+                    .respond_run_in_terminal(request_seq, None, Some(message));
+            }
+        }
+    }
+
+    fn open_run_in_terminal(&mut self, request: &RunInTerminalRequest) -> Result<u32, String> {
+        if request.kind.as_deref() == Some("external") {
+            return Err("external terminals are not supported".to_string());
+        }
+        if request.args.is_empty() {
+            return Err("runInTerminal has no command".to_string());
+        }
+        let command = terminal_command(request);
+        let cwd = request.cwd.clone().unwrap_or_else(|| self.project_root());
+        self.open_debug_terminal(command, cwd, request.env.clone())
+            .ok_or_else(|| "failed to start debug terminal".to_string())
+    }
+}
+
+fn terminal_command(request: &RunInTerminalRequest) -> String {
+    if request.args_can_be_interpreted_by_shell {
+        return request.args.join(" ");
+    }
+    request
+        .args
+        .iter()
+        .map(|argument| shell_quote(argument))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_quote(argument: &str) -> String {
+    if argument
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "-_./:=@".contains(character))
+    {
+        return argument.to_string();
+    }
+    format!("'{}'", argument.replace('\'', "'\\''"))
 }
 
 impl App {
@@ -195,5 +249,47 @@ impl App {
             DebugBuiltin::Status => DebugCommand::Status,
         };
         self.handle_debug_command(command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn request(args: Vec<&str>, args_can_be_interpreted_by_shell: bool) -> RunInTerminalRequest {
+        RunInTerminalRequest {
+            request_seq: 1,
+            kind: None,
+            title: None,
+            cwd: None,
+            args: args.into_iter().map(str::to_string).collect(),
+            env: BTreeMap::new(),
+            args_can_be_interpreted_by_shell,
+        }
+    }
+
+    #[test]
+    fn quotes_terminal_arguments() {
+        assert_eq!(
+            terminal_command(&request(vec!["printf", "debug-terminal"], false)),
+            "printf debug-terminal"
+        );
+        assert_eq!(
+            terminal_command(&request(vec!["printf", "hello world"], false)),
+            "printf 'hello world'"
+        );
+        assert_eq!(
+            terminal_command(&request(vec!["printf", "it's"], false)),
+            "printf 'it'\\''s'"
+        );
+    }
+
+    #[test]
+    fn keeps_shell_arguments_when_requested() {
+        assert_eq!(
+            terminal_command(&request(vec!["printf", "$HOME"], true)),
+            "printf $HOME"
+        );
     }
 }

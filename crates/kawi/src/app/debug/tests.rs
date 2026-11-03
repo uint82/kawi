@@ -2,7 +2,7 @@ use super::*;
 use crate::app::App;
 use crate::keymap::Flavor;
 use kawi_buffer::Buffer;
-use kawi_dap::{Breakpoint, ExceptionFilter, Scope, Thread, Variable};
+use kawi_dap::{Breakpoint, ExceptionFilter, RunInTerminalRequest, Scope, Thread, Variable};
 use std::fs;
 use std::sync::mpsc;
 
