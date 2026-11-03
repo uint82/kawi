@@ -2574,7 +2574,7 @@ mod tests {
             text: "de".to_string(),
             tint: Tint::Selection,
         };
-        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8).expect("segments");
+        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8);
         assert_eq!(
             segments
                 .iter()
@@ -2601,7 +2601,7 @@ mod tests {
             text: "abcdef".to_string(),
             tint: Tint::Selection,
         };
-        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8).expect("segments");
+        let segments = diagnostic_segments(&diagnostic, &[selection], &[], 8);
         assert_eq!(
             segments
                 .iter()
@@ -2612,7 +2612,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_segments_do_not_split_without_selection() {
+    fn diagnostic_segments_without_selection_keep_the_span() {
         let diagnostic = HighlightSpan {
             screen_row: 0,
             from: 2,
@@ -2622,7 +2622,14 @@ mod tests {
                 tag: None,
             },
         };
-        assert!(diagnostic_segments(&diagnostic, &[], &[], 8).is_none());
+        let segments = diagnostic_segments(&diagnostic, &[], &[], 8);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| (segment.from, segment.text.as_str(), segment.selected))
+                .collect::<Vec<_>>(),
+            [(2, "cd", false)]
+        );
     }
 
     #[test]
@@ -2646,9 +2653,8 @@ mod tests {
         let mut prefix = Vec::new();
         execute!(
             prefix,
-            SetForegroundColor(theme.base.foreground),
-            crossterm::style::SetBackgroundColor(theme.base.background),
             SetForegroundColor(theme.diagnostic_color(severity)),
+            crossterm::style::SetBackgroundColor(theme.base.background),
             SetAttribute(Attribute::Dim)
         )
         .unwrap();
@@ -2783,8 +2789,7 @@ mod tests {
                 tint: Tint::Syntax(function),
             },
         ];
-        let segments =
-            diagnostic_segments(&diagnostic, &[selection], &syntax, 8).expect("segments");
+        let segments = diagnostic_segments(&diagnostic, &[selection], &syntax, 8);
         assert_eq!(
             segments
                 .iter()
