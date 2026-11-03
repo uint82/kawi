@@ -3,9 +3,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::capability::{resolve_command, CapabilityRegistry};
 use crate::environment::HostEnvironment;
-use crate::manifest::LoadedPlugin;
+use crate::manifest::{LoadedPlugin, PluginRuntime};
 use crate::protocol::{ProcessOpenParams, RpcError, StdinMode};
 
+use super::events::JobEventQueue;
 use super::monitor::JobStatus;
 use super::output::OutputBudget;
 use super::stdin::{spawn_stdin, StdinHandle};
@@ -71,6 +72,8 @@ pub(super) fn spawn(
         stdin,
         status: Arc::new(Mutex::new(JobStatus::new())),
         output: Arc::new(OutputBudget::new()),
+        events: Arc::new(Mutex::new(JobEventQueue::new())),
+        queue_events: plugin.manifest.runtime == PluginRuntime::Wasm,
     };
     Ok((handle, stdout, stderr))
 }

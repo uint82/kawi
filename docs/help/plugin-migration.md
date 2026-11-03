@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.5.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.6.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.5.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.6.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -53,7 +53,7 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `editor.set_decorations` with highlights or virtual text | `editor-decorations.set` |
 | `editor.set_decorations` with signs | `editor-signs.set` |
 | `ui.set_statusline` | `ui-statusline.set` |
-| Process execution through `process.spawn` | `process-run.run`; background jobs have no WIT equivalent in minor 10 |
+| Process execution through `process.spawn` | `process-run.run`; background jobs use `process-jobs` and `process-jobs.poll` |
 | Filesystem reads and writes | WASI preopens derived from `fs.read` and `fs.write`; directories only, file grants are skipped |
 | Network connections through `net.connect` | WASI sockets filtered by the network policy |
 
@@ -83,7 +83,7 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 | --- | --- | --- |
 | `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
-| `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` host interface; background jobs are process-only in minor 10 |
+| `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` and `process-jobs` host interfaces |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
 
 Process plugins are development-only trusted code. Managed installs require WASM.

@@ -18,7 +18,8 @@ pub use error::{
 pub use kawi::plugin::types;
 pub use kawi::plugin::{
     config_read, diagnostics_publish, editor_decorations, editor_execute, editor_read,
-    editor_signs, editor_write, process_run, ui_message, ui_progress, ui_prompt, ui_statusline,
+    editor_signs, editor_write, process_jobs, process_run, ui_message, ui_progress, ui_prompt,
+    ui_statusline,
 };
 pub use offsets::{byte_offset, position_at};
 

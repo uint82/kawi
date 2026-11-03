@@ -10,55 +10,59 @@ pub struct ImportRule {
 
 pub const WASM_IMPORTS: &[ImportRule] = &[
     ImportRule {
-        prefix: "kawi:plugin/types@0.5.0",
+        prefix: "kawi:plugin/types@0.6.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-read@0.5.0",
+        prefix: "kawi:plugin/editor-read@0.6.0",
         capabilities: &[Capability::EditorRead],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-write@0.5.0",
+        prefix: "kawi:plugin/editor-write@0.6.0",
         capabilities: &[Capability::EditorWrite],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-execute@0.5.0",
+        prefix: "kawi:plugin/editor-execute@0.6.0",
         capabilities: &[Capability::EditorExecute],
     },
     ImportRule {
-        prefix: "kawi:plugin/config-read@0.5.0",
+        prefix: "kawi:plugin/config-read@0.6.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-message@0.5.0",
+        prefix: "kawi:plugin/ui-message@0.6.0",
         capabilities: &[Capability::UiMessage],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-prompt@0.5.0",
+        prefix: "kawi:plugin/ui-prompt@0.6.0",
         capabilities: &[Capability::UiPrompt],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-progress@0.5.0",
+        prefix: "kawi:plugin/ui-progress@0.6.0",
         capabilities: &[Capability::UiProgress],
     },
     ImportRule {
-        prefix: "kawi:plugin/diagnostics-publish@0.5.0",
+        prefix: "kawi:plugin/diagnostics-publish@0.6.0",
         capabilities: &[Capability::DiagnosticsPublish],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-decorations@0.5.0",
+        prefix: "kawi:plugin/editor-decorations@0.6.0",
         capabilities: &[Capability::EditorDecorations],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-signs@0.5.0",
+        prefix: "kawi:plugin/editor-signs@0.6.0",
         capabilities: &[Capability::EditorDecorations],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-statusline@0.5.0",
+        prefix: "kawi:plugin/ui-statusline@0.6.0",
         capabilities: &[Capability::UiStatusline],
     },
     ImportRule {
-        prefix: "kawi:plugin/process-run@0.5.0",
+        prefix: "kawi:plugin/process-run@0.6.0",
+        capabilities: &[Capability::ProcessSpawn],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/process-jobs@0.6.0",
         capabilities: &[Capability::ProcessSpawn],
     },
     ImportRule {

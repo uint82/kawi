@@ -36,7 +36,7 @@ body:
     attributes:
       label: Versions
       description: Record the Kawi release, SDK version, and target.
-      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.5.0, wasm32-wasip2"
+      placeholder: "Kawi 0.0.1, kawi-plugin-sdk 0.6.0, wasm32-wasip2"
     validations:
       required: true
   - type: input
@@ -53,7 +53,7 @@ body:
       label: Kickoff checks
       options:
         - label: The editor release has the WASM runtime enabled by default.
-        - label: kawi-plugin-sdk 0.5.0 is published and the published scaffold build passed.
+        - label: kawi-plugin-sdk 0.6.0 is published and the published scaffold build passed.
         - label: The author meets the independence requirements.
         - label: The plugin is a real workflow, not a fixture, example copy, or renamed scaffold.
         - label: The author can publish the plugin source or a release artifact.

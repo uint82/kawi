@@ -82,6 +82,11 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "process.status",
         reason: "requires a live child process; covered by app plugin job tests",
     },
+    Uncovered {
+        name: "process.poll",
+        reason:
+            "requires a live child process and queued WASM events; covered by app WASM job tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
 

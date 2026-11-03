@@ -50,6 +50,10 @@ jobs:
         run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/config/Cargo.toml -- --check
       - name: Rebuild config fixture
         run: crates/kawi-plugin/tests/fixtures/wasm/config/build.sh
+      - name: Format jobs fixture
+        run: cargo fmt --manifest-path crates/kawi-plugin/tests/fixtures/wasm/jobs/Cargo.toml -- --check
+      - name: Rebuild jobs fixture
+        run: sh crates/kawi-plugin/tests/fixtures/wasm/jobs/build.sh
       - name: Check wasm fixtures are current
         run: git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm
       - name: Build WASM trim example
@@ -85,6 +89,8 @@ jobs:
           fi
       - name: Lint WASM trim example
         run: cargo clippy -p wasm-trim --target wasm32-wasip2 -- -D warnings
+      - name: Lint jobs fixture
+        run: cargo clippy --manifest-path crates/kawi-plugin/tests/fixtures/wasm/jobs/Cargo.toml --target wasm32-wasip2 -- -D warnings
       - name: Lint WASM feature
         run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
       - name: Lint WASM test network feature

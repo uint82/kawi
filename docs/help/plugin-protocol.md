@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Background process jobs use the process transport until the WIT job interface ships; WASM plugins keep the one-shot `process-run` interface.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -531,7 +531,7 @@ Settings are sorted by key. Invalid user values and unknown keys are logged, and
 
 Background jobs let a running process plugin start a long-lived child, stream its output, write to its stdin, signal it, and observe its exit. A job keeps running after the command invocation that started it returns. Output and exit events are delivered to the running plugin while no invocation is in flight.
 
-Jobs require the `process.spawn` capability and use the same command scope as the WebAssembly `process-run` interface. Protocol minor 10 exposes jobs to process plugins. The WIT job interface ships in a later minor version, so WASM plugins keep the one-shot `process-run` interface.
+Jobs require the `process.spawn` capability and use the same command scope as the WebAssembly `process-run` interface. Protocol minor 10 exposes jobs to process plugins, and minor 11 exposes them to WASM plugins through the `process-jobs` WIT interface. Process plugins receive `job_output` and `job_exited` notifications while idle. WASM plugins are passive, so Kawi queues the same events and `process.poll` drains them on the next host call.
 
 ### process.open
 
@@ -655,7 +655,26 @@ Result:
 {"state": "running", "exit_code": null, "signal": null}
 ```
 
-Use `process.status` for polling and `job_exited` for waiting. There is no separate wait method or started event; `process.open` returns the job ID synchronously and every event carries it.
+Use `process.status` for polling and `job_exited` for waiting. There is no separate wait method or started event; `process.open` returns the job ID synchronously and every event carries it. WASM plugins use `process.status` and `process.poll`.
+
+### process.poll
+
+Request params:
+
+```json
+{"job": 1}
+```
+
+Result is a list of queued job events:
+
+```json
+[
+  {"event": "job_output", "payload": {"job": 1, "stream": "stdout", "data": "hello", "truncated": false}},
+  {"event": "job_exited", "payload": {"job": 1, "state": "exited", "exit_code": 0, "signal": null}}
+]
+```
+
+`process.poll` drains the queue for one job and returns oldest events first. It is intended for WASM plugins, which are passive and cannot receive notifications while idle. Process plugins normally use `job_output` and `job_exited` notifications; polling a process job returns the events that were queued for WASM delivery, which is empty for the process runtime. The queue holds up to 1024 events or 8 MiB of output per job, whichever is reached first, and drops the oldest events when full. The exit event remains available through `process.status` even if the queue drops it.
 
 ### Limits
 
@@ -664,7 +683,8 @@ Use `process.status` for polling and `job_exited` for waiting. There is no separ
 - A job may receive 1 MiB of stdin per `process.write` call.
 - A job may pass 256 arguments and set 64 environment entries. Arguments are limited to 64 KiB each and 1 MiB in total; environment keys, values, and total size are limited to 1 KiB, 32 KiB, and 128 KiB.
 - Kawi retains exited jobs for five minutes so late `status` calls succeed.
-- Job events use the per-plugin notification queue. If that queue is full, Kawi drops the event; the job keeps running and remains observable through `process.status`.
+- Process job events use the per-plugin notification queue. If that queue is full, Kawi drops the event; the job keeps running and remains observable through `process.status`.
+- WASM job events use a per-job queue capped at 1024 events or 8 MiB. `process.poll` drains the oldest events first; a full queue drops the oldest output.
 
 Stopping, crashing, restarting, reloading, or disabling a plugin kills every job owned by that plugin.
 

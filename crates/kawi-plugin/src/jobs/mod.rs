@@ -1,3 +1,5 @@
+mod control;
+mod events;
 mod monitor;
 mod open;
 mod output;
@@ -18,11 +20,13 @@ use crate::environment::HostEnvironment;
 use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
-    JobState, ProcessJobParams, ProcessOpenParams, ProcessOpenResult, ProcessSignal,
-    ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, RpcError, JOB_CLOSED,
+    JobState, ProcessJobEvent, ProcessJobParams, ProcessOpenParams, ProcessOpenResult,
+    ProcessSignal, ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, RpcError,
     JOB_NOT_FOUND, MAX_JOBS_PER_PLUGIN, MAX_JOB_STDIN_BYTES,
 };
 
+use self::control::{ensure_running, send_signal, set_state, terminate};
+use self::events::JobEventQueue;
 use self::monitor::{spawn_monitor, JobStatus};
 use self::output::{spawn_output, OutputBudget, OutputStream, OutputTracker};
 use self::stdin::StdinHandle;
@@ -46,6 +50,8 @@ struct JobHandle {
     stdin: StdinHandle,
     status: Arc<Mutex<JobStatus>>,
     output: Arc<OutputBudget>,
+    events: Arc<Mutex<JobEventQueue>>,
+    queue_events: bool,
 }
 
 impl JobManager {
@@ -87,7 +93,7 @@ impl JobManager {
             &self.events,
             &self.wake,
             OutputStream {
-                plugin: plugin.manifest.name.clone(),
+                handle: handle.clone(),
                 job,
                 stream: crate::protocol::JobStream::Stdout,
                 budget: Arc::clone(&handle.output),
@@ -99,7 +105,7 @@ impl JobManager {
             &self.events,
             &self.wake,
             OutputStream {
-                plugin: plugin.manifest.name.clone(),
+                handle: handle.clone(),
                 job,
                 stream: crate::protocol::JobStream::Stderr,
                 budget: Arc::clone(&handle.output),
@@ -159,6 +165,16 @@ impl JobManager {
             exit_code: status.exit_code,
             signal: status.signal,
         })
+    }
+
+    pub(crate) fn poll(
+        &self,
+        plugin: &str,
+        params: ProcessJobParams,
+    ) -> Result<Vec<ProcessJobEvent>, RpcError> {
+        let handle = self.entry(plugin, params.job)?;
+        let events = lock(&handle.events).drain();
+        Ok(events)
     }
 
     pub(crate) fn stop_plugin(&self, plugin: &str) {
@@ -223,74 +239,28 @@ impl JobHandle {
     fn state(&self) -> JobState {
         lock(&self.status).state
     }
-}
 
-fn ensure_running(handle: &JobHandle) -> Result<(), RpcError> {
-    if handle.state() == JobState::Running {
-        Ok(())
-    } else {
-        Err(RpcError::new(JOB_CLOSED, "job is not running"))
-    }
-}
-
-fn terminate(handle: &JobHandle) {
-    let mut child = lock(&handle.child);
-    if child.try_wait().ok().flatten().is_some() {
-        return;
-    }
-    kawi_process::terminate(&mut child);
-    set_state(&handle.status, JobState::Killed);
-}
-
-fn set_state(status: &Mutex<JobStatus>, state: JobState) {
-    lock(status).state = state;
-}
-
-#[cfg(unix)]
-fn send_signal(child: &mut Child, signal: ProcessSignal) -> Result<(), RpcError> {
-    kawi_process::signal_group(child.id(), platform_signal(signal));
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn send_signal(child: &mut Child, signal: ProcessSignal) -> Result<(), RpcError> {
-    if signal != ProcessSignal::Kill {
-        return Err(RpcError::unavailable(
-            "signal is not supported on this platform",
-        ));
-    }
-    child
-        .kill()
-        .map_err(|error| RpcError::unavailable(error.to_string()))
-}
-
-#[cfg(unix)]
-fn platform_signal(signal: ProcessSignal) -> kawi_process::ProcessSignal {
-    match signal {
-        ProcessSignal::Interrupt => kawi_process::ProcessSignal::Interrupt,
-        ProcessSignal::Terminate => kawi_process::ProcessSignal::Terminate,
-        ProcessSignal::Kill => kawi_process::ProcessSignal::Kill,
+    fn emit(
+        &self,
+        events: &std::sync::mpsc::Sender<PluginHostEvent>,
+        wake: &std::sync::mpsc::Sender<()>,
+        event: ProcessJobEvent,
+    ) {
+        if self.queue_events {
+            lock(&self.events).push(event.clone());
+        }
+        send_event(
+            events,
+            wake,
+            PluginHostEvent::JobEvent {
+                plugin: self.plugin.clone(),
+                event: event.name().to_string(),
+                payload: event.payload(),
+            },
+        );
     }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|error| error.into_inner())
-}
-
-fn send_job_event(
-    events: &std::sync::mpsc::Sender<PluginHostEvent>,
-    wake: &std::sync::mpsc::Sender<()>,
-    plugin: &str,
-    event: &str,
-    payload: serde_json::Value,
-) {
-    send_event(
-        events,
-        wake,
-        PluginHostEvent::JobEvent {
-            plugin: plugin.to_string(),
-            event: event.to_string(),
-            payload,
-        },
-    );
 }

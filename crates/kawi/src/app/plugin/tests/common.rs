@@ -165,6 +165,14 @@ pub(super) fn wait_for_plugin(app: &mut App, plugin: &str) {
 }
 
 pub(super) fn invoke_plugin(app: &mut App, name: &str) -> Option<String> {
+    invoke_plugin_args(app, name, None)
+}
+
+pub(super) fn invoke_plugin_args(
+    app: &mut App,
+    name: &str,
+    args: Option<toml::Value>,
+) -> Option<String> {
     let command = app.commands.find(name).expect("plugin command");
     let target = match app.commands.spec(command).expect("command spec").handler {
         CommandHandler::Plugin(target) => target,
@@ -176,7 +184,7 @@ pub(super) fn invoke_plugin(app: &mut App, name: &str) -> Option<String> {
         .map(|(plugin, _)| plugin.to_string())
         .expect("plugin target");
     app.message = None;
-    app.run_plugin_command(target, None).unwrap();
+    app.run_plugin_command(target, args).unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         app.poll_plugins();

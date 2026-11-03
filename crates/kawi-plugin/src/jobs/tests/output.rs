@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use super::super::output::Utf8Stream;
 use super::*;
-use crate::protocol::{JobOutputEvent, JOB_OUTPUT_EVENT};
+use crate::protocol::{JobOutputEvent, ProcessJobEvent, ProcessJobParams, JOB_OUTPUT_EVENT};
 
 #[test]
 fn reports_output_before_exit() {
@@ -57,4 +57,44 @@ fn utf8_stream_replaces_invalid_bytes() {
     let mut stream = Utf8Stream::default();
     assert_eq!(stream.push(&[0xff]), "\u{fffd}");
     assert!(stream.finish().is_empty());
+}
+
+#[test]
+fn wasm_jobs_queue_events_until_polled() {
+    let (manager, receiver) = manager("wasm-reader", &["/bin/sh"]);
+    let job = open_with(
+        &manager,
+        &wasm_plugin("wasm-reader"),
+        "/bin/sh",
+        &["-c", "printf hello"],
+    );
+    let exited = wait_exit(&receiver, job);
+    assert_eq!(exited.exit_code, Some(0));
+    let events = manager
+        .poll("wasm-reader", ProcessJobParams { job })
+        .expect("poll");
+    assert!(events
+        .iter()
+        .any(|event| matches!(event, ProcessJobEvent::Output(output) if output.data == "hello")));
+    assert!(matches!(events.last(), Some(ProcessJobEvent::Exited(_))));
+    assert!(manager
+        .poll("wasm-reader", ProcessJobParams { job })
+        .expect("poll")
+        .is_empty());
+}
+
+#[test]
+fn process_jobs_do_not_queue_events() {
+    let (manager, receiver) = manager("process-reader", &["/bin/sh"]);
+    let job = open(
+        &manager,
+        "process-reader",
+        "/bin/sh",
+        &["-c", "printf hello"],
+    );
+    wait_exit(&receiver, job);
+    assert!(manager
+        .poll("process-reader", ProcessJobParams { job })
+        .expect("poll")
+        .is_empty());
 }

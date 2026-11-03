@@ -19,19 +19,20 @@ use serde_json::Value;
 pub use decorations::{decoration_ref, validate_decoration_scope, validate_decorations};
 pub use diagnostics::validate_diagnostics;
 pub use jobs::{
-    JobExitedEvent, JobOutputEvent, JobState, JobStream, ProcessJobParams, ProcessOpenParams,
-    ProcessOpenResult, ProcessSignal, ProcessSignalParams, ProcessStatusResult, ProcessWriteParams,
-    StdinMode, JOB_EXITED_EVENT, JOB_OUTPUT_EVENT, MAX_JOBS_PER_PLUGIN, MAX_JOB_ARGUMENTS,
-    MAX_JOB_ARGUMENT_BYTES, MAX_JOB_ARGUMENT_TOTAL_BYTES, MAX_JOB_ENV_BYTES, MAX_JOB_ENV_ENTRIES,
-    MAX_JOB_ENV_KEY_BYTES, MAX_JOB_ENV_VALUE_BYTES, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
+    JobExitedEvent, JobOutputEvent, JobState, JobStream, ProcessJobEvent, ProcessJobParams,
+    ProcessOpenParams, ProcessOpenResult, ProcessSignal, ProcessSignalParams, ProcessStatusResult,
+    ProcessWriteParams, StdinMode, JOB_EXITED_EVENT, JOB_OUTPUT_EVENT, MAX_JOBS_PER_PLUGIN,
+    MAX_JOB_ARGUMENTS, MAX_JOB_ARGUMENT_BYTES, MAX_JOB_ARGUMENT_TOTAL_BYTES, MAX_JOB_ENV_BYTES,
+    MAX_JOB_ENV_ENTRIES, MAX_JOB_ENV_KEY_BYTES, MAX_JOB_ENV_VALUE_BYTES, MAX_JOB_EVENT_QUEUE_BYTES,
+    MAX_JOB_EVENT_QUEUE_ITEMS, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
 };
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 10;
+pub const PROTOCOL_MINOR: u64 = 11;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 22] = [
+pub const HOST_METHODS: [&str; 23] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -54,6 +55,7 @@ pub const HOST_METHODS: [&str; 22] = [
     "process.signal",
     "process.kill",
     "process.status",
+    "process.poll",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];

@@ -1,6 +1,6 @@
 use kawi_plugin::{
-    ProcessJobParams, ProcessOpenParams, ProcessSignalParams, ProcessWriteParams, RpcError,
-    INTERNAL_ERROR,
+    ProcessJobEvent, ProcessJobParams, ProcessOpenParams, ProcessSignalParams, ProcessWriteParams,
+    RpcError, INTERNAL_ERROR,
 };
 use serde_json::Value;
 
@@ -71,6 +71,17 @@ impl PluginRuntime {
             .job_status(plugin, params)
     }
 
+    pub(crate) fn poll_job(
+        &self,
+        plugin: &str,
+        params: ProcessJobParams,
+    ) -> Result<Vec<ProcessJobEvent>, RpcError> {
+        self.host
+            .as_ref()
+            .ok_or_else(|| RpcError::unavailable("plugin host is not running"))?
+            .poll_job(plugin, params)
+    }
+
     pub(crate) fn stop_jobs(&self, plugin: &str) {
         if let Some(host) = self.host.as_ref() {
             host.stop_jobs(plugin);
@@ -131,5 +142,10 @@ impl App {
         let status = self.plugins.job_status(plugin, params)?;
         serde_json::to_value(status)
             .map_err(|error| RpcError::new(INTERNAL_ERROR, error.to_string()))
+    }
+
+    pub(super) fn plugin_poll_job(&self, plugin: &str, params: Value) -> Result<Value, RpcError> {
+        let params: ProcessJobParams = serde_json::from_value(params).map_err(invalid_params)?;
+        json_result(self.plugins.poll_job(plugin, params)?)
     }
 }

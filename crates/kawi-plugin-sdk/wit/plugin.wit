@@ -1,4 +1,4 @@
-package kawi:plugin@0.5.0;
+package kawi:plugin@0.6.0;
 
 interface types {
   record position {
@@ -250,6 +250,74 @@ interface process-run {
   run: func(command: string, args: list<string>, timeout-ms: u32) -> result<process-output, error>;
 }
 
+interface process-jobs {
+  use types.{error};
+
+  enum stdin-mode {
+    pipe,
+    null,
+  }
+
+  enum job-signal {
+    interrupt,
+    terminate,
+    kill,
+  }
+
+  enum job-stream {
+    stdout,
+    stderr,
+  }
+
+  enum job-state {
+    running,
+    exited,
+    killed,
+    failed,
+  }
+
+  record open-params {
+    command: string,
+    args: list<string>,
+    cwd: option<string>,
+    env: list<tuple<string, string>>,
+    stdin: stdin-mode,
+  }
+
+  record job-status {
+    state: job-state,
+    exit-code: option<s32>,
+    signal: option<s32>,
+  }
+
+  record job-output {
+    job: u64,
+    channel: job-stream,
+    data: string,
+    truncated: bool,
+  }
+
+  record job-exited {
+    job: u64,
+    state: job-state,
+    exit-code: option<s32>,
+    signal: option<s32>,
+  }
+
+  variant job-event {
+    output(job-output),
+    exited(job-exited),
+  }
+
+  open: func(params: open-params) -> result<u64, error>;
+  write: func(job: u64, data: string) -> result<_, error>;
+  close-stdin: func(job: u64) -> result<_, error>;
+  signal: func(job: u64, signal: job-signal) -> result<_, error>;
+  kill: func(job: u64) -> result<_, error>;
+  status: func(job: u64) -> result<job-status, error>;
+  poll: func(job: u64) -> result<list<job-event>, error>;
+}
+
 interface lifecycle {
   use types.{argument, error, event};
   init: func(host-protocol: u32) -> result<_, error>;
@@ -270,5 +338,6 @@ world host {
   import editor-signs;
   import ui-statusline;
   import process-run;
+  import process-jobs;
   export lifecycle;
 }

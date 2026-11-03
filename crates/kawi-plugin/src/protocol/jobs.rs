@@ -13,6 +13,8 @@ pub const MAX_JOB_ENV_BYTES: usize = 128 * 1024;
 pub const MAX_JOB_ARGUMENTS: usize = 256;
 pub const MAX_JOB_ARGUMENT_BYTES: usize = 64 * 1024;
 pub const MAX_JOB_ARGUMENT_TOTAL_BYTES: usize = 1024 * 1024;
+pub const MAX_JOB_EVENT_QUEUE_ITEMS: usize = 1024;
+pub const MAX_JOB_EVENT_QUEUE_BYTES: usize = MAX_JOB_OUTPUT_BYTES + 64 * 1024;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -105,4 +107,37 @@ pub struct JobExitedEvent {
     pub exit_code: Option<i32>,
     #[serde(default)]
     pub signal: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "event", content = "payload")]
+pub enum ProcessJobEvent {
+    #[serde(rename = "job_output")]
+    Output(JobOutputEvent),
+    #[serde(rename = "job_exited")]
+    Exited(JobExitedEvent),
+}
+
+impl ProcessJobEvent {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Output(_) => JOB_OUTPUT_EVENT,
+            Self::Exited(_) => JOB_EXITED_EVENT,
+        }
+    }
+
+    pub fn payload(&self) -> serde_json::Value {
+        match self {
+            Self::Output(event) => serde_json::to_value(event),
+            Self::Exited(event) => serde_json::to_value(event),
+        }
+        .expect("job event serializes")
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Self::Output(event) => event.data.len() + 64,
+            Self::Exited(_) => 64,
+        }
+    }
 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 - 2026-11-03
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.6.0 (`kawi:plugin@0.6.0`).
+- Components built against `kawi:plugin@0.5.0` must be rebuilt with this release.
+
+### Added
+
+- Add the `process-jobs` interface for opening, writing to, signaling, killing, polling, and inspecting long-running jobs.
+- Add `process_jobs` re-exports with typed job events and status.
+- Queue WASM job output and exit events for `process_jobs::poll` because WASM plugins are passive.
+
 ## 0.5.0 - 2026-11-01
 
 ### Breaking

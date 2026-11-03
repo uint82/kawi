@@ -184,3 +184,12 @@ fn job_events_are_scoped_to_the_plugin() {
         .kill("other", ProcessJobParams { job })
         .expect_err("cross-plugin access");
 }
+
+#[test]
+fn stop_plugin_kills_wasm_jobs() {
+    let (manager, receiver) = manager("wasm-stopper", &["/bin/sleep"]);
+    let job = open_with(&manager, &wasm_plugin("wasm-stopper"), "/bin/sleep", &["5"]);
+    manager.stop_plugin("wasm-stopper");
+    let exited = wait_exit(&receiver, job);
+    assert_eq!(exited.state, JobState::Killed);
+}

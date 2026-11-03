@@ -14,3 +14,5 @@ mod visual;
 mod wasm;
 #[cfg(feature = "wasm")]
 mod wasm_composition;
+#[cfg(all(feature = "wasm", unix))]
+mod wasm_jobs;
