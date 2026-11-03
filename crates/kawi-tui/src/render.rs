@@ -1255,23 +1255,20 @@ fn paint_diagnostic<W: Write>(
         return paint_selected_diagnostic(out, text, paint, theme);
     }
     let color = theme.diagnostic_color(paint.severity);
+    paint::apply_colors(
+        out,
+        theme.base.foreground,
+        theme.base.background,
+        "reset diagnostic colors",
+    )?;
     match paint.tag {
-        Some(crate::frame::DiagnosticTag::Unnecessary) => {
-            paint::apply_faded_text(out, color)?;
-            write_segment(out, text)?;
-            paint::clear_decorations(out)
-        }
-        Some(crate::frame::DiagnosticTag::Deprecated) => {
-            paint::apply_struck_text(out, color)?;
-            write_segment(out, text)?;
-            paint::clear_decorations(out)
-        }
-        None => {
-            paint::apply_underline(out, color)?;
-            write_segment(out, text)?;
-            paint::clear_underline(out)
-        }
+        Some(crate::frame::DiagnosticTag::Unnecessary) => paint::apply_faded_text(out, color)?,
+        Some(crate::frame::DiagnosticTag::Deprecated) => paint::apply_struck_text(out, color)?,
+        None => paint::apply_underline(out, color)?,
     }
+    write_segment(out, text)?;
+    paint::clear_decorations(out)?;
+    paint::restore_base(out, theme)
 }
 
 fn paint_selected_diagnostic<W: Write>(
@@ -2837,6 +2834,36 @@ mod tests {
             },
         };
         assert!(diagnostic_segments(&diagnostic, &[], &[], 8).is_none());
+    }
+
+    #[test]
+    fn faded_diagnostics_keep_the_theme_background() {
+        let theme = Theme::default();
+        let severity = crate::frame::DiagnosticSeverity::Hint;
+        let mut out = Vec::new();
+        paint_diagnostic(
+            &mut out,
+            "x",
+            DiagnosticPaint {
+                severity,
+                tag: Some(crate::frame::DiagnosticTag::Unnecessary),
+                selected: false,
+                syntax: None,
+            },
+            &theme,
+        )
+        .unwrap();
+        let output = String::from_utf8(out).unwrap();
+        let mut prefix = Vec::new();
+        execute!(
+            prefix,
+            SetForegroundColor(theme.base.foreground),
+            crossterm::style::SetBackgroundColor(theme.base.background),
+            SetForegroundColor(theme.diagnostic_color(severity)),
+            SetAttribute(Attribute::Dim)
+        )
+        .unwrap();
+        assert!(output.starts_with(&String::from_utf8(prefix).unwrap()));
     }
 
     #[test]

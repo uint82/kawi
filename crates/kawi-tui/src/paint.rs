@@ -53,16 +53,6 @@ pub fn clear_decorations<W: Write>(out: &mut W) -> Result<()> {
     Ok(())
 }
 
-pub fn clear_underline<W: Write>(out: &mut W) -> Result<()> {
-    execute!(
-        out,
-        SetAttribute(Attribute::NoUnderline),
-        SetUnderlineColor(Color::Reset)
-    )
-    .context("clear diagnostic underline")?;
-    Ok(())
-}
-
 pub fn restore_base<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
     apply_colors(
         out,
