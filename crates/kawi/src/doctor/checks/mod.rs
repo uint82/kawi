@@ -1,4 +1,5 @@
 mod config;
+mod debug;
 mod git;
 mod keymaps;
 mod languages;
@@ -28,6 +29,7 @@ pub(crate) fn collect(target: &Path, workspace: &Path, paths: Option<&StatePaths
         plugin_keybindings::check(paths),
         plugins::check(paths),
         languages::check(paths),
+        debug::check(paths, workspace),
         tasks::check(paths, workspace),
         git::check(workspace),
         session::check(paths, super::working_directory(target)),

@@ -8,6 +8,7 @@ use crate::state::StatePaths;
 const HEALTH_TOPIC: &str = "health";
 const HEALTH_CHECKS: &[(&str, &str)] = &[
     ("config", "config"),
+    ("debug", "debug"),
     ("git", "git"),
     ("keymaps", "keymaps"),
     ("languages", "languages"),
