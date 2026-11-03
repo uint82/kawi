@@ -23,6 +23,7 @@ mod completion_resolve;
 mod completion_snippet;
 mod diagnostics;
 mod document;
+mod events;
 mod file_operations;
 mod formatting;
 mod initialize;
@@ -34,6 +35,7 @@ mod pending;
 mod pull_diagnostics;
 mod rename;
 mod request;
+mod shutdown;
 mod signature_help;
 mod symbols;
 mod text_requests;
@@ -820,11 +822,13 @@ struct Manager {
     workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics,
     next_request: i64,
     next_completion_item: u64,
+    next_client_generation: u64,
     initialize_timeout: Duration,
 }
 
 struct ClientState {
     client: Client,
+    generation: u64,
     status: ServerState,
     sync: SyncConfig,
     encoding: PositionEncodingKind,

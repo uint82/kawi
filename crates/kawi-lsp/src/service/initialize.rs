@@ -151,7 +151,9 @@ impl Manager {
 
     pub(super) fn start_client(&mut self, key: ClientKey, config: &ServerConfig, root: &Path) {
         self.emit_status(&key.server, ServerState::Starting, None);
-        let client = Client::spawn(key.clone(), config, self.input_tx.clone());
+        self.next_client_generation = self.next_client_generation.wrapping_add(1);
+        let generation = self.next_client_generation;
+        let client = Client::spawn(key.clone(), generation, config, self.input_tx.clone());
         let client = match client {
             Ok(client) => client,
             Err(error) => {
@@ -172,6 +174,7 @@ impl Manager {
             key.clone(),
             ClientState {
                 client,
+                generation,
                 status: ServerState::Initializing,
                 sync: SyncConfig::default(),
                 encoding: PositionEncodingKind::UTF16,

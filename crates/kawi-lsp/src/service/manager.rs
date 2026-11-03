@@ -1,11 +1,7 @@
 use super::request::UiMessage;
 use super::*;
-use crate::client::ClientEvent;
-use crate::protocol::Message;
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
-
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 impl Manager {
     pub(super) fn new(
@@ -40,6 +36,7 @@ impl Manager {
             workspace_diagnostics: workspace_diagnostics::WorkspaceDiagnostics::default(),
             next_request: 0,
             next_completion_item: 0,
+            next_client_generation: 0,
             initialize_timeout,
         }
     }
@@ -207,107 +204,6 @@ impl Manager {
             Command::Cancel { request } => self.cancel_request(request),
             Command::Shutdown => {}
         }
-    }
-
-    fn handle_client_event(&mut self, event: ClientEvent) {
-        match event {
-            ClientEvent::Message { key, message } => self.handle_message(key, message),
-            ClientEvent::ReaderClosed { key, error } => self.client_failed(
-                key,
-                error.unwrap_or_else(|| "server closed stdout".to_string()),
-            ),
-            ClientEvent::WriterClosed { key, error } => self.client_failed(key, error),
-            ClientEvent::Stderr { key, line } => self.emit(LspEvent::Log {
-                server: key.server,
-                message: line,
-            }),
-        }
-    }
-
-    fn handle_message(&mut self, key: ClientKey, message: Message) {
-        match message {
-            Message::Request { id, method, params } => {
-                self.handle_request(key, id, method, params);
-            }
-            Message::Notification { method, params } => {
-                self.handle_notification(key, method, params);
-            }
-            Message::Response { id, result } => {
-                self.handle_response(key, id, result);
-            }
-        }
-    }
-
-    pub(super) fn client_failed(&mut self, key: ClientKey, message: String) {
-        let mut client = match self.clients.remove(&key) {
-            Some(client) => client,
-            None => return,
-        };
-        let exit = client.client.try_wait().ok().flatten();
-        let status = if message.is_empty() {
-            client.status
-        } else if exit.is_some_and(|status| status.success()) {
-            ServerState::Stopped
-        } else {
-            ServerState::Failed
-        };
-        client.client.terminate();
-        self.fail_requests_for_client(&key, &message);
-        self.pull_diagnostics.fail_client(&key);
-        self.workspace_diagnostics.fail_client(&key);
-        self.pending_commands.retain(|_, client| client != &key);
-        for document in self.documents.values_mut() {
-            document.clients.retain(|candidate| candidate != &key);
-        }
-        self.emit_status(
-            &key.server,
-            status,
-            (!message.is_empty()).then_some(message),
-        );
-    }
-
-    fn shutdown_all(&mut self) {
-        let clients: Vec<(ClientKey, ClientState)> = self.clients.drain().collect();
-        for (key, mut client) in clients {
-            self.shutdown_client(&key, &mut client);
-            client.client.terminate();
-            self.emit_status(&key.server, ServerState::Stopped, None);
-        }
-    }
-
-    fn shutdown_client(&mut self, key: &ClientKey, client: &mut ClientState) {
-        let id = self.request_id();
-        if !client
-            .client
-            .send(Message::request(id.clone(), "shutdown", None))
-        {
-            return;
-        }
-        let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            match self.input.recv_timeout(remaining) {
-                Ok(ServiceInput::Client(ClientEvent::Message {
-                    key: event_key,
-                    message:
-                        Message::Response {
-                            id: response_id, ..
-                        },
-                })) if event_key == *key && response_id == id => break,
-                Ok(ServiceInput::Client(ClientEvent::ReaderClosed { key: event_key, .. }))
-                    if event_key == *key =>
-                {
-                    return
-                }
-                Ok(_) => {}
-                Err(_) => break,
-            }
-        }
-        client.client.send(Message::notification("exit", None));
-        let _ = client.client.wait_timeout(SHUTDOWN_TIMEOUT);
     }
 
     pub(super) fn emit_status(&self, server: &str, state: ServerState, message: Option<String>) {

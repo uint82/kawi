@@ -13,7 +13,7 @@ use std::time::Duration;
 
 const MAX_LOG_LINE: usize = 8 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct ClientKey {
     pub(crate) server: String,
     pub(crate) root: PathBuf,
@@ -23,18 +23,22 @@ pub(crate) struct ClientKey {
 pub(crate) enum ClientEvent {
     Message {
         key: ClientKey,
+        generation: u64,
         message: Message,
     },
     ReaderClosed {
         key: ClientKey,
+        generation: u64,
         error: Option<String>,
     },
     WriterClosed {
         key: ClientKey,
+        generation: u64,
         error: String,
     },
     Stderr {
         key: ClientKey,
+        generation: u64,
         line: String,
     },
 }
@@ -47,20 +51,23 @@ pub(crate) struct Client {
 impl Client {
     pub(crate) fn spawn(
         key: ClientKey,
+        generation: u64,
         config: &ServerConfig,
         input: Sender<ServiceInput>,
     ) -> Result<Self> {
         let (mut process, io) = ServerProcess::spawn(config, &key.root)?;
         let (writer, writer_rx) = mpsc::channel();
-        if let Err(error) = spawn_writer(key.clone(), io.stdin, writer_rx, input.clone()) {
+        if let Err(error) =
+            spawn_writer(key.clone(), generation, io.stdin, writer_rx, input.clone())
+        {
             process.terminate();
             return Err(error);
         }
-        if let Err(error) = spawn_reader(key.clone(), io.stdout, input.clone()) {
+        if let Err(error) = spawn_reader(key.clone(), generation, io.stdout, input.clone()) {
             process.terminate();
             return Err(error);
         }
-        if let Err(error) = spawn_stderr(key.clone(), io.stderr, input) {
+        if let Err(error) = spawn_stderr(key.clone(), generation, io.stderr, input) {
             process.terminate();
             return Err(error);
         }
@@ -86,43 +93,47 @@ impl Client {
 
 fn spawn_writer(
     key: ClientKey,
+    generation: u64,
     stdin: std::process::ChildStdin,
     receiver: mpsc::Receiver<Message>,
     input: Sender<ServiceInput>,
 ) -> Result<()> {
     thread::Builder::new()
         .name(format!("lsp-write-{}", key.server))
-        .spawn(move || write_loop(key, stdin, receiver, input))
+        .spawn(move || write_loop(key, generation, stdin, receiver, input))
         .context("spawn lsp writer")?;
     Ok(())
 }
 
 fn spawn_reader(
     key: ClientKey,
+    generation: u64,
     stdout: std::process::ChildStdout,
     input: Sender<ServiceInput>,
 ) -> Result<()> {
     thread::Builder::new()
         .name(format!("lsp-read-{}", key.server))
-        .spawn(move || read_loop(key, stdout, input))
+        .spawn(move || read_loop(key, generation, stdout, input))
         .context("spawn lsp reader")?;
     Ok(())
 }
 
 fn spawn_stderr(
     key: ClientKey,
+    generation: u64,
     stderr: std::process::ChildStderr,
     input: Sender<ServiceInput>,
 ) -> Result<()> {
     thread::Builder::new()
         .name(format!("lsp-log-{}", key.server))
-        .spawn(move || stderr_loop(key, stderr, input))
+        .spawn(move || stderr_loop(key, generation, stderr, input))
         .context("spawn lsp stderr reader")?;
     Ok(())
 }
 
 fn write_loop(
     key: ClientKey,
+    generation: u64,
     stdin: std::process::ChildStdin,
     receiver: mpsc::Receiver<Message>,
     input: Sender<ServiceInput>,
@@ -134,6 +145,7 @@ fn write_loop(
                 &input,
                 ClientEvent::WriterClosed {
                     key,
+                    generation,
                     error: error.to_string(),
                 },
             );
@@ -142,7 +154,12 @@ fn write_loop(
     }
 }
 
-fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<ServiceInput>) {
+fn read_loop(
+    key: ClientKey,
+    generation: u64,
+    stdout: std::process::ChildStdout,
+    input: Sender<ServiceInput>,
+) {
     let mut reader = BufReader::new(stdout);
     loop {
         match framing::read_message(&mut reader) {
@@ -151,6 +168,7 @@ fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<Se
                     &input,
                     ClientEvent::Message {
                         key: key.clone(),
+                        generation,
                         message,
                     },
                 ),
@@ -159,6 +177,7 @@ fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<Se
                         &input,
                         ClientEvent::ReaderClosed {
                             key,
+                            generation,
                             error: Some(error.to_string()),
                         },
                     );
@@ -166,7 +185,14 @@ fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<Se
                 }
             },
             Ok(None) => {
-                send_input(&input, ClientEvent::ReaderClosed { key, error: None });
+                send_input(
+                    &input,
+                    ClientEvent::ReaderClosed {
+                        key,
+                        generation,
+                        error: None,
+                    },
+                );
                 return;
             }
             Err(error) => {
@@ -174,6 +200,7 @@ fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<Se
                     &input,
                     ClientEvent::ReaderClosed {
                         key,
+                        generation,
                         error: Some(error.to_string()),
                     },
                 );
@@ -183,7 +210,12 @@ fn read_loop(key: ClientKey, stdout: std::process::ChildStdout, input: Sender<Se
     }
 }
 
-fn stderr_loop(key: ClientKey, stderr: std::process::ChildStderr, input: Sender<ServiceInput>) {
+fn stderr_loop(
+    key: ClientKey,
+    generation: u64,
+    stderr: std::process::ChildStderr,
+    input: Sender<ServiceInput>,
+) {
     let mut reader = BufReader::new(stderr);
     let mut line = String::new();
     loop {
@@ -197,6 +229,7 @@ fn stderr_loop(key: ClientKey, stderr: std::process::ChildStderr, input: Sender<
                     &input,
                     ClientEvent::Stderr {
                         key: key.clone(),
+                        generation,
                         line: text,
                     },
                 );
