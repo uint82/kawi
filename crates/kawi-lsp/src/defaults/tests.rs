@@ -88,6 +88,11 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("haskell"), vec!["haskell-language-server"]);
     assert_eq!(servers_for("ocaml"), vec!["ocamllsp"]);
     assert_eq!(servers_for("gleam"), vec!["gleam"]);
+    assert_eq!(servers_for("sql"), vec!["sqls"]);
+    assert_eq!(servers_for("protobuf"), vec!["buf"]);
+    assert_eq!(servers_for("terraform"), vec!["terraform-ls"]);
+    assert_eq!(servers_for("nix"), vec!["nixd"]);
+    assert_eq!(servers_for("dockerfile"), vec!["docker-langserver"]);
 }
 
 #[test]
