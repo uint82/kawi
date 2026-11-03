@@ -27,8 +27,10 @@ String values support `${workspace}`, `${file}`, `${fileDirname}`, and `${env:NA
 ## Session commands
 
 - `:debug start [configuration]` starts a session. Without a name, Kawi uses the first configuration matching the buffer language.
-- `:debug restart` stops the current session and starts the last configuration again.
+- `:debug restart` uses the adapter restart request when supported, otherwise it stops the session and starts the last configuration again.
 - `:debug stop` disconnects and terminates the debuggee.
+- `:debug terminate` asks the adapter to terminate the debuggee without disconnecting first.
+- `:debug panel` opens, focuses, or closes the debug panel.
 - `:debug continue` resumes execution.
 - `:debug next` steps over, `:debug step` steps in, and `:debug out` steps out.
 - `:debug status` shows the session state, thread, frame, and breakpoint count.
@@ -57,10 +59,25 @@ Conditional, hit-count, and log breakpoints depend on adapter capabilities. Func
 - `:debug stack` shows the current call stack.
 - `:debug variables` shows every scope for the current frame.
 - `:debug expand <reference>` shows nested variables for a reference listed in a variables report.
+- `:debug more <reference>` loads the next page of variables for an expanded reference.
+- `:debug set <reference> <name> <value>` updates a variable through the adapter.
+- `:debug frame <id>` selects a stack frame, jumps to its source location, and refreshes its scopes.
 - `:debug threads` lists threads and marks the current thread.
 - `:debug thread <id>` selects a thread and refreshes the stack when stopped.
 
-Variable and scope entries include a `[ref N]` marker when they can be expanded.
+Variable and scope entries include a `[ref N]` marker when they can be expanded. Adapters that report variable counts are queried in pages of 100 entries. Reports show how many entries are loaded and how to load more.
+
+## Debug panel
+
+The debug panel opens automatically when a session starts and can be toggled with `:debug panel`. It shows the session status, threads, call stack, scopes and variables, watches, breakpoints, function breakpoints, exception filters, and console output.
+
+- `j` and `k` move the selection.
+- `Ctrl+d`, `Ctrl+u`, `PageDown`, and `PageUp` scroll by a page.
+- `g` and `G` jump to the first or last entry.
+- `Enter` selects a thread or frame, expands a variable, loads more variables, toggles an exception filter, or jumps to a breakpoint.
+- `r` refreshes threads.
+- `q` or `Escape` returns focus to the editor.
+- `x` closes the panel.
 
 ## Console and watches
 
@@ -79,7 +96,7 @@ Kawi supports the DAP `runInTerminal` reverse request for integrated terminals. 
 
 ## Built-in commands
 
-The commands `debug.start`, `debug.restart`, `debug.stop`, `debug.continue`, `debug.next`, `debug.step_in`, `debug.step_out`, `debug.breakpoint`, `debug.stack`, `debug.variables`, `debug.threads`, `debug.functions`, `debug.exceptions`, `debug.console`, `debug.watches`, and `debug.status` are available for keymaps and plugins.
+The commands `debug.start`, `debug.restart`, `debug.stop`, `debug.terminate`, `debug.panel`, `debug.continue`, `debug.next`, `debug.step_in`, `debug.step_out`, `debug.breakpoint`, `debug.stack`, `debug.variables`, `debug.threads`, `debug.functions`, `debug.exceptions`, `debug.console`, `debug.watches`, and `debug.status` are available for keymaps and plugins.
 
 ## Status and health
 
@@ -89,4 +106,4 @@ Run `:health debug` to validate configured adapters and configurations. The chec
 
 ## Current limits
 
-Kawi does not yet implement data breakpoints, instruction breakpoints, memory reads or writes, set-variable requests, variable paging, exception filter options, or multi-session `startDebugging`. Restart starts a new adapter process instead of using the optional DAP `restart` request.
+Kawi does not yet implement data breakpoints, instruction breakpoints, memory reads or writes, exception filter options, or multi-session `startDebugging`. External terminal requests remain unsupported.
