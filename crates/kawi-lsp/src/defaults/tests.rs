@@ -67,7 +67,7 @@ fn built_in_languages_map_to_standard_servers() {
             .clone()
     };
     assert_eq!(servers_for("rust"), vec!["rust-analyzer"]);
-    assert_eq!(servers_for("python"), vec!["pyright"]);
+    assert_eq!(servers_for("python"), vec!["pyright", "ruff"]);
     assert_eq!(servers_for("c"), vec!["clangd"]);
     assert_eq!(servers_for("cpp"), vec!["clangd"]);
     assert_eq!(servers_for("go"), vec!["gopls"]);
@@ -79,6 +79,9 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("html"), vec!["vscode-html-language-server"]);
     assert_eq!(servers_for("yaml"), vec!["yaml-language-server"]);
     assert_eq!(servers_for("toml"), vec!["taplo"]);
+    assert_eq!(servers_for("ruby"), vec!["ruby-lsp"]);
+    assert_eq!(servers_for("lua"), vec!["lua-language-server"]);
+    assert_eq!(servers_for("bash"), vec!["bash-language-server"]);
 }
 
 #[test]

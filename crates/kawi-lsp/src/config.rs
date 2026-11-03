@@ -418,7 +418,7 @@ mod tests {
         );
         assert_eq!(
             languages.language("python").expect("python").servers,
-            vec!["pyright"]
+            vec!["pyright", "ruff"]
         );
     }
 
