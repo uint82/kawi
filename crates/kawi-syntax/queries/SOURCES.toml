@@ -52,3 +52,13 @@ license = "MIT"
 name = "tree-sitter-go"
 version = "0.25.0"
 license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-java"
+version = "0.23.5"
+license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-c-sharp"
+version = "0.23.5"
+license = "MIT"

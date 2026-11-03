@@ -18,17 +18,19 @@ pub enum LanguageId {
     C,
     Cpp,
     Go,
+    Java,
+    CSharp,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 12]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 14]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -41,6 +43,8 @@ impl LanguageId {
         Self::C,
         Self::Cpp,
         Self::Go,
+        Self::Java,
+        Self::CSharp,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -68,6 +72,8 @@ impl LanguageId {
             "c" => Some(Self::C),
             "cpp" | "c++" | "cxx" | "cc" | "h" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
             "go" => Some(Self::Go),
+            "java" => Some(Self::Java),
+            "cs" | "csharp" | "c-sharp" => Some(Self::CSharp),
             _ => None,
         }
     }
@@ -86,6 +92,8 @@ impl LanguageId {
             Self::C => "c",
             Self::Cpp => "cpp",
             Self::Go => "go",
+            Self::Java => "java",
+            Self::CSharp => "csharp",
         }
     }
 
@@ -102,6 +110,8 @@ impl LanguageId {
             Self::C => tree_sitter_c::LANGUAGE.into(),
             Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
             Self::Go => tree_sitter_go::LANGUAGE.into(),
+            Self::Java => tree_sitter_java::LANGUAGE.into(),
+            Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
         }
     }
 
@@ -126,6 +136,8 @@ impl LanguageId {
                 tree_sitter_cpp::HIGHLIGHT_QUERY
             ),
             Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
+            Self::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
+            Self::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.to_string(),
         };
         let script = include_str!("../queries/script-common.scm");
         let javascript_additions = include_str!("../queries/javascript.scm");
@@ -142,7 +154,7 @@ impl LanguageId {
             Self::Toml => include_str!("../queries/toml.scm").to_string(),
             Self::Json => include_str!("../queries/json.scm").to_string(),
             Self::C | Self::Cpp => include_str!("../queries/c.scm").to_string(),
-            Self::Go => String::new(),
+            Self::Go | Self::Java | Self::CSharp => String::new(),
         };
         format!("{base}\n{additions}")
     }
@@ -173,6 +185,8 @@ impl LanguageId {
             Self::C => 9,
             Self::Cpp => 10,
             Self::Go => 11,
+            Self::Java => 12,
+            Self::CSharp => 13,
         }
     }
 

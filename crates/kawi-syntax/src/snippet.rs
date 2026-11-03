@@ -218,6 +218,11 @@ mod tests {
             (LanguageId::C, "int main(void) { return 0; }"),
             (LanguageId::Cpp, "int main() { return 0; }"),
             (LanguageId::Go, "package main\nfunc main() {}"),
+            (
+                LanguageId::Java,
+                "class Main { public static void main(String[] args) {} }",
+            ),
+            (LanguageId::CSharp, "class Main { static void Main() {} }"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -247,6 +252,8 @@ mod tests {
             (LanguageId::C, "return 0;"),
             (LanguageId::Cpp, "return 0;"),
             (LanguageId::Go, "func main() {}"),
+            (LanguageId::Java, "return 1;"),
+            (LanguageId::CSharp, "return 1;"),
         ];
         for (language, fragment) in fragments {
             assert!(
