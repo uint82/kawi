@@ -35,6 +35,12 @@ impl App {
             "ui.progress_finish" => self.plugin_progress_finish(params),
             "config.get" => self.plugin_config_get(plugin, params),
             "config.list" => self.plugin_config_list(plugin, params),
+            "process.open" => self.plugin_open_job(plugin, params),
+            "process.write" => self.plugin_write_job(plugin, params),
+            "process.close_stdin" => self.plugin_close_job_stdin(plugin, params),
+            "process.signal" => self.plugin_signal_job(plugin, params),
+            "process.kill" => self.plugin_kill_job(plugin, params),
+            "process.status" => self.plugin_job_status(plugin, params),
             _ => Err(RpcError::method_not_found(method)),
         }
     }
@@ -181,7 +187,7 @@ impl App {
     }
 }
 
-fn json_result<T: serde::Serialize>(value: T) -> Result<Value, RpcError> {
+pub(super) fn json_result<T: serde::Serialize>(value: T) -> Result<Value, RpcError> {
     serde_json::to_value(value).map_err(|error| RpcError::new(INTERNAL_ERROR, error.to_string()))
 }
 

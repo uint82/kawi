@@ -8,6 +8,7 @@ mod events;
 mod host_methods;
 mod install;
 mod invoke;
+mod jobs;
 mod load;
 mod notify;
 mod queue;

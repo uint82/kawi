@@ -58,6 +58,30 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "ui.set_statusline",
         reason: "requires editor statusline state; covered by app plugin visual tests",
     },
+    Uncovered {
+        name: "process.open",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
+    Uncovered {
+        name: "process.write",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
+    Uncovered {
+        name: "process.close_stdin",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
+    Uncovered {
+        name: "process.signal",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
+    Uncovered {
+        name: "process.kill",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
+    Uncovered {
+        name: "process.status",
+        reason: "requires a live child process; covered by app plugin job tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
 

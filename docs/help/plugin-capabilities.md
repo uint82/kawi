@@ -55,6 +55,10 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 
 `process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Bare names are resolved with the host `PATH` when the sandbox is built. Arguments are not scoped.
 
+For process plugins, `process.spawn` also enables background jobs through `process.open`, `process.write`, `process.close_stdin`, `process.signal`, `process.kill`, and `process.status`. A job command must resolve to an entry in the same command scope. Jobs run in the plugin directory by default. A job `cwd` may be the plugin directory, the workspace, or the configuration directory; relative paths resolve from the plugin directory. Job environment entries add to or override the inherited environment. Each plugin may run 16 jobs, each job may emit 8 MiB of output, and each write may send 1 MiB. Kawi kills a plugin's jobs when the plugin stops, restarts, reloads, or is disabled. See [Plugin protocol](help:plugin-protocol) for the job methods and events.
+
+The WebAssembly runtime keeps the one-shot `process-run` interface in protocol minor 10. The versioned job interface will add parity in a later minor version.
+
 ## Editor commands
 
 `editor.execute` takes `commands`, an array of built-in editor command IDs. Command IDs are lowercase and may contain dots, hyphens, and underscores. The list must not be empty and wildcards are not supported. Scope entries use canonical IDs such as `file.save` and `edit.format`; aliases are accepted at call time only when the canonical ID is allowed.

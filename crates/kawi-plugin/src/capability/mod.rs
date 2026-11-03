@@ -8,8 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-#[cfg(feature = "wasm")]
-pub(crate) use command::resolve as resolve_command;
+pub(crate) use command::{authorize_command, resolve as resolve_command};
 pub use method::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
     is_event_allowed, is_host_method_allowed, MethodCapability,

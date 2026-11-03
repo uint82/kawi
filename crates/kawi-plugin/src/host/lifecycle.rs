@@ -10,6 +10,7 @@ use crate::process::start_worker;
 use super::host_worker::HostWorker;
 use super::wasm::wasm_worker;
 use super::{PluginHost, PluginHostEvent};
+use crate::jobs::JobManager;
 
 impl PluginHost {
     pub fn start(
@@ -28,8 +29,21 @@ impl PluginHost {
                 wake: &wake,
             },
         );
+        let plugins = catalog
+            .plugins
+            .iter()
+            .map(|plugin| (plugin.manifest.name.clone(), plugin.clone()))
+            .collect();
+        let jobs = JobManager::new(
+            capabilities.clone(),
+            environment.clone(),
+            events.clone(),
+            wake.clone(),
+        );
         let host = Self {
             workers,
+            plugins,
+            jobs,
             capabilities,
             next_request: std::sync::atomic::AtomicU64::new(1),
             environment,
@@ -48,7 +62,7 @@ impl PluginHost {
         match plugin {
             Some(name) => self.reload_plugin(catalog, name),
             None => {
-                self.shutdown();
+                self.jobs.shutdown();
                 self.workers = build_workers(
                     &catalog.plugins,
                     &HostContext {
@@ -58,6 +72,11 @@ impl PluginHost {
                         wake: &self.wake,
                     },
                 );
+                self.plugins = catalog
+                    .plugins
+                    .iter()
+                    .map(|plugin| (plugin.manifest.name.clone(), plugin.clone()))
+                    .collect();
                 self.activate_startup(catalog, None);
                 Ok(())
             }
@@ -70,9 +89,11 @@ impl PluginHost {
             .iter()
             .find(|plugin| plugin.manifest.name == name)
             .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {name}")))?;
+        self.stop_jobs(name);
         if let Some(worker) = self.workers.remove(name) {
             worker.shutdown();
         }
+        self.plugins.insert(name.to_string(), plugin.clone());
         let worker = build_worker(
             plugin,
             &HostContext {

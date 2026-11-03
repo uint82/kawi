@@ -8,9 +8,14 @@ use serde_json::Value;
 use crate::capability::{is_event_allowed, Capability, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
+use crate::jobs::JobManager;
+use crate::manifest::LoadedPlugin;
 use crate::payload_size::payload_too_large;
 use crate::process::NotifyOutcome;
-use crate::protocol::{InvocationContext, RpcError, INTERNAL_ERROR};
+use crate::protocol::{
+    InvocationContext, ProcessJobParams, ProcessOpenParams, ProcessOpenResult, ProcessSignalParams,
+    ProcessStatusResult, ProcessWriteParams, RpcError, INTERNAL_ERROR,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginStatus {
@@ -50,6 +55,11 @@ pub enum PluginHostEvent {
     SandboxApplied {
         plugin: String,
     },
+    JobEvent {
+        plugin: String,
+        event: String,
+        payload: Value,
+    },
 }
 
 mod host_worker;
@@ -60,6 +70,8 @@ use self::host_worker::HostWorker;
 
 pub struct PluginHost {
     workers: HashMap<String, HostWorker>,
+    plugins: HashMap<String, LoadedPlugin>,
+    jobs: JobManager,
     capabilities: CapabilityRegistry,
     next_request: AtomicU64,
     environment: HostEnvironment,
@@ -127,6 +139,59 @@ impl PluginHost {
         Ok(request)
     }
 
+    pub fn open_job(
+        &self,
+        plugin: &str,
+        params: ProcessOpenParams,
+    ) -> Result<ProcessOpenResult, RpcError> {
+        let plugin = self
+            .plugins
+            .get(plugin)
+            .ok_or_else(|| RpcError::unavailable("unknown plugin"))?;
+        self.jobs.open(plugin, params)
+    }
+
+    pub fn write_job(&self, plugin: &str, params: ProcessWriteParams) -> Result<(), RpcError> {
+        self.jobs.write(plugin, params)
+    }
+
+    pub fn close_job_stdin(&self, plugin: &str, params: ProcessJobParams) -> Result<(), RpcError> {
+        self.jobs.close_stdin(plugin, params)
+    }
+
+    pub fn signal_job(&self, plugin: &str, params: ProcessSignalParams) -> Result<(), RpcError> {
+        self.jobs.signal(plugin, params)
+    }
+
+    pub fn kill_job(&self, plugin: &str, params: ProcessJobParams) -> Result<(), RpcError> {
+        self.jobs.kill(plugin, params)
+    }
+
+    pub fn job_status(
+        &self,
+        plugin: &str,
+        params: ProcessJobParams,
+    ) -> Result<ProcessStatusResult, RpcError> {
+        self.jobs.status(plugin, params)
+    }
+
+    pub fn stop_jobs(&self, plugin: &str) {
+        self.jobs.stop_plugin(plugin);
+    }
+
+    pub fn notify_job(
+        &self,
+        plugin: &str,
+        event: &str,
+        payload: Value,
+    ) -> Result<NotifyOutcome, PluginError> {
+        let worker = self
+            .workers
+            .get(plugin)
+            .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        Ok(worker.notify_internal(event, payload))
+    }
+
     pub fn respond(
         &self,
         plugin: &str,
@@ -148,6 +213,7 @@ impl PluginHost {
     }
 
     pub fn restart(&self, plugin: &str) -> Result<(), PluginError> {
+        self.stop_jobs(plugin);
         let worker = self
             .workers
             .get(plugin)
@@ -156,6 +222,7 @@ impl PluginHost {
     }
 
     pub fn restart_all(&self) {
+        self.jobs.shutdown();
         for worker in self.workers.values() {
             let _ = worker.restart();
         }
@@ -170,6 +237,7 @@ impl PluginHost {
     }
 
     pub fn shutdown(&self) {
+        self.jobs.shutdown();
         for worker in self.workers.values() {
             worker.shutdown();
         }

@@ -53,7 +53,7 @@ Process plugins stay available only if a capability cannot be expressed safely i
 
 Decisions:
 
-- `process.spawn` is not process-only. The WASM runtime exposes the separately reviewed `process-run` host interface and requires the same `process.spawn` declaration. It stays a host-mediated capability in both runtimes.
+- `process.spawn` is not process-only. The WASM runtime exposes the separately reviewed `process-run` host interface and requires the same `process.spawn` declaration. It stays a host-mediated capability in both runtimes. Background process jobs are a process-runtime addition in protocol minor 10; the WIT job interface ships in a later minor version, so jobs do not create a permanent runtime dependency.
 - Non-Rust component languages have no maintained binding path. The Rust SDK is the supported authoring path. Other component languages may target the WIT contract without support, and that does not keep the process runtime alive.
 - No plugin may require the process runtime through a documented compatibility exception. Exceptions would be listed here before removal. None are approved.
 

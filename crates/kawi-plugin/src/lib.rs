@@ -6,6 +6,7 @@ pub const NETWORK_WARNING_PREFIX: &str = "network warning: ";
 mod environment;
 mod error;
 mod host;
+mod jobs;
 mod lockfile;
 mod manifest;
 mod outcome;
@@ -52,12 +53,15 @@ pub use protocol::{
     DecorationScope, DecorationStyle, DiagnosticSummary, DiagnosticsChangedEvent,
     EditorCommandInfo, EditorExecuteParams, EditorListCommandsResult, FileOpenedEvent,
     FileSavedEvent, GetStateParams, GetStateResult, InitializeParams, InitializeResult,
-    InvocationContext, InvokeParams, ModeChangedEvent, Position, ProtocolTextEdit, RpcError,
-    Selection, SetDecorationsParams, SetDiagnosticsParams, SetStatuslineParams, StatuslineSegment,
-    UiConfirmParams, UiInputParams, UiMessageParams, UiProgressFinishParams, UiProgressOpenResult,
-    UiProgressStartParams, UiProgressUpdateParams, UiProgressUpdateResult, UiPromptOutcome,
-    UiSelectParams, CAPABILITY_DENIED, EVENT_NAMES, HOST_METHODS, INTERNAL_ERROR, INVALID_PARAMS,
-    INVALID_POSITION, INVALID_REQUEST, MAX_DECORATION_TEXT_BYTES, MAX_DIAGNOSTIC_CODE_BYTES,
+    InvocationContext, InvokeParams, JobExitedEvent, JobOutputEvent, JobState, JobStream,
+    ModeChangedEvent, Position, ProcessJobParams, ProcessOpenParams, ProcessOpenResult,
+    ProcessSignal, ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, ProtocolTextEdit,
+    RpcError, Selection, SetDecorationsParams, SetDiagnosticsParams, SetStatuslineParams,
+    StatuslineSegment, StdinMode, UiConfirmParams, UiInputParams, UiMessageParams,
+    UiProgressFinishParams, UiProgressOpenResult, UiProgressStartParams, UiProgressUpdateParams,
+    UiProgressUpdateResult, UiPromptOutcome, UiSelectParams, CAPABILITY_DENIED, EVENT_NAMES,
+    HOST_METHODS, INTERNAL_ERROR, INVALID_PARAMS, INVALID_POSITION, INVALID_REQUEST, JOB_CLOSED,
+    JOB_LIMIT, JOB_NOT_FOUND, JOB_QUEUE_FULL, MAX_DECORATION_TEXT_BYTES, MAX_DIAGNOSTIC_CODE_BYTES,
     MAX_DIAGNOSTIC_MESSAGE_BYTES, MAX_PLUGIN_DECORATIONS, MAX_PLUGIN_DIAGNOSTICS,
     MAX_PLUGIN_STATUSLINE_SEGMENTS, MAX_STATUSLINE_TEXT_BYTES, METHOD_NOT_FOUND,
     ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER, PARSE_ERROR, PLUGIN_ERROR,

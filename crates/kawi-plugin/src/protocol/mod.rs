@@ -3,6 +3,7 @@ use std::fmt;
 mod decorations;
 mod diagnostics;
 mod events;
+mod jobs;
 mod sanitize;
 mod statusline;
 mod types;
@@ -17,13 +18,20 @@ use serde_json::Value;
 
 pub use decorations::{decoration_ref, validate_decoration_scope, validate_decorations};
 pub use diagnostics::validate_diagnostics;
+pub use jobs::{
+    JobExitedEvent, JobOutputEvent, JobState, JobStream, ProcessJobParams, ProcessOpenParams,
+    ProcessOpenResult, ProcessSignal, ProcessSignalParams, ProcessStatusResult, ProcessWriteParams,
+    StdinMode, JOB_EXITED_EVENT, JOB_OUTPUT_EVENT, MAX_JOBS_PER_PLUGIN, MAX_JOB_ARGUMENTS,
+    MAX_JOB_ARGUMENT_BYTES, MAX_JOB_ARGUMENT_TOTAL_BYTES, MAX_JOB_ENV_BYTES, MAX_JOB_ENV_ENTRIES,
+    MAX_JOB_ENV_KEY_BYTES, MAX_JOB_ENV_VALUE_BYTES, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
+};
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 9;
+pub const PROTOCOL_MINOR: u64 = 10;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 16] = [
+pub const HOST_METHODS: [&str; 22] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -40,6 +48,12 @@ pub const HOST_METHODS: [&str; 16] = [
     "ui.progress_finish",
     "config.get",
     "config.list",
+    "process.open",
+    "process.write",
+    "process.close_stdin",
+    "process.signal",
+    "process.kill",
+    "process.status",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];
@@ -63,6 +77,10 @@ pub const CAPABILITY_DENIED: i64 = -32012;
 pub const REQUEST_CANCELED: i64 = -32020;
 pub const PLUGIN_UNAVAILABLE: i64 = -32030;
 pub const UI_BUSY: i64 = -32040;
+pub const JOB_NOT_FOUND: i64 = -32050;
+pub const JOB_LIMIT: i64 = -32051;
+pub const JOB_CLOSED: i64 = -32052;
+pub const JOB_QUEUE_FULL: i64 = -32053;
 
 pub use types::*;
 

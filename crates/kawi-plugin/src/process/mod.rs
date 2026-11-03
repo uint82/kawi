@@ -2,7 +2,6 @@ mod backoff;
 mod connection;
 mod sandbox;
 
-#[cfg(feature = "wasm")]
 pub(crate) use sandbox::policy as sandbox_policy;
 
 #[cfg(feature = "wasm")]
@@ -64,13 +63,15 @@ impl WorkerHandle {
             .map_err(|_| PluginError::ProcessExited)
     }
 
+    pub(crate) fn notify_internal(&self, event: &str, payload: Value) -> NotifyOutcome {
+        let Some(writer) = self.writer() else {
+            return NotifyOutcome::NotRunning;
+        };
+        queue(&writer, crate::protocol::event_value(event, payload))
+    }
+
     pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
-        let writer = self
-            .writer
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
-        let Some(writer) = writer else {
+        let Some(writer) = self.writer() else {
             return NotifyOutcome::NotRunning;
         };
         if !crate::protocol::EVENT_NAMES.contains(&event)
@@ -82,11 +83,14 @@ impl WorkerHandle {
         {
             return NotifyOutcome::NotSubscribed;
         }
-        match writer.try_send(crate::protocol::event_value(event, payload)) {
-            Ok(()) => NotifyOutcome::Queued,
-            Err(std::sync::mpsc::TrySendError::Full(_)) => NotifyOutcome::Overflow,
-            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => NotifyOutcome::NotRunning,
-        }
+        queue(&writer, crate::protocol::event_value(event, payload))
+    }
+
+    fn writer(&self) -> Option<std::sync::mpsc::SyncSender<Value>> {
+        self.writer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
     }
 
     pub(crate) fn respond(
@@ -99,12 +103,7 @@ impl WorkerHandle {
             Ok(value) => response_value(id, value),
             Err(error) => error_response_value(id, &error),
         };
-        let writer = self
-            .writer
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone()
-            .ok_or(PluginError::ProcessExited)?;
+        let writer = self.writer().ok_or(PluginError::ProcessExited)?;
         let result = writer.try_send(message).map_err(|_| PluginError::QueueFull);
         if let Some(id) = interaction_id {
             self.interaction.end(id);
@@ -129,6 +128,14 @@ impl WorkerHandle {
         self.commands
             .send(WorkerCommand::Restart)
             .map_err(|_| PluginError::ProcessExited)
+    }
+}
+
+fn queue(writer: &std::sync::mpsc::SyncSender<Value>, message: Value) -> NotifyOutcome {
+    match writer.try_send(message) {
+        Ok(()) => NotifyOutcome::Queued,
+        Err(std::sync::mpsc::TrySendError::Full(_)) => NotifyOutcome::Overflow,
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => NotifyOutcome::NotRunning,
     }
 }
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::capability::{EffectiveCapabilities, Scope};
+use crate::capability::{Capability, EffectiveCapabilities, Scope};
 use crate::manifest::{PluginManifest, PluginRuntime};
 
 fn plugin() -> LoadedPlugin {
