@@ -13,12 +13,15 @@ mod app;
 mod breakpoints;
 mod console;
 mod events;
+mod format;
+mod panel;
 mod report;
 mod session;
 #[cfg(test)]
 mod tests;
 mod types;
 mod variables;
+mod variables_events;
 
 use types::{BreakpointSpec, ConsoleEntry, DebugSessionState, ReportKind, WatchExpression};
 
@@ -54,7 +57,14 @@ pub(super) struct DebugUi {
     stack: Vec<StackFrame>,
     scopes: Vec<Scope>,
     variables: BTreeMap<i64, Vec<Variable>>,
-    pending_variables: BTreeSet<i64>,
+    variable_totals: BTreeMap<i64, usize>,
+    expanded_variables: BTreeSet<i64>,
+    pending_variables: BTreeMap<i64, i64>,
+    supports_restart_request: bool,
+    supports_terminate_request: bool,
+    panel_visible: bool,
+    panel_selected: usize,
+    panel_offset: usize,
     current_frame: Option<StackFrame>,
     thread_id: Option<i64>,
     session: DebugSessionState,
@@ -84,7 +94,14 @@ impl Default for DebugUi {
             stack: Vec::new(),
             scopes: Vec::new(),
             variables: BTreeMap::new(),
-            pending_variables: BTreeSet::new(),
+            variable_totals: BTreeMap::new(),
+            expanded_variables: BTreeSet::new(),
+            pending_variables: BTreeMap::new(),
+            supports_restart_request: false,
+            supports_terminate_request: false,
+            panel_visible: false,
+            panel_selected: 0,
+            panel_offset: 0,
             current_frame: None,
             thread_id: None,
             session: DebugSessionState::new(),
@@ -206,6 +223,8 @@ impl DebugUi {
         self.stack.clear();
         self.scopes.clear();
         self.variables.clear();
+        self.variable_totals.clear();
+        self.expanded_variables.clear();
         self.pending_variables.clear();
         self.current_frame = None;
         self.session.threads.clear();
@@ -221,6 +240,8 @@ impl DebugUi {
         self.verified.clear();
         self.session.exception_filters.clear();
         self.session.terminal_requests.clear();
+        self.supports_restart_request = false;
+        self.supports_terminate_request = false;
         if !self.exception_filters_touched {
             self.enabled_exception_filters.clear();
         }

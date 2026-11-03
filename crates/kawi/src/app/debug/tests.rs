@@ -127,4 +127,5 @@ fn status_report_lists_breakpoints() {
 }
 
 mod breakpoints;
+mod panel;
 mod values;

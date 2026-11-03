@@ -24,6 +24,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 use crate::display;
 
 mod bracket;
+mod debug;
 mod explorer;
 mod keymenu;
 mod menu;
@@ -31,6 +32,7 @@ mod picker;
 mod selection;
 mod terminal;
 
+use debug::draw_debug_panel;
 use explorer::draw_explorer_panel;
 use terminal::{draw_terminal_panel, place_terminal_cursor};
 
@@ -51,8 +53,9 @@ fn draw_contents(out: &mut Stdout, frame: &Frame) -> Result<()> {
         .explorer
         .as_ref()
         .is_some_and(|explorer| explorer.focused)
+        || frame.debug.as_ref().is_some_and(|debug| debug.focused)
     {
-        execute!(out, crossterm::cursor::Hide).context("hide explorer cursor")?;
+        execute!(out, crossterm::cursor::Hide).context("hide panel cursor")?;
     } else if let Some(terminal) = frame.terminal.as_ref().filter(|terminal| terminal.focused) {
         place_terminal_cursor(out, terminal)?;
     } else {
@@ -71,6 +74,7 @@ fn draw_surface(out: &mut Stdout, frame: &Frame) -> Result<()> {
     }
     draw_separators(out, frame)?;
     draw_explorer_panel(out, frame)?;
+    draw_debug_panel(out, frame)?;
     draw_task_panel(out, frame)?;
     draw_terminal_panel(out, frame)?;
     match frame.pager {

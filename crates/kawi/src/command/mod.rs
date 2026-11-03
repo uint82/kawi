@@ -28,6 +28,8 @@ pub(crate) enum DebugBuiltin {
     Start,
     Restart,
     Stop,
+    Terminate,
+    Panel,
     Continue,
     Next,
     StepIn,

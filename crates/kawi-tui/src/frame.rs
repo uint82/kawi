@@ -6,9 +6,11 @@ use crate::theme::Theme;
 use kawi_editor::{BracketMatch, Viewport};
 use kawi_syntax::SyntaxSpan;
 
+mod debug;
 mod explorer;
 mod keymenu;
 
+pub use debug::{DebugPanel, DebugRow, DebugRowKind};
 pub use explorer::{ExplorerGit, ExplorerGitKind, ExplorerPanel, ExplorerRow, ExplorerRowKind};
 pub use keymenu::{KeyColumn, KeyMenu, KeyRow};
 
@@ -52,6 +54,7 @@ pub struct Frame<'a> {
     pub picker: Option<PickerMenu<'a>>,
     pub replace: Option<ReplaceMenu<'a>>,
     pub explorer: Option<ExplorerPanel<'a>>,
+    pub debug: Option<DebugPanel<'a>>,
     pub task: Option<TaskPanel<'a>>,
     pub terminal: Option<TerminalPanel<'a>>,
     pub viewport: &'a Viewport,

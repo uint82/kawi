@@ -13,6 +13,8 @@ impl App {
             | DebugCommand::Start(_)
             | DebugCommand::Restart
             | DebugCommand::Stop
+            | DebugCommand::Terminate
+            | DebugCommand::Panel
             | DebugCommand::Continue
             | DebugCommand::Next
             | DebugCommand::StepIn
@@ -31,6 +33,9 @@ impl App {
             command @ (DebugCommand::Stack
             | DebugCommand::Variables
             | DebugCommand::ExpandVariables(_)
+            | DebugCommand::MoreVariables(_)
+            | DebugCommand::SetVariable { .. }
+            | DebugCommand::Frame(_)
             | DebugCommand::Threads
             | DebugCommand::Thread(_)) => self.handle_debug_inspection_command(command),
             command @ (DebugCommand::Evaluate(_)
@@ -42,6 +47,7 @@ impl App {
             | DebugCommand::Output) => self.handle_debug_console_command(command),
         }
         self.sync_debug()?;
+        self.sync_terminal_panel_size();
         Ok(false)
     }
 
@@ -58,6 +64,10 @@ impl App {
             DebugCommand::Stop => {
                 self.debug.stop();
             }
+            DebugCommand::Terminate => {
+                self.debug.terminate();
+            }
+            DebugCommand::Panel => self.toggle_debug_panel(),
             DebugCommand::Continue => {
                 self.debug.continue_execution();
             }
@@ -118,6 +128,19 @@ impl App {
             }
             DebugCommand::ExpandVariables(reference) => {
                 self.debug.expand_variables(reference);
+            }
+            DebugCommand::MoreVariables(reference) => {
+                self.debug.load_more_variables(reference);
+            }
+            DebugCommand::SetVariable {
+                reference,
+                name,
+                value,
+            } => {
+                self.debug.set_variable(reference, name, value);
+            }
+            DebugCommand::Frame(frame_id) => {
+                self.debug.select_frame(frame_id);
             }
             DebugCommand::Threads => {
                 self.debug.threads();
@@ -234,6 +257,8 @@ impl App {
             DebugBuiltin::Start => DebugCommand::Start(None),
             DebugBuiltin::Restart => DebugCommand::Restart,
             DebugBuiltin::Stop => DebugCommand::Stop,
+            DebugBuiltin::Terminate => DebugCommand::Terminate,
+            DebugBuiltin::Panel => DebugCommand::Panel,
             DebugBuiltin::Continue => DebugCommand::Continue,
             DebugBuiltin::Next => DebugCommand::Next,
             DebugBuiltin::StepIn => DebugCommand::StepIn,

@@ -35,8 +35,11 @@ impl App {
     }
 
     pub(crate) fn terminal_panel_width(&self) -> usize {
-        self.terminal
-            .panel_width(self.screen_width.saturating_sub(self.explorer_width()))
+        self.terminal.panel_width(
+            self.screen_width
+                .saturating_sub(self.explorer_width())
+                .saturating_sub(self.debug_panel_width()),
+        )
     }
 
     pub(crate) fn explorer_content_height(&self) -> usize {
