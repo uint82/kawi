@@ -8,7 +8,7 @@ Set the `CARGO_REGISTRY_TOKEN` repository secret to a crates.io API token with p
 
 ## Versioning
 
-`kawi-plugin-sdk` is versioned independently from the editor. The SDK version and the WIT package version must match. The current WIT package is `kawi:plugin@0.5.0`. Interface changes bump the WIT package, and components built against an earlier package must be rebuilt.
+`kawi-plugin-sdk` is versioned independently from the editor. The SDK version and the WIT package version must match. The current WIT package is `kawi:plugin@0.6.0`. Interface changes bump the WIT package, and components built against an earlier package must be rebuilt.
 
 ## Checklist
 
