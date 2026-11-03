@@ -52,9 +52,17 @@ pub struct Diagnostic {
     pub related: Vec<DiagnosticRelatedInformation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DiagnosticOrigin {
+    Push,
+    Pull,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticsEvent {
     pub server: String,
+    pub origin: DiagnosticOrigin,
+    pub identifier: Option<String>,
     pub path: PathBuf,
     pub version: Option<i32>,
     pub diagnostics: Vec<Diagnostic>,
@@ -69,13 +77,6 @@ impl Manager {
         let Some(document) = self.documents.get(&path) else {
             return;
         };
-        if self
-            .clients
-            .get(&key)
-            .is_some_and(|client| client.support.pull_diagnostics)
-        {
-            return;
-        }
         if !is_current_version(document.version, params.version) {
             return;
         }
@@ -88,10 +89,18 @@ impl Manager {
         let diagnostics = convert_diagnostics(&params.diagnostics, &document.text, &encoding);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server,
+            origin: DiagnosticOrigin::Push,
+            identifier: None,
             path,
             version: params.version,
             diagnostics,
         }));
+    }
+
+    pub(super) fn diagnostic_identifier(&self, key: &ClientKey) -> Option<String> {
+        self.clients
+            .get(key)
+            .and_then(|client| client.diagnostic_identifier.clone())
     }
 }
 

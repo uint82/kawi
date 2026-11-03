@@ -1,5 +1,8 @@
 use super::*;
-use kawi_lsp::{DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation};
+use crate::test_support::diagnostic_event;
+use kawi_lsp::{
+    DiagnosticOrigin, DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation,
+};
 use kawi_task::Severity;
 
 fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Diagnostic {
@@ -18,6 +21,18 @@ fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Dia
     }
 }
 
+fn pull_event(
+    server: &str,
+    identifier: Option<&str>,
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> DiagnosticsEvent {
+    let mut event = diagnostic_event(server, path, diagnostics);
+    event.origin = DiagnosticOrigin::Pull;
+    event.identifier = identifier.map(str::to_string);
+    event
+}
+
 fn task_finding(line: usize) -> task::Finding {
     task::Finding {
         path: PathBuf::from("src/main.rs"),
@@ -33,17 +48,66 @@ fn sources_are_replaced_independently() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
     problems.push_task("check", task_finding(1));
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "rust-analyzer",
         path,
         vec![lsp_diagnostic(2, "lsp", DiagnosticSeverity::Error)],
     );
     assert_eq!(problems.total(), 2);
-    problems.replace_lsp("rust-analyzer", path, Vec::new());
+    problems.replace_lsp_test("rust-analyzer", path, Vec::new());
     assert_eq!(problems.total(), 1);
     assert_eq!(problems.visible(Some(path))[0].source, "task:check");
     problems.clear_source("task:check");
     assert_eq!(problems.total(), 0);
+}
+
+#[test]
+fn lsp_providers_with_the_same_server_are_replaced_independently() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.replace_lsp(diagnostic_event(
+        "rust-analyzer",
+        path,
+        vec![lsp_diagnostic(0, "push", DiagnosticSeverity::Error)],
+    ));
+    problems.replace_lsp(pull_event(
+        "rust-analyzer",
+        Some("rust-analyzer"),
+        path,
+        vec![lsp_diagnostic(1, "pull", DiagnosticSeverity::Error)],
+    ));
+    assert_eq!(problems.total(), 2);
+    problems.replace_lsp(pull_event(
+        "rust-analyzer",
+        Some("rust-analyzer"),
+        path,
+        Vec::new(),
+    ));
+    assert_eq!(problems.total(), 1);
+    assert_eq!(problems.visible(None)[0].message, "push");
+    problems.clear_lsp_source("rust-analyzer");
+    assert_eq!(problems.total(), 0);
+}
+
+#[test]
+fn push_and_pull_problems_are_distinct_without_a_pull_identifier() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.replace_lsp(diagnostic_event(
+        "server",
+        path,
+        vec![lsp_diagnostic(0, "push", DiagnosticSeverity::Error)],
+    ));
+    problems.replace_lsp(pull_event(
+        "server",
+        None,
+        path,
+        vec![lsp_diagnostic(1, "pull", DiagnosticSeverity::Error)],
+    ));
+    assert_eq!(problems.total(), 2);
+    problems.replace_lsp(pull_event("server", None, path, Vec::new()));
+    assert_eq!(problems.total(), 1);
+    assert_eq!(problems.visible(None)[0].message, "push");
 }
 
 #[test]
@@ -57,7 +121,7 @@ fn rewrites_and_removes_paths_for_a_renamed_directory() {
         line: 2,
         message: "related".to_string(),
     });
-    problems.replace_lsp("server", &old.join("a.rs"), vec![diagnostic]);
+    problems.replace_lsp_test("server", &old.join("a.rs"), vec![diagnostic]);
     problems.rewrite_paths(old, new);
     let visible = problems.visible(Some(&new.join("a.rs")));
     assert_eq!(visible.len(), 1);
@@ -84,7 +148,7 @@ fn task_sources_can_be_marked_stale_and_refreshed() {
 fn diagnostic_index_counts_lsp_sources_without_double_counting_tasks() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "rust-analyzer",
         path,
         vec![lsp_diagnostic(0, "lsp", DiagnosticSeverity::Error)],
@@ -104,7 +168,7 @@ fn diagnostic_index_counts_lsp_sources_without_double_counting_tasks() {
 fn diagnostic_index_follows_shifted_lsp_positions() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         path,
         vec![lsp_diagnostic(0, "shifted", DiagnosticSeverity::Error)],
@@ -120,7 +184,7 @@ fn diagnostic_index_follows_shifted_lsp_positions() {
 #[test]
 fn visible_problems_sort_by_severity_file_and_line() {
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         Path::new("b.rs"),
         vec![
@@ -128,7 +192,7 @@ fn visible_problems_sort_by_severity_file_and_line() {
             lsp_diagnostic(2, "error", DiagnosticSeverity::Error),
         ],
     );
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         Path::new("a.rs"),
         vec![lsp_diagnostic(5, "error a", DiagnosticSeverity::Error)],
@@ -143,7 +207,7 @@ fn visible_problems_sort_by_severity_file_and_line() {
 fn filters_apply_to_navigation() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         path,
         vec![
@@ -168,7 +232,7 @@ fn filters_apply_to_navigation() {
 fn navigation_wraps_and_follows_the_current_entry() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         path,
         vec![
@@ -186,7 +250,7 @@ fn navigation_wraps_and_follows_the_current_entry() {
 fn edits_shift_lsp_ranges_until_the_next_publish() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         path,
         vec![lsp_diagnostic(2, "stale", DiagnosticSeverity::Error)],
@@ -201,7 +265,7 @@ fn edits_shift_lsp_ranges_until_the_next_publish() {
 fn deletions_collapse_ranges_until_the_next_publish() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "server",
         path,
         vec![lsp_diagnostic(2, "stale", DiagnosticSeverity::Error)],
@@ -227,7 +291,7 @@ fn source_count_counts_task_and_lsp_sources() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
     problems.push_task("check", task_finding(1));
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "rust-analyzer",
         path,
         vec![lsp_diagnostic(0, "lsp", DiagnosticSeverity::Error)],

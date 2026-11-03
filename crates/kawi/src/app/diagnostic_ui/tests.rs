@@ -21,7 +21,7 @@ fn diagnostic(line: u32, severity: DiagnosticSeverity, message: &str) -> Diagnos
 fn problems(diagnostics: Vec<Diagnostic>) -> (Problems, PathBuf) {
     let path = PathBuf::from("/tmp/virtual_text.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp("fake", &path, diagnostics);
+    problems.replace_lsp_test("fake", &path, diagnostics);
     (problems, path)
 }
 
@@ -106,7 +106,7 @@ fn status_counts_read_the_cached_index() {
         kawi_buffer::Buffer::from_string("value\n"),
         crate::keymap::Flavor::Vim,
     );
-    app.problems.replace_lsp(
+    app.problems.replace_lsp_test(
         "fake",
         &path,
         vec![
@@ -159,7 +159,7 @@ fn virtual_text_does_not_change_cursor_selection_search_or_horizontal_scroll() {
         kawi_buffer::Buffer::from_string(&format!("{line}\n")),
         crate::keymap::Flavor::Vim,
     );
-    app.problems.replace_lsp(
+    app.problems.replace_lsp_test(
         "fake",
         &path,
         vec![diagnostic(0, DiagnosticSeverity::Error, "message")],

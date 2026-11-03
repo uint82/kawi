@@ -168,10 +168,7 @@ impl Manager {
                 .result_ids
                 .get(&(key.clone(), path.to_path_buf()))
                 .cloned();
-            let identifier = self
-                .clients
-                .get(&key)
-                .and_then(|client| client.diagnostic_identifier.clone());
+            let identifier = self.diagnostic_identifier(&key);
             let params = DocumentDiagnosticParams {
                 text_document: TextDocumentIdentifier { uri: uri.clone() },
                 identifier,
@@ -280,8 +277,11 @@ impl Manager {
                 return;
             }
         };
+        let identifier = self.diagnostic_identifier(&key);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server,
+            origin: DiagnosticOrigin::Pull,
+            identifier,
             path: pending.path,
             version: Some(version),
             diagnostics,

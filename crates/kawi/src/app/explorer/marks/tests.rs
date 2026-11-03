@@ -86,7 +86,7 @@ fn git_marks_aggregate_to_parent_directories() {
 fn diagnostics_aggregate_to_parent_directories_by_severity() {
     let root = Path::new("/repo");
     let mut problems = Problems::default();
-    problems.replace_lsp(
+    problems.replace_lsp_test(
         "fake",
         &root.join("src/main.rs"),
         vec![

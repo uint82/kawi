@@ -1,5 +1,5 @@
 use super::*;
-use kawi_lsp::DiagnosticRange;
+use kawi_lsp::{DiagnosticOrigin, DiagnosticRange};
 
 fn diagnostic(start: (u32, u32), end: (u32, u32), message: &str) -> Diagnostic {
     Diagnostic {
@@ -35,10 +35,24 @@ fn event_from(
 ) -> DiagnosticsEvent {
     DiagnosticsEvent {
         server: server.to_string(),
+        origin: DiagnosticOrigin::Push,
+        identifier: None,
         path: path.to_path_buf(),
         version,
         diagnostics,
     }
+}
+
+fn event_from_pull(
+    server: &str,
+    identifier: Option<&str>,
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> DiagnosticsEvent {
+    let mut event = event_from(server, path, Some(1), diagnostics);
+    event.origin = DiagnosticOrigin::Pull;
+    event.identifier = identifier.map(str::to_string);
+    event
 }
 
 #[test]
@@ -96,6 +110,60 @@ fn server_diagnostics_are_merged_and_removable() {
     assert_eq!(state.items.len(), 1);
     assert_eq!(state.severity_at(0), None);
     assert_eq!(state.severity_at(1), Some(DiagnosticSeverity::Error));
+}
+
+#[test]
+fn push_and_pull_diagnostics_share_a_server_but_not_a_provider() {
+    let path = Path::new("/tmp/lsp_diagnostic_provider");
+    let mut state = DiagnosticState::default();
+    state.reset();
+    assert!(state.apply(
+        event_from(
+            "rust-analyzer",
+            path,
+            Some(1),
+            vec![diagnostic((0, 0), (0, 1), "push")]
+        ),
+        path
+    ));
+    assert!(state.apply(
+        event_from_pull(
+            "rust-analyzer",
+            Some("rust-analyzer"),
+            path,
+            vec![diagnostic((1, 0), (1, 1), "pull")]
+        ),
+        path
+    ));
+    assert_eq!(state.items.len(), 2);
+    state.remove_server("rust-analyzer");
+    assert!(!state.has_diagnostics());
+}
+
+#[test]
+fn push_and_pull_diagnostics_are_distinct_without_a_pull_identifier() {
+    let path = Path::new("/tmp/lsp_diagnostic_origin");
+    let mut state = DiagnosticState::default();
+    state.reset();
+    assert!(state.apply(
+        event_from(
+            "server",
+            path,
+            Some(1),
+            vec![diagnostic((0, 0), (0, 1), "push")]
+        ),
+        path
+    ));
+    assert!(state.apply(
+        event_from_pull(
+            "server",
+            None,
+            path,
+            vec![diagnostic((1, 0), (1, 1), "pull")]
+        ),
+        path
+    ));
+    assert_eq!(state.items.len(), 2);
 }
 
 #[test]

@@ -65,10 +65,7 @@ impl Manager {
                 })
             })
             .collect();
-        let identifier = self
-            .clients
-            .get(key)
-            .and_then(|client| client.diagnostic_identifier.clone());
+        let identifier = self.diagnostic_identifier(key);
         let params = WorkspaceDiagnosticParams {
             identifier,
             previous_result_ids,
@@ -221,8 +218,11 @@ impl Manager {
                     &path,
                     report.full_document_diagnostic_report.result_id,
                 );
+                let identifier = self.diagnostic_identifier(key);
                 self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
                     server: key.server.clone(),
+                    origin: DiagnosticOrigin::Pull,
+                    identifier,
                     path,
                     version: None,
                     diagnostics,
@@ -284,8 +284,11 @@ impl Manager {
         self.workspace_diagnostics
             .result_ids
             .remove(&(key.clone(), path.clone()));
+        let identifier = self.diagnostic_identifier(key);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server.clone(),
+            origin: DiagnosticOrigin::Pull,
+            identifier,
             path,
             version: None,
             diagnostics: Vec::new(),
