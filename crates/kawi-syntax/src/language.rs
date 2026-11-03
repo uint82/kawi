@@ -135,6 +135,10 @@ impl LanguageId {
         grammar::bundled_highlights(self)
     }
 
+    pub(crate) fn injections(self) -> &'static str {
+        grammar::injections(self)
+    }
+
     pub(crate) fn highlights(self) -> &'static str {
         let highlights = HIGHLIGHTS.get_or_init(|| {
             LanguageId::ALL.map(|language| {

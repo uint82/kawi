@@ -6,6 +6,7 @@ pub(crate) struct Capture {
     pub(crate) start: usize,
     pub(crate) end: usize,
     pub(crate) highlight: SyntaxHighlight,
+    pub(crate) layer: usize,
 }
 
 pub(crate) fn paint_captures(

@@ -1,26 +1,30 @@
 use std::ops::Range;
 
-use tree_sitter::{Parser, QueryCursor, Range as TreeRange, StreamingIterator, Tree};
+use tree_sitter::{Parser, Range as TreeRange, Tree};
 
 use crate::diff::{input_edit, LineIndex};
 use crate::language::LanguageId;
-use crate::limits::{MAX_CAPTURES, WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
-use crate::rows::{self, RowWindow};
+use crate::limits::{WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
+use crate::rows;
 use crate::span::{SyntaxRequest, SyntaxSpan};
 
+mod injection;
 mod paint;
 mod runtime;
 
-pub(crate) use runtime::Runtime;
+pub(crate) use runtime::{Runtime, RuntimeCache};
 
 pub(crate) struct Document {
     parser: Parser,
+    language: LanguageId,
     text: String,
     tree: Option<Tree>,
     revision: u64,
     index: LineIndex,
     window_rows: Range<usize>,
     large: bool,
+    collector: injection::Collector,
+    embedded_runtimes: RuntimeCache,
 }
 
 impl Document {
@@ -29,12 +33,15 @@ impl Document {
         let _ = parser.set_language(&language.language());
         Self {
             parser,
+            language,
             text: String::new(),
             tree: None,
             revision: 0,
             index: LineIndex::new(""),
             window_rows: 0..0,
             large: false,
+            collector: injection::Collector::new(),
+            embedded_runtimes: RuntimeCache::new(),
         }
     }
 
@@ -129,59 +136,28 @@ impl Document {
         self.window_rows.start <= request.key.top && request.key.end <= self.window_rows.end
     }
 
-    fn spans(&self, runtime: &Runtime, window: Range<usize>) -> Vec<SyntaxSpan> {
+    fn spans(&mut self, runtime: &Runtime, window: Range<usize>) -> Vec<SyntaxSpan> {
         let Some(tree) = self.tree.as_ref() else {
             return Vec::new();
         };
         let rows = rows::visible_rows(&self.text, &self.index, window.start, window.end);
-        if rows.is_empty() {
+        let (Some(first), Some(last)) = (rows.first(), rows.last()) else {
             return Vec::new();
-        }
-        let Some(captures) = self.captures(tree, runtime, &rows) else {
+        };
+        let visible = first.start..last.text_end;
+        let blocks = rows::query_blocks(&rows);
+        let Some(captures) = self.collector.captures(injection::CollectRequest {
+            text: &self.text,
+            tree,
+            runtime,
+            language: self.language,
+            blocks: &blocks,
+            visible,
+            runtimes: &mut self.embedded_runtimes,
+        }) else {
             return Vec::new();
         };
         paint::paint_captures(&self.text, &rows, &captures)
-    }
-
-    fn captures(
-        &self,
-        tree: &Tree,
-        runtime: &Runtime,
-        rows: &[RowWindow],
-    ) -> Option<Vec<paint::Capture>> {
-        let mut captures = Vec::new();
-        for block in rows::query_blocks(rows) {
-            let mut cursor = QueryCursor::new();
-            cursor.set_byte_range(block);
-            let mut matches = cursor.captures(
-                &runtime.config.query,
-                tree.root_node(),
-                self.text.as_bytes(),
-            );
-            while let Some((matched, capture_index)) = matches.next() {
-                let Some(capture) = matched.captures().get(*capture_index) else {
-                    continue;
-                };
-                let Some(highlight) = runtime
-                    .captures
-                    .get(capture.index as usize)
-                    .copied()
-                    .flatten()
-                else {
-                    continue;
-                };
-                if captures.len() >= MAX_CAPTURES {
-                    return None;
-                }
-                captures.push(paint::Capture {
-                    start: capture.node.start_byte(),
-                    end: capture.node.end_byte(),
-                    highlight,
-                });
-            }
-        }
-        captures.sort_by_key(|capture| capture.start);
-        Some(captures)
     }
 }
 
