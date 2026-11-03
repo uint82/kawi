@@ -14,3 +14,6 @@
     field: (field_identifier) @function.method))
 (keyed_element . (literal_element (identifier) @variable.member))
 (field_declaration name: (field_identifier) @variable.member)
+(function_declaration name: (identifier) @function)
+(method_declaration name: (field_identifier) @function.method)
+(method_elem name: (field_identifier) @function.method)
