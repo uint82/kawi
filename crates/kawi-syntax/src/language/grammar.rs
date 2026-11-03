@@ -26,10 +26,18 @@ pub(super) fn language(language: LanguageId) -> tree_sitter::Language {
 }
 
 pub(super) fn bundled_highlights(language: LanguageId) -> String {
+    format!(
+        "{}\n{}",
+        base_highlights(language),
+        query_additions(language)
+    )
+}
+
+fn base_highlights(language: LanguageId) -> String {
     let javascript = tree_sitter_javascript::HIGHLIGHT_QUERY;
     let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
     let typescript = tree_sitter_typescript::HIGHLIGHTS_QUERY;
-    let base = match language {
+    match language {
         LanguageId::TypeScript => format!("{javascript}\n{typescript}"),
         LanguageId::Tsx => format!("{javascript}\n{jsx}\n{typescript}"),
         LanguageId::JavaScript => javascript.to_string(),
@@ -55,22 +63,26 @@ pub(super) fn bundled_highlights(language: LanguageId) -> String {
         LanguageId::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
-    };
+    }
+}
+
+fn query_additions(language: LanguageId) -> String {
     let script = include_str!("../../queries/script-common.scm");
-    let javascript_additions = include_str!("../../queries/javascript.scm");
-    let typescript_additions = include_str!("../../queries/typescript.scm");
-    let jsx_additions = include_str!("../../queries/jsx.scm");
-    let additions = match language {
+    let javascript = include_str!("../../queries/javascript.scm");
+    let typescript = include_str!("../../queries/typescript.scm");
+    let jsx = include_str!("../../queries/jsx.scm");
+    let c = include_str!("../../queries/c.scm");
+    match language {
         LanguageId::Rust => include_str!("../../queries/rust.scm").to_string(),
         LanguageId::Python => include_str!("../../queries/python.scm").to_string(),
-        LanguageId::JavaScript => format!("{script}\n{javascript_additions}"),
-        LanguageId::Jsx => format!("{script}\n{javascript_additions}\n{jsx_additions}"),
-        LanguageId::TypeScript => format!("{script}\n{typescript_additions}"),
-        LanguageId::Tsx => format!("{script}\n{typescript_additions}\n{jsx_additions}"),
+        LanguageId::JavaScript => format!("{script}\n{javascript}"),
+        LanguageId::Jsx => format!("{script}\n{javascript}\n{jsx}"),
+        LanguageId::TypeScript => format!("{script}\n{typescript}"),
+        LanguageId::Tsx => format!("{script}\n{typescript}\n{jsx}"),
         LanguageId::Bash => include_str!("../../queries/bash.scm").to_string(),
         LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
         LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
-        LanguageId::C | LanguageId::Cpp => include_str!("../../queries/c.scm").to_string(),
+        LanguageId::C | LanguageId::Cpp => c.to_string(),
         LanguageId::Go
         | LanguageId::Java
         | LanguageId::CSharp
@@ -79,6 +91,5 @@ pub(super) fn bundled_highlights(language: LanguageId) -> String {
         LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
         LanguageId::Yaml | LanguageId::Html | LanguageId::Css => String::new(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
-    };
-    format!("{base}\n{additions}")
+    }
 }
