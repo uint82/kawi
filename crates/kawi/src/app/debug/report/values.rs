@@ -1,9 +1,14 @@
+use super::super::format::{variable_line, watch_line};
 use super::super::types::{ConsoleEntry, WatchExpression};
 use super::super::DebugReport;
 use kawi_dap::{Scope, Thread, Variable};
 use std::collections::{BTreeMap, VecDeque};
 
-pub(crate) fn variables(scopes: &[Scope], variables: &BTreeMap<i64, Vec<Variable>>) -> DebugReport {
+pub(crate) fn variables(
+    scopes: &[Scope],
+    variables: &BTreeMap<i64, Vec<Variable>>,
+    totals: &BTreeMap<i64, usize>,
+) -> DebugReport {
     let mut lines = vec!["Variables".to_string()];
     if scopes.is_empty() {
         lines.push("No scopes.".to_string());
@@ -22,6 +27,12 @@ pub(crate) fn variables(scopes: &[Scope], variables: &BTreeMap<i64, Vec<Variable
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             push_variables(&mut lines, scope_variables, "  ");
+            push_page_hint(
+                &mut lines,
+                scope.variables_reference,
+                scope_variables.len(),
+                totals,
+            );
         }
     }
     DebugReport {
@@ -61,11 +72,7 @@ pub(crate) fn watches(watches: &[WatchExpression]) -> DebugReport {
         lines.push("No watch expressions.".to_string());
     } else {
         for (index, watch) in watches.iter().enumerate() {
-            lines.push(format!(
-                "{}. {}",
-                index.saturating_add(1),
-                format_watch(watch)
-            ));
+            lines.push(watch_line(watch, index));
         }
     }
     DebugReport {
@@ -106,35 +113,24 @@ fn push_variables(lines: &mut Vec<String>, variables: &[Variable], indent: &str)
         return;
     }
     for variable in variables {
-        let kind = variable
-            .kind
-            .as_ref()
-            .map(|kind| format!(": {kind}"))
-            .unwrap_or_default();
-        lines.push(format!(
-            "{indent}{}{} = {}{}",
-            variable.name,
-            kind,
-            variable.value,
-            reference_suffix(variable.variables_reference, "")
-        ));
+        lines.push(format!("{indent}{}", variable_line(variable)));
     }
 }
 
-fn format_watch(watch: &WatchExpression) -> String {
-    let result = watch.result.as_deref().unwrap_or("<not evaluated>");
-    let kind = watch
-        .kind
-        .as_ref()
-        .map(|kind| format!(": {kind}"))
-        .unwrap_or_default();
-    format!(
-        "{} = {}{}{}",
-        watch.expression,
-        result,
-        kind,
-        reference_suffix(watch.variables_reference, "")
-    )
+fn push_page_hint(
+    lines: &mut Vec<String>,
+    reference: i64,
+    loaded: usize,
+    totals: &BTreeMap<i64, usize>,
+) {
+    let Some(total) = totals.get(&reference).copied() else {
+        return;
+    };
+    if total > loaded {
+        lines.push(format!(
+            "  {loaded}/{total} variables loaded; use :debug more {reference}"
+        ));
+    }
 }
 
 fn reference_suffix(reference: i64, kind: &str) -> String {

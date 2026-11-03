@@ -23,6 +23,8 @@ pub(crate) struct Manager {
     exception_filters: Option<Vec<String>>,
     available_exception_filters: Vec<ExceptionFilter>,
     supports_function_breakpoints: bool,
+    supports_restart_request: bool,
+    supports_terminate_request: bool,
     reverse_requests: BTreeMap<i64, String>,
     pending: std::collections::HashMap<i64, PendingRequest>,
     next_generation: u64,
@@ -43,16 +45,36 @@ pub(crate) struct ClientState {
 pub(crate) enum PendingRequest {
     Initialize,
     Launch,
-    SetBreakpoints { path: PathBuf },
+    SetBreakpoints {
+        path: PathBuf,
+    },
     ConfigurationDone,
-    StackTrace { thread_id: i64 },
-    Scopes { frame_id: i64 },
-    Variables { variables_reference: i64 },
+    StackTrace {
+        thread_id: i64,
+    },
+    Scopes {
+        frame_id: i64,
+    },
+    Variables {
+        variables_reference: i64,
+        start: i64,
+    },
+    SetVariable {
+        variables_reference: i64,
+        name: String,
+    },
+    Restart,
+    Terminate,
     Threads,
-    Evaluate { expression: String, context: String },
+    Evaluate {
+        expression: String,
+        context: String,
+    },
     SetFunctionBreakpoints,
     SetExceptionBreakpoints,
-    Continue { thread_id: i64 },
+    Continue {
+        thread_id: i64,
+    },
     Step,
     Disconnect,
 }
@@ -76,6 +98,8 @@ impl Manager {
             exception_filters: None,
             available_exception_filters: Vec::new(),
             supports_function_breakpoints: false,
+            supports_restart_request: false,
+            supports_terminate_request: false,
             reverse_requests: BTreeMap::new(),
             pending: std::collections::HashMap::new(),
             next_generation: 0,

@@ -20,6 +20,8 @@ impl Manager {
         self.exception_filters = exception_filters;
         self.available_exception_filters.clear();
         self.supports_function_breakpoints = false;
+        self.supports_restart_request = false;
+        self.supports_terminate_request = false;
         self.reverse_requests.clear();
         self.pending.clear();
         self.initialized = false;
@@ -63,7 +65,7 @@ impl Manager {
             "linesStartAt1": true,
             "columnsStartAt1": true,
             "supportsVariableType": true,
-            "supportsVariablePaging": false,
+            "supportsVariablePaging": true,
             "supportsRunInTerminalRequest": true,
             "supportsMemoryReferences": false,
             "supportsProgressReporting": false,

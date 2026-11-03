@@ -33,7 +33,8 @@ impl DebugUi {
             DapEvent::Variables {
                 variables_reference,
                 variables,
-            } => self.apply_variables(variables_reference, variables),
+                start,
+            } => self.apply_variables(variables_reference, variables, start),
             DapEvent::Threads { threads } => self.apply_threads(threads),
             DapEvent::Evaluated {
                 expression,
@@ -47,6 +48,17 @@ impl DebugUi {
                 context,
                 message,
             } => self.apply_evaluation_failed(expression, context, message),
+            DapEvent::VariableSet {
+                variables_reference,
+                name,
+                value,
+                kind,
+                new_reference,
+            } => self.apply_variable_set(variables_reference, name, value, kind, new_reference),
+            DapEvent::Capabilities {
+                supports_restart_request,
+                supports_terminate_request,
+            } => self.apply_capabilities(supports_restart_request, supports_terminate_request),
             DapEvent::ExceptionFilters { filters } => self.apply_exception_filters(filters),
             DapEvent::RunInTerminal(request) => {
                 self.session.terminal_requests.push_back(request);
@@ -55,6 +67,15 @@ impl DebugUi {
             DapEvent::Log(line) => self.push_output("adapter", &line),
             _ => {}
         }
+    }
+
+    fn apply_capabilities(
+        &mut self,
+        supports_restart_request: bool,
+        supports_terminate_request: bool,
+    ) {
+        self.supports_restart_request = supports_restart_request;
+        self.supports_terminate_request = supports_terminate_request;
     }
 
     fn apply_status(&mut self, status: DebugStatus) {
@@ -74,7 +95,11 @@ impl DebugUi {
             Some(ReportKind::Variables) => {
                 self.pending_report = None;
                 self.pending_variables.clear();
-                self.set_report(report::variables(&self.scopes, &self.variables));
+                self.set_report(report::variables(
+                    &self.scopes,
+                    &self.variables,
+                    &self.variable_totals,
+                ));
             }
             Some(ReportKind::Stack) | Some(ReportKind::Threads) | Some(ReportKind::Expand(_)) => {
                 self.pending_report = None;

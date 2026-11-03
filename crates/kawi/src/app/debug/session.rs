@@ -26,6 +26,7 @@ impl DebugUi {
         }
         self.status = DebugStatus::Starting;
         self.configuration = Some(name.clone());
+        self.show_panel();
         self.message = Some(format!("debug: starting {name}"));
         self.reset_session_state();
         true
@@ -59,11 +60,55 @@ impl DebugUi {
     }
 
     pub(super) fn restart(&mut self, editor: &Editor) -> bool {
+        if self.supports_restart_request
+            && matches!(self.status, DebugStatus::Running | DebugStatus::Stopped)
+        {
+            let Some(service) = self.service.as_ref() else {
+                return false;
+            };
+            self.message = Some("debug: restarting adapter".to_string());
+            return service.restart();
+        }
         let Some(name) = self.configuration.clone() else {
             self.message = Some("debug: no previous configuration".to_string());
             return false;
         };
         self.start(editor, Some(&name))
+    }
+
+    pub(super) fn terminate(&mut self) -> bool {
+        if !self.supports_terminate_request {
+            self.message = Some("debug: adapter does not support terminate".to_string());
+            return false;
+        }
+        if !matches!(self.status, DebugStatus::Running | DebugStatus::Stopped) {
+            self.message = Some("debug: not running".to_string());
+            return false;
+        }
+        let Some(service) = self.service.as_ref() else {
+            return false;
+        };
+        self.message = Some("debug: terminating".to_string());
+        service.terminate()
+    }
+
+    pub(super) fn set_variable(&mut self, reference: i64, name: String, value: String) -> bool {
+        if reference <= 0 || name.is_empty() {
+            self.message = Some("debug: invalid variable reference or name".to_string());
+            return false;
+        }
+        if self.status != DebugStatus::Stopped {
+            self.message = Some("debug: not stopped".to_string());
+            return false;
+        }
+        let Some(service) = self.service.as_ref() else {
+            return false;
+        };
+        if !service.set_variable(reference, name, value) {
+            self.message = Some("debug: service unavailable".to_string());
+            return false;
+        }
+        true
     }
 
     pub(super) fn stop(&mut self) -> bool {

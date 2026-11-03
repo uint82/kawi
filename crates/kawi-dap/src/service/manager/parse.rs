@@ -50,6 +50,8 @@ pub(super) fn scopes(body: Option<&Value>) -> Vec<Scope> {
             Some(Scope {
                 name: value.get("name").and_then(Value::as_str)?.to_string(),
                 variables_reference: value.get("variablesReference").and_then(Value::as_i64)?,
+                named_variables: value.get("namedVariables").and_then(Value::as_i64),
+                indexed_variables: value.get("indexedVariables").and_then(Value::as_i64),
                 expensive: value
                     .get("expensive")
                     .and_then(Value::as_bool)
@@ -78,6 +80,8 @@ pub(super) fn variables(body: Option<&Value>) -> Vec<Variable> {
                     .get("variablesReference")
                     .and_then(Value::as_i64)
                     .unwrap_or(0),
+                named_variables: value.get("namedVariables").and_then(Value::as_i64),
+                indexed_variables: value.get("indexedVariables").and_then(Value::as_i64),
             })
         })
         .collect()
@@ -114,6 +118,23 @@ pub(super) fn evaluate_result(body: Option<&Value>) -> (String, Option<String>, 
         .and_then(Value::as_i64)
         .unwrap_or(0);
     (result, kind, variables_reference)
+}
+
+pub(super) fn set_variable_result(body: Option<&Value>) -> (String, Option<String>, i64) {
+    let value = body
+        .and_then(|body| body.get("value"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let kind = body
+        .and_then(|body| body.get("type"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let variables_reference = body
+        .and_then(|body| body.get("variablesReference"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    (value, kind, variables_reference)
 }
 
 pub(super) fn exception_filters(body: Option<&Value>) -> Vec<ExceptionFilter> {

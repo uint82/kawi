@@ -4,7 +4,10 @@ use anyhow::Result;
 use kawi_editor::Mode;
 use kawi_picker::{Picker, PickerKind};
 use kawi_tui::{
-    frame::{CompletionMenu, Frame, PaneFrame, PickerLine, PickerMenu, TaskPanel, TerminalPanel},
+    frame::{
+        CompletionMenu, DebugPanel, Frame, PaneFrame, PickerLine, PickerMenu, TaskPanel,
+        TerminalPanel,
+    },
     render,
     statusbar::StatusInfo,
     CursorStyle, Selection,
@@ -25,6 +28,10 @@ impl App {
         self.refresh_bracket_match();
         self.prepare_completion_overlay();
         self.sync_explorer_marks();
+        if let Some(rect) = self.debug_panel_rect() {
+            self.debug
+                .sync_panel_selection(rect.height.saturating_sub(1));
+        }
         let overlay_data = self.overlay_data();
         let overlay = overlay_data.as_ref().map(|data| data.view());
         let layout = self.window_layout();
@@ -86,12 +93,13 @@ impl App {
             })
             .collect();
         let explorer_focused = self.explorer.is_focused();
+        let debug_focused = self.debug_focus;
         let panes: Vec<PaneFrame<'_>> = data
             .iter()
             .zip(statuses.iter())
             .map(|(pane, status)| PaneFrame {
                 rect: pane.rect,
-                active: pane.active && !explorer_focused,
+                active: pane.active && !explorer_focused && !debug_focused,
                 lines: &pane.lines,
                 rows: &pane.rows,
                 gutter: &pane.gutter,
@@ -230,6 +238,16 @@ impl App {
             matches: session.matches(),
             files: session.files(),
         });
+        let debug_rows = self.debug_panel_rows();
+        let debug = self.debug_panel_rect().map(|rect| DebugPanel {
+            rect,
+            title: "Debug",
+            status: self.debug.panel_status(),
+            focused: self.debug_focus,
+            rows: &debug_rows,
+            selected: Some(self.debug.panel_selected()),
+            offset: self.debug.panel_offset(),
+        });
         let task_lines = self
             .task_panel_rect()
             .map(|rect| self.task_panel_lines(rect.height.saturating_sub(1)))
@@ -284,6 +302,7 @@ impl App {
             picker,
             replace,
             explorer,
+            debug,
             task,
             terminal,
             viewport: &viewport,

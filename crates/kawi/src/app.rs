@@ -197,6 +197,7 @@ pub struct App {
     task: TaskSession,
     terminal: terminal_ui::TerminalUi,
     terminal_focus: bool,
+    debug_focus: bool,
     explorer: explorer::ExplorerState,
     directory: directory::DirectoryBuffers,
     directory_loading: directory::DirectoryLoading,
@@ -312,6 +313,7 @@ impl App {
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
+            debug_focus: false,
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
             directory_loading: directory::DirectoryLoading::default(),
@@ -369,6 +371,7 @@ impl App {
         self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.terminal_focus = false;
+        self.debug_focus = false;
         self.terminal.close();
         self.plugins.shutdown();
         self.abort_git_editor_on_exit();
@@ -840,6 +843,7 @@ impl App {
                 | MouseEventKind::ScrollDown
         ) {
             self.terminal_focus = false;
+            self.debug_focus = false;
         }
         if self.close_diagnostic_popup() {
             return self.handle_noop();
@@ -1034,6 +1038,13 @@ impl App {
         }
         if self.terminal_focus {
             return self.handle_terminal_key(key);
+        }
+        if self.debug_focus {
+            if key.code == KeyCode::Char(':') {
+                self.debug_focus = false;
+            } else {
+                return self.handle_debug_panel_key(key);
+            }
         }
         if self.git_commit.has_pending_push() {
             return self.handle_git_push_confirmation(key);

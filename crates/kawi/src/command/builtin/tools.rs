@@ -128,6 +128,18 @@ pub(super) const COMMANDS: &[Builtin] = &[
         handler: CommandHandler::Debug(crate::command::DebugBuiltin::Stop),
     },
     Builtin {
+        name: "debug.terminate",
+        aliases: &[],
+        description: "terminate the debuggee",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Terminate),
+    },
+    Builtin {
+        name: "debug.panel",
+        aliases: &[],
+        description: "toggle the debug panel",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Panel),
+    },
+    Builtin {
         name: "debug.continue",
         aliases: &[],
         description: "continue the debuggee",

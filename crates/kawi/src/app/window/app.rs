@@ -166,6 +166,7 @@ impl App {
         let terminal_height = self.terminal.panel_height(self.screen_height, task_height);
         let terminal_width = self.terminal_panel_width();
         let explorer_width = self.explorer_width();
+        let debug_width = self.debug_panel_width();
         let height = self
             .screen_height
             .saturating_sub(1)
@@ -176,6 +177,7 @@ impl App {
             .screen_width
             .saturating_sub(explorer_width)
             .saturating_sub(terminal_width)
+            .saturating_sub(debug_width)
             .max(1);
         Rect::new(explorer_width, 0, width, height)
     }
@@ -188,6 +190,7 @@ impl App {
         self.screen_width = usize::from(cols).max(1);
         self.screen_height = usize::from(rows).max(2);
         self.close_explorer_if_unfit();
+        self.close_debug_panel_if_unfit();
         self.refresh_window_sizes();
     }
 

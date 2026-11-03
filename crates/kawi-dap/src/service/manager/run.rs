@@ -89,7 +89,16 @@ impl Manager {
             Command::Scopes { frame_id } => self.scopes(frame_id),
             Command::Variables {
                 variables_reference,
-            } => self.variables(variables_reference),
+                start,
+                count,
+            } => self.variables(variables_reference, start, count),
+            Command::SetVariable {
+                variables_reference,
+                name,
+                value,
+            } => self.set_variable(variables_reference, name, value),
+            Command::Restart => self.restart(),
+            Command::Terminate => self.terminate(),
             Command::Threads => self.threads(),
             Command::Evaluate {
                 expression,
@@ -152,14 +161,48 @@ impl Manager {
         );
     }
 
-    fn variables(&mut self, variables_reference: i64) {
+    fn variables(&mut self, variables_reference: i64, start: i64, count: i64) {
         self.send_request(
             "variables",
-            Some(serde_json::json!({"variablesReference": variables_reference})),
+            Some(serde_json::json!({
+                "variablesReference": variables_reference,
+                "start": start,
+                "count": count,
+            })),
             PendingRequest::Variables {
                 variables_reference,
+                start,
             },
         );
+    }
+
+    fn set_variable(&mut self, variables_reference: i64, name: String, value: String) {
+        self.send_request(
+            "setVariable",
+            Some(serde_json::json!({
+                "variablesReference": variables_reference,
+                "name": name,
+                "value": value,
+            })),
+            PendingRequest::SetVariable {
+                variables_reference,
+                name,
+            },
+        );
+    }
+
+    fn restart(&mut self) {
+        if self.send_request("restart", None, PendingRequest::Restart) {
+            self.emit(DapEvent::Log("debug adapter restart requested".to_string()));
+        }
+    }
+
+    fn terminate(&mut self) {
+        if self.send_request("terminate", None, PendingRequest::Terminate) {
+            self.emit(DapEvent::Log(
+                "debug adapter terminate requested".to_string(),
+            ));
+        }
     }
 
     fn threads(&mut self) {

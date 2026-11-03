@@ -150,6 +150,8 @@ pub enum DebugCommand {
     Start(Option<String>),
     Restart,
     Stop,
+    Terminate,
+    Panel,
     Continue,
     Next,
     StepIn,
@@ -167,6 +169,13 @@ pub enum DebugCommand {
     Stack,
     Variables,
     ExpandVariables(i64),
+    MoreVariables(i64),
+    SetVariable {
+        reference: i64,
+        name: String,
+        value: String,
+    },
+    Frame(i64),
     Threads,
     Thread(i64),
     Evaluate(String),
@@ -601,7 +610,9 @@ fn parse_debug_command(words: &[&str]) -> Command {
         ["start"] => DebugCommand::Start(None),
         ["start", name] => DebugCommand::Start(Some((*name).to_string())),
         ["restart"] => DebugCommand::Restart,
-        ["stop" | "terminate"] => DebugCommand::Stop,
+        ["stop"] => DebugCommand::Stop,
+        ["terminate"] => DebugCommand::Terminate,
+        ["panel"] => DebugCommand::Panel,
         ["continue" | "run"] => DebugCommand::Continue,
         ["next" | "over"] => DebugCommand::Next,
         ["step" | "in" | "into"] => DebugCommand::StepIn,
@@ -628,6 +639,31 @@ fn parse_debug_command(words: &[&str]) -> Command {
         ["variables"] => DebugCommand::Variables,
         ["expand", reference] => match reference.parse() {
             Ok(reference) if reference > 0 => DebugCommand::ExpandVariables(reference),
+            _ => return Command::Unknown,
+        },
+        ["more", reference] => match reference.parse() {
+            Ok(reference) if reference > 0 => DebugCommand::MoreVariables(reference),
+            _ => return Command::Unknown,
+        },
+        ["set", reference, name, rest @ ..] if !rest.is_empty() => {
+            let Ok(reference) = reference.parse() else {
+                return Command::Unknown;
+            };
+            if reference <= 0 {
+                return Command::Unknown;
+            }
+            let value = rest
+                .strip_prefix(&["="])
+                .map(|value| value.join(" "))
+                .unwrap_or_else(|| rest.join(" "));
+            DebugCommand::SetVariable {
+                reference,
+                name: (*name).to_string(),
+                value,
+            }
+        }
+        ["frame", frame_id] => match frame_id.parse() {
+            Ok(frame_id) if frame_id > 0 => DebugCommand::Frame(frame_id),
             _ => return Command::Unknown,
         },
         ["threads"] => DebugCommand::Threads,
@@ -1384,6 +1420,11 @@ mod tests {
         );
         assert_eq!(parse("debug stop"), Command::Debug(DebugCommand::Stop));
         assert_eq!(
+            parse("debug terminate"),
+            Command::Debug(DebugCommand::Terminate)
+        );
+        assert_eq!(parse("debug panel"), Command::Debug(DebugCommand::Panel));
+        assert_eq!(
             parse("debug continue"),
             Command::Debug(DebugCommand::Continue)
         );
@@ -1479,6 +1520,30 @@ mod tests {
         assert_eq!(
             parse("debug expand 200"),
             Command::Debug(DebugCommand::ExpandVariables(200))
+        );
+        assert_eq!(
+            parse("debug more 200"),
+            Command::Debug(DebugCommand::MoreVariables(200))
+        );
+        assert_eq!(
+            parse("debug set 100 x 42"),
+            Command::Debug(DebugCommand::SetVariable {
+                reference: 100,
+                name: "x".to_string(),
+                value: "42".to_string(),
+            })
+        );
+        assert_eq!(
+            parse("debug set 100 x = hello world"),
+            Command::Debug(DebugCommand::SetVariable {
+                reference: 100,
+                name: "x".to_string(),
+                value: "hello world".to_string(),
+            })
+        );
+        assert_eq!(
+            parse("debug frame 2"),
+            Command::Debug(DebugCommand::Frame(2))
         );
         assert_eq!(parse("debug thread nope"), Command::Unknown);
         assert_eq!(parse("debug nope"), Command::Unknown);

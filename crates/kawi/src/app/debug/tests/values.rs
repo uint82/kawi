@@ -68,6 +68,8 @@ fn variable_scopes_and_expansion_are_reported() {
         vec![Scope {
             name: "Locals".to_string(),
             variables_reference: 100,
+            named_variables: None,
+            indexed_variables: None,
             expensive: false,
         }],
     );
@@ -79,14 +81,19 @@ fn variable_scopes_and_expansion_are_reported() {
                 value: "42".to_string(),
                 kind: Some("int".to_string()),
                 variables_reference: 0,
+                named_variables: None,
+                indexed_variables: None,
             },
             Variable {
                 name: "point".to_string(),
                 value: "{...}".to_string(),
                 kind: Some("Point".to_string()),
                 variables_reference: 200,
+                named_variables: None,
+                indexed_variables: None,
             },
         ],
+        0,
     );
     let report = app.debug.take_report().expect("report");
     assert!(report.lines.iter().any(|line| line.contains("Locals")));
@@ -101,7 +108,10 @@ fn variable_scopes_and_expansion_are_reported() {
             value: "3".to_string(),
             kind: Some("int".to_string()),
             variables_reference: 0,
+            named_variables: None,
+            indexed_variables: None,
         }],
+        0,
     );
     let report = app.debug.take_report().expect("report");
     assert!(report
@@ -147,5 +157,38 @@ fn threads_and_terminal_requests_are_reported() {
         }));
     let request = app.debug.take_run_in_terminal().expect("terminal request");
     assert_eq!(request.request_seq, 9);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn capability_and_variable_set_events_update_state() {
+    let path = temp_file("capabilities");
+    let root = path.parent().unwrap().to_path_buf();
+    let mut app = app(&path);
+    app.debug.variables.insert(
+        100,
+        vec![Variable {
+            name: "x".to_string(),
+            value: "1".to_string(),
+            kind: Some("int".to_string()),
+            variables_reference: 0,
+            named_variables: None,
+            indexed_variables: None,
+        }],
+    );
+    app.debug.apply_event(DapEvent::Capabilities {
+        supports_restart_request: true,
+        supports_terminate_request: true,
+    });
+    assert!(app.debug.supports_restart_request);
+    assert!(app.debug.supports_terminate_request);
+    app.debug.apply_event(DapEvent::VariableSet {
+        variables_reference: 100,
+        name: "x".to_string(),
+        value: "9".to_string(),
+        kind: Some("int".to_string()),
+        new_reference: 0,
+    });
+    assert_eq!(app.debug.variables[&100][0].value, "9");
     let _ = fs::remove_dir_all(root);
 }

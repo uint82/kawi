@@ -19,10 +19,13 @@ impl App {
                     return None;
                 }
                 let explorer_width = self.explorer_width();
+                let debug_width = self.debug_panel_width();
                 Some(Rect::new(
                     explorer_width,
                     self.screen_height.saturating_sub(1).saturating_sub(height),
-                    self.screen_width.saturating_sub(explorer_width),
+                    self.screen_width
+                        .saturating_sub(explorer_width)
+                        .saturating_sub(debug_width),
                     height,
                 ))
             }
@@ -32,7 +35,9 @@ impl App {
                     return None;
                 }
                 Some(Rect::new(
-                    self.screen_width.saturating_sub(width),
+                    self.screen_width
+                        .saturating_sub(self.debug_panel_width())
+                        .saturating_sub(width),
                     0,
                     width,
                     self.screen_height.saturating_sub(1),
@@ -164,12 +169,15 @@ impl App {
                     height.saturating_sub(1).max(1) as u16,
                     self.screen_width
                         .saturating_sub(self.explorer_width())
+                        .saturating_sub(self.debug_panel_width())
                         .max(1) as u16,
                 ))
             }
             TerminalLayout::Vertical => {
                 let width = TerminalUi::desired_panel_width(
-                    self.screen_width.saturating_sub(self.explorer_width()),
+                    self.screen_width
+                        .saturating_sub(self.explorer_width())
+                        .saturating_sub(self.debug_panel_width()),
                 );
                 if width == 0 {
                     return None;

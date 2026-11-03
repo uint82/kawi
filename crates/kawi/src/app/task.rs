@@ -141,6 +141,7 @@ impl App {
         let terminal_height = self.terminal.panel_height(self.screen_height, height);
         let terminal_width = self.terminal_panel_width();
         let explorer_width = self.explorer_width();
+        let debug_width = self.debug_panel_width();
         Some(Rect::new(
             explorer_width,
             self.screen_height
@@ -149,7 +150,8 @@ impl App {
                 .saturating_sub(height),
             self.screen_width
                 .saturating_sub(explorer_width)
-                .saturating_sub(terminal_width),
+                .saturating_sub(terminal_width)
+                .saturating_sub(debug_width),
             height,
         ))
     }
