@@ -15,7 +15,7 @@ Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict
 
 ## A language server does not start
 
-Check `~/.config/kawi/languages.toml`, then confirm the server command exists and the project root marker matches.
+Check `~/.config/kawi/languages.toml`, then confirm the server command exists and the project root marker matches. Kawi includes built-in definitions for many languages; run `:lsp status` or `:health lsp` to see which configured servers are missing.
 
 ## Configuration errors
 
