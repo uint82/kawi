@@ -623,7 +623,7 @@ pub(crate) const OPTIONS: [OptionSpec; 48] = [
         scope: OptionScope::Global,
         section: ConfigSection::Ui,
         config_key: "diagnostic_virtual_severity",
-        default: OptionDefault::Text("warning"),
+        default: OptionDefault::Text("hint"),
     },
     OptionSpec {
         name: "diagnostic_source",

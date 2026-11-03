@@ -148,7 +148,7 @@ fn virtual_text_modes_follow_the_cursor_and_severity_filter() {
     let texts = build_virtual_texts(&problems, &all, request(&path, 0, 3, 0, false));
     assert_eq!(texts[0].as_ref().unwrap().text, "first");
     assert_eq!(texts[1].as_ref().unwrap().text, "warning");
-    assert!(texts[2].is_none());
+    assert_eq!(texts[2].as_ref().unwrap().text, "info");
 }
 
 #[test]

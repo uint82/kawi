@@ -142,7 +142,7 @@ impl Default for DiagnosticOptions {
     fn default() -> Self {
         Self {
             virtual_text: VirtualTextMode::All,
-            virtual_severity: SeverityFilter::Warning,
+            virtual_severity: SeverityFilter::Hint,
             source: SourceDisplay::IfMany,
             counts: CountsMode::ErrorsWarnings,
             workspace_counts: false,
