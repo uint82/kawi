@@ -67,4 +67,8 @@ fn built_in_languages_map_to_standard_servers() {
     };
     assert_eq!(servers_for("rust"), vec!["rust-analyzer"]);
     assert_eq!(servers_for("python"), vec!["pyright"]);
+    assert_eq!(servers_for("c"), vec!["clangd"]);
+    assert_eq!(servers_for("cpp"), vec!["clangd"]);
+    assert_eq!(servers_for("go"), vec!["gopls"]);
+    assert_eq!(servers_for("gomod"), vec!["gopls"]);
 }
