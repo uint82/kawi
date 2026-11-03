@@ -26,3 +26,9 @@ Use Tab to move down and Shift-Tab to move up. Up and Down, Ctrl-N and Ctrl-P, P
 Press Enter to accept the selected item and Esc to dismiss the list. The menu shows at most ten items and scrolls the selection into view.
 
 Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:diagnostics) for diagnostic navigation and display.
+
+## Status
+
+Run `:lsp status` to list every configured server with its state, languages, and command. The `:lsp info` alias shows the same table. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
+
+Run `:health lsp` for the full language server health check.

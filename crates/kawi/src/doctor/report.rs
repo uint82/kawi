@@ -122,9 +122,22 @@ impl Report {
         }
     }
 
+    pub(crate) fn filtered(mut self, id: Option<&str>) -> Self {
+        let Some(id) = id else {
+            return self;
+        };
+        self.checks.retain(|check| check.id == id);
+        self.summary = Summary::from_checks(&self.checks);
+        self
+    }
+
     pub(crate) fn to_text(&self) -> String {
+        self.to_text_with_title("Kawi doctor")
+    }
+
+    pub(crate) fn to_text_with_title(&self, title: &str) -> String {
         let mut text = String::new();
-        push_header(self, &mut text);
+        push_header(self, title, &mut text);
         for check in &self.checks {
             push_check(check, &mut text);
         }
@@ -137,8 +150,8 @@ impl Report {
     }
 }
 
-fn push_header(report: &Report, text: &mut String) {
-    let _ = writeln!(text, "Kawi doctor {}", report.kawi_version);
+fn push_header(report: &Report, title: &str, text: &mut String) {
+    let _ = writeln!(text, "{title} {}", report.kawi_version);
     let _ = writeln!(text, "platform {} {}", report.os, report.arch);
     let _ = writeln!(text, "target {}", report.target);
     let _ = writeln!(text, "workspace {}", report.workspace);
@@ -187,6 +200,35 @@ mod tests {
         assert_eq!(warning_report.exit_code(false), 0);
         assert_eq!(warning_report.exit_code(true), 1);
         assert_eq!(report(&[Level::Error]).exit_code(false), 1);
+    }
+
+    #[test]
+    fn filtering_keeps_matching_checks_and_recomputes_the_summary() {
+        let checks = vec![
+            Check::new("first", "First", Level::Ok, Vec::new()),
+            Check::new("second", "Second", Level::Warn, Vec::new()),
+        ];
+        let report = Report::new(Path::new("/project"), Path::new("/project"), checks);
+        let filtered = report.filtered(Some("second"));
+        assert_eq!(filtered.checks.len(), 1);
+        assert_eq!(filtered.checks[0].id, "second");
+        assert_eq!(filtered.summary.status, Level::Warn);
+        assert_eq!(filtered.summary.ok, 0);
+        assert_eq!(filtered.summary.warn, 1);
+    }
+
+    #[test]
+    fn filtering_without_an_id_keeps_every_check() {
+        let report = report(&[Level::Ok, Level::Info]);
+        assert_eq!(report.filtered(None).checks.len(), 2);
+    }
+
+    #[test]
+    fn text_title_can_be_customized() {
+        let report = report(&[Level::Ok]);
+        assert!(report
+            .to_text_with_title("Kawi health")
+            .starts_with("Kawi health"));
     }
 
     #[test]

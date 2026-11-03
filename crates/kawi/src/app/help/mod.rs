@@ -36,6 +36,15 @@ impl App {
         Ok(false)
     }
 
+    pub(super) fn show_help_text(&mut self, topic: &str, lines: Vec<String>) -> Result<()> {
+        let view = HelpView {
+            topic: topic.to_string(),
+            lines,
+            links: BTreeMap::new(),
+        };
+        self.show_help_view(view, true)
+    }
+
     pub(super) fn handle_help_key(&mut self, key: KeyEvent) -> Result<bool> {
         if !self.help_is_active() || self.editor.mode() != kawi_editor::Mode::Normal {
             return Ok(false);

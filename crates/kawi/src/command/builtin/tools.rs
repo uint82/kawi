@@ -1,6 +1,7 @@
 use kawi_editor::Action;
 
 use super::{action, Builtin};
+use crate::command::CommandHandler;
 
 pub(super) const COMMANDS: &[Builtin] = &[
     action("visual.exit", Action::ExitVisual, "leave visual mode"),
@@ -84,6 +85,12 @@ pub(super) const COMMANDS: &[Builtin] = &[
         "show the code actions",
     ),
     action("lsp.format", Action::Format, "format the buffer"),
+    Builtin {
+        name: "lsp.status",
+        aliases: &["lsp.info"],
+        description: "show language server status",
+        handler: CommandHandler::LspStatus,
+    },
     action(
         "diagnostic.next",
         Action::DiagnosticNext,

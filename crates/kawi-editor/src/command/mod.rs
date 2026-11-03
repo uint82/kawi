@@ -64,6 +64,7 @@ pub enum Command {
     Git(GitCommand),
     Task(TaskCommand),
     Quickfix(QuickfixCommand),
+    Lsp(LspCommand),
     Explorer(ExplorerCommand),
     Terminal {
         command: Option<String>,
@@ -71,6 +72,9 @@ pub enum Command {
     },
     Conflict,
     Help {
+        topic: Option<String>,
+    },
+    Health {
         topic: Option<String>,
     },
     Undo(UndoCommand),
@@ -128,6 +132,11 @@ pub enum QuickfixCommand {
     Next,
     Previous,
     Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LspCommand {
+    Status,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +198,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "buffer",
     "buffers",
     "cclose",
+    "checkhealth",
     "clo",
     "close",
     "cnext",
@@ -198,6 +208,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "cprev",
     "cq",
     "cquit",
+    "doctor",
     "e",
     "earlier",
     "edit",
@@ -205,11 +216,13 @@ pub const COMMAND_NAMES: &[&str] = &[
     "files",
     "git",
     "h",
+    "health",
     "help",
     "imap",
     "iunmap",
     "later",
     "ls",
+    "lsp",
     "map",
     "new",
     "nmap",
@@ -396,6 +409,7 @@ fn parse_named(text: &str) -> Command {
         ("git", rest) => parse_git_command(rest),
         ("task", rest) => parse_task_command(rest),
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
+        ("lsp", rest) => parse_lsp_command(rest),
         ("explorer", []) => Command::Explorer(ExplorerCommand::Toggle),
         ("explorer", ["focus"]) => Command::Explorer(ExplorerCommand::Focus),
         ("explorer", ["reveal"]) => Command::Explorer(ExplorerCommand::Reveal),
@@ -409,6 +423,9 @@ fn parse_named(text: &str) -> Command {
         },
         ("conflict", []) => Command::Conflict,
         ("h" | "help", rest) => Command::Help {
+            topic: (!rest.is_empty()).then(|| rest.join(" ")),
+        },
+        ("health" | "checkhealth" | "doctor", rest) => Command::Health {
             topic: (!rest.is_empty()).then(|| rest.join(" ")),
         },
         ("u" | "undo", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
@@ -519,6 +536,13 @@ fn parse_quickfix_command(words: &[&str]) -> Command {
         _ => return Command::Unknown,
     };
     Command::Quickfix(command)
+}
+
+fn parse_lsp_command(words: &[&str]) -> Command {
+    match words {
+        [] | ["status" | "info"] => Command::Lsp(LspCommand::Status),
+        _ => Command::Unknown,
+    }
 }
 
 fn parse_git_log(words: &[&str]) -> GitCommand {
@@ -1215,6 +1239,27 @@ mod tests {
         );
         assert_eq!(parse("cclose"), Command::Quickfix(QuickfixCommand::Close));
         assert_eq!(parse("quickfix nope"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_health_commands() {
+        assert_eq!(parse("health"), Command::Health { topic: None });
+        assert_eq!(parse("checkhealth"), Command::Health { topic: None });
+        assert_eq!(parse("doctor"), Command::Health { topic: None });
+        assert_eq!(
+            parse("health lsp"),
+            Command::Health {
+                topic: Some("lsp".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn parses_lsp_commands() {
+        assert_eq!(parse("lsp"), Command::Lsp(LspCommand::Status));
+        assert_eq!(parse("lsp status"), Command::Lsp(LspCommand::Status));
+        assert_eq!(parse("lsp info"), Command::Lsp(LspCommand::Status));
+        assert_eq!(parse("lsp nope"), Command::Unknown);
     }
 
     #[test]
