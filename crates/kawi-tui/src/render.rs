@@ -9,9 +9,8 @@ use std::borrow::Cow;
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DecorationSpan, DiagnosticSpan, Frame, PaneFrame, PluginStyle, PromptMenu,
-    ReplaceMenu, ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind,
-    VirtualTextPlacement,
+    CursorStyle, DecorationSpan, Frame, PaneFrame, PluginStyle, PromptMenu, ReplaceMenu,
+    ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind, VirtualTextPlacement,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -25,6 +24,7 @@ use crate::display;
 
 mod bracket;
 mod debug;
+mod diagnostic;
 mod explorer;
 mod keymenu;
 mod menu;
@@ -943,8 +943,8 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     for span in bracket::bracket_match_spans(pane.bracket_match, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    for span in diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
-        paint_diagnostic_span(
+    for span in diagnostic::diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
+        diagnostic::paint_span(
             out,
             pane,
             &span,
@@ -957,136 +957,6 @@ fn draw_highlight(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Resu
     Ok(())
 }
 
-fn paint_diagnostic_span(
-    out: &mut Stdout,
-    pane: &PaneFrame<'_>,
-    span: &HighlightSpan,
-    gutter_width: usize,
-    theme: &Theme,
-    selection_spans: &[HighlightSpan],
-    syntax_spans: &[HighlightSpan],
-) -> Result<()> {
-    let Tint::Diagnostic { severity, tag } = span.tint else {
-        return Ok(());
-    };
-    let paint = DiagnosticPaint {
-        severity,
-        tag,
-        selected: false,
-        syntax: None,
-    };
-    let Some(segments) = diagnostic_segments(span, selection_spans, syntax_spans, pane.tabstop)
-    else {
-        return paint_span(out, pane, span, gutter_width, theme);
-    };
-    let x = pane.rect.x.saturating_add(gutter_width);
-    for segment in segments {
-        move_to_segment(
-            out,
-            x.saturating_add(segment.from),
-            pane.rect.y.saturating_add(span.screen_row),
-        )?;
-        paint_diagnostic(
-            out,
-            &segment.text,
-            DiagnosticPaint {
-                selected: segment.selected,
-                syntax: segment.syntax,
-                ..paint
-            },
-            theme,
-        )?;
-    }
-    Ok(())
-}
-
-struct DiagnosticSegment {
-    from: usize,
-    text: String,
-    selected: bool,
-    syntax: Option<SyntaxHighlight>,
-}
-
-fn diagnostic_segments(
-    span: &HighlightSpan,
-    selection_spans: &[HighlightSpan],
-    syntax_spans: &[HighlightSpan],
-    tabstop: usize,
-) -> Option<Vec<DiagnosticSegment>> {
-    let start = span.from;
-    let end = start.saturating_add(display_width(&span.text));
-    let ranges: Vec<(usize, usize, ())> = selection_spans
-        .iter()
-        .filter(|selection| selection.screen_row == span.screen_row)
-        .map(|selection| {
-            (
-                selection.from,
-                selection
-                    .from
-                    .saturating_add(display_width(&selection.text)),
-                (),
-            )
-        })
-        .filter(|(from, to, _)| *from < end && *to > start)
-        .collect();
-    if ranges.is_empty() {
-        return None;
-    }
-    let mut segments = Vec::new();
-    for (from, to, selected) in selection::split_ranges(start, end, &ranges) {
-        let text = display::slice_screen(&span.text, from - start, to - start, tabstop);
-        if text.is_empty() {
-            continue;
-        }
-        if selected.is_none() {
-            segments.push(DiagnosticSegment {
-                from,
-                text,
-                selected: false,
-                syntax: None,
-            });
-            continue;
-        }
-        push_selected_segments(
-            &mut segments,
-            span.screen_row,
-            from,
-            text,
-            syntax_spans,
-            tabstop,
-        );
-    }
-    Some(segments)
-}
-
-fn push_selected_segments(
-    segments: &mut Vec<DiagnosticSegment>,
-    screen_row: usize,
-    from: usize,
-    text: String,
-    syntax_spans: &[HighlightSpan],
-    tabstop: usize,
-) {
-    let span = HighlightSpan {
-        screen_row,
-        from,
-        text,
-        tint: Tint::Selection,
-    };
-    for part in selection::split_by_syntax(vec![span], syntax_spans, tabstop) {
-        let syntax = match part.tint {
-            Tint::SelectionSyntax(highlight) => Some(highlight),
-            _ => None,
-        };
-        segments.push(DiagnosticSegment {
-            from: part.from,
-            text: part.text,
-            selected: true,
-            syntax,
-        });
-    }
-}
-
 fn decoration_highlight_spans(spans: &[DecorationSpan], view: &SpanView) -> Vec<HighlightSpan> {
     spans
         .iter()
@@ -1097,24 +967,6 @@ fn decoration_highlight_spans(spans: &[DecorationSpan], view: &SpanView) -> Vec<
                 span.end,
                 view,
                 Tint::Plugin(span.style),
-            )
-        })
-        .collect()
-}
-
-fn diagnostic_highlight_spans(spans: &[DiagnosticSpan], view: &SpanView) -> Vec<HighlightSpan> {
-    spans
-        .iter()
-        .filter_map(|span| {
-            span_segment_at(
-                span.row,
-                span.start,
-                span.end,
-                view,
-                Tint::Diagnostic {
-                    severity: span.severity,
-                    tag: span.tag,
-                },
             )
         })
         .collect()
@@ -1223,10 +1075,10 @@ fn paint_span_at<W: Write>(
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
         Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
         Tint::Plugin(style) => paint_plugin(out, &span.text, style, theme, background),
-        Tint::Diagnostic { severity, tag } => paint_diagnostic(
+        Tint::Diagnostic { severity, tag } => diagnostic::paint_diagnostic(
             out,
             &span.text,
-            DiagnosticPaint {
+            diagnostic::DiagnosticPaint {
                 severity,
                 tag,
                 selected: false,
@@ -1235,72 +1087,6 @@ fn paint_span_at<W: Write>(
             theme,
         ),
     }
-}
-
-#[derive(Clone, Copy)]
-struct DiagnosticPaint {
-    severity: crate::frame::DiagnosticSeverity,
-    tag: Option<crate::frame::DiagnosticTag>,
-    selected: bool,
-    syntax: Option<SyntaxHighlight>,
-}
-
-fn paint_diagnostic<W: Write>(
-    out: &mut W,
-    text: &str,
-    paint: DiagnosticPaint,
-    theme: &Theme,
-) -> Result<()> {
-    if paint.selected {
-        return paint_selected_diagnostic(out, text, paint, theme);
-    }
-    let color = theme.diagnostic_color(paint.severity);
-    paint::apply_colors(
-        out,
-        theme.base.foreground,
-        theme.base.background,
-        "reset diagnostic colors",
-    )?;
-    match paint.tag {
-        Some(crate::frame::DiagnosticTag::Unnecessary) => paint::apply_faded_text(out, color)?,
-        Some(crate::frame::DiagnosticTag::Deprecated) => paint::apply_struck_text(out, color)?,
-        None => paint::apply_underline(out, color)?,
-    }
-    write_segment(out, text)?;
-    paint::clear_decorations(out)?;
-    paint::restore_base(out, theme)
-}
-
-fn paint_selected_diagnostic<W: Write>(
-    out: &mut W,
-    text: &str,
-    paint: DiagnosticPaint,
-    theme: &Theme,
-) -> Result<()> {
-    match paint.syntax {
-        Some(highlight) => {
-            apply_syntax_style(out, highlight, theme, theme.selection.background)?;
-        }
-        None => paint::apply_colors(
-            out,
-            theme.base.foreground,
-            theme.selection.background,
-            "apply selected diagnostic colors",
-        )?,
-    }
-    match paint.tag {
-        Some(crate::frame::DiagnosticTag::Unnecessary) => {
-            execute!(out, SetAttribute(Attribute::Dim)).context("apply faded diagnostic text")?;
-        }
-        Some(crate::frame::DiagnosticTag::Deprecated) => {
-            execute!(out, SetAttribute(Attribute::CrossedOut))
-                .context("apply struck diagnostic text")?;
-        }
-        None => paint::apply_underline(out, theme.diagnostic_color(paint.severity))?,
-    }
-    write_segment(out, text)?;
-    paint::clear_decorations(out)?;
-    paint::restore_base(out, theme)
 }
 
 fn paint_plugin<W: Write>(
@@ -2031,8 +1817,11 @@ fn saturate_u16(v: usize) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::bracket::bracket_match_spans;
+    use super::diagnostic::{
+        diagnostic_highlight_spans, diagnostic_segments, paint_diagnostic, DiagnosticPaint,
+    };
     use super::*;
-    use crate::frame::VirtualText;
+    use crate::frame::{DiagnosticSpan, VirtualText};
 
     fn viewport() -> Viewport {
         Viewport::new(10, 20)
