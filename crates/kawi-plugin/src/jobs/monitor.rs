@@ -3,13 +3,11 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde_json::json;
-
 use crate::host::PluginHostEvent;
-use crate::protocol::{JobExitedEvent, JobState, JOB_EXITED_EVENT};
+use crate::protocol::{JobExitedEvent, JobState, ProcessJobEvent};
 
 use super::output::OutputTracker;
-use super::{lock, send_job_event, JobHandle};
+use super::{lock, JobHandle};
 
 const MONITOR_INTERVAL: Duration = Duration::from_millis(20);
 const OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -121,12 +119,10 @@ fn publish_exit(
     record: ExitRecord,
 ) {
     handle.stdin.close_after_exit();
-    send_job_event(
+    handle.emit(
         events,
         wake,
-        &handle.plugin,
-        JOB_EXITED_EVENT,
-        json!(JobExitedEvent {
+        ProcessJobEvent::Exited(JobExitedEvent {
             job,
             state: record.state,
             exit_code: record.exit_code,

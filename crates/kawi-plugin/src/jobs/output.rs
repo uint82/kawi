@@ -4,12 +4,10 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde_json::json;
-
 use crate::host::PluginHostEvent;
-use crate::protocol::{JobOutputEvent, JobStream, JOB_OUTPUT_EVENT, MAX_JOB_OUTPUT_BYTES};
+use crate::protocol::{JobOutputEvent, JobStream, ProcessJobEvent, MAX_JOB_OUTPUT_BYTES};
 
-use super::{lock, send_job_event};
+use super::{lock, JobHandle};
 
 const OUTPUT_BUFFER_BYTES: usize = 8192;
 
@@ -130,7 +128,7 @@ impl Utf8Stream {
 }
 
 pub(super) struct OutputStream {
-    pub(super) plugin: String,
+    pub(super) handle: JobHandle,
     pub(super) job: u64,
     pub(super) stream: JobStream,
     pub(super) budget: Arc<OutputBudget>,
@@ -146,14 +144,14 @@ pub(super) fn spawn_output(
     let events = events.clone();
     let wake = wake.clone();
     let OutputStream {
-        plugin,
+        handle,
         job,
         stream,
         budget,
         tracker,
     } = output;
     thread::spawn(move || {
-        output_loop(&mut reader, &events, &wake, &plugin, job, stream, &budget);
+        output_loop(&mut reader, &events, &wake, &handle, job, stream, &budget);
         tracker.finish();
     });
 }
@@ -162,7 +160,7 @@ fn output_loop(
     reader: &mut impl Read,
     events: &std::sync::mpsc::Sender<PluginHostEvent>,
     wake: &std::sync::mpsc::Sender<()>,
-    plugin: &str,
+    handle: &JobHandle,
     job: u64,
     stream: JobStream,
     budget: &OutputBudget,
@@ -172,20 +170,20 @@ fn output_loop(
     loop {
         match reader.read(&mut buffer) {
             Ok(0) => {
-                send_output(events, wake, plugin, job, stream, utf8.finish(), false);
+                send_output(events, wake, handle, job, stream, utf8.finish(), false);
                 return;
             }
             Ok(read) => {
                 if !budget.allow(read) {
                     if budget.mark_truncated() {
-                        send_output(events, wake, plugin, job, stream, String::new(), true);
+                        send_output(events, wake, handle, job, stream, String::new(), true);
                     }
                     continue;
                 }
                 send_output(
                     events,
                     wake,
-                    plugin,
+                    handle,
                     job,
                     stream,
                     utf8.push(&buffer[..read]),
@@ -194,7 +192,7 @@ fn output_loop(
             }
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => {
-                send_output(events, wake, plugin, job, stream, utf8.finish(), false);
+                send_output(events, wake, handle, job, stream, utf8.finish(), false);
                 return;
             }
         }
@@ -204,7 +202,7 @@ fn output_loop(
 fn send_output(
     events: &std::sync::mpsc::Sender<PluginHostEvent>,
     wake: &std::sync::mpsc::Sender<()>,
-    plugin: &str,
+    handle: &JobHandle,
     job: u64,
     stream: JobStream,
     data: String,
@@ -213,12 +211,10 @@ fn send_output(
     if data.is_empty() && !truncated {
         return;
     }
-    send_job_event(
+    handle.emit(
         events,
         wake,
-        plugin,
-        JOB_OUTPUT_EVENT,
-        json!(JobOutputEvent {
+        ProcessJobEvent::Output(JobOutputEvent {
             job,
             stream,
             data,

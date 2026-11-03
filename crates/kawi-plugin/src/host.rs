@@ -13,8 +13,8 @@ use crate::manifest::LoadedPlugin;
 use crate::payload_size::payload_too_large;
 use crate::process::NotifyOutcome;
 use crate::protocol::{
-    InvocationContext, ProcessJobParams, ProcessOpenParams, ProcessOpenResult, ProcessSignalParams,
-    ProcessStatusResult, ProcessWriteParams, RpcError, INTERNAL_ERROR,
+    InvocationContext, ProcessJobEvent, ProcessJobParams, ProcessOpenParams, ProcessOpenResult,
+    ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, RpcError, INTERNAL_ERROR,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +173,14 @@ impl PluginHost {
         params: ProcessJobParams,
     ) -> Result<ProcessStatusResult, RpcError> {
         self.jobs.status(plugin, params)
+    }
+
+    pub fn poll_job(
+        &self,
+        plugin: &str,
+        params: ProcessJobParams,
+    ) -> Result<Vec<ProcessJobEvent>, RpcError> {
+        self.jobs.poll(plugin, params)
     }
 
     pub fn stop_jobs(&self, plugin: &str) {

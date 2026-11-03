@@ -41,6 +41,7 @@ impl App {
             "process.signal" => self.plugin_signal_job(plugin, params),
             "process.kill" => self.plugin_kill_job(plugin, params),
             "process.status" => self.plugin_job_status(plugin, params),
+            "process.poll" => self.plugin_poll_job(plugin, params),
             _ => Err(RpcError::method_not_found(method)),
         }
     }

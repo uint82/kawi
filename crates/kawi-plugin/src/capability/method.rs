@@ -28,7 +28,8 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         | "process.close_stdin"
         | "process.signal"
         | "process.kill"
-        | "process.status" => MethodCapability::Required(Capability::ProcessSpawn),
+        | "process.status"
+        | "process.poll" => MethodCapability::Required(Capability::ProcessSpawn),
         _ => MethodCapability::Unknown,
     }
 }

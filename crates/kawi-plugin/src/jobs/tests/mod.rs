@@ -1,3 +1,4 @@
+mod events;
 mod lifecycle;
 mod limits;
 mod output;
@@ -81,11 +82,25 @@ fn params(command: &str, args: &[&str]) -> ProcessOpenParams {
     }
 }
 
-fn open(manager: &JobManager, name: &str, command: &str, args: &[&str]) -> u64 {
+fn plugin_with_runtime(name: &str, runtime: PluginRuntime) -> LoadedPlugin {
+    let mut plugin = plugin(name);
+    plugin.manifest.runtime = runtime;
+    plugin
+}
+
+fn wasm_plugin(name: &str) -> LoadedPlugin {
+    plugin_with_runtime(name, PluginRuntime::Wasm)
+}
+
+fn open_with(manager: &JobManager, plugin: &LoadedPlugin, command: &str, args: &[&str]) -> u64 {
     manager
-        .open(&plugin(name), params(command, args))
+        .open(plugin, params(command, args))
         .expect("open job")
         .job
+}
+
+fn open(manager: &JobManager, name: &str, command: &str, args: &[&str]) -> u64 {
+    open_with(manager, &plugin(name), command, args)
 }
 
 fn wait_exit(receiver: &mpsc::Receiver<PluginHostEvent>, job: u64) -> JobExitedEvent {

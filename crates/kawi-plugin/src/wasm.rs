@@ -27,6 +27,8 @@ mod policy;
 #[cfg(feature = "wasm")]
 mod process;
 #[cfg(feature = "wasm")]
+mod process_jobs;
+#[cfg(feature = "wasm")]
 mod session;
 #[cfg(feature = "wasm")]
 mod state;
