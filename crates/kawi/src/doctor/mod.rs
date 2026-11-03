@@ -1,6 +1,7 @@
 mod checks;
 mod report;
 
+use crate::state::StatePaths;
 use anyhow::{Context, Result};
 use report::Report;
 use std::io::{self, Write};
@@ -95,7 +96,7 @@ fn run(options: Options) -> Result<i32> {
     let target = std::fs::canonicalize(&options.path)
         .with_context(|| format!("cannot access {}", options.path.display()))?;
     let workspace = project_workspace(&target);
-    let paths = crate::state::StatePaths::resolve();
+    let paths = StatePaths::resolve();
     let report = checks::collect(&target, &workspace, paths.as_ref());
     write_report(&report, options.json)?;
     Ok(report.exit_code(options.strict))
@@ -111,6 +112,19 @@ pub(super) fn working_directory(target: &Path) -> &Path {
     } else {
         target.parent().unwrap_or(target)
     }
+}
+
+pub(crate) struct HealthRequest<'a> {
+    pub(crate) target: &'a Path,
+    pub(crate) workspace: &'a Path,
+    pub(crate) paths: Option<&'a StatePaths>,
+    pub(crate) filter: Option<&'a str>,
+}
+
+pub(crate) fn health_text(request: HealthRequest<'_>) -> String {
+    checks::collect(request.target, request.workspace, request.paths)
+        .filtered(request.filter)
+        .to_text_with_title("Kawi health")
 }
 
 fn write_report(report: &Report, json: bool) -> Result<()> {
@@ -167,6 +181,29 @@ mod tests {
             parse_args(&["--json".to_string(), "--help".to_string()]),
             Ok(Command::Help)
         );
+    }
+
+    #[test]
+    fn health_text_uses_the_health_title_and_filter() {
+        let text = health_text(HealthRequest {
+            target: Path::new("/project"),
+            workspace: Path::new("/project"),
+            paths: None,
+            filter: Some("paths"),
+        });
+        assert!(text.starts_with("Kawi health"));
+        assert!(text.contains("[error] Paths"));
+    }
+
+    #[test]
+    fn health_text_filters_out_other_checks() {
+        let text = health_text(HealthRequest {
+            target: Path::new("/project"),
+            workspace: Path::new("/project"),
+            paths: None,
+            filter: Some("languages"),
+        });
+        assert!(!text.contains("Paths"));
     }
 
     #[test]

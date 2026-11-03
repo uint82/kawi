@@ -31,6 +31,7 @@ mod git;
 mod git_branch;
 mod git_commit;
 mod git_status;
+mod health;
 mod help;
 mod hover;
 mod identity;
@@ -2055,6 +2056,7 @@ impl App {
             }
             Command::Conflict => self.handle_conflict_command(),
             Command::Help { topic } => self.handle_help(topic.as_deref()),
+            Command::Health { topic } => self.handle_health(topic.as_deref()),
             Command::Undo(command) => self.handle_undo_command(command),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
