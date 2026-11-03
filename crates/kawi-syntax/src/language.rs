@@ -2,6 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+mod grammar;
+
 const MAX_QUERY_INHERITANCE: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -126,82 +128,11 @@ impl LanguageId {
     }
 
     pub(crate) fn language(self) -> tree_sitter::Language {
-        match self {
-            Self::Rust => tree_sitter_rust::LANGUAGE.into(),
-            Self::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
-            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
-            Self::JavaScript | Self::Jsx => tree_sitter_javascript::LANGUAGE.into(),
-            Self::Python => tree_sitter_python::LANGUAGE.into(),
-            Self::Json => tree_sitter_json::LANGUAGE.into(),
-            Self::Bash => tree_sitter_bash::LANGUAGE.into(),
-            Self::C => tree_sitter_c::LANGUAGE.into(),
-            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
-            Self::Go => tree_sitter_go::LANGUAGE.into(),
-            Self::Java => tree_sitter_java::LANGUAGE.into(),
-            Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
-            Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
-            Self::Php => tree_sitter_php::LANGUAGE_PHP.into(),
-            Self::Lua => tree_sitter_lua::LANGUAGE.into(),
-            Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
-            Self::Html => tree_sitter_html::LANGUAGE.into(),
-            Self::Css => tree_sitter_css::LANGUAGE.into(),
-            Self::Markdown => tree_sitter_md::LANGUAGE.into(),
-        }
+        grammar::language(self)
     }
 
     pub(crate) fn bundled_highlights(self) -> String {
-        let javascript = tree_sitter_javascript::HIGHLIGHT_QUERY;
-        let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
-        let typescript = tree_sitter_typescript::HIGHLIGHTS_QUERY;
-        let base = match self {
-            Self::TypeScript => format!("{javascript}\n{typescript}"),
-            Self::Tsx => format!("{javascript}\n{jsx}\n{typescript}"),
-            Self::JavaScript => javascript.to_string(),
-            Self::Jsx => format!("{javascript}\n{jsx}"),
-            Self::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.to_string(),
-            Self::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.to_string(),
-            Self::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
-            Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
-            Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
-            Self::C => tree_sitter_c::HIGHLIGHT_QUERY.to_string(),
-            Self::Cpp => format!(
-                "{}\n{}",
-                tree_sitter_c::HIGHLIGHT_QUERY,
-                tree_sitter_cpp::HIGHLIGHT_QUERY
-            ),
-            Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
-            Self::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
-            Self::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.to_string(),
-            Self::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
-            Self::Php => tree_sitter_php::HIGHLIGHTS_QUERY.to_string(),
-            Self::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
-            Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
-            Self::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
-            Self::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
-            Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
-        };
-        let script = include_str!("../queries/script-common.scm");
-        let javascript_additions = include_str!("../queries/javascript.scm");
-        let typescript_additions = include_str!("../queries/typescript.scm");
-        let jsx_additions = include_str!("../queries/jsx.scm");
-        let additions = match self {
-            Self::Rust => include_str!("../queries/rust.scm").to_string(),
-            Self::Python => include_str!("../queries/python.scm").to_string(),
-            Self::JavaScript => format!("{script}\n{javascript_additions}"),
-            Self::Jsx => format!("{script}\n{javascript_additions}\n{jsx_additions}"),
-            Self::TypeScript => format!("{script}\n{typescript_additions}"),
-            Self::Tsx => format!("{script}\n{typescript_additions}\n{jsx_additions}"),
-            Self::Bash => include_str!("../queries/bash.scm").to_string(),
-            Self::Toml => include_str!("../queries/toml.scm").to_string(),
-            Self::Json => include_str!("../queries/json.scm").to_string(),
-            Self::C | Self::Cpp => include_str!("../queries/c.scm").to_string(),
-            Self::Go | Self::Java | Self::CSharp | Self::Ruby | Self::Php => String::new(),
-            Self::Lua => include_str!("../queries/lua.scm").to_string(),
-            Self::Yaml | Self::Html | Self::Css => String::new(),
-            Self::Markdown => include_str!("../queries/markdown.scm").to_string(),
-        };
-        format!("{base}\n{additions}")
+        grammar::bundled_highlights(self)
     }
 
     pub(crate) fn highlights(self) -> &'static str {

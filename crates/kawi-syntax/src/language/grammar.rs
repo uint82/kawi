@@ -1,0 +1,84 @@
+use super::LanguageId;
+
+pub(super) fn language(language: LanguageId) -> tree_sitter::Language {
+    match language {
+        LanguageId::Rust => tree_sitter_rust::LANGUAGE.into(),
+        LanguageId::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
+        LanguageId::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        LanguageId::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        LanguageId::JavaScript | LanguageId::Jsx => tree_sitter_javascript::LANGUAGE.into(),
+        LanguageId::Python => tree_sitter_python::LANGUAGE.into(),
+        LanguageId::Json => tree_sitter_json::LANGUAGE.into(),
+        LanguageId::Bash => tree_sitter_bash::LANGUAGE.into(),
+        LanguageId::C => tree_sitter_c::LANGUAGE.into(),
+        LanguageId::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+        LanguageId::Go => tree_sitter_go::LANGUAGE.into(),
+        LanguageId::Java => tree_sitter_java::LANGUAGE.into(),
+        LanguageId::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+        LanguageId::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+        LanguageId::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+        LanguageId::Lua => tree_sitter_lua::LANGUAGE.into(),
+        LanguageId::Yaml => tree_sitter_yaml::LANGUAGE.into(),
+        LanguageId::Html => tree_sitter_html::LANGUAGE.into(),
+        LanguageId::Css => tree_sitter_css::LANGUAGE.into(),
+        LanguageId::Markdown => tree_sitter_md::LANGUAGE.into(),
+    }
+}
+
+pub(super) fn bundled_highlights(language: LanguageId) -> String {
+    let javascript = tree_sitter_javascript::HIGHLIGHT_QUERY;
+    let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
+    let typescript = tree_sitter_typescript::HIGHLIGHTS_QUERY;
+    let base = match language {
+        LanguageId::TypeScript => format!("{javascript}\n{typescript}"),
+        LanguageId::Tsx => format!("{javascript}\n{jsx}\n{typescript}"),
+        LanguageId::JavaScript => javascript.to_string(),
+        LanguageId::Jsx => format!("{javascript}\n{jsx}"),
+        LanguageId::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
+        LanguageId::C => tree_sitter_c::HIGHLIGHT_QUERY.to_string(),
+        LanguageId::Cpp => format!(
+            "{}\n{}",
+            tree_sitter_c::HIGHLIGHT_QUERY,
+            tree_sitter_cpp::HIGHLIGHT_QUERY
+        ),
+        LanguageId::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Php => tree_sitter_php::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
+    };
+    let script = include_str!("../../queries/script-common.scm");
+    let javascript_additions = include_str!("../../queries/javascript.scm");
+    let typescript_additions = include_str!("../../queries/typescript.scm");
+    let jsx_additions = include_str!("../../queries/jsx.scm");
+    let additions = match language {
+        LanguageId::Rust => include_str!("../../queries/rust.scm").to_string(),
+        LanguageId::Python => include_str!("../../queries/python.scm").to_string(),
+        LanguageId::JavaScript => format!("{script}\n{javascript_additions}"),
+        LanguageId::Jsx => format!("{script}\n{javascript_additions}\n{jsx_additions}"),
+        LanguageId::TypeScript => format!("{script}\n{typescript_additions}"),
+        LanguageId::Tsx => format!("{script}\n{typescript_additions}\n{jsx_additions}"),
+        LanguageId::Bash => include_str!("../../queries/bash.scm").to_string(),
+        LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
+        LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
+        LanguageId::C | LanguageId::Cpp => include_str!("../../queries/c.scm").to_string(),
+        LanguageId::Go
+        | LanguageId::Java
+        | LanguageId::CSharp
+        | LanguageId::Ruby
+        | LanguageId::Php => String::new(),
+        LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
+        LanguageId::Yaml | LanguageId::Html | LanguageId::Css => String::new(),
+        LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
+    };
+    format!("{base}\n{additions}")
+}
