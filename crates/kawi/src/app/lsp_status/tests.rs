@@ -132,9 +132,8 @@ fn report_renders_configuration_warnings() {
     let _ = fs::remove_dir_all(dir);
 }
 
-#[test]
-fn command_shows_status_in_pager() {
-    let dir = temp_dir("command");
+fn status_app(name: &str) -> (PathBuf, App) {
+    let dir = temp_dir(name);
     let path = dir.join("languages.toml");
     let missing = dir.join("missing-server");
     let available = dir.join("available-server");
@@ -142,25 +141,34 @@ fn command_shows_status_in_pager() {
     fs::write(&path, config(&missing, &available)).unwrap();
     let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
     app.lsp.load(&path, app.events.wake());
+    (dir, app)
+}
+
+#[test]
+fn command_shows_status_in_internal_buffer() {
+    let (dir, mut app) = status_app("command");
     app.execute_command_text("lsp status").unwrap();
-    let lines = app.pager_lines().expect("pager");
-    assert_eq!(lines[0], TITLE);
+    assert!(app.editor.current_buffer_is_internal());
+    let number = app.editor.buffer_number();
+    let text = app.editor.buffer_text(number).expect("status buffer");
+    assert!(text.starts_with(TITLE));
+    let windows = app.windows.len();
+    app.execute_command_text("lsp status").unwrap();
+    assert_eq!(app.editor.buffer_number(), number);
+    assert_eq!(app.windows.len(), windows);
     let _ = fs::remove_dir_all(dir);
 }
 
 #[test]
-fn builtin_command_shows_status_in_pager() {
-    let dir = temp_dir("builtin");
-    let path = dir.join("languages.toml");
-    let missing = dir.join("missing-server");
-    let available = dir.join("available-server");
-    executable(&available);
-    fs::write(&path, config(&missing, &available)).unwrap();
-    let mut app = App::new(Buffer::from_string(""), Flavor::Vim);
-    app.lsp.load(&path, app.events.wake());
+fn builtin_command_shows_status_in_internal_buffer() {
+    let (dir, mut app) = status_app("builtin");
     let id = app.commands.find("lsp.status").expect("command");
     app.dispatch_command_id(id, None).unwrap();
-    let lines = app.pager_lines().expect("pager");
-    assert_eq!(lines[0], TITLE);
+    assert!(app.editor.current_buffer_is_internal());
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("status buffer");
+    assert!(text.starts_with(TITLE));
     let _ = fs::remove_dir_all(dir);
 }
