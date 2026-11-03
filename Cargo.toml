@@ -23,6 +23,7 @@ rust-version = "1.98.0"
 
 kawi-buffer = { version = "0.0.1", path = "crates/kawi-buffer" }
 kawi-completion = { version = "0.0.1", path = "crates/kawi-completion" }
+kawi-dap = { version = "0.0.1", path = "crates/kawi-dap" }
 kawi-editor = { version = "0.0.1", path = "crates/kawi-editor" }
 kawi-git = { version = "0.0.1", path = "crates/kawi-git" }
 kawi-help = { version = "0.0.1", path = "crates/kawi-help" }
