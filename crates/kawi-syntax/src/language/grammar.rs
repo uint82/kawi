@@ -82,12 +82,12 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Bash => include_str!("../../queries/bash.scm").to_string(),
         LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
         LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
-        LanguageId::C | LanguageId::Cpp => c.to_string(),
-        LanguageId::Go
-        | LanguageId::Java
-        | LanguageId::CSharp
-        | LanguageId::Ruby
-        | LanguageId::Php => String::new(),
+        LanguageId::C => c.to_string(),
+        LanguageId::Cpp => format!("{c}\n{}", include_str!("../../queries/cpp.scm")),
+        LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
+        LanguageId::Java => include_str!("../../queries/java.scm").to_string(),
+        LanguageId::CSharp => include_str!("../../queries/csharp.scm").to_string(),
+        LanguageId::Ruby | LanguageId::Php => String::new(),
         LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
         LanguageId::Yaml | LanguageId::Html | LanguageId::Css => String::new(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
