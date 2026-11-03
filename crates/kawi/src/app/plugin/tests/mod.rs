@@ -3,6 +3,7 @@ mod composition;
 mod core;
 mod end_to_end;
 mod events;
+mod jobs;
 mod manager;
 mod queue;
 mod reload;
