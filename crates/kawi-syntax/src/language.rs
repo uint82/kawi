@@ -2,6 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+mod grammar;
+
 const MAX_QUERY_INHERITANCE: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,17 +17,29 @@ pub enum LanguageId {
     Python,
     Json,
     Bash,
+    C,
+    Cpp,
+    Go,
+    Java,
+    CSharp,
+    Ruby,
+    Php,
+    Lua,
+    Yaml,
+    Html,
+    Css,
+    Markdown,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 9]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 21]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 21] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -35,6 +49,18 @@ impl LanguageId {
         Self::Python,
         Self::Json,
         Self::Bash,
+        Self::C,
+        Self::Cpp,
+        Self::Go,
+        Self::Java,
+        Self::CSharp,
+        Self::Ruby,
+        Self::Php,
+        Self::Lua,
+        Self::Yaml,
+        Self::Html,
+        Self::Css,
+        Self::Markdown,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -59,6 +85,18 @@ impl LanguageId {
             "python" | "py" | "pyw" => Some(Self::Python),
             "json" => Some(Self::Json),
             "bash" | "sh" | "shell" | "zsh" => Some(Self::Bash),
+            "c" => Some(Self::C),
+            "cpp" | "c++" | "cxx" | "cc" | "h" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
+            "go" => Some(Self::Go),
+            "java" => Some(Self::Java),
+            "cs" | "csharp" | "c-sharp" => Some(Self::CSharp),
+            "rb" | "ruby" => Some(Self::Ruby),
+            "php" => Some(Self::Php),
+            "lua" => Some(Self::Lua),
+            "yaml" | "yml" => Some(Self::Yaml),
+            "html" | "htm" => Some(Self::Html),
+            "css" => Some(Self::Css),
+            "md" | "markdown" => Some(Self::Markdown),
             _ => None,
         }
     }
@@ -74,53 +112,27 @@ impl LanguageId {
             Self::Python => "python",
             Self::Json => "json",
             Self::Bash => "bash",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Go => "go",
+            Self::Java => "java",
+            Self::CSharp => "csharp",
+            Self::Ruby => "ruby",
+            Self::Php => "php",
+            Self::Lua => "lua",
+            Self::Yaml => "yaml",
+            Self::Html => "html",
+            Self::Css => "css",
+            Self::Markdown => "markdown",
         }
     }
 
     pub(crate) fn language(self) -> tree_sitter::Language {
-        match self {
-            Self::Rust => tree_sitter_rust::LANGUAGE.into(),
-            Self::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
-            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
-            Self::JavaScript | Self::Jsx => tree_sitter_javascript::LANGUAGE.into(),
-            Self::Python => tree_sitter_python::LANGUAGE.into(),
-            Self::Json => tree_sitter_json::LANGUAGE.into(),
-            Self::Bash => tree_sitter_bash::LANGUAGE.into(),
-        }
+        grammar::language(self)
     }
 
     pub(crate) fn bundled_highlights(self) -> String {
-        let javascript = tree_sitter_javascript::HIGHLIGHT_QUERY;
-        let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
-        let typescript = tree_sitter_typescript::HIGHLIGHTS_QUERY;
-        let base = match self {
-            Self::TypeScript => format!("{javascript}\n{typescript}"),
-            Self::Tsx => format!("{javascript}\n{jsx}\n{typescript}"),
-            Self::JavaScript => javascript.to_string(),
-            Self::Jsx => format!("{javascript}\n{jsx}"),
-            Self::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.to_string(),
-            Self::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.to_string(),
-            Self::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
-            Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
-            Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
-        };
-        let script = include_str!("../queries/script-common.scm");
-        let javascript_additions = include_str!("../queries/javascript.scm");
-        let typescript_additions = include_str!("../queries/typescript.scm");
-        let jsx_additions = include_str!("../queries/jsx.scm");
-        let additions = match self {
-            Self::Rust => include_str!("../queries/rust.scm").to_string(),
-            Self::Python => include_str!("../queries/python.scm").to_string(),
-            Self::JavaScript => format!("{script}\n{javascript_additions}"),
-            Self::Jsx => format!("{script}\n{javascript_additions}\n{jsx_additions}"),
-            Self::TypeScript => format!("{script}\n{typescript_additions}"),
-            Self::Tsx => format!("{script}\n{typescript_additions}\n{jsx_additions}"),
-            Self::Bash => include_str!("../queries/bash.scm").to_string(),
-            Self::Toml => include_str!("../queries/toml.scm").to_string(),
-            Self::Json => include_str!("../queries/json.scm").to_string(),
-        };
-        format!("{base}\n{additions}")
+        grammar::bundled_highlights(self)
     }
 
     pub(crate) fn highlights(self) -> &'static str {
@@ -146,6 +158,18 @@ impl LanguageId {
             Self::Python => 6,
             Self::Json => 7,
             Self::Bash => 8,
+            Self::C => 9,
+            Self::Cpp => 10,
+            Self::Go => 11,
+            Self::Java => 12,
+            Self::CSharp => 13,
+            Self::Ruby => 14,
+            Self::Php => 15,
+            Self::Lua => 16,
+            Self::Yaml => 17,
+            Self::Html => 18,
+            Self::Css => 19,
+            Self::Markdown => 20,
         }
     }
 

@@ -13,6 +13,24 @@ fn detects_known_extensions() {
     assert_eq!(LanguageId::from_path("a.py"), Some(LanguageId::Python));
     assert_eq!(LanguageId::from_path("a.json"), Some(LanguageId::Json));
     assert_eq!(LanguageId::from_path("a.sh"), Some(LanguageId::Bash));
+    assert_eq!(LanguageId::from_path("a.c"), Some(LanguageId::C));
+    assert_eq!(LanguageId::from_path("a.cpp"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_path("a.h"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_path("a.go"), Some(LanguageId::Go));
+    assert_eq!(LanguageId::from_path("a.java"), Some(LanguageId::Java));
+    assert_eq!(LanguageId::from_path("a.cs"), Some(LanguageId::CSharp));
+    assert_eq!(LanguageId::from_path("a.rb"), Some(LanguageId::Ruby));
+    assert_eq!(LanguageId::from_path("a.php"), Some(LanguageId::Php));
+    assert_eq!(LanguageId::from_path("a.lua"), Some(LanguageId::Lua));
+    assert_eq!(LanguageId::from_path("a.yaml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_path("a.yml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_path("a.html"), Some(LanguageId::Html));
+    assert_eq!(LanguageId::from_path("a.css"), Some(LanguageId::Css));
+    assert_eq!(LanguageId::from_path("a.md"), Some(LanguageId::Markdown));
+    assert_eq!(
+        LanguageId::from_path("a.markdown"),
+        Some(LanguageId::Markdown)
+    );
 }
 
 #[test]
@@ -31,6 +49,25 @@ fn normalizes_alias_names() {
     assert_eq!(LanguageId::from_alias("js"), Some(LanguageId::JavaScript));
     assert_eq!(LanguageId::from_alias("py"), Some(LanguageId::Python));
     assert_eq!(LanguageId::from_alias("sh"), Some(LanguageId::Bash));
+    assert_eq!(LanguageId::from_alias("c"), Some(LanguageId::C));
+    assert_eq!(LanguageId::from_alias("cpp"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_alias("c++"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_alias("go"), Some(LanguageId::Go));
+    assert_eq!(LanguageId::from_alias("java"), Some(LanguageId::Java));
+    assert_eq!(LanguageId::from_alias("cs"), Some(LanguageId::CSharp));
+    assert_eq!(LanguageId::from_alias("csharp"), Some(LanguageId::CSharp));
+    assert_eq!(LanguageId::from_alias("rb"), Some(LanguageId::Ruby));
+    assert_eq!(LanguageId::from_alias("php"), Some(LanguageId::Php));
+    assert_eq!(LanguageId::from_alias("lua"), Some(LanguageId::Lua));
+    assert_eq!(LanguageId::from_alias("yaml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_alias("yml"), Some(LanguageId::Yaml));
+    assert_eq!(LanguageId::from_alias("html"), Some(LanguageId::Html));
+    assert_eq!(LanguageId::from_alias("css"), Some(LanguageId::Css));
+    assert_eq!(LanguageId::from_alias("md"), Some(LanguageId::Markdown));
+    assert_eq!(
+        LanguageId::from_alias("markdown"),
+        Some(LanguageId::Markdown)
+    );
     assert_eq!(LanguageId::from_alias("brainfuck"), None);
     assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
 }
