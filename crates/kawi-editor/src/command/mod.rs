@@ -71,6 +71,7 @@ pub enum Command {
         vertical: bool,
     },
     Conflict,
+    Format,
     Help {
         topic: Option<String>,
     },
@@ -214,6 +215,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "edit",
     "explorer",
     "files",
+    "format",
     "git",
     "h",
     "health",
@@ -422,6 +424,7 @@ fn parse_named(text: &str) -> Command {
             vertical: true,
         },
         ("conflict", []) => Command::Conflict,
+        ("format", []) => Command::Format,
         ("h" | "help", rest) => Command::Help {
             topic: (!rest.is_empty()).then(|| rest.join(" ")),
         },
@@ -683,6 +686,12 @@ mod tests {
     #[test]
     fn parses_write() {
         assert_eq!(parse("w"), Command::Write { force: false });
+    }
+
+    #[test]
+    fn parses_format() {
+        assert_eq!(parse("format"), Command::Format);
+        assert_eq!(parse("format now"), Command::Unknown);
     }
 
     #[test]
