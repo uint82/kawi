@@ -25,6 +25,7 @@ mod directory;
 mod disk;
 mod explorer;
 mod file_ops;
+mod formatter;
 mod formatting;
 mod frame;
 mod git;

@@ -11,9 +11,9 @@ use kawi_editor::{
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
     CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
-    DiagnosticsEvent, FileOperationEvent, FormattingEvent, FormattingSettings, LanguageWarning,
-    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
-    RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
+    DiagnosticsEvent, FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings,
+    LanguageWarning, Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent,
+    RenameEvent, RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
     WorkspaceDiagnosticState,
 };
 use kawi_syntax::LanguageId;
@@ -464,6 +464,10 @@ impl LspUi {
 
     pub fn take_rename_edit(&mut self) -> Option<RenameEvent> {
         self.rename_edit.take()
+    }
+
+    pub fn formatter(&self, path: Option<&Path>) -> Option<FormatterConfig> {
+        self.languages.as_ref()?.formatter_for_path(path?).cloned()
     }
 
     pub fn language_indent(&self, path: Option<&Path>) -> LanguageIndent {
