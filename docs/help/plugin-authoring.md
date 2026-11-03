@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.6.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.6.0 bumps the WIT package, so rebuild components built against 0.5.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.7.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.7.0 bumps the WIT package, so rebuild components built against 0.6.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -144,6 +144,7 @@ Declare the UI APIs in `plugin.toml`:
 [capabilities]
 "ui.prompt" = true
 "ui.progress" = true
+"ui.panel" = true
 ```
 
 Prompts block until the user responds and return `PromptOutcome`:
@@ -181,6 +182,36 @@ ui_progress::finish(id)?;
 ```
 
 `ui_progress::update` returns `true` after the user cancels. Stop promptly and call `ui_progress::finish`. Only one progress can be active across all plugins. Prompt calls do not count against `timeout_ms`; progress calls do. Users cancel with `:plugin cancel` or a key binding for `plugin.cancel`.
+
+## Panels
+
+Panels render read-only, styled text above the task panel:
+
+```rust
+use kawi_plugin_sdk::types::DecorationStyle;
+use kawi_plugin_sdk::ui_panel;
+
+let panel = ui_panel::open(&ui_panel::OpenParams {
+    title: "Index".to_string(),
+    status: Some("building".to_string()),
+    height: Some(8),
+    focus: true,
+    lines: vec![ui_panel::PanelLine {
+        text: "src/main.rs".to_string(),
+        style: Some(DecorationStyle::Success),
+    }],
+})?;
+ui_panel::update(&ui_panel::UpdateParams {
+    panel: panel.panel,
+    title: None,
+    status: Some("complete".to_string()),
+    height: None,
+    lines: None,
+})?;
+ui_panel::close(panel.panel)?;
+```
+
+Only one panel can be active across all plugins. A second open returns `UI_BUSY`. Each plugin may update only its own panel. The host owns focus, layout, scrolling, and closing. The panel reserves at least four editor rows and hides when the editor is too small. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API.
 
 ## Visual customization
 
@@ -357,4 +388,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.6.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.7.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

@@ -21,6 +21,7 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `ui.prompt` | none | Request text input, a selection, or confirmation |
 | `ui.progress` | none | Show cancellable progress |
 | `ui.statusline` | none | Publish status line segments |
+| `ui.panel` | none | Open and control a docked text panel |
 | `diagnostics.read` | none | Receive diagnostics events |
 | `diagnostics.publish` | none | Publish diagnostics for the current buffer |
 | `fs.read` | `paths` | Read files under the declared paths |
@@ -40,6 +41,7 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "ui.prompt" = true
 "ui.progress" = true
 "ui.statusline" = true
+"ui.panel" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
@@ -141,6 +143,14 @@ Kawi accepts at most 16 segments and 256 bytes of text per segment. Control char
 `ui.progress` enables `ui.progress_start`, `ui.progress_update`, and `ui.progress_finish`. Progress is displayed in the status area. The user cancels with `:plugin cancel` or a key binding for `plugin.cancel`; the next `ui.progress_update` returns `{"canceled": true}`. Only one progress can be active at a time across all plugins. A second progress returns `-32040`.
 
 Prompt calls do not count against the invocation timeout. Progress calls do. Stopping a plugin clears its prompt and progress and fails a pending prompt with `-32030`.
+
+## Plugin panels
+
+`ui.panel` enables `ui.panel_open`, `ui.panel_update`, `ui.panel_focus`, and `ui.panel_close`. A panel is a read-only, styled text surface docked above the task panel. Only one panel can be active across all plugins. A second open returns `-32040`. A panel is removed when its plugin stops, restarts, reloads, or is disabled.
+
+Panels accept at most 1000 lines, 4096 bytes per line, 1 MiB of total line text, a 256-byte title, and a 256-byte status. Lines render with an optional `accent`, `info`, `success`, `warning`, `error`, or `muted` style. Control characters and terminal escapes are removed before display.
+
+The host owns layout, focus, scrolling, and closing. `height` is clamped to 4 through 18 and defaults to 8. The panel reserves at least four editor rows and hides when the editor is too small. Focus moves with `ui.panel_focus` or by clicking the panel. While focused, the host handles scrolling and closing. The `plugin.panel` command toggles focus, and `:plugin panel close` closes the panel. There is no raw key input API.
 
 ## Settings
 
