@@ -90,6 +90,7 @@ fn doctor_reports_the_workspace_without_creating_state() {
             "plugin-keybindings",
             "plugins",
             "languages",
+            "debug",
             "tasks",
             "git",
             "session",

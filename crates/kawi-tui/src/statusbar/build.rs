@@ -12,6 +12,7 @@ const DIAGNOSTICS_PRIORITY: u8 = 170;
 const WORKSPACE_DIAGNOSTICS_PRIORITY: u8 = 165;
 const GIT_PRIORITY: u8 = 160;
 const LSP_PRIORITY: u8 = 150;
+const DEBUG_PRIORITY: u8 = 148;
 const PLUGIN_PRIORITY: u8 = 155;
 const PERCENT_PRIORITY: u8 = 140;
 const FILETYPE_PRIORITY: u8 = 130;
@@ -142,6 +143,7 @@ fn segment_text(
         SegmentId::WorkspaceDiagnostics => info.workspace_diagnostics.map(str::to_string),
         SegmentId::Git => info.git.as_ref().map(git_text),
         SegmentId::Lsp => info.lsp.map(str::to_string),
+        SegmentId::Debug => info.debug.map(str::to_string),
         SegmentId::Selection => info.selection.map(str::to_string),
         SegmentId::Macro => info
             .macro_recording
@@ -222,6 +224,7 @@ fn segment_spec(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig) 
         SegmentId::WorkspaceDiagnostics => (WORKSPACE_DIAGNOSTICS_PRIORITY, false, 0),
         SegmentId::Git => (GIT_PRIORITY, false, 0),
         SegmentId::Lsp => (LSP_PRIORITY, false, 0),
+        SegmentId::Debug => (DEBUG_PRIORITY, false, 0),
         SegmentId::Percent => (PERCENT_PRIORITY, false, 0),
         SegmentId::FileType => (FILETYPE_PRIORITY, false, 0),
         SegmentId::Indent => (INDENT_PRIORITY, false, 0),
@@ -253,6 +256,7 @@ fn segment_style(id: SegmentId, info: &StatusInfo<'_>, config: &StatusBarConfig)
             .map_or(SegmentStyle::Default, SegmentStyle::Diagnostic),
         SegmentId::Git => SegmentStyle::Git,
         SegmentId::Lsp => SegmentStyle::Lsp,
+        SegmentId::Debug => SegmentStyle::Debug,
         SegmentId::Selection => SegmentStyle::Selection,
         SegmentId::Macro => SegmentStyle::Macro,
         SegmentId::FileType => SegmentStyle::FileType,

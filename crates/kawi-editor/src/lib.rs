@@ -26,8 +26,8 @@ mod sentences;
 
 pub use actions::{Action, CaseMotion, Object, ShiftMotion};
 pub use command::{
-    parse, Command, CommandLine, GitCommand, LspCommand, PickerCommand, QuickfixCommand, SetValue,
-    TaskCommand, UndoCommand,
+    parse, Command, CommandLine, DebugCommand, GitCommand, LspCommand, PickerCommand,
+    QuickfixCommand, SetValue, TaskCommand, UndoCommand,
 };
 pub use cursor::Cursor;
 pub use editing::{

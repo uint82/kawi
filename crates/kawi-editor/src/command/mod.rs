@@ -65,6 +65,7 @@ pub enum Command {
     Task(TaskCommand),
     Quickfix(QuickfixCommand),
     Lsp(LspCommand),
+    Debug(DebugCommand),
     Explorer(ExplorerCommand),
     Terminal {
         command: Option<String>,
@@ -143,6 +144,23 @@ pub enum LspCommand {
     Restart(Option<String>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DebugCommand {
+    Status,
+    Start(Option<String>),
+    Stop,
+    Continue,
+    Next,
+    StepIn,
+    StepOut,
+    ToggleBreakpoint,
+    Breakpoints,
+    Stack,
+    Variables,
+    Output,
+    Configurations,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplorerCommand {
     Toggle,
@@ -212,6 +230,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "cprev",
     "cq",
     "cquit",
+    "debug",
     "doctor",
     "e",
     "earlier",
@@ -415,6 +434,7 @@ fn parse_named(text: &str) -> Command {
         ("task", rest) => parse_task_command(rest),
         ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
         ("lsp", rest) => parse_lsp_command(rest),
+        ("debug", rest) => parse_debug_command(rest),
         ("explorer", []) => Command::Explorer(ExplorerCommand::Toggle),
         ("explorer", ["focus"]) => Command::Explorer(ExplorerCommand::Focus),
         ("explorer", ["reveal"]) => Command::Explorer(ExplorerCommand::Reveal),
@@ -555,6 +575,27 @@ fn parse_lsp_command(words: &[&str]) -> Command {
         ["restart", server] => Command::Lsp(LspCommand::Restart(Some((*server).to_string()))),
         _ => Command::Unknown,
     }
+}
+
+fn parse_debug_command(words: &[&str]) -> Command {
+    let command = match words {
+        [] | ["status" | "info"] => DebugCommand::Status,
+        ["start"] => DebugCommand::Start(None),
+        ["start", name] => DebugCommand::Start(Some((*name).to_string())),
+        ["stop" | "terminate"] => DebugCommand::Stop,
+        ["continue" | "run"] => DebugCommand::Continue,
+        ["next" | "over"] => DebugCommand::Next,
+        ["step" | "in" | "into"] => DebugCommand::StepIn,
+        ["out"] => DebugCommand::StepOut,
+        ["breakpoint" | "toggle"] => DebugCommand::ToggleBreakpoint,
+        ["breakpoints"] => DebugCommand::Breakpoints,
+        ["stack"] => DebugCommand::Stack,
+        ["variables"] => DebugCommand::Variables,
+        ["output"] => DebugCommand::Output,
+        ["configurations" | "configs"] => DebugCommand::Configurations,
+        _ => return Command::Unknown,
+    };
+    Command::Debug(command)
 }
 
 fn parse_git_log(words: &[&str]) -> GitCommand {
@@ -1270,6 +1311,46 @@ mod tests {
                 topic: Some("lsp".to_string())
             }
         );
+    }
+
+    #[test]
+    fn parses_debug_commands() {
+        assert_eq!(parse("debug"), Command::Debug(DebugCommand::Status));
+        assert_eq!(
+            parse("debug start"),
+            Command::Debug(DebugCommand::Start(None))
+        );
+        assert_eq!(
+            parse("debug start rust"),
+            Command::Debug(DebugCommand::Start(Some("rust".to_string())))
+        );
+        assert_eq!(parse("debug stop"), Command::Debug(DebugCommand::Stop));
+        assert_eq!(
+            parse("debug continue"),
+            Command::Debug(DebugCommand::Continue)
+        );
+        assert_eq!(parse("debug next"), Command::Debug(DebugCommand::Next));
+        assert_eq!(parse("debug step"), Command::Debug(DebugCommand::StepIn));
+        assert_eq!(parse("debug out"), Command::Debug(DebugCommand::StepOut));
+        assert_eq!(
+            parse("debug breakpoint"),
+            Command::Debug(DebugCommand::ToggleBreakpoint)
+        );
+        assert_eq!(
+            parse("debug breakpoints"),
+            Command::Debug(DebugCommand::Breakpoints)
+        );
+        assert_eq!(parse("debug stack"), Command::Debug(DebugCommand::Stack));
+        assert_eq!(
+            parse("debug variables"),
+            Command::Debug(DebugCommand::Variables)
+        );
+        assert_eq!(parse("debug output"), Command::Debug(DebugCommand::Output));
+        assert_eq!(
+            parse("debug configs"),
+            Command::Debug(DebugCommand::Configurations)
+        );
+        assert_eq!(parse("debug nope"), Command::Unknown);
     }
 
     #[test]

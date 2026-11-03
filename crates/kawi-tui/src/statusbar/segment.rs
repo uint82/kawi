@@ -12,6 +12,7 @@ const DEFAULT_LEFT: &[SegmentId] = &[
     SegmentId::Modified,
     SegmentId::ReadOnly,
     SegmentId::Git,
+    SegmentId::Debug,
 ];
 
 const DEFAULT_RIGHT: &[SegmentId] = &[
@@ -79,6 +80,7 @@ pub enum SegmentId {
     WorkspaceDiagnostics,
     Git,
     Lsp,
+    Debug,
     Selection,
     Macro,
     FileType,
@@ -91,7 +93,7 @@ pub enum SegmentId {
 }
 
 impl SegmentId {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Mode,
         Self::File,
         Self::Modified,
@@ -100,6 +102,7 @@ impl SegmentId {
         Self::WorkspaceDiagnostics,
         Self::Git,
         Self::Lsp,
+        Self::Debug,
         Self::Selection,
         Self::Macro,
         Self::FileType,
@@ -121,6 +124,7 @@ impl SegmentId {
             Self::WorkspaceDiagnostics => "workspace_diagnostics",
             Self::Git => "git",
             Self::Lsp => "lsp",
+            Self::Debug => "debug",
             Self::Selection => "selection",
             Self::Macro => "macro",
             Self::FileType => "filetype",
@@ -154,6 +158,7 @@ pub enum SegmentStyle {
     Diagnostic(DiagnosticSeverity),
     Git,
     Lsp,
+    Debug,
     Selection,
     Macro,
     FileType,
@@ -175,6 +180,7 @@ impl SegmentStyle {
                 | Self::Diagnostic(_)
                 | Self::Git
                 | Self::Lsp
+                | Self::Debug
                 | Self::Selection
                 | Self::Macro
                 | Self::Plugin(_)

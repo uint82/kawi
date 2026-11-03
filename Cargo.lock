@@ -944,6 +944,7 @@ dependencies = [
  "crossterm",
  "kawi-buffer",
  "kawi-completion",
+ "kawi-dap",
  "kawi-editor",
  "kawi-git",
  "kawi-help",
@@ -983,6 +984,17 @@ version = "0.0.1"
 dependencies = [
  "kawi-buffer",
  "serde_json",
+]
+
+[[package]]
+name = "kawi-dap"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "kawi-jsonrpc",
+ "kawi-process",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

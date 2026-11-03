@@ -58,6 +58,11 @@ impl App {
                 mode: pane.mode,
                 mode_kind: pane.mode_kind,
                 lsp: pane.lsp.as_deref(),
+                debug: if pane.active {
+                    self.debug.display()
+                } else {
+                    None
+                },
                 diagnostics: pane.diagnostics.as_ref().map(|value| value.text.as_str()),
                 diagnostics_severity: pane.diagnostics.as_ref().map(|value| value.severity),
                 workspace_diagnostics: pane

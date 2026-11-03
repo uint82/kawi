@@ -45,6 +45,14 @@ fn default_layout_contains_the_documented_elements() {
 }
 
 #[test]
+fn debug_status_is_rendered() {
+    let mut status = info("src/main.rs");
+    status.debug = Some("dap: stopped");
+    let texts = line_texts(&status, 120, &StatusBarConfig::default());
+    assert!(texts.contains(&"dap: stopped".to_string()));
+}
+
+#[test]
 fn visual_and_recording_states_add_transient_elements() {
     let mut status = info("src/main.rs");
     status.mode = "VISUAL";

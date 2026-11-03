@@ -20,6 +20,21 @@ pub(crate) enum CommandHandler {
     LspStart,
     LspStop,
     LspRestart,
+    Debug(DebugBuiltin),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DebugBuiltin {
+    Start,
+    Stop,
+    Continue,
+    Next,
+    StepIn,
+    StepOut,
+    ToggleBreakpoint,
+    Stack,
+    Variables,
+    Status,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

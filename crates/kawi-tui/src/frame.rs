@@ -251,6 +251,7 @@ pub enum Sign {
     Git(GitSign),
     Diagnostic(DiagnosticSeverity),
     Plugin(PluginSign),
+    Debug(DebugSign),
 }
 
 impl Sign {
@@ -259,6 +260,24 @@ impl Sign {
             Self::Git(sign) => sign.text(),
             Self::Diagnostic(severity) => severity.sign(),
             Self::Plugin(sign) => &sign.text,
+            Self::Debug(sign) => sign.text(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugSign {
+    Breakpoint,
+    Unverified,
+    Current,
+}
+
+impl DebugSign {
+    pub fn text(self) -> &'static str {
+        match self {
+            Self::Breakpoint => "●",
+            Self::Unverified => "○",
+            Self::Current => "▶",
         }
     }
 }
