@@ -229,7 +229,7 @@ mod tests {
             (LanguageId::Yaml, "key: value"),
             (LanguageId::Html, "<div class=\"x\"></div>"),
             (LanguageId::Css, ".x { color: red; }"),
-            (LanguageId::Markdown, "# Title"),
+            (LanguageId::Markdown, "# Title\n"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -237,6 +237,21 @@ mod tests {
                 "{language:?} returned no groups"
             );
         }
+    }
+
+    #[test]
+    fn cpp_inherits_c_highlights() {
+        assert!(names(LanguageId::Cpp, "int value = 0;").contains(&"type"));
+    }
+
+    #[test]
+    fn lua_conditionals_use_standard_captures() {
+        assert!(names(LanguageId::Lua, "if true then end").contains(&"keyword.control"));
+    }
+
+    #[test]
+    fn markdown_headings_use_standard_captures() {
+        assert!(names(LanguageId::Markdown, "# Title\n").contains(&"type"));
     }
 
     #[test]
@@ -267,7 +282,7 @@ mod tests {
             (LanguageId::Yaml, "key: value"),
             (LanguageId::Html, "<div class=\"x\"></div>"),
             (LanguageId::Css, ".x { color: red; }"),
-            (LanguageId::Markdown, "# Title"),
+            (LanguageId::Markdown, "# Title\n"),
         ];
         for (language, fragment) in fragments {
             assert!(
