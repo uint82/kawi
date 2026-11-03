@@ -85,6 +85,9 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("java"), vec!["jdtls"]);
     assert_eq!(servers_for("kotlin"), vec!["kotlin-language-server"]);
     assert_eq!(servers_for("csharp"), vec!["csharp-ls"]);
+    assert_eq!(servers_for("haskell"), vec!["haskell-language-server"]);
+    assert_eq!(servers_for("ocaml"), vec!["ocamllsp"]);
+    assert_eq!(servers_for("gleam"), vec!["gleam"]);
 }
 
 #[test]

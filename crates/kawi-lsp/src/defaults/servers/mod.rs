@@ -1,6 +1,7 @@
 use crate::ServerConfig;
 use std::collections::BTreeMap;
 
+mod functional;
 mod jvm_dotnet;
 mod scripting;
 mod systems;
@@ -12,6 +13,7 @@ pub(super) fn servers() -> BTreeMap<String, ServerConfig> {
     servers.extend(web::servers());
     servers.extend(scripting::servers());
     servers.extend(jvm_dotnet::servers());
+    servers.extend(functional::servers());
     servers
 }
 
