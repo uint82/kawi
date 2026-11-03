@@ -15,17 +15,20 @@ pub enum LanguageId {
     Python,
     Json,
     Bash,
+    C,
+    Cpp,
+    Go,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 9]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 12]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 12] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -35,6 +38,9 @@ impl LanguageId {
         Self::Python,
         Self::Json,
         Self::Bash,
+        Self::C,
+        Self::Cpp,
+        Self::Go,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -59,6 +65,9 @@ impl LanguageId {
             "python" | "py" | "pyw" => Some(Self::Python),
             "json" => Some(Self::Json),
             "bash" | "sh" | "shell" | "zsh" => Some(Self::Bash),
+            "c" => Some(Self::C),
+            "cpp" | "c++" | "cxx" | "cc" | "h" | "hpp" | "hh" | "hxx" => Some(Self::Cpp),
+            "go" => Some(Self::Go),
             _ => None,
         }
     }
@@ -74,6 +83,9 @@ impl LanguageId {
             Self::Python => "python",
             Self::Json => "json",
             Self::Bash => "bash",
+            Self::C => "c",
+            Self::Cpp => "cpp",
+            Self::Go => "go",
         }
     }
 
@@ -87,6 +99,9 @@ impl LanguageId {
             Self::Python => tree_sitter_python::LANGUAGE.into(),
             Self::Json => tree_sitter_json::LANGUAGE.into(),
             Self::Bash => tree_sitter_bash::LANGUAGE.into(),
+            Self::C => tree_sitter_c::LANGUAGE.into(),
+            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Self::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
 
@@ -104,6 +119,13 @@ impl LanguageId {
             Self::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
             Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
             Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
+            Self::C => tree_sitter_c::HIGHLIGHT_QUERY.to_string(),
+            Self::Cpp => format!(
+                "{}\n{}",
+                tree_sitter_c::HIGHLIGHT_QUERY,
+                tree_sitter_cpp::HIGHLIGHT_QUERY
+            ),
+            Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
         };
         let script = include_str!("../queries/script-common.scm");
         let javascript_additions = include_str!("../queries/javascript.scm");
@@ -119,6 +141,8 @@ impl LanguageId {
             Self::Bash => include_str!("../queries/bash.scm").to_string(),
             Self::Toml => include_str!("../queries/toml.scm").to_string(),
             Self::Json => include_str!("../queries/json.scm").to_string(),
+            Self::C | Self::Cpp => include_str!("../queries/c.scm").to_string(),
+            Self::Go => String::new(),
         };
         format!("{base}\n{additions}")
     }
@@ -146,6 +170,9 @@ impl LanguageId {
             Self::Python => 6,
             Self::Json => 7,
             Self::Bash => 8,
+            Self::C => 9,
+            Self::Cpp => 10,
+            Self::Go => 11,
         }
     }
 

@@ -13,6 +13,10 @@ fn detects_known_extensions() {
     assert_eq!(LanguageId::from_path("a.py"), Some(LanguageId::Python));
     assert_eq!(LanguageId::from_path("a.json"), Some(LanguageId::Json));
     assert_eq!(LanguageId::from_path("a.sh"), Some(LanguageId::Bash));
+    assert_eq!(LanguageId::from_path("a.c"), Some(LanguageId::C));
+    assert_eq!(LanguageId::from_path("a.cpp"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_path("a.h"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_path("a.go"), Some(LanguageId::Go));
 }
 
 #[test]
@@ -31,6 +35,10 @@ fn normalizes_alias_names() {
     assert_eq!(LanguageId::from_alias("js"), Some(LanguageId::JavaScript));
     assert_eq!(LanguageId::from_alias("py"), Some(LanguageId::Python));
     assert_eq!(LanguageId::from_alias("sh"), Some(LanguageId::Bash));
+    assert_eq!(LanguageId::from_alias("c"), Some(LanguageId::C));
+    assert_eq!(LanguageId::from_alias("cpp"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_alias("c++"), Some(LanguageId::Cpp));
+    assert_eq!(LanguageId::from_alias("go"), Some(LanguageId::Go));
     assert_eq!(LanguageId::from_alias("brainfuck"), None);
     assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
 }

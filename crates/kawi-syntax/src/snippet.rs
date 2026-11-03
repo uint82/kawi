@@ -215,6 +215,9 @@ mod tests {
             (LanguageId::Python, "def run():\n    return 1\n"),
             (LanguageId::Json, "{\"value\": 1}"),
             (LanguageId::Bash, "echo \"hi\""),
+            (LanguageId::C, "int main(void) { return 0; }"),
+            (LanguageId::Cpp, "int main() { return 0; }"),
+            (LanguageId::Go, "package main\nfunc main() {}"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -241,6 +244,9 @@ mod tests {
             (LanguageId::Python, "value + 1"),
             (LanguageId::Json, "{\"value\": 1}"),
             (LanguageId::Bash, "echo \"hi\""),
+            (LanguageId::C, "return 0;"),
+            (LanguageId::Cpp, "return 0;"),
+            (LanguageId::Go, "func main() {}"),
         ];
         for (language, fragment) in fragments {
             assert!(
