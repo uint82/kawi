@@ -1,5 +1,7 @@
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use kawi_tui::frame::Rect;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use super::{spawn_options, TerminalKey, TerminalLayout, TerminalUi};
 use crate::app::{compact_error, App};
@@ -110,6 +112,44 @@ impl App {
             }
         }
         Ok(false)
+    }
+
+    pub(crate) fn open_debug_terminal(
+        &mut self,
+        command: String,
+        cwd: PathBuf,
+        env: BTreeMap<String, String>,
+    ) -> Option<u32> {
+        let layout = TerminalLayout::Horizontal;
+        let Some((rows, cols)) = self.terminal_spawn_size(layout) else {
+            self.show_message("Terminal pane needs more space".to_string());
+            return None;
+        };
+        let mut options = spawn_options(
+            cwd,
+            rows,
+            cols,
+            Some(command),
+            self.ipc.as_ref().map(crate::ipc::Server::path),
+        );
+        options.env = env;
+        self.terminal.set_layout(layout);
+        match self.terminal.open(options, self.events.wake()) {
+            Ok(()) => {
+                self.terminal_focus = true;
+                self.sync_terminal_panel_size();
+                self.clear_message();
+                self.terminal.process_id()
+            }
+            Err(error) => {
+                self.terminal_focus = false;
+                self.show_message(format!(
+                    "Terminal failed to start: {}",
+                    compact_error(&error.to_string())
+                ));
+                None
+            }
+        }
     }
 
     fn terminal_spawn_size(&self, layout: TerminalLayout) -> Option<(u16, u16)> {

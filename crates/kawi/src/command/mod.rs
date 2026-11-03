@@ -26,6 +26,7 @@ pub(crate) enum CommandHandler {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DebugBuiltin {
     Start,
+    Restart,
     Stop,
     Continue,
     Next,
@@ -34,6 +35,11 @@ pub(crate) enum DebugBuiltin {
     ToggleBreakpoint,
     Stack,
     Variables,
+    Threads,
+    Functions,
+    Exceptions,
+    Console,
+    Watches,
     Status,
 }
 

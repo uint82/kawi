@@ -3,6 +3,9 @@ use crate::client::ClientEvent;
 use crate::protocol::Message;
 use serde_json::Value;
 
+mod incoming;
+use std::path::Path;
+
 impl Manager {
     pub(super) fn handle_client_event(&mut self, event: ClientEvent) {
         match event {
@@ -39,8 +42,8 @@ impl Manager {
             Message::Request {
                 seq,
                 command,
-                arguments: _,
-            } => self.handle_reverse_request(seq, command),
+                arguments,
+            } => self.handle_reverse_request(seq, command, arguments),
             Message::Response {
                 request_seq,
                 success,
@@ -64,163 +67,171 @@ impl Manager {
         let Some(pending) = self.pending.remove(&request_seq) else {
             return;
         };
-        if !success {
-            let message = message.unwrap_or_else(|| format!("{command} failed"));
-            if matches!(pending, PendingRequest::Initialize | PendingRequest::Launch) {
+        if success {
+            self.handle_success(pending, body);
+        } else {
+            self.handle_failure(pending, command, message);
+        }
+    }
+
+    fn handle_failure(
+        &mut self,
+        pending: PendingRequest,
+        command: String,
+        message: Option<String>,
+    ) {
+        let message = message.unwrap_or_else(|| format!("{command} failed"));
+        match pending {
+            PendingRequest::Initialize | PendingRequest::Launch => {
                 self.finish_session(DebugStatus::Failed, Some(message));
-            } else if matches!(pending, PendingRequest::Disconnect) {
-                self.finish_session(DebugStatus::Terminated, None);
-            } else if matches!(
-                pending,
-                PendingRequest::Continue { .. } | PendingRequest::Step
-            ) {
+            }
+            PendingRequest::Disconnect => self.finish_session(DebugStatus::Terminated, None),
+            PendingRequest::Continue { .. } | PendingRequest::Step => {
                 self.emit(DapEvent::Error(message));
                 self.emit(DapEvent::Status(DebugStatus::Stopped));
-            } else {
-                self.emit(DapEvent::Error(message));
             }
-            return;
+            PendingRequest::Evaluate {
+                expression,
+                context,
+            } => self.emit(DapEvent::EvaluationFailed {
+                expression,
+                context,
+                message,
+            }),
+            _ => self.emit(DapEvent::Error(message)),
         }
+    }
+
+    fn handle_success(&mut self, pending: PendingRequest, body: Option<Value>) {
         match pending {
-            PendingRequest::Initialize => {
-                self.initialize_deadline = None;
-                self.send_launch();
-            }
+            PendingRequest::Initialize => self.handle_initialize_response(body.as_ref()),
             PendingRequest::Launch => {
                 self.launch_sent = true;
                 self.maybe_emit_running();
             }
             PendingRequest::SetBreakpoints { path } => {
-                for mut breakpoint in super::parse::breakpoints(body.as_ref()) {
-                    if breakpoint.source.is_none() {
-                        breakpoint.source = Some(path.clone());
-                    }
-                    self.emit(DapEvent::Breakpoint {
-                        reason: "changed".to_string(),
-                        breakpoint,
-                    });
-                }
+                self.handle_breakpoints_response(&path, body.as_ref())
             }
             PendingRequest::ConfigurationDone => {
                 self.configuration_done = true;
                 self.maybe_emit_running();
             }
             PendingRequest::StackTrace { thread_id } => {
-                self.emit(DapEvent::StackTrace {
-                    thread_id,
-                    frames: super::parse::stack_frames(body.as_ref()),
-                });
+                self.handle_stack_response(thread_id, body.as_ref())
             }
             PendingRequest::Scopes { frame_id } => {
-                self.emit(DapEvent::Scopes {
-                    frame_id,
-                    scopes: super::parse::scopes(body.as_ref()),
-                });
+                self.handle_scopes_response(frame_id, body.as_ref())
             }
             PendingRequest::Variables {
                 variables_reference,
-            } => {
-                self.emit(DapEvent::Variables {
-                    variables_reference,
-                    variables: super::parse::variables(body.as_ref()),
-                });
-            }
-            PendingRequest::Continue { thread_id } => {
-                self.emit(DapEvent::Status(DebugStatus::Running));
-                self.emit(DapEvent::Continued {
-                    thread_id,
-                    all_threads_continued: false,
-                });
-            }
+            } => self.handle_variables_response(variables_reference, body.as_ref()),
+            PendingRequest::Threads => self.handle_threads_response(body.as_ref()),
+            PendingRequest::Evaluate {
+                expression,
+                context,
+            } => self.handle_evaluate_response(expression, context, body.as_ref()),
+            PendingRequest::SetFunctionBreakpoints | PendingRequest::SetExceptionBreakpoints => {}
+            PendingRequest::Continue { thread_id } => self.handle_continue_response(thread_id),
             PendingRequest::Step => {}
-            PendingRequest::Disconnect => {
-                self.finish_session(DebugStatus::Terminated, None);
-            }
+            PendingRequest::Disconnect => self.finish_session(DebugStatus::Terminated, None),
         }
     }
 
-    fn handle_event(&mut self, event: &str, body: Option<&Value>) {
-        match event {
-            "initialized" => {
-                if self.stopping {
-                    return;
-                }
-                self.initialized = true;
-                self.send_launch();
-                self.send_all_breakpoints();
-                self.send_configuration_done();
-            }
-            "stopped" => {
-                self.emit(DapEvent::Status(DebugStatus::Stopped));
-                self.emit(DapEvent::Stopped {
-                    reason: string_field(body, "reason").unwrap_or_else(|| "pause".to_string()),
-                    thread_id: body
-                        .and_then(|body| body.get("threadId"))
-                        .and_then(Value::as_i64),
-                    all_threads_stopped: body
-                        .and_then(|body| body.get("allThreadsStopped"))
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    description: string_field(body, "description"),
-                    text: string_field(body, "text"),
-                });
-            }
-            "continued" => {
-                let thread_id = body
-                    .and_then(|body| body.get("threadId"))
-                    .and_then(Value::as_i64)
-                    .unwrap_or(0);
-                let all_threads_continued = body
-                    .and_then(|body| body.get("allThreadsContinued"))
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                self.emit(DapEvent::Status(DebugStatus::Running));
-                self.emit(DapEvent::Continued {
-                    thread_id,
-                    all_threads_continued,
-                });
-            }
-            "exited" => {
-                self.emit(DapEvent::Exited {
-                    exit_code: body
-                        .and_then(|body| body.get("exitCode"))
-                        .and_then(Value::as_i64)
-                        .unwrap_or(0),
-                });
-            }
-            "terminated" => self.finish_session(DebugStatus::Terminated, None),
-            "output" => self.emit(DapEvent::Output {
-                category: string_field(body, "category").unwrap_or_else(|| "console".to_string()),
-                output: string_field(body, "output").unwrap_or_default(),
-            }),
-            "breakpoint" => {
-                let breakpoint = body
-                    .and_then(|body| body.get("breakpoint"))
-                    .map(super::parse::breakpoint);
-                if let Some(breakpoint) = breakpoint {
-                    self.emit(DapEvent::Breakpoint {
-                        reason: string_field(body, "reason")
-                            .unwrap_or_else(|| "changed".to_string()),
-                        breakpoint,
-                    });
-                }
-            }
-            _ => {}
+    fn handle_initialize_response(&mut self, body: Option<&Value>) {
+        self.initialize_deadline = None;
+        self.available_exception_filters = super::parse::exception_filters(body);
+        self.supports_function_breakpoints = body
+            .and_then(|body| body.get("supportsFunctionBreakpoints"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.apply_default_exception_filters();
+        self.emit(DapEvent::ExceptionFilters {
+            filters: self.available_exception_filters.clone(),
+        });
+        self.send_launch();
+    }
+
+    fn apply_default_exception_filters(&mut self) {
+        if self.exception_filters.is_none() {
+            let defaults = self
+                .available_exception_filters
+                .iter()
+                .filter(|filter| filter.default)
+                .map(|filter| filter.filter.clone())
+                .collect();
+            self.exception_filters = Some(defaults);
+            return;
+        }
+        if let Some(filters) = self.exception_filters.as_mut() {
+            filters.retain(|filter| {
+                self.available_exception_filters
+                    .iter()
+                    .any(|candidate| candidate.filter == *filter)
+            });
         }
     }
 
-    fn handle_reverse_request(&mut self, request_seq: i64, command: String) {
-        let seq = self.request_id();
-        if let Some(client) = self.client.as_ref() {
-            client.client.send(Message::response(
-                seq,
-                request_seq,
-                false,
-                command,
-                Some("unsupported request".to_string()),
-                None,
-            ));
+    fn handle_breakpoints_response(&mut self, path: &Path, body: Option<&Value>) {
+        for mut breakpoint in super::parse::breakpoints(body) {
+            if breakpoint.source.is_none() {
+                breakpoint.source = Some(path.to_path_buf());
+            }
+            self.emit(DapEvent::Breakpoint {
+                reason: "changed".to_string(),
+                breakpoint,
+            });
         }
+    }
+
+    fn handle_stack_response(&mut self, thread_id: i64, body: Option<&Value>) {
+        self.emit(DapEvent::StackTrace {
+            thread_id,
+            frames: super::parse::stack_frames(body),
+        });
+    }
+
+    fn handle_scopes_response(&mut self, frame_id: i64, body: Option<&Value>) {
+        self.emit(DapEvent::Scopes {
+            frame_id,
+            scopes: super::parse::scopes(body),
+        });
+    }
+
+    fn handle_variables_response(&mut self, variables_reference: i64, body: Option<&Value>) {
+        self.emit(DapEvent::Variables {
+            variables_reference,
+            variables: super::parse::variables(body),
+        });
+    }
+
+    fn handle_threads_response(&mut self, body: Option<&Value>) {
+        self.emit(DapEvent::Threads {
+            threads: super::parse::threads(body),
+        });
+    }
+
+    fn handle_evaluate_response(
+        &mut self,
+        expression: String,
+        context: String,
+        body: Option<&Value>,
+    ) {
+        let (result, kind, variables_reference) = super::parse::evaluate_result(body);
+        self.emit(DapEvent::Evaluated {
+            expression,
+            context,
+            result,
+            kind,
+            variables_reference,
+        });
+    }
+
+    fn handle_continue_response(&mut self, thread_id: i64) {
+        self.emit(DapEvent::Status(DebugStatus::Running));
+        self.emit(DapEvent::Continued {
+            thread_id,
+            all_threads_continued: false,
+        });
     }
 
     fn client_failed(&mut self, generation: u64, message: String) {
@@ -235,10 +246,4 @@ impl Manager {
         let message = (!self.stopping).then_some(message);
         self.finish_session(status, message);
     }
-}
-
-fn string_field(body: Option<&Value>, key: &str) -> Option<String> {
-    body.and_then(|body| body.get(key))
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }

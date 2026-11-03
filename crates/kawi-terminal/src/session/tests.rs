@@ -155,3 +155,25 @@ fn exports_the_instance_socket() {
     wait_for_text(&mut session, "/tmp/kawi.sock");
     session.terminate();
 }
+
+#[test]
+#[cfg(unix)]
+fn exposes_the_child_process_id() {
+    let (wake, _wake_rx) = channel();
+    let mut session = TerminalSession::start(&options("sleep 1"), wake).unwrap();
+    assert!(session.process_id().is_some());
+    session.terminate();
+}
+
+#[test]
+#[cfg(unix)]
+fn applies_extra_environment_variables() {
+    let (wake, _wake_rx) = channel();
+    let mut options = options("printf $KAWI_DEBUG_TEST");
+    options
+        .env
+        .insert("KAWI_DEBUG_TEST".to_string(), "debug-value".to_string());
+    let mut session = TerminalSession::start(&options, wake).unwrap();
+    wait_for_text(&mut session, "debug-value");
+    session.terminate();
+}

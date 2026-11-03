@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use portable_pty::{CommandBuilder, ExitStatus, PtySize};
@@ -10,6 +11,7 @@ pub struct SpawnOptions {
     pub command: Option<String>,
     pub editor: Option<String>,
     pub ipc_socket: Option<PathBuf>,
+    pub env: BTreeMap<String, String>,
 }
 
 impl SpawnOptions {
@@ -22,6 +24,7 @@ impl SpawnOptions {
             command: None,
             editor: None,
             ipc_socket: None,
+            env: BTreeMap::new(),
         }
     }
 }
@@ -40,6 +43,9 @@ pub(super) fn build_command(options: &SpawnOptions) -> CommandBuilder {
         Some(socket) => builder.env("KAWI_IPC_SOCKET", socket),
         None => builder.env_remove("KAWI_IPC_SOCKET"),
     };
+    for (key, value) in &options.env {
+        builder.env(key, value);
+    }
     if let Some(command) = options.command.as_ref() {
         builder.arg("-c");
         builder.arg(command);

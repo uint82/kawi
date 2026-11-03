@@ -9,6 +9,7 @@ pub use config::{
 };
 pub use protocol::Message;
 pub use service::{
-    Breakpoint, BreakpointSet, DapEvent, DapService, DebugStatus, Scope, SourceBreakpoint,
-    StackFrame, StepKind, Variable,
+    Breakpoint, BreakpointSet, DapEvent, DapService, DebugStatus, ExceptionFilter,
+    FunctionBreakpoint, RunInTerminalRequest, Scope, SourceBreakpoint, StackFrame, StartRequest,
+    StepKind, Thread, Variable,
 };

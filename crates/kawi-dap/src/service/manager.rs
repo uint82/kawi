@@ -1,9 +1,15 @@
 use super::*;
+use crate::ExpandedConfiguration;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 mod events;
 mod launch;
 mod parse;
+mod reverse;
 mod run;
+mod session;
 
 pub(crate) struct Manager {
     input: Receiver<ServiceInput>,
@@ -13,6 +19,11 @@ pub(crate) struct Manager {
     client: Option<ClientState>,
     config: Option<ExpandedConfiguration>,
     breakpoints: BTreeMap<PathBuf, Vec<SourceBreakpoint>>,
+    function_breakpoints: Vec<FunctionBreakpoint>,
+    exception_filters: Option<Vec<String>>,
+    available_exception_filters: Vec<ExceptionFilter>,
+    supports_function_breakpoints: bool,
+    reverse_requests: BTreeMap<i64, String>,
     pending: std::collections::HashMap<i64, PendingRequest>,
     next_generation: u64,
     next_seq: i64,
@@ -37,6 +48,10 @@ pub(crate) enum PendingRequest {
     StackTrace { thread_id: i64 },
     Scopes { frame_id: i64 },
     Variables { variables_reference: i64 },
+    Threads,
+    Evaluate { expression: String, context: String },
+    SetFunctionBreakpoints,
+    SetExceptionBreakpoints,
     Continue { thread_id: i64 },
     Step,
     Disconnect,
@@ -57,6 +72,11 @@ impl Manager {
             client: None,
             config: None,
             breakpoints: BTreeMap::new(),
+            function_breakpoints: Vec::new(),
+            exception_filters: None,
+            available_exception_filters: Vec::new(),
+            supports_function_breakpoints: false,
+            reverse_requests: BTreeMap::new(),
             pending: std::collections::HashMap::new(),
             next_generation: 0,
             next_seq: 0,
@@ -92,6 +112,27 @@ impl Manager {
         }
         self.pending.insert(seq, pending);
         true
+    }
+
+    fn send_response(
+        &mut self,
+        request_seq: i64,
+        success: bool,
+        command: String,
+        message: Option<String>,
+        body: Option<Value>,
+    ) {
+        let seq = self.request_id();
+        if let Some(client) = self.client.as_ref() {
+            client.client.send(Message::response(
+                seq,
+                request_seq,
+                success,
+                command,
+                message,
+                body,
+            ));
+        }
     }
 
     fn emit(&self, event: DapEvent) {

@@ -148,15 +148,33 @@ pub enum LspCommand {
 pub enum DebugCommand {
     Status,
     Start(Option<String>),
+    Restart,
     Stop,
     Continue,
     Next,
     StepIn,
     StepOut,
     ToggleBreakpoint,
+    BreakpointCondition(String),
+    BreakpointHitCondition(String),
+    BreakpointLogMessage(String),
+    BreakpointClear,
     Breakpoints,
+    FunctionBreakpoint(String),
+    FunctionBreakpoints,
+    Exceptions,
+    ToggleException(String),
     Stack,
     Variables,
+    ExpandVariables(i64),
+    Threads,
+    Thread(i64),
+    Evaluate(String),
+    Console,
+    Watch(String),
+    EditWatch(usize, String),
+    Unwatch(String),
+    Watches,
     Output,
     Configurations,
 }
@@ -582,15 +600,55 @@ fn parse_debug_command(words: &[&str]) -> Command {
         [] | ["status" | "info"] => DebugCommand::Status,
         ["start"] => DebugCommand::Start(None),
         ["start", name] => DebugCommand::Start(Some((*name).to_string())),
+        ["restart"] => DebugCommand::Restart,
         ["stop" | "terminate"] => DebugCommand::Stop,
         ["continue" | "run"] => DebugCommand::Continue,
         ["next" | "over"] => DebugCommand::Next,
         ["step" | "in" | "into"] => DebugCommand::StepIn,
         ["out"] => DebugCommand::StepOut,
         ["breakpoint" | "toggle"] => DebugCommand::ToggleBreakpoint,
+        ["breakpoint", "condition", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::BreakpointCondition(rest.join(" "))
+        }
+        ["breakpoint", "hit" | "hit-condition", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::BreakpointHitCondition(rest.join(" "))
+        }
+        ["breakpoint", "log" | "log-message", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::BreakpointLogMessage(rest.join(" "))
+        }
+        ["breakpoint", "clear"] => DebugCommand::BreakpointClear,
         ["breakpoints"] => DebugCommand::Breakpoints,
+        ["function", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::FunctionBreakpoint(rest.join(" "))
+        }
+        ["functions"] => DebugCommand::FunctionBreakpoints,
+        ["exceptions"] => DebugCommand::Exceptions,
+        ["exception", filter] => DebugCommand::ToggleException((*filter).to_string()),
         ["stack"] => DebugCommand::Stack,
         ["variables"] => DebugCommand::Variables,
+        ["expand", reference] => match reference.parse() {
+            Ok(reference) if reference > 0 => DebugCommand::ExpandVariables(reference),
+            _ => return Command::Unknown,
+        },
+        ["threads"] => DebugCommand::Threads,
+        ["thread", thread_id] => match thread_id.parse() {
+            Ok(thread_id) if thread_id > 0 => DebugCommand::Thread(thread_id),
+            _ => return Command::Unknown,
+        },
+        ["eval" | "evaluate", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::Evaluate(rest.join(" "))
+        }
+        ["console"] => DebugCommand::Console,
+        ["watch", "add", rest @ ..] if !rest.is_empty() => DebugCommand::Watch(rest.join(" ")),
+        ["watch", "edit", index, rest @ ..] if !rest.is_empty() => match index.parse() {
+            Ok(index) if index > 0 => DebugCommand::EditWatch(index, rest.join(" ")),
+            _ => return Command::Unknown,
+        },
+        ["watch", "remove" | "delete", rest @ ..] if !rest.is_empty() => {
+            DebugCommand::Unwatch(rest.join(" "))
+        }
+        ["watch"] | ["watches"] => DebugCommand::Watches,
+        ["unwatch", rest @ ..] if !rest.is_empty() => DebugCommand::Unwatch(rest.join(" ")),
         ["output"] => DebugCommand::Output,
         ["configurations" | "configs"] => DebugCommand::Configurations,
         _ => return Command::Unknown,
@@ -1350,6 +1408,79 @@ mod tests {
             parse("debug configs"),
             Command::Debug(DebugCommand::Configurations)
         );
+        assert_eq!(
+            parse("debug restart"),
+            Command::Debug(DebugCommand::Restart)
+        );
+        assert_eq!(
+            parse("debug breakpoint condition x > 0"),
+            Command::Debug(DebugCommand::BreakpointCondition("x > 0".to_string()))
+        );
+        assert_eq!(
+            parse("debug breakpoint hit 3"),
+            Command::Debug(DebugCommand::BreakpointHitCondition("3".to_string()))
+        );
+        assert_eq!(
+            parse("debug breakpoint log value {x}"),
+            Command::Debug(DebugCommand::BreakpointLogMessage("value {x}".to_string()))
+        );
+        assert_eq!(
+            parse("debug breakpoint clear"),
+            Command::Debug(DebugCommand::BreakpointClear)
+        );
+        assert_eq!(
+            parse("debug function main"),
+            Command::Debug(DebugCommand::FunctionBreakpoint("main".to_string()))
+        );
+        assert_eq!(
+            parse("debug functions"),
+            Command::Debug(DebugCommand::FunctionBreakpoints)
+        );
+        assert_eq!(
+            parse("debug exceptions"),
+            Command::Debug(DebugCommand::Exceptions)
+        );
+        assert_eq!(
+            parse("debug exception uncaught"),
+            Command::Debug(DebugCommand::ToggleException("uncaught".to_string()))
+        );
+        assert_eq!(
+            parse("debug eval x + 1"),
+            Command::Debug(DebugCommand::Evaluate("x + 1".to_string()))
+        );
+        assert_eq!(
+            parse("debug console"),
+            Command::Debug(DebugCommand::Console)
+        );
+        assert_eq!(
+            parse("debug watch add x"),
+            Command::Debug(DebugCommand::Watch("x".to_string()))
+        );
+        assert_eq!(
+            parse("debug watch edit 2 x + 2"),
+            Command::Debug(DebugCommand::EditWatch(2, "x + 2".to_string()))
+        );
+        assert_eq!(
+            parse("debug watch remove x"),
+            Command::Debug(DebugCommand::Unwatch("x".to_string()))
+        );
+        assert_eq!(
+            parse("debug watches"),
+            Command::Debug(DebugCommand::Watches)
+        );
+        assert_eq!(
+            parse("debug threads"),
+            Command::Debug(DebugCommand::Threads)
+        );
+        assert_eq!(
+            parse("debug thread 2"),
+            Command::Debug(DebugCommand::Thread(2))
+        );
+        assert_eq!(
+            parse("debug expand 200"),
+            Command::Debug(DebugCommand::ExpandVariables(200))
+        );
+        assert_eq!(parse("debug thread nope"), Command::Unknown);
         assert_eq!(parse("debug nope"), Command::Unknown);
     }
 

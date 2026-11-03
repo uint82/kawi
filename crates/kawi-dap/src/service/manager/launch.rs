@@ -1,5 +1,6 @@
 use super::*;
-use serde_json::json;
+use serde_json::{json, Value};
+use std::path::Path;
 
 impl Manager {
     pub(super) fn send_launch(&mut self) {
@@ -48,6 +49,41 @@ impl Manager {
         );
     }
 
+    pub(super) fn send_function_breakpoints(&mut self) {
+        if !self.supports_function_breakpoints {
+            if !self.function_breakpoints.is_empty() {
+                self.emit(DapEvent::Error(
+                    "debug adapter does not support function breakpoints".to_string(),
+                ));
+            }
+            return;
+        }
+        let payload: Vec<Value> = self
+            .function_breakpoints
+            .iter()
+            .map(function_breakpoint_payload)
+            .collect();
+        self.send_request(
+            "setFunctionBreakpoints",
+            Some(json!({"breakpoints": payload})),
+            PendingRequest::SetFunctionBreakpoints,
+        );
+    }
+
+    pub(super) fn send_exception_breakpoints(&mut self) {
+        if self.available_exception_filters.is_empty()
+            && self.exception_filters.as_ref().is_none_or(Vec::is_empty)
+        {
+            return;
+        }
+        let filters = self.exception_filters.clone().unwrap_or_default();
+        self.send_request(
+            "setExceptionBreakpoints",
+            Some(json!({"filters": filters})),
+            PendingRequest::SetExceptionBreakpoints,
+        );
+    }
+
     pub(super) fn send_configuration_done(&mut self) {
         if self.send_request("configurationDone", None, PendingRequest::ConfigurationDone) {
             self.configuration_done = true;
@@ -59,6 +95,17 @@ impl Manager {
             self.emit(DapEvent::Status(DebugStatus::Running));
         }
     }
+}
+
+fn function_breakpoint_payload(breakpoint: &FunctionBreakpoint) -> Value {
+    let mut value = json!({"name": breakpoint.name});
+    if let Some(condition) = &breakpoint.condition {
+        value["condition"] = Value::String(condition.clone());
+    }
+    if let Some(hit_condition) = &breakpoint.hit_condition {
+        value["hitCondition"] = Value::String(hit_condition.clone());
+    }
+    value
 }
 
 fn breakpoint_payload(breakpoint: &SourceBreakpoint) -> Value {

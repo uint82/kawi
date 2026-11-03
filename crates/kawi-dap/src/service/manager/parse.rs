@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub(super) fn breakpoints(body: Option<&Value>) -> Vec<Breakpoint> {
     array(body, "breakpoints").iter().map(breakpoint).collect()
@@ -82,6 +83,112 @@ pub(super) fn variables(body: Option<&Value>) -> Vec<Variable> {
         .collect()
 }
 
+pub(super) fn threads(body: Option<&Value>) -> Vec<Thread> {
+    array(body, "threads")
+        .iter()
+        .filter_map(|value| {
+            Some(Thread {
+                id: value.get("id").and_then(Value::as_i64)?,
+                name: value
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("thread")
+                    .to_string(),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn evaluate_result(body: Option<&Value>) -> (String, Option<String>, i64) {
+    let result = body
+        .and_then(|body| body.get("result"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let kind = body
+        .and_then(|body| body.get("type"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let variables_reference = body
+        .and_then(|body| body.get("variablesReference"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    (result, kind, variables_reference)
+}
+
+pub(super) fn exception_filters(body: Option<&Value>) -> Vec<ExceptionFilter> {
+    body.and_then(|body| body.get("exceptionBreakpointFilters"))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|value| {
+            Some(ExceptionFilter {
+                filter: value.get("filter").and_then(Value::as_str)?.to_string(),
+                label: value
+                    .get("label")
+                    .and_then(Value::as_str)
+                    .unwrap_or("filter")
+                    .to_string(),
+                default: value
+                    .get("default")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn run_in_terminal(request_seq: i64, arguments: Option<&Value>) -> RunInTerminalRequest {
+    RunInTerminalRequest {
+        request_seq,
+        kind: string(arguments, "kind"),
+        title: string(arguments, "title"),
+        cwd: arguments
+            .and_then(|arguments| arguments.get("cwd"))
+            .and_then(Value::as_str)
+            .map(PathBuf::from),
+        args: string_array(arguments, "args"),
+        env: string_map(arguments, "env"),
+        args_can_be_interpreted_by_shell: arguments
+            .and_then(|arguments| arguments.get("argsCanBeInterpretedByShell"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    }
+}
+
+fn string(value: Option<&Value>, key: &str) -> Option<String> {
+    value
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn string_array(value: Option<&Value>, key: &str) -> Vec<String> {
+    value
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn string_map(value: Option<&Value>, key: &str) -> BTreeMap<String, String> {
+    value
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_object)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn array<'a>(body: Option<&'a Value>, key: &str) -> &'a [Value] {
     body.and_then(|body| body.get(key))
         .and_then(Value::as_array)
@@ -101,6 +208,7 @@ fn source_path(value: &Value) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::Path;
 
     #[test]
     fn parses_stack_frames_scopes_and_variables() {

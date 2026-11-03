@@ -1,6 +1,6 @@
 use kawi_dap::{
-    BreakpointSet, DapEvent, DapService, DebugStatus, ExpandedConfiguration, SourceBreakpoint,
-    StepKind,
+    BreakpointSet, DapEvent, DapService, DebugStatus, ExpandedConfiguration, FunctionBreakpoint,
+    SourceBreakpoint, StartRequest, StepKind,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -42,6 +42,15 @@ fn config(dir: &Path, stop_on_entry: bool) -> ExpandedConfiguration {
         env,
         cwd: Some(dir.to_path_buf()),
         arguments: json!({"program": dir.join("main.rs").display().to_string()}),
+    }
+}
+
+fn start_request(config: ExpandedConfiguration) -> StartRequest {
+    StartRequest {
+        config,
+        breakpoints: Vec::new(),
+        function_breakpoints: Vec::new(),
+        exception_filters: None,
     }
 }
 
@@ -103,7 +112,9 @@ fn runs_a_session_through_launch_breakpoints_and_variables() {
     let (wake, _wake_rx) = mpsc::channel();
     let service = DapService::new(wake).expect("service");
     let mut events = Events::new();
-    assert!(service.start(config(&dir, true), vec![breakpoint_set(&dir, &[1])]));
+    let mut request = start_request(config(&dir, true));
+    request.breakpoints = vec![breakpoint_set(&dir, &[1])];
+    assert!(service.start_request(request));
     wait_for_status(&mut events, &service, DebugStatus::Running);
     let breakpoint = events.wait(&service, |event| {
         matches!(event, DapEvent::Breakpoint { .. })
@@ -174,7 +185,7 @@ fn updates_breakpoints_after_initialization() {
     let (wake, _wake_rx) = mpsc::channel();
     let service = DapService::new(wake).expect("service");
     let mut events = Events::new();
-    assert!(service.start(config(&dir, true), Vec::new()));
+    assert!(service.start_request(start_request(config(&dir, true))));
     wait_for_stopped(&mut events, &service);
     assert!(service.set_breakpoints(
         dir.join("main.rs"),
@@ -205,7 +216,7 @@ fn reports_a_missing_adapter() {
     let mut events = Events::new();
     let mut configuration = config(&dir, false);
     configuration.command = "kawi-missing-debug-adapter".to_string();
-    assert!(service.start(configuration, Vec::new()));
+    assert!(service.start_request(start_request(configuration)));
     let event = events.wait(&service, |event| matches!(event, DapEvent::Error(_)));
     let DapEvent::Error(message) = event else {
         panic!("unexpected event");
@@ -221,7 +232,7 @@ fn step_requests_stop_again() {
     let (wake, _wake_rx) = mpsc::channel();
     let service = DapService::new(wake).expect("service");
     let mut events = Events::new();
-    assert!(service.start(config(&dir, true), Vec::new()));
+    assert!(service.start_request(start_request(config(&dir, true))));
     wait_for_stopped(&mut events, &service);
     assert!(service.step(1, StepKind::Next));
     let event = events.wait(
@@ -232,6 +243,176 @@ fn step_requests_stop_again() {
         panic!("unexpected event");
     };
     assert_eq!(thread_id, Some(1));
+    assert!(service.stop());
+    wait_for_status(&mut events, &service, DebugStatus::Terminated);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn reports_threads_evaluates_expressions_and_filters() {
+    let dir = temp_dir("evaluate");
+    let (wake, _wake_rx) = mpsc::channel();
+    let service = DapService::new(wake).expect("service");
+    let mut events = Events::new();
+    let request_log = dir.join("requests.log");
+    let mut configuration = config(&dir, true);
+    configuration.env.insert(
+        "FAKE_DAP_REQUEST_LOG".to_string(),
+        request_log.display().to_string(),
+    );
+    let mut request = start_request(configuration);
+    request.function_breakpoints = vec![FunctionBreakpoint {
+        name: "main".to_string(),
+        condition: None,
+        hit_condition: None,
+    }];
+    request.exception_filters = Some(vec!["caught".to_string()]);
+    assert!(service.start_request(request));
+    let filters = events.wait(&service, |event| {
+        matches!(event, DapEvent::ExceptionFilters { .. })
+    });
+    let DapEvent::ExceptionFilters { filters } = filters else {
+        panic!("unexpected event");
+    };
+    assert!(filters.iter().any(|filter| filter.filter == "uncaught"));
+    wait_for_stopped(&mut events, &service);
+    let log = fs::read_to_string(&request_log).unwrap();
+    let function = log
+        .find("setFunctionBreakpoints")
+        .expect("function breakpoints");
+    let exceptions = log
+        .find("setExceptionBreakpoints")
+        .expect("exception filters");
+    let configuration_done = log.find("configurationDone").expect("configuration done");
+    assert!(function < configuration_done);
+    assert!(exceptions < configuration_done);
+
+    assert!(service.threads());
+    let threads = events.wait(&service, |event| matches!(event, DapEvent::Threads { .. }));
+    let DapEvent::Threads { threads } = threads else {
+        panic!("unexpected event");
+    };
+    assert_eq!(threads.len(), 2);
+    assert_eq!(threads[1].name, "worker");
+
+    assert!(service.evaluate("x + 1".to_string(), Some(1), "repl".to_string()));
+    let evaluated = events.wait(&service, |event| {
+        matches!(event, DapEvent::Evaluated { .. })
+    });
+    let DapEvent::Evaluated {
+        expression,
+        context,
+        result,
+        ..
+    } = evaluated
+    else {
+        panic!("unexpected event");
+    };
+    assert_eq!(expression, "x + 1");
+    assert_eq!(context, "repl");
+    assert_eq!(result, "x + 1:repl");
+
+    assert!(service.evaluate("missing".to_string(), Some(1), "repl".to_string()));
+    let failed = events.wait(&service, |event| {
+        matches!(event, DapEvent::EvaluationFailed { .. })
+    });
+    let DapEvent::EvaluationFailed {
+        expression,
+        message,
+        ..
+    } = failed
+    else {
+        panic!("unexpected event");
+    };
+    assert_eq!(expression, "missing");
+    assert!(message.contains("unknown expression"));
+
+    assert!(service.stop());
+    wait_for_status(&mut events, &service, DebugStatus::Terminated);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn responds_to_run_in_terminal_requests() {
+    let dir = temp_dir("terminal");
+    let terminal_file = dir.join("terminal.json");
+    let (wake, _wake_rx) = mpsc::channel();
+    let service = DapService::new(wake).expect("service");
+    let mut events = Events::new();
+    let mut configuration = config(&dir, false);
+    configuration
+        .env
+        .insert("FAKE_DAP_RUN_IN_TERMINAL".to_string(), "1".to_string());
+    configuration.env.insert(
+        "FAKE_DAP_TERMINAL_FILE".to_string(),
+        terminal_file.display().to_string(),
+    );
+    assert!(service.start_request(start_request(configuration)));
+    let request = events.wait(&service, |event| {
+        matches!(event, DapEvent::RunInTerminal(_))
+    });
+    let DapEvent::RunInTerminal(request) = request else {
+        panic!("unexpected event");
+    };
+    assert_eq!(request.args, ["printf", "debug-terminal"]);
+    assert_eq!(
+        request.env.get("KAWI_DEBUG_TEST").map(String::as_str),
+        Some("1")
+    );
+    assert!(service.respond_run_in_terminal(request.request_seq, Some(4242), None));
+    wait_for_file(&terminal_file);
+    let response: serde_json::Value =
+        serde_json::from_slice(&fs::read(&terminal_file).unwrap()).unwrap();
+    assert_eq!(response["success"], true);
+    assert_eq!(response["body"]["processId"], 4242);
+    assert!(service.stop());
+    wait_for_status(&mut events, &service, DebugStatus::Terminated);
+    let _ = fs::remove_dir_all(dir);
+}
+
+fn wait_for_file(path: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while Instant::now() < deadline {
+        if path.is_file() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    panic!("file was not written: {}", path.display());
+}
+
+#[test]
+fn sends_conditional_breakpoint_fields() {
+    let dir = temp_dir("conditional");
+    let request_log = dir.join("requests.log");
+    let (wake, _wake_rx) = mpsc::channel();
+    let service = DapService::new(wake).expect("service");
+    let mut events = Events::new();
+    let mut configuration = config(&dir, false);
+    configuration.env.insert(
+        "FAKE_DAP_REQUEST_LOG".to_string(),
+        request_log.display().to_string(),
+    );
+    let mut request = start_request(configuration);
+    request.breakpoints = vec![BreakpointSet {
+        path: dir.join("main.rs"),
+        breakpoints: vec![SourceBreakpoint {
+            line: 4,
+            condition: Some("x > 0".to_string()),
+            hit_condition: Some("3".to_string()),
+            log_message: Some("value {x}".to_string()),
+        }],
+    }];
+    assert!(service.start_request(request));
+    wait_for_status(&mut events, &service, DebugStatus::Running);
+    let log = fs::read_to_string(&request_log).unwrap();
+    let line = log
+        .lines()
+        .find(|line| line.starts_with("setBreakpoints"))
+        .expect("setBreakpoints request");
+    assert!(line.contains("\"condition\":\"x > 0\""));
+    assert!(line.contains("\"hitCondition\":\"3\""));
+    assert!(line.contains("\"logMessage\":\"value {x}\""));
     assert!(service.stop());
     wait_for_status(&mut events, &service, DebugStatus::Terminated);
     let _ = fs::remove_dir_all(dir);

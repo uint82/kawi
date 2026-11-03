@@ -2,133 +2,19 @@ use crate::client::{Client, ClientEvent};
 use crate::protocol::Message;
 use crate::ExpandedConfiguration;
 use anyhow::{Context, Result};
-use serde_json::Value;
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 mod manager;
+mod types;
+
+pub use types::*;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 const STACK_FRAME_LIMIT: i64 = 20;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceBreakpoint {
-    pub line: u32,
-    pub condition: Option<String>,
-    pub hit_condition: Option<String>,
-    pub log_message: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BreakpointSet {
-    pub path: PathBuf,
-    pub breakpoints: Vec<SourceBreakpoint>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Breakpoint {
-    pub verified: bool,
-    pub line: Option<u32>,
-    pub source: Option<PathBuf>,
-    pub message: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StackFrame {
-    pub id: i64,
-    pub name: String,
-    pub source: Option<PathBuf>,
-    pub line: u32,
-    pub column: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scope {
-    pub name: String,
-    pub variables_reference: i64,
-    pub expensive: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Variable {
-    pub name: String,
-    pub value: String,
-    pub kind: Option<String>,
-    pub variables_reference: i64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StepKind {
-    Next,
-    In,
-    Out,
-}
-
-impl StepKind {
-    fn command(self) -> &'static str {
-        match self {
-            Self::Next => "next",
-            Self::In => "stepIn",
-            Self::Out => "stepOut",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DebugStatus {
-    Idle,
-    Starting,
-    Running,
-    Stopped,
-    Terminated,
-    Failed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DapEvent {
-    Status(DebugStatus),
-    Stopped {
-        reason: String,
-        thread_id: Option<i64>,
-        all_threads_stopped: bool,
-        description: Option<String>,
-        text: Option<String>,
-    },
-    Continued {
-        thread_id: i64,
-        all_threads_continued: bool,
-    },
-    Exited {
-        exit_code: i64,
-    },
-    Terminated,
-    Output {
-        category: String,
-        output: String,
-    },
-    Breakpoint {
-        reason: String,
-        breakpoint: Breakpoint,
-    },
-    StackTrace {
-        thread_id: i64,
-        frames: Vec<StackFrame>,
-    },
-    Scopes {
-        frame_id: i64,
-        scopes: Vec<Scope>,
-    },
-    Variables {
-        variables_reference: i64,
-        variables: Vec<Variable>,
-    },
-    Error(String),
-    Log(String),
-}
 
 pub struct DapService {
     commands: Sender<ServiceInput>,
@@ -153,10 +39,16 @@ impl DapService {
     }
 
     pub fn start(&self, config: ExpandedConfiguration, breakpoints: Vec<BreakpointSet>) -> bool {
-        self.send(Command::Start {
+        self.start_request(StartRequest {
             config,
             breakpoints,
+            function_breakpoints: Vec::new(),
+            exception_filters: None,
         })
+    }
+
+    pub fn start_request(&self, request: StartRequest) -> bool {
+        self.send(Command::Start(Box::new(request)))
     }
 
     pub fn stop(&self) -> bool {
@@ -189,6 +81,39 @@ impl DapService {
         })
     }
 
+    pub fn threads(&self) -> bool {
+        self.send(Command::Threads)
+    }
+
+    pub fn evaluate(&self, expression: String, frame_id: Option<i64>, context: String) -> bool {
+        self.send(Command::Evaluate {
+            expression,
+            frame_id,
+            context,
+        })
+    }
+
+    pub fn set_function_breakpoints(&self, breakpoints: Vec<FunctionBreakpoint>) -> bool {
+        self.send(Command::SetFunctionBreakpoints { breakpoints })
+    }
+
+    pub fn set_exception_filters(&self, filters: Vec<String>) -> bool {
+        self.send(Command::SetExceptionFilters { filters })
+    }
+
+    pub fn respond_run_in_terminal(
+        &self,
+        request_seq: i64,
+        process_id: Option<u32>,
+        message: Option<String>,
+    ) -> bool {
+        self.send(Command::RunInTerminalResponse {
+            request_seq,
+            process_id,
+            message,
+        })
+    }
+
     pub fn try_recv(&self) -> Option<DapEvent> {
         self.events.try_recv().ok()
     }
@@ -213,10 +138,7 @@ pub(crate) enum ServiceInput {
 }
 
 pub(crate) enum Command {
-    Start {
-        config: ExpandedConfiguration,
-        breakpoints: Vec<BreakpointSet>,
-    },
+    Start(Box<StartRequest>),
     Stop,
     SetBreakpoints {
         path: PathBuf,
@@ -237,6 +159,23 @@ pub(crate) enum Command {
     },
     Variables {
         variables_reference: i64,
+    },
+    Threads,
+    Evaluate {
+        expression: String,
+        frame_id: Option<i64>,
+        context: String,
+    },
+    SetFunctionBreakpoints {
+        breakpoints: Vec<FunctionBreakpoint>,
+    },
+    SetExceptionFilters {
+        filters: Vec<String>,
+    },
+    RunInTerminalResponse {
+        request_seq: i64,
+        process_id: Option<u32>,
+        message: Option<String>,
     },
     Shutdown,
 }
