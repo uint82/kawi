@@ -23,6 +23,12 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
         "editor.set_decorations" => MethodCapability::Required(Capability::EditorDecorations),
         "config.get" | "config.list" => MethodCapability::None,
+        "process.open"
+        | "process.write"
+        | "process.close_stdin"
+        | "process.signal"
+        | "process.kill"
+        | "process.status" => MethodCapability::Required(Capability::ProcessSpawn),
         _ => MethodCapability::Unknown,
     }
 }
