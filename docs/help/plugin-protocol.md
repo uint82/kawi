@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration).
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Background process jobs use the process transport until the WIT job interface ships; WASM plugins keep the one-shot `process-run` interface.
 
 ## Trust model
 
@@ -106,7 +106,7 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 9,
+    "protocol_minor": 10,
     "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
@@ -122,7 +122,7 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 9,
+    "protocol_minor": 10,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
@@ -527,6 +527,147 @@ Result:
 
 Settings are sorted by key. Invalid user values and unknown keys are logged, and invalid values fall back to the manifest default. Kawi reads `$XDG_CONFIG_HOME/kawi/plugins.toml` on demand, so changes apply on the next call without restarting the plugin.
 
+## Process jobs
+
+Background jobs let a running process plugin start a long-lived child, stream its output, write to its stdin, signal it, and observe its exit. A job keeps running after the command invocation that started it returns. Output and exit events are delivered to the running plugin while no invocation is in flight.
+
+Jobs require the `process.spawn` capability and use the same command scope as the WebAssembly `process-run` interface. Protocol minor 10 exposes jobs to process plugins. The WIT job interface ships in a later minor version, so WASM plugins keep the one-shot `process-run` interface.
+
+### process.open
+
+Request params:
+
+```json
+{
+  "command": "/usr/bin/gdb",
+  "args": ["--interpreter=dap"],
+  "cwd": "$WORKSPACE",
+  "env": {"RUST_LOG": "debug"},
+  "stdin": "pipe"
+}
+```
+
+Result:
+
+```json
+{"job": 1}
+```
+
+`command` must resolve to an executable inside the `process.spawn` command scope. Arguments are not scoped. `cwd` defaults to the plugin directory. A relative `cwd` resolves from the plugin directory. An absolute `cwd` must resolve inside the plugin directory, the workspace, or the configuration directory. `env` adds or overrides entries in the inherited environment. `stdin` is `pipe` by default; `null` connects the child to an empty stdin.
+
+### job_output
+
+Kawi sends `job_output` notifications while the plugin is idle:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "event",
+  "params": {
+    "event": "job_output",
+    "payload": {
+      "job": 1,
+      "stream": "stdout",
+      "data": "Content-Length: 42\r\n\r\n",
+      "truncated": false
+    }
+  }
+}
+```
+
+`stream` is `stdout` or `stderr`. `data` is UTF-8 text decoded incrementally; invalid byte sequences are replaced with U+FFFD. `truncated` is `true` on a single event after the job reaches the output limit. Kawi continues to drain the child streams after the limit but discards the excess, so a job cannot block on a full pipe.
+
+### job_exited
+
+Kawi sends `job_exited` after the child exits and the remaining output is queued:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "event",
+  "params": {
+    "event": "job_exited",
+    "payload": {
+      "job": 1,
+      "state": "exited",
+      "exit_code": 0,
+      "signal": null
+    }
+  }
+}
+```
+
+`state` is `exited`, `killed`, or `failed`. `exit_code` is `null` when the process was terminated by a signal or when the status is unavailable. `signal` is the terminating signal number on Unix. Kawi waits up to two seconds for stdout and stderr to drain before sending `job_exited`, so final output normally arrives first.
+
+Job events are tied to the job that produced them and are not listed in `subscribes`. A plugin receives them while the job exists, including while no invocation is in flight.
+
+### process.write
+
+Request params:
+
+```json
+{"job": 1, "data": "continue\n"}
+```
+
+Result is `null`. `data` is UTF-8 text and is limited to 1 MiB per call. The write is queued without waiting for the child to read it. A full queue returns `-32053`; a closed or exited job returns `-32052`. Writing to a job opened with `"stdin": "null"` returns `-32052`.
+
+### process.close_stdin
+
+Request params:
+
+```json
+{"job": 1}
+```
+
+Result is `null`. Closing is idempotent, including after the job exits. After the call, the child sees end of file on stdin and later writes return `-32052`.
+
+### process.signal
+
+Request params:
+
+```json
+{"job": 1, "signal": "terminate"}
+```
+
+Result is `null`. `signal` is `interrupt`, `terminate`, or `kill`. On Unix, Kawi sends the signal to the child process group. `kill` marks the job `killed` after delivery; `interrupt` and `terminate` leave the state `running` until the process exits. A signal to an exited job returns `-32052`. On other platforms only `kill` is supported; the other values return `-32030`.
+
+### process.kill
+
+Request params:
+
+```json
+{"job": 1}
+```
+
+Result is `null`. Kawi sends a hard kill to the process group, waits for the child, and marks the job `killed`. Killing an already exited job is a no-op.
+
+### process.status
+
+Request params:
+
+```json
+{"job": 1}
+```
+
+Result:
+
+```json
+{"state": "running", "exit_code": null, "signal": null}
+```
+
+Use `process.status` for polling and `job_exited` for waiting. There is no separate wait method or started event; `process.open` returns the job ID synchronously and every event carries it.
+
+### Limits
+
+- A plugin may have 16 running jobs. Starting another one returns `-32051`.
+- A job may emit 8 MiB across stdout and stderr. Kawi truncates the stream after that limit.
+- A job may receive 1 MiB of stdin per `process.write` call.
+- A job may pass 256 arguments and set 64 environment entries. Arguments are limited to 64 KiB each and 1 MiB in total; environment keys, values, and total size are limited to 1 KiB, 32 KiB, and 128 KiB.
+- Kawi retains exited jobs for five minutes so late `status` calls succeed.
+- Job events use the per-plugin notification queue. If that queue is full, Kawi drops the event; the job keeps running and remains observable through `process.status`.
+
+Stopping, crashing, restarting, reloading, or disabling a plugin kills every job owned by that plugin.
+
 ## Versioning
 
 Unknown event types and unknown fields are ignored. New events and fields are additive and bump only the minor version. The plugin `events` list in the initialize result defines the intersection Kawi may send.
@@ -547,6 +688,10 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32020` | Request canceled |
 | `-32030` | Plugin unavailable |
 | `-32040` | Interactive UI is busy |
+| `-32050` | Job not found |
+| `-32051` | Too many running jobs |
+| `-32052` | Job or job stdin is closed |
+| `-32053` | Job output or input queue is full |
 
 Transport failures are host errors, not JSON-RPC errors. A process exit fails in-flight requests with `plugin process exited`.
 
@@ -556,4 +701,4 @@ Kawi restarts a crashed process only on the next invocation. Failures use expone
 
 ## Notifications
 
-Kawi ignores unsolicited notifications except for logging. Version 1 has no host-to-plugin event stream.
+Kawi ignores unsolicited notifications except for logging. Kawi sends editor events and job events as `event` notifications. Editor events respect `subscribes`; job events are delivered for jobs the plugin owns.
