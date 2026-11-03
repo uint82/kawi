@@ -25,6 +25,7 @@ mod directory;
 mod disk;
 mod explorer;
 mod file_ops;
+mod formatter;
 mod formatting;
 mod frame;
 mod git;
@@ -2055,6 +2056,7 @@ impl App {
                 self.open_terminal(command, layout)
             }
             Command::Conflict => self.handle_conflict_command(),
+            Command::Format => self.request_format(),
             Command::Help { topic } => self.handle_help(topic.as_deref()),
             Command::Health { topic } => self.handle_health(topic.as_deref()),
             Command::Undo(command) => self.handle_undo_command(command),

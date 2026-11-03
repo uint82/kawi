@@ -49,14 +49,14 @@ fn health_report_uses_the_health_title() {
 }
 
 #[test]
-fn health_report_filters_to_language_servers() {
+fn health_report_filters_to_languages() {
     let dir = std::env::temp_dir().join(format!("kawi_health_{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     let paths = state_paths(&dir);
     let app = app();
     let text = app.health_report(Some("languages"), Some(&paths));
-    assert!(text.contains("Language servers"));
+    assert!(text.contains("Languages"));
     assert!(!text.contains("Paths"));
     let _ = fs::remove_dir_all(dir);
 }

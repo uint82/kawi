@@ -423,7 +423,8 @@ pub(crate) const OPTIONS: [OptionSpec; 48] = [
     OptionSpec {
         name: "format_on_save",
         aliases: &[],
-        description: "Format the buffer before saving.",
+        description:
+            "Format the buffer with the configured formatter or language server before saving.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,

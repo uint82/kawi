@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use kawi_lsp::FormattingEvent;
+use kawi_lsp::{FormatterConfig, FormattingEvent};
 
+use super::formatter::{self, FormatError};
 use super::App;
 
 const FORMAT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -64,6 +65,20 @@ impl App {
         if !self.format_on_save || !self.editor.is_dirty() {
             return self.save_buffer_now(number, force, after, visible, None);
         }
+        if let Some((path, formatter)) = self.external_formatter() {
+            return self
+                .save_with_external_formatter(number, path, formatter, force, after, visible);
+        }
+        self.request_lsp_formatted_save(number, force, after, visible)
+    }
+
+    fn request_lsp_formatted_save(
+        &mut self,
+        number: usize,
+        force: bool,
+        after: SaveAfter,
+        visible: bool,
+    ) -> bool {
         self.lsp.refresh(&self.editor);
         match self.lsp.formatting(&self.editor, None) {
             Ok(request) => {
@@ -78,6 +93,47 @@ impl App {
                 false
             }
             Err(_) => self.save_buffer_now(number, force, after, visible, None),
+        }
+    }
+
+    fn save_with_external_formatter(
+        &mut self,
+        number: usize,
+        path: PathBuf,
+        formatter: FormatterConfig,
+        force: bool,
+        after: SaveAfter,
+        visible: bool,
+    ) -> bool {
+        let Some(text) = self.editor.buffer_text(number) else {
+            return self.save_buffer_now(number, force, after, visible, None);
+        };
+        match formatter::format(&formatter, &path, &text) {
+            Ok(formatted) => {
+                if formatted != text {
+                    if let Err(message) = self.apply_formatted_text(&path, &formatted) {
+                        let suffix = format!(
+                            "{}; saved without formatting",
+                            super::lsp::one_line(&message)
+                        );
+                        return self.save_buffer_now(number, force, after, visible, Some(&suffix));
+                    }
+                }
+                self.save_buffer_now(number, force, after, visible, None)
+            }
+            Err(FormatError::NotFound(message)) => {
+                if visible {
+                    self.show_message(format!("{message}; using language server"));
+                }
+                self.request_lsp_formatted_save(number, force, after, visible)
+            }
+            Err(FormatError::Failed(message)) => {
+                let suffix = format!(
+                    "{}; saved without formatting",
+                    super::lsp::one_line(&message)
+                );
+                self.save_buffer_now(number, force, after, visible, Some(&suffix))
+            }
         }
     }
 
@@ -351,6 +407,50 @@ mod tests {
         app.request_save(false, SaveAfter::None, true);
         assert_eq!(fs::read_to_string(&path).expect("disk"), "xalpha\n");
         assert!(app.pending_save.is_none());
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    fn load_external_formatter(app: &mut App, dir: &Path, command: &str, args: &str) {
+        let config = dir.join("languages.toml");
+        fs::write(
+            &config,
+            format!(
+                "[[language]]\nname = \"text\"\nextensions = [\"txt\"]\nservers = []\nformatter = {{ command = {command:?}, args = {args} }}\n"
+            ),
+        )
+        .unwrap();
+        app.lsp.load(&config, app.events.wake());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_formatter_runs_before_save() {
+        let (dir, path, mut app) = app_with("external_save", "alpha\n");
+        app.format_on_save = true;
+        edit(&mut app, "x");
+        load_external_formatter(&mut app, &dir, "sh", "[\"-c\", \"tr a-z A-Z\"]");
+        assert!(app.request_save(false, SaveAfter::None, true));
+        assert_eq!(fs::read_to_string(&path).expect("disk"), "XALPHA\n");
+        assert_eq!(app.editor.buffer_text(1).as_deref(), Some("XALPHA\n"));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_formatter_failure_saves_unformatted() {
+        let (dir, path, mut app) = app_with("external_save_failure", "alpha\n");
+        app.format_on_save = true;
+        edit(&mut app, "x");
+        load_external_formatter(
+            &mut app,
+            &dir,
+            "sh",
+            "[\"-c\", \"printf boom >&2; exit 1\"]",
+        );
+        assert!(app.request_save(false, SaveAfter::None, true));
+        assert_eq!(fs::read_to_string(&path).expect("disk"), "xalpha\n");
+        assert!(message(&app).contains("saved without formatting"));
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
