@@ -974,6 +974,7 @@ fn pulls_diagnostics_and_reuses_result_ids() {
         panic!("unexpected diagnostic event");
     };
     assert_eq!(first.server, "fake");
+    assert_eq!(first.identifier.as_deref(), Some("fake-pull"));
     assert_eq!(first.diagnostics[0].source.as_deref(), Some("pull"));
     assert!(service.change(&file, "ab\n"));
     wait_for_log(&service, "diagnostic:2:pull:1");
@@ -1037,6 +1038,7 @@ fn pulls_workspace_diagnostics_and_reuses_result_ids() {
         panic!("unexpected workspace diagnostic event");
     };
     assert_eq!(event.path, file);
+    assert_eq!(event.identifier.as_deref(), Some("fake-pull"));
     assert_eq!(event.version, None);
     assert_eq!(event.diagnostics[0].source.as_deref(), Some("workspace"));
     wait_for(&service, |event| {
@@ -1060,30 +1062,33 @@ fn pulls_workspace_diagnostics_and_reuses_result_ids() {
 }
 
 #[test]
-fn ignores_pushed_diagnostics_for_pull_servers() {
+fn delivers_pushed_and_pulled_diagnostics_for_pull_servers() {
     let root = temp_project("pull_filter");
     let service = start_phase_seven(&root, true);
     let file = root.join("src/main.rs");
     assert!(service.open(&file, "a\n"));
     wait_for_ready(&service);
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut saw_pull = false;
+    let mut pull_identifier = None;
     let mut saw_push = false;
-    while Instant::now() < deadline && !saw_pull {
+    while Instant::now() < deadline && (pull_identifier.is_none() || !saw_push) {
         while let Some(event) = service.try_recv() {
             if let LspEvent::Diagnostics(diagnostics) = event {
                 let message = diagnostics
                     .diagnostics
                     .first()
                     .map(|diagnostic| diagnostic.message.as_str());
-                saw_pull |= message == Some("pull:1");
-                saw_push |= message == Some("open-diagnostic");
+                if message == Some("pull:1") {
+                    pull_identifier = diagnostics.identifier;
+                } else if message == Some("open-diagnostic") {
+                    saw_push |= diagnostics.identifier.is_none();
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(saw_pull);
-    assert!(!saw_push);
+    assert_eq!(pull_identifier.as_deref(), Some("fake-pull"));
+    assert!(saw_push);
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

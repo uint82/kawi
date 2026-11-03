@@ -106,6 +106,7 @@ fn main() -> Result<()> {
                     });
                     if pull_diagnostics || workspace_diagnostics {
                         capabilities["diagnosticProvider"] = json!({
+                            "identifier": "fake-pull",
                             "interFileDependencies": workspace_diagnostics,
                             "workspaceDiagnostics": workspace_diagnostics
                         });

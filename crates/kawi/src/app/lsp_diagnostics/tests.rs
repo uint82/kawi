@@ -35,6 +35,7 @@ fn event_from(
 ) -> DiagnosticsEvent {
     DiagnosticsEvent {
         server: server.to_string(),
+        identifier: None,
         path: path.to_path_buf(),
         version,
         diagnostics,
