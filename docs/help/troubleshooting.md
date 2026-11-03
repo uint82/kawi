@@ -17,6 +17,10 @@ Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict
 
 Check `~/.config/kawi/languages.toml`, then confirm the server command exists and the project root marker matches. Kawi includes built-in definitions for many languages; run `:lsp status` or `:health lsp` to see which configured servers are missing.
 
+## A formatter does not run
+
+Check the `formatter` table for the language in `~/.config/kawi/languages.toml`, then run `:health languages` to confirm the command is found in `PATH`. If the command is missing, Kawi falls back to the language server. See [Formatting](help:formatting) for configuration examples.
+
 ## Configuration errors
 
 Configuration warnings are reported at startup. Use `:set <option>?` to inspect a value and `:help option <name>` for its definition.

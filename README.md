@@ -20,6 +20,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 
 - **Modal editing.** Vim keymap with multiple windows and splits. Helix and Emacs keymaps are in progress.
 - **Language servers.** Completion, hover, diagnostics, symbols, rename, formatting, and code actions.
+- **External formatters.** Configure formatter commands in `languages.toml`, format with `:format`, and enable format-on-save.
 - **Syntax highlighting.** Tree-sitter parsing for Rust, Python, JavaScript, TypeScript, JSX, TSX, JSON, TOML, Bash, C, C++, Go, Java, C#, Ruby, PHP, Lua, YAML, HTML, CSS, and Markdown.
 - **Fuzzy search.** Pickers for files, buffers, live grep, replace, and symbols, with previews where supported.
 - **Project explorer.** Opt-in file tree with file management, Git markers, diagnostics, and session restore.
@@ -132,6 +133,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Migrating a process plugin to WASM](docs/help/plugin-migration.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
+- [Formatting](docs/help/formatting.md)
 - [Troubleshooting](docs/help/troubleshooting.md)
 
 Use `:help <topic>` to open any topic inside Kawi.

@@ -1,7 +1,7 @@
 ---
 title = "Language servers"
 aliases = ["servers"]
-related = ["diagnostics", "configuration", "features"]
+related = ["diagnostics", "configuration", "features", "formatting"]
 ---
 # Language servers
 
@@ -18,7 +18,7 @@ Language servers provide:
 - diagnostics and related information
 - document and workspace symbols
 - rename and code actions
-- formatting
+- formatting when no external formatter is configured
 - workspace edits and file operations
 
 ## Completion
