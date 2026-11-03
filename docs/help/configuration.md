@@ -1,7 +1,7 @@
 ---
 title = "Configuration"
 aliases = ["config", "settings"]
-related = ["options", "keybindings", "themes"]
+related = ["options", "keybindings", "themes", "debug"]
 ---
 # Configuration
 
@@ -50,6 +50,10 @@ timeout = 1000
 ```
 
 Use `:commands` to discover command names, `:map` to inspect mappings, and `:map reload` to reload the file. See [Keymaps](help:keymaps) for the complete reference.
+
+## Debugging
+
+Debug adapters and launch configurations live in `$XDG_CONFIG_HOME/kawi/debug.toml`, normally `~/.config/kawi/debug.toml`. Projects can override them with `.kawi/debug.toml`. See [Debugging](help:debug) for the configuration format and commands.
 
 ## Plugins
 

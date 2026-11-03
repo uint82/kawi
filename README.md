@@ -117,7 +117,7 @@ keyguide_delay = 250
 
 Options can be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
 
-Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Managed plugins are installed with `:plugin install owner/repo`. Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes and theme packages belong in `$XDG_CONFIG_HOME/kawi/themes`; themes are data packages, not plugins.
+Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Debug adapters are configured in `$XDG_CONFIG_HOME/kawi/debug.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Managed plugins are installed with `:plugin install owner/repo`. Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes and theme packages belong in `$XDG_CONFIG_HOME/kawi/themes`; themes are data packages, not plugins.
 
 See the [configuration guide](docs/help/configuration.md) and [theme guide](docs/help/themes.md) for details.
 
@@ -133,6 +133,7 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Migrating a process plugin to WASM](docs/help/plugin-migration.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
+- [Debugging](docs/help/debug.md)
 - [Formatting](docs/help/formatting.md)
 - [Troubleshooting](docs/help/troubleshooting.md)
 
@@ -149,6 +150,7 @@ The workspace is split into focused crates:
 | `kawi-buffer` | Buffers, undo, recovery storage, and file writes |
 | `kawi-tui` | Terminal rendering, themes, frames, and overlays |
 | `kawi-lsp` | Language server lifecycle and protocol handling |
+| `kawi-dap` | Debug adapter lifecycle and protocol handling |
 | `kawi-syntax` | Tree-sitter parsing and syntax highlighting |
 | `kawi-picker` | Fuzzy finding, filtering, and previews |
 | `kawi-git` | Repository status, diffs, staging, commits, and branches |
