@@ -28,6 +28,7 @@ pub enum Capability {
     UiPrompt,
     UiProgress,
     UiStatusline,
+    UiPanel,
     DiagnosticsRead,
     DiagnosticsPublish,
     FsRead,
@@ -37,7 +38,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::EditorRead,
         Self::EditorWrite,
         Self::EditorExecute,
@@ -46,6 +47,7 @@ impl Capability {
         Self::UiPrompt,
         Self::UiProgress,
         Self::UiStatusline,
+        Self::UiPanel,
         Self::DiagnosticsRead,
         Self::DiagnosticsPublish,
         Self::FsRead,
@@ -64,6 +66,7 @@ impl Capability {
             "ui.prompt" => Some(Self::UiPrompt),
             "ui.progress" => Some(Self::UiProgress),
             "ui.statusline" => Some(Self::UiStatusline),
+            "ui.panel" => Some(Self::UiPanel),
             "diagnostics.read" => Some(Self::DiagnosticsRead),
             "diagnostics.publish" => Some(Self::DiagnosticsPublish),
             "fs.read" => Some(Self::FsRead),
@@ -84,6 +87,7 @@ impl Capability {
             Self::UiPrompt => "ui.prompt",
             Self::UiProgress => "ui.progress",
             Self::UiStatusline => "ui.statusline",
+            Self::UiPanel => "ui.panel",
             Self::DiagnosticsRead => "diagnostics.read",
             Self::DiagnosticsPublish => "diagnostics.publish",
             Self::FsRead => "fs.read",

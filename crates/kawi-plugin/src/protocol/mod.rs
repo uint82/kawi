@@ -4,6 +4,7 @@ mod decorations;
 mod diagnostics;
 mod events;
 mod jobs;
+mod panel;
 mod sanitize;
 mod statusline;
 mod types;
@@ -26,13 +27,19 @@ pub use jobs::{
     MAX_JOB_ENV_ENTRIES, MAX_JOB_ENV_KEY_BYTES, MAX_JOB_ENV_VALUE_BYTES, MAX_JOB_EVENT_QUEUE_BYTES,
     MAX_JOB_EVENT_QUEUE_ITEMS, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
 };
+pub use panel::{
+    validate_panel_open, validate_panel_update, PanelLine, PanelOpenParams, PanelOpenResult,
+    PanelParams, PanelUpdateParams, DEFAULT_PLUGIN_PANEL_HEIGHT, MAX_PANEL_LINE_BYTES,
+    MAX_PANEL_STATUS_BYTES, MAX_PANEL_TITLE_BYTES, MAX_PLUGIN_PANEL_BYTES, MAX_PLUGIN_PANEL_HEIGHT,
+    MAX_PLUGIN_PANEL_LINES, MIN_PLUGIN_PANEL_HEIGHT,
+};
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
 
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 11;
+pub const PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 23] = [
+pub const HOST_METHODS: [&str; 27] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -47,6 +54,10 @@ pub const HOST_METHODS: [&str; 23] = [
     "ui.progress_start",
     "ui.progress_update",
     "ui.progress_finish",
+    "ui.panel_open",
+    "ui.panel_update",
+    "ui.panel_focus",
+    "ui.panel_close",
     "config.get",
     "config.list",
     "process.open",
@@ -83,6 +94,7 @@ pub const JOB_NOT_FOUND: i64 = -32050;
 pub const JOB_LIMIT: i64 = -32051;
 pub const JOB_CLOSED: i64 = -32052;
 pub const JOB_QUEUE_FULL: i64 = -32053;
+pub const PANEL_NOT_FOUND: i64 = -32060;
 
 pub use types::*;
 

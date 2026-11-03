@@ -20,6 +20,9 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
             MethodCapability::Required(Capability::UiProgress)
         }
         "ui.set_statusline" => MethodCapability::Required(Capability::UiStatusline),
+        "ui.panel_open" | "ui.panel_update" | "ui.panel_focus" | "ui.panel_close" => {
+            MethodCapability::Required(Capability::UiPanel)
+        }
         "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
         "editor.set_decorations" => MethodCapability::Required(Capability::EditorDecorations),
         "config.get" | "config.list" => MethodCapability::None,
