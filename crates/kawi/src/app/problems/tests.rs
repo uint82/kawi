@@ -1,5 +1,8 @@
 use super::*;
-use kawi_lsp::{DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation};
+use crate::test_support::diagnostic_event;
+use kawi_lsp::{
+    DiagnosticOrigin, DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation,
+};
 use kawi_task::Severity;
 
 fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Diagnostic {
@@ -18,13 +21,14 @@ fn lsp_diagnostic(line: u32, message: &str, severity: DiagnosticSeverity) -> Dia
     }
 }
 
-fn lsp_event(
+fn pull_event(
     server: &str,
     identifier: Option<&str>,
     path: &Path,
     diagnostics: Vec<Diagnostic>,
 ) -> DiagnosticsEvent {
-    let mut event = crate::test_support::diagnostic_event(server, path, diagnostics);
+    let mut event = diagnostic_event(server, path, diagnostics);
+    event.origin = DiagnosticOrigin::Pull;
     event.identifier = identifier.map(str::to_string);
     event
 }
@@ -61,20 +65,19 @@ fn sources_are_replaced_independently() {
 fn lsp_providers_with_the_same_server_are_replaced_independently() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();
-    problems.replace_lsp(lsp_event(
+    problems.replace_lsp(diagnostic_event(
         "rust-analyzer",
-        None,
         path,
         vec![lsp_diagnostic(0, "push", DiagnosticSeverity::Error)],
     ));
-    problems.replace_lsp(lsp_event(
+    problems.replace_lsp(pull_event(
         "rust-analyzer",
         Some("rust-analyzer"),
         path,
         vec![lsp_diagnostic(1, "pull", DiagnosticSeverity::Error)],
     ));
     assert_eq!(problems.total(), 2);
-    problems.replace_lsp(lsp_event(
+    problems.replace_lsp(pull_event(
         "rust-analyzer",
         Some("rust-analyzer"),
         path,
@@ -84,6 +87,27 @@ fn lsp_providers_with_the_same_server_are_replaced_independently() {
     assert_eq!(problems.visible(None)[0].message, "push");
     problems.clear_lsp_source("rust-analyzer");
     assert_eq!(problems.total(), 0);
+}
+
+#[test]
+fn push_and_pull_problems_are_distinct_without_a_pull_identifier() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.replace_lsp(diagnostic_event(
+        "server",
+        path,
+        vec![lsp_diagnostic(0, "push", DiagnosticSeverity::Error)],
+    ));
+    problems.replace_lsp(pull_event(
+        "server",
+        None,
+        path,
+        vec![lsp_diagnostic(1, "pull", DiagnosticSeverity::Error)],
+    ));
+    assert_eq!(problems.total(), 2);
+    problems.replace_lsp(pull_event("server", None, path, Vec::new()));
+    assert_eq!(problems.total(), 1);
+    assert_eq!(problems.visible(None)[0].message, "push");
 }
 
 #[test]

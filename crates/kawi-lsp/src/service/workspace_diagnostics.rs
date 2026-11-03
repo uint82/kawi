@@ -221,6 +221,7 @@ impl Manager {
                 let identifier = self.diagnostic_identifier(key);
                 self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
                     server: key.server.clone(),
+                    origin: DiagnosticOrigin::Pull,
                     identifier,
                     path,
                     version: None,
@@ -286,6 +287,7 @@ impl Manager {
         let identifier = self.diagnostic_identifier(key);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server.clone(),
+            origin: DiagnosticOrigin::Pull,
             identifier,
             path,
             version: None,

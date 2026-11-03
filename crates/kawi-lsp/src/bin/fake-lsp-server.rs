@@ -37,6 +37,7 @@ fn main() -> Result<()> {
         .unwrap_or(0);
     let pull_diagnostics =
         std::env::var("FAKE_LSP_PULL_DIAGNOSTICS").is_ok_and(|value| value == "1");
+    let pull_identifier = std::env::var("FAKE_LSP_PULL_IDENTIFIER").ok();
     let refresh_diagnostics =
         std::env::var("FAKE_LSP_REFRESH_DIAGNOSTICS").is_ok_and(|value| value == "1");
     let workspace_diagnostics =
@@ -105,11 +106,14 @@ fn main() -> Result<()> {
                         "documentRangeFormattingProvider": true
                     });
                     if pull_diagnostics || workspace_diagnostics {
-                        capabilities["diagnosticProvider"] = json!({
-                            "identifier": "fake-pull",
+                        let mut diagnostic_provider = json!({
                             "interFileDependencies": workspace_diagnostics,
                             "workspaceDiagnostics": workspace_diagnostics
                         });
+                        if let Some(identifier) = &pull_identifier {
+                            diagnostic_provider["identifier"] = json!(identifier);
+                        }
+                        capabilities["diagnosticProvider"] = diagnostic_provider;
                     }
                     if symbol_providers {
                         capabilities["documentSymbolProvider"] = json!(true);

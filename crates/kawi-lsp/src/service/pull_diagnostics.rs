@@ -280,6 +280,7 @@ impl Manager {
         let identifier = self.diagnostic_identifier(&key);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server,
+            origin: DiagnosticOrigin::Pull,
             identifier,
             path: pending.path,
             version: Some(version),

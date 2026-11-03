@@ -977,6 +977,7 @@ mod tests {
         let path = PathBuf::from("/tmp/workspace-diagnostic.rs");
         let event = DiagnosticsEvent {
             server: "fake".to_string(),
+            origin: kawi_lsp::DiagnosticOrigin::Push,
             identifier: None,
             path: path.clone(),
             version: None,

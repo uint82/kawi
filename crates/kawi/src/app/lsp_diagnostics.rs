@@ -1,6 +1,6 @@
 use kawi_lsp::{
-    CursorPosition, Diagnostic, DiagnosticPosition, DiagnosticSeverity, DiagnosticsEvent,
-    INITIAL_DOCUMENT_VERSION,
+    CursorPosition, Diagnostic, DiagnosticOrigin, DiagnosticPosition, DiagnosticSeverity,
+    DiagnosticsEvent, INITIAL_DOCUMENT_VERSION,
 };
 use kawi_tui::frame::{
     DiagnosticSeverity as UiSeverity, DiagnosticSpan, DiagnosticTag as UiDiagnosticTag,
@@ -9,15 +9,16 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct DiagnosticProvider {
+struct DiagnosticKey {
     server: String,
+    origin: DiagnosticOrigin,
     identifier: Option<String>,
 }
 
 #[derive(Default)]
 pub(super) struct DiagnosticState {
     version: i32,
-    providers: BTreeMap<DiagnosticProvider, Vec<Diagnostic>>,
+    providers: BTreeMap<DiagnosticKey, Vec<Diagnostic>>,
     items: Vec<Diagnostic>,
 }
 
@@ -39,8 +40,9 @@ impl DiagnosticState {
         if event.version.is_some_and(|version| version != self.version) {
             return false;
         }
-        let provider = DiagnosticProvider {
+        let provider = DiagnosticKey {
             server: event.server,
+            origin: event.origin,
             identifier: event.identifier,
         };
         self.providers.insert(provider, event.diagnostics);

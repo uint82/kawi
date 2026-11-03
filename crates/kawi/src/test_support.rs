@@ -1,4 +1,4 @@
-use kawi_lsp::{Diagnostic, DiagnosticsEvent};
+use kawi_lsp::{Diagnostic, DiagnosticOrigin, DiagnosticsEvent};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -63,6 +63,7 @@ pub(crate) fn diagnostic_event(
 ) -> DiagnosticsEvent {
     DiagnosticsEvent {
         server: server.to_string(),
+        origin: DiagnosticOrigin::Push,
         identifier: None,
         path: path.to_path_buf(),
         version: None,

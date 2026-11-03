@@ -404,8 +404,8 @@ pub use symbols::{
 };
 
 pub use diagnostics::{
-    Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation,
-    DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
+    Diagnostic, DiagnosticOrigin, DiagnosticPosition, DiagnosticRange,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
 };
 
 pub struct LspService {

@@ -52,9 +52,16 @@ pub struct Diagnostic {
     pub related: Vec<DiagnosticRelatedInformation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DiagnosticOrigin {
+    Push,
+    Pull,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticsEvent {
     pub server: String,
+    pub origin: DiagnosticOrigin,
     pub identifier: Option<String>,
     pub path: PathBuf,
     pub version: Option<i32>,
@@ -82,6 +89,7 @@ impl Manager {
         let diagnostics = convert_diagnostics(&params.diagnostics, &document.text, &encoding);
         self.emit(LspEvent::Diagnostics(DiagnosticsEvent {
             server: key.server,
+            origin: DiagnosticOrigin::Push,
             identifier: None,
             path,
             version: params.version,

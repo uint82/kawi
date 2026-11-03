@@ -1,6 +1,7 @@
 use kawi_buffer::{diff_ropes, RopeChange};
 use kawi_lsp::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
+    Diagnostic, DiagnosticOrigin, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag,
+    DiagnosticsEvent,
 };
 use kawi_task as task;
 use ropey::Rope;
@@ -218,6 +219,7 @@ struct ProblemKey {
 struct GroupKey {
     source: String,
     path: PathBuf,
+    origin: Option<DiagnosticOrigin>,
     identifier: Option<String>,
 }
 
@@ -403,6 +405,7 @@ impl Problems {
         let key = GroupKey {
             source: plugin_source(plugin),
             path: path.to_path_buf(),
+            origin: None,
             identifier: None,
         };
         self.ensure_source_rank(&key.source);
@@ -413,6 +416,7 @@ impl Problems {
         let key = GroupKey {
             source: lsp_source(&event.server),
             path: event.path,
+            origin: Some(event.origin),
             identifier: event.identifier,
         };
         self.ensure_source_rank(&key.source);
@@ -444,6 +448,7 @@ impl Problems {
         let key = GroupKey {
             source: source.clone(),
             path: finding.path.clone(),
+            origin: None,
             identifier: None,
         };
         self.ensure_source_rank(&source);
