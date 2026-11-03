@@ -2811,6 +2811,119 @@ mod tests {
     }
 
     #[test]
+    fn unselected_diagnostics_split_by_syntax() {
+        let diagnostic = HighlightSpan {
+            screen_row: 0,
+            from: 0,
+            text: "fn main".to_string(),
+            tint: Tint::Diagnostic {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+            },
+        };
+        let keyword = highlight_named("keyword");
+        let function = highlight_named("function");
+        let syntax = vec![
+            HighlightSpan {
+                screen_row: 0,
+                from: 0,
+                text: "fn".to_string(),
+                tint: Tint::Syntax(keyword),
+            },
+            HighlightSpan {
+                screen_row: 0,
+                from: 3,
+                text: "main".to_string(),
+                tint: Tint::Syntax(function),
+            },
+        ];
+        let segments = diagnostic_segments(&diagnostic, &[], &syntax, 8);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| {
+                    (
+                        segment.from,
+                        segment.text.as_str(),
+                        segment.selected,
+                        segment.syntax,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            [
+                (0, "fn", false, Some(keyword)),
+                (2, " ", false, None),
+                (3, "main", false, Some(function)),
+            ]
+        );
+    }
+
+    #[test]
+    fn unselected_diagnostics_keep_syntax_foreground() {
+        let theme = Theme::default();
+        let keyword = highlight_named("keyword");
+        let mut expected = Vec::new();
+        execute!(
+            expected,
+            SetForegroundColor(theme.syntax.named("keyword").unwrap().foreground.unwrap())
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        paint_diagnostic(
+            &mut out,
+            "fn",
+            DiagnosticPaint {
+                severity: crate::frame::DiagnosticSeverity::Error,
+                tag: None,
+                selected: false,
+                syntax: Some(keyword),
+            },
+            &theme,
+        )
+        .unwrap();
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains(&String::from_utf8(expected).unwrap()));
+        assert!(output.contains("\u{1b}[4m"));
+        assert!(output.contains("fn"));
+    }
+
+    #[test]
+    fn tagged_diagnostics_keep_syntax_foreground() {
+        let theme = Theme::default();
+        let keyword = highlight_named("keyword");
+        let mut expected = Vec::new();
+        execute!(
+            expected,
+            SetForegroundColor(theme.syntax.named("keyword").unwrap().foreground.unwrap())
+        )
+        .unwrap();
+        let expected = String::from_utf8(expected).unwrap();
+        let tags = [
+            (crate::frame::DiagnosticTag::Unnecessary, "\u{1b}[2m"),
+            (crate::frame::DiagnosticTag::Deprecated, "\u{1b}[9m"),
+        ];
+        for (tag, decoration) in tags {
+            let mut out = Vec::new();
+            paint_diagnostic(
+                &mut out,
+                "fn",
+                DiagnosticPaint {
+                    severity: crate::frame::DiagnosticSeverity::Warning,
+                    tag: Some(tag),
+                    selected: false,
+                    syntax: Some(keyword),
+                },
+                &theme,
+            )
+            .unwrap();
+            let output = String::from_utf8(out).unwrap();
+            assert!(output.contains(&expected));
+            assert!(output.contains(decoration));
+            assert!(output.contains("fn"));
+        }
+    }
+
+    #[test]
     fn spans_clip_to_text_width_with_gutter() {
         let lines = lines_of("012345678901234567890123");
         let spans = vec![SearchSpan {
