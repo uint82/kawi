@@ -87,9 +87,12 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
         LanguageId::Java => include_str!("../../queries/java.scm").to_string(),
         LanguageId::CSharp => include_str!("../../queries/csharp.scm").to_string(),
-        LanguageId::Ruby | LanguageId::Php => String::new(),
+        LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
+        LanguageId::Php => include_str!("../../queries/php.scm").to_string(),
         LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
-        LanguageId::Yaml | LanguageId::Html | LanguageId::Css => String::new(),
+        LanguageId::Yaml => String::new(),
+        LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
+        LanguageId::Css => String::new(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
     }
 }

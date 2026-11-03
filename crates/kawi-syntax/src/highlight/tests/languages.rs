@@ -1,5 +1,15 @@
-use super::support::{highlight, name_of};
+use super::support::{highlight, name_at, name_of};
 use super::*;
+
+fn name_of_last(
+    spans: &[SyntaxSpan],
+    text: &str,
+    row: usize,
+    needle: &str,
+) -> Option<&'static str> {
+    let column = text.lines().nth(row)?.rfind(needle)?;
+    name_at(spans, row, column)
+}
 
 #[test]
 fn highlights_nested_python_types() {
@@ -108,6 +118,63 @@ fn highlights_cpp_namespaces_and_methods() {
         name_of(&spans, text, 3, "push_back"),
         Some("function.method")
     );
+}
+
+#[test]
+fn highlights_ruby_php_and_lua_tokens() {
+    let ruby = "def show(name)\n  renamed = name\n  return renamed\nend\n";
+    let spans = highlight(LanguageId::Ruby, ruby, 0, 4);
+    assert_eq!(name_of(&spans, ruby, 0, "def"), Some("keyword.function"));
+    assert_eq!(name_of_last(&spans, ruby, 1, "name"), Some("variable"));
+    assert_eq!(name_of(&spans, ruby, 2, "return"), Some("keyword.return"));
+
+    let php = "<?php\nuse Other\\Thing;\nclass Item extends Base {\n    public function show(int $count): void { return; }\n}\n";
+    let spans = highlight(LanguageId::Php, php, 0, 5);
+    assert_eq!(name_of(&spans, php, 1, "use"), Some("keyword.import"));
+    assert_eq!(name_of(&spans, php, 2, "Item"), Some("type.definition"));
+    assert_eq!(name_of(&spans, php, 2, "Base"), Some("type"));
+    assert_eq!(name_of(&spans, php, 3, "count"), Some("variable.parameter"));
+    assert_eq!(name_of(&spans, php, 3, "return"), Some("keyword.return"));
+
+    let lua = "local M = {}\nfunction M.show(item)\n    print(item.name)\n    M.show(item)\nend\nreturn M\n";
+    let spans = highlight(LanguageId::Lua, lua, 0, 6);
+    assert_eq!(name_of(&spans, lua, 1, "show"), Some("function"));
+    assert_eq!(name_of(&spans, lua, 2, "name"), Some("property"));
+    assert_eq!(name_of(&spans, lua, 3, "show"), Some("function.call"));
+}
+
+#[test]
+fn highlights_bash_builtins_and_keywords() {
+    let text = "#!/bin/bash\nwork() { local name=value; echo \"$name\"; return 0; }\nfunction other { printf '%s\\n' \"$1\"; }\nsource ./lib.sh\n";
+    let spans = highlight(LanguageId::Bash, text, 0, 4);
+    assert_eq!(name_of(&spans, text, 1, "local"), Some("keyword.storage"));
+    assert_eq!(name_of(&spans, text, 1, "echo"), Some("function.builtin"));
+    assert_eq!(name_of(&spans, text, 1, "return"), Some("keyword.return"));
+    assert_eq!(
+        name_of(&spans, text, 2, "function"),
+        Some("keyword.function")
+    );
+    assert_eq!(name_of(&spans, text, 2, "printf"), Some("function.builtin"));
+    assert_eq!(name_of(&spans, text, 3, "source"), Some("keyword.import"));
+}
+
+#[test]
+fn highlights_markdown_and_html_blocks() {
+    let markdown = "# Title\n\n- item\n\n```rust\nfn main() {}\n```\n";
+    let spans = highlight(LanguageId::Markdown, markdown, 0, 7);
+    assert_eq!(name_of(&spans, markdown, 0, "Title"), Some("type"));
+    assert_eq!(
+        name_of(&spans, markdown, 2, "-"),
+        Some("punctuation.special")
+    );
+    assert_eq!(
+        name_of(&spans, markdown, 4, "```"),
+        Some("punctuation.delimiter")
+    );
+
+    let html = "<div class=\"box\">&amp;</div>\n";
+    let spans = highlight(LanguageId::Html, html, 0, 1);
+    assert_eq!(name_of(&spans, html, 0, "&amp;"), Some("string.escape"));
 }
 
 #[test]
