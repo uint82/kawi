@@ -24,27 +24,64 @@ cwd = "${workspace}"
 
 String values support `${workspace}`, `${file}`, `${fileDirname}`, and `${env:NAME}`. Adapter entries support `command`, `args`, `env`, and `cwd`.
 
-## Commands
+## Session commands
 
 - `:debug start [configuration]` starts a session. Without a name, Kawi uses the first configuration matching the buffer language.
+- `:debug restart` stops the current session and starts the last configuration again.
 - `:debug stop` disconnects and terminates the debuggee.
 - `:debug continue` resumes execution.
 - `:debug next` steps over, `:debug step` steps in, and `:debug out` steps out.
-- `:debug breakpoint` toggles a line breakpoint in the current buffer.
-- `:debug breakpoints` lists all breakpoints.
-- `:debug stack` shows the current call stack.
-- `:debug variables` shows variables from the first scope of the current frame.
-- `:debug output` shows adapter and debuggee output.
 - `:debug status` shows the session state, thread, frame, and breakpoint count.
 - `:debug configurations` lists configured launch and attach targets.
-
-The built-in commands `debug.start`, `debug.stop`, `debug.continue`, `debug.next`, `debug.step_in`, `debug.step_out`, `debug.breakpoint`, `debug.stack`, `debug.variables`, and `debug.status` are available for keymaps and plugins.
+- `:debug output` shows adapter and debuggee output.
 
 ## Breakpoints
 
-Breakpoints are stored per file and line. A filled circle marks a verified breakpoint, a hollow circle marks an unverified breakpoint, and an arrow marks the current stopped line. Breakpoints remain available when a session stops and are sent to the next adapter on launch.
+- `:debug breakpoint` toggles a line breakpoint in the current buffer.
+- `:debug breakpoint condition <expression>` sets a condition on the current line.
+- `:debug breakpoint hit <count>` sets a hit count on the current line.
+- `:debug breakpoint log <message>` sets a log message on the current line.
+- `:debug breakpoint clear` removes conditions, hit counts, and log messages from the current line.
+- `:debug breakpoints` lists all line breakpoints and their options.
+- `:debug function <name>` toggles a function breakpoint.
+- `:debug functions` lists function breakpoints.
+- `:debug exceptions` lists exception filters reported by the adapter.
+- `:debug exception <filter>` enables or disables an exception filter.
 
-## Status
+A filled circle marks a verified breakpoint, a hollow circle marks an unverified breakpoint, and an arrow marks the current stopped line. Breakpoints remain available when a session stops and are sent to the next adapter on launch.
+
+Conditional, hit-count, and log breakpoints depend on adapter capabilities. Function breakpoints require adapter support. Exception filters use the filters advertised by the adapter during initialization.
+
+## Call stacks and variables
+
+- `:debug stack` shows the current call stack.
+- `:debug variables` shows every scope for the current frame.
+- `:debug expand <reference>` shows nested variables for a reference listed in a variables report.
+- `:debug threads` lists threads and marks the current thread.
+- `:debug thread <id>` selects a thread and refreshes the stack when stopped.
+
+Variable and scope entries include a `[ref N]` marker when they can be expanded.
+
+## Console and watches
+
+- `:debug eval <expression>` evaluates an expression and adds it to the debug console.
+- `:debug console` shows evaluation history.
+- `:debug watch add <expression>` adds a watch expression.
+- `:debug watch edit <index> <expression>` replaces a watch expression by its report index.
+- `:debug watch remove <expression>` removes a watch expression.
+- `:debug watches` lists watch expressions and their latest values.
+
+Watches are evaluated automatically with the current frame whenever execution stops.
+
+## Terminal requests
+
+Kawi supports the DAP `runInTerminal` reverse request for integrated terminals. When an adapter asks to launch the debuggee in a terminal, Kawi opens the integrated terminal, applies the requested working directory and environment, and returns the child process ID to the adapter. External terminal requests and the `startDebugging` reverse request are not supported.
+
+## Built-in commands
+
+The commands `debug.start`, `debug.restart`, `debug.stop`, `debug.continue`, `debug.next`, `debug.step_in`, `debug.step_out`, `debug.breakpoint`, `debug.stack`, `debug.variables`, `debug.threads`, `debug.functions`, `debug.exceptions`, `debug.console`, `debug.watches`, and `debug.status` are available for keymaps and plugins.
+
+## Status and health
 
 The status line shows `dap: starting`, `dap: running`, `dap: stopped`, `dap: terminated`, or `dap: failed` while a session exists. Use `:debug status` for details.
 
@@ -52,4 +89,4 @@ Run `:health debug` to validate configured adapters and configurations. The chec
 
 ## Current limits
 
-Kawi currently implements launch and attach, line breakpoints, stepping, call stacks, variables, output, and termination. Evaluate, watches, conditional breakpoint editing, function breakpoints, exception filters, and adapters that require the `runInTerminal` reverse request are not supported yet.
+Kawi does not yet implement data breakpoints, instruction breakpoints, memory reads or writes, set-variable requests, variable paging, exception filter options, or multi-session `startDebugging`. Restart starts a new adapter process instead of using the optional DAP `restart` request.

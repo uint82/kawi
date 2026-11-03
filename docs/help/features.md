@@ -12,7 +12,7 @@ related = ["getting-started", "lsp", "debug", "formatting", "pickers", "tasks"]
 - Opt-in project explorer with file management, Git markers, and diagnostics.
 - Editable directory buffers with diff-on-write renames, copies, creates, and trash deletes.
 - Language server support for completion, hover, diagnostics, symbols, rename, formatting, code actions, and lifecycle control.
-- Built-in Debug Adapter Protocol client with launch, attach, breakpoints, stepping, call stacks, and variables.
+- Built-in Debug Adapter Protocol client with launch, attach, conditional breakpoints, function breakpoints, exception filters, stepping, threads, nested variables, evaluation, watches, and terminal launch requests.
 - External formatter commands with stdin or file input, format-on-save, and health checks.
 - Fuzzy file, buffer, grep, replace, and symbol pickers with previews.
 - Project-wide diagnostics and quickfix navigation.
