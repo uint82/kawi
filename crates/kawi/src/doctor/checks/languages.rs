@@ -2,19 +2,27 @@ use super::super::report::{Check, Level};
 use crate::state::StatePaths;
 use kawi_lsp::Languages;
 
+struct ServerDetails {
+    used: usize,
+    missing: usize,
+    optional_missing: usize,
+}
+
 pub(crate) fn check(paths: &StatePaths) -> Check {
     let languages = Languages::load(&paths.languages);
     let mut details = Vec::new();
     let mut level = file_level(paths, &languages, &mut details);
-    let (missing, enabled) = server_details(&languages, &mut details);
-    if missing > 0 {
+    let servers = server_details(&languages, &mut details);
+    if servers.missing > 0 {
         level = level.max(Level::Warn);
+    } else if servers.optional_missing > 0 {
+        level = level.max(Level::Info);
     }
-    if enabled == 0 {
+    if servers.used == 0 {
         level = level.max(Level::Info);
     }
     let check = Check::new("languages", "Language servers", level, details);
-    if missing > 0 {
+    if servers.missing > 0 {
         check.with_hint("Install missing servers or disable them in languages.toml.")
     } else {
         check
@@ -39,9 +47,12 @@ fn file_level(paths: &StatePaths, languages: &Languages, details: &mut Vec<Strin
     level
 }
 
-fn server_details(languages: &Languages, details: &mut Vec<String>) -> (usize, usize) {
-    let mut used = 0;
-    let mut missing = 0;
+fn server_details(languages: &Languages, details: &mut Vec<String>) -> ServerDetails {
+    let mut result = ServerDetails {
+        used: 0,
+        missing: 0,
+        optional_missing: 0,
+    };
     for (name, server) in languages.servers() {
         if !server.enabled {
             details.push(format!("{name}: disabled"));
@@ -51,7 +62,7 @@ fn server_details(languages: &Languages, details: &mut Vec<String>) -> (usize, u
             details.push(format!("{name}: not used by an enabled language"));
             continue;
         }
-        used += 1;
+        result.used += 1;
         if server.command.trim().is_empty() {
             details.push(format!("{name}: no command configured"));
             continue;
@@ -59,15 +70,19 @@ fn server_details(languages: &Languages, details: &mut Vec<String>) -> (usize, u
         match languages.server_path(name) {
             Some(path) => details.push(format!("{name}: {} ({})", server.command, path.display())),
             None => {
-                missing += 1;
+                if languages.server_is_user_configured(name) {
+                    result.missing += 1;
+                } else {
+                    result.optional_missing += 1;
+                }
                 details.push(format!("{name}: {} not found in PATH", server.command));
             }
         }
     }
-    if used == 0 {
+    if result.used == 0 {
         details.push("no used language servers".to_string());
     }
-    (missing, used)
+    result
 }
 
 #[cfg(test)]
@@ -76,13 +91,18 @@ mod tests {
     use super::*;
     use std::fs;
 
+    fn disabled_defaults(paths: &StatePaths) -> String {
+        Languages::load(&paths.languages)
+            .servers()
+            .map(|(name, _)| format!("[server.{name}]\nenabled = false\n"))
+            .collect()
+    }
+
     fn write_config(paths: &StatePaths, command: &str) -> String {
         let text = format!(
-            "[server.rust-analyzer]\nenabled = false\n\
-             [server.pyright]\nenabled = false\n\
-             [server.ruff]\nenabled = false\n\
-             [server.fake]\ncommand = {command:?}\n\n\
-             [[language]]\nname = \"rust\"\nservers = [\"fake\"]\n"
+            "{}[server.fake]\ncommand = {command:?}\n\n\
+             [[language]]\nname = \"rust\"\nservers = [\"fake\"]\n",
+            disabled_defaults(paths)
         );
         fs::write(&paths.languages, text).unwrap();
         command.to_string()
@@ -120,12 +140,10 @@ mod tests {
         let server = dir.path.join("fake-server");
         executable(&server);
         let text = format!(
-            "[server.rust-analyzer]\nenabled = false\n\
-             [server.pyright]\nenabled = false\n\
-             [server.ruff]\nenabled = false\n\
-             [server.fake]\ncommand = {:?}\n\
+            "{}[server.fake]\ncommand = {:?}\n\
              [server.unused]\ncommand = \"missing-unused-server\"\n\n\
              [[language]]\nname = \"rust\"\nservers = [\"fake\"]\n",
+            disabled_defaults(&paths),
             server.to_str().unwrap()
         );
         fs::write(&paths.languages, text).unwrap();

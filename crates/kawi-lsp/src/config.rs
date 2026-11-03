@@ -1,6 +1,6 @@
 use crate::editing::{BlockCommentConfig, PairConfig};
 use crate::{defaults, file, LanguageWarning};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use toml::Value;
 
@@ -181,12 +181,14 @@ pub struct Languages {
     servers: BTreeMap<String, ServerConfig>,
     languages: Vec<LanguageConfig>,
     available: BTreeMap<String, PathBuf>,
+    user_servers: BTreeSet<String>,
     warnings: Vec<LanguageWarning>,
 }
 
 impl Languages {
     pub fn load(path: &Path) -> Self {
         let (user, mut warnings) = file::load(path);
+        let user_servers = user.server.keys().cloned().collect();
         let servers = merge_servers(user.server);
         let mut languages = merge_languages(user.language, &mut warnings);
         normalize_languages(&mut languages);
@@ -196,6 +198,7 @@ impl Languages {
             servers,
             languages,
             available,
+            user_servers,
             warnings,
         }
     }
@@ -228,6 +231,10 @@ impl Languages {
 
     pub fn server_is_used(&self, name: &str) -> bool {
         self.languages_using(name).next().is_some()
+    }
+
+    pub fn server_is_user_configured(&self, name: &str) -> bool {
+        self.user_servers.contains(name)
     }
 
     pub fn languages_using<'a>(
@@ -273,6 +280,7 @@ impl Languages {
             servers,
             languages,
             available,
+            user_servers: BTreeSet::new(),
             warnings: Vec::new(),
         }
     }
@@ -574,6 +582,17 @@ mod tests {
             languages.servers.get("pyright").expect("pyright").args,
             vec!["--stdio", "--verbose"]
         );
+    }
+
+    #[test]
+    fn tracks_user_configured_servers() {
+        let path = temp_file(
+            "user_server_tracking",
+            "[server.rust-analyzer]\nargs = [\"--log-file\", \"/tmp/ra.log\"]\n",
+        );
+        let languages = Languages::load(&path);
+        assert!(languages.server_is_user_configured("rust-analyzer"));
+        assert!(!languages.server_is_user_configured("pyright"));
     }
 
     #[test]
