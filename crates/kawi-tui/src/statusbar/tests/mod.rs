@@ -17,6 +17,7 @@ fn info<'a>(filename: &'a str) -> StatusInfo<'a> {
         mode: "NORMAL",
         mode_kind: ModeKind::Normal,
         lsp: None,
+        debug: None,
         diagnostics: None,
         diagnostics_severity: None,
         workspace_diagnostics: None,

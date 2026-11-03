@@ -194,6 +194,7 @@ impl Theme {
                 .lsp
                 .clone()
                 .unwrap_or_else(|| badge(self, self.diagnostic_information)),
+            SegmentStyle::Debug => badge(self, self.diagnostic_warning),
             SegmentStyle::Selection => self
                 .statusline
                 .selection

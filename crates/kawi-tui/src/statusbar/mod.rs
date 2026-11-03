@@ -55,6 +55,7 @@ pub struct StatusInfo<'a> {
     pub mode: &'a str,
     pub mode_kind: ModeKind,
     pub lsp: Option<&'a str>,
+    pub debug: Option<&'a str>,
     pub diagnostics: Option<&'a str>,
     pub diagnostics_severity: Option<DiagnosticSeverity>,
     pub workspace_diagnostics: Option<&'a str>,

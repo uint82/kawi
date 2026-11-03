@@ -39,6 +39,7 @@ pub(super) fn paths(root: &Path) -> StatePaths {
         plugin_lock: root.join("plugins.lock"),
         plugin_settings: root.join("plugins.toml"),
         languages: root.join("languages.toml"),
+        debug: root.join("debug.toml"),
         tasks: root.join("tasks.toml"),
         themes: root.join("themes"),
         queries: root.join("queries"),

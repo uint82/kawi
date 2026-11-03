@@ -86,6 +86,11 @@ impl Theme {
             crate::frame::Sign::Git(sign) => self.git_sign_color(*sign),
             crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(*severity),
             crate::frame::Sign::Plugin(sign) => sign.style.accent,
+            crate::frame::Sign::Debug(sign) => match sign {
+                crate::frame::DebugSign::Breakpoint => self.diagnostic_error,
+                crate::frame::DebugSign::Unverified => self.non_text,
+                crate::frame::DebugSign::Current => self.diagnostic_warning,
+            },
         }
     }
 

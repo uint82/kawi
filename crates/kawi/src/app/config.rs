@@ -17,12 +17,16 @@ impl App {
         let keymap_load = crate::keymap::config::load(&paths.keymaps, &self.commands);
         self.keymaps_path = Some(paths.keymaps.clone());
         let language_warnings = self.lsp.load(&paths.languages, self.events.wake());
+        let debug_warnings = self
+            .debug
+            .load(&paths, self.project_root(), self.events.wake());
         let task_load = kawi_task::load(&paths.tasks);
         let mut tasks = task_load.tasks;
         let mut warnings = startup_warning_lines(
             (&loaded.warnings, &paths.config),
             (&keymap_load.warnings, &paths.keymaps),
             (&language_warnings, &paths.languages),
+            (&debug_warnings, &paths.debug),
             (&task_load.warnings, &paths.tasks),
         );
         let project_tasks = self.project_tasks_path();
@@ -144,6 +148,7 @@ fn startup_warning_lines(
     config: (&[crate::config::ConfigWarning], &std::path::Path),
     keymaps: (&[crate::config::ConfigWarning], &std::path::Path),
     languages: (&[LanguageWarning], &std::path::Path),
+    debug: (&[String], &std::path::Path),
     tasks: (&[kawi_task::TaskWarning], &std::path::Path),
 ) -> Vec<String> {
     let mut lines = config
@@ -158,6 +163,7 @@ fn startup_warning_lines(
             .iter()
             .map(|warning| warning.format(languages.1)),
     );
+    lines.extend(debug.0.iter().cloned());
     lines.extend(tasks.0.iter().map(|warning| warning.format(tasks.1)));
     lines
 }
@@ -329,6 +335,7 @@ undo_exclude = ["*.gpg"]
         let config_path = dir.join("config.toml");
         let keymaps_path = dir.join("keymaps.toml");
         let languages_path = dir.join("languages.toml");
+        let debug_path = dir.join("debug.toml");
         let tasks_path = dir.join("tasks.toml");
         fs::write(&config_path, "[editor]\nshiftwidth = \"wide\"\n").unwrap();
         fs::write(&keymaps_path, "[normal]\n\"gx\" = \"missing.command\"\n").unwrap();
@@ -345,6 +352,7 @@ undo_exclude = ["*.gpg"]
             (&loaded.warnings, &config_path),
             (&keymap_load.warnings, &keymaps_path),
             (&language_warnings, &languages_path),
+            (&[], &debug_path),
             (&task_load.warnings, &tasks_path),
         );
         assert_eq!(lines.len(), 4);

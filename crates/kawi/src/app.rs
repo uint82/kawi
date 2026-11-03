@@ -18,6 +18,7 @@ mod command_text;
 mod completion;
 mod config;
 mod conflict;
+mod debug;
 mod diagnostic_index;
 mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
@@ -191,6 +192,7 @@ pub struct App {
     ipc: Option<crate::ipc::Server>,
     ipc_root: Option<PathBuf>,
     lsp: LspUi,
+    debug: debug::DebugUi,
     tasks: Tasks,
     task: TaskSession,
     terminal: terminal_ui::TerminalUi,
@@ -305,6 +307,7 @@ impl App {
             ipc: None,
             ipc_root: None,
             lsp: LspUi::default(),
+            debug: debug::DebugUi::default(),
             tasks: Tasks::default(),
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
@@ -505,6 +508,7 @@ impl App {
             }
             redraw |= self.lsp.sync_editor(&self.editor);
             redraw |= self.lsp.poll_events(&self.editor);
+            redraw |= self.sync_debug()?;
             redraw |= self.poll_symbol_events();
             redraw |= self.symbols_tick();
             redraw |= self.completion_tick();
@@ -735,6 +739,7 @@ impl App {
             mode: self.keymap.mode_label(self.editor.mode()),
             mode_kind: self.editor.mode().into(),
             lsp: self.lsp.status(),
+            debug: self.debug.display(),
             diagnostics: None,
             diagnostics_severity: None,
             workspace_diagnostics: None,
@@ -1371,6 +1376,7 @@ impl App {
             Some(CommandHandler::LspStart) => self.start_lsp(),
             Some(CommandHandler::LspStop) => self.stop_lsp(),
             Some(CommandHandler::LspRestart) => self.restart_lsp(),
+            Some(CommandHandler::Debug(command)) => self.handle_debug_builtin(command),
             Some(CommandHandler::Noop) | None => Ok(false),
         }
     }
@@ -2050,6 +2056,7 @@ impl App {
             Command::Task(command) => self.handle_task_command(command),
             Command::Quickfix(command) => self.handle_quickfix_command(command),
             Command::Lsp(command) => self.handle_lsp_command(command),
+            Command::Debug(command) => self.handle_debug_command(command),
             Command::Explorer(command) => self.handle_explorer_command(command),
             Command::Terminal { command, vertical } => {
                 let layout = if vertical {

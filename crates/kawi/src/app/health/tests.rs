@@ -18,6 +18,7 @@ fn state_paths(root: &Path) -> StatePaths {
         plugin_lock: root.join("plugins.lock"),
         plugin_settings: root.join("plugins.toml"),
         languages: root.join("languages.toml"),
+        debug: root.join("debug.toml"),
         tasks: root.join("tasks.toml"),
         themes: root.join("themes"),
         queries: root.join("queries"),
@@ -33,6 +34,7 @@ fn state_paths(root: &Path) -> StatePaths {
 fn health_check_aliases_resolve_to_check_ids() {
     assert_eq!(health_check_id("lsp"), Some("languages"));
     assert_eq!(health_check_id("LSP"), Some("languages"));
+    assert_eq!(health_check_id("debug"), Some("debug"));
     assert_eq!(
         health_check_id("plugin-keybindings"),
         Some("plugin_keybindings")

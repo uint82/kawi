@@ -1,5 +1,5 @@
 use kawi_lsp::DiagnosticSeverity;
-use kawi_tui::frame::{DiagnosticSeverity as UiDiagnosticSeverity, Sign};
+use kawi_tui::frame::{DebugSign as UiDebugSign, DiagnosticSeverity as UiDiagnosticSeverity, Sign};
 
 use super::App;
 
@@ -32,6 +32,7 @@ impl App {
             .unwrap_or_else(|| vec![None; rows.len()]);
         self.apply_plugin_signs(&mut signs, rows);
         self.apply_diagnostic_signs(&mut signs, rows);
+        self.apply_debug_signs(&mut signs, rows);
         Some(signs)
     }
 
@@ -39,6 +40,11 @@ impl App {
         self.lsp.has_diagnostics()
             || (self.git_signs && self.git.as_ref().is_some_and(|session| session.has_signs()))
             || self.plugin_has_signs()
+            || self.debug_has_signs()
+    }
+
+    fn debug_has_signs(&self) -> bool {
+        super::lsp::editor_path(&self.editor).is_some_and(|path| self.debug.has_signs(&path))
     }
 
     fn plugin_has_signs(&self) -> bool {
@@ -78,6 +84,25 @@ impl App {
             *sign = preferred_sign(sign.take(), diagnostic);
         }
     }
+
+    fn apply_debug_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        let Some(path) = super::lsp::editor_path(&self.editor) else {
+            return;
+        };
+        for (sign, row) in signs.iter_mut().zip(rows) {
+            if let Some(debug) = self.debug.sign_for(&path, *row) {
+                *sign = Some(Sign::Debug(ui_debug_sign(debug)));
+            }
+        }
+    }
+}
+
+fn ui_debug_sign(sign: super::debug::DebugSign) -> UiDebugSign {
+    match sign {
+        super::debug::DebugSign::Breakpoint => UiDebugSign::Breakpoint,
+        super::debug::DebugSign::Unverified => UiDebugSign::Unverified,
+        super::debug::DebugSign::Current => UiDebugSign::Current,
+    }
 }
 
 fn preferred_sign(git: Option<Sign>, diagnostic: Option<UiDiagnosticSeverity>) -> Option<Sign> {
@@ -94,154 +119,4 @@ fn ui_diagnostic_severity(severity: DiagnosticSeverity) -> UiDiagnosticSeverity 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::keymap::Flavor;
-    use crate::options::SignColumnMode;
-    use kawi_buffer::Buffer;
-    use kawi_git::GitFile;
-    use kawi_tui::frame::GitSign;
-    use std::path::PathBuf;
-
-    use crate::app::git::GitSession;
-
-    fn app_with_untracked_file() -> App {
-        let file = GitFile {
-            root: PathBuf::from("."),
-            path: PathBuf::from("script.py"),
-            relpath: "script.py".to_string(),
-            mode: "100644".to_string(),
-            untracked: true,
-            crlf: false,
-            no_final_newline: false,
-            head_no_final_newline: false,
-            base: Vec::new(),
-            head: Vec::new(),
-        };
-        let lines = vec!["print('hello')".to_string()];
-        let session = GitSession::new(file, &lines, 1, false);
-        let mut app = App::new(Buffer::from_string("print('hello')"), Flavor::Vim);
-        app.handle_resize(80, 24).expect("resize");
-        app.git = Some(session);
-        app
-    }
-
-    #[test]
-    fn signcolumn_defaults_to_hidden() {
-        let app = app_with_untracked_file();
-        assert_eq!(app.signcolumn, SignColumnMode::Never);
-        assert!(!app.git_signs);
-        assert!(app.view_signs().is_none());
-    }
-
-    #[test]
-    fn never_hides_git_signs_even_when_enabled() {
-        let mut app = app_with_untracked_file();
-        app.git_signs = true;
-        app.update_signcolumn_width();
-        assert_eq!(app.editor.signcolumn_width(), 0);
-        assert!(app.view_signs().is_none());
-    }
-
-    #[test]
-    fn auto_shows_git_signs_only_when_enabled_and_present() {
-        let mut app = app_with_untracked_file();
-        app.signcolumn = SignColumnMode::Auto;
-        app.update_signcolumn_width();
-        assert_eq!(app.editor.signcolumn_width(), 0);
-        assert!(app.view_signs().is_none());
-
-        app.git_signs = true;
-        app.update_signcolumn_width();
-        let signs = app.view_signs().expect("signs");
-        assert_eq!(app.editor.signcolumn_width(), SIGN_COLUMN_WIDTH);
-        assert_eq!(signs[0], Some(Sign::Git(GitSign::Untracked)));
-    }
-
-    #[test]
-    fn always_reserves_the_column_without_signs() {
-        let mut app = app_with_untracked_file();
-        app.signcolumn = SignColumnMode::Always;
-        app.update_signcolumn_width();
-        let signs = app.view_signs().expect("signs");
-        assert_eq!(app.editor.signcolumn_width(), SIGN_COLUMN_WIDTH);
-        assert!(signs.iter().all(Option::is_none));
-    }
-
-    #[test]
-    fn diagnostics_take_priority_over_git_signs() {
-        let git = Some(Sign::Git(GitSign::Change));
-        let diagnostic = Some(UiDiagnosticSeverity::Error);
-        assert_eq!(
-            preferred_sign(git.clone(), diagnostic),
-            Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
-        );
-        assert_eq!(preferred_sign(git.clone(), None), git);
-    }
-}
-
-#[cfg(test)]
-mod plugin_sign_tests {
-    use super::*;
-    use crate::keymap::Flavor;
-    use crate::options::SignColumnMode;
-    use kawi_buffer::Buffer;
-    use kawi_plugin::{Decoration, DecorationRef, DecorationScope, DecorationStyle};
-    use kawi_tui::frame::PluginSign;
-
-    #[test]
-    fn plugin_signs_show_and_outrank_git_signs() {
-        let mut app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
-        app.handle_resize(80, 24).expect("resize");
-        app.signcolumn = SignColumnMode::Auto;
-        let buffer = app.editor.buffer_number();
-        let snapshot = app.editor.document_snapshot();
-        app.plugin_decorations
-            .set(
-                "visual",
-                buffer,
-                DecorationScope::All,
-                &[Decoration::Sign {
-                    line: 0,
-                    text: "!".to_string(),
-                    group: None,
-                    style: Some(DecorationStyle::Error),
-                }],
-                &snapshot,
-                &app.plugin_styles,
-            )
-            .unwrap();
-        app.update_signcolumn_width();
-        let signs = app.view_signs().expect("signs");
-        assert_eq!(
-            signs[0],
-            Some(Sign::Plugin(PluginSign {
-                text: "!".to_string(),
-                style: app
-                    .plugin_styles
-                    .resolve("visual", &DecorationRef::Style(DecorationStyle::Error),)
-                    .expect("style"),
-            }))
-        );
-    }
-
-    fn app_style(style: DecorationStyle) -> kawi_tui::frame::PluginStyle {
-        let app = App::new(Buffer::from_string("alpha\n"), Flavor::Vim);
-        app.plugin_styles
-            .resolve("visual", &DecorationRef::Style(style))
-            .expect("style")
-    }
-
-    #[test]
-    fn diagnostics_outrank_plugin_signs() {
-        let plugin = Some(Sign::Plugin(PluginSign {
-            text: "!".to_string(),
-            style: app_style(DecorationStyle::Error),
-        }));
-        assert_eq!(
-            preferred_sign(plugin.clone(), Some(UiDiagnosticSeverity::Warning)),
-            Some(Sign::Diagnostic(UiDiagnosticSeverity::Warning))
-        );
-        assert_eq!(preferred_sign(plugin.clone(), None), plugin);
-    }
-}
+mod tests;
