@@ -83,6 +83,7 @@ function = { fg = "cyan", bold = true }
 type = { fg = "blue" }
 "type.builtin" = { fg = "blue" }
 "type.definition" = { fg = "blue" }
+"type.parameter" = { fg = "blue" }
 constructor = { fg = "orange" }
 namespace = { fg = "fg" }
 module = { fg = "fg" }

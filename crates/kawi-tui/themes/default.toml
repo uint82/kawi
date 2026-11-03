@@ -83,6 +83,7 @@ function = { fg = "cyan", bold = true }
 type = { fg = "gold" }
 "type.builtin" = { fg = "gold" }
 "type.definition" = { fg = "gold" }
+"type.parameter" = { fg = "gold" }
 constructor = { fg = "amber" }
 namespace = { fg = "parchment" }
 module = { fg = "parchment" }
