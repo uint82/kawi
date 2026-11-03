@@ -8,10 +8,16 @@ use kawi_tui::frame::{
 use std::collections::BTreeMap;
 use std::path::Path;
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DiagnosticProvider {
+    server: String,
+    identifier: Option<String>,
+}
+
 #[derive(Default)]
 pub(super) struct DiagnosticState {
     version: i32,
-    servers: BTreeMap<String, Vec<Diagnostic>>,
+    providers: BTreeMap<DiagnosticProvider, Vec<Diagnostic>>,
     items: Vec<Diagnostic>,
 }
 
@@ -33,25 +39,32 @@ impl DiagnosticState {
         if event.version.is_some_and(|version| version != self.version) {
             return false;
         }
-        self.servers.insert(event.server, event.diagnostics);
+        let provider = DiagnosticProvider {
+            server: event.server,
+            identifier: event.identifier,
+        };
+        self.providers.insert(provider, event.diagnostics);
         self.rebuild();
         true
     }
 
     pub(super) fn remove_server(&mut self, server: &str) {
-        if self.servers.remove(server).is_some() {
+        let before = self.providers.len();
+        self.providers
+            .retain(|provider, _| provider.server != server);
+        if self.providers.len() != before {
             self.rebuild();
         }
     }
 
     fn clear(&mut self) {
-        self.servers.clear();
+        self.providers.clear();
         self.items.clear();
     }
 
     fn rebuild(&mut self) {
         self.items.clear();
-        self.items.extend(self.servers.values().flatten().cloned());
+        self.items.extend(self.providers.values().flatten().cloned());
         self.items
             .sort_by_key(|diagnostic| (diagnostic.range.start, diagnostic.range.end));
     }

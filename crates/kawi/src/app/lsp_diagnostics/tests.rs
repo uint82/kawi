@@ -42,6 +42,18 @@ fn event_from(
     }
 }
 
+fn event_from_identifier(
+    server: &str,
+    identifier: &str,
+    path: &Path,
+    version: Option<i32>,
+    diagnostics: Vec<Diagnostic>,
+) -> DiagnosticsEvent {
+    let mut event = event_from(server, path, version, diagnostics);
+    event.identifier = Some(identifier.to_string());
+    event
+}
+
 #[test]
 fn stale_and_foreign_diagnostics_are_ignored() {
     let path = Path::new("/tmp/lsp_diagnostic_state");
@@ -97,6 +109,35 @@ fn server_diagnostics_are_merged_and_removable() {
     assert_eq!(state.items.len(), 1);
     assert_eq!(state.severity_at(0), None);
     assert_eq!(state.severity_at(1), Some(DiagnosticSeverity::Error));
+}
+
+#[test]
+fn push_and_pull_diagnostics_share_a_server_but_not_a_provider() {
+    let path = Path::new("/tmp/lsp_diagnostic_provider");
+    let mut state = DiagnosticState::default();
+    state.reset();
+    assert!(state.apply(
+        event_from(
+            "rust-analyzer",
+            path,
+            Some(1),
+            vec![diagnostic((0, 0), (0, 1), "push")]
+        ),
+        path
+    ));
+    assert!(state.apply(
+        event_from_identifier(
+            "rust-analyzer",
+            "rust-analyzer",
+            path,
+            Some(1),
+            vec![diagnostic((1, 0), (1, 1), "pull")]
+        ),
+        path
+    ));
+    assert_eq!(state.items.len(), 2);
+    state.remove_server("rust-analyzer");
+    assert!(!state.has_diagnostics());
 }
 
 #[test]
