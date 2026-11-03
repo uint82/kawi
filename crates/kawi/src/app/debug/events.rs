@@ -33,6 +33,7 @@ impl DebugUi {
             DapEvent::Variables {
                 variables_reference,
                 variables,
+                ..
             } => self.apply_variables(variables_reference, variables),
             DapEvent::Threads { threads } => self.apply_threads(threads),
             DapEvent::Evaluated {

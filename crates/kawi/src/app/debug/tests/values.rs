@@ -68,6 +68,8 @@ fn variable_scopes_and_expansion_are_reported() {
         vec![Scope {
             name: "Locals".to_string(),
             variables_reference: 100,
+            named_variables: None,
+            indexed_variables: None,
             expensive: false,
         }],
     );
@@ -79,12 +81,16 @@ fn variable_scopes_and_expansion_are_reported() {
                 value: "42".to_string(),
                 kind: Some("int".to_string()),
                 variables_reference: 0,
+                named_variables: None,
+                indexed_variables: None,
             },
             Variable {
                 name: "point".to_string(),
                 value: "{...}".to_string(),
                 kind: Some("Point".to_string()),
                 variables_reference: 200,
+                named_variables: None,
+                indexed_variables: None,
             },
         ],
     );
@@ -101,6 +107,8 @@ fn variable_scopes_and_expansion_are_reported() {
             value: "3".to_string(),
             kind: Some("int".to_string()),
             variables_reference: 0,
+            named_variables: None,
+            indexed_variables: None,
         }],
     );
     let report = app.debug.take_report().expect("report");

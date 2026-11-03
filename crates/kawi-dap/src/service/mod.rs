@@ -15,6 +15,7 @@ pub use types::*;
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 const STACK_FRAME_LIMIT: i64 = 20;
+const VARIABLE_PAGE_SIZE: i64 = 100;
 
 pub struct DapService {
     commands: Sender<ServiceInput>,
@@ -76,9 +77,31 @@ impl DapService {
     }
 
     pub fn variables(&self, variables_reference: i64) -> bool {
+        self.variables_page(variables_reference, 0, VARIABLE_PAGE_SIZE)
+    }
+
+    pub fn variables_page(&self, variables_reference: i64, start: i64, count: i64) -> bool {
         self.send(Command::Variables {
             variables_reference,
+            start,
+            count,
         })
+    }
+
+    pub fn set_variable(&self, variables_reference: i64, name: String, value: String) -> bool {
+        self.send(Command::SetVariable {
+            variables_reference,
+            name,
+            value,
+        })
+    }
+
+    pub fn restart(&self) -> bool {
+        self.send(Command::Restart)
+    }
+
+    pub fn terminate(&self) -> bool {
+        self.send(Command::Terminate)
     }
 
     pub fn threads(&self) -> bool {
@@ -159,7 +182,16 @@ pub(crate) enum Command {
     },
     Variables {
         variables_reference: i64,
+        start: i64,
+        count: i64,
     },
+    SetVariable {
+        variables_reference: i64,
+        name: String,
+        value: String,
+    },
+    Restart,
+    Terminate,
     Threads,
     Evaluate {
         expression: String,

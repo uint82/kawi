@@ -124,7 +124,13 @@ impl Manager {
             }
             PendingRequest::Variables {
                 variables_reference,
-            } => self.handle_variables_response(variables_reference, body.as_ref()),
+                start,
+            } => self.handle_variables_response(variables_reference, start, body.as_ref()),
+            PendingRequest::SetVariable {
+                variables_reference,
+                name,
+            } => self.handle_set_variable_response(variables_reference, name, body.as_ref()),
+            PendingRequest::Restart | PendingRequest::Terminate => {}
             PendingRequest::Threads => self.handle_threads_response(body.as_ref()),
             PendingRequest::Evaluate {
                 expression,
@@ -144,6 +150,18 @@ impl Manager {
             .and_then(|body| body.get("supportsFunctionBreakpoints"))
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        self.supports_restart_request = body
+            .and_then(|body| body.get("supportsRestartRequest"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.supports_terminate_request = body
+            .and_then(|body| body.get("supportsTerminateRequest"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.emit(DapEvent::Capabilities {
+            supports_restart_request: self.supports_restart_request,
+            supports_terminate_request: self.supports_terminate_request,
+        });
         self.apply_default_exception_filters();
         self.emit(DapEvent::ExceptionFilters {
             filters: self.available_exception_filters.clone(),
@@ -197,10 +215,32 @@ impl Manager {
         });
     }
 
-    fn handle_variables_response(&mut self, variables_reference: i64, body: Option<&Value>) {
+    fn handle_variables_response(
+        &mut self,
+        variables_reference: i64,
+        start: i64,
+        body: Option<&Value>,
+    ) {
         self.emit(DapEvent::Variables {
             variables_reference,
             variables: super::parse::variables(body),
+            start,
+        });
+    }
+
+    fn handle_set_variable_response(
+        &mut self,
+        variables_reference: i64,
+        name: String,
+        body: Option<&Value>,
+    ) {
+        let (value, kind, new_reference) = super::parse::set_variable_result(body);
+        self.emit(DapEvent::VariableSet {
+            variables_reference,
+            name,
+            value,
+            kind,
+            new_reference,
         });
     }
 

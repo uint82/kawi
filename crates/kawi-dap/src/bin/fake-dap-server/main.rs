@@ -51,12 +51,12 @@ fn main() -> Result<()> {
                         "supportsHitConditionalBreakpoints": true,
                         "supportsEvaluateForHovers": false,
                         "supportsStepBack": false,
-                        "supportsSetVariable": false,
+                        "supportsSetVariable": true,
                         "supportsRestartFrame": false,
                         "supportsGotoTargetsRequest": false,
                         "supportsCompletionsRequest": false,
                         "supportsModulesRequest": false,
-                        "supportsRestartRequest": false,
+                        "supportsRestartRequest": true,
                         "supportsExceptionOptions": false,
                         "supportsValueFormattingOptions": false,
                         "supportsExceptionInfoRequest": false,
@@ -187,17 +187,47 @@ fn main() -> Result<()> {
                 )?;
             }
             "variables" => {
+                let start = arguments
+                    .as_ref()
+                    .and_then(|arguments| arguments.get("start"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(0) as usize;
+                let count = arguments
+                    .as_ref()
+                    .and_then(|arguments| arguments.get("count"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(4)
+                    .max(0) as usize;
+                let variables = [
+                    json!({"name": "x", "value": "42", "type": "int", "variablesReference": 0}),
+                    json!({"name": "s", "value": "hello", "type": "str", "variablesReference": 0}),
+                    json!({"name": "y", "value": "7", "type": "int", "variablesReference": 0}),
+                    json!({"name": "z", "value": "9", "type": "int", "variablesReference": 0}),
+                ];
+                let page: Vec<Value> = variables.into_iter().skip(start).take(count).collect();
+                server.response(&mut writer, seq, &command, Some(json!({"variables": page})))?;
+            }
+            "setVariable" => {
+                let value = arguments
+                    .as_ref()
+                    .and_then(|arguments| arguments.get("value"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 server.response(
                     &mut writer,
                     seq,
                     &command,
                     Some(json!({
-                        "variables": [
-                            {"name": "x", "value": "42", "type": "int", "variablesReference": 0},
-                            {"name": "s", "value": "hello", "type": "str", "variablesReference": 0}
-                        ]
+                        "value": value,
+                        "type": "string",
+                        "variablesReference": 0,
                     })),
                 )?;
+            }
+            "restart" => {
+                server.response(&mut writer, seq, &command, None)?;
+                server.stopped(&mut writer, "restart")?;
             }
             "threads" => {
                 server.response(

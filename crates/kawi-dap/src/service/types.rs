@@ -37,6 +37,8 @@ pub struct StackFrame {
 pub struct Scope {
     pub name: String,
     pub variables_reference: i64,
+    pub named_variables: Option<i64>,
+    pub indexed_variables: Option<i64>,
     pub expensive: bool,
 }
 
@@ -46,6 +48,8 @@ pub struct Variable {
     pub value: String,
     pub kind: Option<String>,
     pub variables_reference: i64,
+    pub named_variables: Option<i64>,
+    pub indexed_variables: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,9 +155,21 @@ pub enum DapEvent {
     Variables {
         variables_reference: i64,
         variables: Vec<Variable>,
+        start: i64,
     },
     Threads {
         threads: Vec<Thread>,
+    },
+    VariableSet {
+        variables_reference: i64,
+        name: String,
+        value: String,
+        kind: Option<String>,
+        new_reference: i64,
+    },
+    Capabilities {
+        supports_restart_request: bool,
+        supports_terminate_request: bool,
     },
     Evaluated {
         expression: String,
