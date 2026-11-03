@@ -1,9 +1,8 @@
 use super::lsp::editor_path;
-use super::App;
 use crate::state::StatePaths;
 use kawi_dap::{
-    BreakpointSet, DapEvent, DapService, DebugConfig, DebugContext, DebugStatus, Scope,
-    SourceBreakpoint, StackFrame, StepKind, Variable,
+    DapEvent, DapService, DebugConfig, DebugContext, DebugStatus, ExceptionFilter, Scope,
+    StackFrame, StepKind, Thread, Variable,
 };
 use kawi_editor::Editor;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -11,13 +10,20 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 
 mod app;
-mod commands;
+mod breakpoints;
+mod console;
 mod events;
 mod report;
+mod session;
 #[cfg(test)]
 mod tests;
+mod types;
+mod variables;
+
+use types::{BreakpointSpec, ConsoleEntry, DebugSessionState, ReportKind, WatchExpression};
 
 const MAX_OUTPUT_LINES: usize = 1_000;
+const MAX_CONSOLE_LINES: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DebugReport {
@@ -32,12 +38,6 @@ pub(super) struct DebugJump {
     pub(super) column: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ReportKind {
-    Stack,
-    Variables,
-}
-
 pub(super) struct DebugUi {
     service: Option<DapService>,
     config: DebugConfig,
@@ -46,13 +46,20 @@ pub(super) struct DebugUi {
     message: Option<String>,
     report: Option<DebugReport>,
     jump: Option<DebugJump>,
-    breakpoints: BTreeMap<PathBuf, BTreeSet<u32>>,
+    breakpoints: BTreeMap<PathBuf, BTreeMap<u32, BreakpointSpec>>,
     verified: BTreeSet<(PathBuf, u32)>,
+    function_breakpoints: BTreeSet<String>,
+    enabled_exception_filters: BTreeSet<String>,
+    exception_filters_touched: bool,
     stack: Vec<StackFrame>,
     scopes: Vec<Scope>,
-    variables: Vec<Variable>,
+    variables: BTreeMap<i64, Vec<Variable>>,
+    pending_variables: BTreeSet<i64>,
     current_frame: Option<StackFrame>,
     thread_id: Option<i64>,
+    session: DebugSessionState,
+    watches: Vec<WatchExpression>,
+    console: VecDeque<ConsoleEntry>,
     pending_report: Option<ReportKind>,
     jump_on_stack: bool,
     output: VecDeque<String>,
@@ -71,11 +78,18 @@ impl Default for DebugUi {
             jump: None,
             breakpoints: BTreeMap::new(),
             verified: BTreeSet::new(),
+            function_breakpoints: BTreeSet::new(),
+            enabled_exception_filters: BTreeSet::new(),
+            exception_filters_touched: false,
             stack: Vec::new(),
             scopes: Vec::new(),
-            variables: Vec::new(),
+            variables: BTreeMap::new(),
+            pending_variables: BTreeSet::new(),
             current_frame: None,
             thread_id: None,
+            session: DebugSessionState::new(),
+            watches: Vec::new(),
+            console: VecDeque::new(),
             pending_report: None,
             jump_on_stack: false,
             output: VecDeque::new(),
@@ -155,7 +169,7 @@ impl DebugUi {
         let line = row as u32;
         self.breakpoints
             .get(path)
-            .is_some_and(|lines| lines.contains(&line))
+            .is_some_and(|breakpoints| breakpoints.contains_key(&line))
             .then_some(if self.verified.contains(&(path.to_path_buf(), line)) {
                 DebugSign::Breakpoint
             } else {
@@ -170,22 +184,45 @@ impl DebugUi {
             || self
                 .breakpoints
                 .get(path)
-                .is_some_and(|lines| !lines.is_empty())
+                .is_some_and(|breakpoints| !breakpoints.is_empty())
     }
 
     fn clear_frame_state(&mut self) {
         self.stack.clear();
         self.scopes.clear();
         self.variables.clear();
+        self.pending_variables.clear();
         self.current_frame = None;
+        self.session.threads.clear();
     }
 
     pub(super) fn reset_session_state(&mut self) {
         self.clear_frame_state();
         self.thread_id = None;
         self.jump_on_stack = false;
+        self.pending_report = None;
         self.output.clear();
+        self.console.clear();
         self.verified.clear();
+        self.session.exception_filters.clear();
+        if !self.exception_filters_touched {
+            self.enabled_exception_filters.clear();
+        }
+        for watch in &mut self.watches {
+            watch.clear();
+        }
+    }
+
+    fn set_report(&mut self, report: DebugReport) {
+        self.report = Some(report);
+    }
+
+    fn exception_filters(&self) -> &[ExceptionFilter] {
+        &self.session.exception_filters
+    }
+
+    fn thread_list(&self) -> &[Thread] {
+        &self.session.threads
     }
 }
 

@@ -116,6 +116,12 @@ pub(super) const COMMANDS: &[Builtin] = &[
         handler: CommandHandler::Debug(crate::command::DebugBuiltin::Start),
     },
     Builtin {
+        name: "debug.restart",
+        aliases: &[],
+        description: "restart the debug session",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Restart),
+    },
+    Builtin {
         name: "debug.stop",
         aliases: &[],
         description: "stop the debug session",
@@ -162,6 +168,36 @@ pub(super) const COMMANDS: &[Builtin] = &[
         aliases: &[],
         description: "show local variables",
         handler: CommandHandler::Debug(crate::command::DebugBuiltin::Variables),
+    },
+    Builtin {
+        name: "debug.threads",
+        aliases: &[],
+        description: "list debug threads",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Threads),
+    },
+    Builtin {
+        name: "debug.functions",
+        aliases: &[],
+        description: "list function breakpoints",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Functions),
+    },
+    Builtin {
+        name: "debug.exceptions",
+        aliases: &[],
+        description: "list exception filters",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Exceptions),
+    },
+    Builtin {
+        name: "debug.console",
+        aliases: &[],
+        description: "show the debug console",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Console),
+    },
+    Builtin {
+        name: "debug.watches",
+        aliases: &[],
+        description: "show watch expressions",
+        handler: CommandHandler::Debug(crate::command::DebugBuiltin::Watches),
     },
     Builtin {
         name: "debug.status",

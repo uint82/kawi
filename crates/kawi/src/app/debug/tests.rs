@@ -1,7 +1,8 @@
 use super::*;
+use crate::app::App;
 use crate::keymap::Flavor;
 use kawi_buffer::Buffer;
-use kawi_dap::Breakpoint;
+use kawi_dap::{Breakpoint, ExceptionFilter, Scope, Thread, Variable};
 use std::fs;
 use std::sync::mpsc;
 
@@ -124,3 +125,6 @@ fn status_report_lists_breakpoints() {
     assert!(report.lines.iter().any(|line| line == "breakpoints: 1"));
     let _ = fs::remove_dir_all(root);
 }
+
+mod breakpoints;
+mod values;
