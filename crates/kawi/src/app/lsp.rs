@@ -470,6 +470,24 @@ impl LspUi {
         self.languages.as_ref()?.formatter_for_path(path?).cloned()
     }
 
+    pub fn start(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.service
+            .as_ref()
+            .is_some_and(|service| service.start(path, server))
+    }
+
+    pub fn stop(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.service
+            .as_ref()
+            .is_some_and(|service| service.stop(path, server))
+    }
+
+    pub fn restart(&self, path: Option<&Path>, server: Option<&str>) -> bool {
+        self.service
+            .as_ref()
+            .is_some_and(|service| service.restart(path, server))
+    }
+
     pub fn language_indent(&self, path: Option<&Path>) -> LanguageIndent {
         let Some(language) = self.language_config(path) else {
             return LanguageIndent::default();
@@ -577,6 +595,8 @@ impl LspUi {
     }
 
     pub fn status_report(&mut self) -> Vec<String> {
+        let progress = self.progress_lines();
+        let current = self.path.clone();
         let Some(languages) = self.languages.as_mut() else {
             return vec!["lsp: no language configuration loaded".to_string()];
         };
@@ -586,7 +606,16 @@ impl LspUi {
             states: &self.statuses,
             messages: &self.status_messages,
             warnings_path: self.languages_path.as_deref(),
+            current: current.as_deref(),
+            progress: &progress,
         })
+    }
+
+    fn progress_lines(&self) -> Vec<String> {
+        self.progress
+            .iter()
+            .map(|((server, _), snapshot)| format_progress(server, snapshot))
+            .collect()
     }
 
     pub fn has_progress(&self) -> bool {
@@ -805,6 +834,7 @@ impl LspUi {
             self.diagnostics.remove_server(&server);
             self.diagnostic_modes.remove(&server);
             self.workspace_diagnostics_loading.remove(&server);
+            self.progress.retain(|(name, _), _| name != &server);
             self.diagnostic_updates
                 .push(DiagnosticUpdate::Clear(server.clone()));
         }
@@ -1057,6 +1087,25 @@ mod tests {
             format_status("rust-analyzer", ServerState::Failed, Some(&message)),
             "lsp: rust-analyzer failed: crashed"
         );
+    }
+
+    #[test]
+    fn stopping_a_server_clears_progress() {
+        let mut ui = LspUi::default();
+        ui.progress.insert(
+            ("fake".to_string(), "token".to_string()),
+            ProgressSnapshot {
+                title: Some("Indexing".to_string()),
+                message: None,
+                percentage: Some(50),
+            },
+        );
+        ui.apply_status(StatusEvent {
+            server: "fake".to_string(),
+            state: ServerState::Stopped,
+            message: None,
+        });
+        assert!(ui.progress.is_empty());
     }
 
     #[test]
