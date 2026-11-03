@@ -44,6 +44,7 @@ impl DebugUi {
                 self.message = Some(format!("debug: {message}"));
             }
             DapEvent::Log(line) => self.push_output("adapter", &line),
+            _ => {}
         }
     }
 

@@ -1,100 +1,11 @@
+mod server;
+
 use anyhow::Result;
 use kawi_dap::Message;
 use kawi_jsonrpc::framing;
 use serde_json::{json, Value};
+use server::Server;
 use std::io::{self, BufReader};
-use std::path::PathBuf;
-
-struct Server {
-    seq: i64,
-    source: PathBuf,
-    stop_on_entry: bool,
-    breakpoints: Vec<i64>,
-}
-
-impl Server {
-    fn new() -> Self {
-        let source = std::env::var("FAKE_DAP_SOURCE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/tmp/fake/main.rs"));
-        let stop_on_entry = std::env::var("FAKE_DAP_STOP_ON_ENTRY").is_ok_and(|value| value == "1");
-        if let Ok(path) = std::env::var("FAKE_DAP_PID_FILE") {
-            let _ = std::fs::write(PathBuf::from(path), std::process::id().to_string());
-        }
-        Self {
-            seq: 0,
-            source,
-            stop_on_entry,
-            breakpoints: Vec::new(),
-        }
-    }
-
-    fn next_seq(&mut self) -> i64 {
-        self.seq = self.seq.wrapping_add(1);
-        self.seq
-    }
-
-    fn send(&mut self, writer: &mut impl std::io::Write, message: Message) -> Result<()> {
-        framing::write_message(writer, &message.to_value())
-    }
-
-    fn response(
-        &mut self,
-        writer: &mut impl std::io::Write,
-        request_seq: i64,
-        command: &str,
-        body: Option<Value>,
-    ) -> Result<()> {
-        let seq = self.next_seq();
-        self.send(
-            writer,
-            Message::response(seq, request_seq, true, command, None, body),
-        )
-    }
-
-    fn failure(
-        &mut self,
-        writer: &mut impl std::io::Write,
-        request_seq: i64,
-        command: &str,
-        message: &str,
-    ) -> Result<()> {
-        let seq = self.next_seq();
-        self.send(
-            writer,
-            Message::response(
-                seq,
-                request_seq,
-                false,
-                command,
-                Some(message.to_string()),
-                None,
-            ),
-        )
-    }
-
-    fn event(
-        &mut self,
-        writer: &mut impl std::io::Write,
-        event: &str,
-        body: Option<Value>,
-    ) -> Result<()> {
-        let seq = self.next_seq();
-        self.send(writer, Message::event(seq, event, body))
-    }
-
-    fn stopped(&mut self, writer: &mut impl std::io::Write, reason: &str) -> Result<()> {
-        self.event(
-            writer,
-            "stopped",
-            Some(json!({
-                "reason": reason,
-                "threadId": 1,
-                "allThreadsStopped": true,
-            })),
-        )
-    }
-}
 
 fn main() -> Result<()> {
     let mut reader = BufReader::new(io::stdin());
@@ -102,6 +13,13 @@ fn main() -> Result<()> {
     let mut server = Server::new();
     while let Some(value) = framing::read_message(&mut reader)? {
         let message = Message::parse(value)?;
+        if let Message::Response { success, body, .. } = &message {
+            if let Some(path) = server.terminal_file.as_ref() {
+                let response = json!({"success": success, "body": body});
+                std::fs::write(path, serde_json::to_vec(&response)?)?;
+            }
+            continue;
+        }
         let Message::Request {
             seq,
             command,
@@ -110,6 +28,16 @@ fn main() -> Result<()> {
         else {
             continue;
         };
+        if let Some(path) = server.request_log.as_ref() {
+            let mut log = std::fs::read_to_string(path).unwrap_or_default();
+            log.push_str(&command);
+            if let Some(arguments) = arguments.as_ref() {
+                log.push(' ');
+                log.push_str(&serde_json::to_string(arguments)?);
+            }
+            log.push('\n');
+            std::fs::write(path, log)?;
+        }
         match command.as_str() {
             "initialize" => {
                 server.response(
@@ -118,7 +46,7 @@ fn main() -> Result<()> {
                     &command,
                     Some(json!({
                         "supportsConfigurationDoneRequest": true,
-                        "supportsFunctionBreakpoints": false,
+                        "supportsFunctionBreakpoints": true,
                         "supportsConditionalBreakpoints": true,
                         "supportsHitConditionalBreakpoints": true,
                         "supportsEvaluateForHovers": false,
@@ -139,6 +67,10 @@ fn main() -> Result<()> {
                         "supportsDisassembleRequest": false,
                         "supportsSteppingGranularity": false,
                         "supportsInstructionBreakpoints": false,
+                        "exceptionBreakpointFilters": [
+                            {"filter": "uncaught", "label": "Uncaught Exceptions", "default": true},
+                            {"filter": "caught", "label": "Caught Exceptions", "default": false}
+                        ],
                     })),
                 )?;
             }
@@ -177,6 +109,22 @@ fn main() -> Result<()> {
             }
             "configurationDone" => {
                 server.response(&mut writer, seq, &command, None)?;
+                if server.run_in_terminal {
+                    let request_seq = server.next_seq();
+                    server.send(
+                        &mut writer,
+                        Message::request(
+                            request_seq,
+                            "runInTerminal",
+                            Some(json!({
+                                "kind": "integrated",
+                                "cwd": std::env::current_dir()?.display().to_string(),
+                                "args": ["printf", "debug-terminal"],
+                                "env": {"KAWI_DEBUG_TEST": "1"},
+                            })),
+                        ),
+                    )?;
+                }
                 if server.stop_on_entry {
                     server.stopped(&mut writer, "entry")?;
                 }
@@ -250,6 +198,48 @@ fn main() -> Result<()> {
                         ]
                     })),
                 )?;
+            }
+            "threads" => {
+                server.response(
+                    &mut writer,
+                    seq,
+                    &command,
+                    Some(json!({
+                        "threads": [
+                            {"id": 1, "name": "main"},
+                            {"id": 2, "name": "worker"}
+                        ]
+                    })),
+                )?;
+            }
+            "evaluate" => {
+                let expression = arguments
+                    .as_ref()
+                    .and_then(|arguments| arguments.get("expression"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let context = arguments
+                    .as_ref()
+                    .and_then(|arguments| arguments.get("context"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("repl");
+                if expression == "missing" {
+                    server.failure(&mut writer, seq, &command, "unknown expression")?;
+                } else {
+                    server.response(
+                        &mut writer,
+                        seq,
+                        &command,
+                        Some(json!({
+                            "result": format!("{expression}:{context}"),
+                            "type": "string",
+                            "variablesReference": 0,
+                        })),
+                    )?;
+                }
+            }
+            "setFunctionBreakpoints" | "setExceptionBreakpoints" => {
+                server.response(&mut writer, seq, &command, Some(json!({"breakpoints": []})))?;
             }
             "disconnect" | "terminate" => {
                 server.response(&mut writer, seq, &command, None)?;
