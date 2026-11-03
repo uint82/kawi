@@ -92,3 +92,8 @@ license = "MIT"
 name = "tree-sitter-css"
 version = "0.25.0"
 license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-md"
+version = "0.5.4"
+license = "MIT"

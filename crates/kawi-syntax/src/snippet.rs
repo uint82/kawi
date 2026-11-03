@@ -229,6 +229,7 @@ mod tests {
             (LanguageId::Yaml, "key: value"),
             (LanguageId::Html, "<div class=\"x\"></div>"),
             (LanguageId::Css, ".x { color: red; }"),
+            (LanguageId::Markdown, "# Title"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -266,6 +267,7 @@ mod tests {
             (LanguageId::Yaml, "key: value"),
             (LanguageId::Html, "<div class=\"x\"></div>"),
             (LanguageId::Css, ".x { color: red; }"),
+            (LanguageId::Markdown, "# Title"),
         ];
         for (language, fragment) in fragments {
             assert!(

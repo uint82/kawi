@@ -26,17 +26,18 @@ pub enum LanguageId {
     Yaml,
     Html,
     Css,
+    Markdown,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 20]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 21]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -57,6 +58,7 @@ impl LanguageId {
         Self::Yaml,
         Self::Html,
         Self::Css,
+        Self::Markdown,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -92,6 +94,7 @@ impl LanguageId {
             "yaml" | "yml" => Some(Self::Yaml),
             "html" | "htm" => Some(Self::Html),
             "css" => Some(Self::Css),
+            "md" | "markdown" => Some(Self::Markdown),
             _ => None,
         }
     }
@@ -118,6 +121,7 @@ impl LanguageId {
             Self::Yaml => "yaml",
             Self::Html => "html",
             Self::Css => "css",
+            Self::Markdown => "markdown",
         }
     }
 
@@ -142,6 +146,7 @@ impl LanguageId {
             Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
             Self::Html => tree_sitter_html::LANGUAGE.into(),
             Self::Css => tree_sitter_css::LANGUAGE.into(),
+            Self::Markdown => tree_sitter_md::LANGUAGE.into(),
         }
     }
 
@@ -174,6 +179,7 @@ impl LanguageId {
             Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
             Self::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
             Self::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
+            Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
         };
         let script = include_str!("../queries/script-common.scm");
         let javascript_additions = include_str!("../queries/javascript.scm");
@@ -193,6 +199,7 @@ impl LanguageId {
             Self::Go | Self::Java | Self::CSharp | Self::Ruby | Self::Php => String::new(),
             Self::Lua => include_str!("../queries/lua.scm").to_string(),
             Self::Yaml | Self::Html | Self::Css => String::new(),
+            Self::Markdown => include_str!("../queries/markdown.scm").to_string(),
         };
         format!("{base}\n{additions}")
     }
@@ -231,6 +238,7 @@ impl LanguageId {
             Self::Yaml => 17,
             Self::Html => 18,
             Self::Css => 19,
+            Self::Markdown => 20,
         }
     }
 
