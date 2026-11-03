@@ -315,12 +315,15 @@ impl Languages {
     }
 
     pub fn formatters(&self) -> impl Iterator<Item = (&LanguageConfig, &FormatterConfig)> {
-        self.languages.iter().filter_map(|language| {
-            language
-                .formatter
-                .as_ref()
-                .map(|formatter| (language, formatter))
-        })
+        self.languages
+            .iter()
+            .filter(|language| language.enabled)
+            .filter_map(|language| {
+                language
+                    .formatter
+                    .as_ref()
+                    .map(|formatter| (language, formatter))
+            })
     }
 
     #[cfg(test)]
@@ -576,6 +579,19 @@ mod tests {
         let rust = languages.language("rust").expect("rust");
         assert!(rust.formatter.is_none());
         assert!(languages.warnings().is_empty());
+    }
+
+    #[test]
+    fn disabled_languages_hide_formatters() {
+        let path = temp_file(
+            "formatter_disabled_language",
+            "[[language]]\nname = \"rust\"\nenabled = false\nformatter = { command = \"rustfmt\" }\n",
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.formatter.is_some());
+        assert_eq!(languages.formatters().count(), 0);
+        assert!(languages.formatter_for_path(Path::new("main.rs")).is_none());
     }
 
     #[test]

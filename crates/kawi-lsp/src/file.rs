@@ -108,7 +108,13 @@ fn apply_formatter(
         language.formatter = None;
         return;
     }
-    let display = value.to_string();
+    if !matches!(&value, Value::Table(_)) {
+        warnings.push(LanguageWarning::new(format!(
+            "language {}: formatter must be a table or false, got {value}; keeping the previous formatter",
+            language.name
+        )));
+        return;
+    }
     let previous = language.formatter.clone();
     match value.try_into::<FormatterOverride>() {
         Ok(override_config) => {
@@ -123,7 +129,7 @@ fn apply_formatter(
             }
         }
         Err(error) => warnings.push(LanguageWarning::new(format!(
-            "language {}: formatter must be a table or false, got {display}: {}; keeping the previous formatter",
+            "language {}: invalid formatter: {}; keeping the previous formatter",
             language.name,
             error.message()
         ))),
