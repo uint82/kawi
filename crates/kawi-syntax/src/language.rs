@@ -20,17 +20,20 @@ pub enum LanguageId {
     Go,
     Java,
     CSharp,
+    Ruby,
+    Php,
+    Lua,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 14]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 17]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 17] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -45,6 +48,9 @@ impl LanguageId {
         Self::Go,
         Self::Java,
         Self::CSharp,
+        Self::Ruby,
+        Self::Php,
+        Self::Lua,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -74,6 +80,9 @@ impl LanguageId {
             "go" => Some(Self::Go),
             "java" => Some(Self::Java),
             "cs" | "csharp" | "c-sharp" => Some(Self::CSharp),
+            "rb" | "ruby" => Some(Self::Ruby),
+            "php" => Some(Self::Php),
+            "lua" => Some(Self::Lua),
             _ => None,
         }
     }
@@ -94,6 +103,9 @@ impl LanguageId {
             Self::Go => "go",
             Self::Java => "java",
             Self::CSharp => "csharp",
+            Self::Ruby => "ruby",
+            Self::Php => "php",
+            Self::Lua => "lua",
         }
     }
 
@@ -112,6 +124,9 @@ impl LanguageId {
             Self::Go => tree_sitter_go::LANGUAGE.into(),
             Self::Java => tree_sitter_java::LANGUAGE.into(),
             Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+            Self::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+            Self::Lua => tree_sitter_lua::LANGUAGE.into(),
         }
     }
 
@@ -138,6 +153,9 @@ impl LanguageId {
             Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
             Self::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
             Self::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.to_string(),
+            Self::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
+            Self::Php => tree_sitter_php::HIGHLIGHTS_QUERY.to_string(),
+            Self::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
         };
         let script = include_str!("../queries/script-common.scm");
         let javascript_additions = include_str!("../queries/javascript.scm");
@@ -154,7 +172,8 @@ impl LanguageId {
             Self::Toml => include_str!("../queries/toml.scm").to_string(),
             Self::Json => include_str!("../queries/json.scm").to_string(),
             Self::C | Self::Cpp => include_str!("../queries/c.scm").to_string(),
-            Self::Go | Self::Java | Self::CSharp => String::new(),
+            Self::Go | Self::Java | Self::CSharp | Self::Ruby | Self::Php => String::new(),
+            Self::Lua => include_str!("../queries/lua.scm").to_string(),
         };
         format!("{base}\n{additions}")
     }
@@ -187,6 +206,9 @@ impl LanguageId {
             Self::Go => 11,
             Self::Java => 12,
             Self::CSharp => 13,
+            Self::Ruby => 14,
+            Self::Php => 15,
+            Self::Lua => 16,
         }
     }
 

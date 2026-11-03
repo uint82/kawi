@@ -19,6 +19,9 @@ fn detects_known_extensions() {
     assert_eq!(LanguageId::from_path("a.go"), Some(LanguageId::Go));
     assert_eq!(LanguageId::from_path("a.java"), Some(LanguageId::Java));
     assert_eq!(LanguageId::from_path("a.cs"), Some(LanguageId::CSharp));
+    assert_eq!(LanguageId::from_path("a.rb"), Some(LanguageId::Ruby));
+    assert_eq!(LanguageId::from_path("a.php"), Some(LanguageId::Php));
+    assert_eq!(LanguageId::from_path("a.lua"), Some(LanguageId::Lua));
 }
 
 #[test]
@@ -44,6 +47,9 @@ fn normalizes_alias_names() {
     assert_eq!(LanguageId::from_alias("java"), Some(LanguageId::Java));
     assert_eq!(LanguageId::from_alias("cs"), Some(LanguageId::CSharp));
     assert_eq!(LanguageId::from_alias("csharp"), Some(LanguageId::CSharp));
+    assert_eq!(LanguageId::from_alias("rb"), Some(LanguageId::Ruby));
+    assert_eq!(LanguageId::from_alias("php"), Some(LanguageId::Php));
+    assert_eq!(LanguageId::from_alias("lua"), Some(LanguageId::Lua));
     assert_eq!(LanguageId::from_alias("brainfuck"), None);
     assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
 }

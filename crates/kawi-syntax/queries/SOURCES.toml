@@ -62,3 +62,18 @@ license = "MIT"
 name = "tree-sitter-c-sharp"
 version = "0.23.5"
 license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-ruby"
+version = "0.23.1"
+license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-php"
+version = "0.25.1"
+license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-lua"
+version = "0.5.0"
+license = "MIT"

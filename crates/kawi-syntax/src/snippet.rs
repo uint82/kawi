@@ -223,6 +223,9 @@ mod tests {
                 "class Main { public static void main(String[] args) {} }",
             ),
             (LanguageId::CSharp, "class Main { static void Main() {} }"),
+            (LanguageId::Ruby, "def run\n  1\nend"),
+            (LanguageId::Php, "<?php function run() { return 1; }"),
+            (LanguageId::Lua, "local function run() return 1 end"),
         ];
         for (language, snippet) in snippets {
             assert!(
@@ -254,6 +257,9 @@ mod tests {
             (LanguageId::Go, "func main() {}"),
             (LanguageId::Java, "return 1;"),
             (LanguageId::CSharp, "return 1;"),
+            (LanguageId::Ruby, "value + 1"),
+            (LanguageId::Php, "<?php return 1;"),
+            (LanguageId::Lua, "return 1"),
         ];
         for (language, fragment) in fragments {
             assert!(
