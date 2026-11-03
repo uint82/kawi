@@ -7,7 +7,9 @@ related = ["diagnostics", "configuration", "features"]
 
 Kawi starts language servers configured in `~/.config/kawi/languages.toml`.
 
-Each language entry defines the language id, file extensions, root markers, and the servers to start. A server entry defines its command, arguments, environment, and optional initialization options.
+Kawi includes built-in definitions for many languages. Systems languages include Rust, C, C++, Objective-C, Go, Zig, Nim, D, Swift, Crystal, GLSL, WGSL, Assembly, Verilog, SystemVerilog, VHDL, and Solidity. Web languages include JavaScript, TypeScript, JSX, TSX, HTML, CSS, SCSS, Less, JSON, JSONC, YAML, TOML, XML, GraphQL, Prisma, Vue, Svelte, and Astro. Scripting languages include Python, Ruby, PHP, Perl, Lua, Bash, Fish, Elixir, Erlang, Julia, R, and Awk. JVM and .NET languages include Java, Kotlin, Scala, Clojure, C#, and F#. Functional languages include Haskell, OCaml, Elm, PureScript, Racket, Common Lisp, and Gleam. Data and infrastructure languages include SQL, Protobuf, Dockerfile, Terraform, HCL, Nix, CMake, Just, systemd, Pascal, and Fortran. Documentation languages include Markdown, LaTeX, BibTeX, and Typst.
+
+Each language entry defines the language id, file extensions, root markers, and the servers to start. A server entry defines its command, arguments, environment, and optional initialization options. Servers are resolved from `PATH`; install the server for a language to enable it. Run `:lsp status` or `:health lsp` to see missing servers.
 
 Language servers provide:
 
@@ -29,6 +31,6 @@ Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:di
 
 ## Status
 
-Run `:lsp status` to list every configured server with its state, languages, and command. The `:lsp info` alias shows the same table. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
+Run `:lsp status` to open a read-only internal buffer listing every configured server with its state, languages, and command. The `:lsp info` alias shows the same report. States include `ready`, `starting`, `initializing`, `idle`, `missing`, `failed`, `stopped`, `disabled`, and `unused`. Configuration warnings appear above the table. Resolved binary paths and failure messages appear below it. Server state persists when you switch buffers.
 
 Run `:health lsp` for the full language server health check.

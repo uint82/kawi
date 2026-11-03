@@ -33,7 +33,7 @@ struct StatusRow<'a> {
 impl App {
     pub(super) fn show_lsp_status(&mut self) -> Result<bool> {
         let lines = self.lsp.status_report();
-        self.show_pager(lines);
+        self.show_help_text("lsp-status", lines)?;
         Ok(false)
     }
 }
