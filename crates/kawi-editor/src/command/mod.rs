@@ -74,6 +74,9 @@ pub enum Command {
     Help {
         topic: Option<String>,
     },
+    Health {
+        topic: Option<String>,
+    },
     Undo(UndoCommand),
     SetError(String),
     Substitute(SubstituteCommand),
@@ -195,6 +198,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "buffer",
     "buffers",
     "cclose",
+    "checkhealth",
     "clo",
     "close",
     "cnext",
@@ -204,6 +208,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "cprev",
     "cq",
     "cquit",
+    "doctor",
     "e",
     "earlier",
     "edit",
@@ -211,6 +216,7 @@ pub const COMMAND_NAMES: &[&str] = &[
     "files",
     "git",
     "h",
+    "health",
     "help",
     "imap",
     "iunmap",
@@ -417,6 +423,9 @@ fn parse_named(text: &str) -> Command {
         },
         ("conflict", []) => Command::Conflict,
         ("h" | "help", rest) => Command::Help {
+            topic: (!rest.is_empty()).then(|| rest.join(" ")),
+        },
+        ("health" | "checkhealth" | "doctor", rest) => Command::Health {
             topic: (!rest.is_empty()).then(|| rest.join(" ")),
         },
         ("u" | "undo", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
@@ -1230,6 +1239,19 @@ mod tests {
         );
         assert_eq!(parse("cclose"), Command::Quickfix(QuickfixCommand::Close));
         assert_eq!(parse("quickfix nope"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_health_commands() {
+        assert_eq!(parse("health"), Command::Health { topic: None });
+        assert_eq!(parse("checkhealth"), Command::Health { topic: None });
+        assert_eq!(parse("doctor"), Command::Health { topic: None });
+        assert_eq!(
+            parse("health lsp"),
+            Command::Health {
+                topic: Some("lsp".to_string())
+            }
+        );
     }
 
     #[test]
