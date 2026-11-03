@@ -1,6 +1,7 @@
 use ropey::Rope;
 
 use super::super::*;
+use crate::registry::registry;
 use crate::span::SyntaxKey;
 
 pub(super) fn request(text: &str, top: usize, end: usize, revision: u64) -> SyntaxRequest {
