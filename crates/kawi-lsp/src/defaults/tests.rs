@@ -1,5 +1,6 @@
 use super::{languages, servers};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 #[test]
 fn built_in_language_names_are_unique() {
@@ -71,4 +72,20 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("cpp"), vec!["clangd"]);
     assert_eq!(servers_for("go"), vec!["gopls"]);
     assert_eq!(servers_for("gomod"), vec!["gopls"]);
+    assert_eq!(
+        servers_for("typescript"),
+        vec!["typescript-language-server"]
+    );
+    assert_eq!(servers_for("html"), vec!["vscode-html-language-server"]);
+    assert_eq!(servers_for("yaml"), vec!["yaml-language-server"]);
+    assert_eq!(servers_for("toml"), vec!["taplo"]);
+}
+
+#[test]
+fn jsonc_filenames_precede_json_extensions() {
+    let language = languages()
+        .into_iter()
+        .find(|language| language.matches(Path::new("tsconfig.json")))
+        .expect("language for tsconfig.json");
+    assert_eq!(language.name, "jsonc");
 }

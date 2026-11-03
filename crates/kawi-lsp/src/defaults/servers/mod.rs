@@ -3,10 +3,12 @@ use std::collections::BTreeMap;
 
 mod scripting;
 mod systems;
+mod web;
 
 pub(super) fn servers() -> BTreeMap<String, ServerConfig> {
     let mut servers = BTreeMap::new();
     servers.extend(systems::servers());
+    servers.extend(web::servers());
     servers.extend(scripting::servers());
     servers
 }
