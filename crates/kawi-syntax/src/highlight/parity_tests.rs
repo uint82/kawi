@@ -1,6 +1,7 @@
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 use super::*;
+use crate::registry::{registry, SyntaxHighlight};
 use crate::rows::{char_column, row_char_len, visible_rows, RowWindow};
 use crate::span::SyntaxKey;
 

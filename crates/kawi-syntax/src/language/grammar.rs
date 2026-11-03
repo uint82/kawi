@@ -25,6 +25,14 @@ pub(super) fn language(language: LanguageId) -> tree_sitter::Language {
     }
 }
 
+pub(super) fn injections(language: LanguageId) -> &'static str {
+    match language {
+        LanguageId::Html => tree_sitter_html::INJECTIONS_QUERY,
+        LanguageId::Markdown => tree_sitter_md::INJECTION_QUERY_BLOCK,
+        _ => "",
+    }
+}
+
 pub(super) fn bundled_highlights(language: LanguageId) -> String {
     format!(
         "{}\n{}",

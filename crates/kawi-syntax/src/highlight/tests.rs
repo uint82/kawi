@@ -6,6 +6,7 @@ use crate::span::SyntaxKey;
 use support::{highlight, name_at, request};
 
 mod captures;
+mod injections;
 mod languages;
 mod queries;
 mod support;
