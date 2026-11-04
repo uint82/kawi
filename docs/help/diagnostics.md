@@ -22,6 +22,8 @@ Plugin diagnostics are scoped to the publishing plugin and the current named buf
 
 The sign column is disabled by default. Set `signcolumn` to `auto` or `always` to show diagnostic signs.
 
+Diagnostic underlines are curly by default. Set `diagnostic_underline` to `straight` for a plain underline.
+
 Virtual text is enabled for all lines by default. Set `diagnostic_virtual_text` to `off`, `cursor_line`, or `all`.
 
 Set `diagnostic_virtual_severity` to control the minimum shown severity. The default is `warning`.

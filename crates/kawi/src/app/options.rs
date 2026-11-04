@@ -6,6 +6,7 @@ use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::options::{
     self, AutosaveMode, OptionContext, OptionError, OptionInput, OptionSpec, OptionValue,
 };
+use kawi_tui::frame::DiagnosticUnderline;
 use kawi_tui::theme::Theme;
 
 impl App {
@@ -219,6 +220,12 @@ impl App {
             "diagnostic_workspace_counts" => {
                 self.diagnostic_options.workspace_counts = value.as_bool().unwrap_or(false);
             }
+            "diagnostic_underline" => {
+                self.diagnostic_options.underline = value
+                    .as_text()
+                    .and_then(DiagnosticUnderline::parse)
+                    .unwrap_or_default();
+            }
             "explorer_enabled" => {
                 self.explorer.set_enabled(value.as_bool().unwrap_or(false));
                 self.sync_terminal_panel_size();
@@ -409,6 +416,9 @@ impl App {
             "diagnostic_workspace_counts" => {
                 OptionValue::Bool(self.diagnostic_options.workspace_counts)
             }
+            "diagnostic_underline" => {
+                OptionValue::Text(self.diagnostic_options.underline.name().to_string())
+            }
             "explorer_enabled" => OptionValue::Bool(self.explorer.is_enabled()),
             "explorer_width" => OptionValue::Int(self.explorer.width()),
             "explorer_show_hidden" => OptionValue::Bool(self.explorer.show_hidden()),
@@ -558,6 +568,26 @@ mod tests {
         assert!(!app.git_signs);
         execute(&mut app, "set signcolumn=never");
         assert_eq!(app.editor.signcolumn_width(), 0);
+    }
+
+    #[test]
+    fn diagnostic_underline_option_applies_and_queries() {
+        let mut app = app();
+        assert_eq!(app.diagnostic_options.underline, DiagnosticUnderline::Curly);
+        execute(&mut app, "set diagnostic_underline=straight");
+        assert_eq!(
+            app.diagnostic_options.underline,
+            DiagnosticUnderline::Straight
+        );
+        execute(&mut app, "set diagnostic_underline?");
+        assert_eq!(app.last_message(), Some("diagnostic_underline=straight"));
+        execute(&mut app, "set diagnostic_underline&");
+        assert_eq!(app.diagnostic_options.underline, DiagnosticUnderline::Curly);
+        execute(&mut app, "set diagnostic_underline=wavy");
+        assert_eq!(
+            app.last_message(),
+            Some("E474: Invalid argument: diagnostic_underline=wavy")
+        );
     }
 
     #[test]

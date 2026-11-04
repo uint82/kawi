@@ -94,6 +94,7 @@ impl App {
             .collect();
         let explorer_focused = self.explorer.is_focused();
         let debug_focused = self.debug_focus;
+        let diagnostic_underline = self.diagnostic_options.underline;
         let panes: Vec<PaneFrame<'_>> = data
             .iter()
             .zip(statuses.iter())
@@ -105,6 +106,7 @@ impl App {
                 gutter: &pane.gutter,
                 signs: pane.signs.as_deref(),
                 diagnostic_spans: &pane.diagnostic_spans,
+                diagnostic_underline,
                 decorations: &pane.decorations,
                 virtual_texts: &pane.virtual_texts,
                 plugin_virtual_texts: &pane.plugin_virtual_texts,

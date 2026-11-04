@@ -7,6 +7,7 @@ use crossterm::{
 };
 use std::io::Write;
 
+use crate::frame::DiagnosticUnderline;
 use crate::theme::{MatchColors, Theme};
 
 pub fn apply_base<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
@@ -22,13 +23,17 @@ pub fn apply_match<W: Write>(out: &mut W, colors: &MatchColors) -> Result<()> {
     apply_colors(out, colors.foreground, colors.background, "tint span")
 }
 
-pub fn apply_underline<W: Write>(out: &mut W, color: Color) -> Result<()> {
-    execute!(
-        out,
-        SetAttribute(Attribute::Underlined),
-        SetUnderlineColor(color)
-    )
-    .context("apply diagnostic underline")?;
+pub fn apply_underline<W: Write>(
+    out: &mut W,
+    color: Color,
+    style: DiagnosticUnderline,
+) -> Result<()> {
+    let attribute = match style {
+        DiagnosticUnderline::Straight => Attribute::Underlined,
+        DiagnosticUnderline::Curly => Attribute::Undercurled,
+    };
+    execute!(out, SetAttribute(attribute), SetUnderlineColor(color))
+        .context("apply diagnostic underline")?;
     Ok(())
 }
 
