@@ -70,3 +70,23 @@ fn appends_combining_graphemes_to_the_previous_cell() {
     assert_eq!(row(&surface, 0), "e\u{301}x ");
     assert_eq!(surface.cell(1, 0).expect("x").text(), "x");
 }
+
+#[test]
+fn refuses_wide_graphemes_that_do_not_fit() {
+    let mut surface = surface(1, 1);
+    surface.write_text("中");
+    assert_eq!(row(&surface, 0), " ");
+    assert_eq!(surface.cursor(), Position { x: 1, y: 0 });
+}
+
+#[test]
+fn fit_clears_cells_and_applies_new_colors() {
+    let mut surface = surface(3, 1);
+    surface.write_text("abc");
+    surface.fit(3, 1, Color::Red, Color::Blue);
+    assert_eq!(row(&surface, 0), "   ");
+    let cell = surface.cell(0, 0).expect("cell");
+    assert_eq!(cell.text(), " ");
+    assert_eq!(cell.style().foreground(), Color::Red);
+    assert_eq!(cell.style().background(), Color::Blue);
+}
