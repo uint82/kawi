@@ -1,6 +1,7 @@
 mod branch;
 mod command;
 mod hunks;
+mod load_service;
 mod log;
 mod ops;
 mod patch;
@@ -19,6 +20,7 @@ pub use hunks::{
     apply_hunks, diff_hunks, filter_common, hunk_at, next_hunk, prev_hunk, Hunk, HunkKind, Sign,
     SignKind,
 };
+pub use load_service::{FileLoadEvent, FileLoadService};
 pub use log::{
     commit_files, commit_patch, file_diff, CommitFile, LogEntry, LogEvent, LogOptions, LogStream,
 };
