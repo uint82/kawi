@@ -27,10 +27,23 @@ pub fn screen_len(text: &str, tabstop: usize) -> usize {
 }
 
 pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> String {
-    if from >= to {
-        return String::new();
-    }
     let mut out = String::new();
+    slice_screen_into(text, from, to, tabstop, &mut out);
+    out
+}
+
+pub fn slice_screen_into(
+    text: &str,
+    from: usize,
+    to: usize,
+    tabstop: usize,
+    out: &mut String,
+) -> usize {
+    out.clear();
+    if from >= to {
+        return 0;
+    }
+    let mut visible = 0;
     let mut screen = 0;
     for ch in text.chars() {
         if !is_displayable(ch) {
@@ -46,15 +59,20 @@ pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> Strin
         if start >= to {
             break;
         }
-        let visible_start = start.max(from);
-        let visible_end = end.min(to);
         if ch == '\t' {
-            out.push_str(&" ".repeat(visible_end - visible_start));
+            let count = end.min(to).saturating_sub(start.max(from));
+            push_spaces(out, count);
+            visible += count;
         } else if start >= from {
             out.push(ch);
+            visible += width;
         }
     }
-    out
+    visible
+}
+
+fn push_spaces(out: &mut String, count: usize) {
+    out.extend(std::iter::repeat_n(' ', count));
 }
 
 #[cfg(test)]
@@ -102,6 +120,20 @@ mod tests {
         assert_eq!(slice_screen("abc", 2, 10, 8), "c");
         assert_eq!(slice_screen("abc", 5, 8, 8), "");
         assert_eq!(slice_screen("", 0, 1, 8), "");
+    }
+
+    #[test]
+    fn slice_screen_into_reports_width_and_reuses_buffer() {
+        let mut buffer = String::from("stale");
+        let visible = slice_screen_into("\tx", 0, 20, 8, &mut buffer);
+        assert_eq!(buffer, "        x");
+        assert_eq!(visible, 9);
+        let visible = slice_screen_into("a\tb", 1, 9, 8, &mut buffer);
+        assert_eq!(buffer, "       b");
+        assert_eq!(visible, 8);
+        let visible = slice_screen_into("abc", 5, 8, 8, &mut buffer);
+        assert!(buffer.is_empty());
+        assert_eq!(visible, 0);
     }
 
     #[test]
