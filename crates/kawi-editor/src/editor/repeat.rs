@@ -168,28 +168,17 @@ impl Editor {
         range: ((usize, usize), (usize, usize)),
         record: &[InsertEdit],
     ) {
-        let (start, end) = self.translated_range(range.0, range.1);
+        let (start, end) = self.translated_range(mode, range.0, range.1);
         self.pending_register = register;
         match action {
             Action::DeleteSelection | Action::PasteOverSelection => {
                 if action == Action::PasteOverSelection {
                     self.pending_register = None;
                 }
-                self.record_boundary();
-                self.yank_range(start.0, start.1, end.0, end.1);
-                self.buffer.delete_range(start.0, start.1, end.0, end.1);
-                self.cursor.set_position(start.0, start.1.saturating_sub(1));
+                self.repeat_visual_delete(mode, start, end);
             }
             Action::ChangeSelection | Action::ChangeLines => {
-                self.record_boundary();
-                self.buffer.delete_range(start.0, start.1, end.0, end.1);
-                self.cursor.set_position(start.0, start.1);
-                self.switch_to_insert();
-                for edit in record {
-                    self.replay_edit(edit.clone());
-                }
-                self.retreat_after_insert();
-                self.mode = Mode::Normal;
+                self.repeat_visual_change(mode, start, end, record);
             }
             Action::CommentLines => {
                 self.comment_rows(start.0, end.0);
@@ -227,8 +216,42 @@ impl Editor {
         }
     }
 
+    fn repeat_visual_delete(&mut self, mode: Mode, start: (usize, usize), end: (usize, usize)) {
+        if mode == Mode::VisualLine {
+            self.remove_lines(start.0, end.0);
+            return;
+        }
+        self.record_boundary();
+        self.yank_range(start.0, start.1, end.0, end.1);
+        self.buffer.delete_range(start.0, start.1, end.0, end.1);
+        self.cursor.set_position(start.0, start.1.saturating_sub(1));
+    }
+
+    fn repeat_visual_change(
+        &mut self,
+        mode: Mode,
+        start: (usize, usize),
+        end: (usize, usize),
+        record: &[InsertEdit],
+    ) {
+        if mode == Mode::VisualLine {
+            self.change_lines(start.0, end.0);
+        } else {
+            self.record_boundary();
+            self.buffer.delete_range(start.0, start.1, end.0, end.1);
+            self.cursor.set_position(start.0, start.1);
+            self.switch_to_insert();
+        }
+        for edit in record {
+            self.replay_edit(edit.clone());
+        }
+        self.retreat_after_insert();
+        self.mode = Mode::Normal;
+    }
+
     fn translated_range(
         &self,
+        mode: Mode,
         anchor: (usize, usize),
         head: (usize, usize),
     ) -> ((usize, usize), (usize, usize)) {
@@ -238,6 +261,13 @@ impl Editor {
             (head, anchor)
         };
         let cursor = (self.cursor.row(), self.cursor.col());
+        if mode == Mode::VisualLine {
+            let last = cursor
+                .0
+                .saturating_add(saved_end.0.saturating_sub(saved_start.0))
+                .min(self.buffer.line_count().saturating_sub(1));
+            return ((cursor.0, 0), (last, self.buffer.line_len(last)));
+        }
         let end = (
             cursor.0 + saved_end.0.saturating_sub(saved_start.0),
             cursor.1 + saved_end.1.saturating_sub(saved_start.1),
