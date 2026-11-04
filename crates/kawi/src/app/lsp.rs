@@ -95,6 +95,12 @@ impl LspUi {
         warnings
     }
 
+    pub fn shutdown(&self) {
+        if let Some(service) = self.service.as_ref() {
+            service.shutdown();
+        }
+    }
+
     pub fn refresh(&mut self, editor: &Editor) -> bool {
         let document = self.sync_editor(editor);
         let events = self.poll_events(editor);

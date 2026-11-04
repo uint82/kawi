@@ -696,6 +696,10 @@ impl LspService {
         let _ = self.send(Command::Cancel { request });
     }
 
+    pub fn shutdown(&self) {
+        let _ = self.send(Command::Shutdown);
+    }
+
     pub fn try_recv(&self) -> Option<LspEvent> {
         self.events.try_recv().ok()
     }
@@ -713,7 +717,7 @@ impl LspService {
 
 impl Drop for LspService {
     fn drop(&mut self) {
-        let _ = self.commands.send(ServiceInput::Command(Command::Shutdown));
+        self.shutdown();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
