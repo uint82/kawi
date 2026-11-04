@@ -1,9 +1,12 @@
 use std::fs::{self, File, Metadata, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
+static BACKUP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn write(
     path: &Path,
@@ -149,14 +152,14 @@ fn write_in_place(
 ) -> io::Result<()> {
     let truncate = regular_target(path);
     let mut file = open_in_place(path)?;
-    let backup = truncate.then(|| copy_backup(path)).flatten();
+    let backup = if truncate { create_backup(path)? } else { None };
     match write_through(&mut file, truncate, produce) {
         Ok(()) => {
-            discard_backup(backup.as_deref());
+            remove_backup(backup.as_ref());
             Ok(())
         }
         Err(error) => {
-            restore_backup(backup.as_deref(), path)?;
+            restore_backup(&mut file, backup)?;
             Err(error)
         }
     }
@@ -188,36 +191,93 @@ fn write_through(
     file.sync_all()
 }
 
-fn copy_backup(path: &Path) -> Option<PathBuf> {
-    let backup = backup_path_for(path);
-    fs::copy(path, &backup).ok()?;
-    Some(backup)
+struct Backup {
+    path: PathBuf,
+    file: File,
 }
 
-fn discard_backup(backup: Option<&Path>) {
-    if let Some(path) = backup {
-        let _ = fs::remove_file(path);
+fn create_backup(path: &Path) -> io::Result<Option<Backup>> {
+    let mut source = match File::open(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let (backup_path, mut backup_file) = create_backup_file(path)?;
+    if let Err(error) = io::copy(&mut source, &mut backup_file).and_then(|_| backup_file.sync_all())
+    {
+        let _ = fs::remove_file(&backup_path);
+        return Err(error);
+    }
+    Ok(Some(Backup {
+        path: backup_path,
+        file: backup_file,
+    }))
+}
+
+fn create_backup_file(path: &Path) -> io::Result<(PathBuf, File)> {
+    let sequence = BACKUP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut last_error = None;
+    for candidate in backup_candidates(path, sequence) {
+        match open_backup(&candidate) {
+            Ok(file) => return Ok((candidate, file)),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| io::Error::other("cannot create backup file")))
+}
+
+fn backup_candidates(path: &Path, sequence: u64) -> [PathBuf; 2] {
+    [backup_path_for(path, sequence), temp_backup_path(sequence)]
+}
+
+fn open_backup(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    options.open(path)
+}
+
+fn restore_backup(file: &mut File, backup: Option<Backup>) -> io::Result<()> {
+    let Some(mut backup) = backup else {
+        return Ok(());
+    };
+    match copy_backup_contents(file, &mut backup.file) {
+        Ok(()) => {
+            remove_backup(Some(&backup));
+            Ok(())
+        }
+        Err(error) => Err(io::Error::new(
+            error.kind(),
+            format!("{error}: original kept at {}", backup.path.display()),
+        )),
     }
 }
 
-fn restore_backup(backup: Option<&Path>, path: &Path) -> io::Result<()> {
-    let Some(backup) = backup else {
-        return Ok(());
-    };
-    fs::rename(backup, path).map_err(|error| {
-        io::Error::new(
-            error.kind(),
-            format!("{error}: original kept at {}", backup.display()),
-        )
-    })
+fn copy_backup_contents(target: &mut File, backup: &mut File) -> io::Result<()> {
+    backup.seek(SeekFrom::Start(0))?;
+    target.seek(SeekFrom::Start(0))?;
+    target.set_len(0)?;
+    io::copy(backup, target)?;
+    target.sync_all()
+}
+
+fn remove_backup(backup: Option<&Backup>) {
+    if let Some(backup) = backup {
+        let _ = fs::remove_file(&backup.path);
+    }
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {
     sibling(path, "tmp")
 }
 
-fn backup_path_for(path: &Path) -> PathBuf {
-    sibling(path, "bak")
+fn backup_path_for(path: &Path, sequence: u64) -> PathBuf {
+    sibling(path, &format!("{sequence}.bak"))
+}
+
+fn temp_backup_path(sequence: u64) -> PathBuf {
+    std::env::temp_dir().join(format!(".kawi-{}-{sequence}.bak", std::process::id()))
 }
 
 fn sibling(path: &Path, role: &str) -> PathBuf {
@@ -413,6 +473,23 @@ mod tests {
         fs::write(&target, "old\n").expect("seed");
         fs::hard_link(&target, &other).expect("hard link");
         write(&target, false, failing()).expect_err("produce failure");
+        assert_eq!(fs::read_to_string(&target).expect("read"), "old\n");
+        assert!(leftovers(&dir).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restores_symlink_target_when_in_place_fails() {
+        let dir = case_dir("symlink_fail");
+        let target = dir.join("real.txt");
+        let link = dir.join("link.txt");
+        fs::write(&target, "old\n").expect("seed");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        write(&link, false, failing()).expect_err("produce failure");
+        assert!(fs::symlink_metadata(&link)
+            .expect("stat link")
+            .file_type()
+            .is_symlink());
         assert_eq!(fs::read_to_string(&target).expect("read"), "old\n");
         assert!(leftovers(&dir).is_empty());
     }
