@@ -10,7 +10,7 @@ use super::super::{picker_start, saturate_u16};
 use super::write_padding;
 use crate::frame::{Frame, PickerLine, PickerMenu, Rect};
 use crate::paint;
-use crate::text::{count_label, display_width, truncate_to_display_width};
+use crate::text::{count_label, display_width, sanitize_text, truncate_to_display_width};
 
 pub(super) fn draw_results(
     out: &mut Stdout,
@@ -47,7 +47,8 @@ fn draw_result(
     if item.deprecated {
         execute!(out, SetAttribute(Attribute::CrossedOut)).context("cross out picker row")?;
     }
-    let primary = truncate_to_display_width(item.primary, width);
+    let primary = sanitize_text(item.primary);
+    let primary = truncate_to_display_width(&primary, width);
     write!(out, "{primary}").context("write picker result")?;
     if item.deprecated {
         execute!(out, SetAttribute(Attribute::NotCrossedOut)).context("uncross picker row")?;
@@ -85,7 +86,8 @@ fn write_detail(
     }
     execute!(out, SetForegroundColor(frame.theme.line_number))
         .context("apply picker result detail color")?;
-    let detail = truncate_to_display_width(detail, remaining);
+    let detail = sanitize_text(detail);
+    let detail = truncate_to_display_width(&detail, remaining);
     write!(out, "{detail}").context("write picker result detail")?;
     Ok(used.saturating_add(display_width(detail)))
 }

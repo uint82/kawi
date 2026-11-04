@@ -16,7 +16,7 @@ use crate::frame::{
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
 use crate::statusbar::{draw_status, StatusArea};
-use crate::text::{count_label, display_width, truncate_to_display_width};
+use crate::text::{count_label, display_width, sanitize_text, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 use kawi_editor::Viewport;
 use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
@@ -213,7 +213,8 @@ fn draw_replace_prompt(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_
         SetForegroundColor(frame.theme.line_number)
     )
     .context("prepare replace prompt")?;
-    let prompt = format!("Replace  {}", replace.query);
+    let query = sanitize_text(replace.query);
+    let prompt = format!("Replace  {query}");
     write!(
         out,
         "{}",
@@ -231,7 +232,8 @@ fn draw_replace_prompt(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_
         SetForegroundColor(frame.theme.line_number)
     )
     .context("prepare replacement prompt")?;
-    let prompt = format!("with: {}", replace.replacement);
+    let replacement = sanitize_text(replace.replacement);
+    let prompt = format!("with: {replacement}");
     write!(
         out,
         "{}",
@@ -265,7 +267,8 @@ fn draw_replace_rows(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'_>)
         if replace.selected == Some(index) {
             paint::apply_match(out, &frame.theme.selection)?;
         }
-        write!(out, "{}", truncate_to_width(item, width)).context("write replace row")?;
+        let item = sanitize_text(item);
+        write!(out, "{}", truncate_to_width(&item, width)).context("write replace row")?;
         paint::restore_base(out, frame.theme)?;
     }
     Ok(())
@@ -1542,7 +1545,8 @@ fn draw_pager(out: &mut Stdout, frame: &Frame, lines: &[String]) -> Result<()> {
             Clear(ClearType::CurrentLine)
         )
         .context("clear pager row")?;
-        write!(out, "{}", truncate_to_width(line, width)).context("write pager line")?;
+        let line = sanitize_text(line);
+        write!(out, "{}", truncate_to_width(&line, width)).context("write pager line")?;
     }
     let prompt_row = frame.viewport.height().saturating_add(1);
     execute!(

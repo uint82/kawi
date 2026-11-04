@@ -10,6 +10,10 @@ fn cell_width(ch: char, screen: usize, tabstop: usize) -> usize {
     }
 }
 
+fn is_displayable(ch: char) -> bool {
+    ch == '\t' || !ch.is_control()
+}
+
 pub fn screen_col(text: &str, chars: usize, tabstop: usize) -> usize {
     let mut screen = 0;
     for ch in text.chars().take(chars) {
@@ -29,6 +33,9 @@ pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> Strin
     let mut out = String::new();
     let mut screen = 0;
     for ch in text.chars() {
+        if !is_displayable(ch) {
+            continue;
+        }
         let width = cell_width(ch, screen, tabstop);
         let start = screen;
         let end = screen + width;
@@ -95,5 +102,11 @@ mod tests {
         assert_eq!(slice_screen("abc", 2, 10, 8), "c");
         assert_eq!(slice_screen("abc", 5, 8, 8), "");
         assert_eq!(slice_screen("", 0, 1, 8), "");
+    }
+
+    #[test]
+    fn slice_screen_omits_control_characters() {
+        assert_eq!(slice_screen("a\u{1b}[31mb\u{7f}\r", 0, 32, 8), "a[31mb");
+        assert_eq!(slice_screen("a\tb\u{9b}c", 0, 32, 8), "a       bc");
     }
 }

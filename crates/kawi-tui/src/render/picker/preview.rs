@@ -11,7 +11,7 @@ use super::write_padding;
 use crate::display;
 use crate::frame::{Frame, PickerPreview, Rect};
 use crate::paint;
-use crate::text::{display_width, truncate_to_display_width};
+use crate::text::{display_width, sanitize_text, truncate_to_display_width};
 use kawi_editor::Viewport;
 
 pub(super) fn draw_preview(
@@ -60,7 +60,8 @@ fn draw_title(
         SetForegroundColor(frame.theme.line_number)
     )
     .context("move to preview title")?;
-    let title = truncate_to_display_width(preview.title, rect.width);
+    let title = sanitize_text(preview.title);
+    let title = truncate_to_display_width(&title, rect.width);
     write!(out, "{title}").context("write preview title")?;
     write_padding(out, display_width(title), rect.width)
 }
