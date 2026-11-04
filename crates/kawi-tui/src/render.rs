@@ -51,7 +51,9 @@ use terminal::{draw_terminal_panel, place_terminal_cursor};
 
 pub struct Renderer {
     surface: Surface,
+    previous: Surface,
     buffer: Vec<u8>,
+    has_frame: bool,
 }
 
 impl Default for Renderer {
@@ -64,7 +66,9 @@ impl Renderer {
     pub fn new() -> Self {
         Self {
             surface: Surface::new(1, 1, Color::Reset, Color::Reset),
+            previous: Surface::new(1, 1, Color::Reset, Color::Reset),
             buffer: Vec::new(),
+            has_frame: false,
         }
     }
 
@@ -76,16 +80,19 @@ impl Renderer {
     }
 
     fn paint(&mut self, out: &mut Stdout, frame: &Frame) -> Result<()> {
-        self.render(frame)?;
-        self.present(out)?;
+        let is_resized = self.render(frame)?;
+        self.present(out, is_resized)?;
         place_frame_cursor(out, frame)?;
         flush(out)
     }
 
-    fn render(&mut self, frame: &Frame) -> Result<()> {
+    fn render(&mut self, frame: &Frame) -> Result<bool> {
+        let width = frame.viewport.width();
+        let height = frame.viewport.height().saturating_add(2);
+        let is_resized = self.previous.width() != width || self.previous.height() != height;
         self.surface.fit(
-            frame.viewport.width(),
-            frame.viewport.height().saturating_add(2),
+            width,
+            height,
             frame.theme.base.foreground,
             frame.theme.base.background,
         );
@@ -93,13 +100,20 @@ impl Renderer {
             (Some(replace), _) => draw_replace(&mut self.surface, frame, replace),
             (None, Some(picker)) => picker::draw(&mut self.surface, frame, picker),
             (None, None) => draw_surface(&mut self.surface, frame),
-        }
+        }?;
+        Ok(is_resized)
     }
 
-    fn present(&mut self, out: &mut Stdout) -> Result<()> {
+    fn present(&mut self, out: &mut Stdout, is_resized: bool) -> Result<()> {
         self.buffer.clear();
-        surface::present(&self.surface, &mut self.buffer)?;
+        if self.has_frame && !is_resized {
+            surface::diff(&self.previous, &self.surface, &mut self.buffer)?;
+        } else {
+            surface::present(&self.surface, &mut self.buffer)?;
+        }
         out.write_all(&self.buffer).context("write surface")?;
+        std::mem::swap(&mut self.previous, &mut self.surface);
+        self.has_frame = true;
         Ok(())
     }
 }
