@@ -1,10 +1,43 @@
+pub(crate) struct Query {
+    needle: String,
+    case_sensitive: bool,
+}
+
+impl Query {
+    pub(crate) fn new(query: &str) -> Self {
+        let case_sensitive = query.chars().any(char::is_uppercase);
+        Self {
+            needle: fold(query, case_sensitive),
+            case_sensitive,
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.needle.is_empty()
+    }
+
+    pub(crate) fn score(&self, candidate: &str, folded: &str) -> Option<i32> {
+        if self.is_empty() {
+            return Some(0);
+        }
+        let haystack = if self.case_sensitive {
+            candidate
+        } else {
+            folded
+        };
+        score(&self.needle, haystack)
+    }
+}
+
 pub fn fuzzy_score(query: &str, candidate: &str) -> Option<i32> {
+    let query = Query::new(query);
     if query.is_empty() {
         return Some(0);
     }
-    let case_sensitive = query.chars().any(char::is_uppercase);
-    let needle = fold(query, case_sensitive);
-    let haystack = fold(candidate, case_sensitive);
+    query.score(candidate, &candidate.to_lowercase())
+}
+
+fn score(needle: &str, haystack: &str) -> Option<i32> {
     let haystack_chars: Vec<char> = haystack.chars().collect();
     let basename_start = haystack.rfind('/').map_or(0, |index| index + 1);
     let mut score = 0;
@@ -32,10 +65,10 @@ pub fn fuzzy_score(query: &str, candidate: &str) -> Option<i32> {
         previous = Some(found);
         position = found + 1;
     }
-    if haystack.starts_with(&needle) {
+    if haystack.starts_with(needle) {
         score += 30;
     }
-    if haystack[basename_start..].starts_with(&needle) {
+    if haystack[basename_start..].starts_with(needle) {
         score += 20;
     }
     Some(score - (haystack_chars.len() / 10) as i32)
