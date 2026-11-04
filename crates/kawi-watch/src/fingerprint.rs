@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, Metadata};
 use std::io;
 use std::path::Path;
 use std::time::SystemTime;
@@ -7,27 +7,67 @@ use kawi_buffer::content_hash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fingerprint {
-    modified: Option<SystemTime>,
-    len: u64,
+    stamp: Stamp,
     hash: u64,
 }
 
 impl Fingerprint {
     pub fn read(path: &Path) -> io::Result<Self> {
         let metadata = fs::metadata(path)?;
-        let bytes = fs::read(path)?;
-        Ok(Self {
-            modified: metadata.modified().ok(),
-            len: bytes.len() as u64,
-            hash: content_hash(&bytes),
-        })
+        Self::read_content(path, Stamp::from_metadata(&metadata))
+    }
+
+    pub fn refresh(path: &Path, previous: Option<&Self>) -> io::Result<Self> {
+        let metadata = fs::metadata(path)?;
+        let stamp = Stamp::from_metadata(&metadata);
+        if let Some(previous) = previous.filter(|previous| previous.stamp == stamp) {
+            return Ok(*previous);
+        }
+        Self::read_content(path, stamp)
     }
 
     pub fn matches(&self, other: &Self) -> bool {
-        self.len == other.len && self.hash == other.hash
+        self.stamp.len == other.stamp.len && self.hash == other.hash
     }
 
     pub fn modified(&self) -> Option<SystemTime> {
-        self.modified
+        self.stamp.modified
     }
+
+    fn read_content(path: &Path, stamp: Stamp) -> io::Result<Self> {
+        let bytes = fs::read(path)?;
+        Ok(Self {
+            stamp,
+            hash: content_hash(&bytes),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    ctime: Option<(i64, i64)>,
+}
+
+impl Stamp {
+    fn from_metadata(metadata: &Metadata) -> Self {
+        Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            ctime: ctime(metadata),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn ctime(metadata: &Metadata) -> Option<(i64, i64)> {
+    use std::os::unix::fs::MetadataExt;
+
+    Some((metadata.ctime(), metadata.ctime_nsec()))
+}
+
+#[cfg(not(unix))]
+fn ctime(_metadata: &Metadata) -> Option<(i64, i64)> {
+    None
 }

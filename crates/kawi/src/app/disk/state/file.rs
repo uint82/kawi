@@ -19,8 +19,12 @@ pub(super) struct DiskFile {
 
 impl DiskFile {
     pub(super) fn new(path: PathBuf) -> Self {
-        let observed = ObservedFile::read(&path);
+        let observed = ObservedFile::read(&path, None);
         Self::from_observed(path, observed)
+    }
+
+    pub(super) fn fingerprint(&self) -> Option<Fingerprint> {
+        self.current.or(self.base)
     }
 
     pub(super) fn from_fingerprint(path: PathBuf, fingerprint: Option<Fingerprint>) -> Self {

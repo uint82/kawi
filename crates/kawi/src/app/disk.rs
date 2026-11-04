@@ -52,11 +52,12 @@ impl App {
             let Some(path) = self.disk.path(number).map(Path::to_path_buf) else {
                 continue;
             };
-            let mut observed = ObservedFile::read(&path);
+            let previous = self.disk.fingerprint(number);
+            let mut observed = ObservedFile::read(&path, previous);
             if observed.is_missing() {
                 if let Some(moved) = self.disk.moved_path(number, &search) {
                     self.retarget_file(number, &path, &moved);
-                    observed = ObservedFile::read(&moved);
+                    observed = ObservedFile::read(&moved, previous);
                 }
             }
             match self.disk.observe(number, observed) {

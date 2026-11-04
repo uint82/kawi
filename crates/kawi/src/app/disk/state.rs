@@ -25,9 +25,9 @@ pub(super) struct ObservedFile {
 }
 
 impl ObservedFile {
-    pub(super) fn read(path: &Path) -> Self {
+    pub(super) fn read(path: &Path, previous: Option<Fingerprint>) -> Self {
         Self {
-            fingerprint: Fingerprint::read(path).ok(),
+            fingerprint: Fingerprint::refresh(path, previous.as_ref()).ok(),
             identity: file_identity(path),
         }
     }
@@ -71,6 +71,10 @@ impl DiskState {
 
     pub(in crate::app) fn path(&self, number: usize) -> Option<&Path> {
         self.files.get(&number).map(|file| file.path.as_path())
+    }
+
+    pub(super) fn fingerprint(&self, number: usize) -> Option<Fingerprint> {
+        self.files.get(&number).and_then(DiskFile::fingerprint)
     }
 
     pub(super) fn status(&self, number: usize) -> Option<&'static str> {
