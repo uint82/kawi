@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::mpsc::channel;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn options(command: &str) -> SpawnOptions {
     let mut options = SpawnOptions::new(std::env::temp_dir(), 10, 40);
