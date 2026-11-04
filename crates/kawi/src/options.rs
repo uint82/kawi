@@ -273,7 +273,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 48] = [
+pub(crate) const OPTIONS: [OptionSpec; 49] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -654,6 +654,16 @@ pub(crate) const OPTIONS: [OptionSpec; 48] = [
         section: ConfigSection::Ui,
         config_key: "diagnostic_workspace_counts",
         default: OptionDefault::Bool(false),
+    },
+    OptionSpec {
+        name: "diagnostic_underline",
+        aliases: &[],
+        description: "Diagnostic underline style.",
+        kind: OptionKind::Enum(OptionValues::Static(&["straight", "curly"])),
+        scope: OptionScope::Global,
+        section: ConfigSection::Ui,
+        config_key: "diagnostic_underline",
+        default: OptionDefault::Text("curly"),
     },
     OptionSpec {
         name: "explorer_enabled",
@@ -1092,6 +1102,10 @@ mod tests {
         assert_eq!(
             lookup("completion_docs_down").unwrap().default_value(),
             OptionValue::Text("ctrl-f".to_string())
+        );
+        assert_eq!(
+            lookup("diagnostic_underline").unwrap().default_value(),
+            OptionValue::Text("curly".to_string())
         );
     }
 

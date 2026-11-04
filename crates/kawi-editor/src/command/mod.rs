@@ -342,6 +342,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "diagnostic_counts",
     "diagnostic_popup_max_width",
     "diagnostic_source",
+    "diagnostic_underline",
     "diagnostic_virtual_severity",
     "diagnostic_virtual_text",
     "diagnostic_workspace_counts",

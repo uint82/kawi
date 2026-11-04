@@ -218,6 +218,7 @@ diagnostic_virtual_severity = "information"
 diagnostic_source = "always"
 diagnostic_counts = "all"
 diagnostic_workspace_counts = true
+diagnostic_underline = "straight"
 
 [editor]
 shiftwidth = 2
@@ -270,6 +271,10 @@ undo_exclude = ["*.gpg"]
             super::super::diagnostic_ui::CountsMode::All
         );
         assert!(app.diagnostic_options.workspace_counts);
+        assert_eq!(
+            app.diagnostic_options.underline,
+            kawi_tui::frame::DiagnosticUnderline::Straight
+        );
         assert_eq!(app.editor.shiftwidth(), 2);
         assert!(app.editor.expandtab());
         assert!(!app.editor.autoindent());
