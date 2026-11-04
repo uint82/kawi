@@ -31,29 +31,28 @@ impl Editor {
     }
 
     fn paste_block_over_rect(&mut self, rect: &BlockRect, register: &Register, count: usize) {
-        self.cursor.set_position(rect.top, rect.left);
-        self.pad_row_to(rect.top, rect.left);
+        self.insert_at_screen(rect.top, rect.left, "");
+        let col = self.char_col_at_screen(rect.top, rect.left);
+        self.cursor.set_position(rect.top, col);
         self.block_paste(register, count, true, false);
     }
 
     fn paste_charwise_over_rect(&mut self, rect: &BlockRect, text: &str, count: usize) {
         let text = text.repeat(count);
         for row in rect.top..=rect.bottom {
-            self.pad_row_to(row, rect.left);
-            self.buffer.paste_before(row, rect.left, &text);
+            self.insert_at_screen(row, rect.left, &text);
         }
-        let last_col = rect
-            .left
-            .saturating_add(text.chars().count())
-            .saturating_sub(1);
-        let max_col = self.buffer.line_len(rect.top).saturating_sub(1);
-        self.cursor.set_position(rect.top, last_col.min(max_col));
+        let width = self.screen_text_width(&text, rect.left);
+        let last_screen = rect.left.saturating_add(width).saturating_sub(1);
+        let col = self.char_col_at_screen(rect.top, last_screen);
+        self.cursor.set_position(rect.top, col);
     }
 
     fn paste_text_over_rect(&mut self, rect: &BlockRect, text: &str) {
-        self.pad_row_to(rect.top, rect.left);
-        self.buffer.paste_before(rect.top, rect.left, text);
-        self.cursor.set_position(rect.top, rect.left);
+        self.insert_at_screen(rect.top, rect.left, "");
+        let col = self.char_col_at_screen(rect.top, rect.left);
+        self.buffer.paste_before(rect.top, col, text);
+        self.cursor.set_position(rect.top, col);
     }
 
     fn paste_lines_after_rect(&mut self, rect: &BlockRect, register: &Register, count: usize) {
@@ -75,17 +74,20 @@ impl Editor {
             .map(|line| line.repeat(repetitions))
             .collect();
         let row = self.cursor.row();
-        let col = if before {
-            self.cursor.col()
+        let screen = if before {
+            self.buffer
+                .screen_col(row, self.cursor.col(), self.tabstop())
         } else {
-            self.cursor.col().saturating_add(1)
+            self.buffer
+                .screen_col(row, self.cursor.col().saturating_add(1), self.tabstop())
         };
+        let col = self.char_col_at_screen(row, screen);
         self.change_origin_override = Some((row, col));
         let mut last_appended_empty = false;
         for (offset, text) in lines.iter().enumerate() {
             let target = row.saturating_add(offset);
             if target >= self.buffer.line_count() {
-                let mut line = " ".repeat(col);
+                let mut line = " ".repeat(screen);
                 line.push_str(text);
                 self.buffer
                     .paste_before(target.saturating_sub(1), usize::MAX, "\n");
@@ -94,8 +96,7 @@ impl Editor {
                 continue;
             }
             last_appended_empty = false;
-            self.pad_row_to(target, col);
-            self.buffer.paste_before(target, col, text);
+            self.insert_at_screen(target, screen, text);
         }
         if last_appended_empty {
             self.buffer
@@ -105,15 +106,15 @@ impl Editor {
         if advance {
             let width = lines
                 .iter()
-                .map(|line| line.chars().count())
+                .map(|line| self.screen_text_width(line, screen))
                 .max()
                 .unwrap_or(0);
             let last_row = self.buffer.line_count().saturating_sub(1);
             let target_row = row
                 .saturating_add(lines.len().saturating_sub(1))
                 .min(last_row);
-            let len = self.buffer.line_len(target_row);
-            let target_col = col.saturating_add(width).min(len.saturating_sub(1));
+            let target_screen = screen.saturating_add(width).saturating_sub(1);
+            let target_col = self.char_col_at_screen(target_row, target_screen);
             self.cursor.set_position(target_row, target_col);
         }
     }
