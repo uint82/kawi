@@ -2,7 +2,6 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 pub const ELLIPSIS: &str = "\u{2026}";
 
@@ -13,7 +12,7 @@ const ESC: char = '\u{1b}';
 const ST: char = '\\';
 
 pub fn display_width(text: &str) -> usize {
-    text.width()
+    kawi_buffer::unicode::display_width(text)
 }
 
 pub fn sanitize(text: &str) -> String {
