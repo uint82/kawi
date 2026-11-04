@@ -6,7 +6,7 @@ use lsp_types::{PositionEncodingKind, TextDocumentSyncKind, TextDocumentSyncSave
 use ropey::Rope;
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -853,6 +853,7 @@ pub(crate) enum ServiceInput {
 struct Manager {
     languages: Languages,
     input: Receiver<ServiceInput>,
+    deferred_inputs: VecDeque<ServiceInput>,
     input_tx: Sender<ServiceInput>,
     events: Sender<LspEvent>,
     wake: Sender<()>,

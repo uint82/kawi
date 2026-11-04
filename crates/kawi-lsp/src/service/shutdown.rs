@@ -73,7 +73,7 @@ impl Manager {
                 {
                     return false
                 }
-                Ok(_) => {}
+                Ok(input) => self.deferred_inputs.push_back(input),
                 Err(_) => return false,
             }
         }
@@ -95,7 +95,7 @@ impl Manager {
                 Ok(ServiceInput::Client(ClientEvent::ReaderClosed { key, .. })) => {
                     mark_client_stopped(clients, &key)
                 }
-                Ok(_) => {}
+                Ok(input) => self.deferred_inputs.push_back(input),
                 Err(_) => return,
             }
         }
