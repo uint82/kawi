@@ -1,14 +1,10 @@
-use anyhow::{Context, Result};
-use crossterm::{
-    execute,
-    style::{Attribute, SetAttribute},
-};
-use std::io::Write;
+use anyhow::Result;
 
 use crate::paint;
+use crate::surface::Surface;
 use crate::theme::Theme;
 
-use super::{span_segment_at, write_segment, HighlightSpan, SpanView, Tint};
+use super::highlight::{span_segment_at, write_segment, HighlightSpan, SpanView, Tint};
 
 pub(super) fn bracket_match_spans(
     matched: Option<kawi_editor::BracketMatch>,
@@ -36,27 +32,29 @@ fn bracket_position_span(position: (usize, usize), view: &SpanView) -> Option<Hi
     )
 }
 
-pub(super) fn paint_bracket_match<W: Write>(out: &mut W, text: &str, theme: &Theme) -> Result<()> {
-    paint::apply_match(out, &theme.bracket_match)?;
-    execute!(out, SetAttribute(Attribute::Bold)).context("apply bracket match weight")?;
+pub(super) fn paint_bracket_match(out: &mut Surface, text: &str, theme: &Theme) -> Result<()> {
+    paint::apply_match(out, &theme.bracket_match);
+    out.set_bold(true);
     write_segment(out, text)?;
-    execute!(out, SetAttribute(Attribute::Reset)).context("clear bracket match style")?;
-    paint::restore_base(out, theme)
+    out.reset_attributes();
+    paint::restore_base(out, theme);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::Theme;
 
     #[test]
     fn bracket_match_does_not_leave_underline_attributes() {
-        let mut out = Vec::new();
-        paint_bracket_match(&mut out, "(", &Theme::default()).expect("paint");
-        let output = String::from_utf8(out).expect("utf8");
-        assert!(output.contains("\u{1b}[1m"));
-        assert!(output.contains("\u{1b}[0m"));
-        assert!(!output.contains("\u{1b}[4m"));
-        assert!(!output.contains("\u{1b}[21m"));
+        let theme = Theme::default();
+        let mut out = Surface::new(1, 1, theme.base.foreground, theme.base.background);
+        paint_bracket_match(&mut out, "(", &theme).expect("paint");
+        let style = out.cell(0, 0).expect("bracket cell").style();
+        assert_eq!(out.cell(0, 0).expect("bracket cell").text(), "(");
+        assert!(style.is_bold());
+        assert!(style.underline().is_none());
+        assert_eq!(style.foreground(), theme.bracket_match.foreground);
+        assert_eq!(style.background(), theme.bracket_match.background);
     }
 }

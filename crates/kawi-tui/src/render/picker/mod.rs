@@ -3,42 +3,46 @@ mod preview;
 mod rows;
 
 use anyhow::{Context, Result};
-use crossterm::{cursor::MoveTo, execute, style::SetForegroundColor};
+use crossterm::{cursor::MoveTo, execute};
 use std::io::{Stdout, Write};
 
 use self::chrome::{draw_box, draw_divider, draw_rule};
 use self::preview::draw_preview;
 use self::rows::{draw_footer, draw_results};
-use super::{apply_cursor_style, clear_overlay_rect, draw_surface, flush, saturate_u16};
+use super::draw_surface;
+use super::furniture::saturate_u16;
+use super::overlay::clear_overlay_rect;
 use crate::display;
-use crate::frame::{CursorStyle, Frame, PickerMenu, Rect};
+use crate::frame::{Frame, PickerMenu, Rect};
 use crate::paint;
 use crate::picker_layout;
+use crate::surface::Surface;
 use crate::text::display_width;
 
 const PROMPT_PREFIX: &str = "> ";
 const PROMPT_PREFIX_WIDTH: usize = 2;
 const QUERY_TABSTOP: usize = 4;
 
-pub(super) fn draw(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
-    draw_surface(out, frame)?;
+pub(super) fn draw(surface: &mut Surface, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    draw_surface(surface, frame)?;
     let layout = picker_layout::layout(picker_area(frame), picker.preview_enabled);
     if layout.prompt.width <= PROMPT_PREFIX_WIDTH || layout.prompt.height == 0 {
-        flush(out)?;
         return Ok(());
     }
-    clear_overlay_rect(out, layout.frame, frame.theme)?;
-    draw_box(out, frame, layout.frame, picker.title)?;
-    draw_prompt(out, frame, picker, layout.prompt)?;
-    draw_rule(out, frame, layout.rule)?;
-    draw_results(out, frame, picker, layout.results)?;
-    draw_divider(out, frame, layout.divider)?;
-    draw_preview(out, frame, picker.preview.as_ref(), layout.preview)?;
-    draw_footer(out, frame, picker, layout.footer)?;
-    apply_cursor_style(out, CursorStyle::Bar)?;
-    place_cursor(out, picker, layout.prompt)?;
-    flush(out)?;
+    clear_overlay_rect(surface, layout.frame, frame.theme)?;
+    draw_box(surface, frame, layout.frame, picker.title)?;
+    draw_prompt(surface, frame, picker, layout.prompt)?;
+    draw_rule(surface, frame, layout.rule)?;
+    draw_results(surface, frame, picker, layout.results)?;
+    draw_divider(surface, frame, layout.divider)?;
+    draw_preview(surface, frame, picker.preview.as_ref(), layout.preview)?;
+    draw_footer(surface, frame, picker, layout.footer)?;
     Ok(())
+}
+
+pub(super) fn place_cursor(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>) -> Result<()> {
+    let layout = picker_layout::layout(picker_area(frame), picker.preview_enabled);
+    place_prompt_cursor(out, picker, layout.prompt)
 }
 
 fn picker_area(frame: &Frame) -> Rect {
@@ -50,20 +54,20 @@ fn picker_area(frame: &Frame) -> Rect {
     )
 }
 
-fn draw_prompt(out: &mut Stdout, frame: &Frame, picker: &PickerMenu<'_>, rect: Rect) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(rect.x), saturate_u16(rect.y)),
-        SetForegroundColor(frame.theme.non_text)
-    )
-    .context("prepare picker prompt")?;
+fn draw_prompt(
+    out: &mut Surface,
+    frame: &Frame,
+    picker: &PickerMenu<'_>,
+    rect: Rect,
+) -> Result<()> {
+    out.move_to(rect.x, rect.y);
+    out.set_foreground(frame.theme.non_text);
     write!(out, "{PROMPT_PREFIX}").context("write picker prompt marker")?;
     paint::apply_colors(
         out,
         frame.theme.base.foreground,
         frame.theme.float_background,
-        "apply picker prompt colors",
-    )?;
+    );
     let view = prompt_view(picker.query, picker.cursor, rect.width);
     write!(out, "{}", view.text).context("write picker prompt")?;
     write_padding(
@@ -100,7 +104,7 @@ fn prompt_view(query: &str, cursor: usize, width: usize) -> PromptView {
     }
 }
 
-fn place_cursor(out: &mut Stdout, picker: &PickerMenu<'_>, rect: Rect) -> Result<()> {
+fn place_prompt_cursor(out: &mut Stdout, picker: &PickerMenu<'_>, rect: Rect) -> Result<()> {
     let view = prompt_view(picker.query, picker.cursor, rect.width);
     let column = rect
         .x
@@ -112,7 +116,7 @@ fn place_cursor(out: &mut Stdout, picker: &PickerMenu<'_>, rect: Rect) -> Result
     Ok(())
 }
 
-pub(super) fn write_padding<W: Write>(out: &mut W, used: usize, width: usize) -> Result<()> {
+pub(super) fn write_padding(out: &mut Surface, used: usize, width: usize) -> Result<()> {
     let padding = width.saturating_sub(used);
     if padding == 0 {
         return Ok(());

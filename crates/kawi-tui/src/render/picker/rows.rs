@@ -1,19 +1,15 @@
 use anyhow::{Context, Result};
-use crossterm::{
-    cursor::MoveTo,
-    execute,
-    style::{Attribute, SetAttribute, SetForegroundColor},
-};
-use std::io::{Stdout, Write};
+use std::io::Write;
 
-use super::super::{picker_start, saturate_u16};
+use super::super::picker_start;
 use super::write_padding;
 use crate::frame::{Frame, PickerLine, PickerMenu, Rect};
 use crate::paint;
+use crate::surface::Surface;
 use crate::text::{count_label, display_width, sanitize_text, truncate_to_display_width};
 
 pub(super) fn draw_results(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     picker: &PickerMenu<'_>,
     rect: Rect,
@@ -24,8 +20,7 @@ pub(super) fn draw_results(
     let start = picker_start(rect.height, picker.selected);
     for offset in 0..rect.height {
         let row = rect.y.saturating_add(offset);
-        execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(row)))
-            .context("move to picker result")?;
+        out.move_to(rect.x, row);
         let index = start.saturating_add(offset);
         let Some(item) = picker.items.get(index) else {
             fill_row(out, frame, rect.width)?;
@@ -37,41 +32,36 @@ pub(super) fn draw_results(
 }
 
 fn draw_result(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     item: &PickerLine<'_>,
     width: usize,
     selected: bool,
 ) -> Result<()> {
-    apply_result_colors(out, frame, selected)?;
-    if item.deprecated {
-        execute!(out, SetAttribute(Attribute::CrossedOut)).context("cross out picker row")?;
-    }
+    apply_result_colors(out, frame, selected);
+    out.set_crossed_out(item.deprecated);
     let primary = sanitize_text(item.primary);
     let primary = truncate_to_display_width(&primary, width);
     write!(out, "{primary}").context("write picker result")?;
-    if item.deprecated {
-        execute!(out, SetAttribute(Attribute::NotCrossedOut)).context("uncross picker row")?;
-    }
+    out.set_crossed_out(false);
     let used = write_detail(out, frame, item, width, display_width(primary))?;
     write_padding(out, used, width)
 }
 
-fn apply_result_colors(out: &mut Stdout, frame: &Frame, selected: bool) -> Result<()> {
+fn apply_result_colors(out: &mut Surface, frame: &Frame, selected: bool) {
     if selected {
-        paint::apply_match(out, &frame.theme.selection)?;
-        return Ok(());
+        paint::apply_match(out, &frame.theme.selection);
+        return;
     }
     paint::apply_colors(
         out,
         frame.theme.base.foreground,
         frame.theme.float_background,
-        "apply picker result colors",
-    )
+    );
 }
 
 fn write_detail(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     item: &PickerLine<'_>,
     width: usize,
@@ -84,8 +74,7 @@ fn write_detail(
     if remaining == 0 {
         return Ok(used);
     }
-    execute!(out, SetForegroundColor(frame.theme.line_number))
-        .context("apply picker result detail color")?;
+    out.set_foreground(frame.theme.line_number);
     let detail = sanitize_text(detail);
     let detail = truncate_to_display_width(&detail, remaining);
     write!(out, "{detail}").context("write picker result detail")?;
@@ -93,7 +82,7 @@ fn write_detail(
 }
 
 pub(super) fn draw_footer(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     picker: &PickerMenu<'_>,
     rect: Rect,
@@ -101,9 +90,8 @@ pub(super) fn draw_footer(
     if rect.width == 0 || rect.height == 0 {
         return Ok(());
     }
-    execute!(out, MoveTo(saturate_u16(rect.x), saturate_u16(rect.y)))
-        .context("move to picker footer")?;
-    paint::apply_match(out, &frame.theme.status)?;
+    out.move_to(rect.x, rect.y);
+    paint::apply_match(out, &frame.theme.status);
     let footer = picker_footer(picker);
     let footer = truncate_to_display_width(&footer, rect.width);
     write!(out, "{footer}").context("write picker footer")?;
@@ -112,8 +100,8 @@ pub(super) fn draw_footer(
         out,
         frame.theme.base.foreground,
         frame.theme.float_background,
-        "restore picker footer colors",
-    )
+    );
+    Ok(())
 }
 
 fn picker_footer(picker: &PickerMenu<'_>) -> String {
@@ -141,13 +129,12 @@ fn picker_footer(picker: &PickerMenu<'_>) -> String {
     format!("{results}  Enter open  Tab next  Esc cancel")
 }
 
-fn fill_row(out: &mut Stdout, frame: &Frame, width: usize) -> Result<()> {
+fn fill_row(out: &mut Surface, frame: &Frame, width: usize) -> Result<()> {
     paint::apply_colors(
         out,
         frame.theme.base.foreground,
         frame.theme.float_background,
-        "apply picker row background",
-    )?;
+    );
     write!(out, "{}", " ".repeat(width)).context("fill picker row")?;
     Ok(())
 }

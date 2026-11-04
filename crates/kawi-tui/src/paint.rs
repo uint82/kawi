@@ -1,83 +1,39 @@
-use anyhow::{Context, Result};
-use crossterm::{
-    execute,
-    style::{
-        Attribute, Color, SetAttribute, SetBackgroundColor, SetForegroundColor, SetUnderlineColor,
-    },
-};
-use std::io::Write;
+use crossterm::style::Color;
 
 use crate::frame::DiagnosticUnderline;
+use crate::surface::Surface;
 use crate::theme::{MatchColors, Theme};
 
-pub fn apply_base<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
-    apply_colors(
-        out,
-        theme.base.foreground,
-        theme.base.background,
-        "apply base colors",
-    )
+pub fn apply_base(surface: &mut Surface, theme: &Theme) {
+    apply_colors(surface, theme.base.foreground, theme.base.background);
 }
 
-pub fn apply_match<W: Write>(out: &mut W, colors: &MatchColors) -> Result<()> {
-    apply_colors(out, colors.foreground, colors.background, "tint span")
+pub fn apply_match(surface: &mut Surface, colors: &MatchColors) {
+    apply_colors(surface, colors.foreground, colors.background);
 }
 
-pub fn apply_underline<W: Write>(
-    out: &mut W,
-    color: Color,
-    style: DiagnosticUnderline,
-) -> Result<()> {
-    let attribute = match style {
-        DiagnosticUnderline::Straight => Attribute::Underlined,
-        DiagnosticUnderline::Curly => Attribute::Undercurled,
-    };
-    execute!(out, SetAttribute(attribute), SetUnderlineColor(color))
-        .context("apply diagnostic underline")?;
-    Ok(())
+pub fn apply_underline(surface: &mut Surface, color: Color, style: DiagnosticUnderline) {
+    surface.set_underline(style, color);
 }
 
-pub fn apply_faded_text<W: Write>(out: &mut W, color: Color) -> Result<()> {
-    execute!(out, SetForegroundColor(color), SetAttribute(Attribute::Dim))
-        .context("apply faded diagnostic text")?;
-    Ok(())
+pub fn apply_faded_text(surface: &mut Surface, color: Color) {
+    surface.set_foreground(color);
+    surface.set_dim(true);
 }
 
-pub fn apply_struck_text<W: Write>(out: &mut W, color: Color) -> Result<()> {
-    execute!(
-        out,
-        SetForegroundColor(color),
-        SetAttribute(Attribute::CrossedOut)
-    )
-    .context("apply struck diagnostic text")?;
-    Ok(())
+pub fn apply_struck_text(surface: &mut Surface, color: Color) {
+    surface.set_foreground(color);
+    surface.set_crossed_out(true);
 }
 
-pub fn clear_decorations<W: Write>(out: &mut W) -> Result<()> {
-    execute!(out, SetAttribute(Attribute::Reset)).context("clear diagnostic decorations")?;
-    Ok(())
+pub fn clear_decorations(surface: &mut Surface) {
+    surface.reset_attributes();
 }
 
-pub fn restore_base<W: Write>(out: &mut W, theme: &Theme) -> Result<()> {
-    apply_colors(
-        out,
-        theme.base.foreground,
-        theme.base.background,
-        "restore base colors",
-    )
+pub fn restore_base(surface: &mut Surface, theme: &Theme) {
+    apply_colors(surface, theme.base.foreground, theme.base.background);
 }
 
-pub fn apply_colors<W: Write>(
-    out: &mut W,
-    foreground: Color,
-    background: Color,
-    context: &'static str,
-) -> Result<()> {
-    execute!(
-        out,
-        SetForegroundColor(foreground),
-        SetBackgroundColor(background)
-    )
-    .context(context)?;
-    Ok(())
+pub fn apply_colors(surface: &mut Surface, foreground: Color, background: Color) {
+    surface.set_colors(foreground, background);
 }

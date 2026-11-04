@@ -1,14 +1,13 @@
-use anyhow::{Context, Result};
-use crossterm::{cursor::MoveTo, execute};
-use std::io::Stdout;
+use anyhow::Result;
 
 use crate::frame::Frame;
 use crate::overlay::COMPLETION_MAX_ROWS;
 use crate::paint;
+use crate::surface::Surface;
 
-use super::{saturate_u16, write_padded};
+use super::furniture::write_padded;
 
-pub(super) fn draw_completion(out: &mut Stdout, frame: &Frame) -> Result<()> {
+pub(super) fn draw_completion(out: &mut Surface, frame: &Frame) -> Result<()> {
     let Some(menu) = frame.completion.as_ref() else {
         return Ok(());
     };
@@ -45,7 +44,7 @@ struct CompletionViewport<'a> {
     top: usize,
 }
 
-fn draw_rows(out: &mut Stdout, frame: &Frame, viewport: CompletionViewport<'_>) -> Result<()> {
+fn draw_rows(out: &mut Surface, frame: &Frame, viewport: CompletionViewport<'_>) -> Result<()> {
     for offset in 0..viewport.shown {
         let index = viewport.start + offset;
         draw_row(
@@ -71,14 +70,13 @@ struct CompletionRow<'a> {
     width: usize,
 }
 
-fn draw_row(out: &mut Stdout, frame: &Frame, row: CompletionRow<'_>) -> Result<()> {
-    execute!(out, MoveTo(saturate_u16(row.x), saturate_u16(row.y)))
-        .context("move to completion row")?;
+fn draw_row(out: &mut Surface, frame: &Frame, row: CompletionRow<'_>) -> Result<()> {
+    out.move_to(row.x, row.y);
     if row.selected {
-        paint::apply_match(out, &frame.theme.selection)?;
+        paint::apply_match(out, &frame.theme.selection);
     }
     write_padded(out, row.text, row.width)?;
-    paint::restore_base(out, frame.theme)?;
+    paint::restore_base(out, frame.theme);
     Ok(())
 }
 

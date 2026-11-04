@@ -1,26 +1,24 @@
-use anyhow::{Context, Result};
-use crossterm::{
-    execute,
-    style::{Attribute, Color, SetAttribute},
-};
-use std::io::{Stdout, Write};
+use anyhow::Result;
+use crossterm::style::Color;
 
 use crate::display;
 use crate::frame::{
     DiagnosticSeverity, DiagnosticSpan, DiagnosticTag, DiagnosticUnderline, PaneFrame,
 };
 use crate::paint;
+use crate::surface::Surface;
 use crate::text::display_width;
 use crate::theme::Theme;
 use kawi_syntax::SyntaxHighlight;
 
-use super::{
-    apply_syntax_style, move_to_segment, selection, span_segment_at, write_segment, HighlightSpan,
-    SpanView, Tint,
+use super::highlight::{
+    move_to_segment, span_segment_at, write_segment, HighlightSpan, SpanView, Tint,
 };
+use super::selection;
+use super::style::apply_syntax_style;
 
 pub(super) fn paint_span(
-    out: &mut Stdout,
+    out: &mut Surface,
     pane: &PaneFrame<'_>,
     span: &HighlightSpan,
     gutter_width: usize,
@@ -170,38 +168,31 @@ pub(super) struct DiagnosticPaint {
     pub(super) underline: DiagnosticUnderline,
 }
 
-pub(super) fn paint_diagnostic<W: Write>(
-    out: &mut W,
+pub(super) fn paint_diagnostic(
+    out: &mut Surface,
     text: &str,
     paint: DiagnosticPaint,
     theme: &Theme,
 ) -> Result<()> {
-    apply_diagnostic_colors(out, paint, theme)?;
-    apply_diagnostic_decoration(out, paint, theme)?;
+    apply_diagnostic_colors(out, paint, theme);
+    apply_diagnostic_decoration(out, paint, theme);
     write_segment(out, text)?;
-    paint::clear_decorations(out)?;
-    paint::restore_base(out, theme)
+    paint::clear_decorations(out);
+    paint::restore_base(out, theme);
+    Ok(())
 }
 
-fn apply_diagnostic_colors<W: Write>(
-    out: &mut W,
-    paint: DiagnosticPaint,
-    theme: &Theme,
-) -> Result<()> {
+fn apply_diagnostic_colors(out: &mut Surface, paint: DiagnosticPaint, theme: &Theme) {
     let background = if paint.selected {
         theme.selection.background
     } else {
         theme.base.background
     };
     if let Some(highlight) = paint.syntax {
-        return apply_syntax_style(out, highlight, theme, background);
+        apply_syntax_style(out, highlight, theme, background);
+        return;
     }
-    paint::apply_colors(
-        out,
-        diagnostic_foreground(paint, theme),
-        background,
-        "apply diagnostic colors",
-    )
+    paint::apply_colors(out, diagnostic_foreground(paint, theme), background);
 }
 
 fn diagnostic_foreground(paint: DiagnosticPaint, theme: &Theme) -> Color {
@@ -212,22 +203,12 @@ fn diagnostic_foreground(paint: DiagnosticPaint, theme: &Theme) -> Color {
     }
 }
 
-fn apply_diagnostic_decoration<W: Write>(
-    out: &mut W,
-    paint: DiagnosticPaint,
-    theme: &Theme,
-) -> Result<()> {
+fn apply_diagnostic_decoration(out: &mut Surface, paint: DiagnosticPaint, theme: &Theme) {
     match paint.tag {
-        Some(DiagnosticTag::Unnecessary) => {
-            execute!(out, SetAttribute(Attribute::Dim)).context("apply faded diagnostic text")?;
-        }
-        Some(DiagnosticTag::Deprecated) => {
-            execute!(out, SetAttribute(Attribute::CrossedOut))
-                .context("apply struck diagnostic text")?;
-        }
+        Some(DiagnosticTag::Unnecessary) => out.set_dim(true),
+        Some(DiagnosticTag::Deprecated) => out.set_crossed_out(true),
         None => {
-            paint::apply_underline(out, theme.diagnostic_color(paint.severity), paint.underline)?
+            paint::apply_underline(out, theme.diagnostic_color(paint.severity), paint.underline)
         }
     }
-    Ok(())
 }
