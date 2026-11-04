@@ -51,6 +51,7 @@ use terminal::{draw_terminal_panel, place_terminal_cursor};
 
 pub struct Renderer {
     surface: Surface,
+    buffer: Vec<u8>,
 }
 
 impl Default for Renderer {
@@ -63,6 +64,7 @@ impl Renderer {
     pub fn new() -> Self {
         Self {
             surface: Surface::new(1, 1, Color::Reset, Color::Reset),
+            buffer: Vec::new(),
         }
     }
 
@@ -74,27 +76,32 @@ impl Renderer {
     }
 
     fn paint(&mut self, out: &mut Stdout, frame: &Frame) -> Result<()> {
+        self.render(frame)?;
+        self.present(out)?;
+        place_frame_cursor(out, frame)?;
+        flush(out)
+    }
+
+    fn render(&mut self, frame: &Frame) -> Result<()> {
         self.surface.fit(
             frame.viewport.width(),
             frame.viewport.height().saturating_add(2),
             frame.theme.base.foreground,
             frame.theme.base.background,
         );
-        let contents = match (frame.replace.as_ref(), frame.picker.as_ref()) {
+        match (frame.replace.as_ref(), frame.picker.as_ref()) {
             (Some(replace), _) => draw_replace(&mut self.surface, frame, replace),
             (None, Some(picker)) => picker::draw(&mut self.surface, frame, picker),
-            (None, None) => draw_contents(&mut self.surface, frame),
-        };
-        contents?;
-        surface::present(&self.surface, out)?;
-        place_frame_cursor(out, frame)?;
-        flush(out)
+            (None, None) => draw_surface(&mut self.surface, frame),
+        }
     }
-}
 
-fn draw_contents(out: &mut Surface, frame: &Frame) -> Result<()> {
-    draw_surface(out, frame)?;
-    Ok(())
+    fn present(&mut self, out: &mut Stdout) -> Result<()> {
+        self.buffer.clear();
+        surface::present(&self.surface, &mut self.buffer)?;
+        out.write_all(&self.buffer).context("write surface")?;
+        Ok(())
+    }
 }
 
 fn place_frame_cursor(out: &mut Stdout, frame: &Frame) -> Result<()> {

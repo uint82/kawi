@@ -20,6 +20,10 @@ pub struct Position {
     pub y: usize,
 }
 
+pub(crate) fn saturate_u16(value: usize) -> u16 {
+    u16::try_from(value).unwrap_or(u16::MAX)
+}
+
 pub struct Surface {
     width: usize,
     height: usize,

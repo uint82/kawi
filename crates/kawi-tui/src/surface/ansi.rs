@@ -9,17 +9,19 @@ use crossterm::{
 
 use crate::frame::DiagnosticUnderline;
 
-use super::{Style, Surface};
+use super::{saturate_u16, Style, Surface};
 
 pub fn present<W: Write>(surface: &Surface, out: &mut W) -> Result<()> {
+    let mut run = String::with_capacity(surface.width());
     for y in 0..surface.height() {
-        present_row(surface, y, out)?;
+        present_row(surface, y, &mut run, out)?;
     }
     Ok(())
 }
 
-fn present_row<W: Write>(surface: &Surface, y: usize, out: &mut W) -> Result<()> {
+fn present_row<W: Write>(surface: &Surface, y: usize, run: &mut String, out: &mut W) -> Result<()> {
     execute!(out, MoveTo(0, saturate_u16(y))).context("move to surface row")?;
+    run.clear();
     let mut current = None;
     for x in 0..surface.width() {
         let Some(cell) = surface.cell(x, y) else {
@@ -29,11 +31,21 @@ fn present_row<W: Write>(surface: &Surface, y: usize, out: &mut W) -> Result<()>
             continue;
         }
         if current != Some(cell.style()) {
+            write_run(out, run)?;
+            run.clear();
             apply_style(out, cell.style())?;
             current = Some(cell.style());
         }
-        write!(out, "{}", cell.text()).context("write surface cell")?;
+        run.push_str(cell.text());
     }
+    write_run(out, run)
+}
+
+fn write_run<W: Write>(out: &mut W, run: &str) -> Result<()> {
+    if run.is_empty() {
+        return Ok(());
+    }
+    out.write_all(run.as_bytes()).context("write surface run")?;
     Ok(())
 }
 
@@ -76,10 +88,6 @@ fn apply_style<W: Write>(out: &mut W, style: Style) -> Result<()> {
         execute!(out, SetAttribute(Attribute::Hidden)).context("apply surface hidden")?;
     }
     Ok(())
-}
-
-fn saturate_u16(value: usize) -> u16 {
-    u16::try_from(value).unwrap_or(u16::MAX)
 }
 
 #[cfg(test)]
