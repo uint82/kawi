@@ -89,7 +89,7 @@ fn watcher_reports_writes_and_renames() {
         clock.clone(),
     );
     let service = WatchService::with_options(wake, options).expect("service");
-    service.watch_directories([dir.as_path()]);
+    service.watch_directories_and_wait([dir.as_path()]);
     fs::write(&temp, "beta\n").expect("temp");
     fs::rename(&temp, &path).expect("rename");
     let deadline = Instant::now() + Duration::from_secs(2);
