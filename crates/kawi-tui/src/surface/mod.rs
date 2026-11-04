@@ -1,5 +1,6 @@
 mod ansi;
 mod cell;
+mod diff;
 mod style;
 
 use std::io::{self, Write};
@@ -12,6 +13,7 @@ use crate::text::{display_width, sanitize_char, TAB_WIDTH};
 
 pub use ansi::present;
 pub use cell::Cell;
+pub use diff::diff;
 pub use style::Style;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
