@@ -182,9 +182,6 @@ impl Editor {
         self.force_numbered_register = uses_numbered_register(action);
         let jump = jump_recording(action);
         let jump_before = (self.cursor.row(), self.cursor.col());
-        if self.needs_checkpoint(action) {
-            self.record_boundary();
-        }
         if repeat::is_insert_entry(action) {
             self.insert_entry = Some((action, self.peek_count(), self.pending_register));
         }
@@ -790,10 +787,6 @@ impl Editor {
 
     pub fn mode(&self) -> Mode {
         self.mode
-    }
-
-    fn needs_checkpoint(&self, action: Action) -> bool {
-        self.mode == Mode::Normal && matches!(action, Action::DeleteForward | Action::DeleteLine)
     }
 
     pub fn new(buffer: Buffer) -> Self {

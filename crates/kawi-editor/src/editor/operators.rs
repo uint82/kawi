@@ -262,7 +262,7 @@ impl Editor {
             .col()
             .saturating_add(count.saturating_sub(1))
             .min(width.saturating_sub(1));
-        self.record_maybe();
+        self.record_boundary();
         self.capture_delete_range(
             (self.cursor.row(), self.cursor.col()),
             (self.cursor.row(), end),
@@ -318,6 +318,10 @@ impl Editor {
         let Some(last) = self.counted_last_row(count) else {
             return;
         };
+        if self.buffer.is_empty() {
+            return;
+        }
+        self.record_boundary_at(row, 0);
         let text = self.take_lines(row, last);
         self.write_delete(RegisterKind::LineWise, text, last - row + 1, true);
         self.drop_lines(row, last);
@@ -1863,6 +1867,7 @@ mod tests {
         e.apply(Action::DeleteForward);
         assert_eq!(e.text_lines().len(), 3);
         assert_eq!((e.row(), e.col()), (1, 0));
+        assert!(!e.is_dirty());
     }
 
     #[test]
@@ -1915,6 +1920,24 @@ mod tests {
         e.apply(Action::DeleteLine);
         assert_eq!(e.text_lines().len(), 2);
         assert_eq!(e.text_lines()[1], "c");
+    }
+
+    #[test]
+    fn delete_line_past_the_last_line_keeps_the_buffer_clean() {
+        let mut e = editor_with("a\nb");
+        e.apply(Action::MoveDown);
+        push_digits(&mut e, &[2]);
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines(), vec!["a", "b"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn delete_line_on_an_empty_buffer_keeps_it_clean() {
+        let mut e = editor_with("");
+        e.apply(Action::DeleteLine);
+        assert_eq!(e.text_lines(), vec![String::new()]);
+        assert!(!e.is_dirty());
     }
 
     #[test]
