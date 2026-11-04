@@ -1,4 +1,5 @@
 use super::Editor;
+use crate::editor::indent::IndentConfig;
 use crate::mode::Mode;
 use crate::register::RegisterKind;
 use crate::selection::Selection;
@@ -18,6 +19,19 @@ pub(super) struct BlockInsertPlan {
     original_len: usize,
     skip_short: bool,
     ragged: bool,
+}
+
+enum BlockShift {
+    Insert {
+        row: usize,
+        col: usize,
+        text: String,
+    },
+    Delete {
+        row: usize,
+        from: usize,
+        to: usize,
+    },
 }
 
 impl Editor {
@@ -174,7 +188,7 @@ impl Editor {
             }
             let end = self.block_row_end(&rect, row);
             let count = end - rect.left + 1;
-            self.overwrite_chars(
+            self.replace_text_at(
                 row,
                 rect.left,
                 count,
@@ -307,26 +321,66 @@ impl Editor {
         let Some(rect) = self.block_rect() else {
             return;
         };
-        let indent = self.effective_indent();
-        let tabstop = indent.tabstop;
-        let width = indent.shift_unit();
-        for row in rect.top..=rect.bottom {
-            let len = self.buffer.line_len(row);
-            if len < rect.left {
-                continue;
-            }
-            if right {
-                let start = self.buffer.screen_col(row, rect.left.min(len), tabstop);
-                let text = indent_text(start, width, indent.expandtab, tabstop);
-                self.buffer.paste_before(row, rect.left, &text);
-            } else {
-                self.unindent_block_row(row, rect.left, width, tabstop);
-            }
+        let shifts = self.block_shifts(&rect, right);
+        if shifts.is_empty() {
+            return;
+        }
+        self.record_boundary_at(rect.top, rect.left);
+        for shift in shifts {
+            self.apply_block_shift(shift);
         }
         self.cursor.set_position(rect.top, rect.left);
     }
 
-    fn unindent_block_row(&mut self, row: usize, col: usize, width: usize, tabstop: usize) {
+    fn block_shifts(&self, rect: &BlockRect, right: bool) -> Vec<BlockShift> {
+        let indent = self.effective_indent();
+        let width = indent.shift_unit();
+        if width == 0 {
+            return Vec::new();
+        }
+        (rect.top..=rect.bottom)
+            .filter_map(|row| self.block_shift(rect, row, right, &indent, width))
+            .collect()
+    }
+
+    fn block_shift(
+        &self,
+        rect: &BlockRect,
+        row: usize,
+        right: bool,
+        indent: &IndentConfig,
+        width: usize,
+    ) -> Option<BlockShift> {
+        let len = self.buffer.line_len(row);
+        if len < rect.left {
+            return None;
+        }
+        if right {
+            let start = self
+                .buffer
+                .screen_col(row, rect.left.min(len), indent.tabstop);
+            let text = indent_text(start, width, indent.expandtab, indent.tabstop);
+            return (!text.is_empty()).then_some(BlockShift::Insert {
+                row,
+                col: rect.left,
+                text,
+            });
+        }
+        let from = self.block_unindent_start(row, rect.left, width, indent.tabstop)?;
+        Some(BlockShift::Delete {
+            row,
+            from,
+            to: rect.left.saturating_sub(1),
+        })
+    }
+
+    fn block_unindent_start(
+        &self,
+        row: usize,
+        col: usize,
+        width: usize,
+        tabstop: usize,
+    ) -> Option<usize> {
         let mut removed = 0;
         let mut from = col;
         while from > 0 && removed < width {
@@ -340,9 +394,17 @@ impl Editor {
                 - self.buffer.screen_col(row, from - 1, tabstop);
             from -= 1;
         }
-        if from < col {
-            self.buffer
-                .delete_range(row, from, row, col.saturating_sub(1));
+        (from < col).then_some(from)
+    }
+
+    fn apply_block_shift(&mut self, shift: BlockShift) {
+        match shift {
+            BlockShift::Insert { row, col, text } => {
+                self.buffer.paste_before(row, col, &text);
+            }
+            BlockShift::Delete { row, from, to } => {
+                self.buffer.delete_range(row, from, row, to);
+            }
         }
     }
 
@@ -439,7 +501,7 @@ impl Editor {
                 };
                 let mapped = shift(ch);
                 if mapped != ch {
-                    self.overwrite_chars(row, col, 1, &mapped.to_string());
+                    self.replace_text_at(row, col, 1, &mapped.to_string());
                 }
             }
         }
@@ -624,6 +686,19 @@ mod tests {
     }
 
     #[test]
+    fn block_replace_is_one_undo_step() {
+        let mut e = editor_with("abc\ndef");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ReplaceSelection('X'));
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["Xbc", "Xef"]);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["abc", "def"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
     fn block_paste_after_inserts_at_next_column() {
         let mut e = editor_with("abcdef\ngh\nijklmn\nopqrst\nuvwxyz\n123456\n7890ab");
         enter_block(&mut e, 0, 0);
@@ -717,6 +792,47 @@ mod tests {
     }
 
     #[test]
+    fn block_shift_right_is_one_undo_step() {
+        let mut e = editor_with("  abc\n  def");
+        e.set_shiftwidth(2);
+        e.set_expandtab(true);
+        enter_block(&mut e, 0, 2);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ShiftRight);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["    abc", "    def"]);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["  abc", "  def"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn block_shift_left_is_one_undo_step() {
+        let mut e = editor_with("    abc\n    def");
+        e.set_shiftwidth(2);
+        e.set_expandtab(true);
+        enter_block(&mut e, 0, 4);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ShiftLeft);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["  abc", "  def"]);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["    abc", "    def"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
+    fn block_shift_left_without_indent_keeps_the_buffer_clean() {
+        let mut e = editor_with("abc\ndef");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ShiftLeft);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["abc", "def"]);
+        assert!(!e.is_dirty());
+    }
+
+    #[test]
     fn block_toggle_case_changes_block_chars() {
         let mut e = editor_with("abcdef\ngh\nijklmn");
         enter_block(&mut e, 0, 1);
@@ -725,6 +841,19 @@ mod tests {
         e.apply(Action::ToggleCase);
         e.apply(Action::ExitVisual);
         assert_eq!(e.text_lines(), vec!["aBcdef", "gH", "iJklmn"]);
+    }
+
+    #[test]
+    fn block_toggle_case_is_one_undo_step() {
+        let mut e = editor_with("abcdef\ngh\nijklmn");
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::ToggleCase);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["abcdef", "gh", "ijklmn"]);
+        assert!(!e.is_dirty());
     }
 
     #[test]

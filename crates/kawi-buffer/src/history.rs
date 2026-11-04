@@ -176,10 +176,8 @@ impl History {
 
     pub(crate) fn mark_clean_at(&mut self, text: &Rope, line_changes: u64) {
         if let Some(node) = self.nodes.get_mut(&self.current_id) {
-            if node.text.is_none() {
-                node.text = Some(text.clone());
-                node.line_changes = line_changes;
-            }
+            node.text = Some(text.clone());
+            node.line_changes = line_changes;
         } else {
             self.nodes.insert(
                 self.current_id,
@@ -196,6 +194,7 @@ impl History {
             );
         }
         self.mark_clean();
+        self.group_open = true;
     }
 
     pub fn is_dirty(&self) -> bool {

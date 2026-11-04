@@ -358,9 +358,13 @@ impl Buffer {
         }
         let old = self.rope.clone();
         let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::Undo);
-        let (restored, adjust) = self
-            .history
-            .undo(&mut self.rope, row, col, self.line_changes)?;
+        let Some((restored, adjust)) =
+            self.history
+                .undo(&mut self.rope, row, col, self.line_changes)
+        else {
+            self.origin = previous;
+            return None;
+        };
         self.record_rope_diff(&old);
         self.origin = previous;
         self.push_adjustment(adjust);
@@ -374,9 +378,13 @@ impl Buffer {
         }
         let old = self.rope.clone();
         let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::Undo);
-        let (restored, adjust) = self
-            .history
-            .redo(&mut self.rope, row, col, self.line_changes)?;
+        let Some((restored, adjust)) =
+            self.history
+                .redo(&mut self.rope, row, col, self.line_changes)
+        else {
+            self.origin = previous;
+            return None;
+        };
         self.record_rope_diff(&old);
         self.origin = previous;
         self.push_adjustment(adjust);
