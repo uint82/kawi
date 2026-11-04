@@ -27,7 +27,7 @@ kawi-watch.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-ropey = "1.6.1"
+ropey = { version = "1.6.1", default-features = false, features = ["simd"] }
 similar = "2"
 toml.workspace = true
 toml_edit.workspace = true
