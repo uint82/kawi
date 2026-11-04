@@ -13,7 +13,7 @@ const ESC: char = '\u{1b}';
 const ST: char = '\\';
 
 pub fn display_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
+    text.width()
 }
 
 pub fn sanitize(text: &str) -> String {

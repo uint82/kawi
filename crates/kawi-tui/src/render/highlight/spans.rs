@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use kawi_buffer::unicode;
 use kawi_editor::Viewport;
 use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
@@ -284,6 +285,8 @@ pub(crate) fn span_segment_at(
     if screen_row >= view.viewport.height() {
         return None;
     }
+    let start = unicode::cluster_start(text, start);
+    let end = unicode::snap_end(text, end);
     let from = display::screen_col(text, start, view.tabstop);
     let to = display::screen_col(text, end, view.tabstop);
     clipped_span(view, screen_row, text, from, to, tint)

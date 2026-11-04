@@ -46,6 +46,18 @@ fn keeps_wide_graphemes_intact() {
 }
 
 #[test]
+fn keeps_emoji_sequences_on_two_cells() {
+    let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
+    let mut surface = surface(4, 1);
+    surface.write_text(&format!("a{family}"));
+    let start = surface.cell(1, 0).expect("emoji start");
+    assert_eq!(start.text(), family);
+    assert_eq!(start.width(), 2);
+    assert!(surface.cell(2, 0).expect("continuation").is_continuation());
+    assert_eq!(surface.cursor(), Position { x: 3, y: 0 });
+}
+
+#[test]
 fn replacing_half_a_wide_grapheme_clears_both_cells() {
     let mut surface = surface(4, 1);
     surface.write_text("中");
