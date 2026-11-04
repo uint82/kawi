@@ -92,7 +92,7 @@ impl Editor {
         chars[rect.left..=end].iter().collect()
     }
 
-    fn block_text(&self, rect: &BlockRect) -> String {
+    pub(super) fn block_text(&self, rect: &BlockRect) -> String {
         (rect.top..=rect.bottom)
             .map(|row| self.block_row_text(rect, row))
             .collect::<Vec<_>>()
@@ -108,7 +108,7 @@ impl Editor {
         }
     }
 
-    fn delete_block_chars(&mut self, rect: &BlockRect) {
+    pub(super) fn delete_block_chars(&mut self, rect: &BlockRect) {
         for row in rect.top..=rect.bottom {
             let len = self.buffer.line_len(row);
             if len <= rect.left {
@@ -243,7 +243,7 @@ impl Editor {
         });
     }
 
-    fn pad_row_to(&mut self, row: usize, col: usize) {
+    pub(super) fn pad_row_to(&mut self, row: usize, col: usize) {
         let len = self.buffer.line_len(row);
         if len < col {
             self.buffer
@@ -405,83 +405,6 @@ impl Editor {
             BlockShift::Delete { row, from, to } => {
                 self.buffer.delete_range(row, from, row, to);
             }
-        }
-    }
-
-    pub(super) fn paste_over_block(&mut self, register: &crate::register::Register) {
-        let Some(rect) = self.block_rect() else {
-            return;
-        };
-        let text = self.block_text(&rect);
-        self.record_boundary_at(rect.top, rect.left);
-        self.write_delete(
-            RegisterKind::BlockWise,
-            text,
-            rect.bottom - rect.top + 1,
-            false,
-        );
-        self.delete_block_chars(&rect);
-        self.pad_row_to(rect.top, rect.left);
-        match register.kind() {
-            RegisterKind::BlockWise => self.block_paste(register, true, false),
-            // TODO: match nvim for charwise and linewise registers pasted over a block
-            RegisterKind::CharWise | RegisterKind::LineWise => {
-                self.buffer
-                    .paste_before(rect.top, rect.left, register.text());
-            }
-        }
-        self.cursor.set_position(rect.top, rect.left);
-    }
-
-    // TODO: repeat the pasted block for counts, like nvim
-    pub(super) fn block_paste(
-        &mut self,
-        register: &crate::register::Register,
-        before: bool,
-        advance: bool,
-    ) {
-        let lines = register.lines();
-        let row = self.cursor.row();
-        let col = if before {
-            self.cursor.col()
-        } else {
-            self.cursor.col().saturating_add(1)
-        };
-        self.change_origin_override = Some((row, col));
-        let mut last_appended_empty = false;
-        for (offset, text) in lines.iter().enumerate() {
-            let target = row.saturating_add(offset);
-            if target >= self.buffer.line_count() {
-                let mut line = " ".repeat(col);
-                line.push_str(text);
-                self.buffer
-                    .paste_before(target.saturating_sub(1), usize::MAX, "\n");
-                self.buffer.paste_before(target, usize::MAX, &line);
-                last_appended_empty = text.is_empty() && offset + 1 == lines.len();
-                continue;
-            }
-            last_appended_empty = false;
-            self.pad_row_to(target, col);
-            self.buffer.paste_before(target, col, text);
-        }
-        if last_appended_empty {
-            self.buffer
-                .paste_before(self.buffer.len(), usize::MAX, "\n");
-        }
-        self.cursor.set_position(row, col);
-        if advance {
-            let width = lines
-                .iter()
-                .map(|line| line.chars().count())
-                .max()
-                .unwrap_or(0);
-            let last_row = self.buffer.line_count().saturating_sub(1);
-            let target_row = row
-                .saturating_add(lines.len().saturating_sub(1))
-                .min(last_row);
-            let len = self.buffer.line_len(target_row);
-            let target_col = col.saturating_add(width).min(len.saturating_sub(1));
-            self.cursor.set_position(target_row, target_col);
         }
     }
 

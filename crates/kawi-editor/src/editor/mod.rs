@@ -58,6 +58,7 @@ mod tab;
 mod undo_tree;
 mod view;
 mod visual_block;
+mod visual_block_paste;
 mod word_search;
 mod workspace_edit;
 
