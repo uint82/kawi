@@ -20,11 +20,7 @@ impl App {
         let Some(revision) = self.editor.buffer_revision_at(number) else {
             return;
         };
-        if self
-            .directory
-            .get(number)
-            .is_some_and(|state| state.revision == revision)
-        {
+        if !self.directory.needs_sync(number, revision) {
             return;
         }
         let count = self.editor.buffer_line_count(number).unwrap_or(0);

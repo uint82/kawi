@@ -66,6 +66,11 @@ impl DirectoryBuffers {
         self.states.get_mut(&number)
     }
 
+    pub(super) fn needs_sync(&self, number: usize, revision: u64) -> bool {
+        self.get(number)
+            .is_some_and(|state| state.revision != revision)
+    }
+
     pub(in crate::app) fn contains(&self, number: usize) -> bool {
         self.states.contains_key(&number)
     }
