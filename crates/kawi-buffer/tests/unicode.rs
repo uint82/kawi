@@ -4,6 +4,8 @@ const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f46
 const FLAG: &str = "\u{1f1ee}\u{1f1e9}";
 const SKIN: &str = "\u{1f44d}\u{1f3fd}";
 const ACCENT: &str = "e\u{301}";
+const KEYCAP_ONE: &str = "1\u{fe0f}\u{20e3}";
+const KEYCAP_TWO: &str = "2\u{fe0f}\u{20e3}";
 
 fn line_with(fragment: &str) -> String {
     format!("a{fragment}b")
@@ -56,6 +58,17 @@ fn keeps_clusters_whole_in_ranges() {
     let buffer = Buffer::from_string(&line_with(ACCENT));
     assert_eq!(buffer.range_text(0, 1, 0, 1), ACCENT);
     assert_eq!(buffer.span_text(0, 1, 0, 2), ACCENT);
+}
+
+#[test]
+fn lays_out_keycaps_like_neovim() {
+    let line = format!("{KEYCAP_ONE} {KEYCAP_TWO}");
+    let buffer = Buffer::from_string(&line);
+    assert_eq!(buffer.line_grapheme_count(0), 3);
+    assert_eq!(buffer.screen_col(0, 3, 8), 1);
+    assert_eq!(buffer.screen_col(0, 4, 8), 2);
+    assert_eq!(buffer.char_col(0, 1, 8), 3);
+    assert_eq!(buffer.char_col(0, 2, 8), 4);
 }
 
 #[test]
