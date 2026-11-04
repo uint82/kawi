@@ -14,7 +14,7 @@ pub(super) struct BlockRect {
 pub(super) struct BlockInsertPlan {
     top: usize,
     bottom: usize,
-    col: usize,
+    screen_col: usize,
     cursor_col: usize,
     original_len: usize,
     skip_short: bool,
@@ -24,7 +24,7 @@ pub(super) struct BlockInsertPlan {
 enum BlockShift {
     Insert {
         row: usize,
-        col: usize,
+        screen: usize,
         text: String,
     },
     Delete {
@@ -53,18 +53,19 @@ impl Editor {
         ))
     }
 
-    // TODO: match nvim block geometry for tabs, which uses virtual columns and splits tabs
     pub(super) fn block_rect(&self) -> Option<BlockRect> {
         if self.mode != Mode::VisualBlock {
             return None;
         }
         let selection = self.selection.as_ref()?;
         let (start, end) = (selection.start(), selection.end());
+        let (start_left, start_right) = self.screen_span(start.0, start.1);
+        let (end_left, end_right) = self.screen_span(end.0, end.1);
         Some(BlockRect {
             top: start.0,
             bottom: end.0,
-            left: start.1.min(end.1),
-            right: start.1.max(end.1),
+            left: start_left.min(end_left),
+            right: start_right.max(end_right),
         })
     }
 
@@ -73,23 +74,25 @@ impl Editor {
     }
 
     fn block_row_text(&self, rect: &BlockRect, row: usize) -> String {
-        let Some(line) = self.buffer.line_cow(row) else {
+        if self.buffer.line_cow(row).is_none() {
             return String::new();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        let len = chars.len();
+        }
+        let width = self.screen_width(row);
+        let target = rect.right.saturating_sub(rect.left).saturating_add(1);
         if self.block_ragged() {
-            let start = rect.left.min(len);
-            return chars[start..].iter().collect();
+            if width <= rect.left {
+                return String::new();
+            }
+            return self.extract_screen_range(row, rect.left, width.saturating_sub(1));
         }
-        if len < rect.left {
-            return " ".repeat(rect.right.saturating_sub(rect.left).saturating_add(1));
+        if width < rect.left {
+            return " ".repeat(target);
         }
-        if len == rect.left {
+        if width == rect.left {
             return String::new();
         }
-        let end = rect.right.min(len - 1);
-        chars[rect.left..=end].iter().collect()
+        let right = rect.right.min(width.saturating_sub(1));
+        self.extract_screen_range(row, rect.left, right)
     }
 
     pub(super) fn block_text(&self, rect: &BlockRect) -> String {
@@ -99,29 +102,24 @@ impl Editor {
             .join("\n")
     }
 
-    fn block_row_end(&self, rect: &BlockRect, row: usize) -> usize {
-        let len = self.buffer.line_len(row);
+    fn block_row_right(&self, rect: &BlockRect, row: usize) -> usize {
         if self.block_ragged() {
-            len.saturating_sub(1)
+            self.screen_width(row).saturating_sub(1)
         } else {
-            rect.right.min(len.saturating_sub(1))
+            rect.right
         }
     }
 
     pub(super) fn delete_block_chars(&mut self, rect: &BlockRect) {
         for row in rect.top..=rect.bottom {
-            let len = self.buffer.line_len(row);
-            if len <= rect.left {
-                continue;
-            }
-            self.buffer
-                .delete_range(row, rect.left, row, self.block_row_end(rect, row));
+            let right = self.block_row_right(rect, row);
+            self.delete_screen_range(row, rect.left, right);
         }
     }
 
     fn cursor_to_block_start(&mut self, rect: &BlockRect) {
-        let len = self.buffer.line_len(rect.top);
-        self.cursor.set_position(rect.top, rect.left.min(len));
+        let col = self.char_col_at_screen(rect.top, rect.left);
+        self.cursor.set_position(rect.top, col);
     }
 
     pub(super) fn delete_block(&mut self) {
@@ -159,8 +157,8 @@ impl Editor {
         self.block_insert = Some(BlockInsertPlan {
             top: rect.top,
             bottom: rect.bottom,
-            col: rect.left,
-            cursor_col: rect.left,
+            screen_col: rect.left,
+            cursor_col: self.cursor.col(),
             original_len: self.buffer.line_len(rect.top),
             skip_short: true,
             ragged: false,
@@ -182,18 +180,8 @@ impl Editor {
         };
         self.record_boundary();
         for row in rect.top..=rect.bottom {
-            let len = self.buffer.line_len(row);
-            if len <= rect.left {
-                continue;
-            }
-            let end = self.block_row_end(&rect, row);
-            let count = end - rect.left + 1;
-            self.replace_text_at(
-                row,
-                rect.left,
-                count,
-                &replacement.to_string().repeat(count),
-            );
+            let right = self.block_row_right(&rect, row);
+            self.replace_screen_range(row, rect.left, right, replacement);
         }
         self.cursor_to_block_start(&rect);
     }
@@ -202,14 +190,15 @@ impl Editor {
         let Some(rect) = self.block_rect() else {
             return;
         };
+        self.split_tab_at_screen(rect.top, rect.left);
         self.exit_visual();
         self.cursor_to_block_start(&rect);
         self.enter_insert();
         self.block_insert = Some(BlockInsertPlan {
             top: rect.top,
             bottom: rect.bottom,
-            col: rect.left,
-            cursor_col: rect.left,
+            screen_col: rect.left,
+            cursor_col: self.cursor.col(),
             original_len: self.buffer.line_len(rect.top),
             skip_short: true,
             ragged: false,
@@ -221,34 +210,27 @@ impl Editor {
             return;
         };
         let ragged = self.block_ragged();
-        let col = if ragged {
-            self.buffer.line_len(rect.top)
+        let screen_col = if ragged {
+            self.screen_width(rect.top)
         } else {
             rect.right.saturating_add(1)
         };
         self.exit_visual();
         if !ragged {
-            self.pad_row_to(rect.top, col);
+            self.insert_at_screen(rect.top, screen_col, "");
         }
+        let col = self.char_col_at_screen(rect.top, screen_col);
         self.cursor.set_position(rect.top, col);
         self.enter_insert();
         self.block_insert = Some(BlockInsertPlan {
             top: rect.top,
             bottom: rect.bottom,
-            col,
-            cursor_col: rect.left,
+            screen_col,
+            cursor_col: col,
             original_len: self.buffer.line_len(rect.top),
             skip_short: false,
             ragged,
         });
-    }
-
-    pub(super) fn pad_row_to(&mut self, row: usize, col: usize) {
-        let len = self.buffer.line_len(row);
-        if len < col {
-            self.buffer
-                .paste_before(row, len, &" ".repeat(col.saturating_sub(len)));
-        }
     }
 
     pub(super) fn replicate_block_insert(&mut self) {
@@ -264,10 +246,11 @@ impl Editor {
         if inserted_len == 0 {
             return;
         }
+        let start = self.char_col_at_screen(plan.top, plan.screen_col);
         let text = match self.buffer.line_cow(plan.top) {
             Some(line) => line
                 .chars()
-                .skip(plan.col)
+                .skip(start)
                 .take(inserted_len)
                 .collect::<String>(),
             None => return,
@@ -278,12 +261,10 @@ impl Editor {
                 self.buffer.paste_before(row, col, &text);
                 continue;
             }
-            let len = self.buffer.line_len(row);
-            if len < plan.col && plan.skip_short {
+            if plan.skip_short && self.screen_width(row) < plan.screen_col {
                 continue;
             }
-            self.pad_row_to(row, plan.col);
-            self.buffer.paste_before(row, plan.col, &text);
+            self.insert_at_screen(row, plan.screen_col, &text);
         }
         self.cursor.set_position(plan.top, plan.cursor_col);
     }
@@ -298,22 +279,22 @@ impl Editor {
         let anchor_row = selection.anchor().0;
         let old_row = self.cursor.row();
         let old_col = self.cursor.col();
-        let anchor_col = rect.left.min(self.buffer.line_len(anchor_row));
-        let cursor_col = rect.right.min(self.buffer.line_len(old_row));
-        if cursor_col == old_col {
-            let anchor_right = rect.right.min(self.buffer.line_len(anchor_row));
-            let head_col = rect.left.min(self.buffer.line_len(old_row));
+        let anchor_left = self.char_col_at_screen(anchor_row, rect.left);
+        let anchor_right = self.char_col_at_screen(anchor_row, rect.right);
+        let head_left = self.char_col_at_screen(old_row, rect.left);
+        let head_right = self.char_col_at_screen(old_row, rect.right);
+        if head_right == old_col {
             self.selection = Some(Selection::from_ends(
                 (anchor_row, anchor_right),
-                (old_row, head_col),
+                (old_row, head_left),
             ));
-            self.cursor.set_position(old_row, head_col);
+            self.cursor.set_position(old_row, head_left);
         } else {
             self.selection = Some(Selection::from_ends(
-                (anchor_row, anchor_col),
-                (old_row, cursor_col),
+                (anchor_row, anchor_left),
+                (old_row, head_right),
             ));
-            self.cursor.set_position(old_row, cursor_col);
+            self.cursor.set_position(old_row, head_right);
         }
     }
 
@@ -351,26 +332,23 @@ impl Editor {
         indent: &IndentConfig,
         width: usize,
     ) -> Option<BlockShift> {
-        let len = self.buffer.line_len(row);
-        if len < rect.left {
+        if self.screen_width(row) < rect.left {
             return None;
         }
         if right {
-            let start = self
-                .buffer
-                .screen_col(row, rect.left.min(len), indent.tabstop);
-            let text = indent_text(start, width, indent.expandtab, indent.tabstop);
+            let text = indent_text(rect.left, width, indent.expandtab, indent.tabstop);
             return (!text.is_empty()).then_some(BlockShift::Insert {
                 row,
-                col: rect.left,
+                screen: rect.left,
                 text,
             });
         }
-        let from = self.block_unindent_start(row, rect.left, width, indent.tabstop)?;
+        let left = self.char_col_at_screen(row, rect.left);
+        let from = self.block_unindent_start(row, left, width, indent.tabstop)?;
         Some(BlockShift::Delete {
             row,
             from,
-            to: rect.left.saturating_sub(1),
+            to: left.saturating_sub(1),
         })
     }
 
@@ -399,8 +377,8 @@ impl Editor {
 
     fn apply_block_shift(&mut self, shift: BlockShift) {
         match shift {
-            BlockShift::Insert { row, col, text } => {
-                self.buffer.paste_before(row, col, &text);
+            BlockShift::Insert { row, screen, text } => {
+                self.insert_at_screen(row, screen, &text);
             }
             BlockShift::Delete { row, from, to } => {
                 self.buffer.delete_range(row, from, row, to);
@@ -414,11 +392,16 @@ impl Editor {
         };
         self.record_boundary();
         for row in rect.top..=rect.bottom {
-            let len = self.buffer.line_len(row);
-            if len <= rect.left {
+            let width = self.screen_width(row);
+            if width <= rect.left {
                 continue;
             }
-            for col in rect.left..=self.block_row_end(&rect, row) {
+            let start = self.char_col_at_screen(row, rect.left);
+            let right = self
+                .block_row_right(&rect, row)
+                .min(width.saturating_sub(1));
+            let end = self.char_col_at_screen(row, right);
+            for col in start..=end {
                 let Some(ch) = self.buffer.char_at(row, col) else {
                     continue;
                 };
