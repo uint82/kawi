@@ -57,11 +57,15 @@ impl Editor {
         let col = self.cursor.col();
         let vcol = self.buffer.screen_col(row, col, indent.tabstop);
         match self.tab_expansion(row, col, vcol, &indent) {
-            TabExpansion::Literal => self.replace_at_cursor('\t'),
+            TabExpansion::Literal => {
+                self.record_maybe();
+                self.replace_at_cursor('\t');
+            }
             TabExpansion::Spaces(width) => {
                 if width == 0 {
                     return;
                 }
+                self.record_maybe();
                 self.replace_at_cursor(' ');
                 for _ in 1..width {
                     self.insert_at_cursor(' ');
@@ -315,6 +319,18 @@ mod tests {
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
         assert_eq!(e.text_lines(), vec!["abcdef"]);
+    }
+
+    #[test]
+    fn first_tab_in_replace_mode_is_undoable() {
+        let mut e = editor_with("abcdefgh");
+        enter_replace(&mut e, 0, 1);
+        e.apply(Action::InsertTab);
+        e.apply(Action::ExitInsert);
+        assert!(e.is_dirty());
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["abcdefgh"]);
+        assert!(!e.is_dirty());
     }
 
     #[test]
