@@ -11,6 +11,7 @@ mod line_adjust;
 mod line_ending;
 mod text_edit;
 pub mod undo_store;
+pub mod unicode;
 pub mod write;
 pub use buffer::{first_non_blank, indent_width_of, tab_width, Buffer};
 pub use change::{BufferChange, BufferChangeOrigin, TextPosition};

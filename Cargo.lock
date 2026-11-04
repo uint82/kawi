@@ -976,6 +976,8 @@ dependencies = [
  "anyhow",
  "ropey",
  "sha2",
+ "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
