@@ -24,6 +24,7 @@ pub(super) fn draw_visible_lines(
         pane,
         theme,
         gutter_width,
+        scratch: String::new(),
     };
     for (screen_row, text) in pane.lines.iter().enumerate().take(height) {
         line.draw(screen_row, text)?;
@@ -36,6 +37,7 @@ struct LineDraw<'a, 'p> {
     pane: &'a PaneFrame<'p>,
     theme: &'a Theme,
     gutter_width: usize,
+    scratch: String,
 }
 
 impl LineDraw<'_, '_> {
@@ -103,10 +105,16 @@ impl LineDraw<'_, '_> {
     fn draw_text(&mut self, text: &str) -> Result<usize> {
         let width = self.pane.rect.width.saturating_sub(self.gutter_width);
         let end = self.pane.viewport.leftcol().saturating_add(width);
-        let text =
-            display::slice_screen(text, self.pane.viewport.leftcol(), end, self.pane.tabstop);
-        let visible = display::screen_len(&text, self.pane.tabstop);
-        write!(self.out, "{}", text).context("write line")?;
+        let visible = display::slice_screen_into(
+            text,
+            self.pane.viewport.leftcol(),
+            end,
+            self.pane.tabstop,
+            &mut self.scratch,
+        );
+        self.out
+            .write_all(self.scratch.as_bytes())
+            .context("write line")?;
         erase_row_tail(self.out)?;
         Ok(visible)
     }

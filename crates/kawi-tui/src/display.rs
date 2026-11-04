@@ -27,10 +27,23 @@ pub fn screen_len(text: &str, tabstop: usize) -> usize {
 }
 
 pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> String {
-    if from >= to {
-        return String::new();
-    }
     let mut out = String::new();
+    slice_screen_into(text, from, to, tabstop, &mut out);
+    out
+}
+
+pub fn slice_screen_into(
+    text: &str,
+    from: usize,
+    to: usize,
+    tabstop: usize,
+    out: &mut String,
+) -> usize {
+    out.clear();
+    if from >= to {
+        return 0;
+    }
+    let mut visible = 0;
     let mut screen = 0;
     for ch in text.chars() {
         if !is_displayable(ch) {
@@ -46,15 +59,20 @@ pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> Strin
         if start >= to {
             break;
         }
-        let visible_start = start.max(from);
-        let visible_end = end.min(to);
         if ch == '\t' {
-            out.push_str(&" ".repeat(visible_end - visible_start));
+            let count = end.min(to).saturating_sub(start.max(from));
+            push_spaces(out, count);
+            visible += count;
         } else if start >= from {
             out.push(ch);
+            visible += width;
         }
     }
-    out
+    visible
+}
+
+fn push_spaces(out: &mut String, count: usize) {
+    out.extend(std::iter::repeat(' ').take(count));
 }
 
 #[cfg(test)]
