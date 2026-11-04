@@ -71,3 +71,52 @@ fn ctime(metadata: &Metadata) -> Option<(i64, i64)> {
 fn ctime(_metadata: &Metadata) -> Option<(i64, i64)> {
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn temp_file(name: &str) -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "kawi_watch_fingerprint_{}_{}",
+            std::process::id(),
+            name
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("directory");
+        let path = dir.join("file.txt");
+        fs::write(&path, "alpha\n").expect("write");
+        (dir, path)
+    }
+
+    #[test]
+    fn refresh_reuses_matching_metadata() {
+        let (dir, path) = temp_file("reuse");
+        let metadata = fs::metadata(&path).expect("metadata");
+        let previous = Fingerprint {
+            stamp: Stamp::from_metadata(&metadata),
+            hash: u64::MAX,
+        };
+        let refreshed = Fingerprint::refresh(&path, Some(&previous)).expect("refresh");
+        assert_eq!(refreshed, previous);
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn refresh_hashes_changed_metadata() {
+        let (dir, path) = temp_file("changed");
+        let metadata = fs::metadata(&path).expect("metadata");
+        let previous = Fingerprint {
+            stamp: Stamp::from_metadata(&metadata),
+            hash: u64::MAX,
+        };
+        fs::write(&path, "beta and a longer body\n").expect("change");
+        let refreshed = Fingerprint::refresh(&path, Some(&previous)).expect("refresh");
+        assert_ne!(refreshed, previous);
+        assert!(refreshed.matches(&Fingerprint::read(&path).expect("read")));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+}
