@@ -62,6 +62,10 @@ impl Editor {
 
     pub(super) fn overwrite_chars(&mut self, row: usize, col: usize, count: usize, text: &str) {
         self.record_boundary();
+        self.replace_text_at(row, col, count, text);
+    }
+
+    pub(super) fn replace_text_at(&mut self, row: usize, col: usize, count: usize, text: &str) {
         self.buffer.delete_range(row, col, row, col + count - 1);
         for (index, ch) in text.chars().enumerate() {
             self.buffer.insert_char(row, col + index, ch);
