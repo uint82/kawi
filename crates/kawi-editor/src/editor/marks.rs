@@ -329,6 +329,22 @@ mod tests {
     }
 
     #[test]
+    fn relative_file_mark_moves_with_edits() {
+        let mut buffer = Buffer::from_string("a\nb\nc\nd");
+        buffer.path = Some("relative-mark.txt".to_string());
+        let mut editor = Editor::new(buffer);
+        set_mark(&mut editor, 2, 1, 'A');
+        editor.apply(Action::JumpTo(0, 0));
+        editor.apply(Action::OpenLineBelow);
+        editor.apply(Action::ExitInsert);
+        editor.apply(Action::JumpToMark {
+            name: 'A',
+            line_wise: true,
+        });
+        assert_eq!(editor.row(), 3);
+    }
+
+    #[test]
     fn deleting_marked_line_removes_local_mark() {
         let mut editor = editor_with("a\nb\nc\nd");
         set_mark(&mut editor, 1, 0, 'a');
