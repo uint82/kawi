@@ -464,6 +464,7 @@ impl App {
 
     fn run_loop(&mut self) -> Result<()> {
         let mut out = stdout();
+        let mut renderer = kawi_tui::render::Renderer::new();
         loop {
             self.sync_active_window();
             self.sync_undo_histories();
@@ -498,7 +499,7 @@ impl App {
             self.refresh_picker();
             self.refresh_replace();
             self.picker_preview_tick();
-            self.draw_frame(&mut out)?;
+            self.draw_frame(&mut out, &mut renderer)?;
             self.last_frame = Instant::now();
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
