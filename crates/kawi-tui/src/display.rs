@@ -25,6 +25,22 @@ pub fn screen_len(text: &str, tabstop: usize) -> usize {
     screen_col(text, unicode::char_count(text), tabstop)
 }
 
+pub fn screen_span_at(text: &str, cell: usize, tabstop: usize) -> Option<(usize, usize)> {
+    let mut screen: usize = 0;
+    for grapheme in unicode::graphemes(text) {
+        if !is_displayable(grapheme.text()) {
+            continue;
+        }
+        let width = cell_width(grapheme.text(), screen, tabstop);
+        let end = screen.saturating_add(width);
+        if screen <= cell && cell < end {
+            return Some((screen, end));
+        }
+        screen = end;
+    }
+    None
+}
+
 pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> String {
     let mut out = String::new();
     slice_screen_into(text, from, to, tabstop, &mut out);
@@ -129,6 +145,17 @@ mod tests {
         assert_eq!(slice_screen("abc", 2, 10, 8), "c");
         assert_eq!(slice_screen("abc", 5, 8, 8), "");
         assert_eq!(slice_screen("", 0, 1, 8), "");
+    }
+
+    #[test]
+    fn finds_the_screen_span_containing_a_cell() {
+        let line = format!("a{FAMILY}b");
+        assert_eq!(screen_span_at(&line, 0, 8), Some((0, 1)));
+        assert_eq!(screen_span_at(&line, 1, 8), Some((1, 3)));
+        assert_eq!(screen_span_at(&line, 2, 8), Some((1, 3)));
+        assert_eq!(screen_span_at(&line, 3, 8), Some((3, 4)));
+        assert_eq!(screen_span_at(&line, 4, 8), None);
+        assert_eq!(screen_span_at("\tx", 7, 8), Some((0, 8)));
     }
 
     #[test]

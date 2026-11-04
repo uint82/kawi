@@ -6,7 +6,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
 use crate::display;
 use crate::frame::{PluginStyle, SearchSpan, Selection};
-use crate::text::char_count;
+use crate::text::{char_count, display_width};
 
 pub struct HighlightSpan {
     pub screen_row: usize,
@@ -100,7 +100,8 @@ fn block_spans(
         };
         let cell = cursor
             .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
-        for (from, to) in cut_cell(left, to, cell) {
+        let cell = cell.and_then(|cell| display::screen_span_at(text, cell, view.tabstop));
+        for (from, to) in cut_span(left, to, cell) {
             let from = from.max(view.leftcol);
             let to = to.min(right_edge);
             if from >= to {
@@ -108,7 +109,7 @@ fn block_spans(
             }
             let mut text = display::slice_screen(text, from, to, view.tabstop);
             if !ragged {
-                let missing = to.saturating_sub(from).saturating_sub(text.chars().count());
+                let missing = to.saturating_sub(from).saturating_sub(display_width(&text));
                 text.push_str(&" ".repeat(missing));
             }
             spans.push(HighlightSpan {
@@ -137,6 +138,7 @@ fn collect_row_spans(
     };
     let cell = cursor
         .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
+    let cell = cell.and_then(|cell| display::screen_span_at(text, cell, view.tabstop));
     for (from, to) in selected_cells(buffer_row, text, range, cell, view.tabstop) {
         if let Some(span) = clipped_span(view, screen_row, text, from, to, Tint::Selection) {
             spans.push(span);
@@ -148,7 +150,7 @@ fn selected_cells(
     buffer_row: usize,
     text: &str,
     range: ((usize, usize), (usize, usize)),
-    cursor: Option<usize>,
+    cursor: Option<(usize, usize)>,
     tabstop: usize,
 ) -> Vec<(usize, usize)> {
     let ((start_row, start_col), (end_row, end_col)) = range;
@@ -165,7 +167,7 @@ fn selected_cells(
             display::screen_col(text, to, tabstop),
         )
     };
-    cut_cell(from, to, cursor)
+    cut_span(from, to, cursor)
 }
 
 fn row_selection(
@@ -192,9 +194,9 @@ fn row_selection(
     (from, to)
 }
 
-fn cut_cell(from: usize, to: usize, cell: Option<usize>) -> Vec<(usize, usize)> {
-    match cell {
-        Some(cell) if from <= cell && cell < to => {
+fn cut_span(from: usize, to: usize, cursor: Option<(usize, usize)>) -> Vec<(usize, usize)> {
+    match cursor {
+        Some((cell, end)) if end == cell.saturating_add(1) && from <= cell && cell < to => {
             let mut parts = Vec::new();
             if from < cell {
                 parts.push((from, cell));
