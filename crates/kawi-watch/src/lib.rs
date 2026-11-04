@@ -22,6 +22,7 @@ use debounce::Debounce;
 
 const DEBOUNCE: Duration = Duration::from_millis(75);
 const TICK: Duration = Duration::from_millis(10);
+#[cfg(test)]
 const WATCH_READY_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +61,7 @@ pub struct WatchService {
 enum Command {
     Watch {
         directories: BTreeSet<PathBuf>,
-        ready: Sender<()>,
+        ready: Option<Sender<()>>,
     },
     Shutdown,
 }
@@ -106,14 +107,22 @@ impl WatchService {
 
     pub fn watch_directories<'a>(&self, directories: impl IntoIterator<Item = &'a Path>) {
         let directories = directories.into_iter().map(Path::to_path_buf).collect();
+        self.send_watch(directories, None);
+    }
+
+    fn send_watch(&self, directories: BTreeSet<PathBuf>, ready: Option<Sender<()>>) {
+        let _ = self.commands.send(Command::Watch { directories, ready });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn watch_directories_and_wait<'a>(
+        &self,
+        directories: impl IntoIterator<Item = &'a Path>,
+    ) {
+        let directories = directories.into_iter().map(Path::to_path_buf).collect();
         let (ready, installed) = mpsc::channel();
-        if self
-            .commands
-            .send(Command::Watch { directories, ready })
-            .is_ok()
-        {
-            let _ = installed.recv_timeout(WATCH_READY_TIMEOUT);
-        }
+        self.send_watch(directories, Some(ready));
+        let _ = installed.recv_timeout(WATCH_READY_TIMEOUT);
     }
 
     pub fn try_recv_paths(&self) -> Vec<PathBuf> {
@@ -151,7 +160,9 @@ fn run_worker(
             match command {
                 Command::Watch { directories, ready } => {
                     sync_watches(&mut watcher, &mut watched, &directories);
-                    let _ = ready.send(());
+                    if let Some(ready) = ready {
+                        let _ = ready.send(());
+                    }
                 }
                 Command::Shutdown => return,
             }

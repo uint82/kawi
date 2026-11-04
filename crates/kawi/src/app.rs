@@ -27,11 +27,13 @@ mod disk;
 mod explorer;
 mod file_ops;
 mod formatter;
+mod formatter_service;
 mod formatting;
 mod frame;
 mod git;
 mod git_branch;
 mod git_commit;
+mod git_load;
 mod git_status;
 mod health;
 mod help;
@@ -183,6 +185,9 @@ pub struct App {
     code_actions: Option<code_action::CodeActionSession>,
     git: Option<GitSession>,
     git_path: Option<PathBuf>,
+    git_load: Option<kawi_git::FileLoadService>,
+    git_load_generation: u64,
+    git_loading: bool,
     git_status_path: Option<PathBuf>,
     git_error: Option<String>,
     git_signs: bool,
@@ -209,6 +214,8 @@ pub struct App {
     file_views: Option<FileViewStore>,
     loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
+    formatter_service: Option<formatter_service::FormatterService>,
+    pending_format: Option<formatting::PendingFormat>,
     pending_save: Option<save::PendingSave>,
     pending_save_all: Option<directory::PendingSaveAll>,
     save_batch_id: u64,
@@ -300,6 +307,9 @@ impl App {
             code_actions: None,
             git: None,
             git_path: None,
+            git_load: None,
+            git_load_generation: 0,
+            git_loading: false,
             git_status_path: None,
             git_error: None,
             git_signs: false,
@@ -326,6 +336,8 @@ impl App {
             file_views: None,
             loaded_views: BTreeSet::new(),
             conflict: None,
+            formatter_service: None,
+            pending_format: None,
             pending_save: None,
             pending_save_all: None,
             save_batch_id: 0,
@@ -458,6 +470,8 @@ impl App {
             self.sync_undo_histories();
             self.show_recovery_prompt_if_ready();
             self.sync_git();
+            self.poll_git_load();
+            self.poll_formatter();
             self.sync_ipc();
             self.sync_git_status();
             self.poll_git_status();
@@ -529,6 +543,8 @@ impl App {
             redraw |= self.sync_ipc();
             redraw |= self.sync_git_status();
             redraw |= self.poll_git_status();
+            redraw |= self.poll_git_load();
+            redraw |= self.poll_formatter();
             redraw |= self.poll_explorer();
             redraw |= self.poll_directory_loads();
             redraw |= self.poll_permission_check();
@@ -1836,63 +1852,12 @@ impl App {
         }
     }
 
-    fn sync_git(&mut self) {
-        let path = self
-            .editor
-            .has_file()
-            .then(|| PathBuf::from(self.editor.filename()));
-        self.sync_git_status_path(path.as_deref());
-        if self.editor.current_buffer_is_readonly() {
-            self.git = None;
-            self.git_error = None;
-            self.update_signcolumn_width();
-            self.git_path = None;
-            return;
-        }
-        if path.as_deref() != self.git_path.as_deref() {
-            self.git = None;
-            self.git_error = None;
-            self.update_signcolumn_width();
-            self.git_path = path.clone();
-            let Some(path) = path else {
-                return;
-            };
-            match kawi_git::load(&path) {
-                Ok(Some(file)) => {
-                    let session = GitSession::new(
-                        file,
-                        &self.editor.text_lines(),
-                        self.editor.buffer_revision(),
-                        !self.editor.text_has_final_newline(),
-                    );
-                    self.git = Some(session);
-                    self.update_signcolumn_width();
-                }
-                Ok(None) => {}
-                Err(error) => self.git_error = Some(error.to_string()),
-            }
-            return;
-        }
-        let revision = self.editor.buffer_revision();
-        let Some(session) = self.git.as_mut() else {
-            return;
-        };
-        let buffer_no_final_newline = !self.editor.text_has_final_newline();
-        let changed = if session.revision() != revision
-            || session.buffer_no_final_newline() != buffer_no_final_newline
-        {
-            session.update(&self.editor.text_lines(), revision, buffer_no_final_newline)
-        } else {
-            false
-        };
-        if changed {
-            self.update_signcolumn_width();
-        }
-    }
-
     fn git_unavailable_message(&self) -> String {
         if !self.editor.has_file() {
             return "E32: No file name".to_string();
+        }
+        if self.git_loading {
+            return "Loading git status".to_string();
         }
         self.git_error
             .clone()
@@ -2014,11 +1979,7 @@ impl App {
     }
 
     fn handle_git_refresh(&mut self) -> Result<bool> {
-        self.git = None;
-        self.git_path = None;
-        self.git_error = None;
-        self.update_signcolumn_width();
-        self.sync_git();
+        self.reload_git();
         Ok(false)
     }
 
@@ -2611,6 +2572,34 @@ mod tests {
             row: 0,
             modifiers: KeyModifiers::SHIFT,
         }
+    }
+
+    #[test]
+    fn git_load_runs_on_a_worker() {
+        let dir = crate::test_support::temp_dir("git_load_async");
+        let path = dir.join("a.txt");
+        std::fs::write(&path, "alpha\n").expect("write");
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["init", "-q"])
+            .status()
+            .expect("git init");
+        let mut app = App::new(
+            Buffer::from_file(path.to_str().expect("path")).expect("buffer"),
+            Flavor::Vim,
+        );
+        app.sync_git();
+        assert!(app.git_loading);
+        assert!(app.git.is_none());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline && app.git.is_none() {
+            app.poll_git_load();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(app.git.is_some());
+        assert!(!app.git_loading);
+        std::fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
