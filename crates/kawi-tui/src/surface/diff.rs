@@ -99,16 +99,87 @@ mod tests {
         style::{Color, SetForegroundColor},
     };
 
+    use super::super::tests::{row, surface};
     use super::*;
-
-    fn surface(width: usize, height: usize) -> Surface {
-        Surface::new(width, height, Color::White, Color::Black)
-    }
+    use crate::surface::present;
 
     fn diff_output(previous: &Surface, next: &Surface) -> String {
         let mut out = Vec::new();
         diff(previous, next, &mut out).expect("diff surface");
         String::from_utf8(out).expect("utf8")
+    }
+
+    fn replay(previous: &Surface, next: &Surface) -> Surface {
+        let mut out = Vec::new();
+        present(previous, &mut out).expect("present previous");
+        diff(previous, next, &mut out).expect("diff surface");
+        apply_output(
+            &String::from_utf8(out).expect("utf8"),
+            next.width(),
+            next.height(),
+        )
+    }
+
+    fn apply_output(output: &str, width: usize, height: usize) -> Surface {
+        let mut surface = surface(width, height);
+        let mut characters = output.chars().peekable();
+        let mut text = String::new();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' {
+                flush_text(&mut surface, &mut text);
+                consume_escape(&mut surface, &mut characters);
+            } else {
+                text.push(character);
+            }
+        }
+        flush_text(&mut surface, &mut text);
+        surface
+    }
+
+    fn flush_text(surface: &mut Surface, text: &mut String) {
+        if text.is_empty() {
+            return;
+        }
+        surface.write_text(text);
+        text.clear();
+    }
+
+    fn consume_escape<I>(surface: &mut Surface, characters: &mut std::iter::Peekable<I>)
+    where
+        I: Iterator<Item = char>,
+    {
+        match characters.next() {
+            Some('[') => {
+                let mut sequence = String::new();
+                for character in characters.by_ref() {
+                    sequence.push(character);
+                    if character.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+                if sequence.ends_with('H') {
+                    move_surface(surface, &sequence[..sequence.len() - 1]);
+                }
+            }
+            Some('(') => {
+                characters.next();
+            }
+            _ => {}
+        }
+    }
+
+    fn move_surface(surface: &mut Surface, sequence: &str) {
+        let mut parts = sequence.split(';');
+        let row: usize = parts.next().and_then(|part| part.parse().ok()).unwrap_or(1);
+        let column: usize = parts.next().and_then(|part| part.parse().ok()).unwrap_or(1);
+        surface.move_to(column.saturating_sub(1), row.saturating_sub(1));
+    }
+
+    fn assert_replay(previous: &Surface, next: &Surface) {
+        let screen = replay(previous, next);
+        for y in 0..next.height() {
+            assert_eq!(row(&screen, y), row(next, y), "row mismatch at {y}");
+        }
     }
 
     #[test]
@@ -185,5 +256,36 @@ mod tests {
         let mut next = surface(3, 1);
         next.write_text("abc");
         assert!(diff_output(&previous, &next).contains("abc"));
+    }
+
+    #[test]
+    fn changed_glyph_expands_to_a_multi_cell_span() {
+        let mut previous = surface(10, 1);
+        previous.write_text("\u{202e}");
+        let mut next = surface(10, 1);
+        next.write_text("abcdefghij");
+        assert_eq!(changed_glyph(&previous, &next, 4, 0), Some((0, 6)));
+    }
+
+    #[test]
+    fn diff_preserves_multi_cell_glyphs_after_continuation_cells() {
+        let mut previous = surface(20, 1);
+        previous.move_to(10, 0);
+        previous.write_text("abcde\u{4e2d}!");
+        let mut next = surface(20, 1);
+        next.move_to(10, 0);
+        next.write_text("\u{202e} !");
+        assert_replay(&previous, &next);
+    }
+
+    #[test]
+    fn scrolling_preserves_wide_glyphs_after_continuation_cells() {
+        let mut previous = surface(30, 1);
+        previous.move_to(5, 0);
+        previous.write_text("1\u{fe0f}\u{20e3} 2\u{fe0f}\u{20e3} 3\u{fe0f}\u{20e3} 4\u{fe0f}\u{20e3} 5\u{fe0f}\u{20e3} \u{1f51f} #\u{fe0f}\u{20e3} *\u{fe0f}\u{20e3}");
+        let mut next = surface(30, 1);
+        next.move_to(5, 0);
+        next.write_text("\u{1f44b}\u{1f3fb} \u{1f44b}\u{1f3fc} \u{1f44b}\u{1f3fd} \u{1f44b}\u{1f3fe} \u{1f44b}\u{1f3ff}");
+        assert_replay(&previous, &next);
     }
 }
