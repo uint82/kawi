@@ -1,7 +1,7 @@
 use crate::editing::{BlockComment, CommentTokens, LanguageEditing, Pair};
 
 use super::engine::{closer_width, next_width, IndentRequest, INDENT_WINDOW_LINES};
-use super::{detect, IndentConfig, IndentRules};
+use super::IndentRules;
 
 fn editing() -> LanguageEditing {
     LanguageEditing {
@@ -265,33 +265,4 @@ fn closer_outside_window_is_ignored() {
         language: None,
     };
     assert_eq!(closer_width(&request, ')'), None);
-}
-
-#[test]
-fn detects_language_defaults() {
-    assert_eq!(detect(Some("x.py")), IndentConfig::filetype(4, true, 4));
-    assert_eq!(detect(Some("x.rs")), IndentConfig::filetype(4, true, 8));
-    assert_eq!(detect(Some("x.zig")), IndentConfig::filetype(4, true, 8));
-    assert_eq!(detect(Some("x.swift")), IndentConfig::filetype(4, true, 8));
-    assert_eq!(detect(Some("x.go")), IndentConfig::filetype(0, false, 8));
-    assert_eq!(detect(Some("x.yaml")), IndentConfig::filetype(2, true, 8));
-    assert_eq!(detect(Some("x.yml")), IndentConfig::filetype(2, true, 8));
-    assert_eq!(detect(Some("x.rb")), IndentConfig::filetype(2, true, 8));
-    assert_eq!(detect(Some("x.scala")), IndentConfig::filetype(2, true, 8));
-    assert_eq!(detect(Some("x.ex")), IndentConfig::filetype(2, true, 8));
-    assert_eq!(detect(Some("x.tf")), IndentConfig::filetype(2, true, 2));
-    assert_eq!(detect(Some("x.ml")), IndentConfig::filetype(8, true, 8));
-    assert_eq!(detect(Some("x.md")), IndentConfig::filetype(4, true, 4));
-    assert_eq!(
-        detect(Some("x.markdown")),
-        IndentConfig::filetype(4, true, 4)
-    );
-}
-
-#[test]
-fn falls_back_without_extension() {
-    assert_eq!(detect(None), IndentConfig::fallback());
-    assert_eq!(detect(Some("Makefile")), IndentConfig::fallback());
-    assert_eq!(detect(Some("x.js")), IndentConfig::fallback());
-    assert_eq!(detect(Some("X.PY")), IndentConfig::filetype(4, true, 4));
 }

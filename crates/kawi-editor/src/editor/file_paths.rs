@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use super::buffers::BufferError;
-use super::indent;
 use super::Editor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +19,6 @@ impl Editor {
             if adoption.mark_clean {
                 self.buffer.mark_clean();
             }
-            self.file_indent = indent::detect(self.buffer.path.as_deref());
             return true;
         }
         let Some(entry) = self
@@ -38,7 +36,6 @@ impl Editor {
         if adoption.mark_clean {
             entry.state.buffer.mark_clean();
         }
-        entry.state.file_indent = indent::detect(entry.state.buffer.path.as_deref());
         true
     }
 
@@ -130,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn adoption_preserves_dirty_state_and_updates_indent() {
+    fn adoption_preserves_dirty_state() {
         let dir = temp_dir("adopt_dirty");
         fs::write(dir.join("a.rs"), "fn main() {}\n").unwrap();
         fs::write(dir.join("b.txt"), "text\n").unwrap();
@@ -146,7 +143,6 @@ mod tests {
         }));
         assert!(editor.is_dirty());
         assert_eq!(editor.filename(), path.to_string_lossy());
-        assert_eq!(editor.shiftwidth(), 8);
         fs::remove_dir_all(dir).unwrap();
     }
 

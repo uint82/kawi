@@ -208,16 +208,24 @@ mod tests {
     use super::*;
     use crate::actions::{Action, Object};
     use crate::mode::Mode;
+    use crate::{IndentOptions, LanguageIndent};
     use kawi_buffer::Buffer;
 
     fn editor_with(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
     }
 
-    fn editor_with_path(text: &str, path: &str) -> Editor {
-        let mut buffer = Buffer::from_string(text);
-        buffer.path = Some(path.to_string());
-        Editor::new(buffer)
+    fn language_editor(text: &str, shiftwidth: usize, expandtab: bool) -> Editor {
+        let mut editor = editor_with(text);
+        editor.set_language_indent(LanguageIndent {
+            defaults: IndentOptions {
+                shiftwidth: Some(shiftwidth),
+                expandtab: Some(expandtab),
+                tabstop: Some(shiftwidth),
+            },
+            ..LanguageIndent::default()
+        });
+        editor
     }
 
     fn push_digits(editor: &mut Editor, digits: &[u8]) {
@@ -481,44 +489,37 @@ mod tests {
     }
 
     #[test]
-    fn python_file_uses_four_spaces() {
-        let mut editor = editor_with_path("foo", "x.py");
+    fn language_defaults_use_four_spaces() {
+        let mut editor = language_editor("foo", 4, true);
         editor.apply(Action::ShiftRight);
         assert_eq!(editor.text_lines()[0], "    foo");
     }
 
     #[test]
-    fn go_file_uses_tabs() {
-        let mut editor = editor_with_path("foo", "x.go");
+    fn language_defaults_use_tabs() {
+        let mut editor = language_editor("foo", 8, false);
         editor.apply(Action::ShiftRight);
         assert_eq!(editor.text_lines()[0], "\tfoo");
     }
 
     #[test]
-    fn yaml_file_uses_two_spaces() {
-        let mut editor = editor_with_path("k: v", "x.yaml");
+    fn language_defaults_use_two_spaces() {
+        let mut editor = language_editor("k: v", 2, true);
         editor.apply(Action::ShiftRight);
         assert_eq!(editor.text_lines()[0], "  k: v");
     }
 
     #[test]
-    fn scala_file_uses_two_spaces() {
-        let mut editor = editor_with_path("x", "x.scala");
-        editor.apply(Action::ShiftRight);
-        assert_eq!(editor.text_lines()[0], "  x");
-    }
-
-    #[test]
-    fn manual_shiftwidth_beats_filetype() {
-        let mut editor = editor_with_path("foo", "x.py");
+    fn manual_shiftwidth_beats_language_defaults() {
+        let mut editor = language_editor("foo", 4, true);
         editor.set_shiftwidth(2);
         editor.apply(Action::ShiftRight);
         assert_eq!(editor.text_lines()[0], "  foo");
     }
 
     #[test]
-    fn manual_expandtab_beats_filetype() {
-        let mut editor = editor_with_path("foo", "x.c");
+    fn manual_expandtab_beats_language_defaults() {
+        let mut editor = language_editor("foo", 8, false);
         editor.set_expandtab(true);
         editor.apply(Action::ShiftRight);
         assert_eq!(editor.text_lines()[0], "        foo");

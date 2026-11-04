@@ -67,7 +67,7 @@ pub use buffers::{BufferChanges, BufferError, BufferInfo, EditError, WriteOutcom
 pub use file_paths::PathAdoption;
 pub use fold::VisibleWindow;
 pub use indent::IndentRules;
-pub use options::{BufferOptionDefaults, LanguageIndent, WindowOptions};
+pub use options::{BufferOptionDefaults, IndentOptions, LanguageIndent, WindowOptions};
 pub use prompt_history::{HistoryEntries, DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT};
 pub use view::ViewState;
 
@@ -87,7 +87,6 @@ pub struct Editor {
     insert_entry: Option<(Action, usize, Option<char>)>,
     last_change: Option<repeat::RepeatChange>,
     undone_change: Option<repeat::RepeatChange>,
-    file_indent: indent::IndentConfig,
     buffer_defaults: BufferOptionDefaults,
     substitute_pattern: String,
     substitute_replacement: String,
@@ -735,15 +734,20 @@ impl Editor {
         indent::IndentConfig {
             shiftwidth: self
                 .runtime_shiftwidth
-                .or(self.language_indent.shiftwidth)
+                .or(self.language_indent.overrides.shiftwidth)
                 .or(self.buffer_defaults.shiftwidth)
-                .unwrap_or(self.file_indent.shiftwidth),
+                .or(self.language_indent.defaults.shiftwidth)
+                .unwrap_or(indent::DEFAULT_SHIFTWIDTH),
             expandtab: self
                 .runtime_expandtab
-                .or(self.language_indent.expandtab)
+                .or(self.language_indent.overrides.expandtab)
                 .or(self.buffer_defaults.expandtab)
-                .unwrap_or(self.file_indent.expandtab),
-            tabstop: self.file_indent.tabstop,
+                .or(self.language_indent.defaults.expandtab)
+                .unwrap_or(indent::DEFAULT_EXPANDTAB),
+            tabstop: self
+                .language_indent
+                .tabstop()
+                .unwrap_or(indent::DEFAULT_TABSTOP),
         }
     }
 
@@ -793,7 +797,6 @@ impl Editor {
     }
 
     pub fn new(buffer: Buffer) -> Self {
-        let file_indent = indent::detect(buffer.path.as_deref());
         Self {
             buffer,
             cursor: Cursor::new(),
@@ -810,7 +813,6 @@ impl Editor {
             insert_entry: None,
             last_change: None,
             undone_change: None,
-            file_indent,
             buffer_defaults: BufferOptionDefaults::default(),
             substitute_pattern: String::new(),
             substitute_replacement: String::new(),

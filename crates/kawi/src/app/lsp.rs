@@ -5,8 +5,8 @@ use super::lsp_navigation::{
 use super::lsp_text::{LspText, TextFailure};
 use kawi_completion::Capabilities;
 use kawi_editor::{
-    default_match_pairs, default_pairs, BlockComment, CommentTokens, Editor, IndentRules,
-    LanguageEditing, LanguageIndent, Pair,
+    default_match_pairs, default_pairs, BlockComment, CommentTokens, Editor, IndentOptions,
+    IndentRules, LanguageEditing, LanguageIndent, Pair,
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
@@ -499,8 +499,8 @@ impl LspUi {
             return LanguageIndent::default();
         };
         LanguageIndent {
-            shiftwidth: language.shiftwidth,
-            expandtab: language.expandtab,
+            defaults: indent_options(language.indent),
+            overrides: indent_options(language.indent_override),
             language: LanguageId::from_alias(&language.language_id)
                 .or_else(|| LanguageId::from_alias(&language.name)),
             rules: IndentRules::new(
@@ -971,6 +971,14 @@ pub(super) fn one_line(text: &str) -> String {
             }
         })
         .collect()
+}
+
+fn indent_options(indent: kawi_lsp::IndentConfig) -> IndentOptions {
+    IndentOptions {
+        shiftwidth: indent.shiftwidth,
+        expandtab: indent.expandtab,
+        tabstop: indent.tabstop,
+    }
 }
 
 #[cfg(test)]
