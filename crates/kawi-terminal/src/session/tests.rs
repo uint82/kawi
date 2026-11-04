@@ -15,22 +15,31 @@ fn shell_options() -> SpawnOptions {
     options
 }
 
+fn screen_text(session: &TerminalSession) -> String {
+    let rows = session.screen().rows().saturating_sub(1);
+    let cols = session.screen().cols().saturating_sub(1);
+    session.screen().contents_between(0, 0, rows, cols)
+}
+
 fn wait_for_text(session: &mut TerminalSession, needle: &str) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         session.drain();
-        let rows = session.screen().rows().saturating_sub(1);
-        let cols = session.screen().cols().saturating_sub(1);
-        if session
-            .screen()
-            .contents_between(0, 0, rows, cols)
-            .contains(needle)
-        {
+        if screen_text(session).contains(needle) {
             return;
         }
         thread::sleep(Duration::from_millis(10));
     }
     panic!("terminal never printed {needle:?}");
+}
+
+fn wait_for_completion(session: &mut TerminalSession) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && !session.is_complete() {
+        session.drain();
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(session.is_complete());
 }
 
 #[test]
@@ -100,14 +109,33 @@ fn resize_reaches_the_child_process() {
 fn detects_exit_without_output() {
     let (wake, _wake_rx) = channel();
     let mut session = TerminalSession::start(&options("exit 3"), wake).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline && (session.is_running() || !session.is_closed()) {
-        session.drain();
-        thread::sleep(Duration::from_millis(10));
-    }
+    wait_for_completion(&mut session);
     assert!(!session.is_running());
     assert_eq!(session.exit_status().unwrap().exit_code(), 3);
     assert!(session.is_closed());
+}
+
+#[test]
+#[cfg(unix)]
+fn completion_waits_for_output_to_close() {
+    let (wake, _wake_rx) = channel();
+    let mut session = TerminalSession::start(
+        &options("trap '' HUP; (sleep 0.2; printf suffix) & exit 0"),
+        wake,
+    )
+    .unwrap();
+    wait_for_completion(&mut session);
+    assert!(screen_text(&session).contains("suffix"));
+}
+
+#[test]
+#[cfg(unix)]
+fn fast_exit_drains_large_output() {
+    let (wake, _wake_rx) = channel();
+    let command = "i=0; while [ $i -lt 2000 ]; do printf '0123456789abcdef0123456789abcdef\\n'; i=$((i+1)); done; printf 'END-MARKER'";
+    let mut session = TerminalSession::start(&options(command), wake).unwrap();
+    wait_for_completion(&mut session);
+    assert!(screen_text(&session).contains("END-MARKER"));
 }
 
 #[test]
