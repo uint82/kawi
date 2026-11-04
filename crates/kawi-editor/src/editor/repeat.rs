@@ -567,6 +567,65 @@ mod tests {
     }
 
     #[test]
+    fn repeat_visual_line_delete_uses_line_ranges() {
+        let mut editor = editor_with("one\ntwo\nthree\nfour\nfive\nsix");
+        editor.apply(Action::EnterVisualLine);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::DeleteSelection);
+        editor.apply(Action::ExitVisual);
+        editor.apply(Action::JumpTo(1, 0));
+        editor.apply(Action::RepeatLastChange);
+        assert_eq!(editor.text_lines(), vec!["three", "six"]);
+        assert_eq!((editor.row(), editor.col()), (1, 0));
+    }
+
+    #[test]
+    fn repeat_visual_line_change_replaces_lines() {
+        let mut editor = editor_with("a\nb\nc\nd\ne");
+        editor.apply(Action::JumpTo(1, 0));
+        editor.apply(Action::EnterVisualLine);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::ChangeSelection);
+        editor.apply(Action::InsertChar('X'));
+        editor.apply(Action::ExitInsert);
+        editor.apply(Action::JumpTo(2, 0));
+        editor.apply(Action::RepeatLastChange);
+        assert_eq!(editor.text_lines(), vec!["a", "X", "X"]);
+        assert_eq!((editor.row(), editor.col()), (2, 0));
+    }
+
+    #[test]
+    fn repeat_visual_line_paste_over_deletes_without_pasting() {
+        let mut editor = editor_with("P\nQ\nA\nB\nC\nD\nE");
+        editor.apply(Action::EnterVisualLine);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::YankSelection);
+        editor.apply(Action::ExitVisual);
+        editor.apply(Action::JumpTo(2, 0));
+        editor.apply(Action::EnterVisualLine);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::PasteOverSelection);
+        editor.apply(Action::ExitVisual);
+        editor.apply(Action::JumpTo(3, 0));
+        editor.apply(Action::RepeatLastChange);
+        assert_eq!(editor.text_lines(), vec!["P", "Q", "P", "D", "E"]);
+        assert_eq!((editor.row(), editor.col()), (3, 0));
+    }
+
+    #[test]
+    fn repeat_visual_line_toggle_case_covers_rows() {
+        let mut editor = editor_with("ab\ncd\nef\ngh\nij");
+        editor.apply(Action::JumpTo(1, 0));
+        editor.apply(Action::EnterVisualLine);
+        editor.apply(Action::MoveDown);
+        editor.apply(Action::ToggleCase);
+        editor.apply(Action::ExitVisual);
+        editor.apply(Action::JumpTo(2, 0));
+        editor.apply(Action::RepeatLastChange);
+        assert_eq!(editor.text_lines(), vec!["ab", "CD", "ef", "GH", "ij"]);
+    }
+
+    #[test]
     fn repeat_visual_line_delete_clamps() {
         let mut editor = editor_with("a\nb\nc");
         editor.apply(Action::EnterVisualLine);
