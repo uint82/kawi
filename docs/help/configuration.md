@@ -21,6 +21,7 @@ Example:
 keymap = "vim"
 theme = "default"
 diagnostic_virtual_text = "all"
+diagnostic_underline = "curly"
 
 [editor]
 shiftwidth = 4

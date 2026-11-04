@@ -101,6 +101,7 @@ Kawi reads configuration from `$XDG_CONFIG_HOME/kawi/config.toml`, normally `~/.
 keymap = "vim"
 theme = "default"
 diagnostic_virtual_text = "all"
+diagnostic_underline = "curly"
 
 [editor]
 shiftwidth = 4
