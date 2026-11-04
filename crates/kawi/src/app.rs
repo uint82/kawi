@@ -27,6 +27,7 @@ mod disk;
 mod explorer;
 mod file_ops;
 mod formatter;
+mod formatter_service;
 mod formatting;
 mod frame;
 mod git;
@@ -213,6 +214,8 @@ pub struct App {
     file_views: Option<FileViewStore>,
     loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
+    formatter_service: Option<formatter_service::FormatterService>,
+    pending_format: Option<formatting::PendingFormat>,
     pending_save: Option<save::PendingSave>,
     pending_save_all: Option<directory::PendingSaveAll>,
     save_batch_id: u64,
@@ -333,6 +336,8 @@ impl App {
             file_views: None,
             loaded_views: BTreeSet::new(),
             conflict: None,
+            formatter_service: None,
+            pending_format: None,
             pending_save: None,
             pending_save_all: None,
             save_batch_id: 0,
@@ -466,6 +471,7 @@ impl App {
             self.show_recovery_prompt_if_ready();
             self.sync_git();
             self.poll_git_load();
+            self.poll_formatter();
             self.sync_ipc();
             self.sync_git_status();
             self.poll_git_status();
@@ -538,6 +544,7 @@ impl App {
             redraw |= self.sync_git_status();
             redraw |= self.poll_git_status();
             redraw |= self.poll_git_load();
+            redraw |= self.poll_formatter();
             redraw |= self.poll_explorer();
             redraw |= self.poll_directory_loads();
             redraw |= self.poll_permission_check();
