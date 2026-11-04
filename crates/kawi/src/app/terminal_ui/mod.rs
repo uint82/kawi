@@ -87,7 +87,7 @@ impl TerminalUi {
     pub fn needs_poll(&self) -> bool {
         self.session
             .as_ref()
-            .is_some_and(|session| session.is_closed() && session.is_running())
+            .is_some_and(TerminalSession::needs_poll)
     }
 
     pub fn take_exit(&mut self) -> Option<String> {
@@ -152,7 +152,7 @@ impl TerminalUi {
             return false;
         };
         let changed = session.drain();
-        if !self.exit_reported {
+        if !self.exit_reported && session.is_complete() {
             if let Some(status) = session.exit_description() {
                 let cursor = session.screen().cursor();
                 self.normal_cursor = (cursor.row, cursor.col);
