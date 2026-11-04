@@ -23,22 +23,25 @@ fn options(command: &str) -> SpawnOptions {
     options
 }
 
+fn screen_text(terminal: &TerminalUi) -> String {
+    terminal
+        .lines(40, 10)
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.text.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn wait_for_text(terminal: &mut TerminalUi, needle: &str) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         terminal.drain();
-        let text = terminal
-            .lines(40, 10)
-            .iter()
-            .map(|line| {
-                line.spans
-                    .iter()
-                    .map(|span| span.text.as_str())
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        if text.contains(needle) {
+        if screen_text(terminal).contains(needle) {
             return;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -111,6 +114,30 @@ fn exit_switches_to_normal_and_reports_status() {
     assert_eq!(terminal.mode, TerminalMode::Normal);
     assert_eq!(terminal.status(), "process exited: 7");
     terminal.close();
+}
+
+#[test]
+#[cfg(unix)]
+fn exit_waits_for_remaining_output() {
+    let (wake, _wake_rx) = channel();
+    let mut terminal = TerminalUi::default();
+    terminal
+        .open(
+            options("trap '' HUP; (sleep 0.2; printf suffix) & exit 0"),
+            wake,
+        )
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut exit = None;
+    while Instant::now() < deadline && exit.is_none() {
+        terminal.drain();
+        exit = terminal.take_exit();
+        if exit.is_none() {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    assert!(exit.is_some());
+    assert!(screen_text(&terminal).contains("suffix"));
 }
 
 #[test]

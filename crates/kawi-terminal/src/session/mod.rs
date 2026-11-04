@@ -233,6 +233,14 @@ impl TerminalSession {
         self.closed
     }
 
+    pub fn is_complete(&self) -> bool {
+        self.exit.is_some() && self.closed
+    }
+
+    pub fn needs_poll(&self) -> bool {
+        !self.is_complete() && (self.closed || self.exit.is_some())
+    }
+
     pub fn terminate(&mut self) {
         self.pty.terminate();
         self.exit = self.pty.try_wait().ok().flatten();
