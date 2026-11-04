@@ -8,6 +8,7 @@ mod history_nav;
 mod history_persist;
 mod history_tree;
 mod line_adjust;
+mod line_ending;
 mod text_edit;
 pub mod undo_store;
 pub mod write;
@@ -18,6 +19,7 @@ pub use hash::content_hash;
 pub use history_nav::{UndoLeaf, UndoOffset};
 pub use history_persist::{HistoryDelta, HistoryEntry, PersistedHistory};
 pub use line_adjust::LineAdjust;
+pub use line_ending::{normalize as normalize_line_endings, LineEnding};
 pub use text_edit::{
     apply_text_edits, char_offset_at, validate_text_edits, PositionError, TextEdit, TextEditError,
 };

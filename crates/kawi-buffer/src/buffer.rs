@@ -12,6 +12,7 @@ use crate::diff::diff_ropes;
 use crate::history::History;
 use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
+use crate::line_ending::{self, LineEnding};
 use crate::write;
 
 mod undo_tree;
@@ -30,6 +31,7 @@ pub struct Buffer {
     internal: bool,
     directory: bool,
     source_hash: Option<[u8; 32]>,
+    line_ending: LineEnding,
 }
 
 impl Buffer {
@@ -38,9 +40,13 @@ impl Buffer {
     }
 
     pub fn from_string_with_id(s: &str, id: String) -> Self {
+        Self::build(id, s, LineEnding::detect(s))
+    }
+
+    fn build(id: String, text: &str, line_ending: LineEnding) -> Self {
         Self {
             id,
-            rope: Rope::from_str(s),
+            rope: Rope::from_str(&line_ending::normalize(text)),
             path: None,
             history: History::new(),
             revision: 0,
@@ -52,6 +58,7 @@ impl Buffer {
             internal: false,
             directory: false,
             source_hash: None,
+            line_ending,
         }
     }
 
@@ -105,7 +112,8 @@ impl Buffer {
                 return Err(error).with_context(|| format!("failed to open {path}"));
             }
         };
-        self.rope = Rope::from_str(&text);
+        self.line_ending = LineEnding::detect(&text);
+        self.rope = Rope::from_str(&line_ending::normalize(&text));
         self.source_hash = source_hash;
         self.touch();
         Ok(())
@@ -123,7 +131,7 @@ impl Buffer {
         if self.readonly {
             return;
         }
-        self.replace_rope(Rope::from_str(text));
+        self.replace_rope(Rope::from_str(&line_ending::normalize(text)));
     }
 
     pub fn replace_rope(&mut self, text: Rope) {
@@ -141,6 +149,10 @@ impl Buffer {
 
     pub fn source_hash(&self) -> Option<[u8; 32]> {
         self.source_hash
+    }
+
+    pub fn line_ending(&self) -> LineEnding {
+        self.line_ending
     }
 
     pub fn export_history(&self, row: usize, col: usize) -> PersistedHistory {
@@ -179,7 +191,10 @@ impl Buffer {
         if !self.internal {
             return false;
         }
-        let old = std::mem::replace(&mut self.rope, Rope::from_str(text));
+        let old = std::mem::replace(
+            &mut self.rope,
+            Rope::from_str(&line_ending::normalize(text)),
+        );
         let previous = std::mem::replace(&mut self.origin, BufferChangeOrigin::ExternalReload);
         self.record_rope_diff(&old);
         self.origin = previous;
@@ -765,6 +780,7 @@ impl Buffer {
         if !text.is_empty() {
             self.touch();
         }
+        let text = line_ending::normalize(text);
         let fragments: Vec<&str> = text.split('\n').collect();
         match fragments.as_slice() {
             [first] => self.paste_single(row, col, first),
@@ -785,6 +801,7 @@ impl Buffer {
         if !text.is_empty() {
             self.touch();
         }
+        let text = line_ending::normalize(text);
         let fragments: Vec<&str> = text.split('\n').collect();
         match fragments.as_slice() {
             [first] => self.paste_single_before(row, col, first),
@@ -896,9 +913,11 @@ impl Buffer {
         let mut hasher = Sha256::new();
         write::write(Path::new(path), force, |out| {
             let mut writer = HashingWriter::new(BufWriter::new(out), &mut hasher);
-            self.rope.write_to(&mut writer)?;
+            for chunk in self.rope.chunks() {
+                self.line_ending.write(&mut writer, chunk)?;
+            }
             if self.needs_final_newline() {
-                writer.write_all(b"\n")?;
+                writer.write_all(self.line_ending.as_bytes())?;
             }
             writer.flush()
         })
@@ -907,7 +926,17 @@ impl Buffer {
     }
 
     pub fn file_bytes(&self) -> usize {
-        self.rope.len_bytes() + usize::from(self.needs_final_newline())
+        let content = self
+            .rope
+            .chunks()
+            .map(|chunk| self.line_ending.encoded_len(chunk))
+            .fold(0, usize::saturating_add);
+        let final_newline = if self.needs_final_newline() {
+            self.line_ending.as_bytes().len()
+        } else {
+            0
+        };
+        content.saturating_add(final_newline)
     }
 
     pub fn has_final_newline(&self) -> bool {

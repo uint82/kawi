@@ -147,7 +147,7 @@ fn crlf_format_on_save_restores_history() {
     drop(app);
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
     assert!(restarted.editor.try_undo());
-    assert_eq!(buffer_text(&restarted), "xalpha\r\n");
+    assert_eq!(buffer_text(&restarted), "xalpha\n");
     let _ = fs::remove_dir_all(dir);
 }
 

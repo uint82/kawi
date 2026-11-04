@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use kawi_buffer::normalize_line_endings;
 use similar::TextDiff;
 
 use super::App;
@@ -142,8 +143,9 @@ fn conflict_diff(path: Option<PathBuf>, buffer: Option<String>) -> Result<Vec<St
     let path = path.ok_or_else(|| "Buffer has no disk file".to_string())?;
     let disk = std::fs::read_to_string(&path)
         .map_err(|error| format!("Cannot read {}: {error}", path.display()))?;
+    let disk = normalize_line_endings(&disk);
     let buffer = buffer.ok_or_else(|| "Buffer is not open".to_string())?;
-    let diff = TextDiff::from_lines(&disk, &buffer)
+    let diff = TextDiff::from_lines(disk.as_ref(), &buffer)
         .unified_diff()
         .context_radius(3)
         .header(&format!("disk:{}", path.display()), "buffer")
