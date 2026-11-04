@@ -53,9 +53,11 @@ impl App {
                 events.push(event);
             }
         }
-        events.into_iter().fold(false, |changed, event| {
-            self.apply_git_load(event) || changed
-        })
+        let mut changed = false;
+        for event in events {
+            changed |= self.apply_git_load(event);
+        }
+        changed
     }
 
     fn apply_git_load(&mut self, event: FileLoadEvent) -> bool {
