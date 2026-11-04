@@ -838,11 +838,8 @@ impl Editor {
         let tabstop = self.effective_indent().tabstop;
         let width = buffer.line_len(row);
         if col < width {
-            Some(
-                buffer
-                    .screen_col(row, col.saturating_add(1), tabstop)
-                    .saturating_sub(1),
-            )
+            let (start, end) = buffer.screen_span(row, col, tabstop);
+            Some(end.saturating_sub(1).max(start))
         } else {
             Some(buffer.screen_col(row, width, tabstop))
         }

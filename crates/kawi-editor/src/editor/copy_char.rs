@@ -1,4 +1,4 @@
-use kawi_buffer::tab_width;
+use kawi_buffer::unicode;
 
 use super::Editor;
 
@@ -12,34 +12,44 @@ impl Editor {
     }
 
     fn insert_copied_line_char(&mut self, above: bool) {
-        let Some(ch) = self.adjacent_line_char(above) else {
+        let Some(grapheme) = self.adjacent_line_grapheme(above) else {
             return;
         };
-        self.insert_char(ch);
+        if let (true, Some(ch)) = (grapheme.chars().count() == 1, grapheme.chars().next()) {
+            self.insert_char(ch);
+        } else {
+            self.insert_pasted_text(&grapheme);
+        }
     }
 
-    fn adjacent_line_char(&self, above: bool) -> Option<char> {
+    fn adjacent_line_grapheme(&self, above: bool) -> Option<String> {
         let row = self.cursor.row();
         let target_row = if above { row.checked_sub(1)? } else { row + 1 };
         let line = self.buffer.line(target_row)?;
         let tabstop = self.effective_indent().tabstop;
         let screen = self.buffer.screen_col(row, self.cursor.col(), tabstop);
-        char_at_screen(&line, screen, tabstop)
+        grapheme_at_screen(&line, screen, tabstop)
     }
 }
 
-fn char_at_screen(line: &str, target: usize, tabstop: usize) -> Option<char> {
-    let mut chars = line.chars();
-    let mut current = chars.next()?;
+fn grapheme_at_screen(line: &str, target: usize, tabstop: usize) -> Option<String> {
     let mut screen = 0;
-    while screen < target {
-        screen += tab_width(current, screen, tabstop);
-        if screen > target {
-            break;
+    for grapheme in unicode::graphemes(line) {
+        if screen >= target {
+            return Some(grapheme.text().to_string());
         }
-        current = chars.next()?;
+        let width = unicode::cluster_width(grapheme.text(), screen, tabstop);
+        if screen.saturating_add(width) > target {
+            return Some(grapheme.text().to_string());
+        }
+        screen = screen.saturating_add(width);
     }
-    Some(current)
+    None
+}
+
+#[cfg(test)]
+fn char_at_screen(line: &str, target: usize, tabstop: usize) -> Option<char> {
+    grapheme_at_screen(line, target, tabstop).and_then(|grapheme| grapheme.chars().next())
 }
 
 #[cfg(test)]

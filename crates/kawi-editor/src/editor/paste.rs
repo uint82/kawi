@@ -21,7 +21,7 @@ impl Editor {
     pub(super) fn paste_normal(&mut self, text: &str) {
         self.record_boundary();
         let (row, col) = (self.cursor.row(), self.cursor.col());
-        let target = col.saturating_add(1).min(self.buffer.line_len(row));
+        let target = self.buffer.next_grapheme_col(row, col);
         let end = pasted_end(row, target, text);
         self.change_origin_override = Some((row, col));
         self.buffer.paste_after(row, col, text);
@@ -83,7 +83,11 @@ impl Editor {
     }
 
     fn place_paste_cursor(&mut self, end: (usize, usize), text: &str) {
-        let (row, col) = last_pasted_cell(end, text);
+        let (row, col) = if text.ends_with('\n') {
+            end
+        } else {
+            (end.0, self.buffer.prev_grapheme_col(end.0, end.1))
+        };
         self.cursor.set_position(row, col);
         self.remember_wanted_column();
     }
@@ -97,14 +101,6 @@ fn pasted_end(row: usize, col: usize, text: &str) -> (usize, usize) {
             (row, col + 1)
         }
     })
-}
-
-fn last_pasted_cell((row, col): (usize, usize), text: &str) -> (usize, usize) {
-    if text.ends_with('\n') {
-        (row, col)
-    } else {
-        (row, col.saturating_sub(1))
-    }
 }
 
 #[cfg(test)]

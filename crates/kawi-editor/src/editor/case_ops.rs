@@ -26,15 +26,15 @@ impl Editor {
         let mut recorded = false;
         for _ in 0..count {
             let (row, col) = (self.cursor.row(), self.cursor.col());
-            if let Some(toggled) = self.toggled_char_at(row, col) {
+            if self.toggled_char_at(row, col).is_some() {
                 if !recorded {
                     self.record_boundary();
                     recorded = true;
                 }
-                self.buffer.delete_forward(row, col);
-                self.buffer.insert_char(row, col, toggled);
+                self.buffer.shift_case_range(row, col, row, col, swap_case);
             }
-            self.cursor.move_right();
+            let next = self.buffer.next_grapheme_col(row, col);
+            self.cursor.set_position(row, next);
         }
     }
 

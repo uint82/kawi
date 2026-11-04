@@ -1,0 +1,169 @@
+use crate::display;
+use crate::frame::Selection;
+use crate::text::{char_count, display_width};
+
+use super::{clipped_span, HighlightSpan, SpanView, Tint};
+
+pub fn highlight_spans(
+    view: &SpanView,
+    selection: Option<Selection>,
+    cursor: Option<(usize, usize)>,
+) -> Vec<HighlightSpan> {
+    let range = match selection {
+        Some(Selection::Range { start, end }) => Some((start, end)),
+        Some(selection @ Selection::Block { .. }) => return block_spans(view, selection, cursor),
+        None => None,
+    };
+    let Some(range) = range else {
+        return Vec::new();
+    };
+    let mut spans = Vec::new();
+    for screen_row in 0..view.window.len().min(view.viewport.height()) {
+        collect_row_spans(&mut spans, view, screen_row, range, cursor);
+    }
+    spans
+}
+
+fn block_spans(
+    view: &SpanView,
+    selection: Selection,
+    cursor: Option<(usize, usize)>,
+) -> Vec<HighlightSpan> {
+    let Selection::Block {
+        top: block_top,
+        left,
+        bottom: block_bottom,
+        right,
+        ragged,
+    } = selection
+    else {
+        return Vec::new();
+    };
+    let right_edge = view.leftcol.saturating_add(view.text_width());
+    let mut spans = Vec::new();
+    for screen_row in 0..view.window.len().min(view.viewport.height()) {
+        let Some(buffer_row) = view.rows.get(screen_row).copied() else {
+            continue;
+        };
+        if buffer_row < block_top || buffer_row > block_bottom {
+            continue;
+        }
+        let Some(text) = view.window.get(screen_row) else {
+            continue;
+        };
+        let to = if ragged {
+            char_count(text)
+        } else {
+            right.saturating_add(1)
+        };
+        let cell = cursor
+            .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
+        let cell = cell.and_then(|cell| display::screen_span_at(text, cell, view.tabstop));
+        for (from, to) in cut_span(left, to, cell) {
+            let from = from.max(view.leftcol);
+            let to = to.min(right_edge);
+            if from >= to {
+                continue;
+            }
+            let mut text = display::slice_screen(text, from, to, view.tabstop);
+            if !ragged {
+                let missing = to.saturating_sub(from).saturating_sub(display_width(&text));
+                text.push_str(&" ".repeat(missing));
+            }
+            spans.push(HighlightSpan {
+                screen_row,
+                from: from.saturating_sub(view.leftcol),
+                text,
+                tint: Tint::Selection,
+            });
+        }
+    }
+    spans
+}
+
+fn collect_row_spans(
+    spans: &mut Vec<HighlightSpan>,
+    view: &SpanView,
+    screen_row: usize,
+    range: ((usize, usize), (usize, usize)),
+    cursor: Option<(usize, usize)>,
+) {
+    let Some(text) = view.window.get(screen_row) else {
+        return;
+    };
+    let Some(buffer_row) = view.rows.get(screen_row).copied() else {
+        return;
+    };
+    let cell = cursor
+        .and_then(|(row, col)| (row == buffer_row).then_some(col.saturating_add(view.leftcol)));
+    let cell = cell.and_then(|cell| display::screen_span_at(text, cell, view.tabstop));
+    for (from, to) in selected_cells(buffer_row, text, range, cell, view.tabstop) {
+        if let Some(span) = clipped_span(view, screen_row, text, from, to, Tint::Selection) {
+            spans.push(span);
+        }
+    }
+}
+
+fn selected_cells(
+    buffer_row: usize,
+    text: &str,
+    range: ((usize, usize), (usize, usize)),
+    cursor: Option<(usize, usize)>,
+    tabstop: usize,
+) -> Vec<(usize, usize)> {
+    let ((start_row, start_col), (end_row, end_col)) = range;
+    if buffer_row < start_row || buffer_row > end_row {
+        return Vec::new();
+    }
+    let line_len = char_count(text);
+    let (from, to) = row_selection(buffer_row, line_len, start_row, start_col, end_row, end_col);
+    let (from, to) = if line_len == 0 {
+        (from, to)
+    } else {
+        (
+            display::screen_col(text, from, tabstop),
+            display::screen_col(text, to, tabstop),
+        )
+    };
+    cut_span(from, to, cursor)
+}
+
+fn row_selection(
+    buffer_row: usize,
+    line_len: usize,
+    start_row: usize,
+    start_col: usize,
+    end_row: usize,
+    end_col: usize,
+) -> (usize, usize) {
+    if line_len == 0 {
+        return (0, 1);
+    }
+    let from = if buffer_row == start_row {
+        start_col.min(line_len)
+    } else {
+        0
+    };
+    let to = if buffer_row == end_row {
+        end_col.saturating_add(1).min(line_len)
+    } else {
+        line_len
+    };
+    (from, to)
+}
+
+fn cut_span(from: usize, to: usize, cursor: Option<(usize, usize)>) -> Vec<(usize, usize)> {
+    match cursor {
+        Some((cell, end)) if from <= cell && cell < to => {
+            let mut parts = Vec::new();
+            if from < cell {
+                parts.push((from, cell));
+            }
+            if end < to {
+                parts.push((end, to));
+            }
+            parts
+        }
+        _ => vec![(from, to)],
+    }
+}

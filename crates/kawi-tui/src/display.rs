@@ -1,29 +1,44 @@
-use kawi_buffer::tab_width;
+use kawi_buffer::unicode;
 
-use crate::text::char_width;
-
-fn cell_width(ch: char, screen: usize, tabstop: usize) -> usize {
-    if ch == '\t' {
-        tab_width(ch, screen, tabstop)
-    } else {
-        char_width(ch)
-    }
+fn cell_width(grapheme: &str, screen: usize, tabstop: usize) -> usize {
+    unicode::cluster_width(grapheme, screen, tabstop)
 }
 
-fn is_displayable(ch: char) -> bool {
-    ch == '\t' || !ch.is_control()
+fn is_displayable(grapheme: &str) -> bool {
+    grapheme == "\t" || !grapheme.chars().any(char::is_control)
 }
 
 pub fn screen_col(text: &str, chars: usize, tabstop: usize) -> usize {
-    let mut screen = 0;
-    for ch in text.chars().take(chars) {
-        screen += cell_width(ch, screen, tabstop);
+    let mut screen: usize = 0;
+    for grapheme in unicode::graphemes(text) {
+        if grapheme.start() >= chars {
+            break;
+        }
+        if is_displayable(grapheme.text()) {
+            screen = screen.saturating_add(cell_width(grapheme.text(), screen, tabstop));
+        }
     }
     screen
 }
 
 pub fn screen_len(text: &str, tabstop: usize) -> usize {
-    screen_col(text, text.chars().count(), tabstop)
+    screen_col(text, unicode::char_count(text), tabstop)
+}
+
+pub fn screen_span_at(text: &str, cell: usize, tabstop: usize) -> Option<(usize, usize)> {
+    let mut screen: usize = 0;
+    for grapheme in unicode::graphemes(text) {
+        if !is_displayable(grapheme.text()) {
+            continue;
+        }
+        let width = cell_width(grapheme.text(), screen, tabstop);
+        let end = screen.saturating_add(width);
+        if screen <= cell && cell < end {
+            return Some((screen, end));
+        }
+        screen = end;
+    }
+    None
 }
 
 pub fn slice_screen(text: &str, from: usize, to: usize, tabstop: usize) -> String {
@@ -43,15 +58,15 @@ pub fn slice_screen_into(
     if from >= to {
         return 0;
     }
-    let mut visible = 0;
-    let mut screen = 0;
-    for ch in text.chars() {
-        if !is_displayable(ch) {
+    let mut visible: usize = 0;
+    let mut screen: usize = 0;
+    for grapheme in unicode::graphemes(text) {
+        if !is_displayable(grapheme.text()) {
             continue;
         }
-        let width = cell_width(ch, screen, tabstop);
+        let width = cell_width(grapheme.text(), screen, tabstop);
         let start = screen;
-        let end = screen + width;
+        let end = screen.saturating_add(width);
         screen = end;
         if end <= from {
             continue;
@@ -59,13 +74,13 @@ pub fn slice_screen_into(
         if start >= to {
             break;
         }
-        if ch == '\t' {
+        if grapheme.text() == "\t" {
             let count = end.min(to).saturating_sub(start.max(from));
             push_spaces(out, count);
-            visible += count;
-        } else if start >= from {
-            out.push(ch);
-            visible += width;
+            visible = visible.saturating_add(count);
+        } else if start >= from && end <= to {
+            out.push_str(grapheme.text());
+            visible = visible.saturating_add(width);
         }
     }
     visible
@@ -78,6 +93,8 @@ fn push_spaces(out: &mut String, count: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
 
     #[test]
     fn screen_col_expands_tabs() {
@@ -95,10 +112,18 @@ mod tests {
     }
 
     #[test]
+    fn screen_col_counts_grapheme_clusters() {
+        assert_eq!(screen_col(FAMILY, 1, 8), 2);
+        assert_eq!(screen_col(FAMILY, 7, 8), 2);
+        assert_eq!(screen_col(&format!("a{FAMILY}b"), 8, 8), 3);
+    }
+
+    #[test]
     fn screen_len_counts_cells() {
         assert_eq!(screen_len("\tx", 8), 9);
         assert_eq!(screen_len("", 8), 0);
         assert_eq!(screen_len("éx", 8), 2);
+        assert_eq!(screen_len(FAMILY, 8), 2);
     }
 
     #[test]
@@ -120,6 +145,37 @@ mod tests {
         assert_eq!(slice_screen("abc", 2, 10, 8), "c");
         assert_eq!(slice_screen("abc", 5, 8, 8), "");
         assert_eq!(slice_screen("", 0, 1, 8), "");
+    }
+
+    #[test]
+    fn finds_the_screen_span_containing_a_cell() {
+        let line = format!("a{FAMILY}b");
+        assert_eq!(screen_span_at(&line, 0, 8), Some((0, 1)));
+        assert_eq!(screen_span_at(&line, 1, 8), Some((1, 3)));
+        assert_eq!(screen_span_at(&line, 2, 8), Some((1, 3)));
+        assert_eq!(screen_span_at(&line, 3, 8), Some((3, 4)));
+        assert_eq!(screen_span_at(&line, 4, 8), None);
+        assert_eq!(screen_span_at("\tx", 7, 8), Some((0, 8)));
+    }
+
+    #[test]
+    fn screen_col_lays_out_keycaps_like_neovim() {
+        let line = "1\u{fe0f}\u{20e3} 2\u{fe0f}\u{20e3}";
+        assert_eq!(screen_col(line, 3, 8), 1);
+        assert_eq!(screen_col(line, 4, 8), 2);
+        assert_eq!(screen_len(line, 8), 3);
+    }
+
+    #[test]
+    fn slice_screen_keeps_clusters_intact() {
+        let line = format!("a{FAMILY}b");
+        assert_eq!(
+            slice_screen(&line, 0, 3, 8),
+            "a\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}"
+        );
+        assert_eq!(slice_screen(&line, 0, 2, 8), "a");
+        assert_eq!(slice_screen(&line, 3, 4, 8), "b");
+        assert_eq!(slice_screen(&line, 1, 2, 8), "");
     }
 
     #[test]

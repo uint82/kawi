@@ -28,7 +28,9 @@ pub(super) enum InsertEdit {
 impl Editor {
     pub(super) fn append(&mut self) {
         self.arm_insert_repeat(false);
-        self.cursor.move_right();
+        let row = self.cursor.row();
+        let col = self.buffer.next_grapheme_col(row, self.cursor.col());
+        self.cursor.set_position(row, col);
         self.enter_insert();
     }
 
@@ -100,7 +102,7 @@ impl Editor {
     pub(super) fn insert_at_last(&mut self) {
         if let Some(pos) = self.last_insert {
             let row = pos.0.min(self.buffer.line_count().saturating_sub(1));
-            let col = pos.1.min(self.buffer.line_len(row));
+            let col = self.buffer.snap_col(row, pos.1);
             self.cursor.set_position(row, col);
         }
         self.arm_insert_repeat(false);
@@ -250,8 +252,8 @@ impl Editor {
             return;
         }
         if let Some((_, (row, col))) = self.selection_range() {
+            let col = self.buffer.next_grapheme_col(row, col);
             self.cursor.set_position(row, col);
-            self.cursor.move_right();
         }
         self.exit_visual();
         self.enter_insert();
@@ -369,8 +371,10 @@ impl Editor {
     }
 
     pub(super) fn retreat_after_insert(&mut self) {
-        if self.cursor.col() > 0 {
-            self.cursor.move_left();
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        if col > 0 {
+            self.cursor.set_col(self.buffer.prev_grapheme_col(row, col));
         }
     }
 

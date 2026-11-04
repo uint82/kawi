@@ -8,15 +8,11 @@ impl Editor {
     }
 
     pub(super) fn screen_span(&self, row: usize, col: usize) -> (usize, usize) {
-        let start = self.buffer.screen_col(row, col, self.tabstop());
+        let (start, end) = self.buffer.screen_span(row, col, self.tabstop());
         if col >= self.buffer.line_len(row) {
             return (start, start);
         }
-        let end = self
-            .buffer
-            .screen_col(row, col.saturating_add(1), self.tabstop())
-            .saturating_sub(1);
-        (start, end)
+        (start, end.saturating_sub(1).max(start))
     }
 
     pub(super) fn char_col_at_screen(&self, row: usize, screen: usize) -> usize {

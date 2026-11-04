@@ -13,8 +13,10 @@ use crate::history::History;
 use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
 use crate::line_ending::{self, LineEnding};
+use crate::unicode;
 use crate::write;
 
+mod graphemes;
 mod undo_tree;
 
 pub struct Buffer {
@@ -507,11 +509,14 @@ impl Buffer {
         if row >= self.len() {
             return (row, col);
         }
+        let col = col.min(self.line_len(row));
         if col > 0 {
-            let idx = self.position_to_char(row, col);
-            self.remove_text(idx.saturating_sub(1), idx);
+            let start_col = self.prev_grapheme_col(row, col);
+            let start = self.position_to_char(row, start_col);
+            let end = self.position_to_char(row, col);
+            self.remove_text(start, end);
             self.touch();
-            return (row, col.saturating_sub(1));
+            return (row, start_col);
         }
         self.delete_at_line_start(row)
     }
@@ -520,9 +525,15 @@ impl Buffer {
         if row >= self.len() {
             return;
         }
-        if col < self.line_len(row) {
-            let idx = self.position_to_char(row, col);
-            self.remove_text(idx, idx.saturating_add(1).min(self.rope.len_chars()));
+        let width = self.line_len(row);
+        if col < width {
+            let start_col = self.snap_col(row, col);
+            let end_col = self
+                .line_cow(row)
+                .map_or(start_col, |line| unicode::cluster_end(&line, col));
+            let start = self.position_to_char(row, start_col);
+            let end = self.position_to_char(row, end_col);
+            self.remove_text(start, end);
             self.touch();
             return;
         }
@@ -596,11 +607,19 @@ impl Buffer {
         end_row: usize,
         end_col: usize,
     ) -> String {
+        let start_col = self.snap_col(start_row, start_col);
+        let line_width = self.line_len(end_row);
         let start = self.position_to_char(start_row, start_col);
-        let end = self
-            .position_to_char(end_row, end_col)
-            .saturating_add(1)
-            .min(self.rope.len_chars());
+        let end = if end_col >= line_width {
+            self.position_to_char(end_row, line_width)
+                .saturating_add(1)
+                .min(self.rope.len_chars())
+        } else {
+            let end_col = self
+                .line_cow(end_row)
+                .map_or(end_col, |line| unicode::cluster_end(&line, end_col));
+            self.position_to_char(end_row, end_col)
+        };
         self.rope.slice(start.min(end)..end.max(start)).to_string()
     }
 
@@ -611,6 +630,10 @@ impl Buffer {
         end_row: usize,
         end_col: usize,
     ) -> String {
+        let start_col = self.snap_col(start_row, start_col);
+        let end_col = self
+            .line_cow(end_row)
+            .map_or(end_col, |line| unicode::snap_end(&line, end_col));
         let start = self.position_to_char(start_row, start_col);
         let end = self.position_to_char(end_row, end_col);
         self.rope.slice(start.min(end)..end.max(start)).to_string()
@@ -634,10 +657,14 @@ impl Buffer {
     }
 
     pub fn screen_col(&self, row: usize, col: usize, tabstop: usize) -> usize {
-        let mut screen = 0;
+        let mut screen: usize = 0;
         if let Some(line) = self.line_cow(row) {
-            for ch in line.chars().take(col) {
-                screen += tab_width(ch, screen, tabstop);
+            for grapheme in unicode::graphemes(&line) {
+                if grapheme.start() >= col {
+                    break;
+                }
+                screen =
+                    screen.saturating_add(unicode::cluster_width(grapheme.text(), screen, tabstop));
             }
         }
         screen
@@ -648,22 +675,22 @@ impl Buffer {
     }
 
     pub fn char_col(&self, row: usize, screen: usize, tabstop: usize) -> usize {
-        let width = self.line_len(row);
-        if width == 0 {
-            return 0;
-        }
         let mut screen_pos = 0;
         let mut found = 0;
         if let Some(line) = self.line_cow(row) {
-            for (index, ch) in line.chars().enumerate() {
+            for grapheme in unicode::graphemes(&line) {
                 if screen_pos > screen {
                     break;
                 }
-                found = index;
-                screen_pos += tab_width(ch, screen_pos, tabstop);
+                found = grapheme.start();
+                screen_pos = screen_pos.saturating_add(unicode::cluster_width(
+                    grapheme.text(),
+                    screen_pos,
+                    tabstop,
+                ));
             }
         }
-        found.min(width.saturating_sub(1))
+        found
     }
 
     pub fn shift_case_range(
@@ -678,11 +705,12 @@ impl Buffer {
             return;
         }
         let end_row = end_row.min(self.len().saturating_sub(1));
+        let start_col = self.snap_col(start_row, start_col);
+        let end_col = self
+            .line_cow(end_row)
+            .map_or(end_col, |line| unicode::cluster_end(&line, end_col));
         let start = self.position_to_char(start_row, start_col);
-        let end = self
-            .position_to_char(end_row, end_col)
-            .saturating_add(1)
-            .min(self.rope.len_chars());
+        let end = self.position_to_char(end_row, end_col);
         if start >= end {
             return;
         }
@@ -750,13 +778,19 @@ impl Buffer {
             return;
         }
         let end_row = end_row.min(self.len().saturating_sub(1));
-        let start = self.position_to_char(start_row, start_col);
-        let end_pos = self.position_to_char(end_row, end_col);
-        let end = if end_row == self.len().saturating_sub(1) && end_col >= self.line_len(end_row) {
-            end_pos.min(self.rope.len_chars())
+        let line_width = self.line_len(end_row);
+        let crosses_newline = end_col >= line_width && end_row < self.len().saturating_sub(1);
+        let start_col = self.snap_col(start_row, start_col);
+        let end_col = if end_col >= line_width {
+            line_width
         } else {
-            end_pos.saturating_add(1).min(self.rope.len_chars())
+            self.line_cow(end_row)
+                .map_or(end_col, |line| unicode::cluster_end(&line, end_col))
         };
+        let start = self.position_to_char(start_row, start_col);
+        let end = self
+            .position_to_char(end_row, end_col)
+            .saturating_add(usize::from(crosses_newline));
         if start < end {
             self.keep_final_newline(end_row);
             self.remove_text(start, end);
@@ -775,6 +809,10 @@ impl Buffer {
             return;
         }
         let end_row = end_row.min(self.len().saturating_sub(1));
+        let start_col = self.snap_col(start_row, start_col);
+        let end_col = self
+            .line_cow(end_row)
+            .map_or(end_col, |line| unicode::snap_end(&line, end_col));
         let start = self.position_to_char(start_row, start_col);
         let end = self.position_to_char(end_row, end_col);
         if start < end {
@@ -800,7 +838,8 @@ impl Buffer {
     fn paste_single(&mut self, row: usize, col: usize, fragment: &str) -> (usize, usize) {
         self.keep_final_newline(row);
         self.ensure_line_exists(row);
-        let at = self.position_to_char(row, col.saturating_add(1));
+        let target = self.next_grapheme_col(row, col);
+        let at = self.position_to_char(row, target);
         self.insert_text(at.min(self.rope.len_chars()), fragment);
         (row, col.saturating_add(char_count(fragment)))
     }
@@ -868,8 +907,7 @@ impl Buffer {
     ) -> (usize, usize) {
         self.keep_final_newline(row);
         self.ensure_line_exists(row);
-        let width = self.line_len(row);
-        let insert_col = col.saturating_add(1).min(width.saturating_add(1));
+        let insert_col = self.next_grapheme_col(row, col);
         let at = self.position_to_char(row, insert_col);
         let right = self
             .line(row)

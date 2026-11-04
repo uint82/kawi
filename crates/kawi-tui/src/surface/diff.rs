@@ -2,26 +2,20 @@ use std::io::Write;
 
 use anyhow::Result;
 
-use super::{ansi, Style, Surface};
+use super::{ansi, Surface};
 
 pub fn diff<W: Write>(previous: &Surface, next: &Surface, out: &mut W) -> Result<()> {
     if previous.width() != next.width() || previous.height() != next.height() {
         return ansi::present(next, out);
     }
-    let mut style = None;
     for y in 0..next.height() {
-        diff_row(previous, next, y, out, &mut style)?;
+        diff_row(previous, next, y, out)?;
     }
     Ok(())
 }
 
-fn diff_row<W: Write>(
-    previous: &Surface,
-    next: &Surface,
-    y: usize,
-    out: &mut W,
-    style: &mut Option<Style>,
-) -> Result<()> {
+fn diff_row<W: Write>(previous: &Surface, next: &Surface, y: usize, out: &mut W) -> Result<()> {
+    let mut writer = ansi::RowWriter::new(out);
     let mut x = 0;
     while x < next.width() {
         let Some((start, end)) = changed_glyph(previous, next, x, y) else {
@@ -29,11 +23,11 @@ fn diff_row<W: Write>(
             continue;
         };
         let end = extend_run(previous, next, start, end, y);
-        ansi::move_to(out, start, y)?;
-        write_range(next, start, end, y, out, style)?;
+        writer.move_to(start, y)?;
+        write_range(&mut writer, next, start, end, y)?;
         x = end;
     }
-    Ok(())
+    writer.finish()
 }
 
 fn extend_run(previous: &Surface, next: &Surface, start: usize, mut end: usize, y: usize) -> usize {
@@ -50,12 +44,11 @@ fn extend_run(previous: &Surface, next: &Surface, start: usize, mut end: usize, 
 }
 
 fn write_range<W: Write>(
+    writer: &mut ansi::RowWriter<'_, W>,
     surface: &Surface,
     start: usize,
     end: usize,
     y: usize,
-    out: &mut W,
-    style: &mut Option<Style>,
 ) -> Result<()> {
     let mut x = start;
     while x < end {
@@ -66,11 +59,7 @@ fn write_range<W: Write>(
             x = x.saturating_add(1);
             continue;
         }
-        if *style != Some(cell.style()) {
-            ansi::apply_style(out, cell.style())?;
-            *style = Some(cell.style());
-        }
-        ansi::write_cell(out, cell)?;
+        writer.write_cell(x, y, cell)?;
         x = x.saturating_add(cell.width().max(1));
     }
     Ok(())
@@ -159,6 +148,16 @@ mod tests {
         let output = diff_output(&previous, &next);
         assert_eq!(output.matches('x').count(), 1);
         assert!(!output.contains('中'));
+    }
+
+    #[test]
+    fn ambiguous_grapheme_repositions_following_cell() {
+        let previous = surface(5, 1);
+        let mut next = surface(5, 1);
+        next.write_text("\u{2764}\u{fe0f}X");
+        let output = diff_output(&previous, &next);
+        assert_eq!(output.matches('\u{2764}').count(), 1);
+        assert!(output.contains("\u{1b}[1;3H"));
     }
 
     #[test]

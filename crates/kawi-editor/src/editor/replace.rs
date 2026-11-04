@@ -8,7 +8,8 @@ impl Editor {
         let row = self.cursor.row();
         let col = self.cursor.col();
         let width = self.buffer.line_len(row);
-        if col >= width || count > width.saturating_sub(col) {
+        let end = self.buffer.grapheme_end_after(row, col, count);
+        if col >= width || count > self.buffer.grapheme_count_from(row, col) || end == col {
             return;
         }
         if replacement == '\n' {
@@ -36,8 +37,12 @@ impl Editor {
     fn replace_with_newline(&mut self, count: usize) {
         let row = self.cursor.row();
         let col = self.cursor.col();
+        let end = self
+            .buffer
+            .grapheme_end_after(row, col, count)
+            .saturating_sub(1);
         self.record_boundary();
-        self.buffer.delete_range(row, col, row, col + count - 1);
+        self.buffer.delete_range(row, col, row, end);
         self.buffer.insert_newline(row, col);
         self.cursor.set_position(row.saturating_add(1), 0);
     }
@@ -66,13 +71,22 @@ impl Editor {
     }
 
     pub(super) fn replace_text_at(&mut self, row: usize, col: usize, count: usize, text: &str) {
-        self.buffer.delete_range(row, col, row, col + count - 1);
+        let end = self
+            .buffer
+            .grapheme_end_after(row, col, count)
+            .saturating_sub(1);
+        self.buffer.delete_range(row, col, row, end);
         for (index, ch) in text.chars().enumerate() {
             self.buffer.insert_char(row, col + index, ch);
         }
-        let last = col.saturating_add(text.chars().count().saturating_sub(1));
-        let max = self.buffer.line_len(row).saturating_sub(1);
-        self.cursor.set_position(row, last.min(max));
+        let inserted_end = col.saturating_add(text.chars().count());
+        let last = if text.is_empty() {
+            col
+        } else {
+            self.buffer.prev_grapheme_col(row, inserted_end)
+        };
+        self.cursor
+            .set_position(row, last.min(self.max_col_for_row(row)));
     }
 }
 

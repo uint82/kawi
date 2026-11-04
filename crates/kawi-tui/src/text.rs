@@ -13,19 +13,19 @@ pub fn char_width(character: char) -> usize {
 }
 
 pub fn display_width(text: &str) -> usize {
-    text.chars().map(char_width).sum()
+    kawi_buffer::unicode::display_width(text)
 }
 
 pub fn char_count(text: &str) -> usize {
-    text.chars().count()
+    kawi_buffer::unicode::char_count(text)
 }
 
 pub fn truncate_to_display_width(text: &str, width: usize) -> &str {
     let mut used: usize = 0;
-    for (index, character) in text.char_indices() {
-        let next = used.saturating_add(char_width(character));
+    for grapheme in kawi_buffer::unicode::graphemes(text) {
+        let next = used.saturating_add(display_width(grapheme.text()));
         if next > width {
-            return &text[..index];
+            return &text[..grapheme.start_byte()];
         }
         used = next;
     }
@@ -69,6 +69,33 @@ mod tests {
     #[test]
     fn counts_characters_not_bytes_or_cells() {
         assert_eq!(char_count("a\u{4e2d}\u{301}"), 3);
+    }
+
+    #[test]
+    fn measures_emoji_sequences_as_single_cells() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
+        let flag = "\u{1f1ee}\u{1f1e9}";
+        let skin = "\u{1f44d}\u{1f3fd}";
+        assert_eq!(display_width(family), 2);
+        assert_eq!(display_width(flag), 2);
+        assert_eq!(display_width(skin), 2);
+        assert_eq!(display_width("e\u{301}"), 1);
+    }
+
+    #[test]
+    fn matches_neovim_keycap_and_text_emoji_widths() {
+        assert_eq!(display_width("1\u{fe0f}\u{20e3}"), 1);
+        assert_eq!(display_width("\u{1f577}"), 2);
+        assert_eq!(display_width("\u{1f170}"), 1);
+        assert_eq!(display_width("\u{1f170}\u{fe0f}"), 2);
+    }
+
+    #[test]
+    fn truncates_emoji_sequences_as_single_cells() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
+        let line = format!("a{family}b");
+        assert_eq!(truncate_to_display_width(&line, 2), "a");
+        assert_eq!(truncate_to_display_width(&line, 3), format!("a{family}"));
     }
 
     #[test]
