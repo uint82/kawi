@@ -6,6 +6,9 @@ use kawi_watch::Fingerprint;
 
 use crate::app::identity::{file_identity, find_moved_entry, FileIdentity};
 
+mod file;
+use file::DiskFile;
+
 pub(super) const STATUS_CHANGED: &str = "changed";
 pub(super) const STATUS_DELETED: &str = "deleted";
 
@@ -22,9 +25,9 @@ pub(super) struct ObservedFile {
 }
 
 impl ObservedFile {
-    pub(super) fn read(path: &Path) -> Self {
+    pub(super) fn read(path: &Path, previous: Option<Fingerprint>) -> Self {
         Self {
-            fingerprint: Fingerprint::read(path).ok(),
+            fingerprint: Fingerprint::refresh(path, previous.as_ref()).ok(),
             identity: file_identity(path),
         }
     }
@@ -32,17 +35,6 @@ impl ObservedFile {
     pub(super) fn is_missing(&self) -> bool {
         self.fingerprint.is_none() && self.identity.is_none()
     }
-}
-
-struct DiskFile {
-    path: PathBuf,
-    identity: Option<FileIdentity>,
-    base: Option<Fingerprint>,
-    current: Option<Fingerprint>,
-    changed: bool,
-    deleted: bool,
-    conflict: bool,
-    dismissed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +71,10 @@ impl DiskState {
 
     pub(in crate::app) fn path(&self, number: usize) -> Option<&Path> {
         self.files.get(&number).map(|file| file.path.as_path())
+    }
+
+    pub(super) fn fingerprint(&self, number: usize) -> Option<Fingerprint> {
+        self.files.get(&number).and_then(DiskFile::fingerprint)
     }
 
     pub(super) fn status(&self, number: usize) -> Option<&'static str> {
@@ -186,114 +182,5 @@ impl DiskState {
                     .insert(number, DiskFile::from_fingerprint(path, fingerprint));
             }
         }
-    }
-}
-
-impl DiskFile {
-    fn new(path: PathBuf) -> Self {
-        let observed = ObservedFile::read(&path);
-        Self::from_observed(path, observed)
-    }
-
-    fn from_fingerprint(path: PathBuf, fingerprint: Option<Fingerprint>) -> Self {
-        Self::from_observed(
-            path.clone(),
-            ObservedFile {
-                fingerprint,
-                identity: file_identity(&path),
-            },
-        )
-    }
-
-    fn from_observed(path: PathBuf, observed: ObservedFile) -> Self {
-        Self {
-            path,
-            identity: observed.identity,
-            base: observed.fingerprint,
-            current: observed.fingerprint,
-            changed: false,
-            deleted: false,
-            conflict: false,
-            dismissed: false,
-        }
-    }
-
-    pub(super) fn observe(&mut self, observed: ObservedFile) -> Observation {
-        if observed.fingerprint.is_some() {
-            self.identity = observed.identity;
-        }
-        let Some(observed) = observed.fingerprint else {
-            if self.base.is_none() && self.current.is_none() {
-                return Observation::Ignored;
-            }
-            if self.deleted {
-                return Observation::Ignored;
-            }
-            self.current = None;
-            self.changed = true;
-            self.deleted = true;
-            self.conflict = false;
-            self.dismissed = false;
-            return Observation::Deleted;
-        };
-        if self
-            .base
-            .as_ref()
-            .is_some_and(|base| base.matches(&observed))
-        {
-            self.accept(observed);
-            return Observation::Same;
-        }
-        if !self.deleted
-            && self
-                .current
-                .as_ref()
-                .is_some_and(|current| current.matches(&observed))
-        {
-            return Observation::Ignored;
-        }
-        self.current = Some(observed);
-        self.deleted = false;
-        Observation::Changed
-    }
-
-    pub(super) fn accept(&mut self, fingerprint: Fingerprint) {
-        self.identity = file_identity(&self.path);
-        self.base = Some(fingerprint);
-        self.current = Some(fingerprint);
-        self.changed = false;
-        self.deleted = false;
-        self.conflict = false;
-        self.dismissed = false;
-    }
-
-    pub(super) fn accept_current(&mut self) {
-        self.base = self.current;
-        self.changed = false;
-        self.deleted = false;
-        self.conflict = false;
-        self.dismissed = false;
-    }
-
-    pub(super) fn mark_changed(&mut self) {
-        self.changed = true;
-        self.conflict = false;
-        self.dismissed = false;
-    }
-
-    pub(super) fn mark_conflict(&mut self) {
-        self.changed = true;
-        self.conflict = true;
-        self.dismissed = false;
-    }
-
-    pub(super) fn record_saved(&mut self, fingerprint: Option<Fingerprint>) {
-        self.identity = file_identity(&self.path);
-        self.base = fingerprint;
-        self.current = fingerprint;
-        self.changed = false;
-        self.deleted = false;
-        self.conflict = false;
-        self.dismissed = false;
     }
 }

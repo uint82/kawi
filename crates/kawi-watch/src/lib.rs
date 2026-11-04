@@ -1,21 +1,21 @@
 use std::collections::BTreeSet;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
-use kawi_buffer::content_hash;
 use notify::event::{AccessKind, AccessMode, EventKind};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 
 mod clock;
 mod debounce;
+mod fingerprint;
 
 #[cfg(test)]
 mod tests;
+
+pub use fingerprint::Fingerprint;
 
 use clock::WatchOptions;
 use debounce::Debounce;
@@ -24,33 +24,6 @@ const DEBOUNCE: Duration = Duration::from_millis(75);
 const TICK: Duration = Duration::from_millis(10);
 #[cfg(test)]
 const WATCH_READY_TIMEOUT: Duration = Duration::from_secs(2);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fingerprint {
-    modified: Option<SystemTime>,
-    len: u64,
-    hash: u64,
-}
-
-impl Fingerprint {
-    pub fn read(path: &Path) -> io::Result<Self> {
-        let metadata = fs::metadata(path)?;
-        let bytes = fs::read(path)?;
-        Ok(Self {
-            modified: metadata.modified().ok(),
-            len: bytes.len() as u64,
-            hash: content_hash(&bytes),
-        })
-    }
-
-    pub fn matches(&self, other: &Self) -> bool {
-        self.len == other.len && self.hash == other.hash
-    }
-
-    pub fn modified(&self) -> Option<SystemTime> {
-        self.modified
-    }
-}
 
 pub struct WatchService {
     commands: Sender<Command>,
