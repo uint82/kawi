@@ -231,6 +231,13 @@ impl GitStatusState {
         self.last_error.as_deref()
     }
 
+    pub(super) fn shutdown(&mut self) {
+        if let Some(service) = self.service.as_mut() {
+            service.shutdown();
+        }
+        self.watcher = None;
+    }
+
     pub(super) fn clear(&mut self) {
         self.discard_status();
         self.path = None;

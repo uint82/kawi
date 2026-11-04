@@ -176,18 +176,18 @@ impl App {
         if self.skip_undo_buffer(number, &path) {
             return;
         }
-        let Some(hash) = self.editor.buffer_source_hash(number) else {
-            return;
-        };
-        if !disk_matches(Path::new(&path), &hash) {
-            return;
-        }
         let Some(history) = self.editor.buffer_history(number) else {
             return;
         };
         if !history.has_changes() {
             store.remove(Path::new(&path));
             self.undo.attach(number, path);
+            return;
+        }
+        let Some(hash) = self.editor.buffer_source_hash(number) else {
+            return;
+        };
+        if !disk_matches(Path::new(&path), &hash) {
             return;
         }
         if let Err(error) = store.save(Path::new(&path), &hash, &history) {

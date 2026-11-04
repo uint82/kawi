@@ -43,6 +43,17 @@ fn two_server_config(root: &Path, mode: &str) -> PathBuf {
     path
 }
 
+fn shutdown_config(root: &Path, ignore: bool, delay: u64) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let ignore = u8::from(ignore);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_IGNORE_SHUTDOWN = \"{ignore}\"\nFAKE_LSP_SHUTDOWN_DELAY_MS = \"{delay}\"\n\n[server.fake2]\ncommand = \"{command}\"\nargs = []\n\n[server.fake2.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_IGNORE_SHUTDOWN = \"{ignore}\"\nFAKE_LSP_SHUTDOWN_DELAY_MS = \"{delay}\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\", \"fake2\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
 fn rename_config(root: &Path, rename_mode: &str, rename_delay: u64) -> PathBuf {
     let path = root.join("languages.toml");
     let command = escape_toml(FAKE_SERVER);
@@ -213,6 +224,25 @@ fn wait_for_ready(service: &LspService) {
             LspEvent::Status(status) if status.state == ServerState::Ready
         )
     });
+}
+
+fn wait_for_all_ready(service: &LspService, servers: &[&str]) {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let mut ready: Vec<String> = Vec::new();
+    while Instant::now() < deadline {
+        while let Some(event) = service.try_recv() {
+            if let LspEvent::Status(status) = event {
+                if status.state == ServerState::Ready && !ready.contains(&status.server) {
+                    ready.push(status.server);
+                }
+            }
+        }
+        if ready.len() == servers.len() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    panic!("servers did not become ready: {ready:?}");
 }
 
 fn wait_for_state(service: &LspService, state: ServerState) {
@@ -699,6 +729,23 @@ fn stops_the_server_process_on_drop() {
     let pid: i32 = pid.trim().parse().expect("pid");
     drop(service);
     assert_ne!(unsafe { libc::kill(pid, 0) }, 0);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn shutdown_is_bounded_when_servers_ignore_requests() {
+    let root = temp_project("shutdown_bounded");
+    let config = shutdown_config(&root, true, 0);
+    let languages = Languages::load(&config);
+    let (wake, _wake_rx) = mpsc::channel();
+    let service = LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5))
+        .expect("service");
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_all_ready(&service, &["fake", "fake2"]);
+    let started = Instant::now();
+    drop(service);
+    assert!(started.elapsed() < Duration::from_millis(1_500));
     fs::remove_dir_all(root).expect("cleanup");
 }
 

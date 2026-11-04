@@ -58,6 +58,11 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
+    let shutdown_delay = std::env::var("FAKE_LSP_SHUTDOWN_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let ignore_shutdown = std::env::var("FAKE_LSP_IGNORE_SHUTDOWN").is_ok_and(|value| value == "1");
     let symbol_settings = SymbolSettings {
         mode: &symbol_mode,
         delay: symbol_delay,
@@ -186,7 +191,12 @@ fn main() -> Result<()> {
                     handle_workspace_diagnostic(&mut writer, id, params, &documents)?
                 }
                 "shutdown" => {
-                    send(&mut writer, Message::response(id, Value::Null))?;
+                    if !ignore_shutdown {
+                        if shutdown_delay > 0 {
+                            std::thread::sleep(Duration::from_millis(shutdown_delay));
+                        }
+                        send(&mut writer, Message::response(id, Value::Null))?;
+                    }
                 }
                 _ => {
                     send(

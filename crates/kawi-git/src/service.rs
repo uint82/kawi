@@ -52,14 +52,21 @@ impl StatusService {
     pub fn try_recv(&self) -> Option<StatusEvent> {
         self.events.try_recv().ok()
     }
+
+    pub fn shutdown(&mut self) {
+        self.requests.take();
+        let Some(worker) = self.worker.take() else {
+            return;
+        };
+        if worker.is_finished() {
+            let _ = worker.join();
+        }
+    }
 }
 
 impl Drop for StatusService {
     fn drop(&mut self) {
-        self.requests.take();
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+        self.shutdown();
     }
 }
 
