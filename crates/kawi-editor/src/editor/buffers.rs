@@ -6,7 +6,6 @@ use kawi_buffer::{
 };
 use ropey::Rope;
 
-use super::indent::{self, IndentConfig};
 use super::repeat::RepeatChange;
 use super::session::InsertEdit;
 use super::SearchStatus;
@@ -107,7 +106,6 @@ pub(super) struct ParkedState {
     pub(super) buffer: Buffer,
     listed: bool,
     cursor: Cursor,
-    pub(super) file_indent: IndentConfig,
     runtime_shiftwidth: Option<usize>,
     runtime_expandtab: Option<bool>,
     language_indent: super::options::LanguageIndent,
@@ -879,9 +877,13 @@ impl Editor {
         if number == self.buffers.current() {
             return Some(self.effective_indent().tabstop);
         }
-        self.buffers
-            .entry(number)
-            .map(|entry| entry.state.file_indent.tabstop)
+        self.buffers.entry(number).map(|entry| {
+            entry
+                .state
+                .language_indent
+                .tabstop()
+                .unwrap_or(super::indent::DEFAULT_TABSTOP)
+        })
     }
 
     fn buffer_is_dirty_at(&self, number: usize) -> Option<bool> {
@@ -1276,7 +1278,6 @@ impl Editor {
             buffer: std::mem::replace(&mut self.buffer, Buffer::from_string("")),
             listed: self.buffers.current_listed,
             cursor: std::mem::take(&mut self.cursor),
-            file_indent: std::mem::replace(&mut self.file_indent, indent::detect(None)),
             runtime_shiftwidth: self.runtime_shiftwidth.take(),
             runtime_expandtab: self.runtime_expandtab.take(),
             language_indent: std::mem::take(&mut self.language_indent),
@@ -1301,7 +1302,6 @@ impl Editor {
         self.buffer = state.buffer;
         self.buffers.current_listed = state.listed;
         self.cursor = state.cursor;
-        self.file_indent = state.file_indent;
         self.runtime_shiftwidth = state.runtime_shiftwidth;
         self.runtime_expandtab = state.runtime_expandtab;
         self.language_indent = state.language_indent;
@@ -1327,7 +1327,6 @@ impl Editor {
     }
 
     fn load_fresh(&mut self, buffer: Buffer) {
-        self.file_indent = indent::detect(buffer.path.as_deref());
         self.buffer = buffer;
         self.cursor = Cursor::default();
         self.viewport.place_top(0, self.buffer.line_count());
@@ -1936,18 +1935,6 @@ mod tests {
         assert!(!e.is_dirty());
         assert_eq!(read_file(&dir, "a.txt"), "alpha\n");
         assert_eq!(read_file(&dir, "copy.txt"), "xalpha\n");
-    }
-
-    #[test]
-    fn save_as_redetects_language_defaults() {
-        let dir = temp_dir("save_as_language");
-        write_file(&dir, "a.txt", "alpha\n");
-        let mut e = editor_in(&dir, "a.txt");
-        assert_eq!(e.shiftwidth(), 8);
-        let target = file_path(&dir, "copy.rs");
-        e.save_as(&target, false).unwrap();
-        assert_eq!(e.shiftwidth(), 4);
-        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

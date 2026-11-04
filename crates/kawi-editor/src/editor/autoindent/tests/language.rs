@@ -197,3 +197,66 @@ fn paste_is_not_reindented() {
     e.paste("if nested:");
     assert_eq!(e.text_lines()[1], "    if nested:");
 }
+
+#[test]
+fn nested_blocks_indent_from_the_innermost_opener() {
+    let mut e = bracket_editor(
+        "void f() {\n    if (x) {\n        foo();\n    }\n}",
+        LanguageId::Cpp,
+    );
+    e.apply(Action::JumpTo(1, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[2], "        ");
+}
+
+#[test]
+fn statement_inside_nested_block_keeps_its_indent() {
+    let mut e = bracket_editor(
+        "void f() {\n    if (x) {\n        foo();\n    }\n}",
+        LanguageId::Cpp,
+    );
+    e.apply(Action::JumpTo(2, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[3], "        ");
+}
+
+#[test]
+fn declaration_inside_nested_block_keeps_its_indent() {
+    let mut e = bracket_editor(
+        "void f() {\n    if (x) {\n        int value = 1;\n    }\n}",
+        LanguageId::Cpp,
+    );
+    e.apply(Action::JumpTo(2, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[3], "        ");
+}
+
+#[test]
+fn blank_line_inside_nested_block_uses_body_indent() {
+    let mut e = bracket_editor("void f() {\n    if (x) {\n\n    }\n}", LanguageId::Cpp);
+    e.apply(Action::JumpTo(2, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[3], "        ");
+}
+
+#[test]
+fn closing_brace_keeps_the_current_line_indent() {
+    let mut e = bracket_editor(
+        "namespace demo {\nconcept Addable = requires(T value) {\n    value + value;\n};\n}",
+        LanguageId::Cpp,
+    );
+    e.apply(Action::JumpTo(3, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[4], "");
+}
+
+#[test]
+fn nested_closing_bracket_keeps_the_current_line_indent() {
+    let mut e = bracket_editor(
+        "{\n    \"a\": [\n        {\n            \"b\": 1\n        }\n    ]\n}",
+        LanguageId::Json,
+    );
+    e.apply(Action::JumpTo(4, 0));
+    e.apply(Action::OpenLineBelow);
+    assert_eq!(e.text_lines()[5], "        ");
+}

@@ -11,7 +11,9 @@ mod text;
 mod warning;
 mod workspace;
 
-pub use config::{FormatterConfig, LanguageConfig, Languages, ServerConfig, MAX_SHIFTWIDTH};
+pub use config::{
+    FormatterConfig, IndentConfig, LanguageConfig, Languages, ServerConfig, MAX_SHIFTWIDTH,
+};
 pub use editing::{BlockCommentConfig, PairConfig};
 pub use service::{
     CodeActionEntry, CodeActionEvent, CompletionCapabilitiesEvent, CompletionEntry,

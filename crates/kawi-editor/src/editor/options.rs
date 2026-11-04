@@ -15,12 +15,25 @@ impl Default for BufferOptionDefaults {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LanguageIndent {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IndentOptions {
     pub shiftwidth: Option<usize>,
     pub expandtab: Option<bool>,
+    pub tabstop: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LanguageIndent {
+    pub defaults: IndentOptions,
+    pub overrides: IndentOptions,
     pub language: Option<LanguageId>,
     pub rules: IndentRules,
+}
+
+impl LanguageIndent {
+    pub fn tabstop(&self) -> Option<usize> {
+        self.overrides.tabstop.or(self.defaults.tabstop)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,40 +148,91 @@ mod tests {
         Editor::new(Buffer::from_string("text"))
     }
 
-    #[test]
-    fn language_indent_precedes_config_defaults() {
-        let mut editor = editor();
-        editor.set_buffer_defaults(BufferOptionDefaults {
-            shiftwidth: Some(6),
-            expandtab: Some(false),
+    fn indent(shiftwidth: usize, expandtab: bool, tabstop: usize) -> IndentOptions {
+        IndentOptions {
+            shiftwidth: Some(shiftwidth),
+            expandtab: Some(expandtab),
+            tabstop: Some(tabstop),
+        }
+    }
+
+    fn defaults(shiftwidth: usize, expandtab: bool) -> BufferOptionDefaults {
+        BufferOptionDefaults {
+            shiftwidth: Some(shiftwidth),
+            expandtab: Some(expandtab),
             autoindent: true,
-        });
+        }
+    }
+
+    #[test]
+    fn language_defaults_precede_built_in_indent() {
+        let mut editor = editor();
         editor.set_language_indent(LanguageIndent {
-            shiftwidth: Some(2),
-            expandtab: Some(true),
+            defaults: indent(2, true, 2),
             ..LanguageIndent::default()
         });
         assert_eq!(editor.shiftwidth(), 2);
         assert!(editor.expandtab());
+        assert_eq!(editor.tabstop(), 2);
     }
 
     #[test]
-    fn runtime_indent_precedes_language_settings() {
+    fn config_defaults_precede_language_defaults() {
         let mut editor = editor();
-        editor.set_buffer_defaults(BufferOptionDefaults {
-            shiftwidth: Some(6),
-            expandtab: Some(false),
-            autoindent: true,
-        });
+        editor.set_buffer_defaults(defaults(6, false));
         editor.set_language_indent(LanguageIndent {
-            shiftwidth: Some(2),
-            expandtab: Some(true),
+            defaults: indent(2, true, 2),
+            ..LanguageIndent::default()
+        });
+        assert_eq!(editor.shiftwidth(), 6);
+        assert!(!editor.expandtab());
+        assert_eq!(editor.tabstop(), 2);
+    }
+
+    #[test]
+    fn language_overrides_precede_config_defaults() {
+        let mut editor = editor();
+        editor.set_buffer_defaults(defaults(6, false));
+        editor.set_language_indent(LanguageIndent {
+            defaults: indent(4, true, 4),
+            overrides: indent(2, true, 3),
+            ..LanguageIndent::default()
+        });
+        assert_eq!(editor.shiftwidth(), 2);
+        assert!(editor.expandtab());
+        assert_eq!(editor.tabstop(), 3);
+    }
+
+    #[test]
+    fn runtime_indent_precedes_language_overrides() {
+        let mut editor = editor();
+        editor.set_buffer_defaults(defaults(6, false));
+        editor.set_language_indent(LanguageIndent {
+            defaults: indent(4, true, 4),
+            overrides: indent(2, true, 3),
             ..LanguageIndent::default()
         });
         editor.set_shiftwidth(5);
         editor.set_expandtab(false);
         assert_eq!(editor.shiftwidth(), 5);
         assert!(!editor.expandtab());
+        assert_eq!(editor.tabstop(), 3);
+    }
+
+    #[test]
+    fn language_overrides_can_set_one_field() {
+        let mut editor = editor();
+        editor.set_language_indent(LanguageIndent {
+            defaults: indent(4, true, 4),
+            overrides: IndentOptions {
+                shiftwidth: Some(2),
+                ..IndentOptions::default()
+            },
+            ..LanguageIndent::default()
+        });
+        assert_eq!(editor.shiftwidth(), 2);
+        assert!(editor.expandtab());
+        assert_eq!(editor.tabstop(), 4);
     }
 
     #[test]
@@ -176,5 +240,6 @@ mod tests {
         let editor = editor();
         assert_eq!(editor.shiftwidth(), 8);
         assert!(!editor.expandtab());
+        assert_eq!(editor.tabstop(), 8);
     }
 }

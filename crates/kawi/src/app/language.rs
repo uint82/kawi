@@ -48,15 +48,19 @@ mod tests {
     }
 
     fn app(path: &str) -> App {
-        let mut buffer = Buffer::from_string("fn main() {}\n");
-        buffer.path = Some(path.to_string());
-        let mut app = App::new(buffer, Flavor::Vim);
+        let mut app = plain_app(path);
         app.editor.set_buffer_defaults(BufferOptionDefaults {
             shiftwidth: Some(6),
             expandtab: Some(false),
             autoindent: true,
         });
         app
+    }
+
+    fn plain_app(path: &str) -> App {
+        let mut buffer = Buffer::from_string("fn main() {}\n");
+        buffer.path = Some(path.to_string());
+        App::new(buffer, Flavor::Vim)
     }
 
     fn load_languages(app: &mut App, dir: &Path, text: &str) {
@@ -108,6 +112,44 @@ mod tests {
                 kawi_editor::Pair::new('{', '}'),
             ]
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn built_in_language_indent_applies() {
+        let dir = temp_dir("builtin_indent");
+        let mut app = plain_app("main.py");
+        load_languages(&mut app, &dir, "");
+        assert_eq!(app.editor.shiftwidth(), 4);
+        assert!(app.editor.expandtab());
+        assert_eq!(app.editor.tabstop(), 4);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn editor_defaults_precede_built_in_language_indent() {
+        let dir = temp_dir("global_indent");
+        let mut app = app("main.py");
+        load_languages(&mut app, &dir, "");
+        assert_eq!(app.editor.shiftwidth(), 6);
+        assert!(!app.editor.expandtab());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn save_as_syncs_language_indent() {
+        let dir = temp_dir("save_as_indent");
+        let source = dir.join("a.txt");
+        fs::write(&source, "alpha\n").unwrap();
+        let mut app = plain_app(source.to_str().unwrap());
+        load_languages(&mut app, &dir, "");
+        assert_eq!(app.editor.shiftwidth(), 8);
+        let target = dir.join("copy.rs");
+        app.run_command(kawi_editor::parse(&format!("saveas {}", target.display())))
+            .unwrap();
+        assert_eq!(app.editor.shiftwidth(), 4);
+        assert!(app.editor.expandtab());
+        assert_eq!(app.editor.tabstop(), 4);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -202,6 +244,25 @@ mod tests {
         );
         assert_eq!(app.editor.shiftwidth(), 6);
         assert!(!app.editor.expandtab());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cpp_closing_brace_keeps_the_current_line_indent() {
+        let dir = temp_dir("cpp_close");
+        let mut buffer = Buffer::from_string(
+            "namespace demo {\nconcept Addable = requires(T value) {\n    value + value;\n};\n}",
+        );
+        buffer.path = Some("test.cpp".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        load_languages(&mut app, &dir, "");
+        app.editor.apply(kawi_editor::Action::JumpTo(3, 0));
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('o'),
+            crossterm::event::KeyModifiers::NONE,
+        ))
+        .unwrap();
+        assert_eq!(app.editor.text_lines()[4], "");
         let _ = fs::remove_dir_all(dir);
     }
 }

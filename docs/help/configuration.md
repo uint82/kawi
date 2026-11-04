@@ -35,6 +35,30 @@ foldcolumn = 1
 
 Options can also be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
 
+## Indentation
+
+Kawi applies per-language indentation defaults. Rust, Python, C, C++, Java, C#, and PHP use 4 spaces. TypeScript, JavaScript, JSON, HTML, CSS, YAML, and Ruby use 2 spaces. Go uses tabs. The built-in defaults follow the formatter and style guide for each language.
+
+Indentation settings resolve in this order, from highest priority to lowest:
+
+1. `:set` in the current buffer
+2. A matching `[[language]]` entry in `languages.toml`
+3. Explicit `[editor]` settings in `config.toml`
+4. Built-in language defaults
+5. Built-in fallback
+
+Add per-language overrides in `$XDG_CONFIG_HOME/kawi/languages.toml`:
+
+```toml
+[[language]]
+name = "rust"
+shiftwidth = 2
+expandtab = true
+tabstop = 2
+```
+
+`shiftwidth` sets the indentation unit. `expandtab` inserts spaces instead of tabs. `tabstop` sets the display width of a tab.
+
 ## Keymaps
 
 Custom mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`, normally `~/.config/kawi/keymaps.toml`. They are kept separate from options so plugins and users can share mappings without rewriting `config.toml`.

@@ -80,6 +80,10 @@ fn canonical_indent(width: usize, expandtab: bool, tabstop: usize) -> String {
     "\t".repeat(width / tabstop) + &" ".repeat(width % tabstop)
 }
 
+pub const DEFAULT_SHIFTWIDTH: usize = 8;
+pub const DEFAULT_EXPANDTAB: bool = false;
+pub const DEFAULT_TABSTOP: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndentConfig {
     pub shiftwidth: usize,
@@ -94,40 +98,5 @@ impl IndentConfig {
         } else {
             self.shiftwidth
         }
-    }
-
-    fn filetype(shiftwidth: usize, expandtab: bool, tabstop: usize) -> Self {
-        Self {
-            shiftwidth,
-            expandtab,
-            tabstop,
-        }
-    }
-
-    fn fallback() -> Self {
-        Self {
-            shiftwidth: 8,
-            expandtab: false,
-            tabstop: 8,
-        }
-    }
-}
-
-pub fn detect(path: Option<&str>) -> IndentConfig {
-    let extension = path
-        .filter(|name| name.contains('.'))
-        .and_then(|name| name.rsplit('.').next())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    match extension.as_str() {
-        "py" => IndentConfig::filetype(4, true, 4),
-        "md" | "markdown" | "mdown" => IndentConfig::filetype(4, true, 4),
-        "rs" | "zig" | "swift" => IndentConfig::filetype(4, true, 8),
-        "yaml" | "yml" | "rb" | "scala" | "ex" | "exs" | "clj" | "scss" | "proto" | "graphql"
-        | "gql" => IndentConfig::filetype(2, true, 8),
-        "tf" | "idr" => IndentConfig::filetype(2, true, 2),
-        "ml" | "mli" | "elm" | "f90" | "rst" => IndentConfig::filetype(8, true, 8),
-        "go" => IndentConfig::filetype(0, false, 8),
-        _ => IndentConfig::fallback(),
     }
 }

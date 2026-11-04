@@ -1,11 +1,13 @@
 use crate::editing;
 use crate::editing::token_is_valid;
-use crate::{FormatterConfig, LanguageConfig, LanguageWarning, ServerConfig, MAX_SHIFTWIDTH};
+use crate::{FormatterConfig, LanguageConfig, LanguageWarning, ServerConfig};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use toml::Value;
+
+mod indent;
 
 #[derive(Default, Deserialize)]
 #[serde(default)]
@@ -89,6 +91,7 @@ pub(crate) struct LanguageOverride {
     formatter: Option<Value>,
     shiftwidth: Option<Value>,
     expandtab: Option<Value>,
+    tabstop: Option<Value>,
     indent_after_suffixes: Option<Value>,
     indent_after_keywords: Option<Value>,
     indent_brackets: Option<Value>,
@@ -136,44 +139,6 @@ fn apply_formatter(
     }
 }
 
-fn apply_shiftwidth(
-    language: &mut LanguageConfig,
-    value: Value,
-    warnings: &mut Vec<LanguageWarning>,
-) {
-    let parsed = match value {
-        Value::Integer(value) if (0..=MAX_SHIFTWIDTH as i64).contains(&value) => {
-            Some(value as usize)
-        }
-        value => {
-            warnings.push(LanguageWarning::new(format!(
-                "language {}: shiftwidth must be an integer from 0 to {MAX_SHIFTWIDTH}, got {value}; using editor settings",
-                language.name
-            )));
-            None
-        }
-    };
-    language.shiftwidth = parsed;
-}
-
-fn apply_expandtab(
-    language: &mut LanguageConfig,
-    value: Value,
-    warnings: &mut Vec<LanguageWarning>,
-) {
-    let parsed = match value {
-        Value::Boolean(value) => Some(value),
-        value => {
-            warnings.push(LanguageWarning::new(format!(
-                "language {}: expandtab must be a boolean, got {value}; using editor settings",
-                language.name
-            )));
-            None
-        }
-    };
-    language.expandtab = parsed;
-}
-
 fn parse_string_list(
     language: &str,
     value: Value,
@@ -219,12 +184,16 @@ impl LanguageOverride {
         mut language: LanguageConfig,
     ) -> (LanguageConfig, Vec<LanguageWarning>) {
         let mut warnings = Vec::new();
-        if let Some(value) = self.shiftwidth {
-            apply_shiftwidth(&mut language, value, &mut warnings);
-        }
-        if let Some(value) = self.expandtab {
-            apply_expandtab(&mut language, value, &mut warnings);
-        }
+        indent::apply(
+            &mut language.indent_override,
+            indent::IndentOverride {
+                shiftwidth: self.shiftwidth,
+                expandtab: self.expandtab,
+                tabstop: self.tabstop,
+            },
+            &language.name,
+            &mut warnings,
+        );
         if let Some(value) = self.indent_after_suffixes {
             if let Some(tokens) = parse_string_list(
                 &language.name,
