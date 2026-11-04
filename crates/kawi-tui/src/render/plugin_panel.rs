@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
-use crossterm::{cursor::MoveTo, execute, style::SetForegroundColor, terminal::ClearType};
 use std::io::Write;
 
+use super::paint;
 use super::picker::write_padding;
-use super::{paint, saturate_u16};
 use crate::frame::{PluginPanel, PluginPanelLine};
+use crate::surface::Surface;
 use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::{MatchColors, Theme};
 
-pub(super) fn draw_plugin_panel<W: Write>(out: &mut W, frame: &crate::frame::Frame) -> Result<()> {
+pub(super) fn draw_plugin_panel(out: &mut Surface, frame: &crate::frame::Frame) -> Result<()> {
     let Some(panel) = frame.plugin_panel.as_ref() else {
         return Ok(());
     };
@@ -16,8 +16,8 @@ pub(super) fn draw_plugin_panel<W: Write>(out: &mut W, frame: &crate::frame::Fra
     draw_lines(out, frame.theme, panel)
 }
 
-fn draw_header<W: Write>(out: &mut W, theme: &Theme, panel: &PluginPanel<'_>) -> Result<()> {
-    prepare_line(out, panel.rect.x, panel.rect.y)?;
+fn draw_header(out: &mut Surface, theme: &Theme, panel: &PluginPanel<'_>) -> Result<()> {
+    prepare_line(out, panel.rect.x, panel.rect.y);
     let colors = if panel.focused {
         theme.status.clone()
     } else {
@@ -26,44 +26,40 @@ fn draw_header<W: Write>(out: &mut W, theme: &Theme, panel: &PluginPanel<'_>) ->
             background: theme.base.background,
         }
     };
-    paint::apply_match(out, &colors)?;
+    paint::apply_match(out, &colors);
     let header = header_text(panel);
     let header = truncate_to_display_width(&header, panel.rect.width);
     write!(out, "{header}").context("write plugin panel header")?;
     write_padding(out, display_width(header), panel.rect.width)?;
-    paint::restore_base(out, theme)?;
+    paint::restore_base(out, theme);
     Ok(())
 }
 
-fn draw_lines<W: Write>(out: &mut W, theme: &Theme, panel: &PluginPanel<'_>) -> Result<()> {
+fn draw_lines(out: &mut Surface, theme: &Theme, panel: &PluginPanel<'_>) -> Result<()> {
     for offset in 0..panel.rect.height.saturating_sub(1) {
         let index = panel.offset.saturating_add(offset);
         let row = panel.rect.y.saturating_add(offset).saturating_add(1);
-        prepare_line(out, panel.rect.x, row)?;
+        prepare_line(out, panel.rect.x, row);
         let Some(line) = panel.lines.get(index) else {
-            paint::apply_base(out, theme)?;
+            paint::apply_base(out, theme);
             write_padding(out, 0, panel.rect.width)?;
             continue;
         };
-        paint::apply_base(out, theme)?;
-        apply_style(out, theme, line)?;
+        paint::apply_base(out, theme);
+        apply_style(out, theme, line);
         let text = truncate_to_display_width(&line.text, panel.rect.width);
         write!(out, "{text}").context("write plugin panel line")?;
         write_padding(out, display_width(text), panel.rect.width)?;
-        paint::restore_base(out, theme)?;
+        paint::restore_base(out, theme);
     }
     Ok(())
 }
 
-fn apply_style<W: Write>(out: &mut W, theme: &Theme, line: &PluginPanelLine) -> Result<()> {
+fn apply_style(out: &mut Surface, theme: &Theme, line: &PluginPanelLine) {
     let Some(style) = line.style else {
-        return Ok(());
+        return;
     };
-    execute!(
-        out,
-        SetForegroundColor(theme.decoration_colors(style).foreground)
-    )
-    .context("apply plugin panel line style")
+    out.set_foreground(theme.decoration_colors(style).foreground);
 }
 
 fn header_text(panel: &PluginPanel<'_>) -> String {
@@ -75,13 +71,9 @@ fn header_text(panel: &PluginPanel<'_>) -> String {
     }
 }
 
-fn prepare_line<W: Write>(out: &mut W, x: usize, y: usize) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(x), saturate_u16(y)),
-        crossterm::terminal::Clear(ClearType::CurrentLine)
-    )
-    .context("prepare plugin panel row")
+fn prepare_line(out: &mut Surface, x: usize, y: usize) {
+    out.move_to(x, y);
+    out.clear_line();
 }
 
 #[cfg(test)]

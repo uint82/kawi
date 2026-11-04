@@ -1,7 +1,7 @@
 use anyhow::Result;
-use std::io::Stdout;
 
 use crate::frame::DecorationStyle;
+use crate::surface::Surface;
 use crate::theme::Theme;
 
 mod build;
@@ -73,7 +73,7 @@ pub struct StatusInfo<'a> {
 }
 
 pub fn draw_status(
-    out: &mut Stdout,
+    out: &mut Surface,
     info: &StatusInfo<'_>,
     area: StatusArea,
     theme: &Theme,

@@ -7,6 +7,7 @@ pub mod paint;
 pub mod picker_layout;
 pub mod render;
 pub mod statusbar;
+pub mod surface;
 pub mod terminal;
 
 pub use frame::{CursorStyle, Selection};

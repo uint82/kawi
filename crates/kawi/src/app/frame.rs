@@ -24,7 +24,11 @@ fn cursor_style_for(mode: Mode) -> CursorStyle {
 }
 
 impl App {
-    pub(crate) fn draw_frame(&mut self, out: &mut Stdout) -> Result<()> {
+    pub(crate) fn draw_frame(
+        &mut self,
+        out: &mut Stdout,
+        renderer: &mut render::Renderer,
+    ) -> Result<()> {
         self.refresh_bracket_match();
         self.prepare_completion_overlay();
         self.sync_explorer_marks();
@@ -343,7 +347,7 @@ impl App {
             theme: &self.theme,
             statusline: &self.statusline,
         };
-        render::draw(out, &frame)
+        renderer.draw(out, &frame)
     }
 
     fn completion_menu(&self) -> Option<CompletionMenu<'_>> {

@@ -1,21 +1,17 @@
 use anyhow::{Context, Result};
-use crossterm::{
-    cursor::MoveTo,
-    execute,
-    style::{SetBackgroundColor, SetForegroundColor},
-};
-use std::io::{Stdout, Write};
+use std::io::Write;
 
-use super::super::{paint_span_at, saturate_u16, syntax_highlight_spans, SpanView};
+use super::super::highlight::{paint_span_at, syntax_highlight_spans, SpanView};
 use super::write_padding;
 use crate::display;
 use crate::frame::{Frame, PickerPreview, Rect};
 use crate::paint;
+use crate::surface::Surface;
 use crate::text::{display_width, sanitize_text, truncate_to_display_width};
 use kawi_editor::Viewport;
 
 pub(super) fn draw_preview(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     preview: Option<&PickerPreview<'_>>,
     rect: Option<Rect>,
@@ -49,17 +45,13 @@ pub(super) fn draw_preview(
 }
 
 fn draw_title(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     preview: &PickerPreview<'_>,
     rect: Rect,
 ) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(saturate_u16(rect.x), saturate_u16(rect.y)),
-        SetForegroundColor(frame.theme.line_number)
-    )
-    .context("move to preview title")?;
+    out.move_to(rect.x, rect.y);
+    out.set_foreground(frame.theme.line_number);
     let title = sanitize_text(preview.title);
     let title = truncate_to_display_width(&title, rect.width);
     write!(out, "{title}").context("write preview title")?;
@@ -98,19 +90,17 @@ fn preview_gutter_width(preview: &PickerPreview<'_>, first: usize) -> usize {
     last.to_string().len().saturating_add(1)
 }
 
-fn draw_lines(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) -> Result<()> {
+fn draw_lines(out: &mut Surface, frame: &Frame, view: &PreviewView<'_, '_>) -> Result<()> {
     let text_width = view.rect.width.saturating_sub(view.gutter_width);
     for (offset, line) in view.lines.iter().take(view.rect.height).enumerate() {
         let row = view.rect.y.saturating_add(offset);
-        execute!(out, MoveTo(saturate_u16(view.rect.x), saturate_u16(row)))
-            .context("move to preview line")?;
+        out.move_to(view.rect.x, row);
         write_line_number(out, frame, view, offset)?;
         paint::apply_colors(
             out,
             frame.theme.base.foreground,
             frame.theme.float_background,
-            "apply preview line colors",
-        )?;
+        );
         let text = display::slice_screen(line, 0, text_width, view.preview.tabstop);
         write!(out, "{text}").context("write preview line")?;
         write_padding(out, display_width(&text), text_width)?;
@@ -119,23 +109,18 @@ fn draw_lines(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) -> Re
 }
 
 fn write_line_number(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     view: &PreviewView<'_, '_>,
     offset: usize,
 ) -> Result<()> {
     let number = preview_line_number(view.preview, view.first, offset);
-    execute!(
-        out,
-        SetForegroundColor(frame.theme.line_number),
-        SetBackgroundColor(frame.theme.float_background)
-    )
-    .context("apply preview line number colors")?;
+    out.set_colors(frame.theme.line_number, frame.theme.float_background);
     let width = view.gutter_width.saturating_sub(1);
     write!(out, "{number:>width$} ").context("write preview line number")
 }
 
-fn draw_highlights(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) -> Result<()> {
+fn draw_highlights(out: &mut Surface, frame: &Frame, view: &PreviewView<'_, '_>) -> Result<()> {
     let text_width = view.rect.width.saturating_sub(view.gutter_width);
     let top = view.preview.first_line.saturating_add(view.first);
     let mut viewport = Viewport::new(view.rect.height, text_width);
@@ -162,37 +147,33 @@ fn draw_highlights(out: &mut Stdout, frame: &Frame, view: &PreviewView<'_, '_>) 
 }
 
 fn paint_focus_line(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     view: &PreviewView<'_, '_>,
     line: &str,
     offset: usize,
     width: usize,
 ) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(
-            saturate_u16(view.rect.x.saturating_add(view.gutter_width)),
-            saturate_u16(view.rect.y.saturating_add(offset))
-        )
-    )
-    .context("move to focused preview line")?;
-    paint::apply_match(out, &frame.theme.selection)?;
+    out.move_to(
+        view.rect.x.saturating_add(view.gutter_width),
+        view.rect.y.saturating_add(offset),
+    );
+    paint::apply_match(out, &frame.theme.selection);
     let text = display::slice_screen(line, 0, width, view.preview.tabstop);
     write!(out, "{text}").context("write focused preview line")?;
     paint::apply_colors(
         out,
         frame.theme.base.foreground,
         frame.theme.float_background,
-        "restore focused preview line colors",
-    )
+    );
+    Ok(())
 }
 
 fn paint_preview_span(
-    out: &mut Stdout,
+    out: &mut Surface,
     frame: &Frame,
     view: &PreviewView<'_, '_>,
-    span: &super::super::HighlightSpan,
+    span: &super::super::highlight::HighlightSpan,
 ) -> Result<()> {
     paint_span_at(
         out,

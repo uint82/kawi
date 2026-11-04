@@ -16,6 +16,10 @@ pub fn display_width(text: &str) -> usize {
     text.chars().map(char_width).sum()
 }
 
+pub fn char_count(text: &str) -> usize {
+    text.chars().count()
+}
+
 pub fn truncate_to_display_width(text: &str, width: usize) -> &str {
     let mut used: usize = 0;
     for (index, character) in text.char_indices() {
@@ -60,6 +64,11 @@ mod tests {
     fn truncates_at_display_boundaries() {
         assert_eq!(truncate_to_display_width("ab\u{4e2d}c", 3), "ab");
         assert_eq!(truncate_to_display_width("ab\u{4e2d}c", 4), "ab\u{4e2d}");
+    }
+
+    #[test]
+    fn counts_characters_not_bytes_or_cells() {
+        assert_eq!(char_count("a\u{4e2d}\u{301}"), 3);
     }
 
     #[test]

@@ -1,14 +1,13 @@
 use anyhow::Result;
-use crossterm::style::Color;
 use kawi_syntax::SyntaxHighlight;
-use std::io::Write;
 
 use crate::display;
 use crate::paint;
+use crate::surface::Surface;
 use crate::text::display_width;
 use crate::theme::Theme;
 
-use super::{write_segment, HighlightSpan, Tint};
+use super::highlight::{write_segment, HighlightSpan, Tint};
 
 pub(super) fn split_by_syntax(
     spans: Vec<HighlightSpan>,
@@ -96,25 +95,16 @@ pub(super) fn split_ranges<T: Copy>(
         .collect()
 }
 
-pub(super) fn paint_plain<W: Write>(
-    out: &mut W,
+pub(super) fn paint_plain(
+    out: &mut Surface,
     text: &str,
     theme: &Theme,
-    background: Color,
+    background: crossterm::style::Color,
 ) -> Result<()> {
-    paint::apply_colors(
-        out,
-        theme.base.foreground,
-        theme.selection.background,
-        "apply selection colors",
-    )?;
+    paint::apply_colors(out, theme.base.foreground, theme.selection.background);
     write_segment(out, text)?;
-    paint::apply_colors(
-        out,
-        theme.base.foreground,
-        background,
-        "restore selection colors",
-    )
+    paint::apply_colors(out, theme.base.foreground, background);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -197,23 +187,11 @@ mod tests {
     #[test]
     fn plain_selection_uses_base_foreground_and_selection_background() {
         let theme = Theme::default();
-        let mut out = Vec::new();
+        let mut out = Surface::new(1, 1, theme.base.foreground, theme.base.background);
         paint_plain(&mut out, "x", &theme, theme.base.background).expect("paint selection");
-        let output = String::from_utf8(out).expect("utf8");
-        assert!(output.contains('x'));
-        assert!(output.contains(&format_foreground(theme.base.foreground)));
-        assert!(output.contains(&format_background(theme.selection.background)));
-    }
-
-    fn format_foreground(color: Color) -> String {
-        let mut out = Vec::new();
-        crossterm::execute!(out, crossterm::style::SetForegroundColor(color)).expect("sequence");
-        String::from_utf8(out).expect("utf8")
-    }
-
-    fn format_background(color: Color) -> String {
-        let mut out = Vec::new();
-        crossterm::execute!(out, crossterm::style::SetBackgroundColor(color)).expect("sequence");
-        String::from_utf8(out).expect("utf8")
+        let cell = out.cell(0, 0).expect("selection cell");
+        assert_eq!(cell.text(), "x");
+        assert_eq!(cell.style().foreground(), theme.base.foreground);
+        assert_eq!(cell.style().background(), theme.selection.background);
     }
 }

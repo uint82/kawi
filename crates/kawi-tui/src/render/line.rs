@@ -1,19 +1,17 @@
-use std::io::{Stdout, Write};
+use std::io::Write;
 
 use anyhow::{Context, Result};
-use crossterm::{cursor::MoveTo, execute, style::SetForegroundColor};
 
-use super::{
-    draw_left_virtual_text, draw_rulers, draw_virtual_text, erase_row_tail, gutter_width,
-    saturate_u16, VirtualTextDraw,
-};
+use super::furniture::{draw_rulers, erase_row_tail, gutter_width};
+use super::virtual_text::{draw_left_virtual_text, draw_virtual_text, VirtualTextDraw};
 use crate::display;
 use crate::frame::PaneFrame;
 use crate::paint;
+use crate::surface::Surface;
 use crate::theme::Theme;
 
 pub(super) fn draw_visible_lines(
-    out: &mut Stdout,
+    out: &mut Surface,
     pane: &PaneFrame<'_>,
     theme: &Theme,
 ) -> Result<()> {
@@ -33,7 +31,7 @@ pub(super) fn draw_visible_lines(
 }
 
 struct LineDraw<'a, 'p> {
-    out: &'a mut Stdout,
+    out: &'a mut Surface,
     pane: &'a PaneFrame<'p>,
     theme: &'a Theme,
     gutter_width: usize,
@@ -66,14 +64,10 @@ impl LineDraw<'_, '_> {
     }
 
     fn draw_prefix(&mut self, screen_row: usize) -> Result<()> {
-        execute!(
-            self.out,
-            MoveTo(
-                saturate_u16(self.pane.rect.x),
-                saturate_u16(self.pane.rect.y.saturating_add(screen_row))
-            )
-        )
-        .context("move to line start")?;
+        self.out.move_to(
+            self.pane.rect.x,
+            self.pane.rect.y.saturating_add(screen_row),
+        );
         self.draw_gutter(screen_row)?;
         draw_left_virtual_text(self.out, self.pane, self.theme, screen_row)
     }
@@ -82,22 +76,19 @@ impl LineDraw<'_, '_> {
         if let Some(signs) = self.pane.signs {
             match signs.get(screen_row).and_then(Option::as_ref) {
                 Some(sign) => {
-                    execute!(self.out, SetForegroundColor(self.theme.sign_color(sign)))
-                        .context("apply sign color")?;
+                    self.out.set_foreground(self.theme.sign_color(sign));
                     write!(self.out, "{}", sign.text()).context("write sign")?;
                 }
                 None => write!(self.out, " ").context("write empty sign")?,
             }
-            execute!(self.out, SetForegroundColor(self.theme.line_number))
-                .context("apply line number color")?;
+            self.out.set_foreground(self.theme.line_number);
         }
         if let Some(gutter) = self.pane.gutter.get(screen_row) {
-            execute!(self.out, SetForegroundColor(self.theme.line_number))
-                .context("apply line number color")?;
+            self.out.set_foreground(self.theme.line_number);
             write!(self.out, "{gutter}").context("write gutter")?;
         }
         if self.pane.signs.is_some() || self.pane.gutter.get(screen_row).is_some() {
-            paint::restore_base(self.out, self.theme)?;
+            paint::restore_base(self.out, self.theme);
         }
         Ok(())
     }
