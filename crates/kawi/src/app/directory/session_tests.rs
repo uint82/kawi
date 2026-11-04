@@ -52,6 +52,26 @@ fn state() -> DirectoryBuffer {
 }
 
 #[test]
+fn absent_directory_state_never_needs_sync() {
+    let buffers = DirectoryBuffers::default();
+    assert!(!buffers.needs_sync(1, 0));
+}
+
+#[test]
+fn matching_revision_does_not_need_sync() {
+    let mut buffers = DirectoryBuffers::default();
+    buffers.insert(1, state());
+    assert!(!buffers.needs_sync(1, 0));
+}
+
+#[test]
+fn changed_revision_needs_sync() {
+    let mut buffers = DirectoryBuffers::default();
+    buffers.insert(1, state());
+    assert!(buffers.needs_sync(1, 1));
+}
+
+#[test]
 fn renamed_lines_keep_identity() {
     let mut state = state();
     state.sync(vec!["alpha".to_string(), "b".to_string()], 1);
