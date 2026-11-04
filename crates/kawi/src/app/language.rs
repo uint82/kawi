@@ -246,4 +246,23 @@ mod tests {
         assert!(!app.editor.expandtab());
         let _ = fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn cpp_closing_brace_keeps_the_current_line_indent() {
+        let dir = temp_dir("cpp_close");
+        let mut buffer = Buffer::from_string(
+            "namespace demo {\nconcept Addable = requires(T value) {\n    value + value;\n};\n}",
+        );
+        buffer.path = Some("test.cpp".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        load_languages(&mut app, &dir, "");
+        app.editor.apply(kawi_editor::Action::JumpTo(3, 0));
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('o'),
+            crossterm::event::KeyModifiers::NONE,
+        ))
+        .unwrap();
+        assert_eq!(app.editor.text_lines()[4], "");
+        let _ = fs::remove_dir_all(dir);
+    }
 }

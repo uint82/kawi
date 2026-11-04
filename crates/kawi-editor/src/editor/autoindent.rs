@@ -1,4 +1,6 @@
-use super::indent::engine::{closer_width, next_width, IndentRequest, INDENT_WINDOW_LINES};
+use super::indent::engine::{
+    closer_width, is_closing_bracket, next_width, IndentRequest, INDENT_WINDOW_LINES,
+};
 use super::indent::reindent_line;
 use super::Editor;
 
@@ -206,10 +208,6 @@ impl Editor {
         text.push_str(&" ".repeat(width.saturating_sub(col)));
         text
     }
-}
-
-fn is_closing_bracket(ch: char) -> bool {
-    matches!(ch, ')' | ']' | '}')
 }
 
 fn indent_target(chars: &[char], want: usize, tabstop: usize) -> usize {

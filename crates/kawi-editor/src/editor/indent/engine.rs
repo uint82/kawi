@@ -26,15 +26,39 @@ pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
     if !scan.allows_indent() {
         return request.current_width;
     }
-    if request.rules.indent_brackets {
-        if let Some(opener) = scan.stack.first() {
-            return line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth;
-        }
-    }
     if scan.stack.is_empty() && matches_block(scan.token(), request.rules) {
         return request.current_width + request.shiftwidth;
     }
-    request.current_width
+    if !request.rules.indent_brackets {
+        return request.current_width;
+    }
+    if scan.last_bracket.is_some_and(is_closing_bracket) {
+        return request.current_width;
+    }
+    let opener = if scan
+        .last_bracket
+        .is_some_and(|ch| matching_closer(ch).is_some())
+    {
+        scan.stack.last()
+    } else {
+        base_opener(&scan)
+    };
+    opener.map_or(request.current_width, |opener| {
+        line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth
+    })
+}
+
+fn base_opener(scan: &Scan) -> Option<&Bracket> {
+    let brace = scan.stack.iter().rposition(|bracket| bracket.open == '{');
+    let start = brace.map_or(0, |index| index + 1);
+    scan.stack[start..]
+        .iter()
+        .find(|bracket| is_continuation_bracket(bracket.open))
+        .or_else(|| brace.map(|index| &scan.stack[index]))
+}
+
+fn is_continuation_bracket(ch: char) -> bool {
+    matches!(ch, '(' | '[')
 }
 
 pub(crate) fn closer_width(request: &IndentRequest<'_>, closer: char) -> Option<usize> {
@@ -111,6 +135,10 @@ fn matching_opener(closer: char) -> Option<char> {
     }
 }
 
+pub(crate) fn is_closing_bracket(ch: char) -> bool {
+    matching_opener(ch).is_some()
+}
+
 fn matching_closer(open: char) -> Option<char> {
     match open {
         '(' => Some(')'),
@@ -126,6 +154,7 @@ fn update_brackets(scan: &mut Scan, ch: char, line: usize, previous_code: Option
     }
     if matching_closer(ch).is_some() {
         scan.stack.push(Bracket { open: ch, line });
+        scan.last_bracket = Some(ch);
         return;
     }
     let Some(opener) = matching_opener(ch) else {
@@ -138,6 +167,7 @@ fn update_brackets(scan: &mut Scan, ch: char, line: usize, previous_code: Option
     {
         scan.stack.pop();
     }
+    scan.last_bracket = Some(ch);
 }
 
 #[derive(Default)]
@@ -145,6 +175,7 @@ struct Scan {
     stack: Vec<Bracket>,
     token: String,
     last_token: String,
+    last_bracket: Option<char>,
     code: bool,
     line_comment: bool,
 }
@@ -153,6 +184,7 @@ impl Scan {
     fn begin_line(&mut self) {
         self.token.clear();
         self.last_token.clear();
+        self.last_bracket = None;
     }
 
     fn push(&mut self, ch: char, line: usize, previous_code: Option<char>) {
