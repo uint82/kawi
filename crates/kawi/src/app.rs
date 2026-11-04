@@ -373,6 +373,7 @@ impl App {
         self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.lsp.shutdown();
+        self.git_status.shutdown();
         self.terminal_focus = false;
         self.debug_focus = false;
         self.terminal.close();
