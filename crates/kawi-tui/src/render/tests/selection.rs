@@ -1,5 +1,11 @@
 use super::*;
+use crate::display;
 use crate::render::highlight::span_segment_at;
+use crate::render::selection::paint_plain;
+use crate::surface::Surface;
+use crate::theme::Theme;
+
+const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
 
 #[test]
 fn spans_map_visible_rows_to_screen_rows() {
@@ -113,6 +119,70 @@ fn split_selection_around_cursor_cell() {
     assert_eq!(spans.len(), 2);
     assert_eq!((spans[0].from, spans[0].text.as_str()), (0, "ab"));
     assert_eq!((spans[1].from, spans[1].text.as_str()), (3, "def"));
+}
+
+const FLAG: &str = "\u{1f1ee}\u{1f1e9}";
+const KEYCAP: &str = "1\u{fe0f}\u{20e3}";
+
+fn cell_text(surface: &Surface, width: usize) -> Vec<String> {
+    (0..width)
+        .map(|x| surface.cell(x, 0).expect("cell").text().to_string())
+        .collect()
+}
+
+fn selected_cells(line: &str, cursor: usize) -> Vec<String> {
+    let theme = Theme::default();
+    let width = display::screen_len(line, 8).saturating_add(1);
+    let mut surface = Surface::new(width, 1, theme.base.foreground, theme.base.background);
+    surface.write_text(line);
+    let lines = vec![line.to_string()];
+    let spans = spans_of(
+        &lines,
+        0,
+        Some(Selection::Range {
+            start: (0, 0),
+            end: (0, line.chars().count().saturating_sub(1)),
+        }),
+        &viewport(),
+        Some((0, cursor)),
+    );
+    for span in spans {
+        surface.move_to(span.from, 0);
+        paint_plain(&mut surface, &span.text, &theme, theme.selection.background)
+            .expect("paint selection");
+    }
+    cell_text(&surface, width)
+}
+
+#[test]
+fn visual_painting_keeps_wide_text_at_its_cells() {
+    let line = format!("{FAMILY} {FLAG} {KEYCAP} e\u{301}");
+    let theme = Theme::default();
+    let width = display::screen_len(&line, 8).saturating_add(1);
+    let mut base = Surface::new(width, 1, theme.base.foreground, theme.base.background);
+    base.write_text(&line);
+    let expected = cell_text(&base, width);
+    for cursor in 0..display::screen_len(&line, 8) {
+        assert_eq!(selected_cells(&line, cursor), expected, "cursor {cursor}");
+    }
+}
+
+#[test]
+fn wide_cursor_cell_keeps_following_text_aligned() {
+    let line = format!("a{FAMILY}b");
+    let spans = spans_of(
+        &[line],
+        0,
+        Some(Selection::Range {
+            start: (0, 1),
+            end: (0, 8),
+        }),
+        &viewport(),
+        Some((0, 1)),
+    );
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].from, 1);
+    assert_eq!(spans[0].text, format!("{FAMILY}b"));
 }
 
 #[test]
