@@ -638,8 +638,10 @@ impl Editor {
     }
 
     pub(super) fn clamp_col(&mut self) {
-        let max_col = self.max_col_for_row(self.cursor.row());
-        self.cursor.set_col(self.cursor.col().min(max_col));
+        let row = self.cursor.row();
+        let max_col = self.max_col_for_row(row);
+        let col = self.buffer.snap_col(row, self.cursor.col().min(max_col));
+        self.cursor.set_col(col);
     }
 
     pub(super) fn clamp_row(&mut self) {
@@ -657,9 +659,8 @@ impl Editor {
         let tabstop = self.effective_indent().tabstop;
         let width = self.buffer.line_len(row);
         if col < width {
-            self.buffer
-                .screen_col(row, col.saturating_add(1), tabstop)
-                .saturating_sub(1)
+            let (start, end) = self.buffer.screen_span(row, col, tabstop);
+            end.saturating_sub(1).max(start)
         } else {
             self.buffer.screen_col(row, width, tabstop)
         }
@@ -670,10 +671,8 @@ impl Editor {
         let col = self.cursor.col();
         let tabstop = self.effective_indent().tabstop;
         if self.cursor_shows_tab_end(row, col) {
-            return self
-                .buffer
-                .screen_col(row, col.saturating_add(1), tabstop)
-                .saturating_sub(1);
+            let (start, end) = self.buffer.screen_span(row, col, tabstop);
+            return end.saturating_sub(1).max(start);
         }
         self.buffer.screen_col(row, col, tabstop)
     }
@@ -783,7 +782,7 @@ impl Editor {
         if self.mode.is_insert() || self.mode.is_visual() {
             width
         } else {
-            width.saturating_sub(1)
+            self.buffer.last_grapheme_col(row)
         }
     }
 

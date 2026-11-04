@@ -31,7 +31,8 @@ impl Editor {
 
     pub(super) fn jump_to(&mut self, row: usize, col: usize) {
         self.track_insert_move();
-        self.cursor.set_position(row, col);
+        self.cursor
+            .set_position(row, self.buffer.snap_col(row, col));
     }
 
     fn jump_to_line_start(&mut self, row: usize) {
@@ -62,11 +63,13 @@ impl Editor {
         self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
-            let before = (self.cursor.row(), self.cursor.col());
-            self.cursor.move_left();
-            if (self.cursor.row(), self.cursor.col()) == before {
+            let row = self.cursor.row();
+            let col = self.cursor.col();
+            if col == 0 {
                 break;
             }
+            let next = self.buffer.prev_grapheme_col(row, col);
+            self.cursor.set_col(next);
         }
     }
 
@@ -74,11 +77,16 @@ impl Editor {
         self.track_insert_move();
         let count = self.take_count();
         for _ in 0..count {
-            let before = (self.cursor.row(), self.cursor.col());
-            self.cursor.move_right();
-            if (self.cursor.row(), self.cursor.col()) == before {
+            let row = self.cursor.row();
+            let col = self.cursor.col();
+            let next = self
+                .buffer
+                .next_grapheme_col(row, col)
+                .min(self.max_col_for_row(row));
+            if next == col {
                 break;
             }
+            self.cursor.set_col(next);
         }
     }
 

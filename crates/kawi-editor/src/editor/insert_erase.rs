@@ -31,7 +31,7 @@ impl Editor {
         let mut word_char = false;
         let mut in_word = false;
         loop {
-            col = col.saturating_sub(1);
+            col = self.buffer.prev_grapheme_col(row, col);
             let current = self.buffer_class(row, col);
             let previous = class;
             class = current;
@@ -43,7 +43,7 @@ impl Editor {
                     || (current == WordClass::Word) != word_char
                     || previous != current)
             {
-                col = col.saturating_add(1);
+                col = self.buffer.next_grapheme_col(row, col);
                 break;
             }
             if col == 0 || col == stop {

@@ -1,3 +1,4 @@
+use kawi_buffer::unicode;
 use kawi_buffer::Buffer;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -509,7 +510,7 @@ pub(crate) fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize
     let len = line_len(buffer, row);
     let col = col.min(len);
     if col < len {
-        let next = col.saturating_add(1);
+        let next = buffer.next_grapheme_col(row, col);
         let step = if next < len { 0 } else { 2 };
         return ((row, next), step);
     }
@@ -521,7 +522,7 @@ pub(crate) fn inc_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize
 
 pub(crate) fn dec_pos(buffer: &Buffer, row: usize, col: usize) -> ((usize, usize), i32) {
     if col > 0 {
-        return ((row, col.saturating_sub(1)), 0);
+        return ((row, buffer.prev_grapheme_col(row, col)), 0);
     }
     if row > 0 {
         let prev = row.saturating_sub(1);
@@ -561,7 +562,7 @@ fn tail_blank(buffer: &Buffer, end: (usize, usize)) -> bool {
         None => true,
         Some(line) => line
             .chars()
-            .skip(end.1.saturating_add(1))
+            .skip(unicode::cluster_end(&line, end.1))
             .all(|ch| ch.is_whitespace()),
     }
 }
@@ -589,10 +590,8 @@ pub(crate) fn start_blank(buffer: &Buffer, start: (usize, usize)) -> bool {
 }
 
 pub(crate) fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(usize, usize)> {
-    if col > 0 {
-        return buffer
-            .char_at(row, col.saturating_sub(1))
-            .map(|_| (row, col.saturating_sub(1)));
+    if col > 0 && col <= buffer.line_len(row) {
+        return Some((row, buffer.prev_grapheme_col(row, col)));
     }
     if row == 0 {
         return None;
@@ -603,9 +602,8 @@ pub(crate) fn prev_char_pos(buffer: &Buffer, row: usize, col: usize) -> Option<(
 
 fn backward_char_pos(buffer: &Buffer, mut row: usize) -> Option<(usize, usize)> {
     loop {
-        let len = line_len(buffer, row);
-        if len > 0 {
-            return Some((row, len.saturating_sub(1)));
+        if line_len(buffer, row) > 0 {
+            return Some((row, buffer.last_grapheme_col(row)));
         }
         if row == 0 {
             return None;

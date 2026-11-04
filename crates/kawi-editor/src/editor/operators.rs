@@ -1,3 +1,5 @@
+use kawi_buffer::unicode;
+
 use super::repeat::{register_can_paste, RepeatChange};
 use super::session::InsertEdit;
 use super::Editor;
@@ -252,23 +254,19 @@ impl Editor {
                 .delete_forward(self.cursor.row(), self.cursor.col());
             return;
         }
-        let width = self.buffer.line_len(self.cursor.row());
-        if width == 0 {
+        let row = self.cursor.row();
+        let col = self.cursor.col();
+        if col >= self.buffer.line_len(row) {
             return;
         }
         let count = self.take_count();
         let end = self
-            .cursor
-            .col()
-            .saturating_add(count.saturating_sub(1))
-            .min(width.saturating_sub(1));
+            .buffer
+            .grapheme_end_after(row, col, count)
+            .saturating_sub(1);
         self.record_boundary();
-        self.capture_delete_range(
-            (self.cursor.row(), self.cursor.col()),
-            (self.cursor.row(), end),
-        );
-        self.buffer
-            .delete_range(self.cursor.row(), self.cursor.col(), self.cursor.row(), end);
+        self.capture_delete_range((row, col), (row, end));
+        self.buffer.delete_range(row, col, row, end);
     }
 
     pub(super) fn delete_inner_word(&mut self) {
@@ -810,18 +808,18 @@ impl Editor {
         let text = register.text().repeat(count.max(1));
         let (row, col) = (self.cursor.row(), self.cursor.col());
         let at_line_end = col >= self.buffer.line_len(row);
-        let origin_col = if before {
+        let insert_col = if before {
             col
         } else {
-            col.saturating_add(1).min(self.buffer.line_len(row))
+            self.buffer.next_grapheme_col(row, col)
         };
-        self.change_origin_override = Some((row, origin_col));
+        self.change_origin_override = Some((row, insert_col));
         let col = if before {
             self.buffer.paste_before(row, col, &text);
             if text.contains('\n') {
                 col
             } else {
-                col.saturating_add(text.chars().count().saturating_sub(1))
+                insert_col.saturating_add(unicode::last_boundary(&text))
             }
         } else {
             self.buffer.paste_after(row, col, &text);
@@ -832,14 +830,14 @@ impl Editor {
                     col.saturating_add(1)
                 }
             } else {
-                col.saturating_add(text.chars().count())
+                insert_col.saturating_add(unicode::last_boundary(&text))
             }
         };
         self.cursor.set_position(row, col);
         if advance && !text.contains('\n') {
-            let len = self.buffer.line_len(row);
-            self.cursor
-                .set_position(row, col.saturating_add(1).min(len.saturating_sub(1)));
+            let next = self.buffer.next_grapheme_col(row, col);
+            let max = self.buffer.line_len(row).saturating_sub(1);
+            self.cursor.set_position(row, next.min(max));
         }
     }
 
@@ -876,7 +874,14 @@ impl Editor {
         if col == 0 {
             return;
         }
-        let start = col.saturating_sub(count);
+        let mut start = col;
+        for _ in 0..count {
+            let prev = self.buffer.prev_grapheme_col(row, start);
+            if prev == start {
+                break;
+            }
+            start = prev;
+        }
         self.delete_charwise_span((row, start), (row, col));
     }
 
@@ -884,12 +889,11 @@ impl Editor {
         let count = self.take_count();
         let row = self.cursor.row();
         let col = self.cursor.col();
-        let width = self.buffer.line_len(row);
-        if col >= width {
+        if col >= self.buffer.line_len(row) {
             self.switch_to_insert();
             return;
         }
-        let end = col.saturating_add(count).min(width);
+        let end = self.buffer.grapheme_end_after(row, col, count);
         self.delete_charwise_span((row, col), (row, end));
         self.switch_to_insert();
     }

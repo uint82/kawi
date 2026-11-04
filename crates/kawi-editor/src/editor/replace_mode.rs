@@ -3,9 +3,9 @@ use super::tab::TabExpansion;
 use super::Editor;
 use crate::mode::Mode;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ReplaceEntry {
-    Typed { original: Option<char> },
+    Typed { original: Option<String> },
     Newline,
 }
 
@@ -27,9 +27,9 @@ impl Editor {
     fn replace_at_cursor(&mut self, c: char) {
         let row = self.cursor.row();
         let col = self.cursor.col();
-        let original = self.buffer.char_at(row, col);
+        let original = self.buffer.grapheme_text(row, col);
         self.replace_entries.push(ReplaceEntry::Typed { original });
-        if original.is_some() {
+        if self.buffer.char_at(row, col).is_some() {
             self.buffer.delete_range(row, col, row, col);
         }
         self.buffer.insert_char(row, col, c);
@@ -125,10 +125,12 @@ impl Editor {
 
     fn apply_replace_entry(&mut self, row: usize, col: usize) -> bool {
         match self.replace_entries.last() {
-            Some(ReplaceEntry::Typed { original: Some(ch) }) => {
-                let ch = *ch;
+            Some(ReplaceEntry::Typed {
+                original: Some(text),
+            }) => {
+                let text = text.clone();
                 self.replace_entries.pop();
-                self.put_char(row, col, ch);
+                self.put_text(row, col, &text);
                 true
             }
             Some(ReplaceEntry::Typed { original: None }) => {
@@ -155,9 +157,11 @@ impl Editor {
             .set_position(previous, self.buffer.line_len(previous));
     }
 
-    fn put_char(&mut self, row: usize, col: usize, ch: char) {
+    fn put_text(&mut self, row: usize, col: usize, text: &str) {
         self.buffer.delete_range(row, col, row, col);
-        self.buffer.insert_char(row, col, ch);
+        for (index, ch) in text.chars().enumerate() {
+            self.buffer.insert_char(row, col + index, ch);
+        }
     }
 }
 

@@ -194,11 +194,9 @@ impl Editor {
         let col = self.cursor.col();
         let tabstop = self.effective_indent().tabstop;
         let len = self.buffer.line_len(row);
-        let start = self.buffer.screen_col(row, col.min(len), tabstop);
+        let (start, end) = self.buffer.screen_span(row, col.min(len), tabstop);
         let end = if col < len {
-            self.buffer
-                .screen_col(row, col.saturating_add(1), tabstop)
-                .saturating_sub(1)
+            end.saturating_sub(1).max(start)
         } else {
             start
         };
