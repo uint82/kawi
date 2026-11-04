@@ -4,6 +4,7 @@ use std::io::Write;
 use crate::frame::PaneFrame;
 use crate::paint;
 use crate::surface::Surface;
+use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::Theme;
 
 pub(super) fn draw_rulers(
@@ -64,21 +65,34 @@ pub(super) fn gutter_width(pane: &PaneFrame<'_>) -> usize {
         .saturating_add(pane.left_width)
 }
 
-pub(super) fn saturate_u16(value: usize) -> u16 {
-    u16::try_from(value).unwrap_or(u16::MAX)
-}
-
-pub(super) fn char_len(text: &str) -> usize {
-    text.chars().count()
-}
-
-pub(super) fn truncate_to_width(text: &str, width: usize) -> String {
-    text.chars().take(width).collect()
-}
-
 pub(super) fn write_padded(out: &mut Surface, text: &str, width: usize) -> Result<()> {
-    let text = truncate_to_width(text, width);
-    let padding = width.saturating_sub(text.chars().count());
+    let text = truncate_to_display_width(text, width);
+    let padding = width.saturating_sub(display_width(text));
     write!(out, "{text}{}", " ".repeat(padding)).context("write padded row")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::style::Color;
+
+    use super::*;
+
+    #[test]
+    fn pads_by_display_width() {
+        let mut out = Surface::new(4, 1, Color::White, Color::Black);
+        write_padded(&mut out, "\u{4e2d}", 4).expect("write padded row");
+        assert_eq!(out.cell(0, 0).expect("wide cell").text(), "\u{4e2d}");
+        assert_eq!(out.cell(2, 0).expect("padding cell").text(), " ");
+        assert_eq!(out.cell(3, 0).expect("padding cell").text(), " ");
+    }
+
+    #[test]
+    fn clips_wide_graphemes_at_the_display_boundary() {
+        let mut out = Surface::new(4, 1, Color::White, Color::Black);
+        write_padded(&mut out, "a\u{4e2d}\u{4e2d}", 4).expect("write padded row");
+        assert_eq!(out.cell(0, 0).expect("cell").text(), "a");
+        assert_eq!(out.cell(1, 0).expect("wide cell").text(), "\u{4e2d}");
+        assert_eq!(out.cell(3, 0).expect("padding cell").text(), " ");
+    }
 }

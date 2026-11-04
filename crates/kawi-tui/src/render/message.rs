@@ -3,9 +3,10 @@ use std::io::Write;
 
 use crate::frame::{Frame, PromptMenu};
 use crate::surface::Surface;
+use crate::text::{display_width, truncate_to_display_width};
 use kawi_editor::Viewport;
 
-use super::furniture::{char_len, erase_row_tail, truncate_to_width};
+use super::furniture::erase_row_tail;
 
 pub(super) fn draw_message_row(out: &mut Surface, frame: &Frame) -> Result<()> {
     let layout = layout_message_row_with_prompt(
@@ -77,8 +78,8 @@ fn layout_message_row_with_prompt(
     let show = showcmd.unwrap_or("");
     let left = message_left_with_prompt(prompt, &parts);
     MessageLayout {
-        line: truncate_to_width(&left, left_width(width, show)),
-        showcmd: truncate_to_width(show, width),
+        line: truncate_to_display_width(&left, left_width(width, show)).to_string(),
+        showcmd: truncate_to_display_width(show, width).to_string(),
         showcmd_col: showcmd_column(show, width),
     }
 }
@@ -101,14 +102,14 @@ fn message_left_with_prompt(prompt: Option<&PromptMenu<'_>>, parts: &MessagePart
 }
 
 fn left_width(width: usize, showcmd: &str) -> usize {
-    width.saturating_sub(char_len(showcmd))
+    width.saturating_sub(display_width(showcmd))
 }
 
 fn showcmd_column(showcmd: &str, width: usize) -> Option<usize> {
     if showcmd.is_empty() {
         return None;
     }
-    Some(width.saturating_sub(char_len(showcmd)))
+    Some(width.saturating_sub(display_width(showcmd)))
 }
 
 fn move_to_showcmd(out: &mut Surface, col: usize, viewport: &Viewport) -> Result<()> {
@@ -166,6 +167,20 @@ mod tests {
     fn layout_prefixes_backward_search_prompt() {
         let layout = layout_message_row(None, Some("foo"), '?', None, None, None, 20);
         assert_eq!(layout.line, "?foo");
+    }
+
+    #[test]
+    fn layout_truncates_by_display_width() {
+        let layout = layout_message_row(
+            None,
+            None,
+            '/',
+            Some("\u{4e2d}\u{4e2d}\u{4e2d}"),
+            None,
+            None,
+            4,
+        );
+        assert_eq!(layout.line, "\u{4e2d}\u{4e2d}");
     }
 
     #[test]

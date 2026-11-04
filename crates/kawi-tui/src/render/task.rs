@@ -4,8 +4,9 @@ use std::io::Write;
 use crate::frame::{Frame, TaskPanel};
 use crate::paint;
 use crate::surface::Surface;
+use crate::text::truncate_to_display_width;
 
-use super::furniture::{truncate_to_width, write_padded};
+use super::furniture::write_padded;
 
 pub(super) fn draw_task_panel(out: &mut Surface, frame: &Frame) -> Result<()> {
     let Some(panel) = frame.task.as_ref() else {
@@ -37,8 +38,12 @@ fn draw_task_lines(out: &mut Surface, frame: &Frame, panel: &TaskPanel<'_>) -> R
         if line.stderr {
             out.set_foreground(frame.theme.diagnostic_warning);
         }
-        write!(out, "{}", truncate_to_width(line.text, panel.rect.width))
-            .context("write task line")?;
+        write!(
+            out,
+            "{}",
+            truncate_to_display_width(line.text, panel.rect.width)
+        )
+        .context("write task line")?;
         paint::restore_base(out, frame.theme);
     }
     Ok(())

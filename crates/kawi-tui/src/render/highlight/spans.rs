@@ -5,7 +5,7 @@ use kawi_syntax::{SyntaxHighlight, SyntaxSpan};
 
 use crate::display;
 use crate::frame::{PluginStyle, SearchSpan, Selection};
-use crate::render::furniture::char_len;
+use crate::text::char_count;
 
 pub struct HighlightSpan {
     pub screen_row: usize,
@@ -93,7 +93,7 @@ fn block_spans(
             continue;
         };
         let to = if ragged {
-            char_len(text)
+            char_count(text)
         } else {
             right.saturating_add(1)
         };
@@ -154,7 +154,7 @@ fn selected_cells(
     if buffer_row < start_row || buffer_row > end_row {
         return Vec::new();
     }
-    let line_len = char_len(text);
+    let line_len = char_count(text);
     let (from, to) = row_selection(buffer_row, line_len, start_row, start_col, end_row, end_col);
     let (from, to) = if line_len == 0 {
         (from, to)

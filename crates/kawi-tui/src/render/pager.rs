@@ -3,9 +3,7 @@ use std::io::Write;
 
 use crate::frame::Frame;
 use crate::surface::Surface;
-use crate::text::sanitize_text;
-
-use super::furniture::truncate_to_width;
+use crate::text::{sanitize_text, truncate_to_display_width};
 
 pub(super) const PAGER_PROMPT: &str = "Press ENTER or type command to continue";
 
@@ -21,11 +19,12 @@ pub(super) fn draw_pager(out: &mut Surface, frame: &Frame, lines: &[String]) -> 
         out.move_to(0, row);
         out.clear_line();
         let line = sanitize_text(line);
-        write!(out, "{}", truncate_to_width(&line, width)).context("write pager line")?;
+        write!(out, "{}", truncate_to_display_width(&line, width)).context("write pager line")?;
     }
     let prompt_row = frame.viewport.height().saturating_add(1);
     out.move_to(0, prompt_row);
     out.clear_line();
-    write!(out, "{}", truncate_to_width(PAGER_PROMPT, width)).context("write pager prompt")?;
+    write!(out, "{}", truncate_to_display_width(PAGER_PROMPT, width))
+        .context("write pager prompt")?;
     Ok(())
 }
