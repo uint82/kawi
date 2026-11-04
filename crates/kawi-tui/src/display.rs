@@ -123,6 +123,20 @@ mod tests {
     }
 
     #[test]
+    fn slice_screen_into_reports_width_and_reuses_buffer() {
+        let mut buffer = String::from("stale");
+        let visible = slice_screen_into("\tx", 0, 20, 8, &mut buffer);
+        assert_eq!(buffer, "        x");
+        assert_eq!(visible, 9);
+        let visible = slice_screen_into("a\tb", 1, 9, 8, &mut buffer);
+        assert_eq!(buffer, "       b");
+        assert_eq!(visible, 8);
+        let visible = slice_screen_into("abc", 5, 8, 8, &mut buffer);
+        assert!(buffer.is_empty());
+        assert_eq!(visible, 0);
+    }
+
+    #[test]
     fn slice_screen_omits_control_characters() {
         assert_eq!(slice_screen("a\u{1b}[31mb\u{7f}\r", 0, 32, 8), "a[31mb");
         assert_eq!(slice_screen("a\tb\u{9b}c", 0, 32, 8), "a       bc");
