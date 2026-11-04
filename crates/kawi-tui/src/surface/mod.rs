@@ -8,8 +8,10 @@ use std::io::{self, Write};
 use crossterm::style::Color;
 use unicode_segmentation::UnicodeSegmentation;
 
+use kawi_buffer::unicode;
+
 use crate::frame::DiagnosticUnderline;
-use crate::text::{display_width, sanitize_char, TAB_WIDTH};
+use crate::text::TAB_WIDTH;
 
 pub use ansi::present;
 pub use cell::Cell;
@@ -166,19 +168,13 @@ impl Surface {
             self.write_spaces(spaces);
             return;
         }
-        let sanitized: String;
-        let grapheme = if grapheme.chars().any(char::is_control) {
-            sanitized = grapheme.chars().map(sanitize_char).collect();
-            sanitized.as_str()
-        } else {
-            grapheme
-        };
-        let width = display_width(grapheme);
+        let rendered = unicode::render_cluster(grapheme, self.cursor.x, TAB_WIDTH);
+        let width = rendered.width();
         if width == 0 {
-            self.append_combining(grapheme);
             return;
         }
-        self.write_glyph(grapheme, width);
+        let text = rendered.text();
+        self.write_glyph(&text, width);
     }
 
     fn write_spaces(&mut self, count: usize) {
@@ -215,20 +211,6 @@ impl Surface {
             }
         }
         self.cursor.x = x.saturating_add(width);
-    }
-
-    fn append_combining(&mut self, text: &str) {
-        let y = self.cursor.y;
-        if self.cursor.x == 0 || y >= self.height {
-            return;
-        }
-        let mut x = self.cursor.x.saturating_sub(1);
-        if self.cell(x, y).is_some_and(Cell::is_continuation) {
-            x = x.saturating_sub(1);
-        }
-        if let Some(cell) = self.cell_mut(x, y) {
-            cell.append(text);
-        }
     }
 
     fn continuation_start(&self, x: usize, y: usize) -> usize {

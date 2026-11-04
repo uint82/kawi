@@ -27,10 +27,17 @@ fn writes_text_at_the_cursor() {
 }
 
 #[test]
-fn expands_tabs_and_sanitizes_controls() {
-    let mut surface = surface(10, 1);
+fn renders_tabs_and_control_characters_like_neovim() {
+    let mut surface = surface(12, 1);
     surface.write_text("a\tb\u{1b}");
-    assert_eq!(row(&surface, 0), "a       b ");
+    assert_eq!(row(&surface, 0), "a       b^[ ");
+}
+
+#[test]
+fn renders_nonprintable_cells_like_neovim() {
+    let mut surface = surface(12, 1);
+    surface.write_text("a\u{202e}b");
+    assert_eq!(row(&surface, 0), "a<202e>b    ");
 }
 
 #[test]

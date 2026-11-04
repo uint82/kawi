@@ -53,8 +53,4 @@ impl Cell {
         self.width = width;
         self.style = style;
     }
-
-    pub fn append(&mut self, text: &str) {
-        self.text.push_str(text);
-    }
 }

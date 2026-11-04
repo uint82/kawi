@@ -1,22 +1,12 @@
 use kawi_buffer::unicode;
 
-fn cell_width(grapheme: &str, screen: usize, tabstop: usize) -> usize {
-    unicode::cluster_width(grapheme, screen, tabstop)
-}
-
-fn is_displayable(grapheme: &str) -> bool {
-    grapheme == "\t" || !grapheme.chars().any(char::is_control)
-}
-
 pub fn screen_col(text: &str, chars: usize, tabstop: usize) -> usize {
     let mut screen: usize = 0;
     for grapheme in unicode::graphemes(text) {
         if grapheme.start() >= chars {
             break;
         }
-        if is_displayable(grapheme.text()) {
-            screen = screen.saturating_add(cell_width(grapheme.text(), screen, tabstop));
-        }
+        screen = screen.saturating_add(unicode::cluster_width(grapheme.text(), screen, tabstop));
     }
     screen
 }
@@ -28,10 +18,7 @@ pub fn screen_len(text: &str, tabstop: usize) -> usize {
 pub fn screen_span_at(text: &str, cell: usize, tabstop: usize) -> Option<(usize, usize)> {
     let mut screen: usize = 0;
     for grapheme in unicode::graphemes(text) {
-        if !is_displayable(grapheme.text()) {
-            continue;
-        }
-        let width = cell_width(grapheme.text(), screen, tabstop);
+        let width = unicode::cluster_width(grapheme.text(), screen, tabstop);
         let end = screen.saturating_add(width);
         if screen <= cell && cell < end {
             return Some((screen, end));
@@ -61,12 +48,9 @@ pub fn slice_screen_into(
     let mut visible: usize = 0;
     let mut screen: usize = 0;
     for grapheme in unicode::graphemes(text) {
-        if !is_displayable(grapheme.text()) {
-            continue;
-        }
-        let width = cell_width(grapheme.text(), screen, tabstop);
         let start = screen;
-        let end = screen.saturating_add(width);
+        let width = unicode::cluster_width(grapheme.text(), start, tabstop);
+        let end = start.saturating_add(width);
         screen = end;
         if end <= from {
             continue;
@@ -79,8 +63,9 @@ pub fn slice_screen_into(
             push_spaces(out, count);
             visible = visible.saturating_add(count);
         } else if start >= from && end <= to {
-            out.push_str(grapheme.text());
-            visible = visible.saturating_add(width);
+            let rendered = unicode::render_cluster(grapheme.text(), start, tabstop);
+            rendered.write_to(out);
+            visible = visible.saturating_add(rendered.width());
         }
     }
     visible
@@ -193,8 +178,31 @@ mod tests {
     }
 
     #[test]
-    fn slice_screen_omits_control_characters() {
-        assert_eq!(slice_screen("a\u{1b}[31mb\u{7f}\r", 0, 32, 8), "a[31mb");
-        assert_eq!(slice_screen("a\tb\u{9b}c", 0, 32, 8), "a       bc");
+    fn renders_control_characters_like_neovim() {
+        assert_eq!(
+            slice_screen("a\u{1b}[31mb\u{7f}\r", 0, 32, 8),
+            "a^[[31mb^?^M"
+        );
+        assert_eq!(slice_screen("a\tb\u{9b}c", 0, 32, 8), "a       b<9b>c");
+    }
+
+    #[test]
+    fn renders_nonprintable_and_soft_hyphen_cells_like_neovim() {
+        assert_eq!(slice_screen("a\u{202e}b", 0, 32, 8), "a<202e>b");
+        assert_eq!(slice_screen("a\u{200b}b", 0, 32, 8), "a<200b>b");
+        assert_eq!(slice_screen("a\u{feff}b", 0, 32, 8), "a<feff>b");
+        assert_eq!(slice_screen("co\u{ad}operate", 0, 32, 8), "co\u{ad}operate");
+    }
+
+    #[test]
+    fn measures_conjuncts_from_the_first_character() {
+        assert_eq!(screen_len("\u{915}\u{94d}\u{937}", 8), 1);
+        assert_eq!(
+            screen_len(
+                "\u{915}\u{94d}\u{937}\u{924}\u{94d}\u{930}\u{93f}\u{92f}",
+                8
+            ),
+            3
+        );
     }
 }
