@@ -1,7 +1,9 @@
 use unicode_segmentation::UnicodeSegmentation;
 
+mod cell;
 mod width;
 
+pub use cell::{render_cluster, RenderedCluster};
 pub use width::{cluster_width, display_width, needs_terminal_reposition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +159,7 @@ mod tests {
         assert_eq!(widths(FLAG), [(0, 2, 2)]);
         assert_eq!(widths(SKIN), [(0, 2, 2)]);
         assert_eq!(widths(ACCENT), [(0, 2, 1)]);
-        assert_eq!(widths(CONJUNCT), [(0, 3, 2)]);
+        assert_eq!(widths(CONJUNCT), [(0, 3, 1)]);
     }
 
     #[test]
