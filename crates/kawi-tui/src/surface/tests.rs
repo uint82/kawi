@@ -58,6 +58,22 @@ fn keeps_emoji_sequences_on_two_cells() {
 }
 
 #[test]
+fn keeps_keycaps_on_one_cell() {
+    let mut surface = surface(6, 1);
+    surface.write_text("1\u{fe0f}\u{20e3} 2\u{fe0f}\u{20e3}");
+    assert_eq!(
+        surface.cell(0, 0).expect("keycap").text(),
+        "1\u{fe0f}\u{20e3}"
+    );
+    assert_eq!(surface.cell(1, 0).expect("space").text(), " ");
+    assert_eq!(
+        surface.cell(2, 0).expect("keycap").text(),
+        "2\u{fe0f}\u{20e3}"
+    );
+    assert_eq!(surface.cursor(), Position { x: 3, y: 0 });
+}
+
+#[test]
 fn replacing_half_a_wide_grapheme_clears_both_cells() {
     let mut surface = surface(4, 1);
     surface.write_text("中");

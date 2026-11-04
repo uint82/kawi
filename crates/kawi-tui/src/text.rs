@@ -83,6 +83,14 @@ mod tests {
     }
 
     #[test]
+    fn matches_neovim_keycap_and_text_emoji_widths() {
+        assert_eq!(display_width("1\u{fe0f}\u{20e3}"), 1);
+        assert_eq!(display_width("\u{1f577}"), 2);
+        assert_eq!(display_width("\u{1f170}"), 1);
+        assert_eq!(display_width("\u{1f170}\u{fe0f}"), 2);
+    }
+
+    #[test]
     fn truncates_emoji_sequences_as_single_cells() {
         let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
         let line = format!("a{family}b");

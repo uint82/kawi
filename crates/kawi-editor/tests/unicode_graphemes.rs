@@ -5,6 +5,8 @@ const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f46
 const FLAG: &str = "\u{1f1ee}\u{1f1e9}";
 const SKIN: &str = "\u{1f44d}\u{1f3fd}";
 const ACCENT: &str = "e\u{301}";
+const KEYCAP_ONE: &str = "1\u{fe0f}\u{20e3}";
+const KEYCAP_TWO: &str = "2\u{fe0f}\u{20e3}";
 
 fn editor_with(text: &str) -> Editor {
     Editor::new(Buffer::from_string(text))
@@ -23,6 +25,19 @@ fn move_right_steps_over_clusters() {
     assert_eq!(editor.col(), 8);
     editor.apply(Action::MoveRight);
     assert_eq!(editor.col(), 8);
+}
+
+#[test]
+fn move_right_lays_out_keycaps_like_neovim() {
+    let mut editor = editor_with(&format!("{KEYCAP_ONE} {KEYCAP_TWO} x"));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (3, 1));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (4, 2));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (7, 3));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (8, 4));
 }
 
 #[test]

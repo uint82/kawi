@@ -132,6 +132,14 @@ mod tests {
     }
 
     #[test]
+    fn screen_col_lays_out_keycaps_like_neovim() {
+        let line = "1\u{fe0f}\u{20e3} 2\u{fe0f}\u{20e3}";
+        assert_eq!(screen_col(line, 3, 8), 1);
+        assert_eq!(screen_col(line, 4, 8), 2);
+        assert_eq!(screen_len(line, 8), 3);
+    }
+
+    #[test]
     fn slice_screen_keeps_clusters_intact() {
         let line = format!("a{FAMILY}b");
         assert_eq!(
