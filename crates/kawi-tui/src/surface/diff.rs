@@ -23,7 +23,6 @@ fn diff_row<W: Write>(previous: &Surface, next: &Surface, y: usize, out: &mut W)
             continue;
         };
         let end = extend_run(previous, next, start, end, y);
-        writer.move_to(start, y)?;
         write_range(&mut writer, next, start, end, y)?;
         x = end;
     }
@@ -50,19 +49,36 @@ fn write_range<W: Write>(
     end: usize,
     y: usize,
 ) -> Result<()> {
-    let mut x = start;
+    let Some(mut x) = next_glyph(surface, start, end, y) else {
+        return Ok(());
+    };
+    writer.move_to(x, y)?;
     while x < end {
         let Some(cell) = surface.cell(x, y) else {
             break;
         };
-        if cell.is_continuation() {
-            x = x.saturating_add(1);
-            continue;
-        }
         writer.write_cell(x, y, cell)?;
         x = x.saturating_add(cell.width().max(1));
+        let Some(next) = next_glyph(surface, x, end, y) else {
+            break;
+        };
+        if next != x {
+            writer.move_to(next, y)?;
+        }
+        x = next;
     }
     Ok(())
+}
+
+fn next_glyph(surface: &Surface, mut x: usize, end: usize, y: usize) -> Option<usize> {
+    while x < end {
+        let cell = surface.cell(x, y)?;
+        if !cell.is_continuation() {
+            return Some(x);
+        }
+        x = x.saturating_add(1);
+    }
+    None
 }
 
 fn changed_glyph(previous: &Surface, next: &Surface, x: usize, y: usize) -> Option<(usize, usize)> {
@@ -71,20 +87,9 @@ fn changed_glyph(previous: &Surface, next: &Surface, x: usize, y: usize) -> Opti
     if previous_cell == next_cell {
         return None;
     }
-    let (previous_start, previous_end) = glyph_bounds(previous, x, y);
-    let (next_start, next_end) = glyph_bounds(next, x, y);
+    let (previous_start, previous_end) = previous.glyph_span(x, y);
+    let (next_start, next_end) = next.glyph_span(x, y);
     Some((previous_start.min(next_start), previous_end.max(next_end)))
-}
-
-fn glyph_bounds(surface: &Surface, x: usize, y: usize) -> (usize, usize) {
-    let Some(cell) = surface.cell(x, y) else {
-        return (x, x.saturating_add(1));
-    };
-    if cell.is_continuation() {
-        let start = x.saturating_sub(1);
-        return (start, x.saturating_add(1));
-    }
-    (x, x.saturating_add(cell.width().max(1)))
 }
 
 #[cfg(test)]

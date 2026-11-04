@@ -2,11 +2,11 @@ use crossterm::style::Color;
 
 use super::*;
 
-fn surface(width: usize, height: usize) -> Surface {
+pub(super) fn surface(width: usize, height: usize) -> Surface {
     Surface::new(width, height, Color::White, Color::Black)
 }
 
-fn row(surface: &Surface, y: usize) -> String {
+pub(super) fn row(surface: &Surface, y: usize) -> String {
     let mut text = String::new();
     for x in 0..surface.width() {
         let cell = surface.cell(x, y).expect("cell");
@@ -96,6 +96,32 @@ fn clear_tail_starts_at_the_wide_grapheme() {
     surface.move_to(1, 0);
     surface.clear_tail();
     assert_eq!(row(&surface, 0), "    ");
+}
+
+#[test]
+fn finds_the_span_of_a_multi_cell_glyph() {
+    let mut surface = surface(8, 1);
+    surface.write_text("\u{202e}x");
+    assert_eq!(surface.glyph_span(0, 0), (0, 6));
+    assert_eq!(surface.glyph_span(3, 0), (0, 6));
+}
+
+#[test]
+fn replaces_a_continuation_cell_with_a_narrow_glyph() {
+    let mut surface = surface(8, 1);
+    surface.write_text("\u{202e}");
+    surface.move_to(3, 0);
+    surface.write_text("x");
+    assert_eq!(row(&surface, 0), "   x    ");
+}
+
+#[test]
+fn clear_tail_starts_at_the_multi_cell_glyph() {
+    let mut surface = surface(8, 1);
+    surface.write_text("\u{202e}");
+    surface.move_to(3, 0);
+    surface.clear_tail();
+    assert_eq!(row(&surface, 0), "        ");
 }
 
 #[test]
