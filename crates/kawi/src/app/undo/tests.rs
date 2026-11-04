@@ -7,7 +7,7 @@ use kawi_editor::Action;
 use kawi_lsp::{DocumentEdit, FormattingEvent, TextChange, WorkspaceEdit};
 use sha2::{Digest, Sha256};
 
-use super::super::save::{PendingSave, SaveAfter};
+use super::super::save::{PendingSave, SaveAfter, SaveFormat};
 use super::*;
 use crate::keymap::Flavor;
 
@@ -130,7 +130,7 @@ fn crlf_format_on_save_restores_history() {
     edit(&mut app, "x");
     let current = buffer_text(&app);
     app.pending_save = Some(PendingSave {
-        request: 7,
+        format: SaveFormat::Lsp(7),
         number: 1,
         force: false,
         after: SaveAfter::None,
