@@ -743,7 +743,7 @@ impl Editor {
         match register.kind() {
             RegisterKind::CharWise => self.paste_inline(register, count, before, advance),
             RegisterKind::LineWise => self.paste_lines(register, count, before, advance),
-            RegisterKind::BlockWise => self.block_paste(register, before, advance),
+            RegisterKind::BlockWise => self.block_paste(register, count, before, advance),
         }
     }
 
