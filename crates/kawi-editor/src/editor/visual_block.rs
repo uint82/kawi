@@ -513,6 +513,125 @@ mod tests {
     }
 
     #[test]
+    fn block_bounds_use_screen_columns_for_tabs() {
+        let mut e = editor_with("\tabc");
+        enter_block(&mut e, 0, 0);
+        assert_eq!(e.tabstop(), 8);
+        assert_eq!(e.block_bounds(), Some((0, 0, 0, 7, false)));
+    }
+
+    #[test]
+    fn block_yank_keeps_fully_selected_tab() {
+        let mut e = editor_with("\tabc\n0123456789");
+        enter_block(&mut e, 1, 7);
+        e.apply(Action::MoveUp);
+        e.apply(Action::YankSelection);
+        assert_eq!(e.register_text(), "\t\n01234567");
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn block_yank_splits_partial_tab_into_spaces() {
+        let mut e = editor_with("x\tabc\n0123456789");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        assert_eq!(e.register_text(), "x \n01");
+    }
+
+    #[test]
+    fn block_delete_splits_partial_tab_into_spaces() {
+        let mut e = editor_with("x\tabc\n0123456789");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["      abc", "23456789"]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn block_delete_removes_fully_selected_tab() {
+        let mut e = editor_with("\tabc\n0123456789");
+        enter_block(&mut e, 1, 7);
+        e.apply(Action::MoveUp);
+        e.apply(Action::DeleteSelection);
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["abc", "89"]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn block_replace_expands_selected_tab_cells() {
+        let mut e = editor_with("\tabc\n0123456789");
+        enter_block(&mut e, 1, 7);
+        e.apply(Action::MoveUp);
+        e.apply(Action::ReplaceSelection('X'));
+        e.apply(Action::ExitVisual);
+        assert_eq!(e.text_lines(), vec!["XXXXXXXXabc", "XXXXXXXX89"]);
+        assert_eq!((e.row(), e.col()), (0, 0));
+    }
+
+    #[test]
+    fn block_insert_before_splits_interior_tab() {
+        let mut e = editor_with("0123456789\nx\tabc\n0123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisualBlock);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::InsertBeforeSelection);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(
+            e.text_lines(),
+            vec!["012X3456789", "x  X     abc", "012X3456789"]
+        );
+    }
+
+    #[test]
+    fn block_append_splits_interior_tab() {
+        let mut e = editor_with("0123456789\nx\tabc\n0123456789");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisualBlock);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::InsertAfterSelection);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        assert_eq!(
+            e.text_lines(),
+            vec!["0123X456789", "x   X    abc", "0123X456789"]
+        );
+    }
+
+    #[test]
+    fn block_paste_over_charwise_splits_interior_tab() {
+        let mut e = editor_with("0123456789\nx\tabc\n0123456789");
+        e.yank_text("X");
+        e.apply(Action::JumpTo(0, 0));
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::EnterVisualBlock);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveDown);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(
+            e.text_lines(),
+            vec!["012X456789", "x  X    abc", "012X456789"]
+        );
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
     fn block_delete_removes_rectangle() {
         let mut e = editor_with("abc\nabcdef\nabc");
         enter_block(&mut e, 0, 1);
@@ -724,6 +843,22 @@ mod tests {
             vec!["adef", "gjkl", "mnopqr", "mnopqr", "mnopqr", "stuvwx"]
         );
         assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn block_paste_splits_interior_tab() {
+        let mut e = editor_with("ABCDEFGH\nEFGHIJKL\n0123456789\nx\tabc");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        e.apply(Action::JumpTo(2, 4));
+        paste_after(&mut e);
+        assert_eq!(
+            e.text_lines(),
+            vec!["ABCDEFGH", "EFGHIJKL", "01234A56789", "x    E   abc"]
+        );
+        assert_eq!((e.row(), e.col()), (2, 5));
     }
 
     #[test]
