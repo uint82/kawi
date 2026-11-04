@@ -194,6 +194,15 @@ fn draw_separators(out: &mut Surface, frame: &Frame) -> Result<()> {
     Ok(())
 }
 
+pub fn prompt_cursor_col(
+    command: Option<&str>,
+    search: Option<&str>,
+    width: usize,
+    showcmd: Option<&str>,
+) -> Option<usize> {
+    cursor::prompt_cursor_col(command, search, width, showcmd)
+}
+
 fn picker_start(available: usize, selected: Option<usize>) -> usize {
     match selected {
         Some(index) if index >= available => index.saturating_add(1).saturating_sub(available),

@@ -2,15 +2,20 @@ use anyhow::{Context, Result};
 use crossterm::{cursor::MoveTo, execute};
 use std::io::{Stdout, Write};
 
+use crate::display;
 use crate::frame::{Frame, ReplaceMenu, ReplaceStage};
 use crate::paint;
-use crate::surface::Surface;
-use crate::text::{count_label, sanitize_text};
+use crate::surface::{saturate_u16, Surface};
+use crate::text::{
+    count_label, display_width, sanitize_text, truncate_to_display_width, TAB_WIDTH,
+};
 
-use super::furniture::saturate_u16;
-
-use super::furniture::truncate_to_width;
 use super::picker_start;
+
+const SEARCH_LABEL: &str = "Replace  ";
+const REPLACEMENT_LABEL: &str = "with: ";
+const SEARCH_ROW: usize = 0;
+const REPLACEMENT_ROW: usize = 1;
 
 pub(super) fn draw_replace(
     out: &mut Surface,
@@ -26,34 +31,46 @@ pub(super) fn draw_replace(
 }
 
 fn draw_replace_prompt(out: &mut Surface, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
-    out.move_to(0, 0);
-    out.clear_line();
-    out.set_foreground(frame.theme.line_number);
-    let query = sanitize_text(replace.query);
-    let prompt = format!("Replace  {query}");
-    write!(
+    write_replace_prompt(
         out,
-        "{}",
-        truncate_to_width(&prompt, frame.viewport.width())
-    )
-    .context("write replace prompt")?;
+        frame,
+        SEARCH_ROW,
+        query_prompt(SEARCH_LABEL, replace.query),
+    )?;
     if replace.stage == ReplaceStage::Search {
         paint::restore_base(out, frame.theme);
         return Ok(());
     }
-    out.move_to(0, 1);
+    write_replace_prompt(
+        out,
+        frame,
+        REPLACEMENT_ROW,
+        query_prompt(REPLACEMENT_LABEL, replace.replacement),
+    )?;
+    paint::restore_base(out, frame.theme);
+    Ok(())
+}
+
+fn write_replace_prompt(
+    out: &mut Surface,
+    frame: &Frame,
+    row: usize,
+    prompt: String,
+) -> Result<()> {
+    out.move_to(0, row);
     out.clear_line();
     out.set_foreground(frame.theme.line_number);
-    let replacement = sanitize_text(replace.replacement);
-    let prompt = format!("with: {replacement}");
     write!(
         out,
         "{}",
-        truncate_to_width(&prompt, frame.viewport.width())
+        truncate_to_display_width(&prompt, frame.viewport.width())
     )
-    .context("write replacement prompt")?;
-    paint::restore_base(out, frame.theme);
+    .context("write replace prompt")?;
     Ok(())
+}
+
+fn query_prompt(label: &str, text: &str) -> String {
+    format!("{label}{}", sanitize_text(text))
 }
 
 fn draw_replace_rows(out: &mut Surface, frame: &Frame, replace: &ReplaceMenu<'_>) -> Result<()> {
@@ -76,7 +93,7 @@ fn draw_replace_rows(out: &mut Surface, frame: &Frame, replace: &ReplaceMenu<'_>
             paint::apply_match(out, &frame.theme.selection);
         }
         let item = sanitize_text(item);
-        write!(out, "{}", truncate_to_width(&item, width)).context("write replace row")?;
+        write!(out, "{}", truncate_to_display_width(&item, width)).context("write replace row")?;
         paint::restore_base(out, frame.theme);
     }
     Ok(())
@@ -95,7 +112,7 @@ fn draw_replace_footer(out: &mut Surface, frame: &Frame, replace: &ReplaceMenu<'
     write!(
         out,
         "{}",
-        truncate_to_width(&footer, frame.viewport.width())
+        truncate_to_display_width(&footer, frame.viewport.width())
     )
     .context("write replace footer")?;
     paint::restore_base(out, frame.theme);
@@ -143,13 +160,67 @@ pub(super) fn place_replace_cursor(
     frame: &Frame,
     replace: &ReplaceMenu<'_>,
 ) -> Result<()> {
-    let width = frame.viewport.width().max(1);
-    let (row, prefix) = match replace.stage {
-        ReplaceStage::Search => (0, "Replace  ".chars().count()),
-        ReplaceStage::Replacement | ReplaceStage::Preview => (1, "with: ".chars().count()),
-    };
-    let column = prefix.saturating_add(replace.cursor).min(width - 1);
-    execute!(out, MoveTo(saturate_u16(column), saturate_u16(row)))
-        .context("place replace cursor")?;
+    let position = replace_cursor_position(replace, frame.viewport.width().max(1));
+    execute!(
+        out,
+        MoveTo(saturate_u16(position.column), saturate_u16(position.row))
+    )
+    .context("place replace cursor")?;
     Ok(())
+}
+
+struct ReplaceCursorPosition {
+    row: usize,
+    column: usize,
+}
+
+fn replace_cursor_position(replace: &ReplaceMenu<'_>, width: usize) -> ReplaceCursorPosition {
+    let (row, label, text) = match replace.stage {
+        ReplaceStage::Search => (SEARCH_ROW, SEARCH_LABEL, replace.query),
+        ReplaceStage::Replacement | ReplaceStage::Preview => {
+            (REPLACEMENT_ROW, REPLACEMENT_LABEL, replace.replacement)
+        }
+    };
+    let prefix = display_width(label);
+    let text = display::screen_col(text, replace.cursor, TAB_WIDTH);
+    ReplaceCursorPosition {
+        row,
+        column: prefix.saturating_add(text).min(width.saturating_sub(1)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn menu<'a>(stage: ReplaceStage, query: &'a str, replacement: &'a str) -> ReplaceMenu<'a> {
+        ReplaceMenu {
+            stage,
+            query,
+            replacement,
+            cursor: 1,
+            items: &[],
+            selected: None,
+            loading: false,
+            status: None,
+            matches: 0,
+            files: 0,
+        }
+    }
+
+    #[test]
+    fn cursor_positions_account_for_wide_text() {
+        let replace = menu(ReplaceStage::Search, "\u{4e2d}x", "");
+        let position = replace_cursor_position(&replace, 30);
+        assert_eq!(position.row, SEARCH_ROW);
+        assert_eq!(position.column, display_width(SEARCH_LABEL) + 2);
+    }
+
+    #[test]
+    fn cursor_positions_clamp_to_the_viewport() {
+        let replace = menu(ReplaceStage::Replacement, "", "abcdef");
+        let position = replace_cursor_position(&replace, 5);
+        assert_eq!(position.row, REPLACEMENT_ROW);
+        assert_eq!(position.column, 4);
+    }
 }

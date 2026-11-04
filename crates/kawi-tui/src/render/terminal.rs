@@ -7,10 +7,10 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use super::cursor::apply_cursor_style;
-use super::furniture::{saturate_u16, write_padded};
+use super::furniture::write_padded;
 use super::paint;
 use crate::frame::{TerminalAttrs, TerminalColor, TerminalPanel};
-use crate::surface::Surface;
+use crate::surface::{saturate_u16, Surface};
 use crate::theme::Theme;
 
 pub(super) fn draw_terminal_panel(out: &mut Surface, frame: &crate::frame::Frame) -> Result<()> {

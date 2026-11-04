@@ -10,13 +10,12 @@ use self::chrome::{draw_box, draw_divider, draw_rule};
 use self::preview::draw_preview;
 use self::rows::{draw_footer, draw_results};
 use super::draw_surface;
-use super::furniture::saturate_u16;
 use super::overlay::clear_overlay_rect;
 use crate::display;
 use crate::frame::{Frame, PickerMenu, Rect};
 use crate::paint;
 use crate::picker_layout;
-use crate::surface::Surface;
+use crate::surface::{saturate_u16, Surface};
 use crate::text::display_width;
 
 const PROMPT_PREFIX: &str = "> ";

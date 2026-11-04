@@ -7,10 +7,15 @@ use std::io::Stdout;
 
 use kawi_editor::Viewport;
 
+use crate::display;
 use crate::frame::{CursorStyle, Frame, PromptMenu};
+use crate::surface::saturate_u16;
+use crate::text::{display_width, TAB_WIDTH};
 
-use super::furniture::{char_len, saturate_u16};
 use super::pager::PAGER_PROMPT;
+
+const PROMPT_HOME: usize = 1;
+const PROMPT_LABEL_GAP: usize = 2;
 
 pub(super) fn apply_cursor_style(out: &mut Stdout, style: CursorStyle) -> Result<()> {
     execute!(out, cursor_style(style)).context("set cursor style")?;
@@ -83,6 +88,15 @@ fn place_prompt_cursor(out: &mut Stdout, col: usize, viewport: &Viewport) -> Res
     Ok(())
 }
 
+pub(super) fn prompt_cursor_col(
+    command: Option<&str>,
+    search: Option<&str>,
+    width: usize,
+    showcmd: Option<&str>,
+) -> Option<usize> {
+    prompt_cursor_col_with_prompt(None, command, search, width, showcmd)
+}
+
 fn prompt_cursor_col_with_prompt(
     prompt: Option<&PromptMenu<'_>>,
     command: Option<&str>,
@@ -91,10 +105,11 @@ fn prompt_cursor_col_with_prompt(
     showcmd: Option<&str>,
 ) -> Option<usize> {
     if let Some(prompt) = prompt {
-        let prefix = char_len(prompt.label).saturating_add(2);
+        let prefix = display_width(prompt.label).saturating_add(PROMPT_LABEL_GAP);
+        let value = display::screen_col(prompt.value, prompt.cursor, TAB_WIDTH);
         return Some(
             prefix
-                .saturating_add(prompt.cursor)
+                .saturating_add(value)
                 .min(prompt_edge(width, showcmd)),
         );
     }
@@ -111,18 +126,14 @@ fn prompt_text<'a>(command: Option<&'a str>, search: Option<&'a str>) -> Option<
 }
 
 fn prompt_col(text: &str, width: usize, showcmd: Option<&str>) -> usize {
-    prompt_home()
-        .saturating_add(char_len(text))
+    PROMPT_HOME
+        .saturating_add(display::screen_len(text, TAB_WIDTH))
         .min(prompt_edge(width, showcmd))
-}
-
-fn prompt_home() -> usize {
-    1
 }
 
 fn prompt_edge(width: usize, showcmd: Option<&str>) -> usize {
     width
-        .saturating_sub(char_len(showcmd.unwrap_or("")))
+        .saturating_sub(display_width(showcmd.unwrap_or("")))
         .saturating_sub(1)
 }
 
@@ -153,6 +164,19 @@ mod tests {
         assert_eq!(
             prompt_cursor_col_with_prompt(Some(&prompt), Some("w"), None, 30, None),
             Some(13)
+        );
+    }
+
+    #[test]
+    fn prompt_cursor_counts_wide_values_as_cells() {
+        let prompt = PromptMenu {
+            label: "rename",
+            value: "\u{4e2d}x",
+            cursor: 1,
+        };
+        assert_eq!(
+            prompt_cursor_col_with_prompt(Some(&prompt), None, None, 30, None),
+            Some(10)
         );
     }
 
@@ -189,10 +213,14 @@ mod tests {
     }
 
     #[test]
-    fn prompt_cursor_counts_chars_not_bytes() {
+    fn prompt_cursor_counts_cells_not_bytes() {
         assert_eq!(
             prompt_cursor_col_with_prompt(None, None, Some("éx"), 20, None),
             Some(3)
+        );
+        assert_eq!(
+            prompt_cursor_col_with_prompt(None, None, Some("\u{4e2d}x"), 20, None),
+            Some(4)
         );
     }
 
