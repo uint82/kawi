@@ -111,6 +111,48 @@ fn large_file_edits_refresh_the_window() {
 }
 
 #[test]
+fn windowed_edits_keep_new_windows_correct() {
+    let text = "# marker\n".repeat(60_000);
+    let runtime = Runtime::new(LanguageId::Python).expect("runtime");
+    let mut document = Document::new(LanguageId::Python);
+    let key = SyntaxKey {
+        document: 1,
+        revision: 1,
+        top: 0,
+        end: 20,
+        language: LanguageId::Python,
+    };
+    document.update(
+        &SyntaxRequest {
+            key,
+            text: Rope::from_str(&text),
+        },
+        &runtime,
+    );
+    let edited = text.replacen("# marker", "# changed", 1);
+    document.update(
+        &SyntaxRequest {
+            key: SyntaxKey { revision: 2, ..key },
+            text: Rope::from_str(&edited),
+        },
+        &runtime,
+    );
+    let (_, spans) = document.update(
+        &SyntaxRequest {
+            key: SyntaxKey {
+                revision: 2,
+                top: 40_000,
+                end: 40_020,
+                ..key
+            },
+            text: Rope::from_str(&edited),
+        },
+        &runtime,
+    );
+    assert_eq!(name_at(&spans, 40_000, 0), Some("comment"));
+}
+
+#[test]
 fn shrinking_a_large_document_restores_a_full_tree() {
     let text = "# marker\n".repeat(60_000);
     let runtime = Runtime::new(LanguageId::Python).expect("runtime");

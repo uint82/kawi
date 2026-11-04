@@ -76,8 +76,16 @@ impl Document {
     }
 
     fn refresh_text(&mut self, request: &SyntaxRequest) {
-        self.text = request.text.to_string();
-        self.index = LineIndex::new(&self.text);
+        let text = request.text.to_string();
+        let index = LineIndex::new(&text);
+        if let Some(mut tree) = self.tree.take() {
+            if let Some(edit) = input_edit(&self.text, &text, &self.index, &index) {
+                tree.edit(&edit);
+            }
+            self.tree = Some(tree);
+        }
+        self.text = text;
+        self.index = index;
         self.revision = request.key.revision;
     }
 
@@ -126,7 +134,8 @@ impl Document {
             end_point: self.index.point(end_byte),
         };
         let _ = self.parser.set_included_ranges(&[range]);
-        self.tree = self.parser.parse(&self.text, None);
+        let old_tree = self.tree.take();
+        self.tree = self.parser.parse(&self.text, old_tree.as_ref());
         self.large = true;
         self.window_rows = window;
         self.revision = request.key.revision;
