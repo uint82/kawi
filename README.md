@@ -173,3 +173,7 @@ cargo test --workspace
 ## Contributing
 
 Bug reports and pull requests are welcome. Keep changes focused, add tests for behavior changes, and make sure the full check suite passes.
+
+## License
+
+Kawi is licensed under the GNU General Public License, version 3 or later (`GPL-3.0-or-later`). See [LICENSE](LICENSE) for the full license text.
