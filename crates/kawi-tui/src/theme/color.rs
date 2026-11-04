@@ -33,6 +33,9 @@ pub(super) fn parse_color(field: &str, value: &str) -> Result<Color, ThemeError>
 }
 
 fn parse_hex(field: &str, value: &str, hex: &str) -> Result<Color, ThemeError> {
+    if !hex.is_ascii() {
+        return Err(invalid_hex(field, value));
+    }
     let expanded = match hex.len() {
         3 => hex
             .chars()
@@ -94,5 +97,7 @@ mod tests {
         assert!(parse_color("base.foreground", "#12").is_err());
         assert!(parse_color("base.foreground", "#gggggg").is_err());
         assert!(parse_color("base.foreground", "#12345678").is_err());
+        assert!(parse_color("base.foreground", "#€").is_err());
+        assert!(parse_color("base.foreground", "#€€€").is_err());
     }
 }

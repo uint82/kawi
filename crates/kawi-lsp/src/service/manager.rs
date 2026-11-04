@@ -15,6 +15,7 @@ impl Manager {
         Self {
             languages,
             input,
+            deferred_inputs: VecDeque::new(),
             input_tx,
             events,
             wake,
@@ -66,7 +67,10 @@ impl Manager {
         }
     }
 
-    fn next_input(&self) -> InputWait {
+    fn next_input(&mut self) -> InputWait {
+        if let Some(input) = self.deferred_inputs.pop_front() {
+            return InputWait::Input(input);
+        }
         let Some(timeout) = self.next_deadline() else {
             return self
                 .input

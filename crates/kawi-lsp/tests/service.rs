@@ -54,6 +54,16 @@ fn shutdown_config(root: &Path, ignore: bool, delay: u64) -> PathBuf {
     path
 }
 
+fn slow_shutdown_config(root: &Path, delay: u64) -> PathBuf {
+    let path = root.join("languages.toml");
+    let command = escape_toml(FAKE_SERVER);
+    let text = format!(
+        "[server.fake]\ncommand = \"{command}\"\nargs = []\n\n[server.fake.env]\nFAKE_LSP_SYNC = \"full\"\nFAKE_LSP_SHUTDOWN_DELAY_MS = \"{delay}\"\n\n[[language]]\nname = \"rust\"\nlanguage_id = \"rust\"\nextensions = [\"rs\"]\nroot_markers = [\"Cargo.toml\"]\nservers = [\"fake\"]\n"
+    );
+    fs::write(&path, text).expect("config");
+    path
+}
+
 fn rename_config(root: &Path, rename_mode: &str, rename_delay: u64) -> PathBuf {
     let path = root.join("languages.toml");
     let command = escape_toml(FAKE_SERVER);
@@ -1411,6 +1421,24 @@ fn stops_starts_and_restarts_a_client() {
     wait_for_state(&service, ServerState::Ready);
     let third = read_pid(&pid_file);
     assert_ne!(second, third);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn preserves_commands_received_during_a_restart() {
+    let root = temp_project("lifecycle_deferred");
+    let languages = Languages::load(&slow_shutdown_config(&root, 250));
+    let (wake, _wake_rx) = mpsc::channel();
+    let service = LspService::with_initialize_timeout(languages, wake, Duration::from_secs(5))
+        .expect("service");
+    let first = root.join("src/main.rs");
+    let second = root.join("src/lib.rs");
+    assert!(service.open(&first, "first\n"));
+    wait_for_ready(&service);
+    assert!(service.restart(Some(&first), None));
+    assert!(service.open(&second, "second\n"));
+    wait_for_log(&service, "open:1:second\n");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }
