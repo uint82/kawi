@@ -9,8 +9,9 @@ use std::borrow::Cow;
 use std::io::{Stdout, Write};
 
 use crate::frame::{
-    CursorStyle, DecorationSpan, Frame, PaneFrame, PluginStyle, PromptMenu, ReplaceMenu,
-    ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind, VirtualTextPlacement,
+    CursorStyle, DecorationSpan, DiagnosticUnderline, Frame, PaneFrame, PluginStyle, PromptMenu,
+    ReplaceMenu, ReplaceStage, SearchSpan, Selection, TaskPanel, VirtualTextKind,
+    VirtualTextPlacement,
 };
 use crate::overlay::{PANEL_BORDER, PANEL_PADDING};
 use crate::paint;
@@ -1083,6 +1084,7 @@ fn paint_span_at<W: Write>(
                 tag,
                 selected: false,
                 syntax: None,
+                underline: DiagnosticUnderline::default(),
             },
             theme,
         ),
@@ -2645,6 +2647,7 @@ mod tests {
                 tag: Some(crate::frame::DiagnosticTag::Unnecessary),
                 selected: false,
                 syntax: None,
+                underline: DiagnosticUnderline::default(),
             },
             &theme,
         )
@@ -2680,14 +2683,39 @@ mod tests {
                 tag: None,
                 selected: true,
                 syntax: None,
+                underline: DiagnosticUnderline::default(),
             },
             &theme,
         )
         .unwrap();
         let output = String::from_utf8(out).unwrap();
         assert!(output.starts_with(&String::from_utf8(expected).unwrap()));
-        assert!(output.contains("\u{1b}[4m"));
+        assert!(output.contains("\u{1b}[4:3m"));
         assert!(output.contains('x'));
+    }
+
+    #[test]
+    fn diagnostic_underline_style_selects_the_terminal_attribute() {
+        let theme = Theme::default();
+        let paint = |underline| {
+            let mut out = Vec::new();
+            paint_diagnostic(
+                &mut out,
+                "x",
+                DiagnosticPaint {
+                    severity: crate::frame::DiagnosticSeverity::Error,
+                    tag: None,
+                    selected: false,
+                    syntax: None,
+                    underline,
+                },
+                &theme,
+            )
+            .unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        assert!(paint(DiagnosticUnderline::Curly).contains("\u{1b}[4:3m"));
+        assert!(paint(DiagnosticUnderline::Straight).contains("\u{1b}[4m"));
     }
 
     #[test]
@@ -2715,6 +2743,7 @@ mod tests {
                 tag: None,
                 selected: true,
                 syntax: Some(keyword),
+                underline: DiagnosticUnderline::default(),
             },
             &theme,
         )
@@ -2722,7 +2751,7 @@ mod tests {
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains(&String::from_utf8(expected_foreground).unwrap()));
         assert!(output.contains(&String::from_utf8(expected_background).unwrap()));
-        assert!(output.contains("\u{1b}[4m"));
+        assert!(output.contains("\u{1b}[4:3m"));
         assert!(output.contains("fn"));
     }
 
@@ -2877,13 +2906,14 @@ mod tests {
                 tag: None,
                 selected: false,
                 syntax: Some(keyword),
+                underline: DiagnosticUnderline::default(),
             },
             &theme,
         )
         .unwrap();
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains(&String::from_utf8(expected).unwrap()));
-        assert!(output.contains("\u{1b}[4m"));
+        assert!(output.contains("\u{1b}[4:3m"));
         assert!(output.contains("fn"));
     }
 
@@ -2912,6 +2942,7 @@ mod tests {
                     tag: Some(tag),
                     selected: false,
                     syntax: Some(keyword),
+                    underline: DiagnosticUnderline::default(),
                 },
                 &theme,
             )

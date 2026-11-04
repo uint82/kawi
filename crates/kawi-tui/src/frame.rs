@@ -228,6 +228,7 @@ pub struct PaneFrame<'a> {
     pub gutter: &'a [String],
     pub signs: Option<&'a [Option<Sign>]>,
     pub diagnostic_spans: &'a [DiagnosticSpan],
+    pub diagnostic_underline: DiagnosticUnderline,
     pub decorations: &'a [DecorationSpan],
     pub virtual_texts: &'a [Vec<VirtualText>],
     pub plugin_virtual_texts: &'a [Vec<VirtualText>],
@@ -303,6 +304,30 @@ impl DiagnosticSeverity {
             Self::Warning => "W",
             Self::Information => "I",
             Self::Hint => "H",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DiagnosticUnderline {
+    Straight,
+    #[default]
+    Curly,
+}
+
+impl DiagnosticUnderline {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "straight" => Some(Self::Straight),
+            "curly" => Some(Self::Curly),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Straight => "straight",
+            Self::Curly => "curly",
         }
     }
 }

@@ -1,4 +1,4 @@
-use kawi_tui::frame::VirtualText;
+use kawi_tui::frame::{DiagnosticUnderline, VirtualText};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -136,6 +136,7 @@ pub(super) struct DiagnosticOptions {
     pub(super) source: SourceDisplay,
     pub(super) counts: CountsMode,
     pub(super) workspace_counts: bool,
+    pub(super) underline: DiagnosticUnderline,
 }
 
 impl Default for DiagnosticOptions {
@@ -146,6 +147,7 @@ impl Default for DiagnosticOptions {
             source: SourceDisplay::IfMany,
             counts: CountsMode::ErrorsWarnings,
             workspace_counts: false,
+            underline: DiagnosticUnderline::Curly,
         }
     }
 }

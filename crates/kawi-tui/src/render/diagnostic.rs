@@ -6,7 +6,9 @@ use crossterm::{
 use std::io::{Stdout, Write};
 
 use crate::display;
-use crate::frame::{DiagnosticSeverity, DiagnosticSpan, DiagnosticTag, PaneFrame};
+use crate::frame::{
+    DiagnosticSeverity, DiagnosticSpan, DiagnosticTag, DiagnosticUnderline, PaneFrame,
+};
 use crate::paint;
 use crate::text::display_width;
 use crate::theme::Theme;
@@ -34,6 +36,7 @@ pub(super) fn paint_span(
         tag,
         selected: false,
         syntax: None,
+        underline: pane.diagnostic_underline,
     };
     let segments = diagnostic_segments(span, selection_spans, syntax_spans, pane.tabstop);
     let x = pane.rect.x.saturating_add(gutter_width);
@@ -164,6 +167,7 @@ pub(super) struct DiagnosticPaint {
     pub(super) tag: Option<DiagnosticTag>,
     pub(super) selected: bool,
     pub(super) syntax: Option<SyntaxHighlight>,
+    pub(super) underline: DiagnosticUnderline,
 }
 
 pub(super) fn paint_diagnostic<W: Write>(
@@ -221,7 +225,9 @@ fn apply_diagnostic_decoration<W: Write>(
             execute!(out, SetAttribute(Attribute::CrossedOut))
                 .context("apply struck diagnostic text")?;
         }
-        None => paint::apply_underline(out, theme.diagnostic_color(paint.severity))?,
+        None => {
+            paint::apply_underline(out, theme.diagnostic_color(paint.severity), paint.underline)?
+        }
     }
     Ok(())
 }
