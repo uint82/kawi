@@ -20,7 +20,7 @@ pub fn present<W: Write>(surface: &Surface, out: &mut W) -> Result<()> {
 }
 
 fn present_row<W: Write>(surface: &Surface, y: usize, run: &mut String, out: &mut W) -> Result<()> {
-    execute!(out, MoveTo(0, saturate_u16(y))).context("move to surface row")?;
+    move_to(out, 0, y)?;
     run.clear();
     let mut current = None;
     for x in 0..surface.width() {
@@ -49,7 +49,15 @@ fn write_run<W: Write>(out: &mut W, run: &str) -> Result<()> {
     Ok(())
 }
 
-fn apply_style<W: Write>(out: &mut W, style: Style) -> Result<()> {
+pub(super) fn move_to<W: Write>(out: &mut W, x: usize, y: usize) -> Result<()> {
+    execute!(out, MoveTo(saturate_u16(x), saturate_u16(y))).context("move to surface cell")
+}
+
+pub(super) fn write_cell<W: Write>(out: &mut W, cell: &super::Cell) -> Result<()> {
+    write!(out, "{}", cell.text()).context("write surface cell")
+}
+
+pub(super) fn apply_style<W: Write>(out: &mut W, style: Style) -> Result<()> {
     execute!(
         out,
         SetAttribute(Attribute::Reset),
