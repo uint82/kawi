@@ -1,61 +1,47 @@
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::thread::JoinHandle;
 
 use anyhow::{Context, Result};
-use kawi_process::{signal_group, ProcessSignal};
-use portable_pty::{native_pty_system, Child, ExitStatus, MasterPty};
+use portable_pty::{native_pty_system, Child, MasterPty, PtyPair};
 
-use super::PtyEvent;
+use super::child::{self, ChildProcess};
 use super::config::{build_command, pty_size};
 use super::reader;
 use super::wake::Wake;
+use super::PtyEvent;
 
 const READ_QUEUE: usize = 256;
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
-const HANGUP_GRACE: Duration = Duration::from_millis(200);
 
 pub(super) struct PtySession {
     events: Option<Receiver<PtyEvent>>,
     wake: Wake,
     master: Option<Box<dyn MasterPty + Send>>,
     writer: Option<Box<dyn Write + Send>>,
-    child: Box<dyn Child + Send + Sync>,
+    child: ChildProcess,
     reader: Option<JoinHandle<()>>,
 }
 
 impl PtySession {
     pub(super) fn start(options: &super::SpawnOptions, wake: Sender<()>) -> Result<Self> {
         let pty_system = native_pty_system();
-        let pair = pty_system
+        let PtyPair { slave, master } = pty_system
             .openpty(pty_size(options.rows, options.cols))
             .context("open terminal pty")?;
         let command = build_command(options);
-        let mut child = pair
-            .slave
+        let mut child = slave
             .spawn_command(command)
             .with_context(|| format!("start {}", options.shell))?;
-        drop(pair.slave);
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .inspect_err(|_| kill_child(child.as_mut()))
-            .context("open terminal reader")?;
-        let writer = pair
-            .master
-            .take_writer()
-            .inspect_err(|_| kill_child(child.as_mut()))
-            .context("open terminal writer")?;
+        drop(slave);
+        let (reader, writer) = open_endpoints(master.as_ref(), child.as_mut())?;
         let (sender, events) = mpsc::sync_channel(READ_QUEUE);
         let wake = Wake::new(wake);
-        let reader = reader::spawn(reader, sender, wake.clone())
-            .inspect_err(|_| kill_child(child.as_mut()))
-            .context("spawn terminal reader")?;
+        let reader = start_reader(reader, sender, child.as_mut(), wake.clone())?;
+        let child = ChildProcess::start(child, wake.clone()).context("spawn terminal waiter")?;
         Ok(Self {
             events: Some(events),
             wake,
-            master: Some(pair.master),
+            master: Some(master),
             writer: Some(writer),
             child,
             reader: Some(reader),
@@ -72,6 +58,10 @@ impl PtySession {
             events.push(event);
         }
         events
+    }
+
+    pub(super) fn try_exit(&mut self) -> Option<child::ExitEvent> {
+        self.child.try_exit()
     }
 
     pub(super) fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
@@ -91,30 +81,12 @@ impl PtySession {
             .context("resize terminal pty")
     }
 
-    pub(super) fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
-    }
-
     pub(super) fn process_id(&self) -> Option<u32> {
         self.child.process_id()
     }
 
     pub(super) fn terminate(&mut self) {
-        match self.child.try_wait() {
-            Ok(Some(_)) | Err(_) => return,
-            Ok(None) => {}
-        }
-        if let Some(pid) = self.child.process_id() {
-            signal_group(pid, ProcessSignal::Hangup);
-        }
-        if wait_for_exit(self.child.as_mut(), HANGUP_GRACE) {
-            return;
-        }
-        if let Some(pid) = self.child.process_id() {
-            signal_group(pid, ProcessSignal::Kill);
-        }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.child.terminate();
     }
 }
 
@@ -124,28 +96,47 @@ impl Drop for PtySession {
         self.writer.take();
         self.master.take();
         self.events.take();
+        self.stop_reader();
+    }
+}
+
+impl PtySession {
+    fn stop_reader(&mut self) {
+        if self
+            .reader
+            .as_ref()
+            .is_some_and(|reader| !reader.is_finished())
+        {
+            self.child.kill_group();
+        }
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
         }
     }
 }
 
-fn kill_child(child: &mut (dyn Child + Send + Sync)) {
-    let process_id = child.process_id();
-    if let Some(pid) = process_id {
-        signal_group(pid, ProcessSignal::Kill);
-    }
-    let _ = child.kill();
-    let _ = child.wait();
+fn open_endpoints(
+    master: &dyn MasterPty,
+    child: &mut (dyn Child + Send + Sync),
+) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>)> {
+    let reader = master
+        .try_clone_reader()
+        .inspect_err(|_| child::kill_now(child))
+        .context("open terminal reader")?;
+    let writer = master
+        .take_writer()
+        .inspect_err(|_| child::kill_now(child))
+        .context("open terminal writer")?;
+    Ok((reader, writer))
 }
 
-fn wait_for_exit(child: &mut (dyn Child + Send + Sync), grace: Duration) -> bool {
-    let deadline = Instant::now() + grace;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return true,
-            Ok(None) if Instant::now() < deadline => thread::sleep(POLL_INTERVAL),
-            Ok(None) | Err(_) => return false,
-        }
-    }
+fn start_reader(
+    reader: Box<dyn Read + Send>,
+    sender: std::sync::mpsc::SyncSender<PtyEvent>,
+    child: &mut (dyn Child + Send + Sync),
+    wake: Wake,
+) -> Result<JoinHandle<()>> {
+    reader::spawn(reader, sender, wake)
+        .inspect_err(|_| child::kill_now(child))
+        .context("spawn terminal reader")
 }

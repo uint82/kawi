@@ -1,16 +1,20 @@
 use std::io;
+use std::sync::mpsc::Sender;
+
 use anyhow::Result;
 use portable_pty::ExitStatus;
 
 use crate::responder::TerminalResponder;
 use crate::screen::TerminalScreen;
 
+mod child;
 mod config;
 mod pty;
 mod reader;
 mod response;
 mod wake;
 
+use child::ExitEvent;
 pub use config::SpawnOptions;
 use config::{exit_description, SCROLLBACK_LINES};
 use pty::PtySession;
@@ -26,17 +30,19 @@ pub struct TerminalSession {
     screen: TerminalScreen,
     responder: TerminalResponder,
     exit: Option<ExitStatus>,
+    exit_error: Option<String>,
     closed: bool,
 }
 
 impl TerminalSession {
-    pub fn start(options: &SpawnOptions, wake: std::sync::mpsc::Sender<()>) -> Result<Self> {
+    pub fn start(options: &SpawnOptions, wake: Sender<()>) -> Result<Self> {
         let pty = PtySession::start(options, wake)?;
         Ok(Self {
             pty,
             screen: TerminalScreen::new(options.rows, options.cols, SCROLLBACK_LINES),
             responder: TerminalResponder::default(),
             exit: None,
+            exit_error: None,
             closed: false,
         })
     }
@@ -61,11 +67,9 @@ impl TerminalSession {
                 }
             }
         }
-        if self.exit.is_none() {
-            if let Ok(Some(status)) = self.pty.try_wait() {
-                self.exit = Some(status);
-                changed = true;
-            }
+        if let Some(event) = self.pty.try_exit() {
+            self.record_exit(event);
+            changed = true;
         }
         changed
     }
@@ -92,11 +96,16 @@ impl TerminalSession {
     }
 
     pub fn exit_description(&self) -> Option<String> {
-        self.exit.as_ref().map(exit_description)
+        if let Some(status) = self.exit.as_ref() {
+            return Some(exit_description(status));
+        }
+        self.exit_error
+            .as_ref()
+            .map(|error| format!("process wait failed: {error}"))
     }
 
     pub fn is_running(&self) -> bool {
-        self.exit.is_none()
+        self.exit.is_none() && self.exit_error.is_none()
     }
 
     pub fn is_closed(&self) -> bool {
@@ -104,16 +113,19 @@ impl TerminalSession {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.exit.is_some() && self.closed
-    }
-
-    pub fn needs_poll(&self) -> bool {
-        !self.is_complete() && (self.closed || self.exit.is_some())
+        !self.is_running() && self.closed
     }
 
     pub fn terminate(&mut self) {
         self.pty.terminate();
-        self.exit = self.pty.try_wait().ok().flatten();
+        self.drain();
+    }
+
+    fn record_exit(&mut self, event: ExitEvent) {
+        match event {
+            ExitEvent::Status(status) => self.exit = Some(status),
+            ExitEvent::Error(error) => self.exit_error = Some(error),
+        }
     }
 }
 

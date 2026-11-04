@@ -86,7 +86,6 @@ mod window;
 mod workspace_edit;
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(16);
-const TERMINAL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy)]
 enum MarkOperator {
@@ -586,7 +585,6 @@ impl App {
             let timeout = shortest_timeout(timeout, diagnostic_timeout);
             let spinner_timeout = self.status_spinner_timeout();
             let timeout = shortest_timeout(timeout, spinner_timeout);
-            let timeout = shortest_timeout(timeout, self.terminal_wait_timeout());
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
             let timeout = shortest_timeout(timeout, self.plugin_wait_timeout());
@@ -604,10 +602,6 @@ impl App {
                 None => self.events.wait()?,
             }
         }
-    }
-
-    fn terminal_wait_timeout(&self) -> Option<Duration> {
-        self.terminal.needs_poll().then_some(TERMINAL_POLL_INTERVAL)
     }
 
     fn plugin_wait_timeout(&self) -> Option<Duration> {

@@ -2,8 +2,8 @@ use std::io::{self, Read};
 use std::sync::mpsc::SyncSender;
 use std::thread::{self, JoinHandle};
 
-use super::PtyEvent;
 use super::wake::Wake;
+use super::PtyEvent;
 
 const READ_BUFFER: usize = 8_192;
 
