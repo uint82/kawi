@@ -4,6 +4,7 @@ use crate::LanguageConfig;
 pub(super) fn languages() -> Vec<LanguageConfig> {
     vec![
         LanguageConfig::new("java", "java")
+            .with_spaces(4)
             .with_extensions(["java", "jav", "pde"])
             .with_root_markers([
                 "pom.xml",
@@ -17,6 +18,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
         LanguageConfig::new("kotlin", "kotlin")
+            .with_spaces(4)
             .with_extensions(["kt", "kts"])
             .with_root_markers(["settings.gradle", "settings.gradle.kts", "build.gradle.kts"])
             .with_servers(["kotlin-language-server"])
@@ -24,6 +26,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
         LanguageConfig::new("scala", "scala")
+            .with_spaces(2)
             .with_extensions(["scala", "sbt", "sc"])
             .with_root_markers([
                 "build.sbt",
@@ -37,12 +40,14 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
         LanguageConfig::new("clojure", "clojure")
+            .with_spaces(2)
             .with_extensions(["clj", "cljs", "cljc", "edn"])
             .with_root_markers(["project.clj", "deps.edn", "build.boot", "shadow-cljs.edn"])
             .with_servers(["clojure-lsp"])
             .with_line_comment(";")
             .with_auto_pairs(C_PAIRS_SINGLE),
         LanguageConfig::new("csharp", "csharp")
+            .with_spaces(4)
             .with_extensions(["cs", "csx", "cake"])
             .with_root_markers([
                 "global.json",
@@ -54,6 +59,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
         LanguageConfig::new("fsharp", "fsharp")
+            .with_spaces(4)
             .with_extensions(["fs", "fsi", "fsx", "fsscript"])
             .with_root_markers([
                 "global.json",

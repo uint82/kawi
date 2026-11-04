@@ -106,3 +106,50 @@ fn jsonc_filenames_precede_json_extensions() {
         .expect("language for tsconfig.json");
     assert_eq!(language.name, "jsonc");
 }
+
+#[test]
+fn built_in_languages_define_indentation() {
+    let languages = languages();
+    for language in &languages {
+        assert!(
+            language.indent.shiftwidth.is_some(),
+            "language {} has no shiftwidth",
+            language.name
+        );
+        assert!(
+            language.indent.expandtab.is_some(),
+            "language {} has no expandtab",
+            language.name
+        );
+        assert!(
+            language.indent.tabstop.is_some(),
+            "language {} has no tabstop",
+            language.name
+        );
+        assert_eq!(
+            language.indent_override,
+            crate::IndentConfig::default(),
+            "built-in language {} has a user override",
+            language.name
+        );
+    }
+}
+
+#[test]
+fn built_in_indentation_matches_language_conventions() {
+    let indent = |name: &str| {
+        languages()
+            .into_iter()
+            .find(|language| language.name == name)
+            .expect("language")
+            .indent
+    };
+    assert_eq!(indent("python"), crate::IndentConfig::spaces(4));
+    assert_eq!(indent("rust"), crate::IndentConfig::spaces(4));
+    assert_eq!(indent("typescript"), crate::IndentConfig::spaces(2));
+    assert_eq!(indent("javascript"), crate::IndentConfig::spaces(2));
+    assert_eq!(indent("yaml"), crate::IndentConfig::spaces(2));
+    assert_eq!(indent("go"), crate::IndentConfig::tabs(8));
+    assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
+    assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
+}
