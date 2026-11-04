@@ -72,7 +72,7 @@ pub fn slice_screen_into(
 }
 
 fn push_spaces(out: &mut String, count: usize) {
-    out.extend(std::iter::repeat(' ').take(count));
+    out.extend(std::iter::repeat_n(' ', count));
 }
 
 #[cfg(test)]
