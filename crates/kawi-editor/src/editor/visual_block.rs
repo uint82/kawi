@@ -622,6 +622,128 @@ mod tests {
     }
 
     #[test]
+    fn block_paste_count_repeats_each_row() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr\nstuvwx");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        e.apply(Action::JumpTo(2, 0));
+        e.apply(Action::PushCount(2));
+        paste_after(&mut e);
+        assert_eq!(
+            e.text_lines(),
+            vec!["abcdef", "ghijkl", "mababnopqr", "sghghtuvwx"]
+        );
+        assert_eq!((e.row(), e.col()), (2, 1));
+    }
+
+    #[test]
+    fn block_paste_over_charwise_register_repeats_each_row() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr");
+        e.yank_text("XY");
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["aXYdef", "gXYjkl", "mnopqr"]);
+        assert_eq!((e.row(), e.col()), (0, 2));
+    }
+
+    #[test]
+    fn block_paste_over_multiline_charwise_register_inserts_once() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr");
+        e.yank_text("XY\nZW");
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["aXY", "ZWdef", "gjkl", "mnopqr"]);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn block_paste_over_linewise_register_inserts_below_block() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr\nstuvwx");
+        e.apply(Action::JumpTo(2, 0));
+        e.apply(Action::YankLine);
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(
+            e.text_lines(),
+            vec!["adef", "gjkl", "mnopqr", "mnopqr", "stuvwx"]
+        );
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
+    fn block_paste_over_blockwise_register_repeats_count() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr\nstuvwx");
+        enter_block(&mut e, 0, 0);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::YankSelection);
+        e.apply(Action::ExitVisual);
+        enter_block(&mut e, 2, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PushCount(2));
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(
+            e.text_lines(),
+            vec!["abcdef", "ghijkl", "mababpqr", "sghghvwx"]
+        );
+        assert_eq!((e.row(), e.col()), (2, 1));
+    }
+
+    #[test]
+    fn block_paste_over_charwise_register_repeats_count() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr");
+        e.yank_text("XY");
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PushCount(2));
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["aXYXYef", "gXYXYkl", "mnopqr"]);
+        assert_eq!((e.row(), e.col()), (0, 4));
+    }
+
+    #[test]
+    fn block_paste_over_multiline_charwise_register_repeats_count() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr");
+        e.yank_text("XY\nZW");
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PushCount(2));
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(e.text_lines(), vec!["aXY", "ZWXY", "ZWef", "gkl", "mnopqr"]);
+        assert_eq!((e.row(), e.col()), (0, 1));
+    }
+
+    #[test]
+    fn block_paste_over_linewise_register_repeats_count() {
+        let mut e = editor_with("abcdef\nghijkl\nmnopqr\nstuvwx");
+        e.apply(Action::JumpTo(2, 0));
+        e.apply(Action::YankLine);
+        enter_block(&mut e, 0, 1);
+        e.apply(Action::MoveDown);
+        e.apply(Action::MoveRight);
+        e.apply(Action::PushCount(2));
+        e.apply(Action::PasteOverSelection);
+        assert_eq!(
+            e.text_lines(),
+            vec!["adef", "gjkl", "mnopqr", "mnopqr", "mnopqr", "stuvwx"]
+        );
+        assert_eq!((e.row(), e.col()), (2, 0));
+    }
+
+    #[test]
     fn block_paste_after_inserts_at_next_column() {
         let mut e = editor_with("abcdef\ngh\nijklmn\nopqrst\nuvwxyz\n123456\n7890ab");
         enter_block(&mut e, 0, 0);
