@@ -1,3 +1,4 @@
+use kawi_buffer::unicode::{display_width, needs_terminal_reposition};
 use kawi_buffer::Buffer;
 
 const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}";
@@ -75,4 +76,22 @@ fn lays_out_keycaps_like_neovim() {
 fn includes_newline_when_the_range_crosses_a_line() {
     let buffer = Buffer::from_string("ab\ncd");
     assert_eq!(buffer.range_text(0, 0, 0, 2), "ab\n");
+}
+
+const EMOJI_LINES: [&str; 4] = [
+    "\u{2764}\u{fe0f} \u{2764}\u{fe0f}\u{200d}\u{1f525} \u{2764}\u{fe0f}\u{200d}\u{1fa79} \u{1f494} \u{1f495} \u{1f496} \u{1f497} \u{1f498} \u{1f49d}",
+    "\u{1f3f3}\u{fe0f} \u{1f3f4} \u{1f3f3}\u{fe0f}\u{200d}\u{1f308} \u{1f3f3}\u{fe0f}\u{200d}\u{26a7}\u{fe0f} \u{1f1ee}\u{1f1e9} \u{1f1ef}\u{1f1f5} \u{1f1f0}\u{1f1f7} \u{1f1fa}\u{1f1f8} \u{1f1ec}\u{1f1e7} \u{1f1e9}\u{1f1ea} \u{1f1eb}\u{1f1f7} \u{1f1e7}\u{1f1f7} \u{1f1ee}\u{1f1f3} \u{1f1e8}\u{1f1f3}",
+    "\u{1f3ae} \u{1f3a7} \u{1f3b9} \u{1f3b8} \u{1f3bb} \u{1f941} \u{1f3a8} \u{1f58c}\u{fe0f} \u{1f4da} \u{1f4bb} \u{1f5a5}\u{fe0f} \u{2328}\u{fe0f} \u{1f5b1}\u{fe0f} \u{1f4f1} \u{1f50b} \u{1f50c}",
+    "\u{1f680} \u{1f6f8} \u{1f30c} \u{1f30d} \u{1f30e} \u{1f30f} \u{1f315} \u{1f311} \u{2600}\u{fe0f} \u{1f308} \u{26a1} \u{1f525} \u{1f4a7} \u{2744}\u{fe0f} \u{1f30a} \u{1f30b} \u{1f332} \u{1f344} \u{1f33b}",
+];
+
+#[test]
+fn matches_neovim_emoji_line_layouts() {
+    let expected = [26, 41, 47, 56];
+    for (line, width) in EMOJI_LINES.iter().zip(expected) {
+        assert_eq!(display_width(line), width);
+        for token in line.split(' ') {
+            assert!(needs_terminal_reposition(token));
+        }
+    }
 }
