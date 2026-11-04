@@ -84,12 +84,6 @@ impl TerminalUi {
             .is_some_and(TerminalSession::is_running)
     }
 
-    pub fn needs_poll(&self) -> bool {
-        self.session
-            .as_ref()
-            .is_some_and(TerminalSession::needs_poll)
-    }
-
     pub fn take_exit(&mut self) -> Option<String> {
         self.exit_notice.take()
     }

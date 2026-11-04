@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::mpsc::channel;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn options(command: &str) -> SpawnOptions {
     let mut options = SpawnOptions::new(std::env::temp_dir(), 10, 40);
@@ -40,6 +41,23 @@ fn wait_for_completion(session: &mut TerminalSession) {
         thread::sleep(Duration::from_millis(10));
     }
     assert!(session.is_complete());
+}
+
+fn start_with_open_descendant() -> (TerminalSession, std::sync::mpsc::Receiver<()>) {
+    let (wake, wake_rx) = channel();
+    let session = TerminalSession::start(&options("trap '' HUP; sleep 30 & exit 7"), wake).unwrap();
+    (session, wake_rx)
+}
+
+fn wait_for_exit(session: &mut TerminalSession, wake: &std::sync::mpsc::Receiver<()>) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while session.is_running() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        assert!(!remaining.is_zero(), "terminal exit was not detected");
+        wake.recv_timeout(remaining)
+            .expect("terminal exit did not wake the app");
+        session.drain();
+    }
 }
 
 #[test]
@@ -113,6 +131,25 @@ fn detects_exit_without_output() {
     assert!(!session.is_running());
     assert_eq!(session.exit_status().unwrap().exit_code(), 3);
     assert!(session.is_closed());
+}
+
+#[test]
+#[cfg(unix)]
+fn detects_exit_while_descendant_holds_the_pty() {
+    let (mut session, wake) = start_with_open_descendant();
+    wait_for_exit(&mut session, &wake);
+    assert_eq!(session.exit_status().unwrap().exit_code(), 7);
+    assert!(!session.is_closed());
+}
+
+#[test]
+#[cfg(unix)]
+fn closing_session_stops_descendants_that_hold_the_pty() {
+    let (mut session, wake) = start_with_open_descendant();
+    wait_for_exit(&mut session, &wake);
+    let started = Instant::now();
+    drop(session);
+    assert!(started.elapsed() < Duration::from_secs(2));
 }
 
 #[test]
