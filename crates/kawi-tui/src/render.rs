@@ -28,6 +28,7 @@ mod debug;
 mod diagnostic;
 mod explorer;
 mod keymenu;
+mod line;
 mod menu;
 mod picker;
 mod plugin_panel;
@@ -36,6 +37,7 @@ mod terminal;
 
 use debug::draw_debug_panel;
 use explorer::draw_explorer_panel;
+use line::draw_visible_lines;
 use plugin_panel::draw_plugin_panel;
 use terminal::{draw_terminal_panel, place_terminal_cursor};
 
@@ -343,71 +345,6 @@ fn place_replace_cursor(out: &mut Stdout, frame: &Frame, replace: &ReplaceMenu<'
     let column = prefix.saturating_add(replace.cursor).min(width - 1);
     execute!(out, MoveTo(saturate_u16(column), saturate_u16(row)))
         .context("place replace cursor")?;
-    Ok(())
-}
-
-fn draw_visible_lines(out: &mut Stdout, pane: &PaneFrame<'_>, theme: &Theme) -> Result<()> {
-    let gutter_width = gutter_width(pane);
-    let height = pane.rect.height.saturating_sub(1);
-    for (screen_row, line) in pane.lines.iter().enumerate().take(height) {
-        draw_one_line(out, pane, theme, screen_row, line, gutter_width)?;
-    }
-    Ok(())
-}
-
-fn draw_one_line(
-    out: &mut Stdout,
-    pane: &PaneFrame<'_>,
-    theme: &Theme,
-    screen_row: usize,
-    text: &str,
-    gutter_width: usize,
-) -> Result<()> {
-    execute!(
-        out,
-        MoveTo(
-            saturate_u16(pane.rect.x),
-            saturate_u16(pane.rect.y.saturating_add(screen_row))
-        )
-    )
-    .context("move to line start")?;
-    if let Some(signs) = pane.signs {
-        match signs.get(screen_row).and_then(Option::as_ref) {
-            Some(sign) => {
-                execute!(out, SetForegroundColor(theme.sign_color(sign)))
-                    .context("apply sign color")?;
-                write!(out, "{}", sign.text()).context("write sign")?;
-            }
-            None => write!(out, " ").context("write empty sign")?,
-        }
-        execute!(out, SetForegroundColor(theme.line_number)).context("apply line number color")?;
-    }
-    if let Some(gutter) = pane.gutter.get(screen_row) {
-        execute!(out, SetForegroundColor(theme.line_number)).context("apply line number color")?;
-        write!(out, "{gutter}").context("write gutter")?;
-    }
-    if pane.signs.is_some() || pane.gutter.get(screen_row).is_some() {
-        paint::restore_base(out, theme)?;
-    }
-    draw_left_virtual_text(out, pane, theme, screen_row)?;
-    let width = pane.rect.width.saturating_sub(gutter_width);
-    let end = pane.viewport.leftcol().saturating_add(width);
-    let text = display::slice_screen(text, pane.viewport.leftcol(), end, pane.tabstop);
-    let visible = display::screen_len(&text, pane.tabstop);
-    write!(out, "{}", text).context("write line")?;
-    erase_row_tail(out)?;
-    draw_rulers(out, pane, theme, screen_row, gutter_width, visible)?;
-    draw_virtual_text(
-        out,
-        VirtualTextDraw {
-            pane,
-            theme,
-            screen_row,
-            gutter_width,
-            width,
-            line_width: visible,
-        },
-    )?;
     Ok(())
 }
 
