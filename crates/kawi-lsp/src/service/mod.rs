@@ -139,6 +139,25 @@ pub struct CursorPosition {
     pub column: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorValue {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+    pub alpha: u8,
+}
+
+impl ColorValue {
+    pub const fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+            alpha,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextLocation {
     pub path: PathBuf,
@@ -387,6 +406,7 @@ pub enum LspEvent {
     WorkspaceSymbolResolved(WorkspaceSymbolResolvedEvent),
     DocumentColors(DocumentColorsEvent),
     DocumentColorCapabilities(DocumentColorCapabilitiesEvent),
+    ColorPresentations(ColorPresentationEvent),
     RequestError {
         request: u64,
         message: String,
@@ -402,7 +422,10 @@ pub enum LspEvent {
     },
 }
 
-pub use colors::{DocumentColor, DocumentColorCapabilitiesEvent, DocumentColorsEvent};
+pub use colors::{
+    ColorPresentationEntry, ColorPresentationEvent, DocumentColor, DocumentColorCapabilitiesEvent,
+    DocumentColorsEvent,
+};
 pub use symbols::{
     DocumentSymbolEvent, SymbolEntry, SymbolKind, SymbolRange, WorkspaceSymbolEvent,
     WorkspaceSymbolResolvedEvent,
@@ -672,6 +695,22 @@ impl LspService {
         request
     }
 
+    pub fn color_presentations(
+        &self,
+        path: &Path,
+        range: (CursorPosition, CursorPosition),
+        color: ColorValue,
+    ) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::ColorPresentations {
+            request,
+            path: path.to_path_buf(),
+            range,
+            color,
+        });
+        request
+    }
+
     pub fn workspace_symbols(&self, query: impl Into<String>) -> u64 {
         let request = self.allocate_request();
         self.send(Command::WorkspaceSymbols {
@@ -833,6 +872,12 @@ pub(crate) enum Command {
     DocumentColors {
         request: u64,
         path: PathBuf,
+    },
+    ColorPresentations {
+        request: u64,
+        path: PathBuf,
+        range: (CursorPosition, CursorPosition),
+        color: ColorValue,
     },
     WorkspaceSymbols {
         request: u64,

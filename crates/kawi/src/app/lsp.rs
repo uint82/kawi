@@ -783,6 +783,7 @@ impl LspUi {
                 self.colors
                     .apply_event(event, self.path.as_deref(), self.revision)
             }
+            LspEvent::ColorPresentations(_) => false,
             LspEvent::DocumentColorCapabilities(event) => {
                 self.colors
                     .apply_capability(event.server, event.color_provider, Instant::now());

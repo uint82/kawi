@@ -1,6 +1,7 @@
 use super::*;
 
 mod convert;
+pub(super) mod presentation;
 mod reply;
 mod request;
 
@@ -26,6 +27,8 @@ pub struct DocumentColorCapabilitiesEvent {
     pub server: String,
     pub color_provider: bool,
 }
+
+pub use presentation::{ColorPresentationEntry, ColorPresentationEvent};
 
 pub(super) struct PendingColors {
     pub(super) request: u64,

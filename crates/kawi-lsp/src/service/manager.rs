@@ -196,6 +196,12 @@ impl Manager {
             Command::DocumentColors { request, path } => {
                 self.start_document_colors(request, path);
             }
+            Command::ColorPresentations {
+                request,
+                path,
+                range,
+                color,
+            } => self.start_color_presentations(request, path, range, color),
             Command::WorkspaceSymbols { request, query } => {
                 self.start_workspace_symbols(request, query);
             }

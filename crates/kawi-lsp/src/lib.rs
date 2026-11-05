@@ -16,17 +16,18 @@ pub use config::{
 };
 pub use editing::{BlockCommentConfig, PairConfig};
 pub use service::{
-    CodeActionEntry, CodeActionEvent, CompletionCapabilitiesEvent, CompletionEntry,
-    CompletionEvent, CompletionResolveEvent, CompletionTrigger, CompletionTriggerKind,
-    CursorPosition, Diagnostic, DiagnosticMode, DiagnosticModeEvent, DiagnosticOrigin,
-    DiagnosticPosition, DiagnosticRange, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DiagnosticTag, DiagnosticsEvent, DocumentColor, DocumentColorCapabilitiesEvent,
-    DocumentColorsEvent, DocumentEdit, DocumentSymbolEvent, FileOperationCapabilitiesEvent,
-    FileOperationEvent, FileOperationKind, FormattingEvent, FormattingSettings, HoverEvent,
-    LocationEvent, LspCommand, LspEvent, LspService, MarkupDocument, MessageLevel, ProgressEvent,
-    RenameEvent, RenameReady, ServerState, SignatureEntry, SignatureHelpEvent, SignatureParameter,
-    StatusEvent, SymbolCapabilitiesEvent, SymbolEntry, SymbolKind, SymbolRange, TextChange,
-    TextLocation, WatchedFileChange, WorkspaceDiagnosticEvent, WorkspaceDiagnosticState,
-    WorkspaceEdit, WorkspaceSymbolEvent, WorkspaceSymbolResolvedEvent, INITIAL_DOCUMENT_VERSION,
+    CodeActionEntry, CodeActionEvent, ColorPresentationEntry, ColorPresentationEvent, ColorValue,
+    CompletionCapabilitiesEvent, CompletionEntry, CompletionEvent, CompletionResolveEvent,
+    CompletionTrigger, CompletionTriggerKind, CursorPosition, Diagnostic, DiagnosticMode,
+    DiagnosticModeEvent, DiagnosticOrigin, DiagnosticPosition, DiagnosticRange,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, DiagnosticsEvent,
+    DocumentColor, DocumentColorCapabilitiesEvent, DocumentColorsEvent, DocumentEdit,
+    DocumentSymbolEvent, FileOperationCapabilitiesEvent, FileOperationEvent, FileOperationKind,
+    FormattingEvent, FormattingSettings, HoverEvent, LocationEvent, LspCommand, LspEvent,
+    LspService, MarkupDocument, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState,
+    SignatureEntry, SignatureHelpEvent, SignatureParameter, StatusEvent, SymbolCapabilitiesEvent,
+    SymbolEntry, SymbolKind, SymbolRange, TextChange, TextLocation, WatchedFileChange,
+    WorkspaceDiagnosticEvent, WorkspaceDiagnosticState, WorkspaceEdit, WorkspaceSymbolEvent,
+    WorkspaceSymbolResolvedEvent, INITIAL_DOCUMENT_VERSION,
 };
 pub use warning::LanguageWarning;

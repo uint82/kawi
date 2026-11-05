@@ -1,4 +1,5 @@
 use super::code_actions::protocol_diagnostics;
+use super::colors::presentation;
 use super::completion::completion_event;
 use super::pending::ReplyPurpose;
 use super::signature_help::signature_help_event;
@@ -14,12 +15,16 @@ use lsp_types::{
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum TextRequestKind {
     Completion,
     SignatureHelp,
     CodeAction,
     Formatting,
+    ColorPresentation {
+        range: (CursorPosition, CursorPosition),
+        color: ColorValue,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +49,7 @@ pub(super) struct TextResponse {
 }
 
 impl PendingTextRequest {
-    fn new(
+    pub(crate) fn new(
         request: u64,
         kind: TextRequestKind,
         path: PathBuf,
@@ -72,6 +77,7 @@ enum TextCapability {
     CodeAction,
     Formatting,
     RangeFormatting,
+    ColorPresentation,
 }
 
 struct TextTarget {
@@ -305,6 +311,49 @@ impl Manager {
         self.dispatch_text_request(request, &target.key, method, params);
     }
 
+    pub(super) fn start_color_presentations(
+        &mut self,
+        request: u64,
+        path: PathBuf,
+        range: (CursorPosition, CursorPosition),
+        color: ColorValue,
+    ) {
+        let path = workspace::absolute(&path);
+        let targets = self.text_targets(&path, TextCapability::ColorPresentation);
+        let Some(version) = targets.first().map(|target| target.version) else {
+            self.emit_unsupported(request, &path, TextCapability::ColorPresentation);
+            return;
+        };
+        self.pending_text_requests.insert(
+            request,
+            PendingTextRequest::new(
+                request,
+                TextRequestKind::ColorPresentation { range, color },
+                path,
+                range.0,
+                version,
+                targets.len(),
+            ),
+        );
+        for target in targets {
+            let params = lsp_types::ColorPresentationParams {
+                text_document: TextDocumentIdentifier {
+                    uri: target.uri.clone(),
+                },
+                color: protocol_color(color),
+                range: protocol_range(&target.text, range, &target.encoding),
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            };
+            self.dispatch_text_request(
+                request,
+                &target.key,
+                "textDocument/colorPresentation",
+                to_params(params),
+            );
+        }
+    }
+
     pub(super) fn handle_text_response(
         &mut self,
         key: ClientKey,
@@ -387,7 +436,7 @@ impl Manager {
             return;
         }
         let text = document.text.clone();
-        let parse = match pending.kind {
+        let parse = match &pending.kind {
             TextRequestKind::Completion => {
                 match completion_event(
                     &pending,
@@ -420,6 +469,10 @@ impl Manager {
             TextRequestKind::Formatting => self
                 .formatting_event(&pending, &pending.responses, &text)
                 .map(|event| Some(LspEvent::Formatting(event))),
+            TextRequestKind::ColorPresentation { .. } => {
+                presentation::event(&pending, &pending.responses, &text)
+                    .map(|event| Some(LspEvent::ColorPresentations(event)))
+            }
         };
         match parse {
             Ok(Some(event)) => self.emit(event),
@@ -475,6 +528,7 @@ fn supports(support: RequestSupport, capability: TextCapability) -> bool {
         TextCapability::CodeAction => support.code_actions,
         TextCapability::Formatting => support.formatting,
         TextCapability::RangeFormatting => support.range_formatting,
+        TextCapability::ColorPresentation => support.color_provider,
     }
 }
 
@@ -485,6 +539,16 @@ fn unsupported_message(capability: TextCapability) -> &'static str {
         TextCapability::CodeAction => "No language server supports code actions",
         TextCapability::Formatting => "No language server supports formatting",
         TextCapability::RangeFormatting => "No language server supports range formatting",
+        TextCapability::ColorPresentation => "No language server supports color presentations",
+    }
+}
+
+fn protocol_color(color: ColorValue) -> lsp_types::Color {
+    lsp_types::Color {
+        red: f32::from(color.red) / 255.0,
+        green: f32::from(color.green) / 255.0,
+        blue: f32::from(color.blue) / 255.0,
+        alpha: f32::from(color.alpha) / 255.0,
     }
 }
 
