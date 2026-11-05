@@ -191,6 +191,28 @@ fn gruvbox_dark_matches_user_neovim() {
 }
 
 #[test]
+fn gruvbox_special_key_matches_user_neovim() {
+    let dark = Theme::named("gruvbox-dark").expect("theme");
+    assert_eq!(
+        dark.special_key,
+        Color::Rgb {
+            r: 168,
+            g: 153,
+            b: 132
+        }
+    );
+    let light = Theme::named("gruvbox-light").expect("theme");
+    assert_eq!(
+        light.special_key,
+        Color::Rgb {
+            r: 124,
+            g: 111,
+            b: 100
+        }
+    );
+}
+
+#[test]
 fn default_differs_from_gruvbox_dark() {
     let default = Theme::default();
     let gruvbox = Theme::named("gruvbox-dark").expect("theme");

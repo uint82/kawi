@@ -82,6 +82,26 @@ fn code_background_defaults_to_the_float_background() {
 }
 
 #[test]
+fn special_key_defaults_to_non_text() {
+    let theme = Theme::from_toml("personal", &theme_text()).unwrap();
+    assert_eq!(theme.special_key, theme.non_text);
+}
+
+#[test]
+fn loads_a_custom_special_key() {
+    let text = format!("special_key = \"#112233\"\n{}", theme_text());
+    let theme = Theme::from_toml("personal", &text).unwrap();
+    assert_eq!(
+        theme.special_key,
+        Color::Rgb {
+            r: 17,
+            g: 34,
+            b: 51
+        }
+    );
+}
+
+#[test]
 fn bracket_match_defaults_to_selection() {
     let text = theme_text().replace(
         "[bracket.match]\nforeground = \"#010203\"\nbackground = \"#010203\"\n\n",

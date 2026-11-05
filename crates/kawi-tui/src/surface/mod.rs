@@ -1,6 +1,7 @@
 mod ansi;
 mod cell;
 mod diff;
+mod rows;
 mod style;
 
 use std::io::{self, Write};
@@ -8,8 +9,10 @@ use std::io::{self, Write};
 use crossterm::style::Color;
 use unicode_segmentation::UnicodeSegmentation;
 
+use kawi_buffer::unicode;
+
 use crate::frame::DiagnosticUnderline;
-use crate::text::{display_width, sanitize_char, TAB_WIDTH};
+use crate::text::TAB_WIDTH;
 
 pub use ansi::present;
 pub use cell::Cell;
@@ -89,6 +92,12 @@ impl Surface {
         self.style.set_foreground(color);
     }
 
+    pub(crate) fn set_foreground_at(&mut self, x: usize, y: usize, color: Color) {
+        if let Some(cell) = self.cell_mut(x, y) {
+            cell.set_foreground(color);
+        }
+    }
+
     pub fn set_background(&mut self, color: Color) {
         self.style.set_background(color);
     }
@@ -142,7 +151,7 @@ impl Surface {
         if y >= self.height {
             return;
         }
-        let x = self.continuation_start(self.cursor.x, y);
+        let x = self.glyph_start(self.cursor.x, y);
         for column in x..self.width {
             self.set_blank(column, y);
         }
@@ -166,19 +175,13 @@ impl Surface {
             self.write_spaces(spaces);
             return;
         }
-        let sanitized: String;
-        let grapheme = if grapheme.chars().any(char::is_control) {
-            sanitized = grapheme.chars().map(sanitize_char).collect();
-            sanitized.as_str()
-        } else {
-            grapheme
-        };
-        let width = display_width(grapheme);
+        let rendered = unicode::render_cluster(grapheme, self.cursor.x, TAB_WIDTH);
+        let width = rendered.width();
         if width == 0 {
-            self.append_combining(grapheme);
             return;
         }
-        self.write_glyph(grapheme, width);
+        let text = rendered.text();
+        self.write_glyph(&text, width);
     }
 
     fn write_spaces(&mut self, count: usize) {
@@ -201,10 +204,7 @@ impl Surface {
             self.cursor.x = self.width;
             return;
         }
-        self.clear_glyph_at(x, y);
-        if width > 1 {
-            self.clear_glyph_at(x.saturating_add(1), y);
-        }
+        self.clear_glyph_span(x, width, y);
         let style = self.style;
         if let Some(cell) = self.cell_mut(x, y) {
             cell.set(text, u8::try_from(width).unwrap_or(1), style);
@@ -217,25 +217,23 @@ impl Surface {
         self.cursor.x = x.saturating_add(width);
     }
 
-    fn append_combining(&mut self, text: &str) {
-        let y = self.cursor.y;
-        if self.cursor.x == 0 || y >= self.height {
-            return;
-        }
-        let mut x = self.cursor.x.saturating_sub(1);
-        if self.cell(x, y).is_some_and(Cell::is_continuation) {
-            x = x.saturating_sub(1);
-        }
-        if let Some(cell) = self.cell_mut(x, y) {
-            cell.append(text);
-        }
+    fn glyph_span(&self, x: usize, y: usize) -> (usize, usize) {
+        let start = self.glyph_start(x, y);
+        let width = self.cell(start, y).map_or(1, |cell| cell.width().max(1));
+        (start, start.saturating_add(width).max(x.saturating_add(1)))
     }
 
-    fn continuation_start(&self, x: usize, y: usize) -> usize {
-        if self.cell(x, y).is_some_and(Cell::is_continuation) {
-            x.saturating_sub(1)
-        } else {
-            x
+    fn glyph_start(&self, x: usize, y: usize) -> usize {
+        let mut start = x;
+        while start > 0 && self.cell(start, y).is_some_and(Cell::is_continuation) {
+            start = start.saturating_sub(1);
+        }
+        start
+    }
+
+    fn clear_glyph_span(&mut self, x: usize, width: usize, y: usize) {
+        for column in x..x.saturating_add(width) {
+            self.clear_glyph_at(column, y);
         }
     }
 
@@ -243,7 +241,7 @@ impl Surface {
         if x >= self.width || y >= self.height {
             return;
         }
-        let start = self.continuation_start(x, y);
+        let start = self.glyph_start(x, y);
         let width = self.cell(start, y).map_or(1, |cell| cell.width().max(1));
         for column in start..start.saturating_add(width).min(self.width) {
             self.set_blank(column, y);

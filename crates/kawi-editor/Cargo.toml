@@ -13,4 +13,4 @@ anyhow.workspace = true
 kawi-buffer.workspace = true
 kawi-syntax.workspace = true
 memchr = "2.8.3"
-ropey = "1.6.1"
+ropey = { version = "1.6.1", default-features = false, features = ["simd"] }

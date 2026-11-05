@@ -45,6 +45,7 @@ pub struct Theme {
     pub status: MatchColors,
     pub line_number: Color,
     pub non_text: Color,
+    pub special_key: Color,
     pub git_add: Color,
     pub git_change: Color,
     pub git_delete: Color,

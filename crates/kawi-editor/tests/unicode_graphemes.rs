@@ -192,3 +192,40 @@ fn delete_to_end_removes_trailing_cluster() {
     assert_eq!(editor.text_lines()[0], "a");
     assert_eq!(editor.col(), 0);
 }
+
+#[test]
+fn cursor_screen_columns_match_neovim_conjuncts() {
+    let mut editor = editor_with("\u{915}\u{94d}\u{937}xy");
+    assert_eq!(editor.cursor_screen_col(), 0);
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (3, 1));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (4, 2));
+}
+
+#[test]
+fn cursor_screen_columns_include_placeholder_cells() {
+    let mut editor = editor_with("a\u{202e}b");
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (1, 1));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (2, 7));
+}
+
+#[test]
+fn cursor_screen_columns_count_soft_hyphens() {
+    let mut editor = editor_with("a\u{ad}bc");
+    for expected in [(1, 1), (2, 2), (3, 3)] {
+        editor.apply(Action::MoveRight);
+        assert_eq!((editor.col(), editor.cursor_screen_col()), expected);
+    }
+}
+
+#[test]
+fn cursor_screen_columns_promote_emoji_presentation() {
+    let mut editor = editor_with("a\u{2764}\u{fe0f}b");
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (1, 1));
+    editor.apply(Action::MoveRight);
+    assert_eq!((editor.col(), editor.cursor_screen_col()), (3, 3));
+}
