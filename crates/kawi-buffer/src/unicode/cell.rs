@@ -37,6 +37,10 @@ impl<'a> RenderedCluster<'a> {
         self.width
     }
 
+    pub fn is_placeholder(self) -> bool {
+        matches!(self.kind, ClusterKind::Placeholder(_))
+    }
+
     pub fn text(self) -> Cow<'a, str> {
         match self.kind {
             ClusterKind::Raw(text) => Cow::Borrowed(text),
@@ -211,6 +215,14 @@ mod tests {
         assert_eq!(rendered("\u{85}"), "<85>");
         assert_eq!(rendered("\u{1b}"), "^[");
         assert_eq!(rendered("\u{7f}"), "^?");
+    }
+
+    #[test]
+    fn identifies_placeholder_clusters() {
+        assert!(render_cluster("\u{feff}", 0, 8).is_placeholder());
+        assert!(render_cluster("\u{1b}", 0, 8).is_placeholder());
+        assert!(!render_cluster("a", 0, 8).is_placeholder());
+        assert!(!render_cluster("\u{ad}", 0, 8).is_placeholder());
     }
 
     #[test]
