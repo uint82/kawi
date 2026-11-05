@@ -273,7 +273,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 49] = [
+pub(crate) const OPTIONS: [OptionSpec; 50] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -418,6 +418,16 @@ pub(crate) const OPTIONS: [OptionSpec; 49] = [
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
         config_key: "match_brackets",
+        default: OptionDefault::Bool(true),
+    },
+    OptionSpec {
+        name: "color_preview",
+        aliases: &[],
+        description: "Show inline previews for hex colors in supported file types.",
+        kind: OptionKind::Bool,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "color_preview",
         default: OptionDefault::Bool(true),
     },
     OptionSpec {

@@ -511,6 +511,11 @@ impl LspUi {
         }
     }
 
+    pub fn language_color_preview(&self, path: Option<&Path>) -> bool {
+        self.language_config(path)
+            .is_some_and(|language| language.color_preview)
+    }
+
     pub fn language_editing(&self, path: Option<&Path>) -> LanguageEditing {
         let Some(language) = self.language_config(path) else {
             return LanguageEditing::default();

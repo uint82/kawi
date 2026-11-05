@@ -557,7 +557,8 @@ impl App {
             },
         );
         let buffer = self.editor.buffer_number();
-        let decorations = self.plugin_decorations.spans(buffer, &rows);
+        let mut decorations = self.color_preview_spans(buffer, &lines, &rows);
+        decorations.extend(self.plugin_decorations.spans(buffer, &rows));
         let plugin_virtual_texts = self.plugin_decorations.virtual_texts(buffer, &rows);
         PaneData {
             rect,
@@ -706,7 +707,8 @@ impl App {
                 suppress: false,
             },
         );
-        let decorations = self.plugin_decorations.spans(window.buffer, &rows);
+        let mut decorations = self.color_preview_spans(window.buffer, &lines, &rows);
+        decorations.extend(self.plugin_decorations.spans(window.buffer, &rows));
         let plugin_virtual_texts = self.plugin_decorations.virtual_texts(window.buffer, &rows);
         PaneData {
             rect,
