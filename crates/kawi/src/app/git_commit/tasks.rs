@@ -66,7 +66,7 @@ impl App {
             self.abort_git_editor();
         }
         match kind {
-            TaskKind::Commit | TaskKind::Amend => {
+            TaskKind::Commit | TaskKind::Amend | TaskKind::Continue | TaskKind::Abort => {
                 self.reload_open_files();
                 let _ = self.handle_git_refresh();
                 self.refresh_git_status();
@@ -85,5 +85,7 @@ fn failure_message(kind: TaskKind) -> String {
         TaskKind::Amend => "Amend failed; see the task output".to_string(),
         TaskKind::Push => "Push failed; run :term git push for interactive auth".to_string(),
         TaskKind::Fetch => "Fetch failed; see the task output".to_string(),
+        TaskKind::Continue => "Continue failed; see the task output".to_string(),
+        TaskKind::Abort => "Abort failed; see the task output".to_string(),
     }
 }

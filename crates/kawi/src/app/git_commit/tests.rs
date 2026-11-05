@@ -254,6 +254,40 @@ fn commit_without_staged_changes_reports_it() {
 }
 
 #[test]
+fn commit_rejects_conflict_markers() {
+    let dir = crate::test_support::temp_dir("commit_conflict_markers");
+    git(&dir, &["init", "-q"]);
+    git(&dir, &["config", "user.email", "test@example.com"]);
+    git(&dir, &["config", "user.name", "Test"]);
+    let path = dir.join("a.txt");
+    fs::write(&path, "base\n").unwrap();
+    git(&dir, &["add", "a.txt"]);
+    git(&dir, &["commit", "-qm", "base"]);
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    wait_for_status(&mut app);
+    fs::write(
+        &path,
+        "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n",
+    )
+    .unwrap();
+    app.start_git_commit(true).unwrap();
+    assert_eq!(
+        app.last_message(),
+        Some("Tracked files still contain conflict markers")
+    );
+    git(&dir, &["add", "a.txt"]);
+    app.start_git_commit(false).unwrap();
+    assert_eq!(
+        app.last_message(),
+        Some("Staged files still contain conflict markers")
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn socket_editor_quit_without_saving_replies_abort() {
     let (dir, mut app) = repo_with_staged_change("socket_quit");
     let path = dir.join(".git/COMMIT_EDITMSG");

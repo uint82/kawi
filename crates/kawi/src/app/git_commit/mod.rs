@@ -2,6 +2,7 @@ mod editor;
 mod push;
 mod tasks;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use kawi_git::Status;
@@ -15,6 +16,8 @@ pub(super) enum TaskKind {
     Amend,
     Push,
     Fetch,
+    Continue,
+    Abort,
 }
 
 pub(super) struct ActiveTask {
@@ -91,6 +94,16 @@ impl App {
             self.show_message("Resolve conflicts before committing".to_string());
             return Ok(false);
         }
+        if let Err(message) = self.reject_staged_conflict_markers(&status.root) {
+            self.show_message(message);
+            return Ok(false);
+        }
+        if all {
+            if let Err(message) = self.reject_tracked_conflict_markers(&status.root) {
+                self.show_message(message);
+                return Ok(false);
+            }
+        }
         if !all && !status.has_staged() {
             self.show_message("Nothing staged; use :git commit -a".to_string());
             return Ok(false);
@@ -110,6 +123,10 @@ impl App {
         };
         if status.is_unborn() {
             self.show_message("No commit to amend".to_string());
+            return Ok(false);
+        }
+        if let Err(message) = self.reject_staged_conflict_markers(&status.root) {
+            self.show_message(message);
             return Ok(false);
         }
         self.warn_pushed_amend(&status);
@@ -140,6 +157,28 @@ impl App {
             "--only".to_string(),
         ];
         self.start_editor_commit(&status, args, TaskKind::Amend)
+    }
+
+    pub(super) fn start_git_operation_task(
+        &mut self,
+        args: &'static [&'static str],
+        root: PathBuf,
+        kind: TaskKind,
+        name: &str,
+    ) {
+        let env = BTreeMap::from([
+            ("GIT_EDITOR".to_string(), "true".to_string()),
+            ("GIT_TERMINAL_PROMPT".to_string(), "0".to_string()),
+        ]);
+        self.start_git_task(GitTask {
+            name: name.to_string(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            env,
+            detached: true,
+            kind,
+            parser: ParserSpec::None,
+            root,
+        });
     }
 
     pub(super) fn start_git_fetch(&mut self) -> anyhow::Result<bool> {

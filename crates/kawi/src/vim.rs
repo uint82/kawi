@@ -4140,6 +4140,11 @@ mod tests {
             ('S', Action::GitStageBuffer),
             ('p', Action::GitPreviewHunk),
             ('d', Action::GitDiff),
+            ('n', Action::GitConflictNext),
+            ('N', Action::GitConflictPrev),
+            ('o', Action::GitConflictOurs),
+            ('t', Action::GitConflictTheirs),
+            ('b', Action::GitConflictBoth),
         ] {
             let mut map = VimKeymap::new();
             assert_eq!(
