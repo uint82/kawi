@@ -85,6 +85,7 @@ impl Theme {
     pub fn sign_color(&self, sign: &crate::frame::Sign) -> Color {
         match sign {
             crate::frame::Sign::Git(sign) => self.git_sign_color(*sign),
+            crate::frame::Sign::Conflict => self.diagnostic_error,
             crate::frame::Sign::Diagnostic(severity) => self.diagnostic_color(*severity),
             crate::frame::Sign::Plugin(sign) => sign.style.accent,
             crate::frame::Sign::Debug(sign) => match sign {

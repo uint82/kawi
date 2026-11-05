@@ -256,6 +256,7 @@ pub struct PluginSign {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sign {
     Git(GitSign),
+    Conflict,
     Diagnostic(DiagnosticSeverity),
     Plugin(PluginSign),
     Debug(DebugSign),
@@ -265,6 +266,7 @@ impl Sign {
     pub fn text(&self) -> &str {
         match self {
             Self::Git(sign) => sign.text(),
+            Self::Conflict => "!",
             Self::Diagnostic(severity) => severity.sign(),
             Self::Plugin(sign) => &sign.text,
             Self::Debug(sign) => sign.text(),
