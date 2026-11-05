@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::io::Write;
 
 use super::super::highlight::{paint_span_at, syntax_highlight_spans, SpanView};
+use super::super::special_key::{draw_special_keys, SpecialKeyArea, SpecialKeyDraw};
 use super::write_padding;
 use crate::display;
 use crate::frame::{Frame, PickerPreview, Rect};
@@ -136,6 +137,21 @@ fn draw_highlights(out: &mut Surface, frame: &Frame, view: &PreviewView<'_, '_>)
     for span in syntax_highlight_spans(view.preview.syntax_spans, &span_view) {
         paint_preview_span(out, frame, view, &span)?;
     }
+    draw_special_keys(
+        out,
+        SpecialKeyDraw::from_area(
+            view.lines,
+            SpecialKeyArea {
+                x: view.rect.x.saturating_add(view.gutter_width),
+                y: view.rect.y,
+                width: text_width,
+                height: view.rect.height,
+                leftcol: 0,
+                tabstop: view.preview.tabstop,
+            },
+            frame.theme.special_key,
+        ),
+    );
     if let Some(focus) = view.preview.focus_line {
         if let Some(offset) = focus.checked_sub(top) {
             if let Some(line) = view.lines.get(offset) {
@@ -189,6 +205,10 @@ fn paint_preview_span(
 mod tests {
     use super::*;
 
+    use crate::frame::CursorStyle;
+    use crate::statusbar::StatusBarConfig;
+    use crate::theme::Theme;
+
     fn preview(
         lines: &[String],
         first_line: usize,
@@ -224,5 +244,47 @@ mod tests {
         let lines = vec!["line".to_string(); 30];
         let preview = preview(&lines, 0, Some(25));
         assert_eq!(preview_first_line(&preview, 20), 10);
+    }
+
+    #[test]
+    fn colors_nonprintable_placeholders() {
+        let theme = Theme::default();
+        let viewport = Viewport::new(2, 20);
+        let statusline = StatusBarConfig::default();
+        let frame = Frame {
+            panes: &[],
+            separators: &[],
+            pager: None,
+            completion: None,
+            overlay: None,
+            picker: None,
+            replace: None,
+            explorer: None,
+            debug: None,
+            task: None,
+            plugin_panel: None,
+            terminal: None,
+            viewport: &viewport,
+            message: None,
+            prompt: None,
+            command: None,
+            search: None,
+            search_delimiter: '/',
+            search_status: None,
+            showcmd: None,
+            cursor_style: CursorStyle::Block,
+            theme: &theme,
+            statusline: &statusline,
+        };
+        let lines = vec!["a\u{feff}b".to_string()];
+        let preview = preview(&lines, 0, None);
+        let rect = Rect::new(0, 0, 16, 2);
+        let mut out = Surface::new(16, 2, theme.base.foreground, theme.base.background);
+        draw_preview(&mut out, &frame, Some(&preview), Some(rect)).expect("draw preview");
+        let start = preview_gutter_width(&preview, 0).saturating_add(1);
+        for x in start..start + 6 {
+            let style = out.cell(x, 1).expect("placeholder cell").style();
+            assert_eq!(style.foreground(), theme.special_key);
+        }
     }
 }
