@@ -84,6 +84,7 @@ pub(crate) struct ColorPicker {
     revision: u64,
     range: (CursorPosition, CursorPosition),
     hsla: Hsla,
+    rgba: Rgba,
     field: Field,
     mode: Mode,
     presentations: Vec<ColorPresentationEntry>,
@@ -100,6 +101,7 @@ impl ColorPicker {
             revision,
             range: (document.start, document.end),
             hsla: Hsla::from_rgba(color),
+            rgba: color,
             field: Field::Hue,
             mode: Mode::Adjust,
             presentations: Vec::new(),
@@ -110,7 +112,7 @@ impl ColorPicker {
     }
 
     pub(super) fn color(&self) -> Rgba {
-        self.hsla.to_rgba()
+        self.rgba
     }
 
     pub(super) fn path(&self) -> &PathBuf {
@@ -170,6 +172,7 @@ impl ColorPicker {
     fn adjust_by(&mut self, delta: f32) {
         let value = self.field.value(self.hsla) + delta;
         self.field.set(&mut self.hsla, value);
+        self.rgba = self.hsla.to_rgba();
     }
 
     pub(super) fn begin_request(&mut self, request: u64) {
