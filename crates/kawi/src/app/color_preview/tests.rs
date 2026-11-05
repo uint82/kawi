@@ -170,3 +170,30 @@ fn unicode_prefix_uses_character_columns() {
     assert_eq!(found[0].start, line[..start].chars().count());
     assert_eq!(found[0].end, found[0].start + "#fff".len());
 }
+
+#[test]
+fn red_previews_use_white_foreground() {
+    let app = app("red_foreground", "style.css", "", "");
+    for color in ["#ff0000", "#fb4934"] {
+        let line = format!("color: {color};");
+        let found = spans(&app, &line);
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found[0].style.foreground,
+            Color::Rgb {
+                r: 255,
+                g: 255,
+                b: 255
+            }
+        );
+    }
+}
+
+#[test]
+fn bright_green_preview_uses_black_foreground() {
+    let line = "color: #00ff00;";
+    let app = app("green_foreground", "style.css", line, "");
+    let found = spans(&app, line);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].style.foreground, Color::Rgb { r: 0, g: 0, b: 0 });
+}
