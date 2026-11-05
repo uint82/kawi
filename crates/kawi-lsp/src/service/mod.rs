@@ -33,6 +33,7 @@ mod markup;
 mod navigation;
 mod navigation_results;
 mod pending;
+mod position;
 mod pull_diagnostics;
 mod rename;
 mod request;
