@@ -73,6 +73,8 @@ color_preview = true
 
 When a language server advertises `textDocument/documentColor`, previews use the server's ranges and colors. This covers forms such as `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()` when the server supports them. Requests are debounced and cached per buffer revision.
 
+With the cursor on a server-provided color, run `:color` or the `color.picker` command to edit it. Use `j`/`k` or the arrow keys to select a channel, `h`/`l` or left/right to adjust it, and hold Shift or use `H`/`L` for larger steps. Press Enter to request formats from the language server, select one, and press Enter to apply it. Esc cancels or returns to the picker. Color editing requires language server color support; the built-in scanner remains display-only.
+
 Without server color support, Kawi recognizes `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, `rgb()`, `rgba()`, CSS named colors, and `transparent`. Both modern space syntax and legacy comma syntax are accepted. For built-in stylesheet and markup types, named colors and `rgb()` functions are previewed only inside stylesheet declaration values, style attributes, and `<style>` elements. Hex colors are previewed wherever they appear. Alpha values blend with the active theme background.
 
 ## Keymaps

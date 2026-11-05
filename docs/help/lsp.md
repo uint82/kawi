@@ -19,6 +19,7 @@ Language servers provide:
 - document and workspace symbols
 - rename and code actions
 - formatting when no external formatter is configured
+- inline color previews and format-aware color editing through `textDocument/colorPresentation`
 - workspace edits and file operations
 
 ## Completion
