@@ -27,14 +27,33 @@ pub(crate) fn event(
     responses: &[TextResponse],
     text: &Rope,
 ) -> Result<ColorPresentationEvent, String> {
-    let TextRequestKind::ColorPresentation { range, .. } = &pending.kind else {
-        return Err("invalid color presentation request".to_string());
-    };
+    let range = request_range(pending)?;
+    let mut presentations = convert_responses(responses, text, range)?;
+    merge(&mut presentations);
+    Ok(ColorPresentationEvent {
+        request: pending.request,
+        path: pending.path.clone(),
+        presentations,
+    })
+}
+
+fn request_range(pending: &PendingTextRequest) -> Result<(CursorPosition, CursorPosition), String> {
+    match &pending.kind {
+        TextRequestKind::ColorPresentation { range, .. } => Ok(*range),
+        _ => Err("invalid color presentation request".to_string()),
+    }
+}
+
+fn convert_responses(
+    responses: &[TextResponse],
+    text: &Rope,
+    range: (CursorPosition, CursorPosition),
+) -> Result<Vec<ColorPresentationEntry>, String> {
     let mut presentations = Vec::new();
     let mut error = None;
     let mut parsed = false;
     for response in responses {
-        match convert(&response.value, text, &response.encoding, *range) {
+        match convert(&response.value, text, &response.encoding, range) {
             Ok(mut entries) => {
                 parsed = true;
                 presentations.append(&mut entries);
@@ -46,15 +65,11 @@ pub(crate) fn event(
             }
         }
     }
-    if !parsed {
-        return Err(error.unwrap_or_else(|| "No color presentations found".to_string()));
+    if parsed {
+        Ok(presentations)
+    } else {
+        Err(error.unwrap_or_else(|| "No color presentations found".to_string()))
     }
-    merge(&mut presentations);
-    Ok(ColorPresentationEvent {
-        request: pending.request,
-        path: pending.path.clone(),
-        presentations,
-    })
 }
 
 fn convert(
