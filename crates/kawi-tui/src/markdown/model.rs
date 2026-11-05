@@ -1,3 +1,4 @@
+use crossterm::style::Color;
 use kawi_syntax::SyntaxHighlight;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,6 +10,10 @@ pub enum MarkdownStyle {
     Heading,
     Quote,
     Syntax(SyntaxHighlight),
+    Rgb {
+        foreground: Color,
+        background: Color,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

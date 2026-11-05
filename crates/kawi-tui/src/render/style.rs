@@ -54,6 +54,14 @@ fn markdown_style(
                 underline: style.underline,
             },
         )),
+        MarkdownStyle::Rgb {
+            foreground,
+            background,
+        } => Some(MarkdownRenderStyle {
+            foreground: Some(foreground),
+            background: Some(background),
+            ..MarkdownRenderStyle::default()
+        }),
     }
 }
 
@@ -174,6 +182,43 @@ mod tests {
         assert!(style.bold);
         assert!(style.italic);
         assert!(style.underline);
+    }
+
+    #[test]
+    fn rgb_panel_styles_preserve_channels() {
+        let theme = Theme::default();
+        let style = markdown_style(
+            crate::markdown::MarkdownStyle::Rgb {
+                foreground: Color::Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255,
+                },
+                background: Color::Rgb {
+                    r: 12,
+                    g: 34,
+                    b: 56,
+                },
+            },
+            &theme,
+        )
+        .expect("rgb style");
+        assert_eq!(
+            style.foreground,
+            Some(Color::Rgb {
+                r: 255,
+                g: 255,
+                b: 255
+            })
+        );
+        assert_eq!(
+            style.background,
+            Some(Color::Rgb {
+                r: 12,
+                g: 34,
+                b: 56
+            })
+        );
     }
 
     #[test]
