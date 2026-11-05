@@ -58,6 +58,12 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
+    let color_provider = std::env::var("FAKE_LSP_COLOR_PROVIDER").is_ok_and(|value| value == "1");
+    let color_delay = std::env::var("FAKE_LSP_COLOR_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let color_mode = std::env::var("FAKE_LSP_COLOR_MODE").unwrap_or_else(|_| "normal".to_string());
     let shutdown_delay = std::env::var("FAKE_LSP_SHUTDOWN_DELAY_MS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -126,6 +132,9 @@ fn main() -> Result<()> {
                             "resolveProvider": symbol_resolve
                         });
                     }
+                    if color_provider {
+                        capabilities["colorProvider"] = json!(true);
+                    }
                     if file_operations {
                         capabilities["workspace"] = json!({
                             "fileOperations": {
@@ -172,6 +181,9 @@ fn main() -> Result<()> {
                 }
                 "textDocument/documentSymbol" => {
                     handle_document_symbols(&mut writer, id, params, &symbol_settings)?
+                }
+                "textDocument/documentColor" => {
+                    handle_document_colors(&mut writer, id, params, color_delay, &color_mode)?
                 }
                 "workspace/symbol" => {
                     handle_workspace_symbols(&mut writer, id, params, &documents, &symbol_settings)?
@@ -591,6 +603,42 @@ fn handle_document_symbols(
                 "kind": 999,
                 "range": symbol_range(4 + line_offset, 0, 4 + line_offset, 6),
                 "selectionRange": symbol_range(4 + line_offset, 0, 4 + line_offset, 6)
+            }
+        ]),
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn handle_document_colors(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    delay: u64,
+    mode: &str,
+) -> Result<()> {
+    let params = params.context("document color params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("document color uri")?;
+    send_log(writer, &format!("document-colors:{uri}"))?;
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+    let result = match mode {
+        "empty" => json!([]),
+        "invalid" => json!({"colors": []}),
+        _ => json!([
+            {
+                "range": range(0, 0, 7),
+                "color": {"red": 1.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}
+            },
+            {
+                "range": range(0, 0, 7),
+                "color": {"red": 1.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}
+            },
+            {
+                "range": range(1, 0, 4),
+                "color": {"red": 0.2, "green": 0.4, "blue": 0.6, "alpha": 0.5}
             }
         ]),
     };
