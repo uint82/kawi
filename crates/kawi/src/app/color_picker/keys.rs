@@ -96,7 +96,7 @@ impl super::super::App {
             PickerAction::Apply => self.apply_selected_color_presentation(),
             PickerAction::CancelRequest => self.cancel_color_presentation_request(),
         }
-        Ok(true)
+        Ok(false)
     }
 }
 

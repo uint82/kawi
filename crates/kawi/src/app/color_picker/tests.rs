@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use kawi_lsp::{CursorPosition, DocumentColor};
 
@@ -58,6 +59,17 @@ fn color_command_opens_the_picker() {
         .set_color_preview_colors_for_test(&path, 0, vec![color()]);
     app.run_command(kawi_editor::parse("color"))
         .expect("command");
+    assert!(app.color_picker.is_some());
+}
+
+#[test]
+fn picker_keys_keep_the_editor_running() {
+    let (mut app, path) = app();
+    app.lsp
+        .set_color_preview_colors_for_test(&path, 0, vec![color()]);
+    app.open_color_picker().expect("open");
+    let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+    assert!(!app.handle_color_picker_key(key).expect("key"));
     assert!(app.color_picker.is_some());
 }
 
