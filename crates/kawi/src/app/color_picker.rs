@@ -44,7 +44,7 @@ impl App {
                     .find(|color| contains_position(color, position))
             })
             .cloned()
-            .ok_or("No color preview under cursor")?;
+            .ok_or("No language server color under cursor")?;
         Ok((path, revision, color))
     }
 

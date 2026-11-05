@@ -181,10 +181,9 @@ impl ColorPicker {
         self.message = None;
     }
 
-    pub(super) fn cancel_request(&mut self) -> Option<u64> {
-        let request = self.request.take();
+    pub(super) fn cancel_request(&mut self) {
+        self.request = None;
         self.mode = Mode::Adjust;
-        request
     }
 
     pub(super) fn apply_event(&mut self, event: ColorPresentationEvent) -> bool {

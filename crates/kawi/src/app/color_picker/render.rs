@@ -9,6 +9,7 @@ const MAX_PRESENTATION_ROWS: usize = 8;
 const SLIDER_WIDTH: usize = 18;
 const SWATCH_WIDTH: usize = 24;
 const LABEL_WIDTH: usize = 10;
+const SWATCH_PREFIX: &str = "Preview  ";
 const OPAQUE: u8 = 255;
 
 pub(crate) fn lines(picker: &ColorPicker, theme: &Theme, width: usize) -> Vec<MarkdownLine> {
@@ -103,9 +104,13 @@ fn field_line(picker: &ColorPicker, field: Field) -> MarkdownLine {
 fn swatch_line(color: Rgba, theme: &Theme, width: usize) -> MarkdownLine {
     let style = color.to_style(theme.base.background);
     spans(vec![
-        span("Preview  ", MarkdownStyle::Normal),
+        span(SWATCH_PREFIX, MarkdownStyle::Normal),
         span(
-            &" ".repeat(SWATCH_WIDTH.min(width.saturating_sub(9)).max(1)),
+            &" ".repeat(
+                SWATCH_WIDTH
+                    .min(width.saturating_sub(SWATCH_PREFIX.len()))
+                    .max(1),
+            ),
             MarkdownStyle::Rgb {
                 foreground: style.foreground,
                 background: style.background,
