@@ -61,7 +61,7 @@ tabstop = 2
 
 ## Color previews
 
-Kawi renders inline swatches for CSS colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white for contrast.
+Kawi renders inline swatches for CSS colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white using APCA perceptual contrast.
 
 `color_preview` defaults to `true`. Toggle it with `:set nocolor_preview`. Enable or disable previews per file type in `languages.toml`:
 
