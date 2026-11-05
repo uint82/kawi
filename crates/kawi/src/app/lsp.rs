@@ -131,6 +131,17 @@ impl LspUi {
         self.colors.colors(path, revision)
     }
 
+    #[cfg(test)]
+    pub(super) fn set_color_preview_colors_for_test(
+        &mut self,
+        path: &Path,
+        revision: u64,
+        colors: Vec<kawi_lsp::DocumentColor>,
+    ) {
+        self.colors
+            .set_for_test(path.to_path_buf(), revision, colors);
+    }
+
     pub fn sync_editor(&mut self, editor: &Editor) -> bool {
         self.sync_document(editor)
     }

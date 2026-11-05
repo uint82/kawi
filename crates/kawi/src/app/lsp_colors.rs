@@ -184,9 +184,25 @@ impl DocumentColorState {
         self.deadline = Some(now + COLOR_REQUEST_DELAY);
     }
 
+    #[cfg(test)]
+    pub(super) fn set_for_test(
+        &mut self,
+        path: PathBuf,
+        revision: u64,
+        colors: Vec<DocumentColor>,
+    ) {
+        self.request = None;
+        self.deadline = None;
+        self.target = Some(Target { path, revision });
+        self.colors = Some(colors);
+    }
+
     fn cancel(&mut self, service: Option<&LspService>) {
         if let (Some(service), Some(request)) = (service, self.request.take()) {
             service.cancel(request);
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

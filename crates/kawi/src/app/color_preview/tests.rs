@@ -3,8 +3,10 @@ use std::path::PathBuf;
 
 use crossterm::style::Color;
 use kawi_buffer::Buffer;
+use kawi_lsp::{CursorPosition, DocumentColor};
 use kawi_tui::frame::DecorationSpan;
 
+use super::lsp;
 use crate::app::App;
 use crate::keymap::Flavor;
 
@@ -196,4 +198,67 @@ fn bright_green_preview_uses_black_foreground() {
     let found = spans(&app, line);
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].style.foreground, Color::Rgb { r: 0, g: 0, b: 0 });
+}
+
+fn lsp_color(
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    red: u8,
+    green: u8,
+    blue: u8,
+) -> DocumentColor {
+    DocumentColor {
+        start: CursorPosition {
+            line: start_line,
+            column: start_column,
+        },
+        end: CursorPosition {
+            line: end_line,
+            column: end_column,
+        },
+        red,
+        green,
+        blue,
+        alpha: 255,
+    }
+}
+
+#[test]
+fn lsp_spans_use_provider_ranges() {
+    let colors = vec![lsp_color(0, 0, 0, 4, 255, 0, 0)];
+    let lines = vec!["#fff".to_string()];
+    let found = lsp::spans(&colors, &lines, &[0], Color::Black);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].row, 0);
+    assert_eq!(found[0].start, 0);
+    assert_eq!(found[0].end, 4);
+    assert_eq!(found[0].style.background, Color::Rgb { r: 255, g: 0, b: 0 });
+}
+
+#[test]
+fn lsp_spans_clip_multiline_ranges_per_row() {
+    let colors = vec![lsp_color(0, 2, 1, 2, 0, 0, 255)];
+    let lines = vec!["abcdef".to_string(), "ghijkl".to_string()];
+    let found = lsp::spans(&colors, &lines, &[0, 1], Color::Black);
+    assert_eq!(found.len(), 2);
+    assert_eq!((found[0].row, found[0].start, found[0].end), (0, 2, 6));
+    assert_eq!((found[1].row, found[1].start, found[1].end), (1, 0, 2));
+}
+
+#[test]
+fn lsp_colors_take_precedence_over_the_scanner() {
+    let mut app = app("lsp_precedence", "style.css", "color: #ff0000;\n", "");
+    let path = std::path::Path::new("style.css");
+    app.lsp.set_color_preview_colors_for_test(
+        path,
+        app.editor.buffer_revision(),
+        vec![lsp_color(0, 0, 0, 6, 0, 0, 255)],
+    );
+    let found = spans(&app, "color: #ff0000;");
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].start, 0);
+    assert_eq!(found[0].end, 6);
+    assert_eq!(found[0].style.background, Color::Rgb { r: 0, g: 0, b: 255 });
 }
