@@ -71,7 +71,9 @@ name = "rust"
 color_preview = true
 ```
 
-The preview recognizes `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, `rgb()`, `rgba()`, CSS named colors, and `transparent`. Both modern space syntax and legacy comma syntax are accepted. For built-in stylesheet and markup types, named colors and `rgb()` functions are previewed only inside stylesheet declaration values, style attributes, and `<style>` elements. Hex colors are previewed wherever they appear. Alpha values blend with the active theme background.
+When a language server advertises `textDocument/documentColor`, previews use the server's ranges and colors. This covers forms such as `hsl()`, `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()` when the server supports them. Requests are debounced and cached per buffer revision.
+
+Without server color support, Kawi recognizes `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, `rgb()`, `rgba()`, CSS named colors, and `transparent`. Both modern space syntax and legacy comma syntax are accepted. For built-in stylesheet and markup types, named colors and `rgb()` functions are previewed only inside stylesheet declaration values, style attributes, and `<style>` elements. Hex colors are previewed wherever they appear. Alpha values blend with the active theme background.
 
 ## Keymaps
 
