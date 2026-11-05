@@ -1,4 +1,3 @@
-
 use crossterm::{
     execute,
     style::{Color, SetForegroundColor},
