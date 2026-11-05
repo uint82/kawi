@@ -10,7 +10,7 @@ Kawi reads configuration from the XDG config directory, normally `~/.config/kawi
 ## Sections
 
 - `[ui]` for keymap, theme, overlays, diagnostics, completion, the project explorer, and the status line
-- `[editor]` for indentation, line numbers, sign column, matching, autosave, and key guidance
+- `[editor]` for indentation, line numbers, sign column, matching, color previews, autosave, and key guidance
 - `[explorer]` for directory buffer behavior
 - `[history]` for undo history and persistence
 
@@ -58,6 +58,20 @@ tabstop = 2
 ```
 
 `shiftwidth` sets the indentation unit. `expandtab` inserts spaces instead of tabs. `tabstop` sets the display width of a tab.
+
+## Color previews
+
+Kawi renders inline swatches for hexadecimal colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white for contrast.
+
+`color_preview` defaults to `true`. Toggle it with `:set nocolor_preview`. Enable or disable previews per file type in `languages.toml`:
+
+```toml
+[[language]]
+name = "rust"
+color_preview = true
+```
+
+The preview recognizes `#RGB`, `#RGBA`, `#RRGGBB`, and `#RRGGBBAA`. Alpha values blend with the active theme background.
 
 ## Keymaps
 
