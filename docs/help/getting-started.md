@@ -23,7 +23,6 @@ Kawi restores the previous workspace when started without a file argument.
 
 The default keymap is Vim-style. Use `i` to insert, Esc to return to normal mode, and `:` to enter a command.
 
-Set `keymap = "helix"` in the configuration for Helix-style editing.
 
 ## Discover more
 

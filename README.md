@@ -10,7 +10,7 @@
   </a>
 </p>
 
-> Kawi is in early development. The Vim keymap is usable today. Helix and Emacs keymaps are in progress. Commands, options, and configuration may change.
+> Kawi is in early development. The Vim keymap is usable today. Commands, options, and configuration may change.
 
 ## Overview
 
@@ -18,7 +18,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 
 ## Features
 
-- **Modal editing.** Vim keymap with multiple windows and splits. Helix and Emacs keymaps are in progress.
+- **Modal editing.** Vim keymap with multiple windows and splits.
 - **Language servers.** Completion, hover, diagnostics, symbols, rename, formatting, code actions, and start, stop, or restart controls.
 - **External formatters.** Configure formatter commands in `languages.toml`, format with `:format`, and enable format-on-save.
 - **Syntax highlighting.** Tree-sitter parsing for Rust, Python, JavaScript, TypeScript, JSX, TSX, JSON, TOML, Bash, C, C++, Go, Java, C#, Ruby, PHP, Lua, YAML, HTML, CSS, and Markdown.
@@ -74,7 +74,7 @@ Press Tab in command mode to complete commands, options, option values, and help
 
 ## Key bindings
 
-Kawi currently uses a Vim-style keymap. Helix and Emacs keymaps are in progress and not yet stable.
+Kawi currently uses a Vim-style keymap.
 
 | Key | Action |
 | --- | --- |

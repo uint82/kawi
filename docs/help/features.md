@@ -5,7 +5,7 @@ related = ["getting-started", "lsp", "debug", "formatting", "pickers", "tasks"]
 ---
 # Features
 
-- Vim and Helix keymaps.
+- Vim keymap.
 - External file change detection with rename recovery for open buffers.
 - Crash-safe explorer renames and deletes with staged rollback and cleanup.
 - Multiple windows and splits.
