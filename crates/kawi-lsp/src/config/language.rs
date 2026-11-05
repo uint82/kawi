@@ -46,6 +46,7 @@ pub struct LanguageConfig {
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
     pub match_pairs: Option<Vec<PairConfig>>,
+    pub color_preview: bool,
     pub enabled: bool,
 }
 
@@ -69,6 +70,7 @@ impl LanguageConfig {
             block_comment: None,
             auto_pairs: None,
             match_pairs: None,
+            color_preview: false,
             enabled: true,
         }
     }
@@ -115,6 +117,11 @@ impl LanguageConfig {
 
     pub fn with_indent_brackets(mut self, indent_brackets: bool) -> Self {
         self.indent_brackets = indent_brackets;
+        self
+    }
+
+    pub fn with_color_preview(mut self) -> Self {
+        self.color_preview = true;
         self
     }
 

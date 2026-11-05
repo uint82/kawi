@@ -389,6 +389,18 @@ fn user_languages_override_editing_tokens() {
 }
 
 #[test]
+fn user_languages_override_color_preview() {
+    let path = temp_file(
+        "color_preview",
+        "[[language]]\nname = \"rust\"\ncolor_preview = true\n[[language]]\nname = \"css\"\ncolor_preview = false\n",
+    );
+    let languages = Languages::load(&path);
+    assert!(languages.language("rust").expect("rust").color_preview);
+    assert!(!languages.language("css").expect("css").color_preview);
+    assert!(languages.warnings().is_empty());
+}
+
+#[test]
 fn user_languages_override_match_pairs() {
     let path = temp_file(
         "match_pairs",

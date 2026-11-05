@@ -226,6 +226,7 @@ auto_pairs = false
 match_brackets = false
 number = false
 ignorecase = true
+color_preview = false
 format_on_save = true
 autosave = "idle"
 autosave_delay = 250
@@ -280,6 +281,7 @@ undo_exclude = ["*.gpg"]
         assert!(!app.editor.match_brackets());
         assert!(!app.editor.number());
         assert!(app.editor.ignorecase());
+        assert!(!app.color_preview);
         assert!(app.format_on_save);
         assert_eq!(app.autosave.mode(), crate::options::AutosaveMode::Idle);
         assert_eq!(app.autosave.delay_millis(), 250);

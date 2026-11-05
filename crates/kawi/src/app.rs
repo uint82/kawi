@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 mod apply_journal;
 mod autosave;
 mod code_action;
+mod color_preview;
 mod command_completion;
 mod command_execute;
 mod command_text;
@@ -177,6 +178,7 @@ pub struct App {
     completion_options: completion::CompletionOptions,
     overlay_options: overlay::options::OverlayOptions,
     diagnostic_options: diagnostic_ui::DiagnosticOptions,
+    color_preview: bool,
     signature: Option<signature::SignatureSession>,
     hover: Option<hover::HoverSession>,
     diagnostic_popup: Option<diagnostic_popup::DiagnosticPopup>,
@@ -299,6 +301,7 @@ impl App {
             completion_options: completion::CompletionOptions::default(),
             overlay_options: overlay::options::OverlayOptions::default(),
             diagnostic_options: diagnostic_ui::DiagnosticOptions::default(),
+            color_preview: true,
             signature: None,
             hover: None,
             diagnostic_popup: None,

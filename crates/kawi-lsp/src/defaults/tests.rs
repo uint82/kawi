@@ -153,3 +153,21 @@ fn built_in_indentation_matches_language_conventions() {
     assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
     assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
 }
+
+#[test]
+fn built_in_color_preview_matches_language_defaults() {
+    let languages = languages();
+    let preview = |name: &str| {
+        languages
+            .iter()
+            .find(|language| language.name == name)
+            .expect("language")
+            .color_preview
+    };
+    for name in ["css", "scss", "less", "html", "vue", "svelte", "astro"] {
+        assert!(preview(name), "{name} should preview colors");
+    }
+    for name in ["rust", "javascript", "json", "xml", "markdown"] {
+        assert!(!preview(name), "{name} should not preview colors");
+    }
+}

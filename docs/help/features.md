@@ -9,6 +9,7 @@ related = ["getting-started", "lsp", "debug", "formatting", "pickers", "tasks"]
 - External file change detection with rename recovery for open buffers.
 - Crash-safe explorer renames and deletes with staged rollback and cleanup.
 - Multiple windows and splits.
+- Inline color previews for hex, rgb(), and named CSS colors in styles and markup.
 - Opt-in project explorer with file management, Git markers, and diagnostics.
 - Editable directory buffers with diff-on-write renames, copies, creates, and trash deletes.
 - Language server support for completion, hover, diagnostics, symbols, rename, formatting, code actions, and lifecycle control.

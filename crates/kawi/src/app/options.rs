@@ -145,6 +145,7 @@ impl App {
             "match_brackets" => self
                 .editor
                 .set_match_brackets(value.as_bool().unwrap_or_default()),
+            "color_preview" => self.color_preview = value.as_bool().unwrap_or(true),
             "format_on_save" => self.format_on_save = value.as_bool().unwrap_or_default(),
             "autosave" => self.autosave.set_mode(
                 value
@@ -375,6 +376,7 @@ impl App {
             "foldcolumn" => OptionValue::Int(self.editor.fold_column()),
             "auto_pairs" => OptionValue::Bool(self.editor.auto_pairs()),
             "match_brackets" => OptionValue::Bool(self.editor.match_brackets()),
+            "color_preview" => OptionValue::Bool(self.color_preview),
             "format_on_save" => OptionValue::Bool(self.format_on_save),
             "autosave" => OptionValue::Text(self.autosave.mode().name().to_string()),
             "autosave_delay" => OptionValue::Int(
@@ -517,6 +519,18 @@ mod tests {
         assert_eq!(app.last_message(), Some("shiftwidth=2"));
         execute(&mut app, "set shiftwidth&");
         assert_eq!(app.editor.shiftwidth(), 8);
+    }
+
+    #[test]
+    fn color_preview_can_be_toggled() {
+        let mut app = app();
+        assert!(app.color_preview);
+        execute(&mut app, "set nocolor_preview");
+        assert!(!app.color_preview);
+        execute(&mut app, "set color_preview?");
+        assert_eq!(app.last_message(), Some("nocolor_preview"));
+        execute(&mut app, "set color_preview");
+        assert!(app.color_preview);
     }
 
     #[test]

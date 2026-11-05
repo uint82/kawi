@@ -336,6 +336,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "autoindent",
     "autosave",
     "autosave_delay",
+    "color_preview",
     "completion_docs_down",
     "completion_docs_max_width",
     "completion_docs_up",
