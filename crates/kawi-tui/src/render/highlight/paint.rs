@@ -18,6 +18,7 @@ use crate::render::bracket;
 use crate::render::diagnostic;
 use crate::render::furniture::gutter_width;
 use crate::render::selection;
+use crate::render::special_key::{draw_special_keys, SpecialKeyDraw};
 use crate::render::style::{apply_attributes, paint_syntax};
 
 pub(crate) fn draw_highlight(out: &mut Surface, pane: &PaneFrame<'_>, theme: &Theme) -> Result<()> {
@@ -34,6 +35,7 @@ pub(crate) fn draw_highlight(out: &mut Surface, pane: &PaneFrame<'_>, theme: &Th
     for span in &syntax_spans {
         paint_span(out, pane, span, gutter_width, theme)?;
     }
+    draw_special_keys(out, SpecialKeyDraw::from_pane(pane, theme));
     {
         let mut painter = DecorationPainter {
             out,

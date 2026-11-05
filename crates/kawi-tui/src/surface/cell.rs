@@ -1,3 +1,5 @@
+use crossterm::style::Color;
+
 use super::Style;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +44,10 @@ impl Cell {
 
     pub(crate) fn is_width_stable(&self) -> bool {
         self.text.is_ascii()
+    }
+
+    pub(crate) fn set_foreground(&mut self, foreground: Color) {
+        self.style.set_foreground(foreground);
     }
 
     pub fn reset(&mut self, style: Style) {

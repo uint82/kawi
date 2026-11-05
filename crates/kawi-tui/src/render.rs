@@ -29,6 +29,7 @@ mod picker;
 mod plugin_panel;
 mod replace;
 mod selection;
+mod special_key;
 mod style;
 mod task;
 mod terminal;

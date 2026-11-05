@@ -92,6 +92,12 @@ impl Surface {
         self.style.set_foreground(color);
     }
 
+    pub(crate) fn set_foreground_at(&mut self, x: usize, y: usize, color: Color) {
+        if let Some(cell) = self.cell_mut(x, y) {
+            cell.set_foreground(color);
+        }
+    }
+
     pub fn set_background(&mut self, color: Color) {
         self.style.set_background(color);
     }
