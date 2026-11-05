@@ -1,3 +1,4 @@
+use super::color_preview::PreviewMode;
 use super::lsp_diagnostics::DiagnosticState;
 use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
@@ -511,9 +512,11 @@ impl LspUi {
         }
     }
 
-    pub fn language_color_preview(&self, path: Option<&Path>) -> bool {
-        self.language_config(path)
-            .is_some_and(|language| language.color_preview)
+    pub fn language_color_preview_mode(&self, path: Option<&Path>) -> Option<PreviewMode> {
+        let language = self.language_config(path)?;
+        language
+            .color_preview
+            .then(|| PreviewMode::from_language(&language.name))
     }
 
     pub fn language_editing(&self, path: Option<&Path>) -> LanguageEditing {

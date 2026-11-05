@@ -423,7 +423,8 @@ pub(crate) const OPTIONS: [OptionSpec; 50] = [
     OptionSpec {
         name: "color_preview",
         aliases: &[],
-        description: "Show inline previews for hex colors in supported file types.",
+        description:
+            "Show inline previews for hex, rgb, and named CSS colors in supported file types.",
         kind: OptionKind::Bool,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,

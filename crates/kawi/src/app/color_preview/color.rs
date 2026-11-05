@@ -4,8 +4,6 @@ use kawi_tui::frame::PluginStyle;
 const OPAQUE: u8 = 255;
 const MAX_CHANNEL: u32 = 255;
 const ROUNDING_BIAS: u32 = 127;
-const HEX_RADIX: u8 = 16;
-const NIBBLE_SCALE: u8 = 17;
 const LUMINANCE_RED: f64 = 0.2126;
 const LUMINANCE_GREEN: f64 = 0.7152;
 const LUMINANCE_BLUE: f64 = 0.0722;
@@ -19,44 +17,27 @@ const BLACK: u8 = 0;
 const WHITE: u8 = 255;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct HexColor {
-    red: u8,
-    green: u8,
-    blue: u8,
-    alpha: u8,
+pub(super) struct Rgba {
+    pub(super) red: u8,
+    pub(super) green: u8,
+    pub(super) blue: u8,
+    pub(super) alpha: u8,
 }
 
-impl HexColor {
-    pub(super) fn from_digits(digits: &[u8]) -> Option<Self> {
-        match digits.len() {
-            3 => Self::from_nibbles(digits, false),
-            4 => Self::from_nibbles(digits, true),
-            6 => Self::from_pairs(digits, false),
-            8 => Self::from_pairs(digits, true),
-            _ => None,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Token {
+    pub(super) color: Rgba,
+    pub(super) len: usize,
+}
+
+impl Rgba {
+    pub(super) const fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+            alpha,
         }
-    }
-
-    fn from_nibbles(digits: &[u8], has_alpha: bool) -> Option<Self> {
-        Some(Self {
-            red: expand_nibble(*digits.first()?)?,
-            green: expand_nibble(*digits.get(1)?)?,
-            blue: expand_nibble(*digits.get(2)?)?,
-            alpha: if has_alpha {
-                expand_nibble(*digits.get(3)?)?
-            } else {
-                OPAQUE
-            },
-        })
-    }
-
-    fn from_pairs(digits: &[u8], has_alpha: bool) -> Option<Self> {
-        Some(Self {
-            red: byte(digits, 0)?,
-            green: byte(digits, 2)?,
-            blue: byte(digits, 4)?,
-            alpha: if has_alpha { byte(digits, 6)? } else { OPAQUE },
-        })
     }
 
     pub(super) fn to_style(self, theme_background: Color) -> PluginStyle {
@@ -92,22 +73,9 @@ impl HexColor {
     }
 }
 
-fn expand_nibble(digit: u8) -> Option<u8> {
-    hex_value(digit).map(|value| value * NIBBLE_SCALE)
-}
-
-fn byte(digits: &[u8], index: usize) -> Option<u8> {
-    let high = hex_value(*digits.get(index)?)?;
-    let low = hex_value(*digits.get(index.saturating_add(1))?)?;
-    Some(high * HEX_RADIX + low)
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
+impl Token {
+    pub(super) const fn new(color: Rgba, len: usize) -> Self {
+        Self { color, len }
     }
 }
 

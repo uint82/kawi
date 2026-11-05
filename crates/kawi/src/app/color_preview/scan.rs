@@ -1,63 +1,107 @@
+use std::ops::Range;
+
 use crossterm::style::Color;
 use kawi_tui::frame::DecorationSpan;
 
-use super::color::HexColor;
+use super::color::Token;
+use super::context::{self, MarkupState};
+use super::hex;
+use super::mode::PreviewMode;
+use super::named;
+use super::rgb;
 
 const HASH: u8 = b'#';
-const HASH_CHAR: char = '#';
-const HEX_DIGIT_MAX: usize = 8;
+const OPEN_PAREN: u8 = b'(';
+const BACKSLASH: u8 = b'\\';
 
-pub(super) fn spans(lines: &[String], rows: &[usize], background: Color) -> Vec<DecorationSpan> {
+pub(super) fn spans(
+    lines: &[String],
+    rows: &[usize],
+    background: Color,
+    mode: PreviewMode,
+) -> Vec<DecorationSpan> {
     let mut spans = Vec::new();
+    let mut state = MarkupState::default();
+    let mut previous_row = None;
     for (line, row) in lines.iter().zip(rows.iter().copied()) {
-        scan_line(row, line, background, &mut spans);
+        if previous_row.is_some_and(|previous: usize| row != previous.saturating_add(1)) {
+            state = MarkupState::default();
+        }
+        previous_row = Some(row);
+        let allowed = context::preview_ranges(line, mode, &mut state);
+        scan_line(row, line, background, &allowed, &mut spans);
     }
     spans
 }
 
-fn scan_line(row: usize, line: &str, background: Color, spans: &mut Vec<DecorationSpan>) {
+fn scan_line(
+    row: usize,
+    line: &str,
+    background: Color,
+    allowed: &[Range<usize>],
+    spans: &mut Vec<DecorationSpan>,
+) {
     let bytes = line.as_bytes();
-    if !bytes.contains(&HASH) {
-        return;
-    }
     let mut column = 0;
     for (index, character) in line.char_indices() {
-        if character == HASH_CHAR {
-            if let Some((color, token_len)) = color_at(bytes, index) {
-                spans.push(DecorationSpan {
-                    row,
-                    start: column,
-                    end: column.saturating_add(token_len),
-                    style: color.to_style(background),
-                });
+        if is_boundary_before(bytes, index) {
+            if let Some(token) = token_at(line, bytes, index, character, allowed) {
+                push_token(spans, row, column, token, background);
             }
         }
         column = column.saturating_add(1);
     }
 }
 
-fn color_at(bytes: &[u8], index: usize) -> Option<(HexColor, usize)> {
-    if bytes.get(index) != Some(&HASH) || !is_boundary_before(bytes, index) {
-        return None;
+fn token_at(
+    line: &str,
+    bytes: &[u8],
+    index: usize,
+    character: char,
+    allowed: &[Range<usize>],
+) -> Option<Token> {
+    if character == '#' {
+        return hex::token_at(bytes, index)
+            .filter(|token| is_boundary_after(bytes, index.saturating_add(token.len)));
     }
-    let digits_start = index.saturating_add(1);
-    let digits_len = hex_digits(bytes, digits_start);
-    let token_len = digits_len.saturating_add(1);
-    if !is_boundary_after(bytes, digits_start.saturating_add(digits_len)) {
-        return None;
+    if matches!(character, 'r' | 'R') && is_allowed(allowed, index) {
+        if let Some(token) = rgb::token_at(bytes, index)
+            .filter(|token| is_boundary_after(bytes, index.saturating_add(token.len)))
+        {
+            return Some(token);
+        }
     }
-    let digits = bytes.get(digits_start..digits_start.saturating_add(digits_len))?;
-    Some((HexColor::from_digits(digits)?, token_len))
+    if character.is_ascii_alphabetic() && is_allowed(allowed, index) {
+        return named_at(line, bytes, index);
+    }
+    None
 }
 
-fn hex_digits(bytes: &[u8], start: usize) -> usize {
+fn named_at(line: &str, bytes: &[u8], index: usize) -> Option<Token> {
+    let end = word_end(bytes, index);
+    if !is_boundary_after(bytes, end) || bytes.get(end) == Some(&OPEN_PAREN) {
+        return None;
+    }
+    let color = named::lookup(line.get(index..end)?)?;
+    Some(Token::new(color, end.saturating_sub(index)))
+}
+
+fn word_end(bytes: &[u8], start: usize) -> usize {
     bytes
         .get(start..)
+        .map(|tail| {
+            tail.iter()
+                .take_while(|byte| byte.is_ascii_alphabetic())
+                .count()
+        })
         .unwrap_or_default()
+        .saturating_add(start)
+}
+
+fn is_allowed(ranges: &[Range<usize>], index: usize) -> bool {
+    ranges
         .iter()
-        .take(HEX_DIGIT_MAX)
-        .take_while(|byte| byte.is_ascii_hexdigit())
-        .count()
+        .any(|range| range.start <= index && index < range.end)
 }
 
 fn is_boundary_before(bytes: &[u8], index: usize) -> bool {
@@ -72,98 +116,24 @@ fn is_boundary_after(bytes: &[u8], index: usize) -> bool {
 }
 
 fn is_boundary(byte: u8) -> bool {
-    !byte.is_ascii_alphanumeric() && byte != b'_' && byte != b'-' && byte != HASH && byte != b'\\'
+    !byte.is_ascii_alphanumeric()
+        && byte != b'_'
+        && byte != b'-'
+        && byte != HASH
+        && byte != BACKSLASH
 }
 
-#[cfg(test)]
-mod tests {
-    use crossterm::style::Color;
-    use kawi_tui::frame::PluginStyle;
-
-    use super::{color_at, spans};
-
-    fn background() -> Color {
-        Color::Rgb {
-            r: 18,
-            g: 18,
-            b: 18,
-        }
-    }
-
-    fn style_of(line: &str) -> PluginStyle {
-        let lines = vec![line.to_string()];
-        spans(&lines, &[0], background())[0].style
-    }
-
-    #[test]
-    fn finds_short_and_long_hex_colors() {
-        assert_eq!(color_at(b"#abc", 0).map(|(_, len)| len), Some(4));
-        assert_eq!(color_at(b"#abcd", 0).map(|(_, len)| len), Some(5));
-        assert_eq!(color_at(b"#aabbcc", 0).map(|(_, len)| len), Some(7));
-        assert_eq!(color_at(b"#aabbccdd", 0).map(|(_, len)| len), Some(9));
-    }
-
-    #[test]
-    fn rejects_invalid_lengths() {
-        for value in ["#ab", "#abcde", "#abcdefa", "#abcdefghi"] {
-            assert!(color_at(value.as_bytes(), 0).is_none(), "{value}");
-        }
-    }
-
-    #[test]
-    fn rejects_tokens_with_identifier_boundaries() {
-        for value in ["foo#abc", "#abc-def", "#abc_xyz", "##abc", "\\#abc"] {
-            assert!(color_at(value.as_bytes(), value.find('#').unwrap_or_default()).is_none());
-        }
-    }
-
-    #[test]
-    fn accepts_uppercase_and_mixed_case_digits() {
-        assert!(color_at(b"#AaBbCc", 0).is_some());
-    }
-
-    #[test]
-    fn skips_tokens_inside_identifiers() {
-        assert_eq!(color_at(b"x#abc", 1), None);
-        assert_eq!(color_at(b"#abcx", 0), None);
-    }
-
-    #[test]
-    fn computes_readable_foreground() {
-        let dark = style_of("#000000");
-        assert_eq!(
-            dark.foreground,
-            Color::Rgb {
-                r: 255,
-                g: 255,
-                b: 255
-            }
-        );
-        let light = style_of("#ffffff");
-        assert_eq!(light.foreground, Color::Rgb { r: 0, g: 0, b: 0 });
-    }
-
-    #[test]
-    fn blends_alpha_over_the_theme_background() {
-        let style = style_of("#00000000");
-        assert_eq!(style.background, background());
-        let style = style_of("#ff000080");
-        assert_eq!(style.background, Color::Rgb { r: 137, g: 9, b: 9 });
-    }
-
-    #[test]
-    fn generates_spans_with_character_columns() {
-        let lines = vec!["é #fff".to_string()];
-        let found = spans(&lines, &[7], background());
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].row, 7);
-        assert_eq!(found[0].start, 2);
-        assert_eq!(found[0].end, 6);
-    }
-
-    #[test]
-    fn ignores_lines_without_colors() {
-        let lines = vec!["plain text".to_string()];
-        assert!(spans(&lines, &[0], background()).is_empty());
-    }
+fn push_token(
+    spans: &mut Vec<DecorationSpan>,
+    row: usize,
+    column: usize,
+    token: Token,
+    background: Color,
+) {
+    spans.push(DecorationSpan {
+        row,
+        start: column,
+        end: column.saturating_add(token.len),
+        style: token.color.to_style(background),
+    });
 }

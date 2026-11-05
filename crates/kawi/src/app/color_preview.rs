@@ -1,4 +1,9 @@
 mod color;
+mod context;
+mod hex;
+mod mode;
+mod named;
+mod rgb;
 mod scan;
 #[cfg(test)]
 mod tests;
@@ -6,6 +11,8 @@ mod tests;
 use std::path::Path;
 
 use kawi_tui::frame::DecorationSpan;
+
+pub(crate) use mode::PreviewMode;
 
 use super::App;
 
@@ -20,9 +27,9 @@ impl App {
             return Vec::new();
         }
         let path = self.editor.buffer_path(buffer).map(Path::new);
-        if !self.lsp.language_color_preview(path) {
+        let Some(mode) = self.lsp.language_color_preview_mode(path) else {
             return Vec::new();
-        }
-        scan::spans(lines, rows, self.theme.base.background)
+        };
+        scan::spans(lines, rows, self.theme.base.background, mode)
     }
 }
