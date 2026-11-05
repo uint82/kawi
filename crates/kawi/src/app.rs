@@ -878,7 +878,14 @@ impl App {
             self.debug_focus = false;
         }
         if self.color_picker.is_some() {
-            self.close_color_picker();
+            if matches!(
+                mouse.kind,
+                MouseEventKind::Down(MouseButton::Left)
+                    | MouseEventKind::ScrollUp
+                    | MouseEventKind::ScrollDown
+            ) {
+                self.close_color_picker();
+            }
             return self.handle_noop();
         }
         if self.close_diagnostic_popup() {
