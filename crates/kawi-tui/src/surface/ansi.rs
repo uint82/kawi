@@ -5,6 +5,7 @@ use crossterm::{
     cursor::MoveTo,
     execute,
     style::{Attribute, SetAttribute, SetBackgroundColor, SetForegroundColor, SetUnderlineColor},
+    terminal::{Clear, ClearType},
 };
 use kawi_buffer::unicode;
 
@@ -16,17 +17,42 @@ const AMBIGUOUS_CELL_WIDTH: usize = 2;
 
 pub fn present<W: Write>(surface: &Surface, out: &mut W) -> Result<()> {
     for y in 0..surface.height() {
-        move_to(out, 0, y)?;
-        let mut writer = RowWriter::new(out);
-        for x in 0..surface.width() {
-            let Some(cell) = surface.cell(x, y) else {
-                continue;
-            };
-            writer.write_cell(x, y, cell)?;
-        }
-        writer.finish()?;
+        write_row(out, surface, y)?;
     }
     Ok(())
+}
+
+pub(super) fn write_row<W: Write>(out: &mut W, surface: &Surface, y: usize) -> Result<()> {
+    let base = surface.base_style();
+    let mut writer = RowWriter::new(out);
+    writer.move_to(0, y)?;
+    writer.set_style(base)?;
+    writer.clear_line()?;
+    let Some(cells) = surface.row(y) else {
+        return writer.finish();
+    };
+    let Some(start) = cells.iter().position(|cell| is_meaningful(cell, base)) else {
+        return writer.finish();
+    };
+    let end = cells
+        .iter()
+        .rposition(|cell| is_meaningful(cell, base))
+        .map_or(start.saturating_add(1), |index| index.saturating_add(1));
+    writer.move_to(start, y)?;
+    for (x, cell) in cells.iter().enumerate().take(end).skip(start) {
+        if cell.is_continuation() {
+            continue;
+        }
+        writer.write_cell(x, y, cell)?;
+    }
+    writer.finish()
+}
+
+fn is_meaningful(cell: &Cell, base: Style) -> bool {
+    if cell.is_continuation() {
+        return false;
+    }
+    cell.text() != " " || cell.width() != 1 || cell.style() != base
 }
 
 pub(super) struct RowWriter<'a, W> {
@@ -50,6 +76,22 @@ impl<'a, W: Write> RowWriter<'a, W> {
         self.flush()?;
         move_to(self.out, x, y)?;
         self.force_move = false;
+        Ok(())
+    }
+
+    pub(super) fn set_style(&mut self, style: Style) -> Result<()> {
+        if self.style == Some(style) {
+            return Ok(());
+        }
+        self.flush()?;
+        apply_style(self.out, style)?;
+        self.style = Some(style);
+        Ok(())
+    }
+
+    pub(super) fn clear_line(&mut self) -> Result<()> {
+        self.flush()?;
+        execute!(self.out, Clear(ClearType::CurrentLine)).context("clear surface row")?;
         Ok(())
     }
 
@@ -182,6 +224,17 @@ mod tests {
         let output = String::from_utf8(out).expect("utf8");
         assert_eq!(output.matches('\u{2764}').count(), 1);
         assert!(output.contains("\u{1b}[1;3H"));
+    }
+
+    #[test]
+    fn presents_soft_hyphen_before_absolute_positioning() {
+        let mut surface = Surface::new(16, 1, Color::White, Color::Black);
+        surface.write_text("co\u{ad}operate");
+        let mut out = Vec::new();
+        present(&surface, &mut out).expect("present surface");
+        let output = String::from_utf8(out).expect("utf8");
+        assert_eq!(output.matches('\u{ad}').count(), 1);
+        assert!(output.contains("\u{1b}[1;4H"));
     }
 
     #[test]

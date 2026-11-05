@@ -40,6 +40,10 @@ impl Cell {
         self.width == 0
     }
 
+    pub(crate) fn is_width_stable(&self) -> bool {
+        self.text.is_ascii()
+    }
+
     pub fn reset(&mut self, style: Style) {
         self.text.clear();
         self.text.push(' ');

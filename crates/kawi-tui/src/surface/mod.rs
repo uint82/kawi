@@ -1,6 +1,7 @@
 mod ansi;
 mod cell;
 mod diff;
+mod rows;
 mod style;
 
 use std::io::{self, Write};
