@@ -1,8 +1,8 @@
+use super::super::position::cursor_position;
 use super::super::*;
 use super::{SymbolEntry, SymbolKind, SymbolRange};
 use crate::service::navigation_results::{path_for_uri, resolve_position};
-use crate::text;
-use lsp_types::{Position, SymbolInformation, SymbolTag, WorkspaceSymbol};
+use lsp_types::{SymbolInformation, SymbolTag, WorkspaceSymbol};
 use ropey::Rope;
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,23 +36,6 @@ pub(super) fn symbol_range(
     SymbolRange {
         start: cursor_position(text, range.start, encoding),
         end: cursor_position(text, range.end, encoding),
-    }
-}
-
-pub(super) fn cursor_position(
-    text: &Rope,
-    position: Position,
-    encoding: &PositionEncodingKind,
-) -> CursorPosition {
-    let line = text::clamped_line(text, position.line);
-    CursorPosition {
-        line: u32::try_from(line).unwrap_or(u32::MAX),
-        column: text::line_character(
-            text,
-            u32::try_from(line).unwrap_or(u32::MAX),
-            position.character,
-            encoding,
-        ),
     }
 }
 
@@ -126,6 +109,7 @@ pub(super) fn workspace_symbol_entry(
 mod tests {
     use super::*;
     use crate::workspace;
+    use lsp_types::Position;
 
     #[test]
     fn converts_negotiated_offsets_to_character_columns() {

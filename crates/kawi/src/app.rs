@@ -43,6 +43,7 @@ mod identity;
 mod keyguide;
 mod language;
 mod lsp;
+mod lsp_colors;
 mod lsp_diagnostics;
 mod lsp_lifecycle;
 mod lsp_menu;
@@ -584,6 +585,7 @@ impl App {
             );
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.lsp.color_wait_timeout());
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
             let diagnostic_timeout = self.diagnostic_idle_wait_timeout();
             let timeout = shortest_timeout(timeout, diagnostic_timeout);
@@ -780,6 +782,7 @@ impl App {
     }
 
     fn sync_lsp(&mut self) {
+        self.lsp.set_color_preview(self.color_preview);
         let path = self.problem_path();
         self.problems.observe_editor(
             path.as_deref(),

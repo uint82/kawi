@@ -1,7 +1,6 @@
+use super::super::position::cursor_position;
 use super::super::*;
-use super::convert::{
-    append_symbol_information, cursor_position, has_deprecated_tag, symbol_range,
-};
+use super::convert::{append_symbol_information, has_deprecated_tag, symbol_range};
 use super::SymbolEntry;
 use super::SymbolKind;
 use lsp_types::{DocumentSymbolResponse, SymbolInformation};
