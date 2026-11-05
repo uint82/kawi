@@ -1,20 +1,11 @@
 use crossterm::style::Color;
 use kawi_tui::frame::PluginStyle;
 
+use super::contrast;
+
 const OPAQUE: u8 = 255;
 const MAX_CHANNEL: u32 = 255;
 const ROUNDING_BIAS: u32 = 127;
-const LUMINANCE_RED: f64 = 0.2126;
-const LUMINANCE_GREEN: f64 = 0.7152;
-const LUMINANCE_BLUE: f64 = 0.0722;
-const CONTRAST_OFFSET: f64 = 0.05;
-const GAMMA_THRESHOLD: f64 = 0.03928;
-const GAMMA_DIVISOR: f64 = 12.92;
-const GAMMA_OFFSET: f64 = 0.055;
-const GAMMA_SCALE: f64 = 1.055;
-const GAMMA_EXPONENT: f64 = 2.4;
-const BLACK: u8 = 0;
-const WHITE: u8 = 255;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Rgba {
@@ -48,7 +39,7 @@ impl Rgba {
             b: blue,
         };
         PluginStyle {
-            foreground: contrast_foreground(red, green, blue),
+            foreground: contrast::foreground(red, green, blue),
             background,
             accent: background,
             bold: false,
@@ -107,39 +98,5 @@ fn background_rgb(color: Color) -> Option<(u8, u8, u8)> {
         Color::Grey => Some((170, 170, 170)),
         Color::Rgb { r, g, b } => Some((r, g, b)),
         Color::AnsiValue(_) => None,
-    }
-}
-
-fn contrast_foreground(red: u8, green: u8, blue: u8) -> Color {
-    let luminance = relative_luminance(red, green, blue);
-    let black = (luminance + CONTRAST_OFFSET) / CONTRAST_OFFSET;
-    let white = (1.0 + CONTRAST_OFFSET) / (luminance + CONTRAST_OFFSET);
-    if black >= white {
-        Color::Rgb {
-            r: BLACK,
-            g: BLACK,
-            b: BLACK,
-        }
-    } else {
-        Color::Rgb {
-            r: WHITE,
-            g: WHITE,
-            b: WHITE,
-        }
-    }
-}
-
-fn relative_luminance(red: u8, green: u8, blue: u8) -> f64 {
-    LUMINANCE_RED * linearize(red)
-        + LUMINANCE_GREEN * linearize(green)
-        + LUMINANCE_BLUE * linearize(blue)
-}
-
-fn linearize(channel: u8) -> f64 {
-    let value = f64::from(channel) / f64::from(OPAQUE);
-    if value <= GAMMA_THRESHOLD {
-        value / GAMMA_DIVISOR
-    } else {
-        ((value + GAMMA_OFFSET) / GAMMA_SCALE).powf(GAMMA_EXPONENT)
     }
 }
