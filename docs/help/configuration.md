@@ -141,7 +141,6 @@ keyguide = true
 keyguide_delay = 250
 ```
 
-Helix has no leader or multi-key sequences, so the overlay does not appear there.
 
 ## Folding
 

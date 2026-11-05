@@ -2,12 +2,12 @@ use kawi_editor::{BufferOptionDefaults, WindowOptions};
 use kawi_lsp::LanguageWarning;
 
 use super::App;
-use crate::keymap::{Flavor, Keymap};
+use crate::keymap::Keymap;
 use crate::options::OptionValue;
 use crate::state::{self, StatePaths};
 
 impl App {
-    pub fn load_state(&mut self, cli_flavor: Option<Flavor>, load_plugins: bool) {
+    pub fn load_state(&mut self, load_plugins: bool) {
         let Some(paths) = StatePaths::resolve() else {
             return;
         };
@@ -71,9 +71,6 @@ impl App {
         }
         self.refresh_command_completion();
         self.undo.spawn_prune();
-        if let Some(flavor) = cli_flavor {
-            let _ = self.apply_cli_flavor(flavor);
-        }
         state::load(&mut self.editor, &paths);
         self.sync_language_settings();
         self.sync_undo_histories();
@@ -181,6 +178,7 @@ fn config_warning_message(count: usize, path: &std::path::Path) -> String {
 mod tests {
     use super::*;
     use crate::config;
+    use crate::keymap::Flavor;
     use kawi_buffer::Buffer;
     use std::fs;
     use std::path::PathBuf;
@@ -246,7 +244,7 @@ undo_exclude = ["*.gpg"]
         let loaded = config::load(&path);
         let mut app = app();
         app.apply_config(&loaded.config);
-        assert_eq!(app.flavor, Flavor::Helix);
+        assert_eq!(app.flavor, Flavor::Vim);
         assert_eq!(app.theme.name, "gruvbox-dark");
         assert_eq!(app.overlay_options.hover_max_width, 80);
         assert_eq!(app.overlay_options.completion_docs_max_width, 50);
@@ -318,19 +316,6 @@ undo_exclude = ["*.gpg"]
         app.theme_dir = Some(themes);
         app.apply_config(&loaded.config);
         assert_eq!(app.theme_name(), "personal");
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn cli_keymap_overrides_config() {
-        let dir = temp_dir("cli");
-        let path = dir.join("config.toml");
-        fs::write(&path, "[ui]\nkeymap = \"helix\"\n").unwrap();
-        let loaded = config::load(&path);
-        let mut app = app();
-        app.apply_config(&loaded.config);
-        app.apply_cli_flavor(Flavor::Vim).unwrap();
-        assert_eq!(app.flavor, Flavor::Vim);
         let _ = fs::remove_dir_all(dir);
     }
 

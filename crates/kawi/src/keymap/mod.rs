@@ -23,7 +23,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::Action;
 use kawi_editor::Mode;
 
-use crate::helix::HelixKeymap;
 use crate::leader::LeaderPath;
 use crate::vim::VimKeymap;
 
@@ -74,28 +73,24 @@ pub(crate) fn default_leaders() -> Vec<KeyChord> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flavor {
     Vim,
-    Helix,
 }
 
 impl Flavor {
     pub fn name(self) -> &'static str {
         match self {
             Self::Vim => "vim",
-            Self::Helix => "helix",
         }
     }
 }
 
 pub enum ActiveKeymap {
     Vim(VimKeymap),
-    Helix(HelixKeymap),
 }
 
 impl ActiveKeymap {
     pub fn for_flavor(flavor: Flavor) -> Self {
         match flavor {
             Flavor::Vim => Self::Vim(VimKeymap::new()),
-            Flavor::Helix => Self::Helix(HelixKeymap::new()),
         }
     }
 }
@@ -103,7 +98,6 @@ impl ActiveKeymap {
 pub fn flavor_from_name(name: &str) -> Option<Flavor> {
     match name.trim() {
         "vim" => Some(Flavor::Vim),
-        "helix" => Some(Flavor::Helix),
         _ => None,
     }
 }
@@ -112,70 +106,60 @@ impl Keymap for ActiveKeymap {
     fn map(&mut self, key: KeyEvent, mode: Mode) -> Action {
         match self {
             Self::Vim(inner) => inner.map(key, mode),
-            Self::Helix(inner) => inner.map(key, mode),
         }
     }
 
     fn mode_label(&self, mode: Mode) -> &'static str {
         match self {
             Self::Vim(inner) => inner.mode_label(mode),
-            Self::Helix(inner) => inner.mode_label(mode),
         }
     }
 
     fn operator_exits_visual(&self) -> bool {
         match self {
             Self::Vim(inner) => inner.operator_exits_visual(),
-            Self::Helix(inner) => inner.operator_exits_visual(),
         }
     }
 
     fn pending_text(&self) -> Option<&str> {
         match self {
             Self::Vim(inner) => inner.pending_text(),
-            Self::Helix(inner) => inner.pending_text(),
         }
     }
 
     fn pending_keys(&self) -> Option<&str> {
         match self {
             Self::Vim(inner) => inner.pending_keys(),
-            Self::Helix(inner) => inner.pending_keys(),
         }
     }
 
     fn leader_path(&self) -> Option<LeaderPath> {
         match self {
             Self::Vim(inner) => inner.leader_path(),
-            Self::Helix(inner) => inner.leader_path(),
         }
     }
 
     fn is_leader_prefix(&self, key: KeyEvent, mode: Mode) -> bool {
         match self {
             Self::Vim(inner) => inner.is_leader_prefix(key, mode),
-            Self::Helix(inner) => inner.is_leader_prefix(key, mode),
         }
     }
 
     fn reset_pending(&mut self) {
         match self {
             Self::Vim(inner) => inner.reset_pending(),
-            Self::Helix(inner) => inner.reset_pending(),
         }
     }
 
     fn has_pending(&self) -> bool {
         match self {
             Self::Vim(inner) => inner.has_pending(),
-            Self::Helix(inner) => inner.has_pending(),
         }
     }
 
     fn set_leaders(&mut self, leaders: Vec<KeyChord>) {
         match self {
             Self::Vim(inner) => inner.set_leaders(leaders),
-            Self::Helix(inner) => inner.set_leaders(leaders),
         }
     }
 }

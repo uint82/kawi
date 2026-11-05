@@ -536,7 +536,3 @@ pub enum ShiftMotion {
     },
     OperatorLines,
 }
-
-// TODO(helix): shared SelectLine action for helix x line select.
-// TODO(helix): shared ChangeSelection action for helix c and vim visual c.
-// TODO(personal): third keymap flavor alongside vim and helix.

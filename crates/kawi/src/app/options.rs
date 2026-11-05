@@ -283,6 +283,10 @@ impl App {
 
     fn apply_keymap_value(&mut self, value: &OptionValue) -> Result<()> {
         let name = value.as_text().unwrap_or_default();
+        if name == "helix" {
+            self.show_message("Helix keymap was removed; using Vim".to_string());
+            return self.apply_flavor(Flavor::Vim);
+        }
         match flavor_from_name(name) {
             Some(flavor) => self.apply_flavor(flavor),
             None => {
@@ -319,11 +323,6 @@ impl App {
                 Ok(())
             }
         }
-    }
-
-    pub(super) fn apply_cli_flavor(&mut self, flavor: Flavor) -> Result<()> {
-        let spec = options::lookup("keymap").expect("keymap is registered");
-        self.resolve_and_apply(spec, OptionInput::Text(flavor.name()))
     }
 
     pub(super) fn apply_flavor(&mut self, flavor: Flavor) -> Result<()> {
@@ -527,8 +526,12 @@ mod tests {
         execute(&mut app, "set theme?");
         assert_eq!(app.last_message(), Some("theme=gruvbox-dark"));
         execute(&mut app, "set keymap helix");
+        assert_eq!(
+            app.last_message(),
+            Some("Helix keymap was removed; using Vim")
+        );
         execute(&mut app, "set keymap?");
-        assert_eq!(app.last_message(), Some("keymap=helix"));
+        assert_eq!(app.last_message(), Some("keymap=vim"));
     }
 
     #[test]
@@ -544,7 +547,14 @@ mod tests {
                 let validated = options::validate_spec(spec, input, &context).unwrap();
                 app.message = None;
                 app.apply_option(spec, validated).unwrap();
-                assert_eq!(app.last_message(), None, "{}={value}", spec.name);
+                if spec.name == "keymap" && value == "helix" {
+                    assert_eq!(
+                        app.last_message(),
+                        Some("Helix keymap was removed; using Vim")
+                    );
+                } else {
+                    assert_eq!(app.last_message(), None, "{}={value}", spec.name);
+                }
             }
         }
     }
