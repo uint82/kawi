@@ -165,6 +165,17 @@ mod tests {
     }
 
     #[test]
+    fn html_indent_rules_are_loaded() {
+        let dir = temp_dir("html_rules");
+        let mut app = app("index.html");
+        load_languages(&mut app, &dir, "");
+        let indent = app.lsp.language_indent(Some(Path::new("index.html")));
+        assert_eq!(indent.language, Some(LanguageId::Html));
+        assert!(indent.rules.indent_tags);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn language_indent_overrides_are_loaded() {
         let dir = temp_dir("indent_overrides");
         let mut app = app("main.rs");

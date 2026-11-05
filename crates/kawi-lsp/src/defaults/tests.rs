@@ -155,6 +155,22 @@ fn built_in_indentation_matches_language_conventions() {
 }
 
 #[test]
+fn built_in_tag_indentation_matches_language_defaults() {
+    let languages = languages();
+    let indent_tags = |name: &str| {
+        languages
+            .iter()
+            .find(|language| language.name == name)
+            .expect("language")
+            .indent_tags
+    };
+    assert!(indent_tags("html"));
+    for name in ["rust", "python", "json", "xml", "markdown"] {
+        assert!(!indent_tags(name), "{name} should not indent tags");
+    }
+}
+
+#[test]
 fn built_in_color_preview_matches_language_defaults() {
     let languages = languages();
     let preview = |name: &str| {

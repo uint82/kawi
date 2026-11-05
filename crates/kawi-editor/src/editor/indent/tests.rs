@@ -3,7 +3,7 @@ use crate::editing::{BlockComment, CommentTokens, LanguageEditing, Pair};
 use super::engine::{closer_width, next_width, IndentRequest, INDENT_WINDOW_LINES};
 use super::IndentRules;
 
-fn editing() -> LanguageEditing {
+pub(super) fn editing() -> LanguageEditing {
     LanguageEditing {
         comments: CommentTokens {
             line: Some("#".to_string()),
@@ -59,7 +59,7 @@ fn width_at(
     next_width(&request)
 }
 
-fn width(lines: &[&str], current_width: usize, rules: &IndentRules) -> usize {
+pub(super) fn width(lines: &[&str], current_width: usize, rules: &IndentRules) -> usize {
     let lines: Vec<String> = lines.iter().map(|line| (*line).to_string()).collect();
     let row = lines.len().saturating_sub(1);
     let col = lines[row].chars().count();

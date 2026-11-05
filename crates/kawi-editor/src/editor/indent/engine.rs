@@ -1,11 +1,11 @@
-use kawi_buffer::indent_width_of;
-
 use kawi_syntax::LanguageId;
 
 use crate::editing::LanguageEditing;
 use crate::editor::lexical::{LexicalContext, LexicalScanner};
 
 use super::language::IndentRules;
+use super::line_width;
+use super::tags::TagScan;
 
 pub(crate) const INDENT_WINDOW_LINES: usize = 200;
 
@@ -29,11 +29,25 @@ pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
     if scan.stack.is_empty() && matches_block(scan.token(), request.rules) {
         return request.current_width + request.shiftwidth;
     }
-    if !request.rules.indent_brackets {
-        return request.current_width;
-    }
+    let bracket = request
+        .rules
+        .indent_brackets
+        .then(|| bracket_width(&scan, request))
+        .flatten();
+    let tag = request
+        .rules
+        .indent_tags
+        .then(|| {
+            scan.tags
+                .width(request.lines, request.tabstop, request.shiftwidth)
+        })
+        .flatten();
+    bracket.or(tag).unwrap_or(request.current_width)
+}
+
+fn bracket_width(scan: &Scan, request: &IndentRequest<'_>) -> Option<usize> {
     if scan.last_bracket.is_some_and(is_closing_bracket) {
-        return request.current_width;
+        return Some(request.current_width);
     }
     let opener = if scan
         .last_bracket
@@ -41,11 +55,10 @@ pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
     {
         scan.stack.last()
     } else {
-        base_opener(&scan)
+        base_opener(scan)
     };
-    opener.map_or(request.current_width, |opener| {
-        line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth
-    })
+    opener
+        .map(|opener| line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth)
 }
 
 fn base_opener(scan: &Scan) -> Option<&Bracket> {
@@ -75,6 +88,18 @@ pub(crate) fn closer_width(request: &IndentRequest<'_>, closer: char) -> Option<
         return None;
     }
     Some(line_width(&request.lines[bracket.line], request.tabstop))
+}
+
+pub(crate) fn tag_closer_width(request: &IndentRequest<'_>) -> Option<usize> {
+    if !request.rules.indent_tags {
+        return None;
+    }
+    let scan = scan(request);
+    if !scan.code {
+        return None;
+    }
+    scan.tags
+        .closer_width(request.lines, request.row, request.col, request.tabstop)
 }
 
 fn scan(request: &IndentRequest<'_>) -> Scan {
@@ -120,10 +145,6 @@ fn matches_block(token: &str, rules: &IndentRules) -> bool {
                 .indent_after_keywords
                 .iter()
                 .any(|keyword| token == keyword))
-}
-
-fn line_width(line: &str, tabstop: usize) -> usize {
-    indent_width_of(line, tabstop.max(1))
 }
 
 fn matching_opener(closer: char) -> Option<char> {
@@ -173,6 +194,7 @@ fn update_brackets(scan: &mut Scan, ch: char, line: usize, previous_code: Option
 #[derive(Default)]
 struct Scan {
     stack: Vec<Bracket>,
+    tags: TagScan,
     token: String,
     last_token: String,
     last_bracket: Option<char>,
@@ -196,6 +218,7 @@ impl Scan {
             self.token.push(ch);
         }
         update_brackets(self, ch, line, previous_code);
+        self.tags.update(ch, line);
     }
 
     fn token(&self) -> &str {

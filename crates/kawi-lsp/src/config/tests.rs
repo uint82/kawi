@@ -216,6 +216,40 @@ fn built_in_languages_set_indent_rules() {
 }
 
 #[test]
+fn html_enables_tag_indent_rules() {
+    let languages = Languages::load(Path::new("/nonexistent/languages.toml"));
+    let html = languages.language("html").expect("html");
+    assert!(html.indent_tags);
+}
+
+#[test]
+fn user_languages_can_toggle_tag_indent_rules() {
+    let path = temp_file(
+        "tag_indent_overrides",
+        "[[language]]\nname = \"html\"\nindent_tags = false\n",
+    );
+    let languages = Languages::load(&path);
+    let html = languages.language("html").expect("html");
+    assert!(!html.indent_tags);
+    assert!(languages.warnings().is_empty());
+}
+
+#[test]
+fn invalid_tag_indent_override_warns_and_is_ignored() {
+    let path = temp_file(
+        "invalid_tag_indent",
+        "[[language]]\nname = \"html\"\nindent_tags = \"yes\"\n",
+    );
+    let languages = Languages::load(&path);
+    let html = languages.language("html").expect("html");
+    assert!(html.indent_tags);
+    assert_eq!(languages.warnings().len(), 1);
+    assert!(languages.warnings()[0]
+        .message()
+        .contains("indent_tags must be a boolean"));
+}
+
+#[test]
 fn user_languages_set_indent_overrides() {
     let path = temp_file(
         "indent_overrides",

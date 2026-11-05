@@ -3,6 +3,7 @@ pub struct IndentRules {
     pub indent_after_suffixes: Vec<String>,
     pub indent_after_keywords: Vec<String>,
     pub indent_brackets: bool,
+    pub indent_tags: bool,
 }
 
 impl Default for IndentRules {
@@ -11,6 +12,7 @@ impl Default for IndentRules {
             indent_after_suffixes: Vec::new(),
             indent_after_keywords: Vec::new(),
             indent_brackets: true,
+            indent_tags: false,
         }
     }
 }
@@ -25,6 +27,12 @@ impl IndentRules {
             indent_after_suffixes,
             indent_after_keywords,
             indent_brackets,
+            indent_tags: false,
         }
+    }
+
+    pub fn with_indent_tags(mut self, indent_tags: bool) -> Self {
+        self.indent_tags = indent_tags;
+        self
     }
 }
