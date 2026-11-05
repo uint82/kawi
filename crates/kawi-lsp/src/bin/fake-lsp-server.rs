@@ -64,6 +64,12 @@ fn main() -> Result<()> {
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
     let color_mode = std::env::var("FAKE_LSP_COLOR_MODE").unwrap_or_else(|_| "normal".to_string());
+    let color_presentation_mode =
+        std::env::var("FAKE_LSP_COLOR_PRESENTATION_MODE").unwrap_or_else(|_| "normal".to_string());
+    let color_presentation_delay = std::env::var("FAKE_LSP_COLOR_PRESENTATION_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
     let shutdown_delay = std::env::var("FAKE_LSP_SHUTDOWN_DELAY_MS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -185,6 +191,13 @@ fn main() -> Result<()> {
                 "textDocument/documentColor" => {
                     handle_document_colors(&mut writer, id, params, color_delay, &color_mode)?
                 }
+                "textDocument/colorPresentation" => handle_color_presentations(
+                    &mut writer,
+                    id,
+                    params,
+                    color_presentation_delay,
+                    &color_presentation_mode,
+                )?,
                 "workspace/symbol" => {
                     handle_workspace_symbols(&mut writer, id, params, &documents, &symbol_settings)?
                 }
@@ -639,6 +652,57 @@ fn handle_document_colors(
             {
                 "range": range(1, 0, 4),
                 "color": {"red": 0.2, "green": 0.4, "blue": 0.6, "alpha": 0.5}
+            }
+        ]),
+    };
+    send(writer, Message::response(id, result))
+}
+
+fn handle_color_presentations(
+    writer: &mut impl io::Write,
+    id: RequestId,
+    params: Option<Value>,
+    delay: u64,
+    mode: &str,
+) -> Result<()> {
+    let params = params.context("color presentation params")?;
+    let uri = params["textDocument"]["uri"]
+        .as_str()
+        .context("color presentation uri")?;
+    let range = params["range"].clone();
+    send_log(writer, &format!("color-presentations:{uri}:{range}"))?;
+    if delay > 0 {
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+    let result = match mode {
+        "empty" => json!([]),
+        "invalid" => json!({"presentations": []}),
+        _ => json!([
+            {
+                "label": "#cc2233",
+                "textEdit": {"range": range, "newText": "#cc2233"}
+            },
+            {
+                "label": "rgb(204, 34, 51)",
+                "textEdit": {"range": range, "newText": "rgb(204, 34, 51)"}
+            },
+            {
+                "label": "fallback"
+            },
+            {
+                "label": "#cc2233",
+                "textEdit": {"range": range, "newText": "#cc2233"}
+            },
+            {
+                "label": "hsl(345 71% 47%)",
+                "textEdit": {"range": range, "newText": "hsl(345 71% 47%)"},
+                "additionalTextEdits": [{
+                    "range": {
+                        "start": {"line": 1, "character": 0},
+                        "end": {"line": 1, "character": 0}
+                    },
+                    "newText": "/* color */\n"
+                }]
             }
         ]),
     };

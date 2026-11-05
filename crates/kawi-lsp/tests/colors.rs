@@ -1,6 +1,6 @@
 mod support;
 
-use kawi_lsp::{Languages, LspEvent, LspService};
+use kawi_lsp::{ColorValue, CursorPosition, Languages, LspEvent, LspService};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -97,6 +97,71 @@ fn cancelling_document_colors_drops_the_response() {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn requests_and_merges_color_presentations() {
+    let root = temp_project("presentations");
+    let service = start_colors(&root, true, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "#ff0000\n"));
+    wait_for_ready(&service);
+    let request = service.color_presentations(
+        &file,
+        (
+            CursorPosition { line: 0, column: 0 },
+            CursorPosition { line: 0, column: 7 },
+        ),
+        ColorValue::new(204, 34, 51, 255),
+    );
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::ColorPresentations(event) if event.request == request),
+    );
+    let LspEvent::ColorPresentations(event) = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(event.path, file);
+    assert_eq!(event.presentations.len(), 4);
+    assert_eq!(event.presentations[0].label, "#cc2233");
+    assert_eq!(event.presentations[1].label, "fallback");
+    assert_eq!(event.presentations[1].edit.start, 0);
+    assert_eq!(event.presentations[1].edit.end, 7);
+    assert_eq!(event.presentations[1].edit.text, "fallback");
+    assert_eq!(event.presentations[2].label, "hsl(345 71% 47%)");
+    assert_eq!(event.presentations[2].additional.len(), 1);
+    assert_eq!(event.presentations[2].additional[0].start, 8);
+    assert_eq!(event.presentations[2].additional[0].text, "/* color */\n");
+    assert_eq!(event.presentations[3].label, "rgb(204, 34, 51)");
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn color_presentations_require_a_provider() {
+    let root = temp_project("presentations_missing");
+    let service = start_colors(&root, false, 0);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "#ff0000\n"));
+    wait_for_ready(&service);
+    let request = service.color_presentations(
+        &file,
+        (
+            CursorPosition { line: 0, column: 0 },
+            CursorPosition { line: 0, column: 7 },
+        ),
+        ColorValue::new(204, 34, 51, 255),
+    );
+    let event = wait_for(
+        &service,
+        |event| matches!(event, LspEvent::RequestError { request: id, .. } if *id == request),
+    );
+    let LspEvent::RequestError { message, .. } = event else {
+        panic!("unexpected event");
+    };
+    assert_eq!(message, "No language server supports color presentations");
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }
