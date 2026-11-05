@@ -56,24 +56,28 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("/*", "*/")
             .with_auto_pairs(SCRIPT_PAIRS),
         LanguageConfig::new("html", "html")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["html", "htm", "xhtml", "xht"])
             .with_servers(["vscode-html-language-server"])
             .with_block_comment("<!--", "-->")
             .with_auto_pairs(HTML_PAIRS),
         LanguageConfig::new("css", "css")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["css"])
             .with_servers(["vscode-css-language-server"])
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS_SINGLE),
         LanguageConfig::new("scss", "scss")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["scss"])
             .with_servers(["vscode-css-language-server"])
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS_SINGLE),
         LanguageConfig::new("less", "less")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["less"])
             .with_servers(["vscode-css-language-server"])
@@ -103,6 +107,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("\"\"\"", "\"\"\"")
             .with_auto_pairs(C_PAIRS_SINGLE),
         LanguageConfig::new("vue", "vue")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["vue"])
             .with_root_markers(["package.json"])
@@ -110,6 +115,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("<!--", "-->")
             .with_auto_pairs(HTML_PAIRS),
         LanguageConfig::new("svelte", "svelte")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["svelte"])
             .with_root_markers(["package.json", "svelte.config.js"])
@@ -117,6 +123,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_block_comment("<!--", "-->")
             .with_auto_pairs(HTML_PAIRS),
         LanguageConfig::new("astro", "astro")
+            .with_color_preview()
             .with_spaces(2)
             .with_extensions(["astro"])
             .with_root_markers(["package.json", "astro.config.mjs", "astro.config.ts"])
