@@ -61,7 +61,7 @@ tabstop = 2
 
 ## Color previews
 
-Kawi renders inline swatches for hexadecimal colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white for contrast.
+Kawi renders inline swatches for CSS colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white for contrast.
 
 `color_preview` defaults to `true`. Toggle it with `:set nocolor_preview`. Enable or disable previews per file type in `languages.toml`:
 
@@ -71,7 +71,7 @@ name = "rust"
 color_preview = true
 ```
 
-The preview recognizes `#RGB`, `#RGBA`, `#RRGGBB`, and `#RRGGBBAA`. Alpha values blend with the active theme background.
+The preview recognizes `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`, `rgb()`, `rgba()`, CSS named colors, and `transparent`. Both modern space syntax and legacy comma syntax are accepted. For built-in stylesheet and markup types, named colors and `rgb()` functions are previewed only inside stylesheet declaration values, style attributes, and `<style>` elements. Hex colors are previewed wherever they appear. Alpha values blend with the active theme background.
 
 ## Keymaps
 
