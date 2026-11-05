@@ -35,7 +35,7 @@ use std::path::Path;
 
 const USAGE: &str = "\
 Usage:
-  kawi [--helix] [--no-plugins] [FILE]
+  kawi [--no-plugins] [FILE]
   kawi doctor [OPTIONS]
   kawi plugin new <name> [--sdk-path <path>]
   kawi plugin build [directory]
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
         return run_wait_editor(&args);
     }
     let load_plugins = !has_no_plugins(&args);
-    let (path, cli_flavor) = parse_cli(args);
+    let path = parse_cli(args);
     let restore_workspace = path.is_none();
     let cwd = std::env::current_dir()?;
     let paths = StatePaths::resolve();
@@ -67,8 +67,8 @@ fn main() -> Result<()> {
         .map(|path| paths::absolute(path, &cwd))
         .filter(|path| path.is_dir());
     let buffer = load_buffer(if directory.is_some() { None } else { path })?;
-    let mut app = App::new(buffer, cli_flavor.unwrap_or(Flavor::Vim));
-    app.load_state(cli_flavor, load_plugins);
+    let mut app = App::new(buffer, Flavor::Vim);
+    app.load_state(load_plugins);
     if let Some(paths) = paths.as_ref() {
         app.attach_file_views(FileViewStore::new(paths.views.clone()));
     }
@@ -204,22 +204,8 @@ fn save_workspace_session(app: &mut App, enabled: bool, paths: Option<&StatePath
     let _ = session::save_for_cwd(&paths.sessions, cwd, &session);
 }
 
-fn parse_cli(args: Vec<String>) -> (Option<String>, Option<Flavor>) {
-    let flavor = select_flavor(&args);
-    let path = select_path(args);
-    (path, flavor)
-}
-
-fn select_flavor(args: &[String]) -> Option<Flavor> {
-    for arg in args {
-        if arg == "--" {
-            break;
-        }
-        if arg == "--helix" {
-            return Some(Flavor::Helix);
-        }
-    }
-    None
+fn parse_cli(args: Vec<String>) -> Option<String> {
+    select_path(args)
 }
 
 fn select_path(args: Vec<String>) -> Option<String> {
@@ -228,7 +214,7 @@ fn select_path(args: Vec<String>) -> Option<String> {
         if arg == "--" {
             return args.next();
         }
-        if arg != "--helix" && arg != "--no-plugins" {
+        if arg != "--no-plugins" {
             return Some(arg);
         }
     }
@@ -258,16 +244,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_vim_without_file() {
-        assert_eq!(parse_cli(vec![]), (None, None));
-    }
-
-    #[test]
-    fn helix_flag_selects_helix() {
-        assert_eq!(
-            parse_cli(vec!["--helix".to_string()]),
-            (None, Some(Flavor::Helix))
-        );
+    fn defaults_to_no_path_without_file() {
+        assert_eq!(parse_cli(vec![]), None);
     }
 
     #[test]
@@ -317,8 +295,8 @@ mod tests {
     #[test]
     fn file_and_flag_combine() {
         assert_eq!(
-            parse_cli(vec!["notes.txt".to_string(), "--helix".to_string()]),
-            (Some("notes.txt".to_string()), Some(Flavor::Helix))
+            parse_cli(vec!["notes.txt".to_string(), "--no-plugins".to_string()]),
+            Some("notes.txt".to_string())
         );
     }
 
@@ -326,7 +304,7 @@ mod tests {
     fn no_plugins_flag_is_not_a_path() {
         assert_eq!(
             parse_cli(vec!["--no-plugins".to_string(), "notes.txt".to_string()]),
-            (Some("notes.txt".to_string()), None)
+            Some("notes.txt".to_string())
         );
         assert!(has_no_plugins(&["--no-plugins".to_string()]));
         assert!(!has_no_plugins(&[
@@ -338,8 +316,8 @@ mod tests {
     #[test]
     fn separator_treats_flags_as_file_names() {
         assert_eq!(
-            parse_cli(vec!["--".to_string(), "--helix".to_string()]),
-            (Some("--helix".to_string()), None)
+            parse_cli(vec!["--".to_string(), "--no-plugins".to_string()]),
+            Some("--no-plugins".to_string())
         );
     }
 }

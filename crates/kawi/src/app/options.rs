@@ -321,11 +321,6 @@ impl App {
         }
     }
 
-    pub(super) fn apply_cli_flavor(&mut self, flavor: Flavor) -> Result<()> {
-        let spec = options::lookup("keymap").expect("keymap is registered");
-        self.resolve_and_apply(spec, OptionInput::Text(flavor.name()))
-    }
-
     pub(super) fn apply_flavor(&mut self, flavor: Flavor) -> Result<()> {
         self.flavor = flavor;
         self.keymap = ActiveKeymap::for_flavor(flavor);
