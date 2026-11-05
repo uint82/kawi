@@ -57,6 +57,16 @@ background = "#f2c27b"
 
 `name` and `version` are required when the table is present. The other fields are optional. Unknown package fields and unknown theme fields are rejected.
 
+## Special characters
+
+Non-printable Unicode characters are displayed as placeholders such as `<feff>`, `<200b>`, and `<202e>`. Set the top-level `special_key` color to style those placeholders:
+
+```toml
+special_key = "#928374"
+```
+
+When omitted, `special_key` uses `gutter.non_text`. The built-in themes define a dedicated color, including the Gruvbox values used by Neovim's `SpecialKey` group.
+
 ## Decorations
 
 Plugins and built-in features use six decoration styles: `accent`, `info`, `success`, `warning`, `error`, and `muted`. Override them in a theme package:

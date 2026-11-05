@@ -1,5 +1,6 @@
 float_background = "#FBF1C7"
 code_background = "#FBF1C7"
+special_key = "#7C6F64"
 
 [base]
 foreground = "#3C3836"

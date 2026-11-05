@@ -30,6 +30,8 @@ struct ThemeFile {
     float_background: Option<String>,
     #[serde(default)]
     code_background: Option<String>,
+    #[serde(default)]
+    special_key: Option<String>,
     base: ColorPair,
     search_match: ColorPair,
     search_current: ColorPair,
@@ -154,6 +156,10 @@ impl Theme {
             Some(value) => parse_color("code_background", value)?,
             None => float_background,
         };
+        let special_key = match file.special_key.as_deref() {
+            Some(value) => parse_color("special_key", value)?,
+            None => non_text,
+        };
         let selection = file.selection.match_colors("selection")?;
         let palette = super::style::parse_palette(file.palette)?;
         let bracket_match = match file.bracket.as_ref() {
@@ -177,6 +183,7 @@ impl Theme {
             status: file.status.match_colors("status")?,
             line_number,
             non_text,
+            special_key,
             git_add: parse_color("git.add", &file.git.add)?,
             git_change: parse_color("git.change", &file.git.change)?,
             git_delete: parse_color("git.delete", &file.git.delete)?,
