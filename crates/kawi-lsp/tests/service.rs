@@ -8,15 +8,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-const FAKE_SERVER: &str = env!("CARGO_BIN_EXE_fake-lsp-server");
+mod support;
 
-fn temp_project(name: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!("kawi_lsp_service_{name}_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(root.join("src")).expect("project");
-    fs::write(root.join("Cargo.toml"), "[package]\nname = \"fake\"\n").expect("marker");
-    root
-}
+use support::{
+    escape_toml, temp_project, wait_for, wait_for_log_prefix, wait_for_ready, FAKE_SERVER,
+};
 
 fn config_file(root: &Path, mode: &str, delay: u64, nav_delay: u64, pid_file: &Path) -> PathBuf {
     let path = root.join("languages.toml");
@@ -27,10 +23,6 @@ fn config_file(root: &Path, mode: &str, delay: u64, nav_delay: u64, pid_file: &P
     );
     fs::write(&path, text).expect("config");
     path
-}
-
-fn escape_toml(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn two_server_config(root: &Path, mode: &str) -> PathBuf {
@@ -198,42 +190,11 @@ fn start_with_nav_delay(
     (service, pid_file)
 }
 
-fn wait_for(service: &LspService, predicate: impl Fn(&LspEvent) -> bool) -> LspEvent {
-    let deadline = Instant::now() + Duration::from_secs(8);
-    let mut seen = Vec::new();
-    while Instant::now() < deadline {
-        while let Some(event) = service.try_recv() {
-            if predicate(&event) {
-                return event;
-            }
-            seen.push(format!("{event:?}"));
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    panic!("event timed out: {seen:?}");
-}
-
 fn wait_for_log(service: &LspService, expected: &str) -> LspEvent {
     wait_for(
         service,
         |event| matches!(event, LspEvent::Log { message, .. } if message == expected),
     )
-}
-
-fn wait_for_log_prefix(service: &LspService, expected: &str) -> LspEvent {
-    wait_for(
-        service,
-        |event| matches!(event, LspEvent::Log { message, .. } if message.starts_with(expected)),
-    )
-}
-
-fn wait_for_ready(service: &LspService) {
-    wait_for(service, |event| {
-        matches!(
-            event,
-            LspEvent::Status(status) if status.state == ServerState::Ready
-        )
-    });
 }
 
 fn wait_for_all_ready(service: &LspService, servers: &[&str]) {
