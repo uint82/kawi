@@ -72,6 +72,7 @@ pub enum Command {
         vertical: bool,
     },
     Conflict,
+    Color,
     Format,
     Help {
         topic: Option<String>,
@@ -250,6 +251,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "checkhealth",
     "clo",
     "close",
+    "color",
+    "colorpicker",
     "cnext",
     "commands",
     "conflict",
@@ -476,6 +479,7 @@ fn parse_named(text: &str) -> Command {
             vertical: true,
         },
         ("conflict", []) => Command::Conflict,
+        ("color" | "colorpicker", []) => Command::Color,
         ("format", []) => Command::Format,
         ("h" | "help", rest) => Command::Help {
             topic: (!rest.is_empty()).then(|| rest.join(" ")),
@@ -832,6 +836,13 @@ mod tests {
     #[test]
     fn parses_write() {
         assert_eq!(parse("w"), Command::Write { force: false });
+    }
+
+    #[test]
+    fn parses_color_picker() {
+        assert_eq!(parse("color"), Command::Color);
+        assert_eq!(parse("colorpicker"), Command::Color);
+        assert_eq!(parse("color now"), Command::Unknown);
     }
 
     #[test]

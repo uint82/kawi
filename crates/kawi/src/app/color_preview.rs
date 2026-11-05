@@ -1,4 +1,6 @@
 mod color;
+
+pub(crate) use color::Rgba;
 mod context;
 mod contrast;
 mod hex;

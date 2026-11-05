@@ -86,6 +86,12 @@ pub(super) const COMMANDS: &[Builtin] = &[
     ),
     action("lsp.format", Action::Format, "format the buffer"),
     Builtin {
+        name: "color.picker",
+        aliases: &["color"],
+        description: "edit the color under the cursor",
+        handler: CommandHandler::ColorPicker,
+    },
+    Builtin {
         name: "lsp.status",
         aliases: &["lsp.info"],
         description: "show language server status",

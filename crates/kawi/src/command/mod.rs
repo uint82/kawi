@@ -21,6 +21,7 @@ pub(crate) enum CommandHandler {
     LspStart,
     LspStop,
     LspRestart,
+    ColorPicker,
     Debug(DebugBuiltin),
 }
 

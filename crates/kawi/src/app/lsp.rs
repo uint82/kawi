@@ -10,12 +10,12 @@ use kawi_editor::{
     IndentRules, LanguageEditing, LanguageIndent, Pair,
 };
 use kawi_lsp::{
-    CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
-    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
-    DiagnosticsEvent, FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings,
-    LanguageWarning, Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent,
-    RenameEvent, RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
-    WorkspaceDiagnosticState,
+    CodeActionEvent, ColorPresentationEvent, ColorValue, CompletionCapabilitiesEvent,
+    CompletionEvent, CompletionResolveEvent, CompletionTrigger, CursorPosition, Diagnostic,
+    DiagnosticMode, DiagnosticSeverity, DiagnosticsEvent, FileOperationEvent, FormatterConfig,
+    FormattingEvent, FormattingSettings, LanguageWarning, Languages, LspCommand, LspEvent,
+    LspService, MessageLevel, ProgressEvent, RenameEvent, RenameReady, ServerState,
+    SignatureHelpEvent, StatusEvent, WatchedFileChange, WorkspaceDiagnosticState,
 };
 use kawi_syntax::LanguageId;
 use kawi_tui::frame::DiagnosticSpan;
@@ -45,6 +45,9 @@ pub struct LspUi {
     diagnostics_activity: bool,
     navigation: LspNavigation,
     colors: super::lsp_colors::DocumentColorState,
+    color_presentation_request: Option<u64>,
+    color_presentations: Option<ColorPresentationEvent>,
+    color_presentation_failure: Option<(u64, String)>,
     text: LspText,
     rename_request: Option<u64>,
     rename_ready: Option<RenameReady>,
@@ -78,6 +81,9 @@ impl LspUi {
     pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
         self.symbols = symbols::LspSymbols::default();
         self.colors = super::lsp_colors::DocumentColorState::default();
+        self.color_presentation_request = None;
+        self.color_presentations = None;
+        self.color_presentation_failure = None;
         self.rename_files = false;
         self.delete_files = false;
         self.file_operation = None;
@@ -129,6 +135,40 @@ impl LspUi {
         revision: u64,
     ) -> Option<&[kawi_lsp::DocumentColor]> {
         self.colors.colors(path, revision)
+    }
+
+    pub fn request_color_presentations(
+        &mut self,
+        path: &Path,
+        range: (CursorPosition, CursorPosition),
+        color: ColorValue,
+    ) -> Result<u64, String> {
+        self.cancel_color_presentations();
+        let Some(service) = self.service.as_ref() else {
+            return Err("lsp unavailable".to_string());
+        };
+        let request = service.color_presentations(path, range, color);
+        self.color_presentation_request = Some(request);
+        Ok(request)
+    }
+
+    pub fn cancel_color_presentations(&mut self) {
+        self.color_presentations = None;
+        self.color_presentation_failure = None;
+        let Some(request) = self.color_presentation_request.take() else {
+            return;
+        };
+        if let Some(service) = self.service.as_ref() {
+            service.cancel(request);
+        }
+    }
+
+    pub fn take_color_presentations(&mut self) -> Option<ColorPresentationEvent> {
+        self.color_presentations.take()
+    }
+
+    pub fn take_color_presentation_failure(&mut self) -> Option<(u64, String)> {
+        self.color_presentation_failure.take()
     }
 
     #[cfg(test)]
@@ -191,6 +231,7 @@ impl LspUi {
         };
         *path = rewritten;
         self.text.cancel_all(self.service.as_ref());
+        self.cancel_color_presentations();
         self.colors.reset(self.service.as_ref());
         self.diagnostics.reset();
     }
@@ -210,12 +251,14 @@ impl LspUi {
         self.path = None;
         self.revision = None;
         self.text.cancel_all(self.service.as_ref());
+        self.cancel_color_presentations();
         self.colors.reset(self.service.as_ref());
         self.diagnostics.reset();
     }
 
     pub fn detach(&mut self) -> bool {
         self.text.cancel_all(self.service.as_ref());
+        self.cancel_color_presentations();
         self.colors.reset(self.service.as_ref());
         self.close_current();
         let changed = self.path.take().is_some();
@@ -605,8 +648,10 @@ impl LspUi {
         let navigation = self.navigation.cancel(self.service.as_ref());
         let text = self.text.cancel_all(self.service.as_ref());
         let symbols = self.symbols.cancel_all(self.service.as_ref());
+        let presentations = self.color_presentation_request.is_some();
+        self.cancel_color_presentations();
         let Some(request) = self.rename_request.take() else {
-            return navigation || text || symbols;
+            return navigation || text || symbols || presentations;
         };
         if let Some(service) = self.service.as_ref() {
             service.cancel(request);
@@ -741,6 +786,7 @@ impl LspUi {
         let revision = editor.buffer_revision();
         if path != self.path {
             self.text.cancel_all(self.service.as_ref());
+            self.cancel_color_presentations();
             self.close_current();
             self.progress.clear();
             self.diagnostics.reset();
@@ -757,6 +803,7 @@ impl LspUi {
         }
         self.revision = Some(revision);
         self.text.cancel_document_requests(self.service.as_ref());
+        self.cancel_color_presentations();
         self.document_colors_changed();
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
             self.diagnostics.advance();
@@ -783,7 +830,14 @@ impl LspUi {
                 self.colors
                     .apply_event(event, self.path.as_deref(), self.revision)
             }
-            LspEvent::ColorPresentations(_) => false,
+            LspEvent::ColorPresentations(event) => {
+                if self.color_presentation_request != Some(event.request) {
+                    return false;
+                }
+                self.color_presentation_request = None;
+                self.color_presentations = Some(event);
+                true
+            }
             LspEvent::DocumentColorCapabilities(event) => {
                 self.colors
                     .apply_capability(event.server, event.color_provider, Instant::now());
@@ -886,6 +940,11 @@ impl LspUi {
                 true
             }
             LspEvent::RequestError { request, message } => {
+                if self.color_presentation_request == Some(request) {
+                    self.color_presentation_request = None;
+                    self.color_presentation_failure = Some((request, message));
+                    return true;
+                }
                 if self.colors.fail(request) {
                     return false;
                 }

@@ -8,11 +8,11 @@ const MAX_CHANNEL: u32 = 255;
 const ROUNDING_BIAS: u32 = 127;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Rgba {
-    pub(super) red: u8,
-    pub(super) green: u8,
-    pub(super) blue: u8,
-    pub(super) alpha: u8,
+pub(crate) struct Rgba {
+    pub(crate) red: u8,
+    pub(crate) green: u8,
+    pub(crate) blue: u8,
+    pub(crate) alpha: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +22,7 @@ pub(super) struct Token {
 }
 
 impl Rgba {
-    pub(super) const fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+    pub(crate) const fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
         Self {
             red,
             green,
@@ -31,7 +31,7 @@ impl Rgba {
         }
     }
 
-    pub(super) fn to_style(self, theme_background: Color) -> PluginStyle {
+    pub(crate) fn to_style(self, theme_background: Color) -> PluginStyle {
         let (red, green, blue) = self.blend(theme_background);
         let background = Color::Rgb {
             r: red,
@@ -65,7 +65,7 @@ impl Rgba {
 }
 
 impl Token {
-    pub(super) const fn new(color: Rgba, len: usize) -> Self {
+    pub(crate) const fn new(color: Rgba, len: usize) -> Self {
         Self { color, len }
     }
 }

@@ -9,6 +9,7 @@ use super::completion::CompletionSession;
 use super::App;
 
 pub(super) mod code;
+mod color_picker;
 mod diagnostic;
 pub(crate) mod document;
 mod hover;
@@ -102,6 +103,9 @@ impl App {
             if let Some(overlay) = self.keyguide_overlay() {
                 return Some(overlay);
             }
+        }
+        if let Some(overlay) = self.color_picker_overlay() {
+            return Some(overlay);
         }
         if self.completion.is_some() {
             return self.completion_overlay();

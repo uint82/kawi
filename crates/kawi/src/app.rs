@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 mod apply_journal;
 mod autosave;
 mod code_action;
+mod color_picker;
 mod color_preview;
 mod command_completion;
 mod command_execute;
@@ -180,6 +181,7 @@ pub struct App {
     overlay_options: overlay::options::OverlayOptions,
     diagnostic_options: diagnostic_ui::DiagnosticOptions,
     color_preview: bool,
+    color_picker: Option<color_picker::ColorPicker>,
     signature: Option<signature::SignatureSession>,
     hover: Option<hover::HoverSession>,
     diagnostic_popup: Option<diagnostic_popup::DiagnosticPopup>,
@@ -303,6 +305,7 @@ impl App {
             overlay_options: overlay::options::OverlayOptions::default(),
             diagnostic_options: diagnostic_ui::DiagnosticOptions::default(),
             color_preview: true,
+            color_picker: None,
             signature: None,
             hover: None,
             diagnostic_popup: None,
@@ -824,6 +827,7 @@ impl App {
             self.handle_code_action_event(event);
         }
         self.handle_formatting_result();
+        self.poll_color_picker();
         self.sync_rename();
         self.handle_file_operation_result();
     }
@@ -872,6 +876,10 @@ impl App {
         ) {
             self.terminal_focus = false;
             self.debug_focus = false;
+        }
+        if self.color_picker.is_some() {
+            self.close_color_picker();
+            return self.handle_noop();
         }
         if self.close_diagnostic_popup() {
             return self.handle_noop();
@@ -1101,6 +1109,9 @@ impl App {
         }
         if let Some(result) = self.handle_diagnostic_popup_key(key)? {
             return Ok(result);
+        }
+        if self.color_picker.is_some() {
+            return self.handle_color_picker_key(key);
         }
         if self.hover.is_some() {
             if let Some(result) = self.handle_hover_key(key)? {
@@ -1423,6 +1434,7 @@ impl App {
             Some(CommandHandler::LspStart) => self.start_lsp(),
             Some(CommandHandler::LspStop) => self.stop_lsp(),
             Some(CommandHandler::LspRestart) => self.restart_lsp(),
+            Some(CommandHandler::ColorPicker) => self.open_color_picker(),
             Some(CommandHandler::Debug(command)) => self.handle_debug_builtin(command),
             Some(CommandHandler::Noop) | None => Ok(false),
         }
@@ -1784,6 +1796,9 @@ impl App {
         if self.paste_branch_prompt(&text) {
             return Ok(false);
         }
+        if self.color_picker.is_some() {
+            return Ok(false);
+        }
         if let Some(session) = self.replace.as_mut() {
             session.paste(&text);
             return Ok(false);
@@ -2060,6 +2075,7 @@ impl App {
             }
             Command::Conflict => self.handle_conflict_command(),
             Command::Format => self.request_format(),
+            Command::Color => self.open_color_picker(),
             Command::Help { topic } => self.handle_help(topic.as_deref()),
             Command::Health { topic } => self.handle_health(topic.as_deref()),
             Command::Undo(command) => self.handle_undo_command(command),
