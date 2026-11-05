@@ -14,6 +14,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 mod code_actions;
+mod colors;
 mod commands;
 mod completion;
 mod completion_candidates;
@@ -384,6 +385,8 @@ pub enum LspEvent {
     DocumentSymbols(DocumentSymbolEvent),
     WorkspaceSymbols(WorkspaceSymbolEvent),
     WorkspaceSymbolResolved(WorkspaceSymbolResolvedEvent),
+    DocumentColors(DocumentColorsEvent),
+    DocumentColorCapabilities(DocumentColorCapabilitiesEvent),
     RequestError {
         request: u64,
         message: String,
@@ -399,6 +402,7 @@ pub enum LspEvent {
     },
 }
 
+pub use colors::{DocumentColor, DocumentColorCapabilitiesEvent, DocumentColorsEvent};
 pub use symbols::{
     DocumentSymbolEvent, SymbolEntry, SymbolKind, SymbolRange, WorkspaceSymbolEvent,
     WorkspaceSymbolResolvedEvent,
@@ -659,6 +663,15 @@ impl LspService {
         request
     }
 
+    pub fn document_colors(&self, path: &Path) -> u64 {
+        let request = self.allocate_request();
+        self.send(Command::DocumentColors {
+            request,
+            path: path.to_path_buf(),
+        });
+        request
+    }
+
     pub fn workspace_symbols(&self, query: impl Into<String>) -> u64 {
         let request = self.allocate_request();
         self.send(Command::WorkspaceSymbols {
@@ -817,6 +830,10 @@ pub(crate) enum Command {
         path: PathBuf,
         version: u64,
     },
+    DocumentColors {
+        request: u64,
+        path: PathBuf,
+    },
     WorkspaceSymbols {
         request: u64,
         query: String,
@@ -871,6 +888,7 @@ struct Manager {
     pending_symbols: HashMap<u64, symbols::PendingSymbols>,
     pending_symbol_resolves: HashMap<u64, symbols::PendingSymbolResolve>,
     symbol_resolve_items: HashMap<u64, symbols::StoredWorkspaceSymbol>,
+    pending_colors: HashMap<u64, colors::PendingColors>,
     next_symbol_item: u64,
     pending_commands: HashMap<RequestId, ClientKey>,
     pull_diagnostics: pull_diagnostics::PullDiagnostics,
@@ -918,6 +936,7 @@ struct RequestSupport {
     document_symbols: bool,
     workspace_symbols: bool,
     workspace_symbol_resolve: bool,
+    color_provider: bool,
 }
 
 struct Document {

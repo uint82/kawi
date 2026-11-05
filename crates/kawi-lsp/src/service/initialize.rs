@@ -61,6 +61,7 @@ impl Manager {
                 Some(ReplyPurpose::SymbolResolve) => {
                     self.handle_symbol_resolve_response(key, id, result);
                 }
+                Some(ReplyPurpose::Colors) => self.handle_colors_response(key, id, result),
                 None => {}
             }
             return;
@@ -87,6 +88,7 @@ impl Manager {
     fn finish_initialize(&mut self, key: ClientKey, result: InitializeResult) {
         let capabilities_event = completion_capabilities_event(&key, &result.capabilities);
         let symbol_capabilities_event = symbol_capabilities_event(&key, &result.capabilities);
+        let color_capabilities_event = color_capabilities_event(&key, &result.capabilities);
         let capabilities = result.capabilities;
         let support = request_support(&capabilities);
         let sync = sync_config(capabilities.text_document_sync);
@@ -114,6 +116,9 @@ impl Manager {
         self.emit_status(&key.server, ServerState::Ready, None);
         self.emit(LspEvent::CompletionCapabilities(capabilities_event));
         self.emit(LspEvent::SymbolCapabilities(symbol_capabilities_event));
+        self.emit(LspEvent::DocumentColorCapabilities(
+            color_capabilities_event,
+        ));
         self.emit(LspEvent::FileOperationCapabilities(file_operations));
         self.emit_diagnostic_mode(&key);
         self.open_documents_for(&key);
@@ -254,6 +259,16 @@ fn completion_capabilities_event(
     }
 }
 
+fn color_capabilities_event(
+    key: &ClientKey,
+    capabilities: &lsp_types::ServerCapabilities,
+) -> DocumentColorCapabilitiesEvent {
+    DocumentColorCapabilitiesEvent {
+        server: key.server.clone(),
+        color_provider: color_provider_enabled(capabilities.color_provider.as_ref()),
+    }
+}
+
 fn symbol_capabilities_event(
     key: &ClientKey,
     capabilities: &lsp_types::ServerCapabilities,
@@ -310,7 +325,15 @@ fn request_support(capabilities: &lsp_types::ServerCapabilities) -> RequestSuppo
         workspace_symbol_resolve: workspace_symbol_resolve(
             capabilities.workspace_symbol_provider.as_ref(),
         ),
+        color_provider: color_provider_enabled(capabilities.color_provider.as_ref()),
     }
+}
+
+fn color_provider_enabled(provider: Option<&lsp_types::ColorProviderCapability>) -> bool {
+    provider.is_some_and(|provider| match provider {
+        lsp_types::ColorProviderCapability::Simple(enabled) => *enabled,
+        _ => true,
+    })
 }
 
 fn workspace_symbol_resolve(
@@ -482,6 +505,9 @@ fn initialize_capabilities() -> ClientCapabilities {
             ..WindowClientCapabilities::default()
         }),
         text_document: Some(TextDocumentClientCapabilities {
+            color_provider: Some(lsp_types::DocumentColorClientCapabilities {
+                dynamic_registration: Some(false),
+            }),
             publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
                 related_information: Some(true),
                 tag_support: Some(lsp_types::TagSupport {

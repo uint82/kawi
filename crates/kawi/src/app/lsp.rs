@@ -837,6 +837,7 @@ impl LspUi {
                 self.message = Some(format_message(&server, level, &message));
                 true
             }
+            LspEvent::DocumentColors(_) | LspEvent::DocumentColorCapabilities(_) => false,
             LspEvent::Log { .. } => false,
         }
     }

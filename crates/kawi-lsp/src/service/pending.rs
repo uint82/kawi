@@ -10,6 +10,7 @@ pub(super) enum ReplyPurpose {
     CompletionResolve,
     Symbols,
     SymbolResolve,
+    Colors,
 }
 
 pub(super) struct PendingReply {
@@ -64,7 +65,8 @@ impl Manager {
         let text = self.pending_text_requests.remove(&request).is_some();
         let resolve = self.pending_completion_resolves.remove(&request).is_some();
         let symbols = self.cancel_symbol_request(request);
-        if !navigation && !rename && !text && !resolve && !symbols {
+        let colors = self.cancel_color_request(request);
+        if !navigation && !rename && !text && !resolve && !symbols && !colors {
             return;
         }
         let ids: Vec<RequestId> = self
@@ -102,6 +104,7 @@ impl Manager {
             }
             ReplyPurpose::Symbols => self.fail_symbol_request(reply.request, message),
             ReplyPurpose::SymbolResolve => self.fail_symbol_resolve(reply.request, message),
+            ReplyPurpose::Colors => self.fail_colors_request(reply.request, message),
         }
     }
 
