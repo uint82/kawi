@@ -27,7 +27,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Project explorer.** Opt-in file tree with file management, Git markers, diagnostics, and session restore.
 - **Directory buffers.** Edit a directory listing and apply renames, copies, creates, and trash deletes on write.
 - **Diagnostics.** Project-wide diagnostics, quickfix navigation, and configurable display.
-- **Git integration.** Status, staging, commits, branches, hunk navigation, and optional gutter signs.
+- **Git integration.** Status, staging, commits, branches, hunk navigation, merge conflict resolution, and optional gutter signs.
 - **Tasks and terminals.** Project task runner, task output, cancellation, and horizontal or vertical terminal panels.
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
