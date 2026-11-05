@@ -8,51 +8,64 @@ use crate::theme::Theme;
 
 use super::furniture::gutter_width;
 
+pub(super) struct SpecialKeyArea {
+    pub(super) x: usize,
+    pub(super) y: usize,
+    pub(super) width: usize,
+    pub(super) height: usize,
+    pub(super) leftcol: usize,
+    pub(super) tabstop: usize,
+}
+
 pub(super) struct SpecialKeyDraw<'a> {
     lines: &'a [String],
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    leftcol: usize,
-    tabstop: usize,
+    area: SpecialKeyArea,
     color: Color,
 }
 
 impl<'a> SpecialKeyDraw<'a> {
     pub(super) fn from_pane(pane: &'a PaneFrame<'_>, theme: &Theme) -> Self {
         let gutter = gutter_width(pane);
-        Self {
-            lines: pane.lines,
-            x: pane.rect.x.saturating_add(gutter),
-            y: pane.rect.y,
-            width: pane.rect.width.saturating_sub(gutter),
-            height: pane.rect.height.saturating_sub(1),
-            leftcol: pane.viewport.leftcol(),
-            tabstop: pane.tabstop,
-            color: theme.special_key,
-        }
+        Self::from_area(
+            pane.lines,
+            SpecialKeyArea {
+                x: pane.rect.x.saturating_add(gutter),
+                y: pane.rect.y,
+                width: pane.rect.width.saturating_sub(gutter),
+                height: pane.rect.height.saturating_sub(1),
+                leftcol: pane.viewport.leftcol(),
+                tabstop: pane.tabstop,
+            },
+            theme.special_key,
+        )
+    }
+
+    pub(super) fn from_area(lines: &'a [String], area: SpecialKeyArea, color: Color) -> Self {
+        Self { lines, area, color }
     }
 
     fn draw_line(&self, out: &mut Surface, row: usize, text: &str) {
         if text.is_ascii() {
             return;
         }
-        let right = self.leftcol.saturating_add(self.width);
-        let y = self.y.saturating_add(row);
+        let right = self.area.leftcol.saturating_add(self.area.width);
+        let y = self.area.y.saturating_add(row);
         let mut screen = 0;
         for grapheme in unicode::graphemes(text) {
             let start = screen;
-            let rendered = unicode::render_cluster(grapheme.text(), start, self.tabstop);
+            let rendered = unicode::render_cluster(grapheme.text(), start, self.area.tabstop);
             let end = start.saturating_add(rendered.width());
             screen = end;
             if start >= right {
                 break;
             }
-            if !rendered.is_placeholder() || start < self.leftcol || end > right {
+            if !rendered.is_placeholder() || start < self.area.leftcol || end > right {
                 continue;
             }
-            let x = self.x.saturating_add(start.saturating_sub(self.leftcol));
+            let x = self
+                .area
+                .x
+                .saturating_add(start.saturating_sub(self.area.leftcol));
             self.recolor(out, x, y, rendered.width());
         }
     }
@@ -65,7 +78,7 @@ impl<'a> SpecialKeyDraw<'a> {
 }
 
 pub(super) fn draw_special_keys(out: &mut Surface, draw: SpecialKeyDraw<'_>) {
-    for (row, text) in draw.lines.iter().take(draw.height).enumerate() {
+    for (row, text) in draw.lines.iter().take(draw.area.height).enumerate() {
         draw.draw_line(out, row, text);
     }
 }
@@ -83,16 +96,18 @@ mod tests {
         let lines = vec![text.to_string()];
         draw_special_keys(
             &mut surface,
-            SpecialKeyDraw {
-                lines: &lines,
-                x: 0,
-                y: 0,
-                width,
-                height: 1,
-                leftcol,
-                tabstop: 8,
-                color: RED,
-            },
+            SpecialKeyDraw::from_area(
+                &lines,
+                SpecialKeyArea {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height: 1,
+                    leftcol,
+                    tabstop: 8,
+                },
+                RED,
+            ),
         );
         surface
     }
@@ -151,16 +166,18 @@ mod tests {
         let lines = vec!["a\u{feff}b".to_string()];
         draw_special_keys(
             &mut surface,
-            SpecialKeyDraw {
-                lines: &lines,
-                x: 0,
-                y: 0,
-                width: 16,
-                height: 1,
-                leftcol: 0,
-                tabstop: 8,
-                color: RED,
-            },
+            SpecialKeyDraw::from_area(
+                &lines,
+                SpecialKeyArea {
+                    x: 0,
+                    y: 0,
+                    width: 16,
+                    height: 1,
+                    leftcol: 0,
+                    tabstop: 8,
+                },
+                RED,
+            ),
         );
         let style = surface.cell(1, 0).expect("cell").style();
         assert_eq!(style.foreground(), RED);

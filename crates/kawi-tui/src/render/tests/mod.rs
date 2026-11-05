@@ -14,6 +14,7 @@ mod highlight;
 mod overlay;
 mod selection;
 mod selection_wide;
+mod special_key;
 mod virtual_text;
 
 pub(super) fn viewport() -> Viewport {
