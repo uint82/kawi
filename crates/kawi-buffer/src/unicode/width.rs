@@ -89,7 +89,17 @@ pub fn needs_terminal_reposition(text: &str) -> bool {
     if !first.is_ascii() && (is_ambiguous_width(first) || is_emojilike(first)) {
         return true;
     }
-    text[first.len_utf8()..].starts_with('\u{fe0f}')
+    if text[first.len_utf8()..].starts_with('\u{fe0f}') {
+        return true;
+    }
+    renders_without_width(text)
+}
+
+fn renders_without_width(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|character| UnicodeWidthChar::width(character).unwrap_or(0) == 0)
 }
 
 #[cfg(test)]
@@ -143,9 +153,13 @@ mod tests {
         assert!(needs_terminal_reposition("1\u{fe0f}\u{20e3}"));
         assert!(needs_terminal_reposition("\u{2600}\u{fe0f}"));
         assert!(needs_terminal_reposition("\u{1f600}"));
+        assert!(needs_terminal_reposition("\u{ad}"));
+        assert!(needs_terminal_reposition("\u{61c}"));
+        assert!(needs_terminal_reposition("\u{e0001}"));
         assert!(!needs_terminal_reposition("1"));
         assert!(!needs_terminal_reposition("\u{4e2d}"));
         assert!(!needs_terminal_reposition("e\u{301}"));
         assert!(!needs_terminal_reposition("<202e>"));
+        assert!(!needs_terminal_reposition(" \u{301}"));
     }
 }

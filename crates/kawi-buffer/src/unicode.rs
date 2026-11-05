@@ -172,9 +172,13 @@ mod tests {
         assert!(needs_terminal_reposition("1\u{fe0f}\u{20e3}"));
         assert!(needs_terminal_reposition("\u{2600}\u{fe0f}"));
         assert!(needs_terminal_reposition("\u{1f600}"));
+        assert!(needs_terminal_reposition("\u{ad}"));
+        assert!(needs_terminal_reposition("\u{61c}"));
+        assert!(needs_terminal_reposition("\u{e0001}"));
         assert!(!needs_terminal_reposition("1"));
         assert!(!needs_terminal_reposition("\u{4e2d}"));
         assert!(!needs_terminal_reposition("e\u{301}"));
+        assert!(!needs_terminal_reposition(" \u{301}"));
     }
 
     #[test]
