@@ -42,6 +42,7 @@ pub struct LanguageConfig {
     pub indent_after_suffixes: Vec<String>,
     pub indent_after_keywords: Vec<String>,
     pub indent_brackets: bool,
+    pub indent_tags: bool,
     pub line_comment: Option<String>,
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
@@ -66,6 +67,7 @@ impl LanguageConfig {
             indent_after_suffixes: Vec::new(),
             indent_after_keywords: Vec::new(),
             indent_brackets: true,
+            indent_tags: false,
             line_comment: None,
             block_comment: None,
             auto_pairs: None,
@@ -117,6 +119,11 @@ impl LanguageConfig {
 
     pub fn with_indent_brackets(mut self, indent_brackets: bool) -> Self {
         self.indent_brackets = indent_brackets;
+        self
+    }
+
+    pub fn with_indent_tags(mut self) -> Self {
+        self.indent_tags = true;
         self
     }
 

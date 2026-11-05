@@ -1,5 +1,4 @@
 use crate::editing;
-use crate::editing::token_is_valid;
 use crate::{FormatterConfig, LanguageConfig, LanguageWarning, ServerConfig};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -95,6 +94,7 @@ pub(crate) struct LanguageOverride {
     indent_after_suffixes: Option<Value>,
     indent_after_keywords: Option<Value>,
     indent_brackets: Option<Value>,
+    indent_tags: Option<Value>,
     line_comment: Option<Value>,
     block_comment: Option<Value>,
     auto_pairs: Option<Value>,
@@ -140,45 +140,6 @@ fn apply_formatter(
     }
 }
 
-fn parse_string_list(
-    language: &str,
-    value: Value,
-    field: &str,
-    warnings: &mut Vec<LanguageWarning>,
-) -> Option<Vec<String>> {
-    let display = value.to_string();
-    let parsed = match value {
-        Value::Array(tokens) => tokens
-            .iter()
-            .map(|token| match token {
-                Value::String(text) if token_is_valid(text) => Some(text.clone()),
-                _ => None,
-            })
-            .collect::<Option<Vec<String>>>(),
-        _ => None,
-    };
-    if parsed.is_none() {
-        warnings.push(LanguageWarning::new(format!(
-            "language {language}: {field} must be an array of non-empty strings, got {display}; keeping the previous rules"
-        )));
-    }
-    parsed
-}
-
-fn apply_indent_brackets(
-    language: &mut LanguageConfig,
-    value: Value,
-    warnings: &mut Vec<LanguageWarning>,
-) {
-    match value {
-        Value::Boolean(value) => language.indent_brackets = value,
-        value => warnings.push(LanguageWarning::new(format!(
-            "language {}: indent_brackets must be a boolean, got {value}; keeping the previous rule",
-            language.name
-        ))),
-    }
-}
-
 impl LanguageOverride {
     pub(crate) fn overlay(
         self,
@@ -195,29 +156,16 @@ impl LanguageOverride {
             &language.name,
             &mut warnings,
         );
-        if let Some(value) = self.indent_after_suffixes {
-            if let Some(tokens) = parse_string_list(
-                &language.name,
-                value,
-                "indent_after_suffixes",
-                &mut warnings,
-            ) {
-                language.indent_after_suffixes = tokens;
-            }
-        }
-        if let Some(value) = self.indent_after_keywords {
-            if let Some(tokens) = parse_string_list(
-                &language.name,
-                value,
-                "indent_after_keywords",
-                &mut warnings,
-            ) {
-                language.indent_after_keywords = tokens;
-            }
-        }
-        if let Some(value) = self.indent_brackets {
-            apply_indent_brackets(&mut language, value, &mut warnings);
-        }
+        indent::apply_rules(
+            &mut language,
+            indent::RuleOverride {
+                after_suffixes: self.indent_after_suffixes,
+                after_keywords: self.indent_after_keywords,
+                brackets: self.indent_brackets,
+                tags: self.indent_tags,
+            },
+            &mut warnings,
+        );
         if let Some(value) = self.line_comment {
             editing::apply_line_comment(&mut language, value, &mut warnings);
         }

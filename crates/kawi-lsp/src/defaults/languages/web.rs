@@ -58,6 +58,7 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
         LanguageConfig::new("html", "html")
             .with_color_preview()
             .with_spaces(2)
+            .with_indent_tags()
             .with_extensions(["html", "htm", "xhtml", "xht"])
             .with_servers(["vscode-html-language-server"])
             .with_block_comment("<!--", "-->")

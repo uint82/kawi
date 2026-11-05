@@ -544,7 +544,8 @@ impl LspUi {
                 language.indent_after_suffixes.clone(),
                 language.indent_after_keywords.clone(),
                 language.indent_brackets,
-            ),
+            )
+            .with_indent_tags(language.indent_tags),
         }
     }
 
