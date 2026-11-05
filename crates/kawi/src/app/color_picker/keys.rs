@@ -34,25 +34,22 @@ impl ColorPicker {
                 self.select_field(true);
                 PickerAction::Handled
             }
-            KeyCode::Left | KeyCode::Char('h') => {
-                self.decrease(is_coarse(key));
-                PickerAction::Handled
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.adjust(is_coarse(key));
-                PickerAction::Handled
-            }
-            KeyCode::Char('H') => {
-                self.decrease(true);
-                PickerAction::Handled
-            }
-            KeyCode::Char('L') => {
-                self.adjust(true);
-                PickerAction::Handled
-            }
+            KeyCode::Left | KeyCode::Char('h') => self.adjust_key(false, is_coarse(key)),
+            KeyCode::Right | KeyCode::Char('l') => self.adjust_key(true, is_coarse(key)),
+            KeyCode::Char('H') => self.adjust_key(false, true),
+            KeyCode::Char('L') => self.adjust_key(true, true),
             KeyCode::Enter => PickerAction::Request,
             _ => PickerAction::Handled,
         }
+    }
+
+    fn adjust_key(&mut self, forward: bool, coarse: bool) -> PickerAction {
+        if forward {
+            self.adjust(coarse);
+        } else {
+            self.decrease(coarse);
+        }
+        PickerAction::Handled
     }
 
     fn handle_loading_key(&mut self, key: KeyEvent) -> PickerAction {
