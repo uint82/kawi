@@ -82,6 +82,11 @@ impl App {
         let Some(root) = self.git_status_root() else {
             return;
         };
+        let path = root.join(&item.entry.path);
+        if let Err(message) = self.reject_worktree_conflict_markers(&path) {
+            self.show_message(message);
+            return;
+        }
         match kawi_git::stage_path(&root, &item.entry.path) {
             Ok(()) => {
                 self.show_message(format!("Staged {}", item.entry.path.display()));

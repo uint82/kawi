@@ -53,6 +53,7 @@ mod lsp_text;
 mod macro_codec;
 mod macro_ops;
 mod map_command;
+mod merge_conflict;
 mod options;
 mod overlay;
 mod overlay_scroll;
@@ -216,6 +217,7 @@ pub struct App {
     file_views: Option<FileViewStore>,
     loaded_views: BTreeSet<(String, String)>,
     conflict: Option<conflict::ConflictSession>,
+    merge_conflict: merge_conflict::MergeConflictState,
     formatter_service: Option<formatter_service::FormatterService>,
     pending_format: Option<formatting::PendingFormat>,
     pending_save: Option<save::PendingSave>,
@@ -339,6 +341,7 @@ impl App {
             file_views: None,
             loaded_views: BTreeSet::new(),
             conflict: None,
+            merge_conflict: merge_conflict::MergeConflictState::default(),
             formatter_service: None,
             pending_format: None,
             pending_save: None,
@@ -375,6 +378,7 @@ impl App {
         app.directory.set_wake(app.events.wake());
         app.refresh_command_completion();
         app.rebuild_plugin_styles();
+        app.sync_merge_conflicts();
         app
     }
 
@@ -474,6 +478,7 @@ impl App {
             self.sync_undo_histories();
             self.show_recovery_prompt_if_ready();
             self.sync_git();
+            self.sync_merge_conflicts();
             self.poll_git_load();
             self.poll_formatter();
             self.sync_ipc();
@@ -1084,6 +1089,9 @@ impl App {
         if self.git_commit.has_pending_push() {
             return self.handle_git_push_confirmation(key);
         }
+        if self.merge_conflict.has_pending_abort() {
+            return self.handle_git_abort_confirmation(key);
+        }
         if self.has_pending_branch_action() {
             return self.handle_pending_branch_key(key);
         }
@@ -1551,6 +1559,17 @@ impl App {
             Action::GitStageBuffer => self.handle_git_stage_buffer(),
             Action::GitPreviewHunk => self.handle_git_preview_hunk(),
             Action::GitDiff => self.handle_git_diff(),
+            Action::GitConflictNext => self.handle_merge_conflict_navigation(true),
+            Action::GitConflictPrev => self.handle_merge_conflict_navigation(false),
+            Action::GitConflictOurs => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Ours)
+            }
+            Action::GitConflictTheirs => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Theirs)
+            }
+            Action::GitConflictBoth => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Both)
+            }
             Action::TaskList => self.handle_task_command(TaskCommand::List),
             Action::TaskRerun => self.handle_task_command(TaskCommand::Rerun),
             Action::TaskCancel => self.handle_task_command(TaskCommand::Cancel),
@@ -1850,6 +1869,19 @@ impl App {
             GitCommand::PreviewHunk => self.handle_git_preview_hunk(),
             GitCommand::Diff => self.handle_git_diff(),
             GitCommand::Refresh => self.handle_git_refresh(),
+            GitCommand::NextConflict => self.handle_merge_conflict_navigation(true),
+            GitCommand::PrevConflict => self.handle_merge_conflict_navigation(false),
+            GitCommand::ConflictOurs => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Ours)
+            }
+            GitCommand::ConflictTheirs => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Theirs)
+            }
+            GitCommand::ConflictBoth => {
+                self.handle_merge_conflict_choice(kawi_git::ConflictChoice::Both)
+            }
+            GitCommand::Continue => self.handle_git_continue(),
+            GitCommand::Abort => self.handle_git_abort(),
         }
     }
 

@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use crate::command::{resolve_git_dir, stderr};
+use crate::command::{resolve_git_dir, run_read, stderr};
 
 pub fn git_dir(root: &Path) -> Result<Option<PathBuf>> {
     resolve_git_dir(root)
@@ -41,6 +41,37 @@ pub fn diff_path(root: &Path, path: &Path, staged: bool) -> Result<Vec<String>> 
         .lines()
         .map(str::to_string)
         .collect())
+}
+
+pub fn index_has_conflict_markers(root: &Path) -> Result<bool> {
+    grep_conflict_markers(root, true)
+}
+
+pub fn worktree_has_conflict_markers(root: &Path) -> Result<bool> {
+    grep_conflict_markers(root, false)
+}
+
+pub fn file_has_conflict_markers(path: &Path) -> Result<bool> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(crate::conflict::has_markers(text.lines()))
+}
+
+fn grep_conflict_markers(root: &Path, cached: bool) -> Result<bool> {
+    let mut args = vec!["grep", "--name-only", "-e", "^<<<<<<<"];
+    if cached {
+        args.push("--cached");
+    }
+    let output = run_read(root, &args)?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => bail!("git grep failed: {}", stderr(&output)),
+    }
 }
 
 fn checked(root: &Path, args: &[&str], path: &Path) -> Result<()> {
@@ -149,6 +180,35 @@ mod tests {
         assert!(diff.iter().any(|line| line.contains("+two")));
         clean_path(&dir, Path::new("new.txt")).unwrap();
         assert!(!dir.join("new.txt").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn detects_conflict_markers_in_files_and_stages() {
+        let dir = repo("conflict_markers");
+        let path = dir.join("a.txt");
+        fs::write(&path, "base\n").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-qm", "base"]);
+        let conflicted = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> topic\n";
+        fs::write(&path, conflicted).unwrap();
+        assert!(file_has_conflict_markers(&path).unwrap());
+        assert!(worktree_has_conflict_markers(&dir).unwrap());
+        stage_path(&dir, Path::new("a.txt")).unwrap();
+        assert!(index_has_conflict_markers(&dir).unwrap());
+        fs::write(&path, "resolved\n").unwrap();
+        assert!(!file_has_conflict_markers(&path).unwrap());
+        assert!(!worktree_has_conflict_markers(&dir).unwrap());
+        assert!(index_has_conflict_markers(&dir).unwrap());
+        stage_path(&dir, Path::new("a.txt")).unwrap();
+        assert!(!index_has_conflict_markers(&dir).unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_files_have_no_conflict_markers() {
+        let dir = repo("missing_file");
+        assert!(!file_has_conflict_markers(Path::new("missing.txt")).unwrap());
         let _ = fs::remove_dir_all(dir);
     }
 }

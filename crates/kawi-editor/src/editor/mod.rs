@@ -535,6 +535,11 @@ impl Editor {
             | Action::GitStageBuffer
             | Action::GitPreviewHunk
             | Action::GitDiff
+            | Action::GitConflictNext
+            | Action::GitConflictPrev
+            | Action::GitConflictOurs
+            | Action::GitConflictTheirs
+            | Action::GitConflictBoth
             | Action::DiagnosticNext
             | Action::DiagnosticPrev
             | Action::ShowDiagnostic

@@ -225,6 +225,9 @@ impl GitSession {
         lines: &[String],
         revision: u64,
     ) -> Result<(), String> {
+        if kawi_git::conflict::has_markers(lines.iter().map(String::as_str)) {
+            return Err("Resolve conflict markers before staging".to_string());
+        }
         let was_untracked = self.file.untracked;
         if was_untracked {
             ensure_intent_to_add(&self.file).map_err(|error| error.to_string())?;
@@ -722,5 +725,31 @@ mod tests {
         };
         let patch = patch_hunks("a", "100644", settings, &session.hunks);
         assert!(patch.contains("@@ -2,1 +2,1 @@"));
+    }
+
+    #[test]
+    fn refuses_to_stage_a_buffer_with_conflict_markers() {
+        let file = GitFile {
+            root: PathBuf::from("/tmp"),
+            path: PathBuf::from("/tmp/a"),
+            relpath: "a".to_string(),
+            mode: "100644".to_string(),
+            untracked: false,
+            crlf: false,
+            no_final_newline: false,
+            head_no_final_newline: false,
+            base: lines("a\nb"),
+            head: lines("a\nb"),
+        };
+        let buffer = lines("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> topic");
+        let mut session = GitSession::new(file, &buffer, 1, false);
+        assert_eq!(
+            session.stage_hunk(0, &buffer, 1),
+            Err("Resolve conflict markers before staging".to_string())
+        );
+        assert_eq!(
+            session.stage_buffer(&buffer, 1),
+            Err("Resolve conflict markers before staging".to_string())
+        );
     }
 }

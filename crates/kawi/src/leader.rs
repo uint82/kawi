@@ -216,6 +216,36 @@ const GIT_COMMANDS: &[LeaderCommand] = &[
         label: "unstage hunk",
         action: Action::GitUndoStage,
     },
+    LeaderCommand {
+        key: 'n',
+        aliases: &[],
+        label: "next conflict",
+        action: Action::GitConflictNext,
+    },
+    LeaderCommand {
+        key: 'N',
+        aliases: &[],
+        label: "previous conflict",
+        action: Action::GitConflictPrev,
+    },
+    LeaderCommand {
+        key: 'o',
+        aliases: &[],
+        label: "take ours",
+        action: Action::GitConflictOurs,
+    },
+    LeaderCommand {
+        key: 't',
+        aliases: &[],
+        label: "take theirs",
+        action: Action::GitConflictTheirs,
+    },
+    LeaderCommand {
+        key: 'b',
+        aliases: &[],
+        label: "take both",
+        action: Action::GitConflictBoth,
+    },
 ];
 
 pub(crate) const LEADER_GROUPS: &[LeaderGroup] = &[

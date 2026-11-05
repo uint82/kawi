@@ -270,6 +270,31 @@ pub(super) const COMMANDS: &[Builtin] = &[
         "preview the hunk",
     ),
     action("git.diff", Action::GitDiff, "show the buffer diff"),
+    action(
+        "git.next_conflict",
+        Action::GitConflictNext,
+        "move to the next conflict",
+    ),
+    action(
+        "git.previous_conflict",
+        Action::GitConflictPrev,
+        "move to the previous conflict",
+    ),
+    action(
+        "git.take_ours",
+        Action::GitConflictOurs,
+        "resolve the conflict with ours",
+    ),
+    action(
+        "git.take_theirs",
+        Action::GitConflictTheirs,
+        "resolve the conflict with theirs",
+    ),
+    action(
+        "git.take_both",
+        Action::GitConflictBoth,
+        "resolve the conflict with both sides",
+    ),
     action("task.list", Action::TaskList, "list the tasks"),
     action("task.rerun", Action::TaskRerun, "rerun the last task"),
     action("task.cancel", Action::TaskCancel, "cancel the task"),

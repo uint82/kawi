@@ -33,11 +33,13 @@ impl App {
         self.apply_plugin_signs(&mut signs, rows);
         self.apply_diagnostic_signs(&mut signs, rows);
         self.apply_debug_signs(&mut signs, rows);
+        self.apply_conflict_signs(&mut signs, rows);
         Some(signs)
     }
 
     fn has_signs(&self) -> bool {
-        self.lsp.has_diagnostics()
+        self.merge_conflict.has_blocks()
+            || self.lsp.has_diagnostics()
             || (self.git_signs && self.git.as_ref().is_some_and(|session| session.has_signs()))
             || self.plugin_has_signs()
             || self.debug_has_signs()
@@ -92,6 +94,21 @@ impl App {
         for (sign, row) in signs.iter_mut().zip(rows) {
             if let Some(debug) = self.debug.sign_for(&path, *row) {
                 *sign = Some(Sign::Debug(ui_debug_sign(debug)));
+            }
+        }
+    }
+
+    fn apply_conflict_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        let blocks = self.merge_conflict.blocks();
+        if blocks.is_empty() {
+            return;
+        }
+        for (sign, row) in signs.iter_mut().zip(rows) {
+            if blocks
+                .binary_search_by_key(row, |block| block.start)
+                .is_ok()
+            {
+                *sign = Some(Sign::Conflict);
             }
         }
     }

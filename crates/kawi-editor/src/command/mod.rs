@@ -233,6 +233,13 @@ pub enum GitCommand {
     PreviewHunk,
     Diff,
     Refresh,
+    NextConflict,
+    PrevConflict,
+    ConflictOurs,
+    ConflictTheirs,
+    ConflictBoth,
+    Continue,
+    Abort,
 }
 
 pub const COMMAND_NAMES: &[&str] = &[
@@ -759,6 +766,13 @@ fn parse_git_command(words: &[&str]) -> Command {
         ["preview_hunk"] => GitCommand::PreviewHunk,
         ["diff"] => GitCommand::Diff,
         ["refresh"] => GitCommand::Refresh,
+        ["next_conflict"] => GitCommand::NextConflict,
+        ["prev_conflict"] => GitCommand::PrevConflict,
+        ["ours"] => GitCommand::ConflictOurs,
+        ["theirs"] => GitCommand::ConflictTheirs,
+        ["both"] => GitCommand::ConflictBoth,
+        ["continue"] => GitCommand::Continue,
+        ["abort"] => GitCommand::Abort,
         _ => return Command::Unknown,
     };
     Command::Git(command)
@@ -1038,6 +1052,22 @@ mod tests {
             Command::Git(GitCommand::PreviewHunk)
         );
         assert_eq!(parse("git refresh"), Command::Git(GitCommand::Refresh));
+        assert_eq!(
+            parse("git next_conflict"),
+            Command::Git(GitCommand::NextConflict)
+        );
+        assert_eq!(
+            parse("git prev_conflict"),
+            Command::Git(GitCommand::PrevConflict)
+        );
+        assert_eq!(parse("git ours"), Command::Git(GitCommand::ConflictOurs));
+        assert_eq!(
+            parse("git theirs"),
+            Command::Git(GitCommand::ConflictTheirs)
+        );
+        assert_eq!(parse("git both"), Command::Git(GitCommand::ConflictBoth));
+        assert_eq!(parse("git continue"), Command::Git(GitCommand::Continue));
+        assert_eq!(parse("git abort"), Command::Git(GitCommand::Abort));
         assert_eq!(parse("git status"), Command::Git(GitCommand::Status));
         assert_eq!(
             parse("git commit"),
