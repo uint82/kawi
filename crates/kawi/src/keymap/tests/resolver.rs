@@ -210,7 +210,6 @@ fn context_parses_modes() {
 #[test]
 fn names_resolve_flavors() {
     assert_eq!(super::flavor_from_name("vim"), Some(super::Flavor::Vim));
-    assert_eq!(super::flavor_from_name("helix"), Some(super::Flavor::Helix));
 }
 
 #[test]

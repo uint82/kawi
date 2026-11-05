@@ -244,7 +244,7 @@ undo_exclude = ["*.gpg"]
         let loaded = config::load(&path);
         let mut app = app();
         app.apply_config(&loaded.config);
-        assert_eq!(app.flavor, Flavor::Helix);
+        assert_eq!(app.flavor, Flavor::Vim);
         assert_eq!(app.theme.name, "gruvbox-dark");
         assert_eq!(app.overlay_options.hover_max_width, 80);
         assert_eq!(app.overlay_options.completion_docs_max_width, 50);

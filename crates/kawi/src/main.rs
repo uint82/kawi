@@ -5,7 +5,6 @@ mod doctor;
 mod event;
 mod file_views;
 mod fold_view;
-mod helix;
 mod ipc;
 mod keymap;
 mod leader;

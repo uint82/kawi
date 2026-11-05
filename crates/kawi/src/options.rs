@@ -277,7 +277,7 @@ pub(crate) const OPTIONS: [OptionSpec; 49] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
-        description: "Editing keymap.",
+        description: "Editing keymap. Helix is deprecated and falls back to Vim.",
         kind: OptionKind::Enum(OptionValues::Static(&["vim", "helix"])),
         scope: OptionScope::Global,
         section: ConfigSection::Ui,

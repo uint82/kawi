@@ -336,14 +336,3 @@ fn timeout_clears_mapping_pending() {
     assert_eq!(app.keymaps.pending_text(), None);
     assert_eq!(app.showcmd_text(), None);
 }
-
-#[test]
-fn preset_switch_isolates_builtin_keys() {
-    let mut app = app();
-    app.handle_key(key(' ')).unwrap();
-    assert!(app.keymap.leader_path().is_some());
-    app.apply_flavor(Flavor::Helix).unwrap();
-    assert!(app.keymap.leader_path().is_none());
-    app.handle_key(key(' ')).unwrap();
-    assert!(app.keymap.leader_path().is_none());
-}
