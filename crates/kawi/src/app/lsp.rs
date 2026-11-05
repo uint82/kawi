@@ -22,6 +22,7 @@ use kawi_tui::frame::DiagnosticSpan;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 
 mod symbols;
 
@@ -43,6 +44,7 @@ pub struct LspUi {
     workspace_diagnostics_requested: bool,
     diagnostics_activity: bool,
     navigation: LspNavigation,
+    colors: super::lsp_colors::DocumentColorState,
     text: LspText,
     rename_request: Option<u64>,
     rename_ready: Option<RenameReady>,
@@ -75,6 +77,7 @@ struct ProgressSnapshot {
 impl LspUi {
     pub fn load(&mut self, path: &Path, wake: Sender<()>) -> Vec<LanguageWarning> {
         self.symbols = symbols::LspSymbols::default();
+        self.colors = super::lsp_colors::DocumentColorState::default();
         self.rename_files = false;
         self.delete_files = false;
         self.file_operation = None;
@@ -104,9 +107,28 @@ impl LspUi {
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {
         let document = self.sync_editor(editor);
+        self.color_tick();
         let events = self.poll_events(editor);
         let display = self.update_display();
         events || document || display
+    }
+
+    pub fn set_color_preview(&mut self, enabled: bool) -> bool {
+        let supported = self.color_preview_supported();
+        self.colors
+            .set_enabled(enabled, self.service.as_ref(), supported, Instant::now())
+    }
+
+    pub fn color_wait_timeout(&self) -> Option<Duration> {
+        self.colors.wait_timeout(Instant::now())
+    }
+
+    pub fn color_preview_colors(
+        &self,
+        path: &Path,
+        revision: u64,
+    ) -> Option<&[kawi_lsp::DocumentColor]> {
+        self.colors.colors(path, revision)
     }
 
     pub fn sync_editor(&mut self, editor: &Editor) -> bool {
@@ -158,6 +180,7 @@ impl LspUi {
         };
         *path = rewritten;
         self.text.cancel_all(self.service.as_ref());
+        self.colors.reset(self.service.as_ref());
         self.diagnostics.reset();
     }
 
@@ -176,11 +199,13 @@ impl LspUi {
         self.path = None;
         self.revision = None;
         self.text.cancel_all(self.service.as_ref());
+        self.colors.reset(self.service.as_ref());
         self.diagnostics.reset();
     }
 
     pub fn detach(&mut self) -> bool {
         self.text.cancel_all(self.service.as_ref());
+        self.colors.reset(self.service.as_ref());
         self.close_current();
         let changed = self.path.take().is_some();
         self.revision = None;
@@ -664,6 +689,42 @@ impl LspUi {
         self.message.take()
     }
 
+    fn color_tick(&mut self) {
+        let supported = self.color_preview_supported();
+        let now = Instant::now();
+        let Some(service) = self.service.as_ref() else {
+            self.colors.request_if_due(now, false, |_| 0);
+            return;
+        };
+        self.colors
+            .request_if_due(now, supported, |path| service.document_colors(path));
+    }
+
+    fn color_preview_supported(&self) -> bool {
+        let Some(path) = self.path.as_deref() else {
+            return false;
+        };
+        let Some(language) = self.language_config(Some(path)) else {
+            return false;
+        };
+        language.color_preview
+            && language
+                .servers
+                .iter()
+                .any(|server| self.colors.supports(server))
+    }
+
+    fn document_colors_changed(&mut self) {
+        let supported = self.color_preview_supported();
+        self.colors.document_changed(
+            self.service.as_ref(),
+            self.path.clone(),
+            self.revision.unwrap_or_default(),
+            supported,
+            Instant::now(),
+        );
+    }
+
     fn sync_document(&mut self, editor: &Editor) -> bool {
         let path = editor_path(editor);
         let revision = editor.buffer_revision();
@@ -677,6 +738,7 @@ impl LspUi {
             if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
                 service.open(path, editor.document_snapshot());
             }
+            self.document_colors_changed();
             return true;
         }
         if Some(revision) == self.revision {
@@ -684,6 +746,7 @@ impl LspUi {
         }
         self.revision = Some(revision);
         self.text.cancel_document_requests(self.service.as_ref());
+        self.document_colors_changed();
         if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
             self.diagnostics.advance();
             service.change(path, editor.document_snapshot());
@@ -703,6 +766,15 @@ impl LspUi {
         match event {
             LspEvent::Status(status) => {
                 self.apply_status(status);
+                true
+            }
+            LspEvent::DocumentColors(event) => {
+                self.colors
+                    .apply_event(event, self.path.as_deref(), self.revision)
+            }
+            LspEvent::DocumentColorCapabilities(event) => {
+                self.colors
+                    .apply_capability(event.server, event.color_provider, Instant::now());
                 true
             }
             LspEvent::Progress(progress) => {
@@ -802,6 +874,9 @@ impl LspUi {
                 true
             }
             LspEvent::RequestError { request, message } => {
+                if self.colors.fail(request) {
+                    return false;
+                }
                 if self.symbols.fail(request, &message) {
                     return true;
                 }
@@ -837,7 +912,6 @@ impl LspUi {
                 self.message = Some(format_message(&server, level, &message));
                 true
             }
-            LspEvent::DocumentColors(_) | LspEvent::DocumentColorCapabilities(_) => false,
             LspEvent::Log { .. } => false,
         }
     }
@@ -847,6 +921,7 @@ impl LspUi {
         self.statuses.insert(server.clone(), status.state);
         if matches!(status.state, ServerState::Failed | ServerState::Stopped) {
             self.diagnostics.remove_server(&server);
+            self.colors.remove_server(&server);
             self.diagnostic_modes.remove(&server);
             self.workspace_diagnostics_loading.remove(&server);
             self.progress.retain(|(name, _), _| name != &server);

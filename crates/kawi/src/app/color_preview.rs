@@ -2,6 +2,7 @@ mod color;
 mod context;
 mod contrast;
 mod hex;
+mod lsp;
 mod mode;
 mod named;
 mod rgb;
@@ -31,6 +32,12 @@ impl App {
         let Some(mode) = self.lsp.language_color_preview_mode(path) else {
             return Vec::new();
         };
+        if let Some(colors) = path.and_then(|path| {
+            self.lsp
+                .color_preview_colors(path, self.editor.buffer_revision())
+        }) {
+            return lsp::spans(colors, lines, rows, self.theme.base.background);
+        }
         scan::spans(lines, rows, self.theme.base.background, mode)
     }
 }
