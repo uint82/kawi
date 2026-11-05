@@ -1,9 +1,16 @@
 pub(crate) mod engine;
+#[cfg(test)]
+mod html_tests;
 mod language;
+mod tags;
 #[cfg(test)]
 mod tests;
 
 pub use language::IndentRules;
+
+pub(super) fn line_width(line: &str, tabstop: usize) -> usize {
+    kawi_buffer::indent_width_of(line, tabstop.max(1))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndentShift {
