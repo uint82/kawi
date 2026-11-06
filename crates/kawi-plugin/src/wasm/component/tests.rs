@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Barrier};
 
 use wasmtime::component::Component;
 
@@ -25,6 +26,34 @@ fn reuses_cached_components_by_hash() {
     let (second, second_hash, _) = runtime.compile(&bytes, None).unwrap();
     assert_eq!(hash, second_hash);
     assert!(std::sync::Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn shares_concurrent_compiles_by_hash() {
+    const THREADS: usize = 8;
+    let bytes = Arc::new(std::fs::read(fixture("network.wasm")).unwrap());
+    let barrier = Arc::new(Barrier::new(THREADS));
+    let runtimes = (0..THREADS)
+        .map(|_| WasmRuntime::with_cache_dir(None).unwrap())
+        .collect::<Vec<_>>();
+    let handles = runtimes
+        .into_iter()
+        .map(|runtime| {
+            let bytes = Arc::clone(&bytes);
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                runtime.compile(&bytes, None).unwrap().0
+            })
+        })
+        .collect::<Vec<_>>();
+    let components = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect::<Vec<_>>();
+    assert!(components
+        .iter()
+        .all(|component| Arc::ptr_eq(&components[0], component)));
 }
 
 #[test]

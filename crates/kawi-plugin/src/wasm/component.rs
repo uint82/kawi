@@ -19,8 +19,12 @@ const MAX_STACK_BYTES: usize = 512 * 1024;
 const EPOCH_INTERVAL: Duration = Duration::from_millis(50);
 const COMPONENT_CACHE_CAPACITY: usize = 16;
 
+type CompileResult = Result<(Arc<Component>, Option<String>), PluginError>;
+
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 static COMPILED_COMPONENTS: OnceLock<Mutex<ComponentCache>> = OnceLock::new();
+static IN_FLIGHT_COMPILES: OnceLock<Mutex<HashMap<String, Arc<OnceLock<CompileResult>>>>> =
+    OnceLock::new();
 
 pub struct WasmRuntime {
     engine: Engine,
@@ -70,8 +74,18 @@ impl WasmRuntime {
         if let Some(component) = cached_component(&hash) {
             return Ok((component, hash, None));
         }
-        let (component, warning) = self.load_or_compile(&hash, bytes)?;
-        let component = store_component(hash.clone(), Arc::new(component));
+        let cell = in_flight_cell(&hash);
+        let result = cell.get_or_init(|| {
+            if let Some(component) = cached_component(&hash) {
+                return Ok((component, None));
+            }
+            self.load_or_compile(&hash, bytes)
+                .map(|(component, warning)| {
+                    (store_component(hash.clone(), Arc::new(component)), warning)
+                })
+        });
+        remove_in_flight_cell(&hash, &cell);
+        let (component, warning) = result.clone()?;
         Ok((component, hash, warning))
     }
 
@@ -220,6 +234,31 @@ fn store_component(hash: String, component: Arc<Component>) -> Arc<Component> {
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .insert(hash, component)
+}
+
+fn in_flight_compiles() -> &'static Mutex<HashMap<String, Arc<OnceLock<CompileResult>>>> {
+    IN_FLIGHT_COMPILES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn in_flight_cell(hash: &str) -> Arc<OnceLock<CompileResult>> {
+    in_flight_compiles()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .entry(hash.to_string())
+        .or_insert_with(|| Arc::new(OnceLock::new()))
+        .clone()
+}
+
+fn remove_in_flight_cell(hash: &str, cell: &Arc<OnceLock<CompileResult>>) {
+    let mut in_flight = in_flight_compiles()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if in_flight
+        .get(hash)
+        .is_some_and(|current| Arc::ptr_eq(current, cell))
+    {
+        in_flight.remove(hash);
+    }
 }
 
 fn build_engine() -> Result<Engine, String> {
