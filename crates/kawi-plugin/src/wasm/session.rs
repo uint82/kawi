@@ -201,6 +201,16 @@ impl Session {
         let requested_imports = requested.iter().copied().collect::<Vec<_>>();
         let (component, inspection) =
             runtime.inspect_component(&bytes, plugin.component_hash(), &requested_imports)?;
+        if let Some(warning) = &inspection.cache_warning {
+            send_event(
+                &events,
+                &wake,
+                PluginHostEvent::Log {
+                    plugin: plugin.manifest.name.clone(),
+                    line: warning.clone(),
+                },
+            );
+        }
         let granted = Capability::ALL
             .into_iter()
             .filter(|capability| capabilities.has(&plugin.manifest.name, *capability))

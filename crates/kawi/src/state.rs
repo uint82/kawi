@@ -10,6 +10,8 @@ use crate::persist::write_atomically;
 pub struct StatePaths {
     pub config: PathBuf,
     pub config_log: PathBuf,
+    #[cfg(feature = "wasm")]
+    pub cache: PathBuf,
     pub keymaps: PathBuf,
     pub plugins: PathBuf,
     pub installed_plugins: PathBuf,
@@ -32,9 +34,13 @@ impl StatePaths {
         let config = xdg_dir("XDG_CONFIG_HOME", ".config")?;
         let data = xdg_dir("XDG_DATA_HOME", ".local/share")?;
         let state = xdg_dir("XDG_STATE_HOME", ".local/state")?;
+        #[cfg(feature = "wasm")]
+        let cache = xdg_dir("XDG_CACHE_HOME", ".cache")?;
         Some(Self {
             config: config.join("kawi/config.toml"),
             config_log: state.join("kawi/config.log"),
+            #[cfg(feature = "wasm")]
+            cache: cache.join("kawi"),
             keymaps: config.join("kawi/keymaps.toml"),
             plugins: config.join("kawi/plugins"),
             installed_plugins: data.join("kawi/plugins"),
@@ -123,6 +129,8 @@ mod tests {
         StatePaths {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
+            #[cfg(feature = "wasm")]
+            cache: dir.join("cache"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
             installed_plugins: dir.join("installed-plugins"),

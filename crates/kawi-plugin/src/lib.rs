@@ -19,8 +19,8 @@ mod wasm;
 pub use wasm::fuzz;
 #[cfg(feature = "wasm")]
 pub use wasm::{
-    import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,
-    ComponentInspection, ImportRule, WasiConfig, WasmRuntime, WASM_IMPORTS,
+    import_capabilities, import_rule, requested_import_capabilities, set_wasm_cache_dir,
+    unauthorized_imports, ComponentInspection, ImportRule, WasiConfig, WasmRuntime, WASM_IMPORTS,
 };
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};

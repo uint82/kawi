@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -12,17 +12,23 @@ use wasmtime::{Config, Engine};
 use crate::capability::Capability;
 use crate::error::PluginError;
 
+use super::cache;
 use super::policy::{requested_import_capabilities, unauthorized_imports};
 
 const MAX_STACK_BYTES: usize = 512 * 1024;
 const EPOCH_INTERVAL: Duration = Duration::from_millis(50);
 const COMPONENT_CACHE_CAPACITY: usize = 16;
 
+type CompileResult = Result<(Arc<Component>, Option<String>), PluginError>;
+
 static ENGINE: OnceLock<Result<Engine, String>> = OnceLock::new();
 static COMPILED_COMPONENTS: OnceLock<Mutex<ComponentCache>> = OnceLock::new();
+static IN_FLIGHT_COMPILES: OnceLock<Mutex<HashMap<String, Arc<OnceLock<CompileResult>>>>> =
+    OnceLock::new();
 
 pub struct WasmRuntime {
     engine: Engine,
+    cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -30,14 +36,20 @@ pub struct ComponentInspection {
     pub imports: Vec<String>,
     pub requested: Vec<Capability>,
     pub hash: String,
+    pub cache_warning: Option<String>,
 }
 
 impl WasmRuntime {
     pub fn new() -> Result<Self, PluginError> {
+        Self::with_cache_dir(cache::configured_dir().map(Path::to_path_buf))
+    }
+
+    pub(crate) fn with_cache_dir(cache_dir: Option<PathBuf>) -> Result<Self, PluginError> {
         let engine = ENGINE.get_or_init(build_engine);
         match engine {
             Ok(engine) => Ok(Self {
                 engine: engine.clone(),
+                cache_dir,
             }),
             Err(message) => Err(PluginError::Initialize(message.clone())),
         }
@@ -51,7 +63,7 @@ impl WasmRuntime {
         &self,
         bytes: &[u8],
         expected_hash: Option<&str>,
-    ) -> Result<(Arc<Component>, String), PluginError> {
+    ) -> Result<(Arc<Component>, String, Option<String>), PluginError> {
         let hash = digest(bytes);
         if expected_hash.is_some_and(|expected| expected != hash) {
             return Err(PluginError::Initialize(format!(
@@ -60,14 +72,41 @@ impl WasmRuntime {
             )));
         }
         if let Some(component) = cached_component(&hash) {
-            return Ok((component, hash));
+            return Ok((component, hash, None));
         }
-        let component = Arc::new(
-            Component::from_binary(&self.engine, bytes)
-                .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?,
-        );
-        let component = store_component(hash.clone(), component);
-        Ok((component, hash))
+        let cell = in_flight_cell(&hash);
+        let result = cell.get_or_init(|| {
+            if let Some(component) = cached_component(&hash) {
+                return Ok((component, None));
+            }
+            self.load_or_compile(&hash, bytes)
+                .map(|(component, warning)| {
+                    (store_component(hash.clone(), Arc::new(component)), warning)
+                })
+        });
+        remove_in_flight_cell(&hash, &cell);
+        let (component, warning) = result.clone()?;
+        Ok((component, hash, warning))
+    }
+
+    fn load_or_compile(
+        &self,
+        hash: &str,
+        bytes: &[u8],
+    ) -> Result<(Component, Option<String>), PluginError> {
+        if let Some(dir) = self.cache_dir.as_deref() {
+            if let Some(component) = cache::load(&self.engine, dir, hash) {
+                return Ok((component, None));
+            }
+        }
+        let component = Component::from_binary(&self.engine, bytes)
+            .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?;
+        let warning = self
+            .cache_dir
+            .as_deref()
+            .and_then(|dir| cache::store(dir, hash, &component).err())
+            .map(|error| format!("wasm cache: {error}"));
+        Ok((component, warning))
     }
 
     pub fn inspect(
@@ -97,8 +136,8 @@ impl WasmRuntime {
         expected_hash: Option<&str>,
         requested: &[Capability],
     ) -> Result<(Arc<Component>, ComponentInspection), PluginError> {
-        let (component, hash) = self.compile(bytes, expected_hash)?;
-        let inspection = self.check_imports(&component, hash, requested)?;
+        let (component, hash, cache_warning) = self.compile(bytes, expected_hash)?;
+        let inspection = self.check_imports(&component, hash, requested, cache_warning)?;
         Ok((component, inspection))
     }
 
@@ -107,6 +146,7 @@ impl WasmRuntime {
         component: &Component,
         hash: String,
         requested: &[Capability],
+        cache_warning: Option<String>,
     ) -> Result<ComponentInspection, PluginError> {
         let imports = component
             .component_type()
@@ -131,6 +171,7 @@ impl WasmRuntime {
             imports,
             requested: used,
             hash,
+            cache_warning,
         })
     }
 }
@@ -193,6 +234,31 @@ fn store_component(hash: String, component: Arc<Component>) -> Arc<Component> {
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .insert(hash, component)
+}
+
+fn in_flight_compiles() -> &'static Mutex<HashMap<String, Arc<OnceLock<CompileResult>>>> {
+    IN_FLIGHT_COMPILES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn in_flight_cell(hash: &str) -> Arc<OnceLock<CompileResult>> {
+    in_flight_compiles()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .entry(hash.to_string())
+        .or_insert_with(|| Arc::new(OnceLock::new()))
+        .clone()
+}
+
+fn remove_in_flight_cell(hash: &str, cell: &Arc<OnceLock<CompileResult>>) {
+    let mut in_flight = in_flight_compiles()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if in_flight
+        .get(hash)
+        .is_some_and(|current| Arc::ptr_eq(current, cell))
+    {
+        in_flight.remove(hash);
+    }
 }
 
 fn build_engine() -> Result<Engine, String> {

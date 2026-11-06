@@ -5,6 +5,8 @@ mod bridge;
 #[cfg(feature = "wasm")]
 mod byte_budget;
 #[cfg(feature = "wasm")]
+mod cache;
+#[cfg(feature = "wasm")]
 mod component;
 #[cfg(feature = "wasm")]
 mod connection_cap;
@@ -50,6 +52,11 @@ pub(crate) mod worker;
 
 #[cfg(feature = "wasm")]
 pub use component::{ComponentInspection, WasmRuntime};
+
+#[cfg(feature = "wasm")]
+pub fn set_wasm_cache_dir(dir: std::path::PathBuf) {
+    cache::set_dir(dir);
+}
 #[cfg(feature = "wasm")]
 pub use policy::{
     import_capabilities, import_rule, requested_import_capabilities, unauthorized_imports,
