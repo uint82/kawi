@@ -239,6 +239,8 @@ pub struct App {
     recovery_prompt: Option<recovery::RecoveryPrompt>,
     apply_recovery: Option<directory::PendingRecovery>,
     pending_startup_recovery: Option<recovery::PendingRecoveryStart>,
+    pending_session_buffers: Vec<restore::PendingBufferLoad>,
+    session_restore: Option<restore::PendingSessionRestore>,
     undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
@@ -364,6 +366,8 @@ impl App {
             recovery_prompt: None,
             apply_recovery: None,
             pending_startup_recovery: None,
+            pending_session_buffers: Vec::new(),
+            session_restore: None,
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
@@ -513,7 +517,9 @@ impl App {
             self.picker_preview_tick();
             self.draw_frame(&mut out, &mut renderer)?;
             self.last_frame = Instant::now();
-            if self.start_pending_recovery() {
+            let recovery_started = self.start_pending_recovery();
+            let session_started = self.start_pending_session_restore();
+            if recovery_started || session_started {
                 continue;
             }
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
@@ -562,6 +568,7 @@ impl App {
             redraw |= self.poll_formatter();
             redraw |= self.poll_explorer();
             redraw |= self.poll_directory_loads();
+            redraw |= self.poll_session_restore();
             redraw |= self.poll_permission_check();
             redraw |= self.poll_plugins();
             redraw |= self.sync_task();

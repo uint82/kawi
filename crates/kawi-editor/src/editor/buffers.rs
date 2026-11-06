@@ -16,6 +16,8 @@ use crate::paths;
 
 use super::Editor;
 
+mod lazy;
+
 pub(super) fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_default()
 }
@@ -123,6 +125,7 @@ pub(super) struct ParkedState {
     search_status: Option<SearchStatus>,
     change_list: Vec<(usize, usize)>,
     change_index: usize,
+    pending: bool,
 }
 
 impl Buffers {
@@ -408,6 +411,7 @@ impl Editor {
             .reload_from_disk()
             .map_err(|error| EditError::Io(error.to_string()))?;
         state.buffer.mark_clean();
+        state.pending = false;
         let row = row.min(state.buffer.line_count().saturating_sub(1));
         let col = col.min(state.buffer.line_len(row).saturating_sub(1));
         state.cursor.set_position(row, col);
@@ -1245,6 +1249,7 @@ impl Editor {
         if number == self.buffers.current() || !self.buffers.contains(number) {
             return;
         }
+        self.load_pending_parked(number);
         let previous = self.buffers.current();
         self.store_current();
         if let Some(state) = self.buffers.take(number) {
@@ -1292,6 +1297,7 @@ impl Editor {
             search_status: self.search_status.take(),
             change_list: std::mem::take(&mut self.change_list),
             change_index: std::mem::take(&mut self.change_index),
+            pending: false,
         }
     }
 

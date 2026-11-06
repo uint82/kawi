@@ -391,3 +391,5 @@ fn snapshot_saves_an_empty_workspace() {
     assert_eq!(session.buffers[0].path, None);
     assert!(matches!(session.windows, SessionWindow::Leaf { .. }));
 }
+
+mod lazy;
