@@ -1,9 +1,13 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::LazyLock;
 
-use tree_sitter::Query;
-
 use crate::language::LanguageId;
+
+mod capture_names;
+#[cfg(test)]
+mod tests;
+
+use capture_names::capture_names;
 
 const BASE_NAMES: &[&str] = &[
     "attribute",
@@ -81,13 +85,11 @@ impl HighlightRegistry {
             .map(|name| (*name).to_string())
             .collect::<BTreeSet<_>>();
         for language in LanguageId::ALL {
-            let highlights = language.highlights();
-            let query = Query::new(&language.language(), highlights)
-                .or_else(|_| Query::new(&language.language(), &language.bundled_highlights()))
-                .ok();
-            if let Some(query) = query {
-                names.extend(query.capture_names().iter().map(|name| (*name).to_string()));
-            }
+            names.extend(
+                capture_names(language.highlights())
+                    .into_iter()
+                    .map(str::to_string),
+            );
         }
         let names = names.into_iter().collect::<Vec<_>>();
         assert!(

@@ -47,14 +47,6 @@ impl WasmRuntime {
         &self.engine
     }
 
-    pub fn validate_bytes(
-        &self,
-        bytes: &[u8],
-        expected_hash: Option<&str>,
-    ) -> Result<(), PluginError> {
-        self.compile(bytes, expected_hash).map(|_| ())
-    }
-
     fn compile(
         &self,
         bytes: &[u8],

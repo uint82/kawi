@@ -59,5 +59,5 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 vt100 = "0.18"
-wasmtime = { version = "=50.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "async", "wat"] }
+wasmtime = { version = "=50.0.1", default-features = false, features = ["component-model", "cranelift", "reexport-wasmparser", "runtime", "std", "async", "wat"] }
 wasmtime-wasi = { version = "=50.0.1", default-features = false, features = ["p2"] }
