@@ -24,8 +24,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
+mod changes;
 mod symbols;
 
+use changes::PendingChange;
 pub(crate) use symbols::SymbolEvent;
 
 #[derive(Default)]
@@ -59,6 +61,7 @@ pub struct LspUi {
     delete_files: bool,
     file_operation: Option<FileOperationEvent>,
     symbols: symbols::LspSymbols,
+    pending_change: Option<PendingChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +84,7 @@ impl LspUi {
         self.rename_files = false;
         self.delete_files = false;
         self.file_operation = None;
+        self.pending_change = None;
         let languages = Languages::load(path);
         self.languages_path = Some(path.to_path_buf());
         let warnings = languages.warnings().to_vec();
@@ -106,6 +110,7 @@ impl LspUi {
     }
 
     pub fn refresh(&mut self, editor: &Editor) -> bool {
+        self.flush_pending_change_if_due(Instant::now());
         let document = self.sync_editor(editor);
         self.color_tick();
         let events = self.poll_events(editor);
@@ -160,13 +165,15 @@ impl LspUi {
         self.delete_files
     }
 
-    pub fn will_rename_files(&self, files: &[(PathBuf, PathBuf)]) -> u64 {
+    pub fn will_rename_files(&mut self, files: &[(PathBuf, PathBuf)]) -> u64 {
+        self.flush_pending_change();
         self.service
             .as_ref()
             .map_or(0, |service| service.will_rename_files(files))
     }
 
-    pub fn will_delete_files(&self, files: &[PathBuf]) -> u64 {
+    pub fn will_delete_files(&mut self, files: &[PathBuf]) -> u64 {
+        self.flush_pending_change();
         self.service
             .as_ref()
             .map_or(0, |service| service.will_delete_files(files))
@@ -177,6 +184,7 @@ impl LspUi {
     }
 
     pub fn did_rename_files(&mut self, files: &[(PathBuf, PathBuf)]) {
+        self.flush_pending_change();
         if let Some(service) = self.service.as_ref() {
             service.did_rename_files(files);
         }
@@ -196,6 +204,7 @@ impl LspUi {
     }
 
     pub fn did_delete_files(&mut self, files: &[PathBuf]) {
+        self.flush_pending_change();
         if let Some(service) = self.service.as_ref() {
             service.did_delete_files(files);
         }
@@ -215,6 +224,7 @@ impl LspUi {
     }
 
     pub fn detach(&mut self) -> bool {
+        self.pending_change = None;
         self.text.cancel_all(self.service.as_ref());
         self.colors.reset(self.service.as_ref());
         self.close_current();
@@ -242,16 +252,19 @@ impl LspUi {
     }
 
     pub fn definition(&mut self, editor: &Editor) -> Option<String> {
+        self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::Definition, editor, self.service.as_ref())
     }
 
     pub fn references(&mut self, editor: &Editor) -> Option<String> {
+        self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::References, editor, self.service.as_ref())
     }
 
     pub fn hover(&mut self, editor: &Editor) -> Option<String> {
+        self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::Hover, editor, self.service.as_ref())
     }
@@ -270,11 +283,13 @@ impl LspUi {
         position: CursorPosition,
         trigger: CompletionTrigger,
     ) -> Result<u64, String> {
+        self.flush_pending_change();
         self.text
             .completion(self.service.as_ref(), path, position, trigger)
     }
 
     pub fn resolve_completion(&mut self, item_id: u64) -> Result<u64, String> {
+        self.flush_pending_change();
         self.text.resolve_completion(self.service.as_ref(), item_id)
     }
 
@@ -290,6 +305,7 @@ impl LspUi {
         let Some(path) = editor_path(editor) else {
             return Err("E32: No file name".to_string());
         };
+        self.flush_pending_change();
         self.text.signature_help(
             self.service.as_ref(),
             &path,
@@ -339,6 +355,7 @@ impl LspUi {
         let Some(path) = editor_path(editor) else {
             return Err("E32: No file name".to_string());
         };
+        self.flush_pending_change();
         self.text
             .code_actions(self.service.as_ref(), &path, range, diagnostics)
     }
@@ -356,6 +373,7 @@ impl LspUi {
             tab_size: u32::try_from(editor.tabstop()).unwrap_or(u32::MAX),
             insert_spaces: editor.expandtab(),
         };
+        self.flush_pending_change();
         self.text
             .formatting(self.service.as_ref(), &path, range, settings)
     }
@@ -366,6 +384,7 @@ impl LspUi {
         server: &str,
         command: &LspCommand,
     ) -> bool {
+        self.flush_pending_change();
         self.service
             .as_ref()
             .is_some_and(|service| service.execute_command(path, server, command))
@@ -438,6 +457,7 @@ impl LspUi {
     }
 
     pub(super) fn request_workspace_diagnostics(&mut self) -> bool {
+        self.flush_pending_change();
         self.workspace_diagnostics_requested = true;
         self.service
             .as_ref()
@@ -466,6 +486,7 @@ impl LspUi {
     }
 
     pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, String> {
+        self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
             return Err("lsp unavailable".to_string());
         };
@@ -484,6 +505,7 @@ impl LspUi {
     }
 
     pub fn rename(&mut self, request: u64, name: &str) -> bool {
+        self.flush_pending_change();
         self.service
             .as_ref()
             .is_some_and(|service| service.rename(request, name))
@@ -635,6 +657,7 @@ impl LspUi {
     }
 
     pub fn save_path(&mut self, path: &Path) {
+        self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
             return;
         };
@@ -741,6 +764,7 @@ impl LspUi {
         let path = editor_path(editor);
         let revision = editor.buffer_revision();
         if path != self.path {
+            self.flush_pending_change();
             self.text.cancel_all(self.service.as_ref());
             self.close_current();
             self.progress.clear();
@@ -759,9 +783,8 @@ impl LspUi {
         self.revision = Some(revision);
         self.text.cancel_document_requests(self.service.as_ref());
         self.document_colors_changed();
-        if let (Some(service), Some(path)) = (self.service.as_ref(), self.path.as_ref()) {
-            self.diagnostics.advance();
-            service.change(path, editor.document_snapshot());
+        if let Some(path) = self.path.clone() {
+            self.queue_change(path, editor.document_snapshot());
             return true;
         }
         false

@@ -57,44 +57,62 @@ impl ConflictBlock {
     }
 }
 
-pub fn parse<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<ConflictBlock> {
-    let mut blocks = Vec::new();
-    let mut start = None;
-    let mut base = None;
-    let mut separator = None;
-    for (index, line) in lines.into_iter().enumerate() {
+#[derive(Default)]
+struct ParseState {
+    start: Option<usize>,
+    base: Option<usize>,
+    separator: Option<usize>,
+}
+
+impl ParseState {
+    fn observe(&mut self, index: usize, line: &str) -> Option<ConflictBlock> {
         if is_start(line) {
-            start = Some(index);
-            base = None;
-            separator = None;
-            continue;
+            self.start = Some(index);
+            self.base = None;
+            self.separator = None;
+            return None;
         }
-        let Some(block_start) = start else {
-            continue;
-        };
-        if base.is_none() && separator.is_none() && is_base(line) {
-            base = Some(index);
-            continue;
+        self.start?;
+        if self.base.is_none() && self.separator.is_none() && is_base(line) {
+            self.base = Some(index);
+            return None;
         }
-        if separator.is_none() && line == SEPARATOR {
-            separator = Some(index);
-            continue;
+        if self.separator.is_none() && line == SEPARATOR {
+            self.separator = Some(index);
+            return None;
         }
-        if is_end(line) {
-            if let Some(block_separator) = separator {
-                blocks.push(ConflictBlock {
-                    start: block_start,
-                    base,
-                    separator: block_separator,
-                    end: index,
-                });
-            }
-            start = None;
-            base = None;
-            separator = None;
+        if !is_end(line) {
+            return None;
         }
+        let block = self.finish(index);
+        self.start = None;
+        self.base = None;
+        self.separator = None;
+        block
     }
-    blocks
+
+    fn finish(&self, end: usize) -> Option<ConflictBlock> {
+        Some(ConflictBlock {
+            start: self.start?,
+            base: self.base,
+            separator: self.separator?,
+            end,
+        })
+    }
+}
+
+pub fn parse<T>(lines: impl IntoIterator<Item = T>) -> Vec<ConflictBlock>
+where
+    T: AsRef<str>,
+{
+    let mut state = ParseState::default();
+    lines
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            state.observe(index, line.as_ref().trim_end_matches(['\r', '\n']))
+        })
+        .collect()
 }
 
 pub fn has_markers<'a>(lines: impl IntoIterator<Item = &'a str>) -> bool {
@@ -218,6 +236,23 @@ mod tests {
     fn ignores_separators_outside_conflicts() {
         let input = lines(&["Title", "=======", "Body"]);
         assert!(parse(input.iter().map(String::as_str)).is_empty());
+    }
+
+    #[test]
+    fn parses_lines_with_endings() {
+        let input = [
+            "before\n",
+            "<<<<<<< HEAD\n",
+            "ours\n",
+            "=======\n",
+            "theirs\n",
+            ">>>>>>> topic\n",
+        ];
+        let blocks = parse(input);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].start, 1);
+        assert_eq!(blocks[0].separator, 3);
+        assert_eq!(blocks[0].end, 5);
     }
 
     #[test]

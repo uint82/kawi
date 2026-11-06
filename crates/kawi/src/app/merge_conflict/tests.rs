@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_buffer::Buffer;
+use kawi_buffer::{Buffer, TextEdit};
 use kawi_editor::Action;
 use kawi_git::conflict::ConflictChoice;
 use kawi_git::{OperationState, Status};
@@ -38,6 +38,49 @@ fn sync_places_conflict_signs_on_block_starts() {
     let signs = app.view_signs().expect("signs");
     assert_eq!(signs[1], Some(Sign::Conflict));
     assert!(signs.iter().filter(|sign| sign.is_some()).count() == 1);
+}
+
+#[test]
+fn deferred_sync_waits_for_idle() {
+    let mut app = App::new(Buffer::from_string(CONFLICT), Flavor::Vim);
+    app.handle_resize(80, 24).expect("resize");
+    app.signcolumn = SignColumnMode::Auto;
+    app.merge_conflict.clear();
+    assert!(!app.sync_merge_conflicts_deferred());
+    assert!(app.merge_conflict.blocks().is_empty());
+    app.flush_deferred_editor_sync(Instant::now() + Duration::from_millis(200));
+    assert_eq!(app.merge_conflict.blocks().len(), 1);
+}
+
+#[test]
+fn deferred_sync_scans_the_latest_revision() {
+    let mut app = App::new(Buffer::from_string("alpha\nomega\n"), Flavor::Vim);
+    app.handle_resize(80, 24).expect("resize");
+    app.merge_conflict.clear();
+    let first = TextEdit {
+        start: 0,
+        end: 0,
+        text: CONFLICT.to_string(),
+    };
+    let revision = app.editor.buffer_revision();
+    app.editor
+        .apply_text_edits_at_revision(revision, &[first])
+        .expect("first edit");
+    app.sync_merge_conflicts_deferred();
+    let end = app.editor.document_snapshot().len_chars();
+    let second = TextEdit {
+        start: end,
+        end,
+        text: CONFLICT.to_string(),
+    };
+    let revision = app.editor.buffer_revision();
+    app.editor
+        .apply_text_edits_at_revision(revision, &[second])
+        .expect("second edit");
+    app.sync_merge_conflicts_deferred();
+    assert!(app.merge_conflict.blocks().is_empty());
+    app.flush_deferred_editor_sync(Instant::now() + Duration::from_millis(200));
+    assert_eq!(app.merge_conflict.blocks().len(), 2);
 }
 
 #[test]

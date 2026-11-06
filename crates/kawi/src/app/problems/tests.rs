@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::*;
 use crate::test_support::diagnostic_event;
 use kawi_lsp::{
@@ -179,6 +181,44 @@ fn diagnostic_index_follows_shifted_lsp_positions() {
     let shifted = problems.diagnostics_at(path, 1);
     assert_eq!(shifted.len(), 1);
     assert_eq!(shifted[0].message, "shifted");
+}
+
+#[test]
+fn deferred_shift_waits_for_idle() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.replace_lsp_test(
+        "server",
+        path,
+        vec![lsp_diagnostic(0, "shifted", DiagnosticSeverity::Error)],
+    );
+    problems.observe_editor_deferred(Some(path), 1, Rope::from_str("one\ntwo\n"));
+    problems.observe_editor_deferred(Some(path), 2, Rope::from_str("zero\none\ntwo\n"));
+    assert_eq!(problems.diagnostics_at(path, 0).len(), 1);
+    problems.flush_pending_shifts(Instant::now() + SHIFT_DEBOUNCE);
+    assert!(problems.diagnostics_at(path, 0).is_empty());
+    assert_eq!(problems.diagnostics_at(path, 1).len(), 1);
+}
+
+#[test]
+fn replacing_lsp_diagnostics_cancels_a_pending_shift() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.replace_lsp_test(
+        "server",
+        path,
+        vec![lsp_diagnostic(0, "old", DiagnosticSeverity::Error)],
+    );
+    problems.observe_editor_deferred(Some(path), 1, Rope::from_str("one\ntwo\n"));
+    problems.observe_editor_deferred(Some(path), 2, Rope::from_str("zero\none\ntwo\n"));
+    problems.replace_lsp_test(
+        "server",
+        path,
+        vec![lsp_diagnostic(5, "new", DiagnosticSeverity::Error)],
+    );
+    problems.flush_pending_shifts(Instant::now() + SHIFT_DEBOUNCE);
+    assert!(problems.diagnostics_at(path, 0).is_empty());
+    assert_eq!(problems.diagnostics_at(path, 5).len(), 1);
 }
 
 #[test]

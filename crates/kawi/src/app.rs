@@ -25,6 +25,7 @@ mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
 mod directory;
 mod disk;
+mod editor_sync;
 mod explorer;
 mod file_ops;
 mod formatter;
@@ -243,6 +244,7 @@ pub struct App {
     session_restore: Option<restore::PendingSessionRestore>,
     undo: undo::UndoState,
     window_defaults: WindowOptions,
+    editor_sync: editor_sync::EditorSync,
     last_frame: Instant,
     last_input: Instant,
     keyguide_enabled: bool,
@@ -370,6 +372,7 @@ impl App {
             session_restore: None,
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
+            editor_sync: editor_sync::EditorSync::default(),
             last_frame: Instant::now(),
             last_input: Instant::now(),
             keyguide_enabled: true,
@@ -481,11 +484,12 @@ impl App {
         let mut out = stdout();
         let mut renderer = kawi_tui::render::Renderer::new();
         loop {
+            self.flush_deferred_editor_sync(Instant::now());
             self.sync_active_window();
             self.sync_undo_histories();
             self.show_recovery_prompt_if_ready();
-            self.sync_git();
-            self.sync_merge_conflicts();
+            self.sync_git_deferred();
+            self.sync_merge_conflicts_deferred();
             self.poll_git_load();
             self.poll_formatter();
             self.sync_ipc();
@@ -612,6 +616,12 @@ impl App {
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
             let timeout = shortest_timeout(timeout, self.mapping_wait_timeout());
             let timeout = shortest_timeout(timeout, self.plugin_wait_timeout());
+            let shift_timeout = self.problems.shift_wait_timeout(Instant::now());
+            let timeout = shortest_timeout(timeout, shift_timeout);
+            let change_timeout = self.lsp.change_wait_timeout(Instant::now());
+            let timeout = shortest_timeout(timeout, change_timeout);
+            let editor_timeout = self.deferred_editor_sync_timeout(Instant::now());
+            let timeout = shortest_timeout(timeout, editor_timeout);
             match timeout {
                 Some(timeout) => {
                     self.events.wait_timeout(timeout)?;
@@ -620,6 +630,15 @@ impl App {
                         return Ok(Redraw::Redraw);
                     }
                     if diagnostic_timeout.is_some_and(|diagnostic| diagnostic <= timeout) {
+                        return Ok(Redraw::Redraw);
+                    }
+                    if shift_timeout.is_some_and(|shift| shift <= timeout) {
+                        return Ok(Redraw::Redraw);
+                    }
+                    if change_timeout.is_some_and(|change| change <= timeout) {
+                        return Ok(Redraw::Redraw);
+                    }
+                    if editor_timeout.is_some_and(|editor| editor <= timeout) {
                         return Ok(Redraw::Redraw);
                     }
                 }
@@ -801,8 +820,9 @@ impl App {
 
     fn sync_lsp(&mut self) {
         self.lsp.set_color_preview(self.color_preview);
+        self.problems.flush_pending_shifts(Instant::now());
         let path = self.problem_path();
-        self.problems.observe_editor(
+        self.problems.observe_editor_deferred(
             path.as_deref(),
             self.editor.buffer_revision(),
             self.editor.document_snapshot(),
@@ -2012,6 +2032,7 @@ impl App {
     }
 
     fn handle_git_preview_hunk(&mut self) -> Result<bool> {
+        self.sync_git();
         let row = self.editor.row();
         let preview = self.git.as_ref().map_or_else(
             || Err(self.git_unavailable_message()),
@@ -2030,6 +2051,7 @@ impl App {
     }
 
     fn handle_git_diff(&mut self) -> Result<bool> {
+        self.sync_git();
         let lines = self
             .git
             .as_ref()

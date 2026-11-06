@@ -1,44 +1,68 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use kawi_git::{FileLoadEvent, FileLoadService};
 
+use super::editor_sync::EDITOR_SYNC_DEBOUNCE;
 use super::git::GitSession;
 use super::App;
 
 impl App {
     pub(super) fn sync_git(&mut self) {
+        self.sync_git_with(Duration::ZERO);
+    }
+
+    pub(super) fn sync_git_deferred(&mut self) {
+        self.sync_git_with(EDITOR_SYNC_DEBOUNCE);
+    }
+
+    fn sync_git_with(&mut self, delay: Duration) {
         let path = self
             .editor
             .has_file()
             .then(|| PathBuf::from(self.editor.filename()));
         self.sync_git_status_path(path.as_deref());
+        if self.prepare_git_path(path) {
+            return;
+        }
+        self.sync_git_session(delay);
+    }
+
+    fn prepare_git_path(&mut self, path: Option<PathBuf>) -> bool {
         if self.editor.current_buffer_is_readonly() {
             self.clear_git();
-            return;
+            return true;
         }
-        if path.as_deref() != self.git_path.as_deref() {
-            self.clear_git();
-            self.git_path = path.clone();
-            if let Some(path) = path {
-                self.start_git_load(path);
-            }
-            return;
+        if path.as_deref() == self.git_path.as_deref() {
+            return false;
         }
+        self.clear_git();
+        self.git_path = path.clone();
+        if let Some(path) = path {
+            self.start_git_load(path);
+        }
+        true
+    }
+
+    fn sync_git_session(&mut self, delay: Duration) {
         let revision = self.editor.buffer_revision();
         let Some(session) = self.git.as_mut() else {
             return;
         };
         let buffer_no_final_newline = !self.editor.text_has_final_newline();
-        let changed = if session.revision() != revision
-            || session.buffer_no_final_newline() != buffer_no_final_newline
-        {
-            session.update(&self.editor.text_lines(), revision, buffer_no_final_newline)
-        } else {
-            false
-        };
-        if changed {
-            self.update_signcolumn_width();
+        let changed = session.revision() != revision
+            || session.buffer_no_final_newline() != buffer_no_final_newline;
+        if !changed {
+            return;
         }
+        if !delay.is_zero() {
+            if self.git_signs {
+                self.schedule_deferred_editor_sync(delay);
+            }
+            return;
+        }
+        session.update(&self.editor.text_lines(), revision, buffer_no_final_newline);
+        self.update_signcolumn_width();
     }
 
     pub(super) fn reload_git(&mut self) {
