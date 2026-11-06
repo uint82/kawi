@@ -59,6 +59,8 @@ fn main() -> Result<()> {
     let paths = StatePaths::resolve();
     if let Some(paths) = paths.as_ref() {
         kawi_syntax::set_user_query_dir(paths.queries.clone());
+        #[cfg(feature = "wasm")]
+        kawi_plugin::set_wasm_cache_dir(paths.cache.join("wasm"));
     }
     let (session, warning) = load_startup_session(restore_workspace, paths.as_ref(), &cwd);
     let directory = path
@@ -261,6 +263,8 @@ mod tests {
         let paths = StatePaths {
             config: dir.join("config.toml"),
             config_log: dir.join("config.log"),
+            #[cfg(feature = "wasm")]
+            cache: dir.join("cache"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
             installed_plugins: dir.join("installed-plugins"),

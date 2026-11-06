@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -12,6 +12,7 @@ use wasmtime::{Config, Engine};
 use crate::capability::Capability;
 use crate::error::PluginError;
 
+use super::cache;
 use super::policy::{requested_import_capabilities, unauthorized_imports};
 
 const MAX_STACK_BYTES: usize = 512 * 1024;
@@ -23,6 +24,7 @@ static COMPILED_COMPONENTS: OnceLock<Mutex<ComponentCache>> = OnceLock::new();
 
 pub struct WasmRuntime {
     engine: Engine,
+    cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -30,14 +32,20 @@ pub struct ComponentInspection {
     pub imports: Vec<String>,
     pub requested: Vec<Capability>,
     pub hash: String,
+    pub cache_warning: Option<String>,
 }
 
 impl WasmRuntime {
     pub fn new() -> Result<Self, PluginError> {
+        Self::with_cache_dir(cache::configured_dir().map(Path::to_path_buf))
+    }
+
+    pub(crate) fn with_cache_dir(cache_dir: Option<PathBuf>) -> Result<Self, PluginError> {
         let engine = ENGINE.get_or_init(build_engine);
         match engine {
             Ok(engine) => Ok(Self {
                 engine: engine.clone(),
+                cache_dir,
             }),
             Err(message) => Err(PluginError::Initialize(message.clone())),
         }
@@ -51,7 +59,7 @@ impl WasmRuntime {
         &self,
         bytes: &[u8],
         expected_hash: Option<&str>,
-    ) -> Result<(Arc<Component>, String), PluginError> {
+    ) -> Result<(Arc<Component>, String, Option<String>), PluginError> {
         let hash = digest(bytes);
         if expected_hash.is_some_and(|expected| expected != hash) {
             return Err(PluginError::Initialize(format!(
@@ -60,14 +68,31 @@ impl WasmRuntime {
             )));
         }
         if let Some(component) = cached_component(&hash) {
-            return Ok((component, hash));
+            return Ok((component, hash, None));
         }
-        let component = Arc::new(
-            Component::from_binary(&self.engine, bytes)
-                .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?,
-        );
-        let component = store_component(hash.clone(), component);
-        Ok((component, hash))
+        let (component, warning) = self.load_or_compile(&hash, bytes)?;
+        let component = store_component(hash.clone(), Arc::new(component));
+        Ok((component, hash, warning))
+    }
+
+    fn load_or_compile(
+        &self,
+        hash: &str,
+        bytes: &[u8],
+    ) -> Result<(Component, Option<String>), PluginError> {
+        if let Some(dir) = self.cache_dir.as_deref() {
+            if let Some(component) = cache::load(&self.engine, dir, hash) {
+                return Ok((component, None));
+            }
+        }
+        let component = Component::from_binary(&self.engine, bytes)
+            .map_err(|error| PluginError::Initialize(format!("invalid component: {error}")))?;
+        let warning = self
+            .cache_dir
+            .as_deref()
+            .and_then(|dir| cache::store(dir, hash, &component).err())
+            .map(|error| format!("wasm cache: {error}"));
+        Ok((component, warning))
     }
 
     pub fn inspect(
@@ -97,8 +122,8 @@ impl WasmRuntime {
         expected_hash: Option<&str>,
         requested: &[Capability],
     ) -> Result<(Arc<Component>, ComponentInspection), PluginError> {
-        let (component, hash) = self.compile(bytes, expected_hash)?;
-        let inspection = self.check_imports(&component, hash, requested)?;
+        let (component, hash, cache_warning) = self.compile(bytes, expected_hash)?;
+        let inspection = self.check_imports(&component, hash, requested, cache_warning)?;
         Ok((component, inspection))
     }
 
@@ -107,6 +132,7 @@ impl WasmRuntime {
         component: &Component,
         hash: String,
         requested: &[Capability],
+        cache_warning: Option<String>,
     ) -> Result<ComponentInspection, PluginError> {
         let imports = component
             .component_type()
@@ -131,6 +157,7 @@ impl WasmRuntime {
             imports,
             requested: used,
             hash,
+            cache_warning,
         })
     }
 }

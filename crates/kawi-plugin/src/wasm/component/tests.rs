@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
+use wasmtime::component::Component;
+
 use super::*;
+use crate::wasm::cache;
 
 #[test]
 fn hashes_component_bytes() {
@@ -18,8 +21,8 @@ fn runtime_configures_the_engine() {
 fn reuses_cached_components_by_hash() {
     let runtime = WasmRuntime::new().unwrap();
     let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
-    let (first, hash) = runtime.compile(&bytes, None).unwrap();
-    let (second, second_hash) = runtime.compile(&bytes, None).unwrap();
+    let (first, hash, _) = runtime.compile(&bytes, None).unwrap();
+    let (second, second_hash, _) = runtime.compile(&bytes, None).unwrap();
     assert_eq!(hash, second_hash);
     assert!(std::sync::Arc::ptr_eq(&first, &second));
 }
@@ -28,7 +31,7 @@ fn reuses_cached_components_by_hash() {
 fn evicts_the_oldest_cached_component() {
     let runtime = WasmRuntime::new().unwrap();
     let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
-    let (component, _) = runtime.compile(&bytes, None).unwrap();
+    let (component, _, _) = runtime.compile(&bytes, None).unwrap();
     let mut cache = ComponentCache::new(1);
     cache.insert("first".to_string(), std::sync::Arc::clone(&component));
     cache.insert("second".to_string(), std::sync::Arc::clone(&component));
@@ -166,7 +169,7 @@ fn instantiates_and_calls_a_component() {
     let runtime = WasmRuntime::new().unwrap();
     let path = fixture("echo.wasm");
     let bytes = std::fs::read(&path).unwrap();
-    let (component, _) = runtime.compile(&bytes, None).unwrap();
+    let (component, _, _) = runtime.compile(&bytes, None).unwrap();
     let mut linker = Linker::new(&runtime.engine);
     super::super::bindings::kawi::plugin::types::add_to_linker::<
         State,
@@ -198,6 +201,48 @@ fn instantiates_and_calls_a_component() {
         super::super::bindings::kawi::plugin::types::Argument::Text(value)
             if value == "pong"
     ));
+}
+
+#[test]
+fn loads_components_from_the_disk_cache() {
+    let dir = temp_dir("disk_hit");
+    let runtime = WasmRuntime::with_cache_dir(Some(dir.clone())).unwrap();
+    let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
+    let component = Component::from_binary(runtime.engine(), &bytes).unwrap();
+    cache::store(&dir, "sha256:disk", &component).unwrap();
+    let (loaded, warning) = runtime
+        .load_or_compile("sha256:disk", b"not a component")
+        .unwrap();
+    assert!(warning.is_none());
+    assert!(loaded
+        .component_type()
+        .imports(runtime.engine())
+        .next()
+        .is_some());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn reports_cache_store_failures() {
+    let dir = temp_dir("disk_failure");
+    let path = dir.join("not_a_directory");
+    std::fs::write(&path, b"file").unwrap();
+    let runtime = WasmRuntime::with_cache_dir(Some(path)).unwrap();
+    let bytes = std::fs::read(fixture("echo.wasm")).unwrap();
+    let (_, warning) = runtime.load_or_compile("sha256:failure", &bytes).unwrap();
+    assert!(warning.is_some_and(|warning| warning.contains("wasm cache")));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "kawi_component_cache_{}_{}",
+        std::process::id(),
+        name
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 fn fixture(name: &str) -> PathBuf {
