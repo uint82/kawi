@@ -801,8 +801,9 @@ impl App {
 
     fn sync_lsp(&mut self) {
         self.lsp.set_color_preview(self.color_preview);
+        self.problems.flush_pending_shifts(Instant::now());
         let path = self.problem_path();
-        self.problems.observe_editor(
+        self.problems.observe_editor_deferred(
             path.as_deref(),
             self.editor.buffer_revision(),
             self.editor.document_snapshot(),

@@ -1,4 +1,4 @@
-use kawi_buffer::{diff_ropes, RopeChange};
+use kawi_buffer::RopeChange;
 use kawi_lsp::{
     Diagnostic, DiagnosticOrigin, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag,
     DiagnosticsEvent,
@@ -8,11 +8,16 @@ use ropey::Rope;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use super::diagnostic_index::{DiagnosticCounts, DiagnosticIndex, DiagnosticNavigation};
 use super::file_ops::{path_under, rewrite_path};
+use pending::PendingShift;
+
+mod pending;
 
 const MAX_PROBLEMS: usize = 10_000;
+const SHIFT_DEBOUNCE: Duration = Duration::from_millis(120);
 const TASK_PREFIX: &str = "task:";
 const LSP_PREFIX: &str = "lsp:";
 const PLUGIN_PREFIX: &str = "plugin:";
@@ -306,6 +311,7 @@ pub(super) struct Problems {
     filter: ProblemFilter,
     current: Option<ProblemKey>,
     editor: Option<EditorText>,
+    pending_shifts: BTreeMap<PathBuf, PendingShift>,
     stale_sources: BTreeSet<String>,
     source_ranks: BTreeMap<String, usize>,
     next_source_rank: usize,
@@ -413,6 +419,7 @@ impl Problems {
     }
 
     pub(super) fn replace_lsp(&mut self, event: DiagnosticsEvent) {
+        self.pending_shifts.remove(&event.path);
         let key = GroupKey {
             source: lsp_source(&event.server),
             path: event.path,
@@ -515,40 +522,18 @@ impl Problems {
         Some((index, total, problem))
     }
 
+    #[cfg(test)]
     pub(super) fn observe_editor(&mut self, path: Option<&Path>, revision: u64, rope: Rope) {
-        let Some(path) = path else {
-            self.editor = None;
-            return;
-        };
-        if self
-            .editor
-            .as_ref()
-            .is_some_and(|editor| editor.path == path && editor.revision == revision)
-        {
-            return;
-        }
-        let previous = self.editor.replace(EditorText {
-            path: path.to_path_buf(),
-            revision,
-            rope,
-        });
-        let Some(previous) = previous else {
-            return;
-        };
-        let Some(current) = self.editor.as_ref() else {
-            return;
-        };
-        if previous.path != current.path || previous.revision == current.revision {
-            return;
-        }
-        let Some(change) = diff_ropes(&previous.rope, &current.rope) else {
-            return;
-        };
-        let path = current.path.clone();
-        let old = previous.rope;
-        let new = current.rope.clone();
-        self.shift_lsp(&path, &old, &new, change);
-        self.invalidate_index();
+        self.observe_editor_after(path, revision, rope, Duration::ZERO);
+    }
+
+    pub(super) fn observe_editor_deferred(
+        &mut self,
+        path: Option<&Path>,
+        revision: u64,
+        rope: Rope,
+    ) {
+        self.observe_editor_after(path, revision, rope, SHIFT_DEBOUNCE);
     }
 
     fn shift_lsp(&mut self, path: &Path, old: &Rope, new: &Rope, change: RopeChange) {
