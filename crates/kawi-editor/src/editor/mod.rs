@@ -1022,8 +1022,7 @@ impl Editor {
     }
 
     pub fn text_lines(&self) -> Vec<String> {
-        self.buffer
-            .window_lines(0, self.buffer.line_count().saturating_add(1))
+        self.buffer.text_lines()
     }
 
     pub fn document_snapshot(&self) -> Rope {

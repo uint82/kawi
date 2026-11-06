@@ -281,6 +281,17 @@ impl Buffer {
             .collect()
     }
 
+    pub fn text_lines(&self) -> Vec<String> {
+        self.rope
+            .lines()
+            .take(self.len())
+            .map(|line| match line.as_str() {
+                Some(text) => strip_ending(text).into_owned(),
+                None => strip_owned(line.to_string()),
+            })
+            .collect()
+    }
+
     pub fn line_slices(&self) -> ropey::iter::Lines<'_> {
         self.rope.lines()
     }
@@ -1377,6 +1388,19 @@ mod tests {
         assert_eq!(b.max_cursor_row(), 0);
         assert_eq!(b.line(1), None);
         assert_eq!(b.window_lines(0, 3), vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn text_lines_returns_logical_lines_without_endings() {
+        assert_eq!(
+            Buffer::from_string("a\nb\n").text_lines(),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            Buffer::from_string("a\r\nb").text_lines(),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(Buffer::from_string("").text_lines(), vec![String::new()]);
     }
 
     #[test]
