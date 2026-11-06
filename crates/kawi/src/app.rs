@@ -76,6 +76,7 @@ mod signature;
 mod signcolumn;
 mod status;
 mod symbols;
+mod syntax_prewarm;
 mod task;
 mod terminal_ui;
 mod text_input;

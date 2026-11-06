@@ -234,6 +234,7 @@ fn load_buffer(path: Option<String>) -> Result<Buffer> {
 }
 
 fn run_app(app: &mut App) -> Result<()> {
+    app.prewarm_syntax();
     let _guard = terminal::init()?;
     app.run()
 }
