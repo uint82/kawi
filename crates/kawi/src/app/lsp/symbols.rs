@@ -92,6 +92,7 @@ impl LspSymbols {
 
 impl LspUi {
     pub fn document_symbols(&mut self, editor: &Editor, version: u64) -> Result<u64, String> {
+        self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
             return Err("lsp unavailable".to_string());
         };
@@ -107,6 +108,7 @@ impl LspUi {
     }
 
     pub fn workspace_symbols(&mut self, query: &str) -> Result<u64, String> {
+        self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
             return Err("lsp unavailable".to_string());
         };
@@ -119,6 +121,7 @@ impl LspUi {
     }
 
     pub fn resolve_workspace_symbol(&mut self, symbol_id: u64) -> Result<u64, String> {
+        self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
             return Err("lsp unavailable".to_string());
         };
