@@ -1,4 +1,5 @@
 use super::request::UiMessage;
+use super::shutdown::ShutdownMode;
 use super::*;
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
@@ -48,7 +49,11 @@ impl Manager {
         loop {
             match self.next_input() {
                 InputWait::Input(ServiceInput::Command(Command::Shutdown)) => {
-                    self.shutdown_all();
+                    self.shutdown_all(ShutdownMode::Graceful);
+                    return;
+                }
+                InputWait::Input(ServiceInput::Command(Command::Terminate)) => {
+                    self.shutdown_all(ShutdownMode::Immediate);
                     return;
                 }
                 InputWait::Input(ServiceInput::Command(command)) => {
@@ -61,7 +66,7 @@ impl Manager {
                 }
                 InputWait::Timeout => self.expire_deadlines(),
                 InputWait::Closed => {
-                    self.shutdown_all();
+                    self.shutdown_all(ShutdownMode::Immediate);
                     return;
                 }
             }
@@ -216,7 +221,7 @@ impl Manager {
                 path,
                 server,
             } => self.handle_lifecycle(action, path.as_deref(), server.as_deref()),
-            Command::Shutdown => {}
+            Command::Shutdown | Command::Terminate => {}
         }
     }
 
