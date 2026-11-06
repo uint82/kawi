@@ -14,8 +14,10 @@ use crate::recovery::{
 use crate::session::SessionView;
 pub(super) use prompt::RecoveryPrompt;
 use prompt::{recovery_choice, RecoveryCandidate, RecoveryChoice};
+pub(super) use startup::PendingRecoveryStart;
 
 mod prompt;
+mod startup;
 #[cfg(test)]
 mod tests;
 

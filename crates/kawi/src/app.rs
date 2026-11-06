@@ -238,6 +238,7 @@ pub struct App {
     recovery: Option<crate::recovery::RecoveryManager>,
     recovery_prompt: Option<recovery::RecoveryPrompt>,
     apply_recovery: Option<directory::PendingRecovery>,
+    pending_startup_recovery: Option<recovery::PendingRecoveryStart>,
     undo: undo::UndoState,
     window_defaults: WindowOptions,
     last_frame: Instant,
@@ -362,6 +363,7 @@ impl App {
             recovery: None,
             recovery_prompt: None,
             apply_recovery: None,
+            pending_startup_recovery: None,
             undo: undo::UndoState::default(),
             window_defaults: WindowOptions::default(),
             last_frame: Instant::now(),
@@ -511,6 +513,9 @@ impl App {
             self.picker_preview_tick();
             self.draw_frame(&mut out, &mut renderer)?;
             self.last_frame = Instant::now();
+            if self.start_pending_recovery() {
+                continue;
+            }
             if matches!(self.wait_for_redraw()?, Redraw::Quit) {
                 return Ok(());
             }
