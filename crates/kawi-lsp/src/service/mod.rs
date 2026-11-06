@@ -714,6 +714,10 @@ impl LspService {
         let _ = self.send(Command::Shutdown);
     }
 
+    pub fn terminate(&self) {
+        let _ = self.send(Command::Terminate);
+    }
+
     pub fn try_recv(&self) -> Option<LspEvent> {
         self.events.try_recv().ok()
     }
@@ -731,7 +735,7 @@ impl LspService {
 
 impl Drop for LspService {
     fn drop(&mut self) {
-        self.shutdown();
+        self.terminate();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -861,6 +865,7 @@ pub(crate) enum Command {
         server: Option<String>,
     },
     Shutdown,
+    Terminate,
 }
 
 pub(crate) enum ServiceInput {

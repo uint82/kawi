@@ -103,9 +103,9 @@ impl LspUi {
         warnings
     }
 
-    pub fn shutdown(&self) {
+    pub fn terminate(&self) {
         if let Some(service) = self.service.as_ref() {
-            service.shutdown();
+            service.terminate();
         }
     }
 
