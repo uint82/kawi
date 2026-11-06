@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use kawi_lsp::{LspEvent, LspService, ServerState};
 use std::fs;
 use std::path::PathBuf;
