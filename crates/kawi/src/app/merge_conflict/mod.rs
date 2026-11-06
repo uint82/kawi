@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -7,8 +8,11 @@ use kawi_editor::Action;
 use kawi_git::conflict::{self, ConflictBlock, ConflictChoice};
 use kawi_git::OperationState;
 
+use super::editor_sync::EDITOR_SYNC_DEBOUNCE;
 use super::git_commit::TaskKind;
 use super::App;
+
+mod sync;
 
 const CONTINUE_NAME: &str = "git continue";
 const ABORT_NAME: &str = "git abort";
@@ -40,16 +44,6 @@ impl MergeConflictState {
         self.synced && self.buffer_id.as_deref() == buffer_id && self.revision == revision
     }
 
-    fn sync(&mut self, buffer_id: Option<String>, revision: u64, lines: &[String]) -> bool {
-        let blocks = conflict::parse(lines.iter().map(String::as_str));
-        let changed = blocks != self.blocks;
-        self.blocks = blocks;
-        self.buffer_id = buffer_id;
-        self.revision = revision;
-        self.synced = true;
-        changed
-    }
-
     fn clear(&mut self) -> bool {
         let changed = !self.blocks.is_empty();
         self.blocks.clear();
@@ -60,6 +54,14 @@ impl MergeConflictState {
 
 impl App {
     pub(super) fn sync_merge_conflicts(&mut self) -> bool {
+        self.sync_merge_conflicts_with(Duration::ZERO)
+    }
+
+    pub(super) fn sync_merge_conflicts_deferred(&mut self) -> bool {
+        self.sync_merge_conflicts_with(EDITOR_SYNC_DEBOUNCE)
+    }
+
+    fn sync_merge_conflicts_with(&mut self, delay: Duration) -> bool {
         if self.editor.current_buffer_is_readonly() {
             let changed = self.merge_conflict.clear();
             if changed {
@@ -75,9 +77,15 @@ impl App {
         if current {
             return false;
         }
+        if !delay.is_zero() {
+            self.schedule_deferred_editor_sync(delay);
+            return false;
+        }
         let buffer_id = self.editor.buffer_id(number).map(str::to_string);
-        let lines = self.editor.text_lines();
-        let changed = self.merge_conflict.sync(buffer_id, revision, &lines);
+        let snapshot = self.editor.document_snapshot();
+        let changed = self
+            .merge_conflict
+            .sync_rope(buffer_id, revision, &snapshot);
         if changed {
             self.update_signcolumn_width();
         }
