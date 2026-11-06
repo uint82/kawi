@@ -101,7 +101,7 @@ fn validate_wasm(manifest: &mut PluginManifest, dir: &Path) -> Artifact {
             Some(computed),
         );
     }
-    if let Err(message) = validate_component_bytes(&bytes, &computed) {
+    if let Err(message) = validate_component_bytes(&bytes) {
         return Artifact::disabled(message, Some(computed));
     }
     Artifact::ready(Some(computed))
@@ -155,21 +155,19 @@ fn read_component(path: &Path) -> Result<(Vec<u8>, String), String> {
     Ok((bytes, format!("sha256:{digest:x}")))
 }
 
-fn validate_component_bytes(bytes: &[u8], hash: &str) -> Result<(), String> {
+fn validate_component_bytes(bytes: &[u8]) -> Result<(), String> {
     if !bytes.starts_with(&COMPONENT_HEADER) {
         return Err("not a WebAssembly component".to_string());
     }
     #[cfg(feature = "wasm")]
     {
-        let runtime = crate::wasm::WasmRuntime::new()
-            .map_err(|error| format!("invalid component: {error}"))?;
-        runtime
-            .validate_bytes(bytes, Some(hash))
+        wasmtime::wasmparser::Validator::new()
+            .validate_all(bytes)
+            .map(|_| ())
             .map_err(|error| format!("invalid component: {error}"))
     }
     #[cfg(not(feature = "wasm"))]
     {
-        let _ = (bytes, hash);
         Ok(())
     }
 }
