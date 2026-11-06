@@ -76,7 +76,7 @@ fn main() -> Result<()> {
     }
     apply_startup_session(&mut app, session.as_ref(), warning);
     app.load_file_views();
-    apply_startup_recovery(&mut app, paths.as_ref(), &cwd, !restore_workspace);
+    schedule_startup_recovery(&mut app, paths.as_ref(), &cwd, !restore_workspace);
     let outcome = run_app(&mut app);
     if let Err(error) = app.save_file_views() {
         eprintln!("kawi: {error}");
@@ -176,7 +176,7 @@ fn apply_startup_session(
     }
 }
 
-fn apply_startup_recovery(
+fn schedule_startup_recovery(
     app: &mut App,
     paths: Option<&StatePaths>,
     cwd: &Path,
@@ -185,9 +185,7 @@ fn apply_startup_recovery(
     let Some(paths) = paths else {
         return;
     };
-    if let Some(warning) = app.start_recovery(&paths.recovery, cwd, restrict_to_open) {
-        app.show_startup_warning(warning);
-    }
+    app.schedule_startup_recovery(paths.recovery.clone(), cwd.to_path_buf(), restrict_to_open);
 }
 
 fn save_workspace_session(app: &mut App, enabled: bool, paths: Option<&StatePaths>, cwd: &Path) {
@@ -234,6 +232,7 @@ fn load_buffer(path: Option<String>) -> Result<Buffer> {
 }
 
 fn run_app(app: &mut App) -> Result<()> {
+    app.prewarm_syntax();
     let _guard = terminal::init()?;
     app.run()
 }
