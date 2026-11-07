@@ -20,7 +20,7 @@ Terminal panels keep their output while you continue editing. Use the task comma
 
 ## Focus
 
-`Ctrl-g` toggles focus between the editor and the terminal in both directions. It opens the terminal when it is closed. The panel stays open when focus returns to the editor.
+`Ctrl-g` toggles focus between the editor and the terminal in both directions. It does nothing when the terminal is closed. The panel stays open when focus returns to the editor.
 
 Change the key at runtime or in the editor configuration:
 

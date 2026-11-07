@@ -76,13 +76,11 @@ fn escape_chord_still_enters_terminal_normal_mode() {
 }
 
 #[test]
-#[cfg(unix)]
-fn focus_key_opens_closed_terminal() {
+fn focus_key_does_not_open_closed_terminal() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
     app.handle_key(key(KeyCode::Char('g'), KeyModifiers::CONTROL))
         .unwrap();
-    assert!(app.terminal.is_open());
-    assert!(app.terminal_focus);
-    app.close_terminal();
+    assert!(!app.terminal.is_open());
+    assert!(!app.terminal_focus);
 }
