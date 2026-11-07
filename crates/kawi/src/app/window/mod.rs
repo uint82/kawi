@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_editor::{BracketMatch, Mode, ViewState, WindowOptions};
+use kawi_editor::{BracketMatch, ViewState, WindowOptions};
 use kawi_tui::frame::Rect;
 
 mod app;
@@ -9,11 +9,11 @@ mod layout;
 mod metadata;
 mod snapshot;
 
+#[cfg(test)]
+use layout::pane_rect;
 pub use layout::WindowLayout;
-use layout::{
-    adjust_active, direction_score, equalize_node, first_leaf, pane_rect, remove_leaf, split_leaf,
-    Node,
-};
+use layout::{adjust_active, equalize_node, first_leaf, remove_leaf, split_leaf, Node};
+pub(crate) use layout::{direction_score, score_precedes};
 
 pub type WindowId = u64;
 
@@ -174,10 +174,11 @@ impl Windows {
         WindowLayout::compute(self.root.as_ref(), area)
     }
 
+    #[cfg(test)]
     pub fn focus_direction(&self, direction: FocusDirection, area: Rect) -> Option<WindowId> {
         let layout = self.layout(area);
         let current = pane_rect(&layout.panes, self.active)?;
-        let mut best: Option<(WindowId, usize, usize, usize)> = None;
+        let mut best: Option<(WindowId, (usize, usize, usize))> = None;
         for (id, rect) in &layout.panes {
             if *id == self.active {
                 continue;
@@ -185,19 +186,12 @@ impl Windows {
             let Some(score) = direction_score(direction, current, *rect) else {
                 continue;
             };
-            let replace = match best {
-                None => true,
-                Some((_, gap, overlap, center)) => {
-                    score.0 < gap
-                        || (score.0 == gap
-                            && (score.1 > overlap || (score.1 == overlap && score.2 < center)))
-                }
-            };
+            let replace = best.is_none_or(|(_, best_score)| score_precedes(score, best_score));
             if replace {
-                best = Some((*id, score.0, score.1, score.2));
+                best = Some((*id, score));
             }
         }
-        best.map(|(id, _, _, _)| id)
+        best.map(|(id, _)| id)
     }
 
     pub fn focus_next(&self, area: Rect, reverse: bool) -> Option<WindowId> {
@@ -283,10 +277,8 @@ impl Windows {
     }
 }
 
-pub(super) fn is_window_prefix(key: KeyEvent, mode: Mode) -> bool {
-    mode.is_normal_state()
-        && key.modifiers == KeyModifiers::CONTROL
-        && matches!(key.code, KeyCode::Char('w' | 'W'))
+pub(super) fn is_window_prefix_key(key: KeyEvent) -> bool {
+    key.modifiers == KeyModifiers::CONTROL && matches!(key.code, KeyCode::Char('w' | 'W'))
 }
 
 #[cfg(test)]

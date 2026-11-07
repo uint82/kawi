@@ -305,6 +305,19 @@ pub(super) const COMMANDS: &[Builtin] = &[
         "toggle the terminal",
     ),
     action(
+        "focus.left",
+        Action::FocusLeft,
+        "focus the pane to the left",
+    ),
+    action(
+        "focus.right",
+        Action::FocusRight,
+        "focus the pane to the right",
+    ),
+    action("focus.up", Action::FocusUp, "focus the pane above"),
+    action("focus.down", Action::FocusDown, "focus the pane below"),
+    action("focus.editor", Action::FocusEditor, "focus the editor"),
+    action(
         "explorer.toggle",
         Action::ToggleExplorer,
         "toggle the explorer",

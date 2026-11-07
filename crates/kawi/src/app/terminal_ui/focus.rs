@@ -8,8 +8,7 @@ impl App {
             return;
         }
         self.cancel_pending_input();
-        self.unfocus_editor_panels();
-        self.plugin_panel.unfocus();
+        self.clear_focus();
         self.terminal_focus = true;
         if self.terminal.is_running() {
             self.terminal.focus_input();

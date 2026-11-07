@@ -369,6 +369,11 @@ pub enum Action {
     ToggleTerminal,
     ToggleExplorer,
     FocusExplorer,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
+    FocusEditor,
     RevealInExplorer,
     OpenParentDirectory,
     Noop,
@@ -458,6 +463,11 @@ impl Action {
                 | Self::ToggleTerminal
                 | Self::ToggleExplorer
                 | Self::FocusExplorer
+                | Self::FocusLeft
+                | Self::FocusRight
+                | Self::FocusUp
+                | Self::FocusDown
+                | Self::FocusEditor
                 | Self::RevealInExplorer
                 | Self::OpenParentDirectory
                 | Self::CommentLines

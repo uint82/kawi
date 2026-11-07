@@ -69,12 +69,12 @@ impl App {
     }
 
     pub(crate) fn focus_plugin_panel(&mut self) -> bool {
-        if self.plugin_panel_rect().is_none() || !self.plugin_panel.focus_active() {
+        if self.plugin_panel_rect().is_none() || self.plugin_panel.active().is_none() {
             return false;
         }
-        self.terminal_focus = false;
-        self.unfocus_editor_panels();
-        true
+        self.cancel_pending_input();
+        self.clear_focus();
+        self.plugin_panel.focus_active()
     }
 
     pub(crate) fn unfocus_plugin_panel(&mut self) -> bool {

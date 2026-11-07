@@ -26,6 +26,7 @@ impl App {
             return;
         }
         self.cancel_pending_input();
+        self.clear_focus();
         self.explorer.focus();
     }
 
@@ -58,6 +59,8 @@ impl App {
             self.show_message("Explorer needs more space".to_string());
             return;
         }
+        self.clear_focus();
+        self.explorer.focus();
         self.reveal_editor_file();
     }
 
@@ -278,5 +281,4 @@ impl App {
 
 fn is_explorer_return_key(key: KeyEvent) -> bool {
     key.code == KeyCode::Esc
-        || (key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c'))
 }

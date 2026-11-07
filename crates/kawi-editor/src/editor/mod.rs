@@ -559,6 +559,11 @@ impl Editor {
             | Action::ToggleTerminal
             | Action::ToggleExplorer
             | Action::FocusExplorer
+            | Action::FocusLeft
+            | Action::FocusRight
+            | Action::FocusUp
+            | Action::FocusDown
+            | Action::FocusEditor
             | Action::RevealInExplorer
             | Action::OpenParentDirectory => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),

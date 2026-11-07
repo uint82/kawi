@@ -195,13 +195,14 @@ pub(super) fn normalized_ratio(ratio: u16) -> u16 {
     ratio.clamp(MIN_RATIO, MAX_RATIO)
 }
 
+#[cfg(test)]
 pub(super) fn pane_rect(panes: &[(WindowId, Rect)], id: WindowId) -> Option<Rect> {
     panes
         .iter()
         .find_map(|(candidate, rect)| (*candidate == id).then_some(*rect))
 }
 
-pub(super) fn direction_score(
+pub(crate) fn direction_score(
     direction: FocusDirection,
     current: Rect,
     candidate: Rect,
@@ -247,6 +248,15 @@ pub(super) fn direction_score(
     let dx = current.x.abs_diff(candidate.x);
     let dy = current.y.abs_diff(candidate.y);
     Some((gap, overlap, dx.saturating_add(dy)))
+}
+
+pub(crate) fn score_precedes(
+    candidate: (usize, usize, usize),
+    current: (usize, usize, usize),
+) -> bool {
+    candidate.0 < current.0
+        || (candidate.0 == current.0
+            && (candidate.1 > current.1 || (candidate.1 == current.1 && candidate.2 < current.2)))
 }
 
 fn vertical_overlap(first: Rect, second: Rect) -> usize {
