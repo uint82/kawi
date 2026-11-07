@@ -96,6 +96,12 @@ impl Server {
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
+
+    pub(crate) fn detach(&mut self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+        self.worker.take();
+        let _ = fs::remove_file(&self.path);
+    }
 }
 
 impl Drop for Server {

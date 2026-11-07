@@ -59,6 +59,18 @@ fn instances_have_distinct_sockets_and_private_permissions() {
 }
 
 #[test]
+fn detach_removes_the_socket() {
+    let root = temp_root("detach");
+    let (wake, _wake_rx) = channel();
+    let mut server = Server::start(&root, wake).unwrap();
+    let path = server.path().to_path_buf();
+    assert!(path.exists());
+    server.detach();
+    assert!(!path.exists());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn stale_socket_fails_fast() {
     let root = temp_root("stale");
     let path = root.join("stale.sock");

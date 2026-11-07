@@ -24,6 +24,10 @@ impl ExplorerWatch {
     pub(super) fn paths(&self) -> Vec<PathBuf> {
         self.service.try_recv_paths()
     }
+
+    pub(super) fn detach(&mut self) {
+        self.service.detach();
+    }
 }
 
 impl ExplorerState {
@@ -51,6 +55,13 @@ impl ExplorerState {
         };
         let directories = watched_directories(root, &self.expanded);
         watch.sync(directories.iter().map(PathBuf::as_path));
+    }
+
+    pub(crate) fn detach_watch(&mut self) {
+        if let Some(watch) = self.watch.as_mut() {
+            watch.detach();
+        }
+        self.watch = None;
     }
 
     pub(crate) fn poll_watch(&mut self) -> bool {

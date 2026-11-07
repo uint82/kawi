@@ -107,6 +107,11 @@ impl WatchService {
         paths.dedup();
         paths
     }
+
+    pub fn detach(&mut self) {
+        let _ = self.commands.send(Command::Shutdown);
+        self.worker.take();
+    }
 }
 
 impl Drop for WatchService {

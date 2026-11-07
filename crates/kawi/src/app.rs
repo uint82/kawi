@@ -402,10 +402,11 @@ impl App {
         self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
         self.lsp.detach_servers();
-        self.git_status.shutdown();
+        self.git_status.shutdown_detached();
         self.terminal_focus = false;
         self.debug_focus = false;
-        self.terminal.close();
+        self.terminal.close_for_exit();
+        self.detach_background_services();
         self.plugins.shutdown();
         self.abort_git_editor_on_exit();
         self.persist_clean_undos();
@@ -422,6 +423,26 @@ impl App {
                 self.finish_recovery_abnormal();
                 std::panic::resume_unwind(payload);
             }
+        }
+    }
+
+    fn detach_background_services(&mut self) {
+        if let Some(watch) = self.file_watch.as_mut() {
+            watch.detach();
+        }
+        self.explorer.detach_watch();
+        self.directory.detach_watch();
+        if let Some(preview) = self.picker_preview.as_mut() {
+            preview.detach();
+        }
+        if let Some(session) = self.symbol_picker.as_mut() {
+            session.detach();
+        }
+        if let Some(syntax) = self.syntax.as_mut() {
+            syntax.detach();
+        }
+        if let Some(ipc) = self.ipc.as_mut() {
+            ipc.detach();
         }
     }
 
