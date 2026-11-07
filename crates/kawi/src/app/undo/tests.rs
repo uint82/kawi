@@ -53,6 +53,15 @@ fn undo_file_count(dir: &Path) -> usize {
         .unwrap_or_default()
 }
 
+fn sole_undo_file(dir: &Path) -> PathBuf {
+    fs::read_dir(dir)
+        .expect("store")
+        .next()
+        .expect("undo file")
+        .expect("entry")
+        .path()
+}
+
 #[test]
 fn restores_history_after_restart() {
     let (dir, path, mut app) = app_with("restart", "alpha\n");
@@ -104,6 +113,37 @@ fn identical_rewrite_restores_history() {
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());
     assert!(restarted.editor.try_undo());
     assert_eq!(buffer_text(&restarted), "alpha\n");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn unchanged_histories_are_not_rewritten() {
+    let (dir, _path, mut app) = app_with("unchanged_history", "alpha\n");
+    edit(&mut app, "x");
+    save(&mut app);
+    let store = dir.join("undo");
+    let undo_file = sole_undo_file(&store);
+    fs::remove_file(&undo_file).expect("remove");
+    app.persist_clean_undos();
+    assert!(!undo_file.exists());
+    edit(&mut app, "y");
+    save(&mut app);
+    assert!(undo_file.exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn restored_histories_are_not_rewritten() {
+    let (dir, path, mut app) = app_with("restored_history", "alpha\n");
+    edit(&mut app, "x");
+    save(&mut app);
+    drop(app);
+    let store = dir.join("undo");
+    let undo_file = sole_undo_file(&store);
+    let mut restarted = configured_app(&path, &store, Vec::new());
+    fs::remove_file(&undo_file).expect("remove");
+    restarted.persist_clean_undos();
+    assert!(!undo_file.exists());
     let _ = fs::remove_dir_all(dir);
 }
 

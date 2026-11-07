@@ -18,6 +18,13 @@ pub(super) struct UndoState {
     enabled: bool,
     exclusions: Vec<String>,
     attached: BTreeMap<usize, String>,
+    persisted: BTreeMap<usize, PersistedUndo>,
+}
+
+struct PersistedUndo {
+    path: String,
+    revision: u64,
+    source_hash: Option<[u8; 32]>,
 }
 
 impl Default for UndoState {
@@ -30,6 +37,7 @@ impl Default for UndoState {
                 .map(|pattern| (*pattern).to_string())
                 .collect(),
             attached: BTreeMap::new(),
+            persisted: BTreeMap::new(),
         }
     }
 }
@@ -38,11 +46,13 @@ impl UndoState {
     pub(super) fn configure(&mut self, dir: PathBuf) {
         self.store = Some(UndoStore::new(dir));
         self.attached.clear();
+        self.persisted.clear();
     }
 
     pub(super) fn set_enabled(&mut self, enabled: bool) {
         if self.enabled != enabled {
             self.attached.clear();
+            self.persisted.clear();
         }
         self.enabled = enabled;
     }
@@ -54,6 +64,7 @@ impl UndoState {
     pub(super) fn set_exclusions(&mut self, exclusions: Vec<String>) {
         self.exclusions = exclusions;
         self.attached.clear();
+        self.persisted.clear();
     }
 
     #[cfg(test)]
@@ -71,10 +82,46 @@ impl UndoState {
 
     fn detach(&mut self, number: usize) {
         self.attached.remove(&number);
+        self.persisted.remove(&number);
     }
 
     fn retain(&mut self, numbers: &[usize]) {
         self.attached.retain(|number, _| numbers.contains(number));
+        self.persisted.retain(|number, _| numbers.contains(number));
+    }
+
+    fn is_persisted(
+        &self,
+        number: usize,
+        path: &str,
+        revision: u64,
+        source_hash: &[u8; 32],
+    ) -> bool {
+        self.persisted.get(&number).is_some_and(|persisted| {
+            persisted.path == path
+                && persisted.revision == revision
+                && persisted
+                    .source_hash
+                    .as_ref()
+                    .is_none_or(|stored| stored == source_hash)
+        })
+    }
+
+    fn remember_persisted(
+        &mut self,
+        number: usize,
+        path: String,
+        revision: u64,
+        source_hash: Option<[u8; 32]>,
+    ) {
+        self.persisted.insert(
+            number,
+            PersistedUndo {
+                path,
+                revision,
+                source_hash,
+            },
+        );
     }
 
     fn should_persist(&self, path: &Path) -> bool {
@@ -93,6 +140,7 @@ impl UndoState {
             }
         }
         self.attached.clear();
+        self.persisted.clear();
     }
 
     pub(super) fn remove_prefix(&mut self, path: &Path) {
@@ -102,6 +150,7 @@ impl UndoState {
             }
         }
         self.attached.clear();
+        self.persisted.clear();
     }
 
     pub(super) fn spawn_prune(&self) {
@@ -147,7 +196,16 @@ impl App {
             };
             match store.load(Path::new(&path), &hash) {
                 Ok(Some(history)) => {
-                    if !self.editor.restore_buffer_history(number, &history) {
+                    if self.editor.restore_buffer_history(number, &history) {
+                        if let Some(revision) = self.editor.buffer_revision_at(number) {
+                            self.undo.remember_persisted(
+                                number,
+                                path.clone(),
+                                revision,
+                                Some(hash),
+                            );
+                        }
+                    } else {
                         log_undo(Path::new(&path), "invalid history");
                         store.remove(Path::new(&path));
                     }
@@ -176,22 +234,33 @@ impl App {
         if self.skip_undo_buffer(number, &path) {
             return;
         }
+        let Some(revision) = self.editor.buffer_revision_at(number) else {
+            return;
+        };
+        let Some(hash) = self.editor.buffer_source_hash(number) else {
+            return;
+        };
+        if self.undo.is_persisted(number, &path, revision, &hash) {
+            return;
+        }
         let Some(history) = self.editor.buffer_history(number) else {
             return;
         };
         if !history.has_changes() {
             store.remove(Path::new(&path));
+            self.undo
+                .remember_persisted(number, path.clone(), revision, None);
             self.undo.attach(number, path);
             return;
         }
-        let Some(hash) = self.editor.buffer_source_hash(number) else {
-            return;
-        };
         if !disk_matches(Path::new(&path), &hash) {
             return;
         }
         if let Err(error) = store.save(Path::new(&path), &hash, &history) {
             log_undo(Path::new(&path), error);
+        } else {
+            self.undo
+                .remember_persisted(number, path.clone(), revision, Some(hash));
         }
         self.undo.attach(number, path);
     }
