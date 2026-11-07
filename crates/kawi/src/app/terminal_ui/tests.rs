@@ -49,7 +49,7 @@ fn wait_for_text(terminal: &mut TerminalUi, needle: &str) {
     panic!("terminal never printed {needle:?}");
 }
 
-fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+pub(super) fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(code, modifiers)
 }
 

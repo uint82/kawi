@@ -26,6 +26,7 @@ The default leader keys are Space and Backslash. You can change them in `keymaps
 - `K` hover
 - `]d` and `[d` next and previous diagnostic
 - `]q` and `[q` next and previous quickfix entry
+- `Ctrl-g` toggle focus between the editor and the terminal
 - `Ctrl-w` window prefix
 - `Ctrl-t` return from a help link
 - `<leader> e -` open the parent directory of the current file or directory buffer

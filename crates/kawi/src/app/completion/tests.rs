@@ -1,6 +1,7 @@
 use super::config::CompletionKeys;
 use super::prefix::completion_prefix;
-use super::{CompletionOptions, CompletionSession, KeyBinding};
+use super::{CompletionOptions, CompletionSession};
+use crate::app::key_binding::KeyBinding;
 use crate::app::App;
 use crate::keymap::Flavor;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

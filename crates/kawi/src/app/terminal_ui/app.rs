@@ -104,7 +104,7 @@ impl App {
         self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {
-                self.terminal_focus = true;
+                self.focus_terminal();
                 self.sync_terminal_panel_size();
                 self.clear_message();
             }
@@ -141,7 +141,7 @@ impl App {
         self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {
-                self.terminal_focus = true;
+                self.focus_terminal();
                 self.sync_terminal_panel_size();
                 self.clear_message();
                 self.terminal.process_id()
@@ -202,16 +202,6 @@ impl App {
         Ok(false)
     }
 
-    pub(crate) fn focus_terminal(&mut self) {
-        if !self.terminal.is_open() {
-            return;
-        }
-        self.terminal_focus = true;
-        if self.terminal.is_running() {
-            self.terminal.focus_input();
-        }
-    }
-
     pub(crate) fn close_terminal(&mut self) {
         self.terminal_focus = false;
         self.terminal.close();
@@ -238,8 +228,7 @@ impl App {
                 Ok(false)
             }
             TerminalKey::FocusEditor => {
-                self.terminal_focus = false;
-                self.reveal_cursor();
+                self.unfocus_terminal();
                 Ok(false)
             }
         }
@@ -262,7 +251,9 @@ impl App {
         }
         match mouse.kind {
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                self.terminal_focus = true;
+                if !self.terminal_focus {
+                    self.focus_terminal();
+                }
                 if let Some(delta) = wheel_delta(&mouse) {
                     self.terminal.scroll_wheel(delta);
                 }

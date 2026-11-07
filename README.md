@@ -88,6 +88,7 @@ Kawi currently uses a Vim-style keymap.
 | `<Space> f p` | Find project files |
 | `<Space> f s` | Live grep |
 | `]d` and `[d` | Next and previous diagnostic |
+| `Ctrl-g` | Toggle focus between the editor and the terminal |
 | `Ctrl-w` | Window prefix |
 | `Ctrl-t` | Return from a help link |
 

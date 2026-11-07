@@ -73,8 +73,7 @@ impl App {
             return false;
         }
         self.terminal_focus = false;
-        self.debug_focus = false;
-        self.explorer.focus_editor();
+        self.unfocus_editor_panels();
         true
     }
 

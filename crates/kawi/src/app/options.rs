@@ -1,6 +1,7 @@
 use anyhow::Result;
 use kawi_editor::{FoldMethod, SetValue, WindowOptions};
 
+use super::key_binding::KeyBinding;
 use super::App;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::options::{
@@ -175,6 +176,9 @@ impl App {
             "completion_docs_down" => {
                 self.apply_completion_key(&value, false);
             }
+            "terminal_focus_key" => {
+                self.apply_terminal_focus_key(&value);
+            }
             "hover_max_width" => {
                 self.overlay_options.hover_max_width = value.as_int().unwrap_or_default();
             }
@@ -260,25 +264,22 @@ impl App {
     }
 
     fn apply_completion_key(&mut self, value: &OptionValue, up: bool) {
-        let Some(binding) = value
-            .as_text()
-            .and_then(super::completion::KeyBinding::parse)
-        else {
-            let name = if up {
-                "completion_docs_up"
-            } else {
-                "completion_docs_down"
-            };
-            self.show_message(format!(
-                "E474: Invalid key binding: {name}={}",
-                value.display()
-            ));
-            return;
-        };
-        if up {
-            self.completion_options.keys.up = binding;
+        let name = if up {
+            "completion_docs_up"
         } else {
-            self.completion_options.keys.down = binding;
+            "completion_docs_down"
+        };
+        match parse_key_binding(value, name) {
+            Ok(binding) if up => self.completion_options.keys.up = binding,
+            Ok(binding) => self.completion_options.keys.down = binding,
+            Err(message) => self.show_message(message),
+        }
+    }
+
+    fn apply_terminal_focus_key(&mut self, value: &OptionValue) {
+        match parse_key_binding(value, "terminal_focus_key") {
+            Ok(binding) => self.terminal_focus_key = binding,
+            Err(message) => self.show_message(message),
         }
     }
 
@@ -390,6 +391,7 @@ impl App {
             "completion_docs_down" => {
                 OptionValue::Text(self.completion_options.keys.down.name().to_string())
             }
+            "terminal_focus_key" => OptionValue::Text(self.terminal_focus_key.name()),
             "hover_max_width" => OptionValue::Int(self.overlay_options.hover_max_width),
             "completion_docs_max_width" => {
                 OptionValue::Int(self.overlay_options.completion_docs_max_width)
@@ -441,6 +443,13 @@ impl App {
             _ => spec.default_value(),
         }
     }
+}
+
+fn parse_key_binding(value: &OptionValue, name: &str) -> Result<KeyBinding, String> {
+    value
+        .as_text()
+        .and_then(KeyBinding::parse)
+        .ok_or_else(|| format!("E474: Invalid key binding: {name}={}", value.display()))
 }
 
 fn option_query(spec: &'static OptionSpec, value: &OptionValue) -> String {
@@ -756,6 +765,20 @@ mod tests {
         assert!(app
             .last_message()
             .is_some_and(|message| message.starts_with("E474: Invalid key binding")));
+    }
+
+    #[test]
+    fn terminal_focus_key_is_configurable() {
+        let mut app = app();
+        execute(&mut app, "set terminal_focus_key=ctrl-t");
+        assert_eq!(app.terminal_focus_key.name(), "ctrl-t");
+        execute(&mut app, "set terminal_focus_key?");
+        assert_eq!(app.last_message(), Some("terminal_focus_key=ctrl-t"));
+        execute(&mut app, "set terminal_focus_key=wat");
+        assert!(app
+            .last_message()
+            .is_some_and(|message| message.starts_with("E474: Invalid key binding")));
+        assert_eq!(app.terminal_focus_key.name(), "ctrl-t");
     }
 
     #[test]

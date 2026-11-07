@@ -1,4 +1,7 @@
 mod app;
+mod focus;
+#[cfg(test)]
+mod focus_tests;
 mod frame;
 mod input;
 mod scroll;
