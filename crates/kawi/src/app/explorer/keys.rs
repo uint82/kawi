@@ -2,11 +2,9 @@ use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_editor::command::ExplorerCommand;
-use kawi_editor::Action;
 
 use super::super::App;
 use super::ExplorerRowKind;
-use crate::keymap::Keymap;
 
 impl App {
     pub(crate) fn toggle_explorer(&mut self) {
@@ -27,7 +25,7 @@ impl App {
             self.open_explorer_at(self.explorer_root());
             return;
         }
-        self.cancel_pending_editor_input();
+        self.cancel_pending_input();
         self.explorer.focus();
     }
 
@@ -41,7 +39,7 @@ impl App {
             self.open_explorer_at(root);
             return;
         }
-        self.cancel_pending_editor_input();
+        self.cancel_pending_input();
         self.explorer.focus();
         self.reveal_editor_file();
     }
@@ -51,7 +49,7 @@ impl App {
             self.show_message("Project explorer is disabled".to_string());
             return;
         }
-        self.cancel_pending_editor_input();
+        self.cancel_pending_input();
         self.explorer.open(root);
         self.sync_terminal_panel_size();
         if self.explorer_width() == 0 {
@@ -275,11 +273,6 @@ impl App {
             .root()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| self.explorer_root())
-    }
-
-    fn cancel_pending_editor_input(&mut self) {
-        self.keymap.reset_pending();
-        self.editor.apply(Action::CancelPending);
     }
 }
 

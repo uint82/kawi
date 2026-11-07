@@ -7,6 +7,9 @@ impl App {
         if !self.terminal.is_open() {
             return;
         }
+        self.cancel_pending_input();
+        self.unfocus_editor_panels();
+        self.plugin_panel.unfocus();
         self.terminal_focus = true;
         if self.terminal.is_running() {
             self.terminal.focus_input();
@@ -35,6 +38,9 @@ impl App {
         key: KeyEvent,
     ) -> anyhow::Result<Option<bool>> {
         if key != self.terminal_focus_key.event() {
+            return Ok(None);
+        }
+        if !self.terminal_focus && self.is_transient_overlay_active() {
             return Ok(None);
         }
         self.toggle_terminal_focus().map(Some)

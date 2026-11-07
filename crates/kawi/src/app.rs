@@ -1096,6 +1096,39 @@ impl App {
         self.editor.reveal_cursor_horizontally();
     }
 
+    pub(crate) fn cancel_pending_input(&mut self) {
+        self.window_prefix = false;
+        self.keymap.reset_pending();
+        self.editor.apply(Action::CancelPending);
+    }
+
+    pub(crate) fn unfocus_editor_panels(&mut self) {
+        self.explorer.focus_editor();
+        self.debug_focus = false;
+    }
+
+    pub(crate) fn is_transient_overlay_active(&self) -> bool {
+        self.pager.is_some()
+            || self.replace.is_some()
+            || self.picker.is_some()
+            || self.symbol_picker.is_some()
+            || self.git_status.has_view()
+            || self.completion.is_some()
+            || self.code_actions.is_some()
+            || self.diagnostic_popup.is_some()
+            || self.hover.is_some()
+            || self.conflict.is_some()
+            || self.rename.is_some()
+            || self.file_ops.is_some()
+            || self.pending_file_op.is_some()
+            || self.branch_prompt.is_some()
+            || self.directory.has_pending()
+            || self.git_commit.has_pending_push()
+            || self.merge_conflict.has_pending_abort()
+            || self.has_pending_branch_action()
+            || self.signature.is_some()
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
@@ -1126,18 +1159,18 @@ impl App {
         if self.recovery_prompt_visible() {
             return self.handle_recovery_prompt_key(key);
         }
+        if let Some(result) = self.handle_terminal_focus_key(key)? {
+            return Ok(result);
+        }
+        if self.terminal_focus {
+            return self.handle_terminal_key(key);
+        }
         if self.plugin_panel.is_focused() {
             if key.code == KeyCode::Char(':') {
                 self.unfocus_plugin_panel();
             } else {
                 return self.handle_plugin_panel_key(key);
             }
-        }
-        if let Some(result) = self.handle_terminal_focus_key(key)? {
-            return Ok(result);
-        }
-        if self.terminal_focus {
-            return self.handle_terminal_key(key);
         }
         if self.debug_focus {
             if key.code == KeyCode::Char(':') {

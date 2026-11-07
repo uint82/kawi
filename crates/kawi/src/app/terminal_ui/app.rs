@@ -104,7 +104,7 @@ impl App {
         self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {
-                self.terminal_focus = true;
+                self.focus_terminal();
                 self.sync_terminal_panel_size();
                 self.clear_message();
             }
@@ -141,7 +141,7 @@ impl App {
         self.terminal.set_layout(layout);
         match self.terminal.open(options, self.events.wake()) {
             Ok(()) => {
-                self.terminal_focus = true;
+                self.focus_terminal();
                 self.sync_terminal_panel_size();
                 self.clear_message();
                 self.terminal.process_id()
@@ -251,7 +251,9 @@ impl App {
         }
         match mouse.kind {
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                self.terminal_focus = true;
+                if !self.terminal_focus {
+                    self.focus_terminal();
+                }
                 if let Some(delta) = wheel_delta(&mouse) {
                     self.terminal.scroll_wheel(delta);
                 }
