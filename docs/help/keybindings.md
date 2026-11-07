@@ -31,6 +31,15 @@ The default leader keys are Space and Backslash. You can change them in `keymaps
 - `Ctrl-t` return from a help link
 - `<leader> e -` open the parent directory of the current file or directory buffer
 
+## Focus
+
+- `Ctrl-w h`, `Ctrl-w j`, `Ctrl-w k`, and `Ctrl-w l` move focus across editor panes, the explorer, the terminal, the debug panel, and plugin panels.
+- `Ctrl-w w` and `Ctrl-w W` cycle editor panes.
+- In terminal input mode, keys including `Ctrl-w` go to the running program.
+- `Esc` returns focus from the explorer, debug, and plugin panels, and from terminal normal mode; the panel stays open.
+- `q` closes the focused explorer, debug, or plugin panel; the terminal closes from normal mode.
+- `:focus.left`, `:focus.right`, `:focus.up`, `:focus.down`, and `:focus.editor` move focus from the command line.
+
 ## Folds
 
 - `za` toggle the fold at the cursor

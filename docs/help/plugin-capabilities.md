@@ -150,7 +150,7 @@ Prompt calls do not count against the invocation timeout. Progress calls do. Sto
 
 Panels accept at most 1000 lines, 4096 bytes per line, 1 MiB of total line text, a 256-byte title, and a 256-byte status. Lines render with an optional `accent`, `info`, `success`, `warning`, `error`, or `muted` style. Control characters and terminal escapes are removed before display.
 
-The host owns layout, focus, scrolling, and closing. `height` is clamped to 4 through 18 and defaults to 8. The panel reserves at least four editor rows and hides when the editor is too small. Focus moves with `ui.panel_focus` or by clicking the panel. While focused, the host handles scrolling and closing. The `plugin.panel` command toggles focus, and `:plugin panel close` closes the panel. There is no raw key input API.
+The host owns layout, focus, scrolling, and closing. `height` is clamped to 4 through 18 and defaults to 8. The panel reserves at least four editor rows and hides when the editor is too small. Focus moves with `ui.panel_focus` or by clicking the panel. While focused, the host handles scrolling and closing: `Esc` returns focus to the editor and `q` closes the panel. The `plugin.panel` command toggles focus, and `:plugin panel close` closes the panel. There is no raw key input API.
 
 ## Settings
 

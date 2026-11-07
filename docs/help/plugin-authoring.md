@@ -211,7 +211,7 @@ ui_panel::update(&ui_panel::UpdateParams {
 ui_panel::close(panel.panel)?;
 ```
 
-Only one panel can be active across all plugins. A second open returns `UI_BUSY`. Each plugin may update only its own panel. The host owns focus, layout, scrolling, and closing. The panel reserves at least four editor rows and hides when the editor is too small. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API.
+Only one panel can be active across all plugins. A second open returns `UI_BUSY`. Each plugin may update only its own panel. The host owns focus, layout, scrolling, and closing. While focused, `Esc` returns focus to the editor and `q` closes the panel. The panel reserves at least four editor rows and hides when the editor is too small. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API.
 
 ## Visual customization
 

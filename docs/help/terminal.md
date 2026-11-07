@@ -29,4 +29,4 @@ Change the key at runtime or in the editor configuration:
 terminal_focus_key = "ctrl-g"
 ```
 
-Inside the terminal, `Ctrl-\` then `Ctrl-n` enters terminal normal mode. `Esc` returns focus to the editor, `q` closes the panel, and `j`, `k`, the arrow keys, and the mouse wheel scroll.
+Inside the terminal, `Ctrl-\` then `Ctrl-n` enters terminal normal mode. `Esc` returns focus to the editor, `q` closes the panel, and `j`, `k`, the arrow keys, and the mouse wheel scroll. In terminal normal mode, `Ctrl-w h`, `Ctrl-w j`, `Ctrl-w k`, and `Ctrl-w l` move focus to another pane or panel.
