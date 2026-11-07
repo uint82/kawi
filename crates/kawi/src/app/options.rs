@@ -1,6 +1,7 @@
 use anyhow::Result;
 use kawi_editor::{FoldMethod, SetValue, WindowOptions};
 
+use super::key_binding::KeyBinding;
 use super::App;
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::options::{
@@ -260,10 +261,7 @@ impl App {
     }
 
     fn apply_completion_key(&mut self, value: &OptionValue, up: bool) {
-        let Some(binding) = value
-            .as_text()
-            .and_then(super::completion::KeyBinding::parse)
-        else {
+        let Some(binding) = value.as_text().and_then(KeyBinding::parse) else {
             let name = if up {
                 "completion_docs_up"
             } else {

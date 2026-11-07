@@ -41,6 +41,7 @@ mod health;
 mod help;
 mod hover;
 mod identity;
+mod key_binding;
 mod keyguide;
 mod language;
 mod lsp;

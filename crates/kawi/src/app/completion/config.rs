@@ -1,4 +1,4 @@
-use super::keys::KeyBinding;
+use crate::app::key_binding::KeyBinding;
 
 pub(crate) struct CompletionKeys {
     pub(crate) up: KeyBinding,

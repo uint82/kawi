@@ -1,6 +1,5 @@
 mod auto;
 mod config;
-mod keys;
 mod lsp_source;
 mod prefix;
 mod session;
@@ -8,7 +7,6 @@ mod triggers;
 
 pub(super) use auto::AutoTrigger;
 pub(super) use config::CompletionOptions;
-pub(super) use keys::KeyBinding;
 pub(super) use session::CompletionSession;
 pub(super) use triggers::is_completion_key;
 
