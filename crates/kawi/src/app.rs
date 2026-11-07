@@ -209,6 +209,7 @@ pub struct App {
     task: TaskSession,
     terminal: terminal_ui::TerminalUi,
     terminal_focus: bool,
+    terminal_focus_key: key_binding::KeyBinding,
     debug_focus: bool,
     explorer: explorer::ExplorerState,
     directory: directory::DirectoryBuffers,
@@ -337,6 +338,7 @@ impl App {
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
+            terminal_focus_key: key_binding::KeyBinding::control('g'),
             debug_focus: false,
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
@@ -1130,6 +1132,9 @@ impl App {
             } else {
                 return self.handle_plugin_panel_key(key);
             }
+        }
+        if let Some(result) = self.handle_terminal_focus_key(key)? {
+            return Ok(result);
         }
         if self.terminal_focus {
             return self.handle_terminal_key(key);

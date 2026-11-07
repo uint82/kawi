@@ -273,7 +273,7 @@ pub(crate) enum OptionError {
 
 pub(crate) const KEYGUIDE_DELAY_DEFAULT: usize = 250;
 
-pub(crate) const OPTIONS: [OptionSpec; 50] = [
+pub(crate) const OPTIONS: [OptionSpec; 51] = [
     OptionSpec {
         name: "keymap",
         aliases: &["kmp"],
@@ -550,6 +550,16 @@ pub(crate) const OPTIONS: [OptionSpec; 50] = [
         section: ConfigSection::Editor,
         config_key: "completion_docs_down",
         default: OptionDefault::Text("ctrl-f"),
+    },
+    OptionSpec {
+        name: "terminal_focus_key",
+        aliases: &[],
+        description: "Key that toggles focus between the editor and the terminal.",
+        kind: OptionKind::Text,
+        scope: OptionScope::Global,
+        section: ConfigSection::Editor,
+        config_key: "terminal_focus_key",
+        default: OptionDefault::Text("ctrl-g"),
     },
     OptionSpec {
         name: "hover_max_width",
@@ -1113,6 +1123,10 @@ mod tests {
         assert_eq!(
             lookup("completion_docs_down").unwrap().default_value(),
             OptionValue::Text("ctrl-f".to_string())
+        );
+        assert_eq!(
+            lookup("terminal_focus_key").unwrap().default_value(),
+            OptionValue::Text("ctrl-g".to_string())
         );
         assert_eq!(
             lookup("diagnostic_underline").unwrap().default_value(),

@@ -202,16 +202,6 @@ impl App {
         Ok(false)
     }
 
-    pub(crate) fn focus_terminal(&mut self) {
-        if !self.terminal.is_open() {
-            return;
-        }
-        self.terminal_focus = true;
-        if self.terminal.is_running() {
-            self.terminal.focus_input();
-        }
-    }
-
     pub(crate) fn close_terminal(&mut self) {
         self.terminal_focus = false;
         self.terminal.close();
@@ -238,8 +228,7 @@ impl App {
                 Ok(false)
             }
             TerminalKey::FocusEditor => {
-                self.terminal_focus = false;
-                self.reveal_cursor();
+                self.unfocus_terminal();
                 Ok(false)
             }
         }

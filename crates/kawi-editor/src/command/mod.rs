@@ -386,6 +386,7 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "signature_help",
     "signcolumn",
     "smartcase",
+    "terminal_focus_key",
     "theme",
     "undo_persist",
 ];
