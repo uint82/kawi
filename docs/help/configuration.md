@@ -10,7 +10,7 @@ Kawi reads configuration from the XDG config directory, normally `~/.config/kawi
 ## Sections
 
 - `[ui]` for keymap, theme, overlays, diagnostics, completion, the project explorer, and the status line
-- `[editor]` for indentation, line numbers, sign column, matching, color previews, autosave, and key guidance
+- `[editor]` for indentation, line numbers, sign column, matching, color previews, autosave, key guidance, and terminal focus
 - `[explorer]` for directory buffer behavior
 - `[history]` for undo history and persistence
 
