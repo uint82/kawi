@@ -56,6 +56,10 @@ impl Manager {
                     self.shutdown_all(ShutdownMode::Immediate);
                     return;
                 }
+                InputWait::Input(ServiceInput::Command(Command::Detach)) => {
+                    self.shutdown_all(ShutdownMode::Detached);
+                    return;
+                }
                 InputWait::Input(ServiceInput::Command(command)) => {
                     self.handle_command(command);
                     self.expire_deadlines();
@@ -221,7 +225,7 @@ impl Manager {
                 path,
                 server,
             } => self.handle_lifecycle(action, path.as_deref(), server.as_deref()),
-            Command::Shutdown | Command::Terminate => {}
+            Command::Shutdown | Command::Terminate | Command::Detach => {}
         }
     }
 

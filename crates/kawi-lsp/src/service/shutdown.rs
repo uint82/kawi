@@ -10,6 +10,13 @@ const EXIT_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) enum ShutdownMode {
     Graceful,
     Immediate,
+    Detached,
+}
+
+#[derive(Clone, Copy)]
+enum StopMode {
+    Wait,
+    Detach,
 }
 
 struct ShutdownClient {
@@ -24,6 +31,7 @@ impl Manager {
         match mode {
             ShutdownMode::Graceful => self.shutdown_gracefully(clients),
             ShutdownMode::Immediate => self.terminate_clients(clients),
+            ShutdownMode::Detached => self.detach_clients(clients),
         }
     }
 
@@ -35,7 +43,13 @@ impl Manager {
 
     fn terminate_clients(&mut self, clients: Vec<ShutdownClient>) {
         for mut entry in clients {
-            self.stop_client(&mut entry);
+            self.stop_client(&mut entry, StopMode::Wait);
+        }
+    }
+
+    fn detach_clients(&mut self, clients: Vec<ShutdownClient>) {
+        for mut entry in clients {
+            self.stop_client(&mut entry, StopMode::Detach);
         }
     }
 
@@ -130,12 +144,15 @@ impl Manager {
             if !remaining.is_zero() {
                 let _ = entry.client.client.wait_timeout(remaining);
             }
-            self.stop_client(&mut entry);
+            self.stop_client(&mut entry, StopMode::Wait);
         }
     }
 
-    fn stop_client(&mut self, entry: &mut ShutdownClient) {
-        entry.client.client.terminate();
+    fn stop_client(&mut self, entry: &mut ShutdownClient, mode: StopMode) {
+        match mode {
+            StopMode::Wait => entry.client.client.terminate(),
+            StopMode::Detach => entry.client.client.detach(),
+        }
         self.emit_status(&entry.key.server, ServerState::Stopped, None);
     }
 }

@@ -718,6 +718,10 @@ impl LspService {
         let _ = self.send(Command::Terminate);
     }
 
+    pub fn detach(&self) {
+        let _ = self.send(Command::Detach);
+    }
+
     pub fn try_recv(&self) -> Option<LspEvent> {
         self.events.try_recv().ok()
     }
@@ -749,6 +753,7 @@ pub(crate) enum InputWait {
 }
 
 pub(crate) enum Command {
+    Detach,
     Open {
         path: PathBuf,
         text: Rope,

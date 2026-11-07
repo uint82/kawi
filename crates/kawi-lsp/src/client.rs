@@ -89,6 +89,10 @@ impl Client {
     pub(crate) fn terminate(&mut self) {
         self.process.terminate();
     }
+
+    pub(crate) fn detach(&mut self) {
+        self.process.detach();
+    }
 }
 
 fn spawn_writer(

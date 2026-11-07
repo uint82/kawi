@@ -401,7 +401,7 @@ impl App {
         self.ensure_ipc();
         self.refresh_git_status();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run_loop()));
-        self.lsp.terminate();
+        self.lsp.detach_servers();
         self.git_status.shutdown();
         self.terminal_focus = false;
         self.debug_focus = false;
