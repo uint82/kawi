@@ -18,19 +18,25 @@ impl App {
         self.reveal_cursor();
     }
 
-    pub(crate) fn toggle_terminal_focus(&mut self) {
+    pub(crate) fn toggle_terminal_focus(&mut self) -> anyhow::Result<bool> {
         if self.terminal_focus {
             self.unfocus_terminal();
-        } else if self.terminal.is_open() {
-            self.focus_terminal();
+            return Ok(false);
         }
+        if self.terminal.is_open() {
+            self.focus_terminal();
+            return Ok(false);
+        }
+        self.open_terminal(None, self.terminal.layout())
     }
 
-    pub(crate) fn handle_terminal_focus_key(&mut self, key: KeyEvent) -> Option<bool> {
+    pub(crate) fn handle_terminal_focus_key(
+        &mut self,
+        key: KeyEvent,
+    ) -> anyhow::Result<Option<bool>> {
         if key != self.terminal_focus_key.event() {
-            return None;
+            return Ok(None);
         }
-        self.toggle_terminal_focus();
-        Some(false)
+        self.toggle_terminal_focus().map(Some)
     }
 }

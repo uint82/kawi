@@ -1133,7 +1133,7 @@ impl App {
                 return self.handle_plugin_panel_key(key);
             }
         }
-        if let Some(result) = self.handle_terminal_focus_key(key) {
+        if let Some(result) = self.handle_terminal_focus_key(key)? {
             return Ok(result);
         }
         if self.terminal_focus {
