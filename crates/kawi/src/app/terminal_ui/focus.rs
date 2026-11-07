@@ -36,7 +36,10 @@ impl App {
         &mut self,
         key: KeyEvent,
     ) -> anyhow::Result<Option<bool>> {
-        if key != self.terminal_focus_key.event() {
+        let Some(binding) = self.terminal_focus_key else {
+            return Ok(None);
+        };
+        if key != binding.event() {
             return Ok(None);
         }
         if !self.terminal_focus && self.is_transient_overlay_active() {

@@ -277,8 +277,15 @@ impl App {
     }
 
     fn apply_terminal_focus_key(&mut self, value: &OptionValue) {
+        if value
+            .as_text()
+            .is_some_and(|text| text.eq_ignore_ascii_case("none"))
+        {
+            self.terminal_focus_key = None;
+            return;
+        }
         match parse_key_binding(value, "terminal_focus_key") {
-            Ok(binding) => self.terminal_focus_key = binding,
+            Ok(binding) => self.terminal_focus_key = Some(binding),
             Err(message) => self.show_message(message),
         }
     }
@@ -391,7 +398,11 @@ impl App {
             "completion_docs_down" => {
                 OptionValue::Text(self.completion_options.keys.down.name().to_string())
             }
-            "terminal_focus_key" => OptionValue::Text(self.terminal_focus_key.name()),
+            "terminal_focus_key" => OptionValue::Text(
+                self.terminal_focus_key
+                    .map(KeyBinding::name)
+                    .unwrap_or_else(|| "none".to_string()),
+            ),
             "hover_max_width" => OptionValue::Int(self.overlay_options.hover_max_width),
             "completion_docs_max_width" => {
                 OptionValue::Int(self.overlay_options.completion_docs_max_width)
@@ -770,15 +781,26 @@ mod tests {
     #[test]
     fn terminal_focus_key_is_configurable() {
         let mut app = app();
+        assert_eq!(app.terminal_focus_key, None);
         execute(&mut app, "set terminal_focus_key=ctrl-t");
-        assert_eq!(app.terminal_focus_key.name(), "ctrl-t");
+        assert_eq!(
+            app.terminal_focus_key.map(KeyBinding::name),
+            Some("ctrl-t".to_string())
+        );
         execute(&mut app, "set terminal_focus_key?");
         assert_eq!(app.last_message(), Some("terminal_focus_key=ctrl-t"));
         execute(&mut app, "set terminal_focus_key=wat");
         assert!(app
             .last_message()
             .is_some_and(|message| message.starts_with("E474: Invalid key binding")));
-        assert_eq!(app.terminal_focus_key.name(), "ctrl-t");
+        assert_eq!(
+            app.terminal_focus_key.map(KeyBinding::name),
+            Some("ctrl-t".to_string())
+        );
+        execute(&mut app, "set terminal_focus_key=none");
+        assert_eq!(app.terminal_focus_key, None);
+        execute(&mut app, "set terminal_focus_key?");
+        assert_eq!(app.last_message(), Some("terminal_focus_key=none"));
     }
 
     #[test]

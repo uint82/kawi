@@ -21,6 +21,7 @@ fn terminal_app(focus: bool, mode: TerminalMode) -> App {
         ..TerminalUi::default()
     };
     app.terminal_focus = focus;
+    app.terminal_focus_key = Some(KeyBinding::control('g'));
     app
 }
 
@@ -39,6 +40,14 @@ fn cleanup(dir: &Path) {
 fn press_focus_key(app: &mut App) {
     app.handle_key(key(KeyCode::Char('g'), KeyModifiers::CONTROL))
         .unwrap();
+}
+
+#[test]
+fn focus_key_is_unbound_by_default() {
+    let mut app = terminal_app(false, TerminalMode::Input);
+    app.terminal_focus_key = None;
+    press_focus_key(&mut app);
+    assert!(!app.terminal_focus);
 }
 
 #[test]
@@ -66,7 +75,7 @@ fn focus_key_is_intercepted_before_terminal_normal_mode() {
 #[test]
 fn configured_focus_key_is_used() {
     let mut app = terminal_app(false, TerminalMode::Input);
-    app.terminal_focus_key = KeyBinding::control('k');
+    app.terminal_focus_key = Some(KeyBinding::control('k'));
     press_focus_key(&mut app);
     assert!(!app.terminal_focus);
     app.handle_key(key(KeyCode::Char('k'), KeyModifiers::CONTROL))
@@ -213,6 +222,7 @@ fn terminal_mouse_focus_releases_explorer_focus() {
 fn focus_key_opens_closed_terminal_over_explorer() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
+    app.terminal_focus_key = Some(KeyBinding::control('g'));
     let dir = focus_explorer(&mut app, "terminal_focus_open_explorer");
     assert!(app.explorer.is_focused());
     press_focus_key(&mut app);
