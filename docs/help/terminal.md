@@ -14,15 +14,15 @@ Kawi provides horizontal and vertical terminal panels.
 - `:vterminal` open a vertical shell
 - `:vterminal <command>` run a command vertically
 
-Toggle the terminal with `<leader> t t` or the configured terminal key.
+Toggle the terminal with `<leader> t t` or the optional configured focus key.
 
 Terminal panels keep their output while you continue editing. Use the task commands to cancel or close running work.
 
 ## Focus
 
-`Ctrl-g` toggles focus between the editor and the terminal in both directions. It opens the terminal when it is closed and takes focus from the project explorer, debug panel, or plugin panel. The panel stays open when focus returns to the editor.
+The terminal focus key is unbound by default. Set `terminal_focus_key` to a key such as `ctrl-g` to enable one-key toggling in both directions. The key opens the terminal when it is closed and takes focus from the project explorer, debug panel, or plugin panel. The panel stays open when focus returns to the editor.
 
-Change the key at runtime or in the editor configuration:
+Set `terminal_focus_key = "none"` to disable it again. Change the key at runtime or in the editor configuration:
 
 ```toml
 [editor]
