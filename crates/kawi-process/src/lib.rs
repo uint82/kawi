@@ -43,6 +43,14 @@ pub fn terminate(child: &mut Child) {
     let _ = child.wait();
 }
 
+pub fn terminate_detached(child: &mut Child) {
+    if child.try_wait().ok().flatten().is_some() {
+        return;
+    }
+    signal_group(child.id(), ProcessSignal::Kill);
+    let _ = child.kill();
+}
+
 #[cfg(unix)]
 fn configure_unix(command: &mut Command) {
     use std::os::unix::process::CommandExt;
@@ -108,6 +116,26 @@ mod tests {
         let pid = child.id();
         terminate(&mut child);
         assert!(child.try_wait().expect("wait").is_some());
+        assert_ne!(unsafe { libc::kill(pid as i32, 0) }, 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn terminate_detached_stops_the_process_group() {
+        let mut command = Command::new("cat");
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+        configure(&mut command);
+        let mut child = command.spawn().expect("spawn");
+        let pid = child.id();
+        terminate_detached(&mut child);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while child.try_wait().expect("wait").is_none() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "process was not killed"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         assert_ne!(unsafe { libc::kill(pid as i32, 0) }, 0);
     }
 }

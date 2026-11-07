@@ -103,9 +103,9 @@ impl LspUi {
         warnings
     }
 
-    pub fn terminate(&self) {
+    pub fn detach_servers(&self) {
         if let Some(service) = self.service.as_ref() {
-            service.terminate();
+            service.detach();
         }
     }
 

@@ -7,34 +7,45 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
+#[derive(Clone, Copy)]
+enum SyncMode {
+    Fast,
+    Durable,
+}
+
 pub(crate) fn write_atomically(path: &Path, text: &str) -> Result<()> {
     write_atomically_bytes(path, text.as_bytes())
 }
 
 pub(crate) fn write_atomically_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
-    write_atomically_with_mode(path, bytes, None)
+    write_atomically_with_mode(path, bytes, None, SyncMode::Fast)
 }
 
 pub(crate) fn write_private_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    write_atomically_with_mode(path, bytes, Some(0o600))
+    write_atomically_with_mode(path, bytes, Some(0o600), SyncMode::Durable)
 }
 
-fn write_atomically_with_mode(path: &Path, bytes: &[u8], mode: Option<u32>) -> Result<()> {
+fn write_atomically_with_mode(
+    path: &Path,
+    bytes: &[u8],
+    mode: Option<u32>,
+    sync: SyncMode,
+) -> Result<()> {
     let parent = path.parent().context("state file has no parent")?;
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
     let temp = temp_path(path);
-    let result = write_temp_file(&temp, bytes, mode)
+    let result = write_temp_file(&temp, bytes, mode, sync)
         .and_then(|()| {
             fs::rename(&temp, path).with_context(|| format!("failed to replace {}", path.display()))
         })
-        .and_then(|()| sync_directory(parent));
+        .and_then(|()| sync_directory_if(sync, parent));
     if result.is_err() {
         let _ = fs::remove_file(&temp);
     }
     result
 }
 
-fn write_temp_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> Result<()> {
+fn write_temp_file(path: &Path, bytes: &[u8], mode: Option<u32>, sync: SyncMode) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     apply_mode(&mut options, mode);
@@ -44,8 +55,23 @@ fn write_temp_file(path: &Path, bytes: &[u8], mode: Option<u32>) -> Result<()> {
     apply_permissions(&file, mode)?;
     file.write_all(bytes)
         .with_context(|| format!("failed to write {}", path.display()))?;
-    file.sync_all()
-        .with_context(|| format!("failed to sync {}", path.display()))
+    sync_file_if(sync, &file, path)
+}
+
+fn sync_file_if(sync: SyncMode, file: &File, path: &Path) -> Result<()> {
+    match sync {
+        SyncMode::Fast => Ok(()),
+        SyncMode::Durable => file
+            .sync_all()
+            .with_context(|| format!("failed to sync {}", path.display())),
+    }
+}
+
+fn sync_directory_if(sync: SyncMode, path: &Path) -> Result<()> {
+    match sync {
+        SyncMode::Fast => Ok(()),
+        SyncMode::Durable => sync_directory(path),
+    }
 }
 
 #[cfg(unix)]

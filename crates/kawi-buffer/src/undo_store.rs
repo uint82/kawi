@@ -1,4 +1,4 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -174,9 +174,7 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> Result<(), UndoStoreError>
             .unwrap_or_default()
             .as_nanos()
     ));
-    let result = write_temp(&temp, bytes)
-        .and_then(|()| fs::rename(&temp, path))
-        .and_then(|()| sync_directory(parent));
+    let result = write_temp(&temp, bytes).and_then(|()| fs::rename(&temp, path));
     if result.is_err() {
         let _ = fs::remove_file(&temp);
     }
@@ -188,12 +186,7 @@ fn write_temp(path: &Path, bytes: &[u8]) -> io::Result<()> {
     options.write(true).create_new(true);
     apply_private_mode(&mut options);
     let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()
-}
-
-fn sync_directory(path: &Path) -> io::Result<()> {
-    File::open(path)?.sync_all()
+    file.write_all(bytes)
 }
 
 fn touch_file(path: &Path) {

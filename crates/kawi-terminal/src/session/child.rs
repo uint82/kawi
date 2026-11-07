@@ -76,6 +76,18 @@ impl ChildProcess {
                 let _ = self.killer.kill();
             }
         }
+        self.join_waiter();
+    }
+
+    pub(super) fn terminate_now(&mut self) {
+        if !self.exited.load(Ordering::SeqCst) {
+            self.kill_group();
+            let _ = self.killer.kill();
+        }
+        self.join_waiter();
+    }
+
+    fn join_waiter(&mut self) {
         if let Some(waiter) = self.waiter.take() {
             let _ = waiter.join();
         }

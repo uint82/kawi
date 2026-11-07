@@ -73,6 +73,22 @@ fn assert_process_gone(pid: i32) {
     panic!("server process {pid} is still running");
 }
 
+fn reap_process(pid: i32) {
+    let deadline = Instant::now() + PROCESS_TIMEOUT;
+    loop {
+        let result = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+        if result == pid {
+            return;
+        }
+        assert!(result >= 0, "failed to reap server process {pid}");
+        assert!(
+            Instant::now() < deadline,
+            "server process {pid} did not exit"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 #[cfg(unix)]
 fn terminate_skips_the_shutdown_handshake() {
@@ -100,6 +116,38 @@ fn terminate_skips_the_shutdown_handshake() {
         "termination took {:?}",
         started.elapsed()
     );
+    assert_process_gone(pid);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+#[cfg(unix)]
+fn detach_skips_the_shutdown_handshake_and_reaping() {
+    let root = temp_project("detach_ignores");
+    let pid_file = root.join("fake.pid");
+    let config = config_for(
+        &root,
+        &ServerOptions {
+            pid_file: pid_file.clone(),
+            init_delay_ms: 0,
+            ignore_shutdown: true,
+            shutdown_delay_ms: 0,
+        },
+    );
+    let service = start_service(&config);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fn main() {}\n"));
+    wait_for_ready(&service);
+    let pid = wait_for_pid(&pid_file);
+    let started = Instant::now();
+    service.detach();
+    drop(service);
+    assert!(
+        started.elapsed() < EXIT_BUDGET,
+        "detach took {:?}",
+        started.elapsed()
+    );
+    reap_process(pid);
     assert_process_gone(pid);
     fs::remove_dir_all(root).expect("cleanup");
 }

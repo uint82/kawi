@@ -1,6 +1,7 @@
 use super::test_support::{hash, history, temp_dir};
 use super::*;
 use std::fs;
+use std::fs::File;
 use std::time::Duration;
 
 #[test]

@@ -88,6 +88,10 @@ impl PtySession {
     pub(super) fn terminate(&mut self) {
         self.child.terminate();
     }
+
+    pub(super) fn terminate_now(&mut self) {
+        self.child.terminate_now();
+    }
 }
 
 impl Drop for PtySession {

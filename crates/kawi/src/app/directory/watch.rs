@@ -76,6 +76,10 @@ impl DirectoryWatch {
     fn paths(&self) -> Vec<PathBuf> {
         self.service.try_recv_paths()
     }
+
+    fn detach(&mut self) {
+        self.service.detach();
+    }
 }
 
 impl DirectoryBuffers {
@@ -137,6 +141,13 @@ impl DirectoryBuffers {
         if let Some(watch) = self.watch.as_mut() {
             watch.invalidate();
         }
+    }
+
+    pub(in crate::app) fn detach_watch(&mut self) {
+        if let Some(watch) = self.watch.as_mut() {
+            watch.detach();
+        }
+        self.watch = None;
     }
 
     pub(in crate::app) fn moved_root(&self, root: &Path) -> Option<PathBuf> {

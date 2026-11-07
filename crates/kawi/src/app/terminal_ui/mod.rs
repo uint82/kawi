@@ -133,12 +133,23 @@ impl TerminalUi {
     }
 
     pub fn close(&mut self) {
+        self.reset();
+        self.session.take();
+    }
+
+    pub fn close_for_exit(&mut self) {
+        self.reset();
+        if let Some(mut session) = self.session.take() {
+            session.terminate_now();
+        }
+    }
+
+    fn reset(&mut self) {
         self.open = false;
         self.escape_pending = false;
         self.one_shot = false;
         self.exit_reported = false;
         self.exit_notice = None;
-        self.session.take();
     }
 
     pub fn drain(&mut self) -> bool {

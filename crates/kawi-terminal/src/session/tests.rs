@@ -83,6 +83,16 @@ fn terminates_a_long_running_command() {
 
 #[test]
 #[cfg(unix)]
+fn terminate_now_skips_the_hangup_grace() {
+    let (mut session, _wake) = start_with_open_descendant();
+    let started = Instant::now();
+    session.terminate_now();
+    assert!(started.elapsed() < Duration::from_millis(150));
+    assert!(!session.is_running());
+}
+
+#[test]
+#[cfg(unix)]
 fn resize_updates_the_emulator_and_pty() {
     let (wake, _wake_rx) = channel();
     let mut session = TerminalSession::start(&options("sleep 1"), wake).unwrap();

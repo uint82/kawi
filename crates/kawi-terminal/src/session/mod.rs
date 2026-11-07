@@ -121,6 +121,11 @@ impl TerminalSession {
         self.drain();
     }
 
+    pub fn terminate_now(&mut self) {
+        self.pty.terminate_now();
+        self.drain();
+    }
+
     fn record_exit(&mut self, event: ExitEvent) {
         match event {
             ExitEvent::Status(status) => self.exit = Some(status),

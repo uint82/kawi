@@ -47,6 +47,15 @@ impl PreviewState {
         }
     }
 
+    pub(crate) fn detach(&mut self) {
+        if let Some(service) = self.service.as_mut() {
+            service.detach();
+        }
+        if let Some(syntax) = self.syntax.as_mut() {
+            syntax.detach();
+        }
+    }
+
     pub(crate) fn schedule(
         &mut self,
         path: &Path,

@@ -84,6 +84,16 @@ impl SyntaxService {
     pub fn try_recv(&self) -> Option<SyntaxResult> {
         self.results.try_recv().ok()
     }
+
+    pub fn detach(&mut self) {
+        self.signal_shutdown();
+        self.worker.take();
+    }
+
+    fn signal_shutdown(&self) {
+        self.shared.shutdown.store(true, Ordering::SeqCst);
+        self.shared.ready.notify_one();
+    }
 }
 
 impl Default for SyntaxService {
@@ -94,8 +104,7 @@ impl Default for SyntaxService {
 
 impl Drop for SyntaxService {
     fn drop(&mut self) {
-        self.shared.shutdown.store(true, Ordering::SeqCst);
-        self.shared.ready.notify_one();
+        self.signal_shutdown();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 pub struct ServerProcess {
     child: Child,
+    detached: bool,
 }
 
 pub struct ServerIo {
@@ -33,7 +34,10 @@ impl ServerProcess {
         let stdout = child.stdout.take().context("open lsp stdout")?;
         let stderr = child.stderr.take().context("open lsp stderr")?;
         Ok((
-            Self { child },
+            Self {
+                child,
+                detached: false,
+            },
             ServerIo {
                 stdin,
                 stdout,
@@ -61,10 +65,18 @@ impl ServerProcess {
     }
 
     pub fn terminate(&mut self) {
-        if self.child.try_wait().ok().flatten().is_some() {
+        if self.detached || self.child.try_wait().ok().flatten().is_some() {
             return;
         }
         kawi_process::terminate(&mut self.child);
+    }
+
+    pub fn detach(&mut self) {
+        if self.detached {
+            return;
+        }
+        self.detached = true;
+        kawi_process::terminate_detached(&mut self.child);
     }
 }
 
@@ -77,6 +89,23 @@ impl Drop for ServerProcess {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn detaches_a_spawned_process() {
+        let mut config = ServerConfig::command("cat");
+        config.args.clear();
+        let root = std::env::temp_dir();
+        let (mut process, _io) = ServerProcess::spawn(&config, &root).expect("spawn");
+        let pid = process.child.id();
+        process.detach();
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while process.child.try_wait().expect("wait").is_none() {
+            assert!(Instant::now() < deadline, "process was not reaped");
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_ne!(unsafe { libc::kill(pid as i32, 0) }, 0);
+    }
 
     #[test]
     #[cfg(unix)]

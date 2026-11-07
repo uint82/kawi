@@ -154,6 +154,10 @@ impl SymbolSession {
         &self.preview
     }
 
+    pub(crate) fn detach(&mut self) {
+        self.preview.detach();
+    }
+
     pub(crate) fn paste(
         &mut self,
         text: &str,

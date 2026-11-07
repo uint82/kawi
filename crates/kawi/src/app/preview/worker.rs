@@ -88,12 +88,21 @@ impl PreviewService {
     pub(super) fn try_recv(&self) -> Option<PreviewFile> {
         self.results.try_recv().ok()
     }
+
+    pub(super) fn detach(&mut self) {
+        self.signal_shutdown();
+        self.worker.take();
+    }
+
+    fn signal_shutdown(&self) {
+        self.shared.shutdown.store(true, Ordering::SeqCst);
+        self.shared.ready.notify_one();
+    }
 }
 
 impl Drop for PreviewService {
     fn drop(&mut self) {
-        self.shared.shutdown.store(true, Ordering::SeqCst);
-        self.shared.ready.notify_one();
+        self.signal_shutdown();
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
