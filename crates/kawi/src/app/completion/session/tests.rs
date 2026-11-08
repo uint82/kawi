@@ -89,53 +89,6 @@ fn keeps_the_selected_item_when_the_event_refreshes() {
 }
 
 #[test]
-fn snippet_items_are_marked() {
-    let mut item = item("a", "println!");
-    item.snippet = true;
-    let session = CompletionSession::new(event(vec![item]), "");
-    assert_eq!(labels(&session), ["println!"]);
-    assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
-}
-
-#[test]
-fn explicit_kinds_are_preserved_and_measured() {
-    let mut function = item("a", "print");
-    function.kind = Some(CompletionKind::Function);
-    let mut property = item("b", "width");
-    property.kind = Some(CompletionKind::Property);
-    let session = CompletionSession::new(event(vec![function, property]), "");
-    assert_eq!(session.items()[0].kind, Some(CompletionKind::Function));
-    assert_eq!(session.items()[1].kind, Some(CompletionKind::Property));
-    assert_eq!(session.kind_width(), CompletionKind::Function.name().len());
-    assert_eq!(session.list_width(), 5 + 2 + 8 + 2);
-}
-
-#[test]
-fn missing_kinds_leave_the_kind_column_empty() {
-    let session = CompletionSession::new(event(vec![item("a", "value")]), "");
-    assert_eq!(session.items()[0].kind, None);
-    assert_eq!(session.kind_width(), 0);
-    assert_eq!(session.list_width(), 5 + 2);
-}
-
-#[test]
-fn text_kinds_use_the_snippet_kind_when_snippeting() {
-    let mut value = item("a", "println!");
-    value.kind = Some(CompletionKind::Text);
-    value.snippet = true;
-    let session = CompletionSession::new(event(vec![value]), "");
-    assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
-}
-
-#[test]
-fn deprecated_items_stay_marked() {
-    let mut value = item("a", "value");
-    value.deprecated = true;
-    let session = CompletionSession::new(event(vec![value]), "");
-    assert!(session.items()[0].deprecated);
-}
-
-#[test]
 fn adjusted_edits_follow_later_typing() {
     let session = CompletionSession::new(
         Event {
@@ -238,29 +191,6 @@ fn empty_documentation_is_hidden() {
 }
 
 #[test]
-fn resolved_detail_keeps_the_list_width() {
-    let mut value = item("a", "value");
-    value.resolve = true;
-    let mut session = CompletionSession::new(event(vec![value]), "");
-    let width = session.list_width();
-    let item = session.needs_resolve().expect("resolve").clone();
-    session.start_resolve(7, &item);
-    assert!(session.apply_resolved(ResolvedItem {
-        request: 7,
-        item_id: "a".to_string(),
-        detail: Some("a much longer detail".to_string()),
-        documentation: None,
-        additional: Vec::new(),
-    }));
-    assert_eq!(session.list_width(), width);
-    assert!(session.items()[0]
-        .detail
-        .as_deref()
-        .unwrap_or_default()
-        .contains("a much longer detail"));
-}
-
-#[test]
 fn docs_scroll_uses_page_and_limit() {
     let mut value = item("a", "value");
     value.documentation = Some(Documentation {
@@ -337,5 +267,6 @@ fn docs_scroll_only_applies_with_documentation() {
     assert_eq!(session.docs_scroll(), 2);
 }
 
+mod display;
 mod documentation;
 mod navigation;

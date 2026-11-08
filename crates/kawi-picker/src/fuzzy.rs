@@ -216,19 +216,25 @@ mod tests {
     #[test]
     fn consecutive_characters_merge_into_one_range() {
         let matched = fuzzy_match("ma", "main").expect("match");
-        assert_eq!(matched.ranges(), [0..2]);
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 0..2);
     }
 
     #[test]
     fn ranges_keep_original_byte_offsets_for_wide_characters() {
         let matched = fuzzy_match("ol", "école").expect("match");
-        assert_eq!(matched.ranges(), [3..5]);
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 3..5);
     }
 
     #[test]
     fn case_insensitive_matches_keep_original_offsets() {
         let matched = fuzzy_match("é", "École").expect("match");
-        assert_eq!(matched.ranges(), [0..2]);
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 0..2);
     }
 
     #[test]

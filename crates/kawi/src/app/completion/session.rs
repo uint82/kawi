@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::TextEdit;
 use kawi_completion::{Documentation, Event, Item, ItemId, RequestId};
-use kawi_picker::fuzzy_score;
 use kawi_syntax::LanguageId;
 use kawi_tui::frame::CompletionLine;
 use kawi_tui::markdown::MarkdownDocument;
@@ -12,9 +11,11 @@ use kawi_tui::overlay::DocsSide;
 use super::super::lsp_menu::MenuSelection;
 use super::super::overlay::document::prepare_documentation;
 use session_display::{display_line, metrics};
+use session_filter::{filter, FilteredItem};
 
 mod session_display;
 mod session_edit;
+mod session_filter;
 mod session_keys;
 mod session_resolve;
 
@@ -24,7 +25,7 @@ mod tests;
 pub(crate) struct CompletionSession {
     pub(super) event: Event,
     pub(super) items: Vec<Item>,
-    pub(super) filtered: Vec<usize>,
+    pub(super) filtered: Vec<FilteredItem>,
     pub(super) displays: Vec<CompletionLine>,
     pub(super) selection: MenuSelection,
     pub(super) docs: BTreeMap<ItemId, Documentation>,
@@ -116,9 +117,8 @@ impl CompletionSession {
     }
 
     pub(super) fn selected_item(&self) -> Option<&Item> {
-        self.filtered
-            .get(self.selection.selected()?)
-            .and_then(|index| self.items.get(*index))
+        let filtered = self.filtered.get(self.selection.selected()?)?;
+        self.items.get(filtered.index)
     }
 
     fn selected_id(&self) -> Option<ItemId> {
@@ -188,34 +188,17 @@ impl CompletionSession {
     }
 
     pub(super) fn refilter(&mut self, query: &str, preferred: Option<ItemId>) {
-        let mut scores = Vec::new();
-        for (index, item) in self.items.iter().enumerate() {
-            if let Some(score) = fuzzy_score(query, item.filter_key()) {
-                scores.push((index, score));
-            }
-        }
-        scores.sort_by(|left, right| {
-            right
-                .1
-                .cmp(&left.1)
-                .then_with(|| {
-                    self.items[left.0]
-                        .sort_key()
-                        .cmp(self.items[right.0].sort_key())
-                })
-                .then_with(|| left.0.cmp(&right.0))
-        });
-        self.filtered = scores.into_iter().map(|(index, _)| index).collect();
+        self.filtered = filter(&self.items, query);
         let preferred = preferred
             .and_then(|preferred| {
                 self.filtered
                     .iter()
-                    .position(|index| self.items[*index].id == preferred)
+                    .position(|filtered| self.items[filtered.index].id == preferred)
             })
             .or_else(|| {
                 self.filtered
                     .iter()
-                    .position(|index| self.items[*index].preselect)
+                    .position(|filtered| self.items[filtered.index].preselect)
             });
         self.selection = MenuSelection::new(self.filtered.len(), preferred);
         self.rebuild_displays();
@@ -226,8 +209,11 @@ impl CompletionSession {
         self.displays = self
             .filtered
             .iter()
-            .filter_map(|index| self.items.get(*index))
-            .map(display_line)
+            .filter_map(|filtered| {
+                self.items
+                    .get(filtered.index)
+                    .map(|item| display_line(item, &filtered.highlights))
+            })
             .collect();
     }
 
