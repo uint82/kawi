@@ -3,8 +3,10 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 mod kind;
+mod snippet;
 
 pub use kind::CompletionKind;
+pub use snippet::{Snippet, TabStop};
 
 pub type RequestId = u64;
 pub type SourceId = String;
