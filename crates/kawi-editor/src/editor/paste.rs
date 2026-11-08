@@ -75,6 +75,7 @@ impl Editor {
     }
 
     pub(super) fn insert_pasted_text(&mut self, text: &str) {
+        self.replace_selected_text();
         self.record_maybe();
         let (row, col) = (self.cursor.row(), self.cursor.col());
         let end = pasted_end(row, col, text);

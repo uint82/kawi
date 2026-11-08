@@ -28,7 +28,7 @@ fn completion(request: u64) -> CompletionEvent {
             additional: Vec::new(),
             deprecated: false,
             preselect: false,
-            snippet: false,
+            snippet: None,
             resolve_id: None,
             command: None,
         }],

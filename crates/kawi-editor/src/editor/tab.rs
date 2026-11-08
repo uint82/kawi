@@ -9,6 +9,7 @@ pub(super) enum TabExpansion {
 
 impl Editor {
     pub(super) fn insert_tab(&mut self) {
+        self.replace_selected_text();
         self.record_insert(InsertEdit::Tab);
         if self.mode == crate::mode::Mode::Replace {
             self.insert_replace_tab();

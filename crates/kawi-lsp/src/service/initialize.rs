@@ -557,7 +557,7 @@ fn initialize_capabilities() -> ClientCapabilities {
             completion: Some(lsp_types::CompletionClientCapabilities {
                 dynamic_registration: Some(false),
                 completion_item: Some(lsp_types::CompletionItemCapability {
-                    snippet_support: Some(false),
+                    snippet_support: Some(true),
                     commit_characters_support: Some(false),
                     documentation_format: Some(vec![
                         lsp_types::MarkupKind::Markdown,
@@ -824,7 +824,7 @@ mod tests {
         let text_document = capabilities.text_document.expect("text document");
         let completion = text_document.completion.expect("completion");
         let item = completion.completion_item.expect("completion item");
-        assert_eq!(item.snippet_support, Some(false));
+        assert_eq!(item.snippet_support, Some(true));
         assert_eq!(
             item.documentation_format,
             Some(vec![

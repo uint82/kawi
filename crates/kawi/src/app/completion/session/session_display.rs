@@ -47,7 +47,9 @@ fn primary_width(item: &Item) -> usize {
 
 fn display_kind(item: &Item) -> Option<CompletionKind> {
     match item.kind {
-        Some(CompletionKind::Text) | None if item.snippet => Some(CompletionKind::Snippet),
+        Some(CompletionKind::Text) | None if item.snippet.is_some() => {
+            Some(CompletionKind::Snippet)
+        }
         kind => kind,
     }
 }

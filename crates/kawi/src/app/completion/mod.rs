@@ -157,10 +157,14 @@ impl App {
     }
 
     fn accept_completion(&mut self, session: &CompletionSession) {
+        self.end_snippet();
         let cursor = completion_prefix(&self.editor).cursor;
         let Some(edit) = session.workspace_edit(cursor) else {
             return;
         };
+        let snippet = session
+            .selected_item()
+            .and_then(|item| item.snippet.clone());
         let command = session.command().map(|command| {
             (
                 session.selected_item().map(|item| item.source.clone()),
@@ -181,6 +185,9 @@ impl App {
                     if !self.lsp.execute_command(session.path(), &server, &command) {
                         self.show_message("lsp unavailable".to_string());
                     }
+                }
+                if let Some(snippet) = snippet {
+                    self.start_snippet(snippet);
                 }
                 self.reveal_cursor();
             }
@@ -204,6 +211,7 @@ impl App {
     }
 
     pub(super) fn after_buffer_key(&mut self, key: KeyEvent) {
+        self.update_snippet();
         let prefix = completion_prefix(&self.editor);
         let trigger = trigger_for_key(&self.lsp, key, &prefix.text);
         let keep_open = keeps_completion_open(&self.lsp, key);
@@ -242,6 +250,7 @@ impl App {
         if self.editor.mode().is_insert() {
             return;
         }
+        self.end_snippet();
         self.completion_auto.cancel();
         self.completion = None;
         self.lsp.cancel_completion();

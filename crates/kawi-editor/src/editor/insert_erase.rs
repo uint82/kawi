@@ -8,6 +8,9 @@ impl Editor {
             self.replace_backspace_word();
             return;
         }
+        if self.replace_selected_text() {
+            return;
+        }
         let Some((row, col)) = self.insert_erase_start() else {
             return;
         };
@@ -56,6 +59,9 @@ impl Editor {
     pub(super) fn insert_backspace_line(&mut self) {
         if self.mode == crate::mode::Mode::Replace {
             self.replace_backspace_line();
+            return;
+        }
+        if self.replace_selected_text() {
             return;
         }
         let Some((row, col)) = self.insert_erase_start() else {

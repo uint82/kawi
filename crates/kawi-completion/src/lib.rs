@@ -3,8 +3,10 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 mod kind;
+mod snippet;
 
 pub use kind::CompletionKind;
+pub use snippet::{Snippet, TabStop};
 
 pub type RequestId = u64;
 pub type SourceId = String;
@@ -92,7 +94,7 @@ pub struct Item {
     pub documentation: Option<Documentation>,
     pub deprecated: bool,
     pub preselect: bool,
-    pub snippet: bool,
+    pub snippet: Option<Snippet>,
     pub resolve: bool,
     pub primary: TextEdit,
     pub additional: Vec<TextEdit>,
@@ -174,7 +176,7 @@ mod tests {
             documentation: None,
             deprecated: false,
             preselect: false,
-            snippet: false,
+            snippet: None,
             resolve: false,
             primary: TextEdit {
                 start: 0,

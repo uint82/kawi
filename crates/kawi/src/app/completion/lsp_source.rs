@@ -167,7 +167,7 @@ mod tests {
             additional: Vec::new(),
             deprecated: false,
             preselect: false,
-            snippet: false,
+            snippet: None,
             resolve_id: id,
             command: None,
         }

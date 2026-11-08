@@ -49,6 +49,7 @@ mod replace_mode;
 mod reveal;
 mod scroll;
 mod search_mode;
+mod selection_edit;
 mod sent_ops;
 mod session;
 mod shift_ops;

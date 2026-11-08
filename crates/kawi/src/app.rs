@@ -79,6 +79,7 @@ mod save;
 mod save_all;
 mod signature;
 mod signcolumn;
+mod snippet;
 mod status;
 mod symbols;
 mod syntax_prewarm;
@@ -183,6 +184,7 @@ pub struct App {
     pending_file_op: Option<file_ops::PendingFileOp>,
     branch_prompt: Option<git_branch::BranchPrompt>,
     completion: Option<completion::CompletionSession>,
+    snippet: Option<snippet::SnippetSession>,
     completion_auto: completion::AutoTrigger,
     completion_options: completion::CompletionOptions,
     overlay_options: overlay::options::OverlayOptions,
@@ -312,6 +314,7 @@ impl App {
             pending_file_op: None,
             branch_prompt: None,
             completion: None,
+            snippet: None,
             completion_auto: completion::AutoTrigger::new(),
             completion_options: completion::CompletionOptions::default(),
             overlay_options: overlay::options::OverlayOptions::default(),
@@ -1244,6 +1247,9 @@ impl App {
             if let Some(result) = self.handle_completion_key(key)? {
                 return Ok(result);
             }
+        }
+        if let Some(result) = self.handle_snippet_key(key) {
+            return Ok(result);
         }
         if let Some(result) = self.handle_signature_key(key) {
             return Ok(result);
