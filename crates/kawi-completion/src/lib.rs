@@ -17,6 +17,7 @@ pub enum TriggerKind {
     Invoked,
     Typing,
     TriggerCharacter,
+    Incomplete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +47,13 @@ impl Trigger {
             character: Some(character.into()),
         }
     }
+
+    pub fn incomplete() -> Self {
+        Self {
+            kind: TriggerKind::Incomplete,
+            character: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +79,7 @@ pub struct Event {
     pub word_start: usize,
     pub prefix: String,
     pub items: Vec<Item>,
+    pub is_incomplete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

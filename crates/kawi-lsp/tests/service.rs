@@ -744,6 +744,7 @@ fn returns_completion_items_with_edits_and_snippet_expansion() {
     };
     assert_eq!(event.server, "fake");
     assert_eq!(event.path, file);
+    assert!(!event.is_incomplete);
     assert_eq!(event.items.len(), 3);
     let edit = event
         .items
@@ -767,6 +768,33 @@ fn returns_completion_items_with_edits_and_snippet_expansion() {
     let parsed = snippet.snippet.as_ref().expect("parsed snippet");
     assert_eq!(parsed.stops()[0].range(), 6..11);
     assert_eq!(parsed.final_stop(), 12);
+    drop(service);
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn requests_incomplete_completion_lists() {
+    let root = temp_project("completion_incomplete");
+    let service = start_phase_seven(&root, false);
+    let file = root.join("src/main.rs");
+    assert!(service.open(&file, "fak\n"));
+    wait_for_ready(&service);
+    let request = service.completion(
+        &file,
+        CursorPosition { line: 0, column: 3 },
+        CompletionTrigger::incomplete(),
+    );
+    wait_for_log(&service, "completion-trigger:3");
+    let event = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::Completion(event) if event.request == request
+        )
+    });
+    let LspEvent::Completion(event) = event else {
+        panic!("unexpected completion event");
+    };
+    assert!(event.is_incomplete);
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

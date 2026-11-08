@@ -42,6 +42,7 @@ fn accepting_completion_cancels_a_scheduled_auto_trigger() {
             word_start: 0,
             prefix: String::new(),
             items: Vec::new(),
+            is_incomplete: false,
         },
         "",
     ));
@@ -113,6 +114,7 @@ fn accepting_a_snippet_item_starts_its_session() {
                 additional: Vec::new(),
                 command: None,
             }],
+            is_incomplete: false,
         },
         "pri",
     );

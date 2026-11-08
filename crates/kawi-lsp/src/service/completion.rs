@@ -29,13 +29,17 @@ pub(super) fn completion_event(
 ) -> Result<CompletionOutput, String> {
     let (cursor, prefix, word_start) = completion_position(pending, text)?;
     let query = prefix.to_lowercase();
-    let (mut candidates, response_error) = completion_candidates(responses, &prefix, &query);
-    if candidates.is_empty() {
-        return Err(response_error.unwrap_or_else(|| "No completions".to_string()));
+    let mut candidates = completion_candidates(responses, &prefix, &query);
+    if candidates.items.is_empty() {
+        return Err(candidates
+            .error
+            .unwrap_or_else(|| "No completions".to_string()));
     }
-    candidates.sort_by(compare_candidates);
+    let truncated = candidates.items.len() > MAX_ITEMS;
+    let is_incomplete = candidates.is_incomplete || truncated;
+    candidates.items.sort_by(compare_candidates);
     let (items, resolve) = completion_entries(
-        candidates.into_iter().take(MAX_ITEMS),
+        candidates.items.into_iter().take(MAX_ITEMS),
         text,
         cursor,
         word_start,
@@ -59,6 +63,7 @@ pub(super) fn completion_event(
             word_start,
             prefix,
             items,
+            is_incomplete,
         },
         resolve,
     })
@@ -110,32 +115,51 @@ fn allocate_resolve_id(next: &mut u64) -> u64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn fallback_edits_replace_the_typed_prefix() {
-        let text = Rope::from_str("val\n");
-        let pending = PendingTextRequest {
+    fn request(column: u32) -> PendingTextRequest {
+        PendingTextRequest {
             request: 1,
             kind: super::super::text_requests::TextRequestKind::Completion,
             path: std::path::PathBuf::from("/tmp/completion.rs"),
-            position: CursorPosition { line: 0, column: 3 },
+            position: CursorPosition { line: 0, column },
             version: 1,
             remaining: 1,
             responses: Vec::new(),
             error: None,
-        };
-        let responses = vec![TextResponse {
+        }
+    }
+
+    fn response(value: serde_json::Value) -> TextResponse {
+        TextResponse {
             server: "fake".to_string(),
             key: ClientKey {
                 server: "fake".to_string(),
                 root: std::path::PathBuf::from("/tmp"),
             },
-            value: serde_json::json!([{ "label": "value" }]),
+            value,
             encoding: PositionEncodingKind::UTF16,
             resolve: false,
-        }];
+        }
+    }
+
+    fn completion(text: &str, column: u32, value: serde_json::Value) -> CompletionOutput {
+        completion_with(text, column, vec![response(value)])
+    }
+
+    fn completion_with(text: &str, column: u32, responses: Vec<TextResponse>) -> CompletionOutput {
         let mut next_resolve_id = 0;
-        let output = completion_event(&pending, &responses, &text, &mut next_resolve_id)
-            .expect("completion event");
+        completion_event(
+            &request(column),
+            &responses,
+            &Rope::from_str(text),
+            &mut next_resolve_id,
+        )
+        .expect("completion event")
+    }
+
+    #[test]
+    fn fallback_edits_replace_the_typed_prefix() {
+        let output = completion("val\n", 3, serde_json::json!([{ "label": "value" }]));
+        assert!(!output.event.is_incomplete);
         assert_eq!(output.event.items[0].primary.start, 0);
         assert_eq!(output.event.items[0].primary.end, 3);
         assert_eq!(output.event.items[0].primary.text, "value");
@@ -143,68 +167,30 @@ mod tests {
 
     #[test]
     fn completion_items_expand_context_variables() {
-        let text = Rope::from_str("val\n");
-        let pending = PendingTextRequest {
-            request: 1,
-            kind: super::super::text_requests::TextRequestKind::Completion,
-            path: std::path::PathBuf::from("/tmp/completion.rs"),
-            position: CursorPosition { line: 0, column: 3 },
-            version: 1,
-            remaining: 1,
-            responses: Vec::new(),
-            error: None,
-        };
-        let responses = vec![TextResponse {
-            server: "fake".to_string(),
-            key: ClientKey {
-                server: "fake".to_string(),
-                root: std::path::PathBuf::from("/tmp"),
-            },
-            value: serde_json::json!({
+        let output = completion(
+            "val\n",
+            3,
+            serde_json::json!({
                 "isIncomplete": false,
                 "itemDefaults": { "insertTextFormat": 2 },
                 "items": [{ "label": "val", "insertText": "$TM_FILENAME" }]
             }),
-            encoding: PositionEncodingKind::UTF16,
-            resolve: false,
-        }];
-        let mut next_resolve_id = 0;
-        let output = completion_event(&pending, &responses, &text, &mut next_resolve_id)
-            .expect("completion event");
+        );
         assert_eq!(output.event.items[0].primary.text, "completion.rs");
     }
 
     #[test]
     fn filters_items_by_filter_text_and_prefix() {
-        let text = Rope::from_str("prin\n");
-        let pending = PendingTextRequest {
-            request: 1,
-            kind: super::super::text_requests::TextRequestKind::Completion,
-            path: std::path::PathBuf::from("/tmp/completion.rs"),
-            position: CursorPosition { line: 0, column: 4 },
-            version: 1,
-            remaining: 1,
-            responses: Vec::new(),
-            error: None,
-        };
-        let responses = vec![TextResponse {
-            server: "fake".to_string(),
-            key: ClientKey {
-                server: "fake".to_string(),
-                root: std::path::PathBuf::from("/tmp"),
-            },
-            value: serde_json::json!([
+        let output = completion(
+            "prin\n",
+            4,
+            serde_json::json!([
                 { "label": "println!", "filterText": "println" },
                 { "label": "print!" },
                 { "label": "unrelated" },
                 { "label": "display", "filterText": "prin" }
             ]),
-            encoding: PositionEncodingKind::UTF16,
-            resolve: false,
-        }];
-        let mut next_resolve_id = 0;
-        let output = completion_event(&pending, &responses, &text, &mut next_resolve_id)
-            .expect("completion event");
+        );
         assert_eq!(
             output
                 .event
@@ -214,5 +200,54 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["display", "print!", "println!"]
         );
+    }
+
+    #[test]
+    fn incomplete_completion_lists_are_preserved() {
+        let output = completion(
+            "val\n",
+            3,
+            serde_json::json!({
+                "isIncomplete": true,
+                "items": [{ "label": "value" }]
+            }),
+        );
+        assert!(output.event.is_incomplete);
+    }
+
+    #[test]
+    fn any_incomplete_response_marks_the_event_incomplete() {
+        let output = completion_with(
+            "val\n",
+            3,
+            vec![
+                response(serde_json::json!({
+                    "isIncomplete": false,
+                    "items": [{ "label": "value" }]
+                })),
+                response(serde_json::json!({
+                    "isIncomplete": true,
+                    "items": [{ "label": "other" }]
+                })),
+            ],
+        );
+        assert!(output.event.is_incomplete);
+    }
+
+    #[test]
+    fn truncated_completion_lists_are_incomplete() {
+        let items: Vec<_> = (0..=MAX_ITEMS)
+            .map(|index| serde_json::json!({ "label": format!("item{index}") }))
+            .collect();
+        let output = completion(
+            "\n",
+            0,
+            serde_json::json!({
+                "isIncomplete": false,
+                "items": items
+            }),
+        );
+        assert_eq!(output.event.items.len(), MAX_ITEMS);
+        assert!(output.event.is_incomplete);
     }
 }

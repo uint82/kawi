@@ -49,6 +49,7 @@ fn event(items: Vec<Item>) -> Event {
         word_start: 0,
         prefix: String::new(),
         items,
+        is_incomplete: false,
     }
 }
 

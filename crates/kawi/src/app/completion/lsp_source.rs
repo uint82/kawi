@@ -26,6 +26,7 @@ pub(super) fn neutral_event(event: CompletionEvent) -> Event {
         word_start: event.word_start,
         prefix: event.prefix,
         items,
+        is_incomplete: event.is_incomplete,
     }
 }
 
@@ -110,6 +111,7 @@ pub(super) fn lsp_trigger(trigger: Trigger) -> CompletionTrigger {
             .character
             .map(CompletionTrigger::character)
             .unwrap_or_else(CompletionTrigger::invoked),
+        TriggerKind::Incomplete => CompletionTrigger::incomplete(),
     }
 }
 
@@ -184,6 +186,7 @@ mod tests {
             word_start: 0,
             prefix: String::new(),
             items: entries,
+            is_incomplete: false,
         }
     }
 
@@ -203,10 +206,25 @@ mod tests {
 
     #[test]
     fn trigger_characters_survive_conversion() {
-        match lsp_trigger(Trigger::character(".")).kind {
-            CompletionTriggerKind::TriggerCharacter => {}
-            CompletionTriggerKind::Invoked => panic!("expected a trigger character"),
-        }
+        assert_eq!(
+            lsp_trigger(Trigger::character(".")).kind,
+            CompletionTriggerKind::TriggerCharacter
+        );
+    }
+
+    #[test]
+    fn incomplete_trigger_survives_conversion() {
+        assert_eq!(
+            lsp_trigger(Trigger::incomplete()).kind,
+            CompletionTriggerKind::Incomplete
+        );
+    }
+
+    #[test]
+    fn incomplete_lists_survive_neutralization() {
+        let mut source = event(vec![entry(None, "value")]);
+        source.is_incomplete = true;
+        assert!(neutral_event(source).is_incomplete);
     }
 
     #[test]

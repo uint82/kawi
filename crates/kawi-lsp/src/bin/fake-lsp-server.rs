@@ -12,6 +12,7 @@ const REQUEST_CONFIG: i64 = 1002;
 const REQUEST_REGISTER: i64 = 1003;
 const REQUEST_FOLDERS: i64 = 1004;
 const REQUEST_REFRESH: i64 = 1005;
+const TRIGGER_FOR_INCOMPLETE_COMPLETIONS: i64 = 3;
 
 fn main() -> Result<()> {
     let mut reader = BufReader::new(io::stdin());
@@ -803,9 +804,11 @@ fn handle_completion(
     let position = &params["position"];
     let line = position["line"].as_i64().unwrap_or(0);
     let character = position["character"].as_i64().unwrap_or(0);
+    let trigger_kind = params["context"]["triggerKind"].as_i64().unwrap_or(0);
     send_log(writer, &format!("completion:{line}:{character}"))?;
+    send_log(writer, &format!("completion-trigger:{trigger_kind}"))?;
     let result = json!({
-        "isIncomplete": false,
+        "isIncomplete": trigger_kind == TRIGGER_FOR_INCOMPLETE_COMPLETIONS,
         "items": [
             {
                 "label": "fake_edit",
