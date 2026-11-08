@@ -113,7 +113,7 @@ keyword = "#ff7e87"
 type_parameter = "#f2c27b"
 ```
 
-The keys are the language server completion kinds in snake case: `text`, `method`, `function`, `constructor`, `field`, `variable`, `class`, `interface`, `module`, `property`, `unit`, `value`, `enum`, `keyword`, `snippet`, `color`, `file`, `reference`, `folder`, `enum_member`, `constant`, `struct`, `event`, `operator`, and `type_parameter`.
+The keys are the language server completion kinds in snake case: `text`, `method`, `function`, `constructor`, `field`, `variable`, `class`, `interface`, `module`, `property`, `unit`, `value`, `enum`, `keyword`, `snippet`, `color`, `file`, `reference`, `folder`, `enum_member`, `constant`, `struct`, `event`, `operator`, and `type_parameter`. The `match` key sets the color that highlights characters matched by the typed query and defaults to the search match background.
 
 ## Status line colors
 

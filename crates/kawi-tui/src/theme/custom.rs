@@ -163,14 +163,20 @@ impl Theme {
             None => non_text,
         };
         let selection = file.selection.match_colors("selection")?;
+        let search_match = file.search_match.match_colors("search_match")?;
         let palette = super::style::parse_palette(file.palette)?;
         let bracket_match = match file.bracket.as_ref() {
             Some(bracket) => bracket.matched.match_colors("bracket.match")?,
             None => selection.clone(),
         };
         let syntax = parse_styles(file.syntax, &palette)?;
-        let completion =
-            super::completion::parse(file.completion, base_foreground, non_text, &syntax)?;
+        let completion = super::completion::parse(
+            file.completion,
+            base_foreground,
+            non_text,
+            search_match.background,
+            &syntax,
+        )?;
         Ok(Self {
             name: name.to_string(),
             package: file.package,
@@ -180,7 +186,7 @@ impl Theme {
             },
             float_background,
             code_background,
-            search_match: file.search_match.match_colors("search_match")?,
+            search_match,
             search_current: file.search_current.match_colors("search_current")?,
             substitute: file.substitute.match_colors("substitute")?,
             selection,
