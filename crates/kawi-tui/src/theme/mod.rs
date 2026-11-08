@@ -5,6 +5,7 @@ pub use style::{SyntaxStyle, SyntaxStyles};
 
 mod builtin;
 mod color;
+mod completion;
 mod custom;
 mod decorations;
 mod error;
@@ -12,6 +13,7 @@ mod plugin_decorations;
 mod statusline;
 mod style;
 
+pub use completion::CompletionTheme;
 pub use custom::ThemePackage;
 pub use decorations::DecorationTheme;
 pub use error::ThemeError;
@@ -56,6 +58,7 @@ pub struct Theme {
     pub diagnostic_warning: Color,
     pub diagnostic_information: Color,
     pub diagnostic_hint: Color,
+    pub completion: CompletionTheme,
     pub decorations: DecorationTheme,
     pub plugin_decorations: PluginDecorationOverrides,
     pub statusline: StatusLineTheme,

@@ -104,9 +104,9 @@ pub(super) struct StyleTable {
 
 pub(super) fn parse_styles(
     values: BTreeMap<String, StyleValue>,
-    palette: BTreeMap<String, Color>,
+    palette: &BTreeMap<String, Color>,
 ) -> Result<SyntaxStyles, ThemeError> {
-    let mut styles = parse_style_map(values, &palette)?;
+    let mut styles = parse_style_map(values, palette)?;
     validate_base_styles(&styles)?;
     add_aliases(&mut styles);
     Ok(SyntaxStyles::from_keyed(styles))

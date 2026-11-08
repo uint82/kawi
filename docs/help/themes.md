@@ -102,6 +102,19 @@ italic = true
 
 The optional keys are `foreground`, `background`, `fill`, `bold`, `italic`, `underline`, and `hidden`. `fill` accepts `both`, `foreground`, or `background`. `hidden` conceals the text while preserving its background. Hidden text is revealed when the cursor is on it. Omitted fields inherit the group defaults and the semantic `[decorations]` colors. Overrides for plugins or groups that are not installed are ignored.
 
+## Completion colors
+
+Completion menus color each item by its language server kind. Omitted kinds derive their colors from the theme syntax colors, with `text` using the base foreground and `file`, `folder`, `reference`, and `event` using `gutter.non_text`. Override individual kinds with a `[completion]` table:
+
+```toml
+[completion]
+function = "#6ed0f0"
+keyword = "#ff7e87"
+type_parameter = "#f2c27b"
+```
+
+The keys are the language server completion kinds in snake case: `text`, `method`, `function`, `constructor`, `field`, `variable`, `class`, `interface`, `module`, `property`, `unit`, `value`, `enum`, `keyword`, `snippet`, `color`, `file`, `reference`, `folder`, `enum_member`, `constant`, `struct`, `event`, `operator`, and `type_parameter`.
+
 ## Status line colors
 
 Status line segments derive their colors from `status`, `diagnostics`, `git`, `selection`, and the base palette. Colored segments use a filled background badge with horizontal padding, and the base background as the default foreground. Padding is dropped before the mode label is shortened. Override individual segments with a `[statusline]` table:
