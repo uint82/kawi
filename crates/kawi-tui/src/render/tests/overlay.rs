@@ -34,6 +34,7 @@ fn completion_line(label: &str, kind: Option<CompletionKind>) -> CompletionLine 
         detail: Some("fn".to_string()),
         kind,
         deprecated: false,
+        highlights: Vec::new(),
     }
 }
 
@@ -107,4 +108,83 @@ fn deprecated_completion_rows_are_crossed_out() {
     assert!(out.cell(0, 0).expect("cell").style().is_crossed_out());
     assert!(!out.cell(6, 0).expect("cell").style().is_crossed_out());
     assert!(!out.cell(8, 0).expect("cell").style().is_crossed_out());
+}
+
+#[test]
+fn matched_label_characters_use_the_match_color() {
+    let theme = Theme::default();
+    let mut line = completion_line("print", None);
+    line.detail = None;
+    line.highlights = vec![0..1, 3..5];
+    let mut out = Surface::new(8, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(&mut out, &theme, &line, 8, 0, false).expect("draw row");
+    let color = |column| out.cell(column, 0).expect("cell").style().foreground();
+    assert_eq!(color(0), theme.completion.matched());
+    assert_eq!(color(1), theme.base.foreground);
+    assert_eq!(color(3), theme.completion.matched());
+    assert_eq!(color(4), theme.completion.matched());
+    assert_eq!(color(5), theme.base.foreground);
+}
+
+#[test]
+fn highlight_ranges_survive_multibyte_characters() {
+    let theme = Theme::default();
+    let mut line = completion_line("école", None);
+    line.detail = None;
+    line.highlights = vec![0..2, 3..5];
+    let mut out = Surface::new(4, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(&mut out, &theme, &line, 4, 0, false).expect("draw row");
+    assert_eq!(row_text(&out, 4), "écol");
+    assert_eq!(
+        out.cell(0, 0).expect("cell").style().foreground(),
+        theme.completion.matched()
+    );
+    assert_eq!(
+        out.cell(1, 0).expect("cell").style().foreground(),
+        theme.base.foreground
+    );
+    assert_eq!(
+        out.cell(2, 0).expect("cell").style().foreground(),
+        theme.completion.matched()
+    );
+}
+
+#[test]
+fn highlight_ranges_survive_wide_characters() {
+    let theme = Theme::default();
+    let mut line = completion_line("日本x", None);
+    line.detail = None;
+    line.highlights = vec![0..3, 6..7];
+    let mut out = Surface::new(5, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(&mut out, &theme, &line, 5, 0, false).expect("draw row");
+    assert_eq!(row_text(&out, 5), "日本x");
+    assert_eq!(
+        out.cell(0, 0).expect("cell").style().foreground(),
+        theme.completion.matched()
+    );
+    assert_eq!(
+        out.cell(2, 0).expect("cell").style().foreground(),
+        theme.base.foreground
+    );
+    assert_eq!(
+        out.cell(4, 0).expect("cell").style().foreground(),
+        theme.completion.matched()
+    );
+}
+
+#[test]
+fn highlights_past_the_truncated_label_are_ignored() {
+    let theme = Theme::default();
+    let mut line = completion_line("value", None);
+    line.detail = None;
+    line.highlights = std::iter::once(3..5).collect();
+    let mut out = Surface::new(2, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(&mut out, &theme, &line, 2, 0, false).expect("draw row");
+    assert_eq!(row_text(&out, 2), "va");
+    for column in 0..2 {
+        assert_eq!(
+            out.cell(column, 0).expect("cell").style().foreground(),
+            theme.base.foreground
+        );
+    }
 }

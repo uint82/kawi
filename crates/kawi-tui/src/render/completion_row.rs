@@ -2,12 +2,14 @@ use anyhow::{Context, Result};
 use crossterm::style::Color;
 use kawi_completion::CompletionKind;
 use std::io::Write;
+use std::ops::Range;
 
 use crate::frame::CompletionLine;
 use crate::paint;
 use crate::surface::Surface;
 use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::Theme;
+use kawi_buffer::unicode;
 
 use super::furniture::write_spaces;
 
@@ -26,6 +28,7 @@ pub(super) fn draw_row(
     out.set_crossed_out(line.deprecated);
     let column_width = width.saturating_sub(kind_space(kind_width));
     let used = write_primary(out, theme, line, column_width, selected)?;
+    out.set_foreground(label_color(theme, selected, false));
     write_spaces(out, column_width.saturating_sub(used))?;
     out.set_crossed_out(false);
     write_kind(out, theme, line.kind, kind_width, selected)?;
@@ -61,9 +64,7 @@ fn write_primary(
     width: usize,
     selected: bool,
 ) -> Result<usize> {
-    let label = truncate_to_display_width(&line.label, width);
-    write!(out, "{label}").context("write completion label")?;
-    let used = display_width(label);
+    let used = write_label(out, theme, line, width, selected)?;
     let Some(detail) = line.detail.as_deref() else {
         return Ok(used);
     };
@@ -75,6 +76,42 @@ fn write_primary(
     let detail = truncate_to_display_width(detail, remaining - DETAIL_GAP);
     write!(out, "  {detail}").context("write completion detail")?;
     Ok(used + DETAIL_GAP + display_width(detail))
+}
+
+fn write_label(
+    out: &mut Surface,
+    theme: &Theme,
+    line: &CompletionLine,
+    column_width: usize,
+    selected: bool,
+) -> Result<usize> {
+    let mut used: usize = 0;
+    let mut highlight_index = 0;
+    for grapheme in unicode::graphemes(&line.label) {
+        let start = grapheme.start_byte();
+        let text = grapheme.text();
+        let width = display_width(text);
+        if used.saturating_add(width) > column_width {
+            break;
+        }
+        let highlighted = is_highlighted(&line.highlights, &mut highlight_index, start);
+        out.set_foreground(label_color(theme, selected, highlighted));
+        write!(out, "{text}").context("write completion label")?;
+        used = used.saturating_add(width);
+    }
+    Ok(used)
+}
+
+fn is_highlighted(highlights: &[Range<usize>], cursor: &mut usize, start: usize) -> bool {
+    while highlights
+        .get(*cursor)
+        .is_some_and(|range| range.end <= start)
+    {
+        *cursor += 1;
+    }
+    highlights
+        .get(*cursor)
+        .is_some_and(|range| range.start <= start && start < range.end)
 }
 
 fn write_kind(
@@ -102,6 +139,16 @@ fn kind_space(kind_width: usize) -> usize {
         0
     } else {
         KIND_GAP + kind_width
+    }
+}
+
+fn label_color(theme: &Theme, selected: bool, highlighted: bool) -> Color {
+    if selected {
+        theme.selection.foreground
+    } else if highlighted {
+        theme.completion.matched()
+    } else {
+        theme.base.foreground
     }
 }
 

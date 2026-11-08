@@ -1,4 +1,5 @@
 use crossterm::style::Color;
+use std::ops::Range;
 
 use crate::markdown::MarkdownLine;
 use crate::statusbar::{StatusBarConfig, StatusInfo};
@@ -414,6 +415,7 @@ pub struct CompletionLine {
     pub detail: Option<String>,
     pub kind: Option<CompletionKind>,
     pub deprecated: bool,
+    pub highlights: Vec<Range<usize>>,
 }
 
 pub struct OverlayPanel<'a> {

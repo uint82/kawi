@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use kawi_completion::{CompletionKind, Item};
 use kawi_tui::frame::CompletionLine;
 use kawi_tui::text::{display_width, sanitize_text};
@@ -25,12 +27,13 @@ pub(super) fn metrics(items: &[Item]) -> DisplayMetrics {
     }
 }
 
-pub(super) fn display_line(item: &Item) -> CompletionLine {
+pub(super) fn display_line(item: &Item, highlights: &[Range<usize>]) -> CompletionLine {
     CompletionLine {
         label: sanitize_text(&item.label),
         detail: detail(item).map(sanitize_text),
         kind: display_kind(item),
         deprecated: item.deprecated,
+        highlights: highlights.to_vec(),
     }
 }
 

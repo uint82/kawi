@@ -1,6 +1,52 @@
+use std::ops::Range;
+
 pub(crate) struct Query {
     needle: String,
     case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuzzyMatch {
+    score: i32,
+    ranges: Vec<Range<usize>>,
+}
+
+impl FuzzyMatch {
+    pub fn score(&self) -> i32 {
+        self.score
+    }
+
+    pub fn ranges(&self) -> &[Range<usize>] {
+        &self.ranges
+    }
+}
+
+pub struct FuzzyMatcher {
+    query: Query,
+}
+
+impl FuzzyMatcher {
+    pub fn new(query: &str) -> Self {
+        Self {
+            query: Query::new(query),
+        }
+    }
+
+    pub fn matches(&self, candidate: &str) -> Option<FuzzyMatch> {
+        if self.query.is_empty() {
+            return Some(FuzzyMatch {
+                score: 0,
+                ranges: Vec::new(),
+            });
+        }
+        let (haystack, offsets) = fold_with_offsets(candidate, self.query.case_sensitive);
+        let mut positions = Vec::new();
+        let score = score(&self.query.needle, &haystack, Some(&mut positions))?;
+        let ranges = offsets
+            .map(|offsets| byte_ranges(candidate, &offsets, &positions))
+            .unwrap_or_default();
+        Some(FuzzyMatch { score, ranges })
+    }
 }
 
 impl Query {
@@ -25,19 +71,19 @@ impl Query {
         } else {
             folded
         };
-        score(&self.needle, haystack)
+        score(&self.needle, haystack, None)
     }
+}
+
+pub fn fuzzy_match(query: &str, candidate: &str) -> Option<FuzzyMatch> {
+    FuzzyMatcher::new(query).matches(candidate)
 }
 
 pub fn fuzzy_score(query: &str, candidate: &str) -> Option<i32> {
-    let query = Query::new(query);
-    if query.is_empty() {
-        return Some(0);
-    }
-    query.score(candidate, &candidate.to_lowercase())
+    fuzzy_match(query, candidate).map(|matched| matched.score)
 }
 
-fn score(needle: &str, haystack: &str) -> Option<i32> {
+fn score(needle: &str, haystack: &str, mut positions: Option<&mut Vec<usize>>) -> Option<i32> {
     let haystack_chars: Vec<char> = haystack.chars().collect();
     let basename_start = haystack.rfind('/').map_or(0, |index| index + 1);
     let mut score = 0;
@@ -61,6 +107,9 @@ fn score(needle: &str, haystack: &str) -> Option<i32> {
         if index == 0 && found >= basename_start {
             points += 15;
         }
+        if let Some(positions) = positions.as_deref_mut() {
+            positions.push(found);
+        }
         score += points;
         previous = Some(found);
         position = found + 1;
@@ -72,6 +121,44 @@ fn score(needle: &str, haystack: &str) -> Option<i32> {
         score += 20;
     }
     Some(score - (haystack_chars.len() / 10) as i32)
+}
+
+fn fold_with_offsets(text: &str, case_sensitive: bool) -> (String, Option<Vec<usize>>) {
+    if case_sensitive {
+        let offsets = text.char_indices().map(|(index, _)| index).collect();
+        return (text.to_string(), Some(offsets));
+    }
+    let folded = text.to_lowercase();
+    let mut offsets = Vec::new();
+    for (index, character) in text.char_indices() {
+        for _ in character.to_lowercase() {
+            offsets.push(index);
+        }
+    }
+    if offsets.len() == folded.chars().count() {
+        (folded, Some(offsets))
+    } else {
+        (folded, None)
+    }
+}
+
+fn byte_ranges(candidate: &str, offsets: &[usize], positions: &[usize]) -> Vec<Range<usize>> {
+    let mut ranges: Vec<Range<usize>> = Vec::with_capacity(positions.len());
+    for position in positions {
+        let Some(&start) = offsets.get(*position) else {
+            continue;
+        };
+        let Some(character) = candidate[start..].chars().next() else {
+            continue;
+        };
+        let end = start.saturating_add(character.len_utf8());
+        match ranges.last_mut() {
+            Some(range) if range.end == start => range.end = end,
+            Some(range) if range.start <= start && start < range.end => {}
+            _ => ranges.push(start..end),
+        }
+    }
+    ranges
 }
 
 fn fold(text: &str, case_sensitive: bool) -> String {
@@ -118,5 +205,51 @@ mod tests {
     #[test]
     fn empty_query_matches_everything() {
         assert_eq!(fuzzy_score("", "anything"), Some(0));
+    }
+
+    #[test]
+    fn match_ranges_point_at_the_matched_characters() {
+        let matched = fuzzy_match("mn", "main").expect("match");
+        assert_eq!(matched.ranges(), [0..1, 3..4]);
+    }
+
+    #[test]
+    fn consecutive_characters_merge_into_one_range() {
+        let matched = fuzzy_match("ma", "main").expect("match");
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 0..2);
+    }
+
+    #[test]
+    fn ranges_keep_original_byte_offsets_for_wide_characters() {
+        let matched = fuzzy_match("ol", "école").expect("match");
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 3..5);
+    }
+
+    #[test]
+    fn case_insensitive_matches_keep_original_offsets() {
+        let matched = fuzzy_match("é", "École").expect("match");
+        let ranges = matched.ranges();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0], 0..2);
+    }
+
+    #[test]
+    fn empty_queries_have_no_ranges() {
+        let matched = fuzzy_match("", "anything").expect("match");
+        assert!(matched.ranges().is_empty());
+    }
+
+    #[test]
+    fn scorer_and_match_report_the_same_score() {
+        for (query, candidate) in [("main", "src/main.rs"), ("mn", "main"), ("", "main")] {
+            assert_eq!(
+                fuzzy_score(query, candidate),
+                fuzzy_match(query, candidate).map(|matched| matched.score())
+            );
+        }
     }
 }
