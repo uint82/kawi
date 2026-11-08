@@ -5,6 +5,9 @@ use crate::words::WordClass;
 impl Editor {
     pub(super) fn insert_backspace_word(&mut self) {
         if self.mode == crate::mode::Mode::Replace {
+            if self.replace_selected_text() {
+                return;
+            }
             self.replace_backspace_word();
             return;
         }
@@ -58,6 +61,9 @@ impl Editor {
 
     pub(super) fn insert_backspace_line(&mut self) {
         if self.mode == crate::mode::Mode::Replace {
+            if self.replace_selected_text() {
+                return;
+            }
             self.replace_backspace_line();
             return;
         }

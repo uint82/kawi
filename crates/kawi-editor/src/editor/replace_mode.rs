@@ -19,6 +19,12 @@ impl Editor {
     }
 
     pub(super) fn insert_replace_char(&mut self, c: char) {
+        if self.replace_selected_text() {
+            self.record_maybe();
+            self.record_insert(InsertEdit::Char(c));
+            self.insert_at_cursor(c);
+            return;
+        }
         self.record_maybe();
         self.record_insert(InsertEdit::Char(c));
         self.replace_at_cursor(c);
