@@ -98,9 +98,9 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
         LanguageId::Php => include_str!("../../queries/php.scm").to_string(),
         LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
-        LanguageId::Yaml => String::new(),
+        LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
-        LanguageId::Css => String::new(),
+        LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
     }
 }

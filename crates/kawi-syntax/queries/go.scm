@@ -17,3 +17,4 @@
 (function_declaration name: (identifier) @function)
 (method_declaration name: (field_identifier) @function.method)
 (method_elem name: (field_identifier) @function.method)
+(escape_sequence) @string.escape
