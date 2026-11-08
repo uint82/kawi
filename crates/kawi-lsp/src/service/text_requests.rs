@@ -167,7 +167,9 @@ impl Manager {
                 &target.encoding,
             );
             let kind = match trigger.kind {
-                CompletionTriggerKind::Invoked => lsp_types::SignatureHelpTriggerKind::INVOKED,
+                CompletionTriggerKind::Invoked | CompletionTriggerKind::Incomplete => {
+                    lsp_types::SignatureHelpTriggerKind::INVOKED
+                }
                 CompletionTriggerKind::TriggerCharacter => {
                     lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER
                 }
@@ -497,6 +499,10 @@ fn completion_context(trigger: CompletionTrigger) -> CompletionContext {
         CompletionTriggerKind::TriggerCharacter => CompletionContext {
             trigger_kind: lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER,
             trigger_character: trigger.character,
+        },
+        CompletionTriggerKind::Incomplete => CompletionContext {
+            trigger_kind: lsp_types::CompletionTriggerKind::TRIGGER_FOR_INCOMPLETE_COMPLETIONS,
+            trigger_character: None,
         },
     }
 }

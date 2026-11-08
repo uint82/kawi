@@ -171,6 +171,7 @@ pub struct HoverEvent {
 pub enum CompletionTriggerKind {
     Invoked,
     TriggerCharacter,
+    Incomplete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +192,13 @@ impl CompletionTrigger {
         Self {
             kind: CompletionTriggerKind::TriggerCharacter,
             character: Some(character.into()),
+        }
+    }
+
+    pub fn incomplete() -> Self {
+        Self {
+            kind: CompletionTriggerKind::Incomplete,
+            character: None,
         }
     }
 }
@@ -276,6 +284,7 @@ pub struct CompletionEvent {
     pub word_start: usize,
     pub prefix: String,
     pub items: Vec<CompletionEntry>,
+    pub is_incomplete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

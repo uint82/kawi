@@ -12,6 +12,7 @@ fn completion(request: u64) -> CompletionEvent {
         cursor: 0,
         word_start: 0,
         prefix: String::new(),
+        is_incomplete: false,
         items: vec![CompletionEntry {
             server: "fake".to_string(),
             label: "value".to_string(),

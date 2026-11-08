@@ -10,8 +10,6 @@ pub(super) use config::CompletionOptions;
 pub(super) use session::CompletionSession;
 pub(super) use triggers::is_completion_key;
 
-use std::time::{Duration, Instant};
-
 use crossterm::event::KeyEvent;
 
 use kawi_completion::{Request, ResolveRequest, Source, Trigger, TriggerKind};
@@ -19,10 +17,8 @@ use kawi_lsp::{CompletionEvent, CompletionResolveEvent};
 
 use super::lsp::editor_path;
 use super::App;
-use prefix::completion_prefix;
+use prefix::{completion_prefix, Prefix};
 use triggers::{keeps_completion_open, trigger_for_key};
-
-const AUTO_COMPLETION_DELAY: Duration = Duration::from_millis(120);
 
 impl App {
     pub(super) fn request_completion(&mut self) -> anyhow::Result<bool> {
@@ -201,56 +197,51 @@ impl App {
         }
     }
 
-    pub(super) fn completion_wait_timeout(&self) -> Option<Duration> {
-        self.completion_auto.wait_timeout()
-    }
-
-    pub(super) fn completion_tick(&mut self) -> bool {
-        let Some(trigger) = self.completion_auto.take_due(Instant::now()) else {
-            return false;
-        };
-        if !self.completion_request_allowed() {
-            return false;
-        }
-        self.start_completion(trigger, false);
-        true
-    }
-
     pub(super) fn after_buffer_key(&mut self, key: KeyEvent) {
         self.snippet_choices = None;
         self.update_snippet();
         let prefix = completion_prefix(&self.editor);
         let trigger = trigger_for_key(&self.lsp, key, &prefix.text);
-        let keep_open = keeps_completion_open(&self.lsp, key);
-        if let Some(session) = self.completion.as_mut() {
-            if prefix.text.is_empty() || !keep_open {
-                self.completion = None;
-                self.completion_auto.cancel();
-                self.lsp.cancel_completion();
-            } else {
-                session.refilter(&prefix.text, None);
-                if session.items().is_empty() {
-                    self.completion = None;
-                    self.completion_auto.cancel();
-                    self.lsp.cancel_completion();
-                }
-            }
-        }
+        let needs_incomplete = self.update_open_completion(key, &prefix, trigger.as_ref());
         self.after_signature_key(key);
-        if !self.completion_options.auto || !self.completion_request_allowed() {
+        if needs_incomplete && self.completion_request_allowed() {
+            self.start_completion(Trigger::incomplete(), false);
             return;
         }
-        if let Some(trigger) = trigger {
-            let delay = match trigger.kind {
-                TriggerKind::TriggerCharacter => Duration::ZERO,
-                _ => AUTO_COMPLETION_DELAY,
-            };
-            self.completion_auto.schedule(trigger, delay);
-            self.lsp.cancel_completion();
-        } else if self.completion.is_none() {
-            self.completion_auto.cancel();
-        }
+        self.schedule_auto_completion(trigger, prefix.cursor);
         self.resolve_completion_docs();
+    }
+
+    fn update_open_completion(
+        &mut self,
+        key: KeyEvent,
+        prefix: &Prefix,
+        trigger: Option<&Trigger>,
+    ) -> bool {
+        if self.completion.is_none() {
+            return false;
+        }
+        let keep_open = keeps_completion_open(&self.lsp, key);
+        if prefix.text.is_empty() || !keep_open {
+            self.close_completion();
+            return false;
+        }
+        let Some(session) = self.completion.as_mut() else {
+            return false;
+        };
+        session.refilter(&prefix.text, None);
+        let incomplete = session.is_incomplete();
+        if session.items().is_empty() && !incomplete {
+            self.close_completion();
+            return false;
+        }
+        incomplete && trigger.is_some_and(|trigger| trigger.kind != TriggerKind::TriggerCharacter)
+    }
+
+    fn close_completion(&mut self) {
+        self.completion = None;
+        self.completion_auto.cancel();
+        self.lsp.cancel_completion();
     }
 
     pub(super) fn close_completion_on_mode_change(&mut self) {

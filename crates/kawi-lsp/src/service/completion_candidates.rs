@@ -10,6 +10,12 @@ const ITEM_DEFAULTS: &str = "itemDefaults";
 const INSERT_TEXT_FORMAT: &str = "insertTextFormat";
 const INSERT_TEXT_MODE: &str = "insertTextMode";
 
+pub(super) struct CompletionCandidates {
+    pub(super) items: Vec<CompletionCandidate>,
+    pub(super) error: Option<String>,
+    pub(super) is_incomplete: bool,
+}
+
 pub(super) struct CompletionCandidate {
     pub(super) score: u8,
     pub(super) sort_key: String,
@@ -41,22 +47,30 @@ pub(super) fn completion_candidates(
     responses: &[TextResponse],
     prefix: &str,
     query: &str,
-) -> (Vec<CompletionCandidate>, Option<String>) {
+) -> CompletionCandidates {
     let mut candidates = Vec::new();
-    let mut response_error = None;
+    let mut error = None;
+    let mut is_incomplete = false;
     for response in responses {
         match completion_items(&response.value) {
-            Ok(items) => candidates.extend(
-                items
-                    .into_iter()
-                    .filter_map(|item| completion_candidate(item, response, prefix, query)),
-            ),
-            Err(error) => {
-                response_error.get_or_insert(error);
+            Ok((items, incomplete)) => {
+                is_incomplete |= incomplete;
+                candidates.extend(
+                    items
+                        .into_iter()
+                        .filter_map(|item| completion_candidate(item, response, prefix, query)),
+                );
+            }
+            Err(response_error) => {
+                error.get_or_insert(response_error);
             }
         }
     }
-    (candidates, response_error)
+    CompletionCandidates {
+        items: candidates,
+        error,
+        is_incomplete,
+    }
 }
 
 fn completion_candidate(
@@ -86,7 +100,7 @@ pub(super) fn compare_candidates(
         .then_with(|| left.sort_key.cmp(&right.sort_key))
 }
 
-fn completion_items(value: &Value) -> Result<Vec<lsp_types::CompletionItem>, String> {
+fn completion_items(value: &Value) -> Result<(Vec<lsp_types::CompletionItem>, bool), String> {
     if value.is_null() {
         return Err("No completions".to_string());
     }
@@ -95,8 +109,8 @@ fn completion_items(value: &Value) -> Result<Vec<lsp_types::CompletionItem>, Str
     let response = serde_json::from_value::<CompletionResponse>(value)
         .map_err(|error| format!("Invalid completion response: {error}"))?;
     Ok(match response {
-        CompletionResponse::Array(items) => items,
-        CompletionResponse::List(list) => list.items,
+        CompletionResponse::Array(items) => (items, false),
+        CompletionResponse::List(list) => (list.items, list.is_incomplete),
     })
 }
 
@@ -213,6 +227,17 @@ mod tests {
     }
 
     #[test]
+    fn completion_lists_report_incompleteness() {
+        let value = serde_json::json!({
+            "isIncomplete": true,
+            "items": [{ "label": "value" }]
+        });
+        let (items, is_incomplete) = completion_items(&value).expect("items");
+        assert_eq!(items.len(), 1);
+        assert!(is_incomplete);
+    }
+
+    #[test]
     fn completion_list_defaults_apply_to_items() {
         let value = serde_json::json!({
             "isIncomplete": false,
@@ -225,7 +250,8 @@ mod tests {
                 { "label": "explicit", "insertTextFormat": 1, "insertTextMode": 1 }
             ]
         });
-        let items = completion_items(&value).expect("items");
+        let (items, is_incomplete) = completion_items(&value).expect("items");
+        assert!(!is_incomplete);
         assert_eq!(
             items[0].insert_text_format,
             Some(lsp_types::InsertTextFormat::SNIPPET)
