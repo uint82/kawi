@@ -1036,6 +1036,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "kawi-buffer",
+ "kawi-completion",
  "kawi-jsonrpc",
  "kawi-process",
  "libc",

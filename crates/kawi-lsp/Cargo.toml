@@ -13,6 +13,7 @@ kawi-jsonrpc.workspace = true
 kawi-process.workspace = true
 anyhow.workspace = true
 kawi-buffer.workspace = true
+kawi-completion.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
 ropey = { version = "1.6.1", default-features = false, features = ["simd"] }

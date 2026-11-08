@@ -1,8 +1,8 @@
 use super::completion_edit::convert_edit;
-use super::completion_snippet::completion_text;
 use super::markup::markup_document;
 use super::*;
 use kawi_buffer::validate_text_edits;
+use kawi_completion::Snippet;
 use lsp_types::{CompletionTextEdit, InsertTextFormat};
 use ropey::Rope;
 
@@ -14,7 +14,7 @@ pub(super) fn completion_entry(
     word_start: usize,
     encoding: &PositionEncodingKind,
 ) -> Option<CompletionEntry> {
-    let primary = item_edit(&item, text, cursor, word_start, encoding)?;
+    let (primary, snippet) = item_edit(&item, text, cursor, word_start, encoding)?;
     let additional = item
         .additional_text_edits
         .as_deref()
@@ -30,9 +30,6 @@ pub(super) fn completion_entry(
     if label.is_empty() {
         return None;
     }
-    let format = item
-        .insert_text_format
-        .unwrap_or(InsertTextFormat::PLAIN_TEXT);
     Some(CompletionEntry {
         server,
         label,
@@ -45,10 +42,15 @@ pub(super) fn completion_entry(
         additional,
         deprecated: item.deprecated.unwrap_or(false),
         preselect: item.preselect.unwrap_or(false),
-        snippet: format == InsertTextFormat::SNIPPET,
+        snippet,
         resolve_id: None,
         command: item.command.map(super::convert_command),
     })
+}
+
+struct SnippetText {
+    text: String,
+    snippet: Option<Snippet>,
 }
 
 fn item_edit(
@@ -57,31 +59,49 @@ fn item_edit(
     cursor: usize,
     word_start: usize,
     encoding: &PositionEncodingKind,
-) -> Option<TextChange> {
+) -> Option<(TextChange, Option<Snippet>)> {
     let format = item
         .insert_text_format
         .unwrap_or(InsertTextFormat::PLAIN_TEXT);
     match item.text_edit.as_ref() {
-        Some(CompletionTextEdit::Edit(edit)) => convert_edit(
-            text,
-            &edit.range,
-            &completion_text(&edit.new_text, format),
-            encoding,
-        ),
-        Some(CompletionTextEdit::InsertAndReplace(edit)) => convert_edit(
-            text,
-            &edit.replace,
-            &completion_text(&edit.new_text, format),
-            encoding,
-        ),
-        None => {
-            let value = item.insert_text.as_deref().unwrap_or(item.label.as_str());
-            Some(TextChange {
-                start: word_start,
-                end: cursor,
-                text: completion_text(value, format),
-            })
+        Some(CompletionTextEdit::Edit(edit)) => {
+            let value = snippet_text(&edit.new_text, format);
+            let change = convert_edit(text, &edit.range, &value.text, encoding)?;
+            Some((change, value.snippet))
         }
+        Some(CompletionTextEdit::InsertAndReplace(edit)) => {
+            let value = snippet_text(&edit.new_text, format);
+            let change = convert_edit(text, &edit.replace, &value.text, encoding)?;
+            Some((change, value.snippet))
+        }
+        None => {
+            let value = snippet_text(
+                item.insert_text.as_deref().unwrap_or(item.label.as_str()),
+                format,
+            );
+            Some((
+                TextChange {
+                    start: word_start,
+                    end: cursor,
+                    text: value.text,
+                },
+                value.snippet,
+            ))
+        }
+    }
+}
+
+fn snippet_text(value: &str, format: InsertTextFormat) -> SnippetText {
+    if format != InsertTextFormat::SNIPPET {
+        return SnippetText {
+            text: value.to_string(),
+            snippet: None,
+        };
+    }
+    let snippet = Snippet::parse(value);
+    SnippetText {
+        text: snippet.text().to_string(),
+        snippet: Some(snippet),
     }
 }
 
@@ -96,6 +116,50 @@ mod tests {
     #[test]
     fn sanitizes_control_characters_in_labels() {
         assert_eq!(display_text("value\u{1b}\tname"), "value name");
+    }
+
+    #[test]
+    fn snippet_items_keep_tab_stops() {
+        let text = Rope::from_str("");
+        let item = lsp_types::CompletionItem {
+            label: "println".to_string(),
+            insert_text: Some("println!(${1:value})$0".to_string()),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            ..lsp_types::CompletionItem::default()
+        };
+        let entry = completion_entry(
+            item,
+            "fake".to_string(),
+            &text,
+            0,
+            0,
+            &PositionEncodingKind::UTF16,
+        )
+        .expect("completion entry");
+        assert_eq!(entry.primary.text, "println!(value)");
+        let snippet = entry.snippet.expect("snippet");
+        assert_eq!(snippet.stops()[0].range(), 9..14);
+        assert_eq!(snippet.final_stop(), 15);
+    }
+
+    #[test]
+    fn plain_items_have_no_snippet() {
+        let text = Rope::from_str("");
+        let item = lsp_types::CompletionItem {
+            label: "value".to_string(),
+            ..lsp_types::CompletionItem::default()
+        };
+        let entry = completion_entry(
+            item,
+            "fake".to_string(),
+            &text,
+            0,
+            0,
+            &PositionEncodingKind::UTF16,
+        )
+        .expect("completion entry");
+        assert_eq!(entry.primary.text, "value");
+        assert!(entry.snippet.is_none());
     }
 
     #[test]

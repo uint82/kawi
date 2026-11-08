@@ -21,7 +21,6 @@ mod completion_candidates;
 mod completion_edit;
 mod completion_entry;
 mod completion_resolve;
-mod completion_snippet;
 mod diagnostics;
 mod document;
 mod events;
@@ -261,7 +260,7 @@ pub struct CompletionEntry {
     pub additional: Vec<TextChange>,
     pub deprecated: bool,
     pub preselect: bool,
-    pub snippet: bool,
+    pub snippet: Option<kawi_completion::Snippet>,
     pub resolve_id: Option<u64>,
     pub command: Option<LspCommand>,
 }

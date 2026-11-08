@@ -23,7 +23,7 @@ fn item(id: &str, label: &str) -> Item {
         documentation: None,
         deprecated: false,
         preselect: false,
-        snippet: false,
+        snippet: None,
         resolve: false,
         primary: edit(0, 0, label),
         additional: Vec::new(),

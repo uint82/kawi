@@ -94,7 +94,7 @@ pub struct Item {
     pub documentation: Option<Documentation>,
     pub deprecated: bool,
     pub preselect: bool,
-    pub snippet: bool,
+    pub snippet: Option<Snippet>,
     pub resolve: bool,
     pub primary: TextEdit,
     pub additional: Vec<TextEdit>,
@@ -176,7 +176,7 @@ mod tests {
             documentation: None,
             deprecated: false,
             preselect: false,
-            snippet: false,
+            snippet: None,
             resolve: false,
             primary: TextEdit {
                 start: 0,

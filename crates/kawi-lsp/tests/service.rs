@@ -764,6 +764,9 @@ fn returns_completion_items_with_edits_and_snippet_expansion() {
     assert_eq!(snippet.primary.text, "print(value)");
     assert_eq!(snippet.primary.start, 0);
     assert_eq!(snippet.primary.end, 3);
+    let parsed = snippet.snippet.as_ref().expect("parsed snippet");
+    assert_eq!(parsed.stops()[0].range(), 6..11);
+    assert_eq!(parsed.final_stop(), 12);
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }

@@ -1,9 +1,10 @@
 use super::*;
+use kawi_completion::Snippet;
 
 #[test]
 fn snippet_items_are_marked() {
     let mut item = item("a", "println!");
-    item.snippet = true;
+    item.snippet = Some(Snippet::parse("println!($1)"));
     let session = CompletionSession::new(event(vec![item]), "");
     assert_eq!(labels(&session), ["println!"]);
     assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
@@ -34,7 +35,7 @@ fn missing_kinds_leave_the_kind_column_empty() {
 fn text_kinds_use_the_snippet_kind_when_snippeting() {
     let mut value = item("a", "println!");
     value.kind = Some(CompletionKind::Text);
-    value.snippet = true;
+    value.snippet = Some(Snippet::parse("println!($1)"));
     let session = CompletionSession::new(event(vec![value]), "");
     assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
 }
