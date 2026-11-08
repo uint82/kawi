@@ -9,6 +9,8 @@ use crate::surface::Surface;
 use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::Theme;
 
+use super::furniture::write_spaces;
+
 use super::overlay::{clear_overlay_rect, draw_rounded_box};
 
 pub(super) fn draw(
@@ -277,11 +279,6 @@ impl HintRenderer<'_> {
         paint::apply_colors(out, self.theme.base.foreground, self.theme.float_background);
         Ok(())
     }
-}
-
-fn write_spaces(out: &mut Surface, width: usize) -> Result<()> {
-    write!(out, "{}", " ".repeat(width)).context("write key menu padding")?;
-    Ok(())
 }
 
 fn key_color(theme: &Theme) -> Color {

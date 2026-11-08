@@ -39,6 +39,14 @@ pub(super) fn erase_row_tail(out: &mut Surface) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn write_spaces(out: &mut Surface, width: usize) -> Result<()> {
+    if width == 0 {
+        return Ok(());
+    }
+    write!(out, "{}", " ".repeat(width)).context("write spaces")?;
+    Ok(())
+}
+
 pub(super) fn draw_filler_rows(
     out: &mut Surface,
     pane: &PaneFrame<'_>,
