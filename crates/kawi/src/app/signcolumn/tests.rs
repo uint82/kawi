@@ -2,6 +2,7 @@ use super::*;
 use crate::app::git::GitSession;
 use crate::keymap::Flavor;
 use crate::options::SignColumnMode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use kawi_git::GitFile;
 use kawi_plugin::{Decoration, DecorationRef, DecorationScope, DecorationStyle};
@@ -100,6 +101,65 @@ fn auto_shows_diagnostics_from_problem_state() {
         Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
     );
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn insert_mode_hides_diagnostic_signs_and_keeps_the_column() {
+    let dir = crate::test_support::temp_dir("diagnostic_sign_insert");
+    let path = dir.join("main.rs");
+    fs::write(&path, "one\ntwo\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    app.handle_resize(80, 24).expect("resize");
+    app.signcolumn = SignColumnMode::Auto;
+    app.problems.replace_lsp_test(
+        "fake",
+        &path,
+        vec![crate::test_support::diagnostic(
+            0,
+            kawi_lsp::DiagnosticSeverity::Error,
+            "message",
+        )],
+    );
+    app.update_signcolumn_width();
+    assert_eq!(app.editor.signcolumn_width(), SIGN_COLUMN_WIDTH);
+    assert_eq!(
+        app.view_signs().expect("signs")[0],
+        Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
+    );
+    press_key(&mut app, KeyCode::Char('i'));
+    assert_eq!(app.editor.signcolumn_width(), SIGN_COLUMN_WIDTH);
+    assert_eq!(app.view_signs().expect("signs")[0], None);
+    press_key(&mut app, KeyCode::Esc);
+    assert_eq!(
+        app.view_signs().expect("signs")[0],
+        Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn insert_mode_keeps_non_diagnostic_signs() {
+    let mut app = app_with_untracked_file();
+    app.signcolumn = SignColumnMode::Auto;
+    app.git_signs = true;
+    app.update_signcolumn_width();
+    assert_eq!(
+        app.view_signs().expect("signs")[0],
+        Some(Sign::Git(GitSign::Untracked))
+    );
+    press_key(&mut app, KeyCode::Char('i'));
+    assert_eq!(
+        app.view_signs().expect("signs")[0],
+        Some(Sign::Git(GitSign::Untracked))
+    );
+}
+
+fn press_key(app: &mut App, code: KeyCode) {
+    app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+        .expect("key");
 }
 
 #[test]

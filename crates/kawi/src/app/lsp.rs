@@ -461,6 +461,12 @@ impl LspUi {
         self.diagnostic_updates.push(update);
     }
 
+    #[cfg(test)]
+    pub(super) fn apply_diagnostics_for_test(&mut self, event: DiagnosticsEvent) -> bool {
+        let path = event.path.clone();
+        self.diagnostics.apply(event, &path)
+    }
+
     pub(super) fn request_workspace_diagnostics(&mut self) -> bool {
         self.flush_pending_change();
         self.workspace_diagnostics_requested = true;

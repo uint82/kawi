@@ -1,4 +1,4 @@
-use kawi_tui::frame::{DiagnosticUnderline, VirtualText};
+use kawi_tui::frame::{DiagnosticSpan, DiagnosticUnderline, VirtualText};
 use std::path::Path;
 
 use super::diagnostic_deferral::diagnostics_deferred;
@@ -202,10 +202,28 @@ impl App {
         diagnostics_deferred(self.editor.mode())
     }
 
+    pub(super) fn diagnostics_visible(&self) -> bool {
+        !self.diagnostics_deferred()
+    }
+
+    pub(super) fn visible_diagnostic_spans(
+        &self,
+        lines: &[String],
+        rows: &[usize],
+    ) -> Vec<DiagnosticSpan> {
+        if !self.diagnostics_visible() {
+            return Vec::new();
+        }
+        self.lsp.diagnostic_spans(lines, rows)
+    }
+
     pub(super) fn virtual_texts(
         &self,
         request: VirtualTextRequest<'_>,
     ) -> Vec<Option<VirtualText>> {
+        if !self.diagnostics_visible() {
+            return request.rows.iter().map(|_| None).collect();
+        }
         build_virtual_texts(&self.problems, &self.diagnostic_options, request)
     }
 }
@@ -261,3 +279,5 @@ fn virtual_text_line(message: &str) -> String {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod visibility_tests;

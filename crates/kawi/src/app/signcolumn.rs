@@ -83,6 +83,9 @@ impl App {
     }
 
     fn apply_diagnostic_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        if !self.diagnostics_visible() {
+            return;
+        }
         let Some(path) = super::lsp::editor_path(&self.editor) else {
             return;
         };

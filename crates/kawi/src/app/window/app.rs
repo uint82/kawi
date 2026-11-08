@@ -586,7 +586,7 @@ impl App {
             rect,
             active: true,
             signs: self.view_signs_for_rows(&rows),
-            diagnostic_spans: self.lsp.diagnostic_spans(&lines, &rows),
+            diagnostic_spans: self.visible_diagnostic_spans(&lines, &rows),
             decorations,
             virtual_texts,
             plugin_virtual_texts,
@@ -713,7 +713,7 @@ impl App {
             .unwrap_or_default();
         let shared_document = window.buffer == self.editor.buffer_number();
         let diagnostic_spans = if shared_document {
-            self.lsp.diagnostic_spans(&lines, &rows)
+            self.visible_diagnostic_spans(&lines, &rows)
         } else {
             Vec::new()
         };
