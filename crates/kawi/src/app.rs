@@ -28,6 +28,9 @@ mod disk;
 mod editor_sync;
 mod explorer;
 mod file_ops;
+mod focus;
+#[cfg(test)]
+mod focus_tests;
 mod formatter;
 mod formatter_service;
 mod formatting;
@@ -119,6 +122,7 @@ use crate::keymap::{
 use crate::mouse::{horizontal_wheel_delta, wheel_delta};
 use crate::options::SignColumnMode;
 use crate::state::{self, StatePaths};
+use focus::FocusTarget;
 use git::{GitSession, GitStage};
 use kawi_editor::{
     Action, Command, Editor, GitCommand, MatchSpan, PickerCommand, QuickfixCommand, SearchOutcome,
@@ -133,7 +137,7 @@ use picker::PickerSession;
 use problems::Problems;
 use replace::{is_replace_key, ReplaceOutcome, ReplaceSession, ReplaceStage};
 use task::TaskSession;
-use window::Windows;
+use window::{FocusDirection, Windows};
 
 pub struct App {
     editor: Editor,
@@ -209,7 +213,7 @@ pub struct App {
     task: TaskSession,
     terminal: terminal_ui::TerminalUi,
     terminal_focus: bool,
-    terminal_focus_key: key_binding::KeyBinding,
+    terminal_focus_key: Option<key_binding::KeyBinding>,
     debug_focus: bool,
     explorer: explorer::ExplorerState,
     directory: directory::DirectoryBuffers,
@@ -338,7 +342,7 @@ impl App {
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
-            terminal_focus_key: key_binding::KeyBinding::control('g'),
+            terminal_focus_key: None,
             debug_focus: false,
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
@@ -1102,11 +1106,6 @@ impl App {
         self.editor.apply(Action::CancelPending);
     }
 
-    pub(crate) fn unfocus_editor_panels(&mut self) {
-        self.explorer.focus_editor();
-        self.debug_focus = false;
-    }
-
     pub(crate) fn is_transient_overlay_active(&self) -> bool {
         self.pager.is_some()
             || self.replace.is_some()
@@ -1161,6 +1160,18 @@ impl App {
         }
         if let Some(result) = self.handle_terminal_focus_key(key)? {
             return Ok(result);
+        }
+        if self.window_prefix {
+            self.window_prefix = false;
+            self.macros.record_key(key);
+            return self.handle_window_key(key);
+        }
+        if self.can_start_window_prefix(key) {
+            self.window_prefix = true;
+            self.keymap.reset_pending();
+            self.editor.apply(Action::CancelPending);
+            self.macros.record_key(key);
+            return Ok(false);
         }
         if self.terminal_focus {
             return self.handle_terminal_key(key);
@@ -1246,19 +1257,18 @@ impl App {
         if self.pager.is_none() && completion::is_completion_key(key) {
             return self.request_completion();
         }
-        if self.window_prefix {
-            self.window_prefix = false;
-            self.macros.record_key(key);
-            return self.handle_window_key(key);
-        }
-        if self.pager.is_none() && window::is_window_prefix(key, self.editor.mode()) {
-            self.window_prefix = true;
-            self.keymap.reset_pending();
-            self.editor.apply(Action::CancelPending);
-            self.macros.record_key(key);
-            return Ok(false);
-        }
         self.handle_mapped_key(key)
+    }
+
+    fn can_start_window_prefix(&self, key: KeyEvent) -> bool {
+        if self.is_transient_overlay_active() || !window::is_window_prefix_key(key) {
+            return false;
+        }
+        match self.focused_target() {
+            FocusTarget::Editor(_) => self.editor.mode().is_normal_state(),
+            FocusTarget::Terminal => !self.terminal.is_input_mode(),
+            FocusTarget::Explorer | FocusTarget::Debug | FocusTarget::PluginPanel => true,
+        }
     }
 
     fn is_mapping_input(&self, key: KeyEvent) -> bool {
@@ -1677,6 +1687,26 @@ impl App {
             }
             Action::FocusExplorer => {
                 self.focus_explorer();
+                Ok(false)
+            }
+            Action::FocusLeft => {
+                self.focus_direction(FocusDirection::Left);
+                Ok(false)
+            }
+            Action::FocusRight => {
+                self.focus_direction(FocusDirection::Right);
+                Ok(false)
+            }
+            Action::FocusUp => {
+                self.focus_direction(FocusDirection::Up);
+                Ok(false)
+            }
+            Action::FocusDown => {
+                self.focus_direction(FocusDirection::Down);
+                Ok(false)
+            }
+            Action::FocusEditor => {
+                self.focus_editor();
                 Ok(false)
             }
             Action::RevealInExplorer => {

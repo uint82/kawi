@@ -28,6 +28,16 @@ fn open_panel(app: &mut App, focus: bool) -> u64 {
 }
 
 #[test]
+fn q_closes_the_focused_panel() {
+    let mut app = app();
+    open_panel(&mut app, true);
+    app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.plugin_panel_view().is_none());
+    assert!(app.is_editor_focused());
+}
+
+#[test]
 fn panel_opens_updates_and_closes() {
     let mut app = app();
     let id = open_panel(&mut app, false);

@@ -44,8 +44,8 @@ impl App {
             .map(|rect| rect.height.saturating_sub(1))
             .unwrap_or(1);
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => self.debug_focus = false,
-            KeyCode::Char('x') => self.close_debug_panel(),
+            KeyCode::Esc => self.unfocus_debug_panel(),
+            KeyCode::Char('q' | 'x') => self.close_debug_panel(),
             KeyCode::Char('j') | KeyCode::Down => self.debug.move_panel_selection(1, viewport),
             KeyCode::Char('k') | KeyCode::Up => self.debug.move_panel_selection(-1, viewport),
             KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -70,21 +70,34 @@ impl App {
     }
 
     pub(crate) fn toggle_debug_panel(&mut self) {
-        if !self.debug.panel_visible() {
-            self.debug.show_panel();
-            self.debug_focus = true;
-        } else if !self.debug_focus {
-            self.debug_focus = true;
-        } else {
+        if self.debug.panel_visible() && self.debug_focus {
             self.close_debug_panel();
             return;
         }
-        if self.debug_panel_width() == 0 {
+        if !self.debug.panel_visible() {
+            self.debug.show_panel();
+        }
+        if !self.focus_debug_panel() {
             self.debug.hide_panel();
             self.debug_focus = false;
             self.show_message("Debug panel needs more space".to_string());
         }
         self.sync_terminal_panel_size();
+    }
+
+    pub(crate) fn focus_debug_panel(&mut self) -> bool {
+        if !self.debug.panel_visible() || self.debug_panel_rect().is_none() {
+            return false;
+        }
+        self.cancel_pending_input();
+        self.clear_focus();
+        self.debug_focus = true;
+        true
+    }
+
+    pub(crate) fn unfocus_debug_panel(&mut self) {
+        self.debug_focus = false;
+        self.reveal_cursor();
     }
 
     pub(crate) fn close_debug_panel(&mut self) {

@@ -554,12 +554,13 @@ pub(crate) const OPTIONS: [OptionSpec; 51] = [
     OptionSpec {
         name: "terminal_focus_key",
         aliases: &[],
-        description: "Key that toggles focus between the editor and the terminal.",
+        description:
+            "Key that toggles focus between the editor and the terminal. Use none to disable it.",
         kind: OptionKind::Text,
         scope: OptionScope::Global,
         section: ConfigSection::Editor,
         config_key: "terminal_focus_key",
-        default: OptionDefault::Text("ctrl-g"),
+        default: OptionDefault::Text("none"),
     },
     OptionSpec {
         name: "hover_max_width",
@@ -1126,7 +1127,7 @@ mod tests {
         );
         assert_eq!(
             lookup("terminal_focus_key").unwrap().default_value(),
-            OptionValue::Text("ctrl-g".to_string())
+            OptionValue::Text("none".to_string())
         );
         assert_eq!(
             lookup("diagnostic_underline").unwrap().default_value(),

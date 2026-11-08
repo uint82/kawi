@@ -558,7 +558,7 @@ Request params:
 
 Result is `null`. Closing removes the panel and returns focus to the editor. An unknown panel or a panel owned by another plugin returns `-32060`.
 
-The host owns panel layout, focus, scrolling, and closing. The panel is docked above the task panel and reserves at least four editor rows. It hides if the editor becomes too small and is removed when its plugin stops. While focused, `j`, `k`, the arrow keys, the mouse wheel, `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp`, `g`, `G`, `Home`, and `End` scroll; `Esc` or `q` returns focus to the editor; and `x` closes the panel. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API in protocol minor 12.
+The host owns panel layout, focus, scrolling, and closing. The panel is docked above the task panel and reserves at least four editor rows. It hides if the editor becomes too small and is removed when its plugin stops. While focused, `j`, `k`, the arrow keys, the mouse wheel, `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp`, `g`, `G`, `Home`, and `End` scroll; `Esc` returns focus to the editor; `q` closes the panel and `x` is also accepted. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API in protocol minor 12.
 
 ### config.get
 

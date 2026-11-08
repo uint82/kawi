@@ -40,7 +40,7 @@ The explorer closes automatically when the terminal cannot leave its minimum wid
 - `R` refresh the tree
 - `.` show or hide dotfiles
 - `q` closes the explorer
-- `Esc` or `Ctrl-C` return focus to the editor
+- `Esc` returns focus to the editor
 
 Double click a row to toggle a directory or open a file. The mouse wheel scrolls the tree.
 

@@ -10,8 +10,8 @@ use kawi_tui::frame::{
 use kawi_tui::statusbar::ModeKind;
 
 use super::{
-    is_window_prefix, BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis,
-    SplitDirection, WindowId, WindowLayout, WindowView,
+    BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis, SplitDirection, WindowId,
+    WindowLayout, WindowView,
 };
 use crate::keymap::Keymap;
 
@@ -323,6 +323,7 @@ impl App {
         self.reveal_cursor();
     }
 
+    #[cfg(test)]
     pub(crate) fn focus_window_direction(&mut self, direction: FocusDirection) -> bool {
         let area = self.window_area();
         let Some(target) = self.windows.focus_direction(direction, area) else {
@@ -410,7 +411,7 @@ impl App {
             self.window_prefix = false;
             return self.handle_window_key(key);
         }
-        if is_window_prefix(key, self.editor.mode()) {
+        if self.can_start_window_prefix(key) {
             self.window_prefix = true;
             self.keymap.reset_pending();
             self.editor.apply(kawi_editor::Action::CancelPending);
@@ -426,23 +427,29 @@ impl App {
         {
             return Ok(false);
         }
+        let editor_focused = self.is_editor_focused();
         match key.code {
             KeyCode::Char('h') => {
-                self.focus_window_direction(FocusDirection::Left);
+                self.focus_direction(FocusDirection::Left);
                 Ok(false)
             }
             KeyCode::Char('j') => {
-                self.focus_window_direction(FocusDirection::Down);
+                self.focus_direction(FocusDirection::Down);
                 Ok(false)
             }
             KeyCode::Char('k') => {
-                self.focus_window_direction(FocusDirection::Up);
+                self.focus_direction(FocusDirection::Up);
                 Ok(false)
             }
             KeyCode::Char('l') => {
-                self.focus_window_direction(FocusDirection::Right);
+                self.focus_direction(FocusDirection::Right);
                 Ok(false)
             }
+            KeyCode::Char('w' | 'W' | 'p') if !editor_focused => {
+                self.focus_editor();
+                Ok(false)
+            }
+            _ if !editor_focused => Ok(false),
             KeyCode::Char('w') => {
                 self.focus_next_window(false);
                 Ok(false)

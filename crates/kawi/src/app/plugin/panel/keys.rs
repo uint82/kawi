@@ -10,10 +10,10 @@ impl App {
         };
         let viewport = rect.height.saturating_sub(1).max(1);
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc => {
                 self.unfocus_plugin_panel();
             }
-            KeyCode::Char('x') => {
+            KeyCode::Char('q' | 'x') => {
                 self.close_plugin_panel();
             }
             KeyCode::Char('j') | KeyCode::Down => {

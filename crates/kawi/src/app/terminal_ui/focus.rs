@@ -8,8 +8,7 @@ impl App {
             return;
         }
         self.cancel_pending_input();
-        self.unfocus_editor_panels();
-        self.plugin_panel.unfocus();
+        self.clear_focus();
         self.terminal_focus = true;
         if self.terminal.is_running() {
             self.terminal.focus_input();
@@ -37,7 +36,10 @@ impl App {
         &mut self,
         key: KeyEvent,
     ) -> anyhow::Result<Option<bool>> {
-        if key != self.terminal_focus_key.event() {
+        let Some(binding) = self.terminal_focus_key else {
+            return Ok(None);
+        };
+        if key != binding.event() {
             return Ok(None);
         }
         if !self.terminal_focus && self.is_transient_overlay_active() {

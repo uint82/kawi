@@ -102,6 +102,19 @@ fn q_closes_the_explorer() {
     press(&mut app, KeyCode::Char('q'));
     assert!(!app.explorer.is_visible());
     assert!(!app.explorer.is_focused());
+    assert!(app.is_editor_focused());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn ctrl_c_does_not_return_to_the_editor() {
+    let dir = temp_dir("explorer_ctrl_c");
+    fs::write(dir.join("a.txt"), "").unwrap();
+    let mut app = app_with_explorer(&dir);
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .expect("key");
+    assert!(app.explorer.is_focused());
+    assert!(app.explorer.is_visible());
     fs::remove_dir_all(dir).unwrap();
 }
 

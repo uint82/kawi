@@ -1,4 +1,5 @@
 use super::*;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn loaded_panel_app(name: &str) -> (App, PathBuf) {
     let path = temp_file(name);
@@ -79,6 +80,30 @@ fn loaded_panel_app(name: &str) -> (App, PathBuf) {
         is_error: false,
     });
     (app, root)
+}
+
+#[test]
+fn q_closes_the_debug_panel() {
+    let (mut app, root) = loaded_panel_app("panel-close-q");
+    app.debug_focus = true;
+    app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))
+        .expect("key");
+    assert!(!app.debug.panel_visible());
+    assert!(!app.debug_focus);
+    assert!(app.is_editor_focused());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn escape_returns_focus_and_keeps_the_debug_panel() {
+    let (mut app, root) = loaded_panel_app("panel-close-esc");
+    app.debug_focus = true;
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("key");
+    assert!(app.debug.panel_visible());
+    assert!(!app.debug_focus);
+    assert!(app.is_editor_focused());
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

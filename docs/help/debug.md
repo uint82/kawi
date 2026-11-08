@@ -76,8 +76,8 @@ The debug panel opens automatically when a session starts and can be toggled wit
 - `g` and `G` jump to the first or last entry.
 - `Enter` selects a thread or frame, expands a variable, loads more variables, toggles an exception filter, or jumps to a breakpoint.
 - `r` refreshes threads.
-- `q` or `Escape` returns focus to the editor.
-- `x` closes the panel.
+- `Esc` returns focus to the editor.
+- `q` closes the panel. `x` is also accepted.
 
 ## Console and watches
 
