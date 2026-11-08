@@ -6,6 +6,10 @@ use ropey::Rope;
 use serde_json::Value;
 use std::cmp::Ordering;
 
+const ITEM_DEFAULTS: &str = "itemDefaults";
+const INSERT_TEXT_FORMAT: &str = "insertTextFormat";
+const INSERT_TEXT_MODE: &str = "insertTextMode";
+
 pub(super) struct CompletionCandidate {
     pub(super) score: u8,
     pub(super) sort_key: String,
@@ -86,12 +90,36 @@ fn completion_items(value: &Value) -> Result<Vec<lsp_types::CompletionItem>, Str
     if value.is_null() {
         return Err("No completions".to_string());
     }
-    let response = serde_json::from_value::<CompletionResponse>(value.clone())
+    let mut value = value.clone();
+    apply_item_defaults(&mut value);
+    let response = serde_json::from_value::<CompletionResponse>(value)
         .map_err(|error| format!("Invalid completion response: {error}"))?;
     Ok(match response {
         CompletionResponse::Array(items) => items,
         CompletionResponse::List(list) => list.items,
     })
+}
+
+fn apply_item_defaults(value: &mut Value) {
+    let Some(defaults) = value.get(ITEM_DEFAULTS).and_then(Value::as_object).cloned() else {
+        return;
+    };
+    let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for item in items {
+        let Some(item) = item.as_object_mut() else {
+            continue;
+        };
+        for key in [INSERT_TEXT_FORMAT, INSERT_TEXT_MODE] {
+            if item.contains_key(key) {
+                continue;
+            }
+            if let Some(default) = defaults.get(key) {
+                item.insert(key.to_string(), default.clone());
+            }
+        }
+    }
 }
 
 fn identifier_prefix(text: &Rope, cursor: usize) -> String {
@@ -182,5 +210,37 @@ mod tests {
             label: label.to_string(),
             ..lsp_types::CompletionItem::default()
         }
+    }
+
+    #[test]
+    fn completion_list_defaults_apply_to_items() {
+        let value = serde_json::json!({
+            "isIncomplete": false,
+            "itemDefaults": {
+                "insertTextFormat": 2,
+                "insertTextMode": 2
+            },
+            "items": [
+                { "label": "snippet" },
+                { "label": "explicit", "insertTextFormat": 1, "insertTextMode": 1 }
+            ]
+        });
+        let items = completion_items(&value).expect("items");
+        assert_eq!(
+            items[0].insert_text_format,
+            Some(lsp_types::InsertTextFormat::SNIPPET)
+        );
+        assert_eq!(
+            items[0].insert_text_mode,
+            Some(lsp_types::InsertTextMode::ADJUST_INDENTATION)
+        );
+        assert_eq!(
+            items[1].insert_text_format,
+            Some(lsp_types::InsertTextFormat::PLAIN_TEXT)
+        );
+        assert_eq!(
+            items[1].insert_text_mode,
+            Some(lsp_types::InsertTextMode::AS_IS)
+        );
     }
 }

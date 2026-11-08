@@ -369,6 +369,12 @@ impl App {
                 })
             })
             .or_else(|| {
+                self.snippet_choices.as_ref().map(|session| CompletionMenu {
+                    items: session.items(),
+                    selected: session.selected(),
+                })
+            })
+            .or_else(|| {
                 self.editor
                     .completion_view()
                     .map(|(items, selected)| CompletionMenu { items, selected })

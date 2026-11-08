@@ -215,6 +215,9 @@ impl Editor {
 
     pub(super) fn delete_backward(&mut self) {
         if self.mode == crate::mode::Mode::Replace {
+            if self.replace_selected_text() {
+                return;
+            }
             self.replace_backspace();
             return;
         }

@@ -2,8 +2,8 @@ use super::completion_edit::convert_edit;
 use super::markup::markup_document;
 use super::*;
 use kawi_buffer::validate_text_edits;
-use kawi_completion::Snippet;
-use lsp_types::{CompletionTextEdit, InsertTextFormat};
+use kawi_completion::{Snippet, SnippetContext};
+use lsp_types::{CompletionTextEdit, InsertTextFormat, InsertTextMode};
 use ropey::Rope;
 
 pub(super) fn completion_entry(
@@ -13,8 +13,9 @@ pub(super) fn completion_entry(
     cursor: usize,
     word_start: usize,
     encoding: &PositionEncodingKind,
+    context: &SnippetContext,
 ) -> Option<CompletionEntry> {
-    let (primary, snippet) = item_edit(&item, text, cursor, word_start, encoding)?;
+    let (primary, snippet) = item_edit(&item, text, cursor, word_start, encoding, context)?;
     let additional = item
         .additional_text_edits
         .as_deref()
@@ -59,18 +60,20 @@ fn item_edit(
     cursor: usize,
     word_start: usize,
     encoding: &PositionEncodingKind,
+    context: &SnippetContext,
 ) -> Option<(TextChange, Option<Snippet>)> {
     let format = item
         .insert_text_format
         .unwrap_or(InsertTextFormat::PLAIN_TEXT);
+    let mode = item.insert_text_mode.unwrap_or(InsertTextMode::AS_IS);
     match item.text_edit.as_ref() {
         Some(CompletionTextEdit::Edit(edit)) => {
-            let value = snippet_text(&edit.new_text, format);
+            let value = snippet_text(&edit.new_text, format, mode, context);
             let change = convert_edit(text, &edit.range, &value.text, encoding)?;
             Some((change, value.snippet))
         }
         Some(CompletionTextEdit::InsertAndReplace(edit)) => {
-            let value = snippet_text(&edit.new_text, format);
+            let value = snippet_text(&edit.new_text, format, mode, context);
             let change = convert_edit(text, &edit.replace, &value.text, encoding)?;
             Some((change, value.snippet))
         }
@@ -78,6 +81,8 @@ fn item_edit(
             let value = snippet_text(
                 item.insert_text.as_deref().unwrap_or(item.label.as_str()),
                 format,
+                mode,
+                context,
             );
             Some((
                 TextChange {
@@ -91,18 +96,55 @@ fn item_edit(
     }
 }
 
-fn snippet_text(value: &str, format: InsertTextFormat) -> SnippetText {
+fn snippet_text(
+    value: &str,
+    format: InsertTextFormat,
+    mode: InsertTextMode,
+    context: &SnippetContext,
+) -> SnippetText {
+    let value = adjusted_text(value, mode, context);
     if format != InsertTextFormat::SNIPPET {
         return SnippetText {
-            text: value.to_string(),
+            text: value,
             snippet: None,
         };
     }
-    let snippet = Snippet::parse(value);
+    let snippet = Snippet::parse_with_context(&value, context);
     SnippetText {
         text: snippet.text().to_string(),
         snippet: Some(snippet),
     }
+}
+
+fn adjusted_text(value: &str, mode: InsertTextMode, context: &SnippetContext) -> String {
+    if mode != InsertTextMode::ADJUST_INDENTATION {
+        return value.to_string();
+    }
+    let mut lines = value.split('\n');
+    let Some(first) = lines.next() else {
+        return String::new();
+    };
+    let rest: Vec<&str> = lines.collect();
+    let common = rest
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.len()
+                .saturating_sub(line.trim_start_matches([' ', '\t']).len())
+        })
+        .min()
+        .unwrap_or_default();
+    let mut adjusted = String::from(first);
+    for line in rest {
+        adjusted.push('\n');
+        if line.trim().is_empty() {
+            continue;
+        }
+        let line = &line[common.min(line.len())..];
+        adjusted.push_str(context.line_indent());
+        adjusted.push_str(line);
+    }
+    adjusted
 }
 
 fn display_text(value: &str) -> String {
@@ -134,6 +176,7 @@ mod tests {
             0,
             0,
             &PositionEncodingKind::UTF16,
+            &SnippetContext::default(),
         )
         .expect("completion entry");
         assert_eq!(entry.primary.text, "println!(value)");
@@ -156,6 +199,7 @@ mod tests {
             0,
             0,
             &PositionEncodingKind::UTF16,
+            &SnippetContext::default(),
         )
         .expect("completion entry");
         assert_eq!(entry.primary.text, "value");
@@ -177,9 +221,33 @@ mod tests {
             3,
             0,
             &PositionEncodingKind::UTF16,
+            &SnippetContext::default(),
         )
         .expect("completion entry");
         assert_eq!(entry.kind, Some(lsp_types::CompletionItemKind::VARIABLE));
+    }
+
+    #[test]
+    fn adjust_indentation_matches_the_current_line() {
+        let text = Rope::from_str("  value");
+        let context = SnippetContext::new(None, "  value", 2);
+        let item = lsp_types::CompletionItem {
+            label: "value".to_string(),
+            insert_text: Some("one\n    two\n      three".to_string()),
+            insert_text_mode: Some(InsertTextMode::ADJUST_INDENTATION),
+            ..lsp_types::CompletionItem::default()
+        };
+        let entry = completion_entry(
+            item,
+            "fake".to_string(),
+            &text,
+            2,
+            2,
+            &PositionEncodingKind::UTF16,
+            &context,
+        )
+        .expect("completion entry");
+        assert_eq!(entry.primary.text, "one\n  two\n    three");
     }
 
     #[test]
@@ -196,6 +264,7 @@ mod tests {
             3,
             0,
             &PositionEncodingKind::UTF16,
+            &SnippetContext::default(),
         )
         .expect("completion entry");
         assert_eq!(entry.kind, None);

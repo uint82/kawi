@@ -185,6 +185,7 @@ pub struct App {
     branch_prompt: Option<git_branch::BranchPrompt>,
     completion: Option<completion::CompletionSession>,
     snippet: Option<snippet::SnippetSession>,
+    snippet_choices: Option<snippet::SnippetChoiceSession>,
     completion_auto: completion::AutoTrigger,
     completion_options: completion::CompletionOptions,
     overlay_options: overlay::options::OverlayOptions,
@@ -315,6 +316,7 @@ impl App {
             branch_prompt: None,
             completion: None,
             snippet: None,
+            snippet_choices: None,
             completion_auto: completion::AutoTrigger::new(),
             completion_options: completion::CompletionOptions::default(),
             overlay_options: overlay::options::OverlayOptions::default(),
@@ -955,6 +957,7 @@ impl App {
             || self.file_ops.is_some()
             || self.pending_file_op.is_some()
             || self.completion.is_some()
+            || self.snippet_choices.is_some()
             || self.code_actions.is_some()
             || self.conflict.is_some()
         {
@@ -1116,6 +1119,7 @@ impl App {
             || self.symbol_picker.is_some()
             || self.git_status.has_view()
             || self.completion.is_some()
+            || self.snippet_choices.is_some()
             || self.code_actions.is_some()
             || self.diagnostic_popup.is_some()
             || self.hover.is_some()
@@ -1242,6 +1246,9 @@ impl App {
         }
         if self.code_actions.is_some() {
             return self.handle_code_action_key(key);
+        }
+        if self.snippet_choices.is_some() && self.handle_snippet_choice_key(key) {
+            return Ok(false);
         }
         if self.completion.is_some() {
             if let Some(result) = self.handle_completion_key(key)? {

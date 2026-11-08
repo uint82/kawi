@@ -1,5 +1,4 @@
 use super::Editor;
-use crate::mode::Mode;
 use crate::selection::Selection;
 
 impl Editor {
@@ -24,7 +23,7 @@ impl Editor {
     }
 
     pub(super) fn replace_selected_text(&mut self) -> bool {
-        if self.mode != Mode::Insert {
+        if !self.mode.is_insert() {
             return false;
         }
         let Some(selection) = self.selection.take() else {
@@ -80,6 +79,17 @@ mod tests {
     fn typing_replaces_the_selection() {
         let mut editor = editor_with("hello");
         editor.apply(Action::Append);
+        editor.select_char_range(1, 4);
+        editor.apply(Action::InsertChar('i'));
+        assert_eq!(editor.text_lines(), ["hio"]);
+        assert_eq!(editor.cursor_char(), 2);
+        assert!(editor.selection_range().is_none());
+    }
+
+    #[test]
+    fn replace_mode_typing_replaces_the_selection() {
+        let mut editor = editor_with("hello");
+        editor.apply(Action::EnterReplace);
         editor.select_char_range(1, 4);
         editor.apply(Action::InsertChar('i'));
         assert_eq!(editor.text_lines(), ["hio"]);

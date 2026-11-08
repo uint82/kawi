@@ -576,6 +576,13 @@ fn initialize_capabilities() -> ClientCapabilities {
                     ..lsp_types::CompletionItemCapability::default()
                 }),
                 context_support: Some(true),
+                completion_list: Some(lsp_types::CompletionListCapability {
+                    item_defaults: Some(vec![
+                        "insertTextFormat".to_string(),
+                        "insertTextMode".to_string(),
+                    ]),
+                }),
+                insert_text_mode: Some(lsp_types::InsertTextMode::AS_IS),
                 ..lsp_types::CompletionClientCapabilities::default()
             }),
             code_action: Some(lsp_types::CodeActionClientCapabilities {

@@ -1,9 +1,14 @@
 use std::ops::Range;
+use std::path::Path;
 
-use super::Snippet;
+use super::{Snippet, SnippetContext};
 
 fn parse(source: &str) -> Snippet {
     Snippet::parse(source)
+}
+
+fn parse_with(source: &str, context: &SnippetContext) -> Snippet {
+    Snippet::parse_with_context(source, context)
 }
 
 fn text(source: &str) -> String {
@@ -98,8 +103,50 @@ fn variable_defaults_are_inserted() {
 }
 
 #[test]
-fn variables_without_defaults_are_removed() {
+fn unset_variables_without_defaults_are_empty() {
     assert_eq!(text("$TM_FILENAME.ts"), ".ts");
+    assert_eq!(text("$TM_SELECTED_TEXT"), "");
+}
+
+#[test]
+fn unknown_variables_use_their_name() {
+    assert_eq!(text("$UNKNOWN"), "UNKNOWN");
+}
+
+#[test]
+fn variables_use_the_editor_context() {
+    let context = SnippetContext::new(Some(Path::new("/tmp/src/main.rs")), "  let value = 1;", 4);
+    assert_eq!(
+        parse_with(
+            "$TM_FILENAME ${TM_FILENAME_BASE} $TM_DIRECTORY $TM_FILEPATH",
+            &context
+        )
+        .text(),
+        "main.rs main /tmp/src /tmp/src/main.rs"
+    );
+    assert_eq!(
+        parse_with(
+            "$TM_CURRENT_LINE|$TM_CURRENT_WORD|$TM_LINE_INDEX|$TM_LINE_NUMBER",
+            &context
+        )
+        .text(),
+        "  let value = 1;|let|0|1"
+    );
+}
+
+#[test]
+fn set_variables_ignore_defaults() {
+    let context = SnippetContext::new(Some(Path::new("/tmp/main.rs")), "", 0);
+    assert_eq!(text_with("${TM_FILENAME:fallback.rs}", &context), "main.rs");
+}
+
+#[test]
+fn missing_variables_use_defaults() {
+    assert_eq!(text("${TM_FILENAME:fallback.rs}"), "fallback.rs");
+}
+
+fn text_with(source: &str, context: &SnippetContext) -> String {
+    parse_with(source, context).text().to_string()
 }
 
 #[test]
@@ -114,8 +161,9 @@ fn out_of_order_stops_are_sorted() {
 }
 
 #[test]
-fn duplicate_stops_are_recorded_once() {
-    assert_eq!(stops("$1$1"), vec![(1, 0..0)]);
+fn duplicate_stops_keep_every_range() {
+    assert_eq!(stops("$1$1"), vec![(1, 0..0), (1, 0..0)]);
+    assert_eq!(stops("${1:one} ${1:two}"), vec![(1, 0..3), (1, 4..7)]);
 }
 
 #[test]

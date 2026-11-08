@@ -157,7 +157,7 @@ impl App {
     }
 
     fn accept_completion(&mut self, session: &CompletionSession) {
-        self.end_snippet();
+        let had_snippet = self.snippet.is_some();
         let cursor = completion_prefix(&self.editor).cursor;
         let Some(edit) = session.workspace_edit(cursor) else {
             return;
@@ -165,6 +165,9 @@ impl App {
         let snippet = session
             .selected_item()
             .and_then(|item| item.snippet.clone());
+        if snippet.is_some() {
+            self.end_snippet();
+        }
         let command = session.command().map(|command| {
             (
                 session.selected_item().map(|item| item.source.clone()),
@@ -188,6 +191,9 @@ impl App {
                 }
                 if let Some(snippet) = snippet {
                     self.start_snippet(snippet);
+                } else if had_snippet {
+                    self.update_snippet();
+                    self.reselect_snippet_stop();
                 }
                 self.reveal_cursor();
             }
@@ -211,6 +217,7 @@ impl App {
     }
 
     pub(super) fn after_buffer_key(&mut self, key: KeyEvent) {
+        self.snippet_choices = None;
         self.update_snippet();
         let prefix = completion_prefix(&self.editor);
         let trigger = trigger_for_key(&self.lsp, key, &prefix.text);

@@ -6,7 +6,7 @@ mod kind;
 mod snippet;
 
 pub use kind::CompletionKind;
-pub use snippet::{Snippet, TabStop};
+pub use snippet::{Snippet, SnippetContext, TabStop};
 
 pub type RequestId = u64;
 pub type SourceId = String;
