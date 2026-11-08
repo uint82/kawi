@@ -1,20 +1,19 @@
-use std::collections::BTreeSet;
+use super::{Snippet, SnippetContext, TabStop};
 
-use super::{Snippet, TabStop};
-
-pub(super) struct Parser {
+pub(super) struct Parser<'a> {
     chars: Vec<char>,
     index: usize,
     dollar: usize,
     text: String,
     length: usize,
     stops: Vec<TabStop>,
-    seen: BTreeSet<usize>,
     final_stop: Option<usize>,
+    context: &'a SnippetContext,
+    emit: bool,
 }
 
-impl Parser {
-    pub(super) fn new(source: &str) -> Self {
+impl<'a> Parser<'a> {
+    pub(super) fn new(source: &str, context: &'a SnippetContext) -> Self {
         Self {
             chars: source.chars().collect(),
             index: 0,
@@ -22,8 +21,9 @@ impl Parser {
             text: String::new(),
             length: 0,
             stops: Vec::new(),
-            seen: BTreeSet::new(),
             final_stop: None,
+            context,
+            emit: true,
         }
     }
 
@@ -75,7 +75,7 @@ impl Parser {
                 self.record_stop(number, self.length, self.length, Vec::new());
             }
             Some('{') => self.parse_braced(),
-            Some(character) if is_variable(character) => self.skip_variable(),
+            Some(character) if is_variable(character) => self.parse_unbraced_variable(),
             _ => {
                 self.push('$');
                 self.index += 1;
@@ -124,20 +124,60 @@ impl Parser {
         }
     }
 
-    fn parse_braced_variable(&mut self) {
+    fn parse_unbraced_variable(&mut self) {
+        self.index += 1;
+        let start = self.index;
         self.skip_variable_name();
+        let name: String = self.chars[start..self.index].iter().collect();
+        self.push_variable(&name);
+    }
+
+    fn parse_braced_variable(&mut self) {
+        let start = self.index;
+        self.skip_variable_name();
+        let name: String = self.chars[start..self.index].iter().collect();
         match self.peek() {
-            Some('}') => self.index += 1,
+            Some('}') => {
+                self.index += 1;
+                self.push_variable(&name);
+            }
             Some(':') => {
                 self.index += 1;
-                self.parse_text(true);
-                self.consume_brace();
+                self.parse_variable_default(&name);
             }
             Some('/') => {
                 self.index += 1;
                 self.skip_braced_body();
             }
             _ => self.flush_raw(),
+        }
+    }
+
+    fn parse_variable_default(&mut self, name: &str) {
+        match self.context.resolve(name) {
+            Some(value) if !value.is_empty() => {
+                self.parse_suppressed_default();
+                self.push_str(&value);
+            }
+            _ => {
+                self.parse_text(true);
+                self.consume_brace();
+            }
+        }
+    }
+
+    fn parse_suppressed_default(&mut self) {
+        let emit = self.emit;
+        self.emit = false;
+        self.parse_text(true);
+        self.consume_brace();
+        self.emit = emit;
+    }
+
+    fn push_variable(&mut self, name: &str) {
+        match self.context.resolve(name) {
+            Some(value) => self.push_str(&value),
+            None => self.push_str(name),
         }
     }
 
@@ -190,11 +230,6 @@ impl Parser {
         }
     }
 
-    fn skip_variable(&mut self) {
-        self.index += 1;
-        self.skip_variable_name();
-    }
-
     fn skip_variable_name(&mut self) {
         while self.peek().is_some_and(is_variable) {
             self.index += 1;
@@ -213,17 +248,18 @@ impl Parser {
     }
 
     fn record_stop(&mut self, index: usize, start: usize, end: usize, choices: Vec<String>) {
+        if !self.emit {
+            return;
+        }
         if index == 0 {
             self.final_stop.get_or_insert(start);
             return;
         }
-        if self.seen.insert(index) {
-            self.stops.push(TabStop {
-                index,
-                range: start..end,
-                choices,
-            });
-        }
+        self.stops.push(TabStop {
+            index,
+            range: start..end,
+            choices,
+        });
     }
 
     fn consume_brace(&mut self) {
@@ -260,11 +296,17 @@ impl Parser {
     }
 
     fn push(&mut self, character: char) {
+        if !self.emit {
+            return;
+        }
         self.text.push(character);
         self.length += 1;
     }
 
     fn push_str(&mut self, value: &str) {
+        if !self.emit {
+            return;
+        }
         self.text.push_str(value);
         self.length += value.chars().count();
     }
