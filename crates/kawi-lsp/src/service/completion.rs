@@ -5,6 +5,7 @@ use super::completion_entry::completion_entry;
 use super::text_requests::{PendingTextRequest, TextResponse};
 use super::*;
 use kawi_buffer::content_hash;
+use kawi_completion::SnippetContext;
 use ropey::Rope;
 
 const MAX_ITEMS: usize = 512;
@@ -38,6 +39,7 @@ pub(super) fn completion_event(
         text,
         cursor,
         word_start,
+        &pending.path,
         next_resolve_id,
     );
     if items.is_empty() {
@@ -67,8 +69,11 @@ fn completion_entries(
     text: &Rope,
     cursor: usize,
     word_start: usize,
+    path: &Path,
     next_resolve_id: &mut u64,
 ) -> (Vec<CompletionEntry>, Vec<ResolvedCandidate>) {
+    let source = text.to_string();
+    let context = SnippetContext::new(Some(path), &source, cursor);
     let mut entries = Vec::new();
     let mut resolve = Vec::new();
     for candidate in candidates {
@@ -81,6 +86,7 @@ fn completion_entries(
             cursor,
             word_start,
             &candidate.encoding,
+            &context,
         ) else {
             continue;
         };
@@ -133,6 +139,39 @@ mod tests {
         assert_eq!(output.event.items[0].primary.start, 0);
         assert_eq!(output.event.items[0].primary.end, 3);
         assert_eq!(output.event.items[0].primary.text, "value");
+    }
+
+    #[test]
+    fn completion_items_expand_context_variables() {
+        let text = Rope::from_str("val\n");
+        let pending = PendingTextRequest {
+            request: 1,
+            kind: super::super::text_requests::TextRequestKind::Completion,
+            path: std::path::PathBuf::from("/tmp/completion.rs"),
+            position: CursorPosition { line: 0, column: 3 },
+            version: 1,
+            remaining: 1,
+            responses: Vec::new(),
+            error: None,
+        };
+        let responses = vec![TextResponse {
+            server: "fake".to_string(),
+            key: ClientKey {
+                server: "fake".to_string(),
+                root: std::path::PathBuf::from("/tmp"),
+            },
+            value: serde_json::json!({
+                "isIncomplete": false,
+                "itemDefaults": { "insertTextFormat": 2 },
+                "items": [{ "label": "val", "insertText": "$TM_FILENAME" }]
+            }),
+            encoding: PositionEncodingKind::UTF16,
+            resolve: false,
+        }];
+        let mut next_resolve_id = 0;
+        let output = completion_event(&pending, &responses, &text, &mut next_resolve_id)
+            .expect("completion event");
+        assert_eq!(output.event.items[0].primary.text, "completion.rs");
     }
 
     #[test]
