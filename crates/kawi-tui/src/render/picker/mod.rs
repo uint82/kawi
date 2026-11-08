@@ -3,6 +3,8 @@ mod preview;
 mod rows;
 
 use anyhow::{Context, Result};
+
+use super::furniture::write_spaces;
 use crossterm::{cursor::MoveTo, execute};
 use std::io::{Stdout, Write};
 
@@ -116,12 +118,7 @@ fn place_prompt_cursor(out: &mut Stdout, picker: &PickerMenu<'_>, rect: Rect) ->
 }
 
 pub(super) fn write_padding(out: &mut Surface, used: usize, width: usize) -> Result<()> {
-    let padding = width.saturating_sub(used);
-    if padding == 0 {
-        return Ok(());
-    }
-    write!(out, "{}", " ".repeat(padding)).context("pad picker row")?;
-    Ok(())
+    write_spaces(out, width.saturating_sub(used))
 }
 
 #[cfg(test)]

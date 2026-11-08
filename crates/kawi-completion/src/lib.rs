@@ -2,6 +2,10 @@ use kawi_buffer::TextEdit;
 use serde_json::Value;
 use std::path::PathBuf;
 
+mod kind;
+
+pub use kind::CompletionKind;
+
 pub type RequestId = u64;
 pub type SourceId = String;
 pub type ItemId = String;
@@ -81,6 +85,7 @@ pub struct Item {
     pub source: SourceId,
     pub id: ItemId,
     pub label: String,
+    pub kind: Option<CompletionKind>,
     pub filter_text: Option<String>,
     pub sort_text: Option<String>,
     pub detail: Option<String>,
@@ -162,6 +167,7 @@ mod tests {
             source: "test".to_string(),
             id: label.to_string(),
             label: label.to_string(),
+            kind: None,
             filter_text: None,
             sort_text: None,
             detail: None,

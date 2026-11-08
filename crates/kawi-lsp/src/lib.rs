@@ -15,6 +15,7 @@ pub use config::{
     FormatterConfig, IndentConfig, LanguageConfig, Languages, ServerConfig, MAX_SHIFTWIDTH,
 };
 pub use editing::{BlockCommentConfig, PairConfig};
+pub use lsp_types::CompletionItemKind;
 pub use service::{
     CodeActionEntry, CodeActionEvent, CompletionCapabilitiesEvent, CompletionEntry,
     CompletionEvent, CompletionResolveEvent, CompletionTrigger, CompletionTriggerKind,

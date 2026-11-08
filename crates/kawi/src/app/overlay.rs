@@ -1,4 +1,4 @@
-use kawi_tui::frame::{Overlay, OverlayList, OverlayPanel, Rect};
+use kawi_tui::frame::{CompletionLine, Overlay, OverlayList, OverlayPanel, Rect};
 use kawi_tui::markdown::{self, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size, COMPLETION_MAX_ROWS};
 
@@ -27,7 +27,8 @@ pub(super) struct OverlayData<'a> {
 
 struct ListData<'a> {
     rect: Rect,
-    items: &'a [String],
+    items: &'a [CompletionLine],
+    kind_width: usize,
     selected: Option<usize>,
 }
 
@@ -59,6 +60,7 @@ impl OverlayData<'_> {
             list: self.list.as_ref().map(|list| OverlayList {
                 rect: list.rect,
                 items: list.items,
+                kind_width: list.kind_width,
                 selected: list.selected,
             }),
             panel: self.panel.as_ref().map(|panel| OverlayPanel {
@@ -125,6 +127,7 @@ impl App {
         let list = ListData {
             rect: geometry.list,
             items: session.items(),
+            kind_width: session.kind_width(),
             selected: session.selected(),
         };
         let panel = geometry.docs.map(|rect| PanelData {

@@ -3,6 +3,7 @@ use crossterm::style::Color;
 use crate::markdown::MarkdownLine;
 use crate::statusbar::{StatusBarConfig, StatusInfo};
 use crate::theme::Theme;
+use kawi_completion::CompletionKind;
 use kawi_editor::{BracketMatch, Viewport};
 use kawi_syntax::SyntaxSpan;
 
@@ -402,8 +403,17 @@ pub struct Overlay<'a> {
 
 pub struct OverlayList<'a> {
     pub rect: Rect,
-    pub items: &'a [String],
+    pub items: &'a [CompletionLine],
+    pub kind_width: usize,
     pub selected: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionLine {
+    pub label: String,
+    pub detail: Option<String>,
+    pub kind: Option<CompletionKind>,
+    pub deprecated: bool,
 }
 
 pub struct OverlayPanel<'a> {

@@ -252,6 +252,7 @@ pub struct LspCommand {
 pub struct CompletionEntry {
     pub server: String,
     pub label: String,
+    pub kind: Option<lsp_types::CompletionItemKind>,
     pub filter_text: Option<String>,
     pub sort_text: Option<String>,
     pub detail: Option<String>,

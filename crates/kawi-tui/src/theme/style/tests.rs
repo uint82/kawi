@@ -87,7 +87,7 @@ fn carries_style_attributes() {
             ("tag".to_string(), StyleValue::Color("red".to_string())),
             ("invalid".to_string(), StyleValue::Color("red".to_string())),
         ]),
-        palette,
+        &palette,
     )
     .expect("styles");
     let comment = styles.style(registry_style("comment")).expect("comment");

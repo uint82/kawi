@@ -5,12 +5,13 @@ use kawi_buffer::TextEdit;
 use kawi_completion::{Documentation, Event, Item, ItemId, RequestId};
 use kawi_picker::fuzzy_score;
 use kawi_syntax::LanguageId;
+use kawi_tui::frame::CompletionLine;
 use kawi_tui::markdown::MarkdownDocument;
 use kawi_tui::overlay::DocsSide;
 
 use super::super::lsp_menu::MenuSelection;
 use super::super::overlay::document::prepare_documentation;
-use session_display::{display_item, list_width};
+use session_display::{display_line, metrics};
 
 mod session_display;
 mod session_edit;
@@ -24,7 +25,7 @@ pub(crate) struct CompletionSession {
     pub(super) event: Event,
     pub(super) items: Vec<Item>,
     pub(super) filtered: Vec<usize>,
-    pub(super) displays: Vec<String>,
+    pub(super) displays: Vec<CompletionLine>,
     pub(super) selection: MenuSelection,
     pub(super) docs: BTreeMap<ItemId, Documentation>,
     pub(super) prepared: BTreeMap<ItemId, MarkdownDocument>,
@@ -36,6 +37,7 @@ pub(crate) struct CompletionSession {
     pub(super) docs_side: Option<DocsSide>,
     pub(super) docs_width: usize,
     pub(super) list_width: usize,
+    pub(super) kind_width: usize,
     fallback_language: Option<LanguageId>,
 }
 
@@ -50,7 +52,7 @@ impl CompletionSession {
     pub(super) fn new(event: Event, query: &str) -> Self {
         let items = event.items.clone();
         let selected = items.iter().position(|item| item.preselect);
-        let list_width = list_width(&items);
+        let display = metrics(&items);
         let fallback_language = event.path.to_str().and_then(LanguageId::from_path);
         let mut session = Self {
             event,
@@ -67,7 +69,8 @@ impl CompletionSession {
             docs_scroll: 0,
             docs_side: None,
             docs_width: 0,
-            list_width,
+            list_width: display.list_width,
+            kind_width: display.kind_width,
             fallback_language,
         };
         session.refilter(query, selected.map(|index| session.items[index].id.clone()));
@@ -79,7 +82,9 @@ impl CompletionSession {
         self.event = event;
         self.fallback_language = self.event.path.to_str().and_then(LanguageId::from_path);
         self.items = self.event.items.clone();
-        self.list_width = list_width(&self.items);
+        let display = metrics(&self.items);
+        self.list_width = display.list_width;
+        self.kind_width = display.kind_width;
         self.docs.clear();
         self.prepared.clear();
         self.additional.clear();
@@ -94,7 +99,7 @@ impl CompletionSession {
         );
     }
 
-    pub(crate) fn items(&self) -> &[String] {
+    pub(crate) fn items(&self) -> &[CompletionLine] {
         &self.displays
     }
 
@@ -104,6 +109,10 @@ impl CompletionSession {
 
     pub(crate) fn list_width(&self) -> usize {
         self.list_width
+    }
+
+    pub(crate) fn kind_width(&self) -> usize {
+        self.kind_width
     }
 
     pub(super) fn selected_item(&self) -> Option<&Item> {
@@ -218,7 +227,7 @@ impl CompletionSession {
             .filtered
             .iter()
             .filter_map(|index| self.items.get(*index))
-            .map(display_item)
+            .map(display_line)
             .collect();
     }
 

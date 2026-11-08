@@ -51,6 +51,8 @@ struct ThemeFile {
     statusline: Option<super::statusline::StatusLineFile>,
     #[serde(default)]
     palette: BTreeMap<String, String>,
+    #[serde(default)]
+    completion: BTreeMap<String, String>,
     syntax: BTreeMap<String, StyleValue>,
 }
 
@@ -166,6 +168,9 @@ impl Theme {
             Some(bracket) => bracket.matched.match_colors("bracket.match")?,
             None => selection.clone(),
         };
+        let syntax = parse_styles(file.syntax, &palette)?;
+        let completion =
+            super::completion::parse(file.completion, base_foreground, non_text, &syntax)?;
         Ok(Self {
             name: name.to_string(),
             package: file.package,
@@ -197,13 +202,14 @@ impl Theme {
                 &file.diagnostics.information,
             )?,
             diagnostic_hint: parse_color("diagnostics.hint", &file.diagnostics.hint)?,
+            completion,
             decorations: super::decorations::parse(Some(file.decorations))?,
             plugin_decorations: super::plugin_decorations::parse(
                 file.plugin_decorations,
                 &palette,
             )?,
             statusline: super::statusline::parse(file.statusline)?,
-            syntax: parse_styles(file.syntax, palette)?,
+            syntax,
         })
     }
 }
