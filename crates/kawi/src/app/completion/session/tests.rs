@@ -16,6 +16,7 @@ fn item(id: &str, label: &str) -> Item {
         source: "test".to_string(),
         id: id.to_string(),
         label: label.to_string(),
+        kind: None,
         filter_text: None,
         sort_text: None,
         detail: None,

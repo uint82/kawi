@@ -1,9 +1,10 @@
 use kawi_completion::{
-    Capabilities, Command, Documentation, Event, Item, Request, RequestId, ResolveRequest,
-    ResolvedItem, Source, SourceId, Trigger, TriggerKind,
+    Capabilities, Command, CompletionKind, Documentation, Event, Item, Request, RequestId,
+    ResolveRequest, ResolvedItem, Source, SourceId, Trigger, TriggerKind,
 };
 use kawi_lsp::{
-    CompletionEntry, CompletionEvent, CompletionResolveEvent, CompletionTrigger, MarkupDocument,
+    CompletionEntry, CompletionEvent, CompletionItemKind, CompletionResolveEvent,
+    CompletionTrigger, MarkupDocument,
 };
 use serde_json::Value;
 
@@ -47,6 +48,7 @@ fn neutral_item(entry: CompletionEntry, server: &str, index: usize) -> Item {
         source: server.to_string(),
         id,
         label: entry.label,
+        kind: neutral_kind(entry.kind),
         filter_text: entry.filter_text,
         sort_text: entry.sort_text,
         detail: entry.detail,
@@ -63,6 +65,38 @@ fn neutral_item(entry: CompletionEntry, server: &str, index: usize) -> Item {
             arguments: command.arguments.map(Value::Array),
         }),
     }
+}
+
+fn neutral_kind(kind: Option<CompletionItemKind>) -> Option<CompletionKind> {
+    let kind = kind?;
+    Some(match kind {
+        CompletionItemKind::TEXT => CompletionKind::Text,
+        CompletionItemKind::METHOD => CompletionKind::Method,
+        CompletionItemKind::FUNCTION => CompletionKind::Function,
+        CompletionItemKind::CONSTRUCTOR => CompletionKind::Constructor,
+        CompletionItemKind::FIELD => CompletionKind::Field,
+        CompletionItemKind::VARIABLE => CompletionKind::Variable,
+        CompletionItemKind::CLASS => CompletionKind::Class,
+        CompletionItemKind::INTERFACE => CompletionKind::Interface,
+        CompletionItemKind::MODULE => CompletionKind::Module,
+        CompletionItemKind::PROPERTY => CompletionKind::Property,
+        CompletionItemKind::UNIT => CompletionKind::Unit,
+        CompletionItemKind::VALUE => CompletionKind::Value,
+        CompletionItemKind::ENUM => CompletionKind::Enum,
+        CompletionItemKind::KEYWORD => CompletionKind::Keyword,
+        CompletionItemKind::SNIPPET => CompletionKind::Snippet,
+        CompletionItemKind::COLOR => CompletionKind::Color,
+        CompletionItemKind::FILE => CompletionKind::File,
+        CompletionItemKind::REFERENCE => CompletionKind::Reference,
+        CompletionItemKind::FOLDER => CompletionKind::Folder,
+        CompletionItemKind::ENUM_MEMBER => CompletionKind::EnumMember,
+        CompletionItemKind::CONSTANT => CompletionKind::Constant,
+        CompletionItemKind::STRUCT => CompletionKind::Struct,
+        CompletionItemKind::EVENT => CompletionKind::Event,
+        CompletionItemKind::OPERATOR => CompletionKind::Operator,
+        CompletionItemKind::TYPE_PARAMETER => CompletionKind::TypeParameter,
+        _ => return None,
+    })
 }
 
 fn neutral_documentation(document: MarkupDocument) -> Documentation {
@@ -120,6 +154,7 @@ mod tests {
         CompletionEntry {
             server: "fake".to_string(),
             label: label.to_string(),
+            kind: None,
             filter_text: None,
             sort_text: None,
             detail: None,
@@ -172,5 +207,53 @@ mod tests {
             CompletionTriggerKind::TriggerCharacter => {}
             CompletionTriggerKind::Invoked => panic!("expected a trigger character"),
         }
+    }
+
+    #[test]
+    fn completion_kinds_are_translated() {
+        let pairs = [
+            (CompletionItemKind::TEXT, CompletionKind::Text),
+            (CompletionItemKind::METHOD, CompletionKind::Method),
+            (CompletionItemKind::FUNCTION, CompletionKind::Function),
+            (CompletionItemKind::CONSTRUCTOR, CompletionKind::Constructor),
+            (CompletionItemKind::FIELD, CompletionKind::Field),
+            (CompletionItemKind::VARIABLE, CompletionKind::Variable),
+            (CompletionItemKind::CLASS, CompletionKind::Class),
+            (CompletionItemKind::INTERFACE, CompletionKind::Interface),
+            (CompletionItemKind::MODULE, CompletionKind::Module),
+            (CompletionItemKind::PROPERTY, CompletionKind::Property),
+            (CompletionItemKind::UNIT, CompletionKind::Unit),
+            (CompletionItemKind::VALUE, CompletionKind::Value),
+            (CompletionItemKind::ENUM, CompletionKind::Enum),
+            (CompletionItemKind::KEYWORD, CompletionKind::Keyword),
+            (CompletionItemKind::SNIPPET, CompletionKind::Snippet),
+            (CompletionItemKind::COLOR, CompletionKind::Color),
+            (CompletionItemKind::FILE, CompletionKind::File),
+            (CompletionItemKind::REFERENCE, CompletionKind::Reference),
+            (CompletionItemKind::FOLDER, CompletionKind::Folder),
+            (CompletionItemKind::ENUM_MEMBER, CompletionKind::EnumMember),
+            (CompletionItemKind::CONSTANT, CompletionKind::Constant),
+            (CompletionItemKind::STRUCT, CompletionKind::Struct),
+            (CompletionItemKind::EVENT, CompletionKind::Event),
+            (CompletionItemKind::OPERATOR, CompletionKind::Operator),
+            (
+                CompletionItemKind::TYPE_PARAMETER,
+                CompletionKind::TypeParameter,
+            ),
+        ];
+        for (lsp_kind, expected) in pairs {
+            let mut source = entry(None, "value");
+            source.kind = Some(lsp_kind);
+            let event = neutral_event(event(vec![source]));
+            assert_eq!(event.items[0].kind, Some(expected));
+        }
+    }
+
+    #[test]
+    fn unknown_completion_kinds_are_ignored() {
+        let mut source = entry(None, "value");
+        source.kind = serde_json::from_value(serde_json::json!(99)).ok();
+        let event = neutral_event(event(vec![source]));
+        assert_eq!(event.items[0].kind, None);
     }
 }

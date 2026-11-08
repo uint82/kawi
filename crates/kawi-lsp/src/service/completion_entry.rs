@@ -36,6 +36,7 @@ pub(super) fn completion_entry(
     Some(CompletionEntry {
         server,
         label,
+        kind: item.kind,
         filter_text: item.filter_text.as_deref().map(display_text),
         sort_text: item.sort_text.as_deref().map(display_text),
         detail: item.detail.as_deref().map(display_text),
@@ -95,5 +96,44 @@ mod tests {
     #[test]
     fn sanitizes_control_characters_in_labels() {
         assert_eq!(display_text("value\u{1b}\tname"), "value name");
+    }
+
+    #[test]
+    fn preserves_the_completion_kind() {
+        let text = Rope::from_str("val\n");
+        let item = lsp_types::CompletionItem {
+            label: "value".to_string(),
+            kind: Some(lsp_types::CompletionItemKind::VARIABLE),
+            ..lsp_types::CompletionItem::default()
+        };
+        let entry = completion_entry(
+            item,
+            "fake".to_string(),
+            &text,
+            3,
+            0,
+            &PositionEncodingKind::UTF16,
+        )
+        .expect("completion entry");
+        assert_eq!(entry.kind, Some(lsp_types::CompletionItemKind::VARIABLE));
+    }
+
+    #[test]
+    fn missing_completion_kind_stays_empty() {
+        let text = Rope::from_str("val\n");
+        let item = lsp_types::CompletionItem {
+            label: "value".to_string(),
+            ..lsp_types::CompletionItem::default()
+        };
+        let entry = completion_entry(
+            item,
+            "fake".to_string(),
+            &text,
+            3,
+            0,
+            &PositionEncodingKind::UTF16,
+        )
+        .expect("completion entry");
+        assert_eq!(entry.kind, None);
     }
 }

@@ -15,6 +15,7 @@ fn completion(request: u64) -> CompletionEvent {
         items: vec![CompletionEntry {
             server: "fake".to_string(),
             label: "value".to_string(),
+            kind: None,
             detail: None,
             filter_text: None,
             sort_text: None,
