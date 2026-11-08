@@ -119,6 +119,14 @@ impl DiagnosticIndex {
             .or_else(|| diagnostics.first())
     }
 
+    pub(super) fn lsp_severity(&self, path: &Path, line: usize) -> Option<ProblemSeverity> {
+        self.at(path, line)
+            .iter()
+            .filter(|problem| problem.source.starts_with(LSP_SOURCE_PREFIX))
+            .map(|problem| problem.severity)
+            .min()
+    }
+
     pub(super) fn counts(&self, path: &Path) -> DiagnosticCounts {
         self.buffer_counts.get(path).copied().unwrap_or_default()
     }

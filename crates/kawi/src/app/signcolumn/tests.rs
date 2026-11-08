@@ -73,6 +73,36 @@ fn always_reserves_the_column_without_signs() {
 }
 
 #[test]
+fn auto_shows_diagnostics_from_problem_state() {
+    let dir = crate::test_support::temp_dir("diagnostic_sign");
+    let path = dir.join("main.rs");
+    fs::write(&path, "one\ntwo\n").unwrap();
+    let mut app = App::new(
+        Buffer::from_file(path.to_str().unwrap()).unwrap(),
+        Flavor::Vim,
+    );
+    app.handle_resize(80, 24).expect("resize");
+    app.signcolumn = SignColumnMode::Auto;
+    app.problems.replace_lsp_test(
+        "fake",
+        &path,
+        vec![crate::test_support::diagnostic(
+            0,
+            kawi_lsp::DiagnosticSeverity::Error,
+            "message",
+        )],
+    );
+    app.update_signcolumn_width();
+    assert_eq!(app.editor.signcolumn_width(), SIGN_COLUMN_WIDTH);
+    let signs = app.view_signs().expect("signs");
+    assert_eq!(
+        signs[0],
+        Some(Sign::Diagnostic(UiDiagnosticSeverity::Error))
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn diagnostics_take_priority_over_git_signs() {
     let git = Some(Sign::Git(GitSign::Change));
     let diagnostic = Some(UiDiagnosticSeverity::Error);

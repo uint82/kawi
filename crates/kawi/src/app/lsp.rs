@@ -11,10 +11,10 @@ use kawi_editor::{
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
-    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
-    DiagnosticsEvent, FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings,
-    LanguageWarning, Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent,
-    RenameEvent, RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
+    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticsEvent,
+    FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings, LanguageWarning,
+    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
+    RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
     WorkspaceDiagnosticState,
 };
 use kawi_syntax::LanguageId;
@@ -713,14 +713,6 @@ impl LspUi {
         );
     }
 
-    pub fn has_diagnostics(&self) -> bool {
-        self.diagnostics.has_diagnostics()
-    }
-
-    pub fn diagnostic_severity(&self, row: usize) -> Option<DiagnosticSeverity> {
-        self.diagnostics.severity_at(row)
-    }
-
     pub fn diagnostic_spans(&self, window: &[String], rows: &[usize]) -> Vec<DiagnosticSpan> {
         self.diagnostics.spans(window, rows)
     }
@@ -1108,6 +1100,7 @@ fn indent_options(indent: kawi_lsp::IndentConfig) -> IndentOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kawi_lsp::DiagnosticSeverity;
 
     #[test]
     fn inactive_workspace_diagnostics_reach_the_problem_store() {

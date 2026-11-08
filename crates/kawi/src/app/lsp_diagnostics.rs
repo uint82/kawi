@@ -72,10 +72,12 @@ impl DiagnosticState {
             .sort_by_key(|diagnostic| (diagnostic.range.start, diagnostic.range.end));
     }
 
+    #[cfg(test)]
     pub(super) fn has_diagnostics(&self) -> bool {
         !self.items.is_empty()
     }
 
+    #[cfg(test)]
     pub(super) fn severity_at(&self, row: usize) -> Option<DiagnosticSeverity> {
         let row = u32::try_from(row).unwrap_or(u32::MAX);
         self.items
