@@ -1,4 +1,7 @@
-use kawi_lsp::{Diagnostic, DiagnosticOrigin, DiagnosticsEvent};
+use kawi_lsp::{
+    Diagnostic, DiagnosticOrigin, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity,
+    DiagnosticsEvent,
+};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -54,6 +57,22 @@ pub(crate) fn custom_theme() -> String {
         text.push('\n');
     }
     text
+}
+
+pub(crate) fn diagnostic(line: u32, severity: DiagnosticSeverity, message: &str) -> Diagnostic {
+    Diagnostic {
+        range: DiagnosticRange {
+            start: DiagnosticPosition { line, character: 0 },
+            end: DiagnosticPosition { line, character: 4 },
+        },
+        severity,
+        message: message.to_string(),
+        source: Some("fake".to_string()),
+        code: None,
+        code_description: None,
+        tags: Vec::new(),
+        related: Vec::new(),
+    }
 }
 
 pub(crate) fn diagnostic_event(

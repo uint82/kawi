@@ -10,6 +10,9 @@ const PANE_REFRESH_DELAY: Duration = Duration::from_millis(150);
 
 impl super::App {
     pub(super) fn apply_diagnostic_updates(&mut self) -> bool {
+        if self.diagnostics_deferred() {
+            return false;
+        }
         let updates = self.lsp.take_diagnostic_updates();
         let activity = self.lsp.take_diagnostics_activity();
         if updates.is_empty() && !activity {

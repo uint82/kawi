@@ -456,6 +456,11 @@ impl LspUi {
         std::mem::take(&mut self.diagnostic_updates)
     }
 
+    #[cfg(test)]
+    pub(super) fn queue_diagnostic_update(&mut self, update: DiagnosticUpdate) {
+        self.diagnostic_updates.push(update);
+    }
+
     pub(super) fn request_workspace_diagnostics(&mut self) -> bool {
         self.flush_pending_change();
         self.workspace_diagnostics_requested = true;

@@ -571,7 +571,6 @@ impl App {
                 rows: &rows,
                 cursor_row: self.editor.row(),
                 cursor_column: self.editor.col(),
-                suppress: self.virtual_text_suppressed(),
             },
         );
         let buffer = self.editor.buffer_number();
@@ -722,7 +721,6 @@ impl App {
                 rows: &rows,
                 cursor_row: row,
                 cursor_column: col,
-                suppress: false,
             },
         );
         let mut decorations = self.color_preview_spans(window.buffer, &lines, &rows);

@@ -20,6 +20,7 @@ mod completion;
 mod config;
 mod conflict;
 mod debug;
+mod diagnostic_deferral;
 mod diagnostic_index;
 mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
@@ -257,7 +258,6 @@ pub struct App {
     window_defaults: WindowOptions,
     editor_sync: editor_sync::EditorSync,
     last_frame: Instant,
-    last_input: Instant,
     keyguide_enabled: bool,
     keyguide_delay: Duration,
     keyguide_since: Option<Instant>,
@@ -389,7 +389,6 @@ impl App {
             window_defaults: WindowOptions::default(),
             editor_sync: editor_sync::EditorSync::default(),
             last_frame: Instant::now(),
-            last_input: Instant::now(),
             keyguide_enabled: true,
             keyguide_delay: Duration::from_millis(crate::options::KEYGUIDE_DELAY_DEFAULT as u64),
             keyguide_since: None,
@@ -645,8 +644,6 @@ impl App {
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
             let timeout = shortest_timeout(timeout, self.lsp.color_wait_timeout());
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
-            let diagnostic_timeout = self.diagnostic_idle_wait_timeout();
-            let timeout = shortest_timeout(timeout, diagnostic_timeout);
             let spinner_timeout = self.status_spinner_timeout();
             let timeout = shortest_timeout(timeout, spinner_timeout);
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
@@ -663,9 +660,6 @@ impl App {
                     self.events.wait_timeout(timeout)?;
                     if spinner_timeout.is_some_and(|spinner| spinner <= timeout) {
                         self.advance_status_spinner();
-                        return Ok(Redraw::Redraw);
-                    }
-                    if diagnostic_timeout.is_some_and(|diagnostic| diagnostic <= timeout) {
                         return Ok(Redraw::Redraw);
                     }
                     if shift_timeout.is_some_and(|shift| shift <= timeout) {
@@ -1147,7 +1141,6 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
-        self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
         self.sync_current_directory();
         self.sync_active_window();
@@ -1937,7 +1930,6 @@ impl App {
         }
         self.window_prefix = false;
         self.diagnostic_popup = None;
-        self.mark_diagnostic_input();
         if self.handle_terminal_paste(&text) {
             return Ok(false);
         }
