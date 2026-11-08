@@ -70,25 +70,19 @@ impl App {
                 Ok(Some(false))
             }
             session::CompletionOutcome::Cancel => {
-                self.completion_auto.cancel();
-                self.lsp.cancel_completion();
-                self.lsp.cancel_completion_resolve();
-                Ok(Some(false))
+                self.close_completion();
+                Ok(None)
             }
             session::CompletionOutcome::Accept => {
                 self.accept_completion(&session);
-                self.completion_auto.cancel();
-                self.lsp.cancel_completion();
-                self.lsp.cancel_completion_resolve();
+                self.close_completion();
                 Ok(Some(false))
             }
             session::CompletionOutcome::Fallthrough => {
                 if keeps_completion_open(&self.lsp, key) {
                     self.completion = Some(session);
                 } else {
-                    self.completion_auto.cancel();
-                    self.lsp.cancel_completion();
-                    self.lsp.cancel_completion_resolve();
+                    self.close_completion();
                 }
                 Ok(None)
             }
@@ -242,6 +236,7 @@ impl App {
         self.completion = None;
         self.completion_auto.cancel();
         self.lsp.cancel_completion();
+        self.lsp.cancel_completion_resolve();
     }
 
     pub(super) fn close_completion_on_mode_change(&mut self) {
@@ -249,10 +244,7 @@ impl App {
             return;
         }
         self.end_snippet();
-        self.completion_auto.cancel();
-        self.completion = None;
-        self.lsp.cancel_completion();
-        self.lsp.cancel_completion_resolve();
+        self.close_completion();
         self.signature = None;
         self.lsp.cancel_signature();
     }

@@ -37,6 +37,13 @@ fn item(label: &str) -> Item {
     }
 }
 
+fn app_with_open_completion(is_incomplete: bool) -> App {
+    let mut app = App::new(Buffer::from_string("val\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::AppendLineEnd);
+    app.completion = Some(CompletionSession::new(filtered_event(is_incomplete), "val"));
+    app
+}
+
 fn filtered_event(is_incomplete: bool) -> Event {
     Event {
         request: 1,
@@ -66,6 +73,70 @@ fn manual_completion_reports_missing_names() {
     let mut app = App::new(Buffer::from_string("one"), Flavor::Vim);
     app.request_completion().expect("completion");
     assert_eq!(app.last_message(), Some("E32: No file name"));
+}
+
+#[test]
+fn escape_dismisses_completion_and_returns_to_normal_mode() {
+    let mut app = app_with_open_completion(false);
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("escape");
+    assert!(app.completion.is_none());
+    assert_eq!(app.editor.mode(), kawi_editor::Mode::Normal);
+    assert_eq!(app.editor.visible_lines(0, 1), ["val"]);
+}
+
+#[test]
+fn escape_dismisses_an_incomplete_completion_list() {
+    let mut app = app_with_open_completion(true);
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("escape");
+    assert!(app.completion.is_none());
+    assert_eq!(app.editor.mode(), kawi_editor::Mode::Normal);
+}
+
+#[test]
+fn ctrl_c_dismisses_completion_and_returns_to_normal_mode() {
+    let mut app = app_with_open_completion(false);
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .expect("ctrl-c");
+    assert!(app.completion.is_none());
+    assert_eq!(app.editor.mode(), kawi_editor::Mode::Normal);
+}
+
+#[test]
+fn escape_dismisses_completion_and_cancels_a_scheduled_auto_trigger() {
+    let mut app = app_with_open_completion(false);
+    app.completion_auto.schedule(
+        Trigger::typing(),
+        Duration::from_secs(1),
+        CompletionSite {
+            buffer: app.editor.buffer_number(),
+            cursor: 0,
+        },
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("escape");
+    assert!(app.completion_auto.wait_timeout().is_none());
+}
+
+#[test]
+fn escape_dismisses_completion_from_replace_mode() {
+    let mut app = App::new(Buffer::from_string("val\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::EnterReplace);
+    app.completion = Some(CompletionSession::new(filtered_event(false), "val"));
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("escape");
+    assert!(app.completion.is_none());
+    assert_eq!(app.editor.mode(), kawi_editor::Mode::Normal);
+}
+
+#[test]
+fn escape_without_completion_still_returns_to_normal_mode() {
+    let mut app = App::new(Buffer::from_string("val\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::AppendLineEnd);
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .expect("escape");
+    assert_eq!(app.editor.mode(), kawi_editor::Mode::Normal);
 }
 
 #[test]
