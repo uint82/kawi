@@ -27,6 +27,8 @@ Use Tab to move down and Shift-Tab to move up. Up and Down, Ctrl-N and Ctrl-P, P
 
 Press Enter to accept the selected item and Esc to dismiss the list. The menu shows at most ten items and scrolls the selection into view.
 
+Each item keeps the kind reported by the language server. The kind is shown in a right-aligned column and colored by the theme. Snippets are marked as such and deprecated items are struck through. Server ordering is preserved, so a server that ranks commonly used items first is shown first.
+
 Use `K` for hover and `<leader> c a` for code actions. See [Diagnostics](help:diagnostics) for diagnostic navigation and display.
 
 ## Lifecycle
