@@ -1,14 +1,20 @@
 use std::ops::Range;
 
-use kawi_buffer::{diff_ropes, RopeChange};
+use kawi_buffer::{diff_ropes, RopeChange, TextEdit};
 use kawi_completion::Snippet;
 use ropey::Rope;
 
 pub(crate) struct SnippetSession {
-    stops: Vec<Range<usize>>,
+    stops: Vec<StopGroup>,
     final_stop: usize,
     active: usize,
     snapshot: Rope,
+}
+
+struct StopGroup {
+    index: usize,
+    choices: Vec<String>,
+    ranges: Vec<Range<usize>>,
 }
 
 pub(crate) enum SnippetStep {
@@ -22,17 +28,22 @@ impl SnippetSession {
             return None;
         }
         let limit = snapshot.len_chars();
-        let stops = snippet
-            .stops()
-            .iter()
-            .map(|stop| {
-                clamp_range(
-                    base.saturating_add(stop.range().start),
-                    base.saturating_add(stop.range().end),
-                    limit,
-                )
-            })
-            .collect();
+        let mut stops: Vec<StopGroup> = Vec::new();
+        for stop in snippet.stops() {
+            let range = clamp_range(
+                base.saturating_add(stop.range().start),
+                base.saturating_add(stop.range().end),
+                limit,
+            );
+            match stops.last_mut() {
+                Some(group) if group.index == stop.index() => group.ranges.push(range),
+                _ => stops.push(StopGroup {
+                    index: stop.index(),
+                    choices: stop.choices().to_vec(),
+                    ranges: vec![range],
+                }),
+            }
+        }
         Some(Self {
             stops,
             final_stop: base.saturating_add(snippet.final_stop()).min(limit),
@@ -42,13 +53,18 @@ impl SnippetSession {
     }
 
     pub(crate) fn active_range(&self) -> Range<usize> {
-        self.stops[self.active].clone()
+        self.stops[self.active].ranges[0].clone()
+    }
+
+    pub(crate) fn active_choices(&self) -> Option<&[String]> {
+        let choices = &self.stops[self.active].choices;
+        (!choices.is_empty()).then_some(choices)
     }
 
     pub(crate) fn next(&mut self) -> SnippetStep {
-        if let Some(range) = self.stops.get(self.active + 1) {
+        if let Some(group) = self.stops.get(self.active + 1) {
             self.active += 1;
-            return SnippetStep::Select(range.clone());
+            return SnippetStep::Select(group.ranges[0].clone());
         }
         SnippetStep::Finished(self.final_stop)
     }
@@ -56,19 +72,46 @@ impl SnippetSession {
     pub(crate) fn previous(&mut self) -> Option<Range<usize>> {
         let next = self.active.checked_sub(1)?;
         self.active = next;
-        Some(self.stops[next].clone())
+        Some(self.stops[next].ranges[0].clone())
     }
 
     pub(crate) fn update(&mut self, current: &Rope) {
         let Some(change) = diff_ropes(&self.snapshot, current) else {
             return;
         };
-        for stop in &mut self.stops {
-            *stop = remap_range(stop, &change);
+        for group in &mut self.stops {
+            for range in &mut group.ranges {
+                *range = remap_range(range, &change);
+            }
         }
         self.final_stop = remap_position(self.final_stop, &change);
         self.snapshot = current.clone();
     }
+
+    pub(crate) fn mirror_edits(&self, text: &Rope) -> Vec<TextEdit> {
+        let Some(group) = self.stops.get(self.active) else {
+            return Vec::new();
+        };
+        let Some(primary) = group.ranges.first() else {
+            return Vec::new();
+        };
+        let value = slice(text, primary);
+        group
+            .ranges
+            .iter()
+            .skip(1)
+            .filter(|range| slice(text, range) != value)
+            .map(|range| TextEdit {
+                start: range.start,
+                end: range.end,
+                text: value.to_string(),
+            })
+            .collect()
+    }
+}
+
+fn slice(text: &Rope, range: &Range<usize>) -> String {
+    text.slice(range.start..range.end).to_string()
 }
 
 fn clamp_range(start: usize, end: usize, limit: usize) -> Range<usize> {
@@ -171,5 +214,33 @@ mod tests {
         let mut session = session("${1:name}", 3, "name");
         session.update(&Rope::from_str(""));
         assert_eq!(session.active_range(), 0..0);
+    }
+
+    #[test]
+    fn duplicate_stops_form_one_navigation_group() {
+        let mut session = session("$1 $1", 0, " ");
+        assert_eq!(session.active_range(), 0..0);
+        assert!(matches!(session.next(), SnippetStep::Finished(position) if position == 1));
+    }
+
+    #[test]
+    fn mirror_edits_copy_the_active_stop_text() {
+        let session = session("${1:one} ${1:two}", 0, "one two");
+        let edits = session.mirror_edits(&Rope::from_str("one two"));
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].start, 4);
+        assert_eq!(edits[0].end, 7);
+        assert_eq!(edits[0].text, "one");
+    }
+
+    #[test]
+    fn mirror_edits_track_edits_to_the_active_stop() {
+        let mut session = session("${1:one} ${1:two}", 0, "one two");
+        session.update(&Rope::from_str("ONE two"));
+        let edits = session.mirror_edits(&Rope::from_str("ONE two"));
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].start, 4);
+        assert_eq!(edits[0].end, 7);
+        assert_eq!(edits[0].text, "ONE");
     }
 }

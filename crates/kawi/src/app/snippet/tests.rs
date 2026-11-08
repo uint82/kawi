@@ -76,6 +76,53 @@ fn typing_replaces_a_stop_and_shifts_later_stops() {
 }
 
 #[test]
+fn typing_updates_linked_stops() {
+    let mut app = app_at_end_of("one two");
+    app.start_snippet(Snippet::parse("${1:one} ${1:two}"));
+    press(
+        &mut app,
+        KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE),
+    );
+    assert_eq!(app.editor.visible_lines(0, 1), ["X X"]);
+    assert_eq!(app.editor.selection_range(), Some(((0, 0), (0, 1))));
+}
+
+#[test]
+fn choice_stops_open_a_menu_and_accept_the_selection() {
+    let mut app = app_at_end_of("one");
+    app.start_snippet(Snippet::parse("${1|one,two|}"));
+    assert!(app.snippet_choices.is_some());
+    press(&mut app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    press(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.editor.visible_lines(0, 1), ["two"]);
+    assert!(app.snippet.is_some());
+    assert!(app.snippet_choices.is_none());
+    assert_eq!(app.editor.selection_range(), Some(((0, 0), (0, 3))));
+}
+
+#[test]
+fn escape_closes_choices_without_ending_the_snippet() {
+    let mut app = app_at_end_of("one");
+    app.start_snippet(Snippet::parse("${1|one,two|}"));
+    press(&mut app, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(app.snippet.is_some());
+    assert!(app.snippet_choices.is_none());
+    assert_eq!(app.editor.selection_range(), Some(((0, 0), (0, 3))));
+}
+
+#[test]
+fn typing_closes_the_choice_menu() {
+    let mut app = app_at_end_of("one");
+    app.start_snippet(Snippet::parse("${1|one,two|}"));
+    press(
+        &mut app,
+        KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+    );
+    assert_eq!(app.editor.visible_lines(0, 1), ["x"]);
+    assert!(app.snippet_choices.is_none());
+}
+
+#[test]
 fn escape_ends_the_snippet_and_clears_the_selection() {
     let mut app = app_at_end_of("value");
     app.start_snippet(Snippet::parse("${1:value}$0"));
