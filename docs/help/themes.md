@@ -104,7 +104,7 @@ The optional keys are `foreground`, `background`, `fill`, `bold`, `italic`, `und
 
 ## Completion colors
 
-Completion menus color each item by its language server kind. Omitted kinds derive their colors from the theme syntax colors, with `text` using the base foreground and `file`, `folder`, `reference`, and `event` using `gutter.non_text`. Override individual kinds with a `[completion]` table:
+Completion menus color each item by its language server kind. Every kind receives a theme color by default, derived from the theme syntax colors. `file`, `folder`, `reference`, and `event` use `gutter.non_text`. Override individual kinds with a `[completion]` table:
 
 ```toml
 [completion]

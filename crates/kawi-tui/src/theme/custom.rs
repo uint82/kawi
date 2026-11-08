@@ -170,13 +170,8 @@ impl Theme {
             None => selection.clone(),
         };
         let syntax = parse_styles(file.syntax, &palette)?;
-        let completion = super::completion::parse(
-            file.completion,
-            base_foreground,
-            non_text,
-            search_match.background,
-            &syntax,
-        )?;
+        let completion =
+            super::completion::parse(file.completion, non_text, search_match.background, &syntax)?;
         Ok(Self {
             name: name.to_string(),
             package: file.package,

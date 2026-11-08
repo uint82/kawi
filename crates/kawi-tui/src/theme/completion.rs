@@ -25,13 +25,12 @@ impl CompletionTheme {
 
 pub(super) fn parse(
     overrides: BTreeMap<String, String>,
-    foreground: Color,
     muted: Color,
     matched: Color,
     syntax: &SyntaxStyles,
 ) -> Result<CompletionTheme, ThemeError> {
     let mut theme = CompletionTheme {
-        colors: default_colors(foreground, muted, syntax),
+        colors: default_colors(muted, syntax),
         matched,
     };
     for (key, value) in overrides {
@@ -48,11 +47,10 @@ pub(super) fn parse(
     Ok(theme)
 }
 
-fn default_colors(foreground: Color, muted: Color, syntax: &SyntaxStyles) -> [Color; KIND_COUNT] {
-    let mut colors = [foreground; KIND_COUNT];
+fn default_colors(muted: Color, syntax: &SyntaxStyles) -> [Color; KIND_COUNT] {
+    let mut colors = [muted; KIND_COUNT];
     for kind in CompletionKind::ALL {
-        colors[kind.index()] =
-            syntax_color(syntax, kind).unwrap_or_else(|| fallback_color(kind, foreground, muted));
+        colors[kind.index()] = syntax_color(syntax, kind).unwrap_or(muted);
     }
     colors
 }
@@ -62,23 +60,23 @@ fn syntax_color(syntax: &SyntaxStyles, kind: CompletionKind) -> Option<Color> {
         CompletionKind::Method | CompletionKind::Function => "function",
         CompletionKind::Constructor => "constructor",
         CompletionKind::Field | CompletionKind::Property => "property",
-        CompletionKind::Variable => "variable",
+        CompletionKind::Variable => "attribute",
         CompletionKind::Class
         | CompletionKind::Interface
         | CompletionKind::Struct
         | CompletionKind::Enum
         | CompletionKind::TypeParameter => "type",
-        CompletionKind::Module => "module",
+        CompletionKind::Module => "special",
         CompletionKind::Unit
         | CompletionKind::Value
         | CompletionKind::Constant
         | CompletionKind::EnumMember => "constant",
         CompletionKind::Keyword => "keyword",
-        CompletionKind::Operator => "operator",
+        CompletionKind::Operator => "special",
         CompletionKind::Snippet => "string",
         CompletionKind::Color => "special",
-        CompletionKind::Text
-        | CompletionKind::File
+        CompletionKind::Text => "comment",
+        CompletionKind::File
         | CompletionKind::Reference
         | CompletionKind::Folder
         | CompletionKind::Event => return None,
@@ -86,20 +84,11 @@ fn syntax_color(syntax: &SyntaxStyles, kind: CompletionKind) -> Option<Color> {
     syntax.named(name).and_then(|style| style.foreground)
 }
 
-fn fallback_color(kind: CompletionKind, foreground: Color, muted: Color) -> Color {
-    match kind {
-        CompletionKind::File
-        | CompletionKind::Reference
-        | CompletionKind::Folder
-        | CompletionKind::Event => muted,
-        _ => foreground,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::theme::Theme;
+    use std::collections::BTreeMap;
     use std::path::Path;
 
     fn theme_with(completion: &str) -> Result<Theme, ThemeError> {
@@ -138,10 +127,42 @@ mod tests {
         );
         assert_eq!(
             theme.completion.color(CompletionKind::Text),
-            theme.base.foreground
+            syntax("comment")
+        );
+        assert_eq!(
+            theme.completion.color(CompletionKind::Variable),
+            syntax("attribute")
+        );
+        assert_eq!(
+            theme.completion.color(CompletionKind::Module),
+            syntax("special")
         );
         assert_eq!(theme.completion.color(CompletionKind::File), theme.non_text);
         assert_eq!(theme.completion.matched(), theme.search_match.background);
+        for kind in CompletionKind::ALL {
+            assert_ne!(theme.completion.color(kind), theme.base.foreground);
+        }
+    }
+
+    #[test]
+    fn every_builtin_theme_colors_every_kind() {
+        for name in Theme::names() {
+            let theme = Theme::named(name).expect("built-in theme");
+            for kind in CompletionKind::ALL {
+                assert_ne!(
+                    theme.completion.color(kind),
+                    theme.base.foreground,
+                    "{name} left {kind:?} uncolored"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn missing_syntax_colors_fall_back_to_muted() {
+        let muted = Color::Rgb { r: 1, g: 2, b: 3 };
+        let colors = default_colors(muted, &SyntaxStyles::from_keyed(BTreeMap::new()));
+        assert!(colors.iter().all(|color| *color == muted));
     }
 
     #[test]
@@ -180,7 +201,7 @@ mod tests {
     fn the_themes_directory_is_not_required() {
         let missing = Path::new("/nonexistent/kawi/themes");
         let theme = Theme::load("default", missing).expect("built-in theme");
-        assert_eq!(
+        assert_ne!(
             theme.completion.color(CompletionKind::Text),
             theme.base.foreground
         );
