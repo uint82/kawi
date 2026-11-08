@@ -1,6 +1,6 @@
 use super::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use kawi_completion::{MarkupKind, ResolvedItem};
+use kawi_completion::{CompletionKind, MarkupKind, ResolvedItem};
 use std::path::PathBuf;
 
 fn edit(start: usize, end: usize, text: &str) -> TextEdit {
@@ -31,6 +31,14 @@ fn item(id: &str, label: &str) -> Item {
     }
 }
 
+fn labels(session: &CompletionSession) -> Vec<&str> {
+    session
+        .items()
+        .iter()
+        .map(|line| line.label.as_str())
+        .collect()
+}
+
 fn event(items: Vec<Item>) -> Event {
     Event {
         request: 1,
@@ -52,7 +60,7 @@ fn filters_and_preselects_the_server_choice() {
         event(vec![item("first", "print"), second, item("third", "value")]),
         "pr",
     );
-    assert_eq!(session.items(), ["print", "print_debug"]);
+    assert_eq!(labels(&session), ["print", "print_debug"]);
     assert_eq!(
         session.selected_item().map(|item| item.id.as_str()),
         Some("second")
@@ -85,7 +93,46 @@ fn snippet_items_are_marked() {
     let mut item = item("a", "println!");
     item.snippet = true;
     let session = CompletionSession::new(event(vec![item]), "");
-    assert_eq!(session.items(), ["println! [snippet]"]);
+    assert_eq!(labels(&session), ["println!"]);
+    assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
+}
+
+#[test]
+fn explicit_kinds_are_preserved_and_measured() {
+    let mut function = item("a", "print");
+    function.kind = Some(CompletionKind::Function);
+    let mut property = item("b", "width");
+    property.kind = Some(CompletionKind::Property);
+    let session = CompletionSession::new(event(vec![function, property]), "");
+    assert_eq!(session.items()[0].kind, Some(CompletionKind::Function));
+    assert_eq!(session.items()[1].kind, Some(CompletionKind::Property));
+    assert_eq!(session.kind_width(), CompletionKind::Function.name().len());
+    assert_eq!(session.list_width(), 5 + 2 + 8 + 2);
+}
+
+#[test]
+fn missing_kinds_leave_the_kind_column_empty() {
+    let session = CompletionSession::new(event(vec![item("a", "value")]), "");
+    assert_eq!(session.items()[0].kind, None);
+    assert_eq!(session.kind_width(), 0);
+    assert_eq!(session.list_width(), 5 + 2);
+}
+
+#[test]
+fn text_kinds_use_the_snippet_kind_when_snippeting() {
+    let mut value = item("a", "println!");
+    value.kind = Some(CompletionKind::Text);
+    value.snippet = true;
+    let session = CompletionSession::new(event(vec![value]), "");
+    assert_eq!(session.items()[0].kind, Some(CompletionKind::Snippet));
+}
+
+#[test]
+fn deprecated_items_stay_marked() {
+    let mut value = item("a", "value");
+    value.deprecated = true;
+    let session = CompletionSession::new(event(vec![value]), "");
+    assert!(session.items()[0].deprecated);
 }
 
 #[test]
@@ -206,7 +253,11 @@ fn resolved_detail_keeps_the_list_width() {
         additional: Vec::new(),
     }));
     assert_eq!(session.list_width(), width);
-    assert!(session.items()[0].contains("a much longer detail"));
+    assert!(session.items()[0]
+        .detail
+        .as_deref()
+        .unwrap_or_default()
+        .contains("a much longer detail"));
 }
 
 #[test]

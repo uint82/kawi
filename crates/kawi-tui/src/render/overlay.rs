@@ -9,6 +9,7 @@ use crate::surface::Surface;
 use crate::text::{display_width, truncate_to_display_width};
 use crate::theme::Theme;
 
+use super::completion_row;
 use super::furniture::write_padded;
 use super::keymenu;
 use super::menu;
@@ -47,18 +48,12 @@ fn draw_overlay_list(
         let index = start.saturating_add(offset);
         let row = list.rect.y.saturating_add(offset).saturating_add(1);
         out.move_to(list.rect.x.saturating_add(1), row);
-        if list.selected == Some(index) {
-            paint::apply_match(out, &frame.theme.selection);
+        let selected = list.selected == Some(index);
+        if let Some(line) = list.items.get(index) {
+            completion_row::draw_row(out, frame.theme, line, width, list.kind_width, selected)?;
         } else {
-            paint::apply_colors(
-                out,
-                frame.theme.base.foreground,
-                frame.theme.float_background,
-            );
+            completion_row::draw_blank(out, frame.theme, width, selected)?;
         }
-        let item = list.items.get(index).map_or("", String::as_str);
-        write_padded(out, item, width)?;
-        paint::restore_base(out, frame.theme);
     }
     Ok(())
 }

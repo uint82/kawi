@@ -13,6 +13,7 @@ use crate::statusbar::{draw_status, StatusArea};
 use crate::surface::{self, Surface};
 
 mod bracket;
+mod completion_row;
 mod cursor;
 mod debug;
 mod diagnostic;

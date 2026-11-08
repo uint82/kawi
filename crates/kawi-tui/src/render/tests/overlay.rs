@@ -1,5 +1,8 @@
 use super::*;
+use crate::frame::CompletionLine;
+use crate::render::completion_row;
 use crate::render::overlay::{overlay_background, scrollbar_thumb};
+use kawi_completion::CompletionKind;
 
 #[test]
 fn code_lines_use_the_code_background() {
@@ -17,4 +20,91 @@ fn scrollbar_thumb_tracks_the_visible_range() {
     assert_eq!(scrollbar_thumb(45, 100, 10), Some(4..5));
     assert_eq!(scrollbar_thumb(90, 100, 10), Some(9..10));
     assert_eq!(scrollbar_thumb(90, 11, 10), Some(1..10));
+}
+
+fn row_text(surface: &Surface, width: usize) -> String {
+    (0..width)
+        .map(|x| surface.cell(x, 0).expect("cell").text())
+        .collect()
+}
+
+fn completion_line(label: &str, kind: Option<CompletionKind>) -> CompletionLine {
+    CompletionLine {
+        label: label.to_string(),
+        detail: Some("fn".to_string()),
+        kind,
+        deprecated: false,
+    }
+}
+
+#[test]
+fn completion_rows_right_align_the_kind() {
+    let theme = Theme::default();
+    let mut out = Surface::new(20, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(
+        &mut out,
+        &theme,
+        &completion_line("print", Some(CompletionKind::Function)),
+        20,
+        8,
+        false,
+    )
+    .expect("draw row");
+    assert_eq!(row_text(&out, 20), "print  fn   function");
+    assert_eq!(
+        out.cell(12, 0).expect("kind cell").style().foreground(),
+        theme.completion.color(CompletionKind::Function)
+    );
+    assert_eq!(
+        out.cell(7, 0).expect("detail cell").style().foreground(),
+        theme.non_text
+    );
+}
+
+#[test]
+fn selected_completion_rows_use_the_selection_colors() {
+    let theme = Theme::default();
+    let mut out = Surface::new(20, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(
+        &mut out,
+        &theme,
+        &completion_line("print", Some(CompletionKind::Function)),
+        20,
+        8,
+        true,
+    )
+    .expect("draw row");
+    for column in [0, 7, 12, 19] {
+        let style = out.cell(column, 0).expect("cell").style();
+        assert_eq!(style.foreground(), theme.selection.foreground);
+        assert_eq!(style.background(), theme.selection.background);
+    }
+}
+
+#[test]
+fn completion_rows_without_a_kind_leave_the_column_blank() {
+    let theme = Theme::default();
+    let mut out = Surface::new(16, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(
+        &mut out,
+        &theme,
+        &completion_line("value", None),
+        16,
+        8,
+        false,
+    )
+    .expect("draw row");
+    assert_eq!(row_text(&out, 16), "value           ");
+}
+
+#[test]
+fn deprecated_completion_rows_are_crossed_out() {
+    let theme = Theme::default();
+    let mut line = completion_line("value", Some(CompletionKind::Function));
+    line.deprecated = true;
+    let mut out = Surface::new(16, 1, theme.base.foreground, theme.base.background);
+    completion_row::draw_row(&mut out, &theme, &line, 16, 8, false).expect("draw row");
+    assert!(out.cell(0, 0).expect("cell").style().is_crossed_out());
+    assert!(!out.cell(6, 0).expect("cell").style().is_crossed_out());
+    assert!(!out.cell(8, 0).expect("cell").style().is_crossed_out());
 }
