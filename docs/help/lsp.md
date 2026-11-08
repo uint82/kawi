@@ -27,7 +27,7 @@ Use Tab to move down and Shift-Tab to move up. Up and Down, Ctrl-N and Ctrl-P, P
 
 Press Enter to accept the selected item and Esc to dismiss the list. The menu shows at most ten items and scrolls the selection into view.
 
-Snippet items insert their placeholders and select the first one. Use Tab and Shift-Tab to move between placeholders, or type to replace the selected placeholder. Esc, an arrow key, Home, End, or a paging key leaves snippet navigation, and Tab on the last placeholder moves to the final cursor position.
+Snippet items insert their placeholders and select the first one. Use Tab and Shift-Tab to move between placeholders, or type to replace the selected placeholder. Placeholders with the same number stay linked, so typing in one updates the others. Choice placeholders open a menu; use Up and Down or Tab, then Enter to pick an option, and Esc to close the menu without leaving the snippet. Esc, an arrow key, Home, End, or a paging key leaves snippet navigation, and Tab on the last placeholder moves to the final cursor position. Known editor variables such as `TM_FILENAME` and `TM_CURRENT_WORD` are expanded, and multiline snippets follow the current indentation when the server requests adjusted indentation.
 
 Each item keeps the kind reported by the language server. The kind is shown in a right-aligned column and colored by the theme. Characters matched by the typed query are highlighted. Snippets are marked as such and deprecated items are struck through. Server ordering is preserved, so a server that ranks commonly used items first is shown first.
 
