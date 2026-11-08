@@ -21,7 +21,6 @@ fn terminal_app(focus: bool, mode: TerminalMode) -> App {
         ..TerminalUi::default()
     };
     app.terminal_focus = focus;
-    app.terminal_focus_key = Some(KeyBinding::control('g'));
     app
 }
 
@@ -43,7 +42,16 @@ fn press_focus_key(app: &mut App) {
 }
 
 #[test]
-fn focus_key_is_unbound_by_default() {
+fn focus_key_defaults_to_ctrl_g() {
+    let app = terminal_app(false, TerminalMode::Input);
+    assert_eq!(
+        app.terminal_focus_key.map(KeyBinding::name),
+        Some("ctrl-g".to_string())
+    );
+}
+
+#[test]
+fn focus_key_can_be_disabled() {
     let mut app = terminal_app(false, TerminalMode::Input);
     app.terminal_focus_key = None;
     press_focus_key(&mut app);
@@ -222,7 +230,6 @@ fn terminal_mouse_focus_releases_explorer_focus() {
 fn focus_key_opens_closed_terminal_over_explorer() {
     let mut app = App::new(Buffer::from_string("editor"), Flavor::Vim);
     app.set_screen_size(100, 30);
-    app.terminal_focus_key = Some(KeyBinding::control('g'));
     let dir = focus_explorer(&mut app, "terminal_focus_open_explorer");
     assert!(app.explorer.is_focused());
     press_focus_key(&mut app);

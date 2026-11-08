@@ -781,7 +781,12 @@ mod tests {
     #[test]
     fn terminal_focus_key_is_configurable() {
         let mut app = app();
-        assert_eq!(app.terminal_focus_key, None);
+        assert_eq!(
+            app.terminal_focus_key.map(KeyBinding::name),
+            Some("ctrl-g".to_string())
+        );
+        execute(&mut app, "set terminal_focus_key?");
+        assert_eq!(app.last_message(), Some("terminal_focus_key=ctrl-g"));
         execute(&mut app, "set terminal_focus_key=ctrl-t");
         assert_eq!(
             app.terminal_focus_key.map(KeyBinding::name),

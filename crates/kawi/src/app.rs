@@ -342,7 +342,7 @@ impl App {
             task: TaskSession::default(),
             terminal: terminal_ui::TerminalUi::default(),
             terminal_focus: false,
-            terminal_focus_key: None,
+            terminal_focus_key: Some(key_binding::KeyBinding::control('g')),
             debug_focus: false,
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
