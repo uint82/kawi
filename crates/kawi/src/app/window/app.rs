@@ -534,12 +534,17 @@ impl App {
         let Some(key) = self.syntax_spans_key else {
             return Cow::Owned(Vec::new());
         };
-        if syntax_key_matches(key, buffer, self.editor.buffer_revision_at(buffer))
-            && syntax_window_covers(&self.syntax_window, top, end)
+        if syntax_window_covers(&self.syntax_window, top, end)
+            && self.syntax_spans_are_displayable(key, buffer)
         {
             return Cow::Borrowed(self.syntax_spans.as_slice());
         }
         Cow::Owned(Vec::new())
+    }
+
+    fn syntax_spans_are_displayable(&self, key: SyntaxKey, buffer: usize) -> bool {
+        syntax_key_matches(key, buffer, self.editor.buffer_revision_at(buffer))
+            || (self.syntax_pending && key.document == buffer as u64)
     }
 
     fn active_pane_data<'a>(&'a self, rect: Rect) -> PaneData<'a> {

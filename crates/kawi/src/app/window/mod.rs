@@ -373,16 +373,32 @@ mod tests {
         assert!(panes.iter().all(|pane| !pane.syntax_spans.is_empty()));
     }
 
-    #[test]
-    fn stale_syntax_spans_are_hidden_after_an_edit() {
+    fn highlighted_app() -> App {
         let mut buffer = Buffer::from_string("fn main() {}\n");
         buffer.path = Some("main.rs".to_string());
         let mut app = App::new(buffer, Flavor::Vim);
         app.refresh_syntax();
         wait_for_syntax(&mut app);
+        app
+    }
+
+    #[test]
+    fn syntax_spans_stay_visible_while_a_new_result_is_pending() {
+        let mut app = highlighted_app();
         app.editor.apply(Action::InsertChar('x'));
         app.syntax_key = app.editor.syntax_key();
         app.syntax_pending = true;
+        let layout = app.window_layout();
+        let panes = app.frame_panes(&layout);
+        assert!(!panes[0].syntax_spans.is_empty());
+    }
+
+    #[test]
+    fn stale_syntax_spans_are_hidden_after_a_rejected_result() {
+        let mut app = highlighted_app();
+        app.editor.apply(Action::InsertChar('x'));
+        app.syntax_key = app.editor.syntax_key();
+        app.syntax_pending = false;
         let layout = app.window_layout();
         let panes = app.frame_panes(&layout);
         assert!(panes[0].syntax_spans.is_empty());
