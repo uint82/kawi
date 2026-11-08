@@ -1,3 +1,4 @@
+use super::auto::CompletionSite;
 use super::config::CompletionKeys;
 use super::prefix::completion_prefix;
 use super::{CompletionOptions, CompletionSession};
@@ -84,8 +85,14 @@ fn accepting_completion_cancels_a_scheduled_auto_trigger() {
         },
         "",
     ));
-    app.completion_auto
-        .schedule(Trigger::typing(), Duration::from_secs(1));
+    app.completion_auto.schedule(
+        Trigger::typing(),
+        Duration::from_secs(1),
+        CompletionSite {
+            buffer: app.editor.buffer_number(),
+            cursor: 0,
+        },
+    );
     let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
     assert_eq!(
         app.handle_completion_key(key).expect("completion"),
@@ -179,4 +186,18 @@ fn complete_completion_closes_when_filtering_has_no_matches() {
     app.completion = Some(CompletionSession::new(filtered_event(false), "val"));
     app.after_buffer_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
     assert!(app.completion.is_none());
+}
+
+#[test]
+fn auto_trigger_is_discarded_after_the_cursor_moves() {
+    let mut app = App::new(Buffer::from_string("value\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::AppendLineEnd);
+    let site = CompletionSite {
+        buffer: app.editor.buffer_number(),
+        cursor: 0,
+    };
+    app.completion_auto
+        .schedule(Trigger::typing(), Duration::ZERO, site);
+    assert!(!app.completion_tick());
+    assert!(app.completion_auto.wait_timeout().is_none());
 }

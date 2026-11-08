@@ -10,8 +10,6 @@ pub(super) use config::CompletionOptions;
 pub(super) use session::CompletionSession;
 pub(super) use triggers::is_completion_key;
 
-use std::time::{Duration, Instant};
-
 use crossterm::event::KeyEvent;
 
 use kawi_completion::{Request, ResolveRequest, Source, Trigger, TriggerKind};
@@ -21,8 +19,6 @@ use super::lsp::editor_path;
 use super::App;
 use prefix::{completion_prefix, Prefix};
 use triggers::{keeps_completion_open, trigger_for_key};
-
-const AUTO_COMPLETION_DELAY: Duration = Duration::from_millis(120);
 
 impl App {
     pub(super) fn request_completion(&mut self) -> anyhow::Result<bool> {
@@ -201,21 +197,6 @@ impl App {
         }
     }
 
-    pub(super) fn completion_wait_timeout(&self) -> Option<Duration> {
-        self.completion_auto.wait_timeout()
-    }
-
-    pub(super) fn completion_tick(&mut self) -> bool {
-        let Some(trigger) = self.completion_auto.take_due(Instant::now()) else {
-            return false;
-        };
-        if !self.completion_request_allowed() {
-            return false;
-        }
-        self.start_completion(trigger, false);
-        true
-    }
-
     pub(super) fn after_buffer_key(&mut self, key: KeyEvent) {
         self.snippet_choices = None;
         self.update_snippet();
@@ -227,19 +208,7 @@ impl App {
             self.start_completion(Trigger::incomplete(), false);
             return;
         }
-        if !self.completion_options.auto || !self.completion_request_allowed() {
-            return;
-        }
-        if let Some(trigger) = trigger {
-            let delay = match trigger.kind {
-                TriggerKind::TriggerCharacter => Duration::ZERO,
-                _ => AUTO_COMPLETION_DELAY,
-            };
-            self.completion_auto.schedule(trigger, delay);
-            self.lsp.cancel_completion();
-        } else if self.completion.is_none() {
-            self.completion_auto.cancel();
-        }
+        self.schedule_auto_completion(trigger, prefix.cursor);
         self.resolve_completion_docs();
     }
 
