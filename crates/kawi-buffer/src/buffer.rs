@@ -809,6 +809,24 @@ impl Buffer {
         }
     }
 
+    pub fn delete_chars(&mut self, start: usize, end: usize) {
+        if self.readonly {
+            return;
+        }
+        let limit = self.rope.len_chars();
+        let start = start.min(limit);
+        let end = end.min(limit);
+        if start >= end {
+            return;
+        }
+        if end == limit {
+            let end_row = self.rope.char_to_line(end.saturating_sub(1));
+            self.keep_final_newline(end_row);
+        }
+        self.remove_text(start, end);
+        self.touch();
+    }
+
     pub fn delete_span(
         &mut self,
         start_row: usize,
@@ -1681,6 +1699,27 @@ mod tests {
         let mut b = Buffer::from_string("abcdef");
         b.delete_range(0, 1, 0, 3);
         assert_eq!(b.line(0).as_deref(), Some("aef"));
+    }
+
+    #[test]
+    fn delete_chars_uses_exclusive_offsets() {
+        let mut b = Buffer::from_string("abcdef");
+        b.delete_chars(1, 3);
+        assert_eq!(b.line(0).as_deref(), Some("adef"));
+    }
+
+    #[test]
+    fn delete_chars_clamps_offsets() {
+        let mut b = Buffer::from_string("abcdef");
+        b.delete_chars(4, 99);
+        assert_eq!(b.line(0).as_deref(), Some("abcd"));
+    }
+
+    #[test]
+    fn delete_chars_crosses_lines() {
+        let mut b = Buffer::from_string("ab\ncd");
+        b.delete_chars(1, 4);
+        assert_eq!(b.line(0).as_deref(), Some("ad"));
     }
 
     #[test]

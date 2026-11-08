@@ -218,6 +218,9 @@ impl Editor {
             self.replace_backspace();
             return;
         }
+        if self.replace_selected_text() {
+            return;
+        }
         if self.try_pair_backspace() {
             return;
         }
@@ -248,6 +251,9 @@ impl Editor {
 
     pub(super) fn delete_forward(&mut self) {
         if self.mode.is_insert() {
+            if self.replace_selected_text() {
+                return;
+            }
             self.record_maybe();
             self.record_insert(InsertEdit::Delete);
             self.buffer
@@ -585,6 +591,7 @@ impl Editor {
             self.insert_replace_char(c);
             return;
         }
+        self.replace_selected_text();
         self.dedent_before_closer(c);
         if self.try_auto_pair(c) {
             return;
@@ -608,6 +615,7 @@ impl Editor {
     }
 
     pub(super) fn insert_newline(&mut self) {
+        self.replace_selected_text();
         if self.try_pair_newline() {
             return;
         }
