@@ -113,6 +113,7 @@ struct SyntaxCache {
     spans: Vec<SyntaxSpan>,
     window: std::ops::Range<usize>,
     key: SyntaxKey,
+    generation: u64,
 }
 
 use crate::command::{CommandHandler, CommandRegistry};
@@ -169,6 +170,7 @@ pub struct App {
     syntax_spans: Vec<SyntaxSpan>,
     syntax_window: std::ops::Range<usize>,
     syntax_key: Option<SyntaxKey>,
+    syntax_spans_key: Option<SyntaxKey>,
     syntax_pending: bool,
     syntax_latest: u64,
     syntax_applied: u64,
@@ -300,6 +302,7 @@ impl App {
             syntax_spans: Vec::new(),
             syntax_window: 0..0,
             syntax_key: None,
+            syntax_spans_key: None,
             syntax_pending: false,
             syntax_latest: 0,
             syntax_applied: 0,
@@ -696,10 +699,7 @@ impl App {
 
     fn refresh_syntax(&mut self) {
         let Some(key) = self.editor.syntax_key() else {
-            if self.syntax_key.is_some() {
-                self.syntax_spans.clear();
-                self.syntax_window = 0..0;
-            }
+            self.clear_syntax_spans();
             self.syntax_key = None;
             self.syntax_pending = false;
             self.apply_syntax_results();
@@ -712,22 +712,16 @@ impl App {
                 && submitted.top == key.top
                 && submitted.end == key.end
         });
-        let same_document = self.syntax_key.is_some_and(|submitted| {
-            submitted.document == key.document
-                && submitted.revision == key.revision
-                && submitted.language == key.language
-        });
-        let covered = self.syntax_window.start <= key.top && key.end <= self.syntax_window.end;
-        if (self.syntax_pending && same_request) || (same_document && covered) {
+        let covered = self.syntax_spans_cover(&key);
+        if (self.syntax_pending && same_request) || covered {
             self.apply_syntax_results();
             return;
         }
-        let document_changed = self.syntax_key.is_none_or(|submitted| {
-            submitted.document != key.document || submitted.language != key.language
+        let document_changed = self.syntax_spans_key.is_none_or(|applied| {
+            applied.document != key.document || applied.language != key.language
         });
         if document_changed {
-            self.syntax_spans.clear();
-            self.syntax_window = 0..0;
+            self.clear_syntax_spans();
         }
         if let Some(request) = self.editor.syntax_request() {
             let wake = self.events.wake();
@@ -741,6 +735,22 @@ impl App {
             self.syntax_pending = false;
         }
         self.apply_syntax_results();
+    }
+
+    fn syntax_spans_cover(&self, key: &SyntaxKey) -> bool {
+        self.syntax_spans_key.is_some_and(|applied| {
+            applied.document == key.document
+                && applied.revision == key.revision
+                && applied.language == key.language
+                && self.syntax_window.start <= key.top
+                && key.end <= self.syntax_window.end
+        })
+    }
+
+    fn clear_syntax_spans(&mut self) {
+        self.syntax_spans.clear();
+        self.syntax_window = 0..0;
+        self.syntax_spans_key = None;
     }
 
     fn apply_syntax_results(&mut self) -> bool {
@@ -775,6 +785,7 @@ impl App {
         {
             self.syntax_spans = result.spans;
             self.syntax_window = result.window;
+            self.syntax_spans_key = Some(result.key);
             self.syntax_applied = result.generation;
             changed = true;
         }
