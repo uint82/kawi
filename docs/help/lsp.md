@@ -25,7 +25,7 @@ Language servers provide:
 
 Use Tab to move down and Shift-Tab to move up. Up and Down, Ctrl-N and Ctrl-P, PageUp and PageDown also navigate the completion list. Selection wraps at both ends.
 
-Press Enter to accept the selected item and Esc to dismiss the list. The menu shows at most ten items and scrolls the selection into view.
+Press Enter to accept the selected item. Esc dismisses the list and returns to normal mode. The menu shows at most ten items and scrolls the selection into view.
 
 Snippet items insert their placeholders and select the first one. Use Tab and Shift-Tab to move between placeholders, or type to replace the selected placeholder. Placeholders with the same number stay linked, so typing in one updates the others. Choice placeholders open a menu; use Up and Down or Tab, then Enter to pick an option, and Esc to close the menu without leaving the snippet. Esc, an arrow key, Home, End, or a paging key leaves snippet navigation, and Tab on the last placeholder moves to the final cursor position. Known editor variables such as `TM_FILENAME` and `TM_CURRENT_WORD` are expanded, and multiline snippets follow the current indentation when the server requests adjusted indentation.
 
