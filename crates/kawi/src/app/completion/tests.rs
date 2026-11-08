@@ -12,6 +12,44 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn item(label: &str) -> Item {
+    Item {
+        source: "fake".to_string(),
+        id: label.to_string(),
+        label: label.to_string(),
+        kind: None,
+        filter_text: None,
+        sort_text: None,
+        detail: None,
+        documentation: None,
+        deprecated: false,
+        preselect: false,
+        snippet: None,
+        resolve: false,
+        primary: TextEdit {
+            start: 0,
+            end: 3,
+            text: label.to_string(),
+        },
+        additional: Vec::new(),
+        command: None,
+    }
+}
+
+fn filtered_event(is_incomplete: bool) -> Event {
+    Event {
+        request: 1,
+        path: PathBuf::from("/tmp/completion.rs"),
+        version: 1,
+        original_hash: 0,
+        cursor: 3,
+        word_start: 0,
+        prefix: "val".to_string(),
+        items: vec![item("zzz")],
+        is_incomplete,
+    }
+}
+
 #[test]
 fn completion_prefix_stops_at_non_identifier_characters() {
     let mut editor = kawi_editor::Editor::new(Buffer::from_string("value->field "));
@@ -123,4 +161,22 @@ fn accepting_a_snippet_item_starts_its_session() {
     assert_eq!(app.editor.selection_range(), Some(((0, 7), (0, 12))));
     assert!(app.snippet.is_some());
     fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn incomplete_completion_survives_filtering_to_no_matches() {
+    let mut app = App::new(Buffer::from_string("val\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::AppendLineEnd);
+    app.completion = Some(CompletionSession::new(filtered_event(true), "val"));
+    app.after_buffer_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+    assert!(app.completion.is_some());
+}
+
+#[test]
+fn complete_completion_closes_when_filtering_has_no_matches() {
+    let mut app = App::new(Buffer::from_string("val\n"), Flavor::Vim);
+    app.editor.apply(kawi_editor::Action::AppendLineEnd);
+    app.completion = Some(CompletionSession::new(filtered_event(false), "val"));
+    app.after_buffer_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+    assert!(app.completion.is_none());
 }

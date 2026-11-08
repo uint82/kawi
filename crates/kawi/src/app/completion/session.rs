@@ -108,6 +108,10 @@ impl CompletionSession {
         self.selection.selected()
     }
 
+    pub(super) fn is_incomplete(&self) -> bool {
+        self.event.is_incomplete
+    }
+
     pub(crate) fn list_width(&self) -> usize {
         self.list_width
     }

@@ -19,7 +19,7 @@ use kawi_lsp::{CompletionEvent, CompletionResolveEvent};
 
 use super::lsp::editor_path;
 use super::App;
-use prefix::completion_prefix;
+use prefix::{completion_prefix, Prefix};
 use triggers::{keeps_completion_open, trigger_for_key};
 
 const AUTO_COMPLETION_DELAY: Duration = Duration::from_millis(120);
@@ -221,22 +221,12 @@ impl App {
         self.update_snippet();
         let prefix = completion_prefix(&self.editor);
         let trigger = trigger_for_key(&self.lsp, key, &prefix.text);
-        let keep_open = keeps_completion_open(&self.lsp, key);
-        if let Some(session) = self.completion.as_mut() {
-            if prefix.text.is_empty() || !keep_open {
-                self.completion = None;
-                self.completion_auto.cancel();
-                self.lsp.cancel_completion();
-            } else {
-                session.refilter(&prefix.text, None);
-                if session.items().is_empty() {
-                    self.completion = None;
-                    self.completion_auto.cancel();
-                    self.lsp.cancel_completion();
-                }
-            }
-        }
+        let needs_incomplete = self.update_open_completion(key, &prefix, trigger.as_ref());
         self.after_signature_key(key);
+        if needs_incomplete && self.completion_request_allowed() {
+            self.start_completion(Trigger::incomplete(), false);
+            return;
+        }
         if !self.completion_options.auto || !self.completion_request_allowed() {
             return;
         }
@@ -251,6 +241,38 @@ impl App {
             self.completion_auto.cancel();
         }
         self.resolve_completion_docs();
+    }
+
+    fn update_open_completion(
+        &mut self,
+        key: KeyEvent,
+        prefix: &Prefix,
+        trigger: Option<&Trigger>,
+    ) -> bool {
+        if self.completion.is_none() {
+            return false;
+        }
+        let keep_open = keeps_completion_open(&self.lsp, key);
+        if prefix.text.is_empty() || !keep_open {
+            self.close_completion();
+            return false;
+        }
+        let Some(session) = self.completion.as_mut() else {
+            return false;
+        };
+        session.refilter(&prefix.text, None);
+        let incomplete = session.is_incomplete();
+        if session.items().is_empty() && !incomplete {
+            self.close_completion();
+            return false;
+        }
+        incomplete && trigger.is_some_and(|trigger| trigger.kind != TriggerKind::TriggerCharacter)
+    }
+
+    fn close_completion(&mut self) {
+        self.completion = None;
+        self.completion_auto.cancel();
+        self.lsp.cancel_completion();
     }
 
     pub(super) fn close_completion_on_mode_change(&mut self) {
