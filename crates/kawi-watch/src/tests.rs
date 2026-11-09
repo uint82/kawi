@@ -41,7 +41,7 @@ fn temp_dir(name: &str) -> PathBuf {
     ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("directory");
-    dir
+    dir.canonicalize().expect("canonical directory")
 }
 
 #[test]
