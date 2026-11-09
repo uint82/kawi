@@ -327,8 +327,9 @@ fn failed_undo_writes_do_not_fail_saves() {
 #[test]
 fn exclusions_skip_persistence() {
     let (dir, _path, mut app) = app_with("excluded", "alpha\n");
+    let canonical = fs::canonicalize(&dir).unwrap();
     app.undo
-        .set_exclusions(vec![format!("{}/*", dir.display())]);
+        .set_exclusions(vec![format!("{}/*", canonical.display())]);
     edit(&mut app, "x");
     save(&mut app);
     assert_eq!(undo_file_count(&dir.join("undo")), 0);
