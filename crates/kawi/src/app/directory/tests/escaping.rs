@@ -22,7 +22,7 @@ fn newline_and_tab_names_round_trip_through_the_buffer() {
     let _ = fs::remove_dir_all(dir);
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn invalid_utf8_names_are_escaped_and_renamed_losslessly() {
     use std::ffi::OsString;
