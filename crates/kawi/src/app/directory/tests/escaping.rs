@@ -1,12 +1,7 @@
 use std::fs;
 
-use kawi_buffer::Buffer;
-
 use super::{listing, set_listing, settle, setup};
 use crate::app::save::SaveAfter;
-use crate::app::App;
-use crate::keymap::Flavor;
-use crate::test_support::temp_dir;
 
 #[test]
 fn newline_and_tab_names_round_trip_through_the_buffer() {
@@ -27,6 +22,12 @@ fn newline_and_tab_names_round_trip_through_the_buffer() {
 fn invalid_utf8_names_are_escaped_and_renamed_losslessly() {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
+
+    use kawi_buffer::Buffer;
+
+    use crate::app::App;
+    use crate::keymap::Flavor;
+    use crate::test_support::temp_dir;
 
     let dir = temp_dir("directory_escape_invalid_utf8");
     let original = dir.join(OsString::from_vec(b"raw\xffname".to_vec()));
