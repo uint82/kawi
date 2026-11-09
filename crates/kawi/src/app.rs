@@ -1780,7 +1780,7 @@ impl App {
     }
 
     fn handle_undo(&mut self) -> Result<bool> {
-        if !self.editor.try_undo() {
+        if !self.editor.undo() {
             self.show_message("Already at oldest change".to_string());
         }
         self.reveal_cursor();
@@ -1788,7 +1788,7 @@ impl App {
     }
 
     fn handle_redo(&mut self) -> Result<bool> {
-        if !self.editor.try_redo() {
+        if !self.editor.redo() {
             self.show_message("Already at newest change".to_string());
         }
         self.reveal_cursor();
@@ -3396,6 +3396,53 @@ mod tests {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
         app.handle_redo().expect("redo");
         assert_eq!(app.last_message(), Some("Already at newest change"));
+    }
+
+    #[test]
+    fn undo_count_undoes_multiple_changes() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::PushCount(3));
+        app.handle_undo().expect("undo");
+        assert_eq!(app.editor.text_lines(), vec!["abcdef"]);
+    }
+
+    #[test]
+    fn redo_count_redoes_multiple_changes() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::PushCount(3));
+        app.handle_undo().expect("undo");
+        app.editor.apply(Action::PushCount(3));
+        app.handle_redo().expect("redo");
+        assert_eq!(app.editor.text_lines(), vec!["def"]);
+    }
+
+    #[test]
+    fn undo_after_insert_move_keeps_earlier_text() {
+        let mut app = App::new(Buffer::from_string("base"), Flavor::Vim);
+        app.editor.apply(Action::EnterInsert);
+        app.editor.apply(Action::InsertChar('a'));
+        app.editor.apply(Action::InsertChar('b'));
+        app.editor.apply(Action::MoveRight);
+        app.editor.apply(Action::InsertChar('X'));
+        app.editor.apply(Action::ExitInsert);
+        app.handle_undo().expect("undo");
+        assert_eq!(app.editor.text_lines(), vec!["abbase"]);
+    }
+
+    #[test]
+    fn undo_append_clamps_cursor() {
+        let mut app = App::new(Buffer::from_string("base"), Flavor::Vim);
+        app.editor.apply(Action::AppendLineEnd);
+        app.editor.apply(Action::InsertChar('X'));
+        app.editor.apply(Action::ExitInsert);
+        app.handle_undo().expect("undo");
+        assert_eq!((app.editor.row(), app.editor.col()), (0, 3));
     }
 
     #[test]
