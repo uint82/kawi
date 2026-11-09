@@ -109,7 +109,9 @@ fn rename_moves_a_directory_and_rewrites_open_buffers() {
         .collect();
     assert!(session_paths.contains(&new.join("a.txt").to_string_lossy().into_owned()));
     assert!(session_paths.contains(&new.join("sub/b.txt").to_string_lossy().into_owned()));
-    assert!(!session_paths.iter().any(|path| path.contains("old")));
+    assert!(!session_paths
+        .iter()
+        .any(|path| std::path::Path::new(path).starts_with(&old)));
     let _ = fs::remove_dir_all(dir);
 }
 
