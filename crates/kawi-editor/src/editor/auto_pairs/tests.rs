@@ -240,3 +240,14 @@ fn auto_pair_overtype_joins_following_text() {
     editor.apply(Action::ExitInsert);
     assert_undo_steps(&mut editor, &["base()", "base"]);
 }
+
+#[test]
+fn consecutive_auto_pairs_undo_separately() {
+    let mut editor = editor_with("base", editing().pairs);
+    editor.apply(Action::AppendLineEnd);
+    editor.apply(Action::InsertChar('('));
+    editor.apply(Action::InsertChar('['));
+    editor.apply(Action::InsertChar('a'));
+    editor.apply(Action::ExitInsert);
+    assert_undo_steps(&mut editor, &["base([])", "base()", "base"]);
+}
