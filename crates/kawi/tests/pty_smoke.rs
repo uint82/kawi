@@ -8,7 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{
-    native_pty_system, Child, CommandBuilder, ExitStatus, MasterPty, PtyPair, PtySize, PtySystem,
+    native_pty_system, Child, CommandBuilder, ExitStatus, MasterPty, PtyPair, PtySize,
 };
 
 const TERM: &str = "xterm-256color";
@@ -63,7 +63,7 @@ fn launches_and_quits_in_a_pty() {
     drop(pair.slave);
     read_until(&mut reader, STARTUP_MARKER, STARTUP_TIMEOUT);
     write_keys(pair.master.as_ref(), QUIT_INPUT);
-    let status = wait_for_exit(child.as_mut(), EXIT_TIMEOUT);
+    let status = wait_for_exit(&mut child, EXIT_TIMEOUT);
     assert!(status.success(), "kawi exited with {status:?}");
 }
 
