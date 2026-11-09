@@ -42,3 +42,6 @@ wasm = ["kawi-plugin/wasm"]
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 signal-hook.workspace = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+portable-pty.workspace = true
