@@ -210,6 +210,18 @@ fn rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
             Err(error) => return Err(error),
         }
     }
+    #[cfg(target_os = "macos")]
+    {
+        match macos_rename_noreplace(old, new) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::ENOSYS) | Some(libc::EINVAL) | Some(libc::ENOTSUP)
+                ) => {}
+            Err(error) => return Err(error),
+        }
+    }
     if fs::symlink_metadata(new).is_ok() {
         return Err(already_exists(new));
     }
@@ -223,13 +235,8 @@ fn rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
 
 #[cfg(target_os = "linux")]
 fn linux_rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let old = CString::new(old.as_os_str().as_bytes())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))?;
-    let new = CString::new(new.as_os_str().as_bytes())
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))?;
+    let old = c_path(old)?;
+    let new = c_path(new)?;
     let result = unsafe {
         libc::syscall(
             libc::SYS_renameat2,
@@ -245,6 +252,27 @@ fn linux_rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
     } else {
         Err(io::Error::last_os_error())
     }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_rename_noreplace(old: &Path, new: &Path) -> io::Result<()> {
+    let old = c_path(old)?;
+    let new = c_path(new)?;
+    let result = unsafe { libc::renamex_np(old.as_ptr(), new.as_ptr(), libc::RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn c_path(path: &Path) -> io::Result<std::ffi::CString> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains a NUL byte"))
 }
 
 #[cfg(test)]

@@ -16,14 +16,29 @@ impl SystemClipboard {
 
 impl Clipboard for SystemClipboard {
     fn read(&mut self, kind: ClipboardKind) -> Option<String> {
-        read_wayland(kind)
-            .or_else(|| read_x11(kind))
-            .or_else(read_macos)
+        #[cfg(target_os = "macos")]
+        {
+            let _ = kind;
+            read_macos()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            read_wayland(kind).or_else(|| read_x11(kind))
+        }
     }
 
     fn write(&mut self, kind: ClipboardKind, text: &str) {
-        if write_wayland(kind, text) || write_x11(kind, text) || write_macos(text) {
-            return;
+        #[cfg(target_os = "macos")]
+        {
+            if write_macos(text) {
+                return;
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            if write_wayland(kind, text) || write_x11(kind, text) {
+                return;
+            }
         }
         if kind == ClipboardKind::Clipboard {
             write_osc52(text);
@@ -37,6 +52,7 @@ impl Default for SystemClipboard {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn primary_flag(kind: ClipboardKind) -> Option<&'static str> {
     match kind {
         ClipboardKind::Primary => Some("--primary"),
@@ -44,6 +60,7 @@ fn primary_flag(kind: ClipboardKind) -> Option<&'static str> {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn read_wayland(kind: ClipboardKind) -> Option<String> {
     let args: Vec<&str> = match primary_flag(kind) {
         Some(flag) => vec![flag, "--no-newline"],
@@ -52,6 +69,7 @@ fn read_wayland(kind: ClipboardKind) -> Option<String> {
     run_output("wl-paste", &args)
 }
 
+#[cfg(not(target_os = "macos"))]
 fn read_x11(kind: ClipboardKind) -> Option<String> {
     let selection = match kind {
         ClipboardKind::Primary => "primary",
@@ -61,10 +79,12 @@ fn read_x11(kind: ClipboardKind) -> Option<String> {
         .or_else(|| run_output("xsel", &["--output", "--clipboard"]))
 }
 
+#[cfg(target_os = "macos")]
 fn read_macos() -> Option<String> {
     run_output("pbpaste", &[])
 }
 
+#[cfg(not(target_os = "macos"))]
 fn write_wayland(kind: ClipboardKind, text: &str) -> bool {
     let mut args: Vec<&str> = Vec::new();
     if let Some(flag) = primary_flag(kind) {
@@ -73,6 +93,7 @@ fn write_wayland(kind: ClipboardKind, text: &str) -> bool {
     run_input("wl-copy", &args, text)
 }
 
+#[cfg(not(target_os = "macos"))]
 fn write_x11(kind: ClipboardKind, text: &str) -> bool {
     let selection = match kind {
         ClipboardKind::Primary => "primary",
@@ -82,6 +103,7 @@ fn write_x11(kind: ClipboardKind, text: &str) -> bool {
         || run_input("xsel", &["--input", "--clipboard"], text)
 }
 
+#[cfg(target_os = "macos")]
 fn write_macos(text: &str) -> bool {
     run_input("pbcopy", &[], text)
 }

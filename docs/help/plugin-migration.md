@@ -83,8 +83,8 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
 | `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
-| `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory | WASI preopens |
-| `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory | `process-run` and `process-jobs` host interfaces |
+| `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory; unsandboxed on macOS | WASI preopens |
+| `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory; unsandboxed on macOS | `process-run` and `process-jobs` host interfaces |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
 
 Process plugins are development-only trusted code. Managed installs require WASM.

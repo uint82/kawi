@@ -5,6 +5,8 @@ use std::time::Instant;
 use super::*;
 use crate::clock::Clock;
 
+const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+
 struct ManualClock {
     now: Mutex<Instant>,
 }
@@ -39,7 +41,7 @@ fn temp_dir(name: &str) -> PathBuf {
     ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("directory");
-    dir
+    dir.canonicalize().expect("canonical directory")
 }
 
 #[test]
@@ -93,7 +95,7 @@ fn watcher_reports_writes_and_renames() {
     service.watch_directories_and_wait([dir.as_path()]);
     fs::write(&temp, "beta\n").expect("temp");
     fs::rename(&temp, &path).expect("rename");
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + EVENT_TIMEOUT;
     let mut seen = false;
     while Instant::now() < deadline {
         if service.try_recv_paths().iter().any(|event| event == &path) {

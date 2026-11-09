@@ -85,6 +85,7 @@ fn doctor_reports_the_workspace_without_creating_state() {
         check_ids(&report),
         [
             "paths",
+            "platform",
             "config",
             "keymaps",
             "plugin-keybindings",

@@ -203,7 +203,8 @@ fn loads_a_worktree_where_git_is_a_file() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
+// TODO: enable on macOS when the test can place non-UTF-8 bytes in the Git index.
 fn preserves_non_utf8_paths() {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;

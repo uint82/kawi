@@ -4,6 +4,8 @@ use std::time::{Duration, Instant};
 
 const MAX_REMOVE_TREE_ENTRIES: usize = 4096;
 const MAX_REMOVE_TREE_TIME: Duration = Duration::from_millis(50);
+#[cfg(unix)]
+const STICKY_BIT: u32 = 0o1000;
 
 #[derive(Clone, Copy)]
 enum Access {
@@ -51,7 +53,7 @@ pub(in crate::app) fn sticky_allows(path: &Path) -> bool {
         let Ok(directory) = fs::symlink_metadata(parent) else {
             return false;
         };
-        if directory.permissions().mode() & libc::S_ISVTX == 0 {
+        if directory.permissions().mode() & STICKY_BIT == 0 {
             return true;
         }
         let effective = unsafe { libc::geteuid() };

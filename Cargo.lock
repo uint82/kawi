@@ -958,6 +958,7 @@ dependencies = [
  "kawi-tui",
  "kawi-watch",
  "libc",
+ "portable-pty",
  "ropey",
  "serde",
  "serde_json",

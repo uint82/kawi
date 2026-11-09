@@ -32,7 +32,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
-- **Development plugins.** Local process and WASM plugins for development, loaded with a warning and optional Linux Landlock filesystem and process-execution scopes.
+- **Development plugins.** Local process and WASM plugins for development, loaded with a warning. Linux adds optional Landlock filesystem and process-execution scopes; process plugins run unsandboxed on macOS.
 - **Managed WASM plugins.** Install GitHub releases with checksum verification, a pinned lockfile, explicit updates, and a versioned component contract. Includes a published Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
@@ -42,7 +42,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 
 - Rust 1.98 or newer.
 - Git.
-- A Unix-like operating system. CI currently runs on Linux.
+- Linux or macOS on x86_64 or arm64. CI runs on Linux and macOS; Windows is not supported.
 
 ## Installation
 
@@ -59,6 +59,20 @@ cargo build --release --locked
 
 ```sh
 cargo install --path crates/kawi --locked
+```
+
+### Install from Git
+
+```sh
+cargo install --git https://github.com/uint82/kawi --locked
+```
+
+## Platform support
+
+Linux and macOS are supported. Linux uses Landlock for process plugin scopes when the kernel exposes a full ABI. macOS uses the native Trash and clipboard integrations; process plugins run without an OS sandbox. Release tarballs are unsigned, so clear the quarantine attribute after downloading one:
+
+```sh
+xattr -d com.apple.quarantine kawi
 ```
 
 ## Quick start

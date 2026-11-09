@@ -4,6 +4,7 @@ mod git;
 mod keymaps;
 mod languages;
 mod paths;
+mod platform;
 mod plugin_keybindings;
 mod plugins;
 mod probe;
@@ -24,6 +25,7 @@ pub(crate) fn collect(target: &Path, workspace: &Path, paths: Option<&StatePaths
     };
     let checks = vec![
         paths_check,
+        platform::check(),
         config::check(paths),
         keymaps::check(paths),
         plugin_keybindings::check(paths),

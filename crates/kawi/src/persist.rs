@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
+
+#[cfg(target_os = "macos")]
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -106,7 +109,31 @@ fn temp_path(path: &Path) -> PathBuf {
     path.with_extension(format!("{}.{id}.tmp", std::process::id()))
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+pub(crate) fn sync_directory(path: &Path) -> Result<()> {
+    use std::os::unix::io::AsRawFd;
+
+    let directory =
+        File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let result = unsafe { libc::fsync(directory.as_raw_fd()) };
+    if result == 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if is_unsupported_directory_sync(&error) {
+        return Ok(());
+    }
+    Err(error).with_context(|| format!("failed to sync {}", path.display()))
+}
+
+#[cfg(target_os = "macos")]
+fn is_unsupported_directory_sync(error: &io::Error) -> bool {
+    error
+        .raw_os_error()
+        .is_some_and(|code| [libc::EINVAL, libc::ENOTSUP, libc::EOPNOTSUPP].contains(&code))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) fn sync_directory(path: &Path) -> Result<()> {
     File::open(path)
         .with_context(|| format!("failed to open {}", path.display()))?
@@ -147,6 +174,14 @@ mod tests {
         let path = dir.join("nested").join("state");
         write_atomically(&path, "text").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "text");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn syncs_a_directory() {
+        let dir = temp_dir("sync");
+        fs::create_dir_all(&dir).unwrap();
+        sync_directory(&dir).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
 

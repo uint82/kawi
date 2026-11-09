@@ -186,6 +186,7 @@ fn labels_and_refuses_branches_checked_out_in_worktrees() {
             "linked",
         ],
     );
+    let worktree = fs::canonicalize(worktree).unwrap();
     let target = branch(&dir, "linked");
     assert_eq!(target.worktree.as_deref(), Some(worktree.as_path()));
     assert!(matches!(

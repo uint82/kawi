@@ -15,6 +15,17 @@ fn temp_root(name: &str) -> PathBuf {
 }
 
 #[test]
+fn fallback_socket_paths_fit_the_platform_limit() {
+    let name = instance_name(Path::new("/tmp/kawi-socket-length"));
+    let path = fallback_directory().join(name);
+    assert!(
+        path.as_os_str().as_encoded_bytes().len() <= SOCKET_PATH_LIMIT,
+        "{}",
+        path.display()
+    );
+}
+
+#[test]
 fn server_and_client_handshake() {
     let root = temp_root("handshake");
     let file = root.join("COMMIT_EDITMSG");

@@ -9,7 +9,7 @@ This document defines Kawi plugin protocol version 1. Minor version 1 adds event
 
 ## Trust model
 
-Process plugins run as your user in development mode. Kawi loads them only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by the manifest declarations. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to declared scopes. Managed installs use WASM; see [Plugin host APIs](help:plugin-capabilities).
+Process plugins run as your user in development mode. Kawi loads them only from `$XDG_CONFIG_HOME/kawi/plugins`, never from a project directory. Install only plugins you trust. Host-mediated editor, UI, and diagnostics access is scoped by the manifest declarations. On Linux with a full Landlock ABI, a ruleset also limits filesystem reads, writes, and executable paths to declared scopes. macOS has no Landlock, so process plugins run unsandboxed there. Managed installs use WASM; see [Plugin host APIs](help:plugin-capabilities).
 
 Each plugin lives in its own directory:
 

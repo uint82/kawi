@@ -154,7 +154,8 @@ mod tests {
         };
         let mut state = enabled_state();
         state.restore(&dir, Some(&session));
-        assert_eq!(state.root(), Some(dir.as_path()));
+        let canonical = std::fs::canonicalize(&dir).unwrap();
+        assert_eq!(state.root(), Some(canonical.as_path()));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -172,7 +173,11 @@ mod tests {
         };
         let mut state = enabled_state();
         state.restore(&dir, Some(&session));
-        assert!(state.rows().iter().all(|row| row.path.starts_with(&dir)));
+        let canonical = std::fs::canonicalize(&dir).unwrap();
+        assert!(state
+            .rows()
+            .iter()
+            .all(|row| row.path.starts_with(&canonical)));
         assert!(state.selected_row().is_some());
         std::fs::remove_dir_all(dir).unwrap();
     }

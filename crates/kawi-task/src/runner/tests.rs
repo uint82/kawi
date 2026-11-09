@@ -144,7 +144,7 @@ fn detached_task_has_no_controlling_terminal() {
             "sh",
             &[
                 "-c",
-                "if (exec 3</dev/tty) 2>/dev/null; then exit 1; fi; test \"$(ps -o sid= -p $$ | tr -d ' ')\" = \"$$\"",
+                "if (exec 3</dev/tty) 2>/dev/null; then exit 1; fi; case \"$(ps -o stat= -p $$)\" in *s*) ;; *) exit 1;; esac",
             ],
             ParserSpec::None,
         ),
