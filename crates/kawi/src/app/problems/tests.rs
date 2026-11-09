@@ -167,6 +167,24 @@ fn diagnostic_index_counts_lsp_sources_without_double_counting_tasks() {
 }
 
 #[test]
+fn lsp_severity_ignores_task_problems_and_prefers_the_most_urgent_lsp_problem() {
+    let path = Path::new("src/main.rs");
+    let mut problems = Problems::default();
+    problems.push_task("check", task_finding(1));
+    assert_eq!(problems.lsp_severity(path, 0), None);
+    problems.replace_lsp_test(
+        "rust-analyzer",
+        path,
+        vec![
+            lsp_diagnostic(0, "warning", DiagnosticSeverity::Warning),
+            lsp_diagnostic(0, "error", DiagnosticSeverity::Error),
+        ],
+    );
+    assert_eq!(problems.lsp_severity(path, 0), Some(ProblemSeverity::Error));
+    assert_eq!(problems.lsp_severity(path, 1), None);
+}
+
+#[test]
 fn diagnostic_index_follows_shifted_lsp_positions() {
     let path = Path::new("src/main.rs");
     let mut problems = Problems::default();

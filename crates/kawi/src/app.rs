@@ -20,6 +20,7 @@ mod completion;
 mod config;
 mod conflict;
 mod debug;
+mod diagnostic_deferral;
 mod diagnostic_index;
 mod diagnostic_popup;
 pub(crate) mod diagnostic_ui;
@@ -113,6 +114,7 @@ struct SyntaxCache {
     spans: Vec<SyntaxSpan>,
     window: std::ops::Range<usize>,
     key: SyntaxKey,
+    generation: u64,
 }
 
 use crate::command::{CommandHandler, CommandRegistry};
@@ -169,6 +171,7 @@ pub struct App {
     syntax_spans: Vec<SyntaxSpan>,
     syntax_window: std::ops::Range<usize>,
     syntax_key: Option<SyntaxKey>,
+    syntax_spans_key: Option<SyntaxKey>,
     syntax_pending: bool,
     syntax_latest: u64,
     syntax_applied: u64,
@@ -255,7 +258,6 @@ pub struct App {
     window_defaults: WindowOptions,
     editor_sync: editor_sync::EditorSync,
     last_frame: Instant,
-    last_input: Instant,
     keyguide_enabled: bool,
     keyguide_delay: Duration,
     keyguide_since: Option<Instant>,
@@ -300,6 +302,7 @@ impl App {
             syntax_spans: Vec::new(),
             syntax_window: 0..0,
             syntax_key: None,
+            syntax_spans_key: None,
             syntax_pending: false,
             syntax_latest: 0,
             syntax_applied: 0,
@@ -386,7 +389,6 @@ impl App {
             window_defaults: WindowOptions::default(),
             editor_sync: editor_sync::EditorSync::default(),
             last_frame: Instant::now(),
-            last_input: Instant::now(),
             keyguide_enabled: true,
             keyguide_delay: Duration::from_millis(crate::options::KEYGUIDE_DELAY_DEFAULT as u64),
             keyguide_since: None,
@@ -642,8 +644,6 @@ impl App {
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
             let timeout = shortest_timeout(timeout, self.lsp.color_wait_timeout());
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
-            let diagnostic_timeout = self.diagnostic_idle_wait_timeout();
-            let timeout = shortest_timeout(timeout, diagnostic_timeout);
             let spinner_timeout = self.status_spinner_timeout();
             let timeout = shortest_timeout(timeout, spinner_timeout);
             let timeout = shortest_timeout(timeout, self.keyguide_wait_timeout());
@@ -660,9 +660,6 @@ impl App {
                     self.events.wait_timeout(timeout)?;
                     if spinner_timeout.is_some_and(|spinner| spinner <= timeout) {
                         self.advance_status_spinner();
-                        return Ok(Redraw::Redraw);
-                    }
-                    if diagnostic_timeout.is_some_and(|diagnostic| diagnostic <= timeout) {
                         return Ok(Redraw::Redraw);
                     }
                     if shift_timeout.is_some_and(|shift| shift <= timeout) {
@@ -696,10 +693,7 @@ impl App {
 
     fn refresh_syntax(&mut self) {
         let Some(key) = self.editor.syntax_key() else {
-            if self.syntax_key.is_some() {
-                self.syntax_spans.clear();
-                self.syntax_window = 0..0;
-            }
+            self.clear_syntax_spans();
             self.syntax_key = None;
             self.syntax_pending = false;
             self.apply_syntax_results();
@@ -712,22 +706,16 @@ impl App {
                 && submitted.top == key.top
                 && submitted.end == key.end
         });
-        let same_document = self.syntax_key.is_some_and(|submitted| {
-            submitted.document == key.document
-                && submitted.revision == key.revision
-                && submitted.language == key.language
-        });
-        let covered = self.syntax_window.start <= key.top && key.end <= self.syntax_window.end;
-        if (self.syntax_pending && same_request) || (same_document && covered) {
+        let covered = self.syntax_spans_cover(&key);
+        if (self.syntax_pending && same_request) || covered {
             self.apply_syntax_results();
             return;
         }
-        let document_changed = self.syntax_key.is_none_or(|submitted| {
-            submitted.document != key.document || submitted.language != key.language
+        let document_changed = self.syntax_spans_key.is_none_or(|applied| {
+            applied.document != key.document || applied.language != key.language
         });
         if document_changed {
-            self.syntax_spans.clear();
-            self.syntax_window = 0..0;
+            self.clear_syntax_spans();
         }
         if let Some(request) = self.editor.syntax_request() {
             let wake = self.events.wake();
@@ -741,6 +729,22 @@ impl App {
             self.syntax_pending = false;
         }
         self.apply_syntax_results();
+    }
+
+    fn syntax_spans_cover(&self, key: &SyntaxKey) -> bool {
+        self.syntax_spans_key.is_some_and(|applied| {
+            applied.document == key.document
+                && applied.revision == key.revision
+                && applied.language == key.language
+                && self.syntax_window.start <= key.top
+                && key.end <= self.syntax_window.end
+        })
+    }
+
+    fn clear_syntax_spans(&mut self) {
+        self.syntax_spans.clear();
+        self.syntax_window = 0..0;
+        self.syntax_spans_key = None;
     }
 
     fn apply_syntax_results(&mut self) -> bool {
@@ -775,6 +779,7 @@ impl App {
         {
             self.syntax_spans = result.spans;
             self.syntax_window = result.window;
+            self.syntax_spans_key = Some(result.key);
             self.syntax_applied = result.generation;
             changed = true;
         }
@@ -1136,7 +1141,6 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
-        self.mark_diagnostic_input();
         let result = self.handle_key_inner(key);
         self.sync_current_directory();
         self.sync_active_window();
@@ -1776,7 +1780,7 @@ impl App {
     }
 
     fn handle_undo(&mut self) -> Result<bool> {
-        if !self.editor.try_undo() {
+        if !self.editor.undo() {
             self.show_message("Already at oldest change".to_string());
         }
         self.reveal_cursor();
@@ -1784,7 +1788,7 @@ impl App {
     }
 
     fn handle_redo(&mut self) -> Result<bool> {
-        if !self.editor.try_redo() {
+        if !self.editor.redo() {
             self.show_message("Already at newest change".to_string());
         }
         self.reveal_cursor();
@@ -1926,7 +1930,6 @@ impl App {
         }
         self.window_prefix = false;
         self.diagnostic_popup = None;
-        self.mark_diagnostic_input();
         if self.handle_terminal_paste(&text) {
             return Ok(false);
         }
@@ -3393,6 +3396,53 @@ mod tests {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
         app.handle_redo().expect("redo");
         assert_eq!(app.last_message(), Some("Already at newest change"));
+    }
+
+    #[test]
+    fn undo_count_undoes_multiple_changes() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::PushCount(3));
+        app.handle_undo().expect("undo");
+        assert_eq!(app.editor.text_lines(), vec!["abcdef"]);
+    }
+
+    #[test]
+    fn redo_count_redoes_multiple_changes() {
+        let mut app = App::new(Buffer::from_string("abcdef"), Flavor::Vim);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::DeleteForward);
+        app.editor.apply(Action::PushCount(3));
+        app.handle_undo().expect("undo");
+        app.editor.apply(Action::PushCount(3));
+        app.handle_redo().expect("redo");
+        assert_eq!(app.editor.text_lines(), vec!["def"]);
+    }
+
+    #[test]
+    fn undo_after_insert_move_keeps_earlier_text() {
+        let mut app = App::new(Buffer::from_string("base"), Flavor::Vim);
+        app.editor.apply(Action::EnterInsert);
+        app.editor.apply(Action::InsertChar('a'));
+        app.editor.apply(Action::InsertChar('b'));
+        app.editor.apply(Action::MoveRight);
+        app.editor.apply(Action::InsertChar('X'));
+        app.editor.apply(Action::ExitInsert);
+        app.handle_undo().expect("undo");
+        assert_eq!(app.editor.text_lines(), vec!["abbase"]);
+    }
+
+    #[test]
+    fn undo_append_clamps_cursor() {
+        let mut app = App::new(Buffer::from_string("base"), Flavor::Vim);
+        app.editor.apply(Action::AppendLineEnd);
+        app.editor.apply(Action::InsertChar('X'));
+        app.editor.apply(Action::ExitInsert);
+        app.handle_undo().expect("undo");
+        assert_eq!((app.editor.row(), app.editor.col()), (0, 3));
     }
 
     #[test]

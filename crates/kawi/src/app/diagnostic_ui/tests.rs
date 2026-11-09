@@ -1,22 +1,8 @@
 use super::*;
-use kawi_lsp::{Diagnostic, DiagnosticPosition, DiagnosticRange, DiagnosticSeverity};
+use crate::app::lsp::DiagnosticUpdate;
+use crate::test_support::diagnostic;
+use kawi_lsp::{Diagnostic, DiagnosticSeverity};
 use std::path::PathBuf;
-
-fn diagnostic(line: u32, severity: DiagnosticSeverity, message: &str) -> Diagnostic {
-    Diagnostic {
-        range: DiagnosticRange {
-            start: DiagnosticPosition { line, character: 0 },
-            end: DiagnosticPosition { line, character: 4 },
-        },
-        severity,
-        message: message.to_string(),
-        source: Some("fake".to_string()),
-        code: None,
-        code_description: None,
-        tags: Vec::new(),
-        related: Vec::new(),
-    }
-}
 
 fn problems(diagnostics: Vec<Diagnostic>) -> (Problems, PathBuf) {
     let path = PathBuf::from("/tmp/virtual_text.rs");
@@ -30,7 +16,6 @@ fn request<'a>(
     top: usize,
     height: usize,
     cursor_row: usize,
-    suppress: bool,
 ) -> VirtualTextRequest<'a> {
     let rows: &'static [usize] = Box::leak(
         (top..top.saturating_add(height))
@@ -42,7 +27,6 @@ fn request<'a>(
         rows,
         cursor_row,
         cursor_column: 0,
-        suppress,
     }
 }
 
@@ -139,13 +123,13 @@ fn virtual_text_modes_follow_the_cursor_and_severity_filter() {
         virtual_text: VirtualTextMode::CursorLine,
         ..DiagnosticOptions::default()
     };
-    let texts = build_virtual_texts(&problems, &cursor_line, request(&path, 0, 3, 1, false));
+    let texts = build_virtual_texts(&problems, &cursor_line, request(&path, 0, 3, 1));
     assert_eq!(texts.len(), 3);
     assert!(texts[0].is_none());
     assert_eq!(texts[1].as_ref().unwrap().text, "warning");
     assert!(texts[2].is_none());
     let all = DiagnosticOptions::default();
-    let texts = build_virtual_texts(&problems, &all, request(&path, 0, 3, 0, false));
+    let texts = build_virtual_texts(&problems, &all, request(&path, 0, 3, 0));
     assert_eq!(texts[0].as_ref().unwrap().text, "first");
     assert_eq!(texts[1].as_ref().unwrap().text, "warning");
     assert_eq!(texts[2].as_ref().unwrap().text, "info");
@@ -185,7 +169,6 @@ fn virtual_text_does_not_change_cursor_selection_search_or_horizontal_scroll() {
         rows: &[0],
         cursor_row: app.editor.row(),
         cursor_column: app.editor.col(),
-        suppress: false,
     });
     assert_eq!(texts[0].as_ref().unwrap().text, "message");
     assert_eq!(
@@ -200,7 +183,8 @@ fn virtual_text_does_not_change_cursor_selection_search_or_horizontal_scroll() {
 }
 
 #[test]
-fn insert_mode_hides_virtual_text_until_the_idle_delay() {
+fn diagnostic_updates_are_deferred_until_insert_mode_ends() {
+    let path = PathBuf::from("/tmp/deferred_diagnostic.rs");
     let mut app = App::new(
         kawi_buffer::Buffer::from_string("value\n"),
         crate::keymap::Flavor::Vim,
@@ -210,24 +194,79 @@ fn insert_mode_hides_virtual_text_until_the_idle_delay() {
         crossterm::event::KeyModifiers::NONE,
     ))
     .expect("insert");
-    assert!(app.virtual_text_suppressed());
-    assert!(app.diagnostic_idle_wait_timeout().is_some());
-    app.last_input = Instant::now() - DIAGNOSTIC_IDLE_DELAY;
-    assert!(!app.virtual_text_suppressed());
-    assert!(app.diagnostic_idle_wait_timeout().is_none());
+    app.lsp.queue_diagnostic_update(DiagnosticUpdate::Replace(
+        crate::test_support::diagnostic_event(
+            "fake",
+            &path,
+            vec![diagnostic(0, DiagnosticSeverity::Error, "message")],
+        ),
+    ));
+    assert!(!app.apply_diagnostic_updates());
+    assert_eq!(app.problems.diagnostic_counts(&path).highest(), None);
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Esc,
         crossterm::event::KeyModifiers::NONE,
     ))
     .expect("normal");
-    assert!(!app.virtual_text_suppressed());
+    app.apply_diagnostic_updates();
+    assert_eq!(
+        app.problems.diagnostic_counts(&path).highest(),
+        Some(ProblemSeverity::Error)
+    );
 }
 
 #[test]
-fn virtual_text_hides_in_insert_mode() {
-    let (problems, path) = problems(vec![diagnostic(0, DiagnosticSeverity::Error, "message")]);
-    let options = DiagnosticOptions::default();
-    assert!(build_virtual_texts(&problems, &options, request(&path, 0, 1, 0, true)).is_empty());
+fn diagnostic_updates_apply_immediately_in_normal_mode() {
+    let path = PathBuf::from("/tmp/immediate_diagnostic.rs");
+    let mut app = App::new(
+        kawi_buffer::Buffer::from_string("value\n"),
+        crate::keymap::Flavor::Vim,
+    );
+    app.lsp.queue_diagnostic_update(DiagnosticUpdate::Replace(
+        crate::test_support::diagnostic_event(
+            "fake",
+            &path,
+            vec![diagnostic(0, DiagnosticSeverity::Error, "message")],
+        ),
+    ));
+    assert!(app.apply_diagnostic_updates());
+    assert_eq!(
+        app.problems.diagnostic_counts(&path).highest(),
+        Some(ProblemSeverity::Error)
+    );
+}
+
+#[test]
+fn deferred_clear_updates_apply_when_insert_mode_ends() {
+    let path = PathBuf::from("/tmp/deferred_clear.rs");
+    let mut app = App::new(
+        kawi_buffer::Buffer::from_string("value\n"),
+        crate::keymap::Flavor::Vim,
+    );
+    app.problems.replace_lsp_test(
+        "fake",
+        &path,
+        vec![diagnostic(0, DiagnosticSeverity::Error, "message")],
+    );
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('i'),
+        crossterm::event::KeyModifiers::NONE,
+    ))
+    .expect("insert");
+    app.lsp
+        .queue_diagnostic_update(DiagnosticUpdate::Clear("fake".to_string()));
+    assert!(!app.apply_diagnostic_updates());
+    assert_eq!(
+        app.problems.diagnostic_counts(&path).highest(),
+        Some(ProblemSeverity::Error)
+    );
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    ))
+    .expect("normal");
+    app.apply_diagnostic_updates();
+    assert_eq!(app.problems.diagnostic_counts(&path).highest(), None);
 }
 
 #[test]
@@ -240,7 +279,7 @@ fn virtual_text_on_other_lines_uses_the_most_severe_diagnostic() {
         virtual_text: VirtualTextMode::All,
         ..DiagnosticOptions::default()
     };
-    let texts = build_virtual_texts(&problems, &options, request(&path, 0, 2, 0, false));
+    let texts = build_virtual_texts(&problems, &options, request(&path, 0, 2, 0));
     assert_eq!(texts[1].as_ref().unwrap().text, "error");
 }
 
@@ -252,7 +291,7 @@ fn virtual_text_first_line_strips_controls() {
         "bad\u{1b}\tmessage\nignored",
     )]);
     let options = DiagnosticOptions::default();
-    let texts = build_virtual_texts(&problems, &options, request(&path, 0, 1, 0, false));
+    let texts = build_virtual_texts(&problems, &options, request(&path, 0, 1, 0));
     assert_eq!(texts[0].as_ref().unwrap().text, "bad  message");
 }
 

@@ -589,6 +589,10 @@ impl Problems {
         self.index().counts(path)
     }
 
+    pub(super) fn lsp_severity(&self, path: &Path, line: usize) -> Option<ProblemSeverity> {
+        self.index().lsp_severity(path, line)
+    }
+
     pub(super) fn workspace_diagnostic_counts(&self) -> DiagnosticCounts {
         self.index().workspace_counts()
     }

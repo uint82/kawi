@@ -54,7 +54,7 @@ fn html_closing_tag_dedents_to_matching_opener() {
 }
 
 #[test]
-fn html_closing_tag_dedent_is_one_undo_step() {
+fn html_closing_tag_dedent_undoes_pair_then_text() {
     let mut e = html_editor("<div>\n    <p>\n        ");
     e.apply(Action::JumpTo(2, 0));
     e.apply(Action::AppendLineEnd);
@@ -62,6 +62,8 @@ fn html_closing_tag_dedent_is_one_undo_step() {
         e.apply(Action::InsertChar(ch));
     }
     e.apply(Action::ExitInsert);
+    e.apply(Action::Undo);
+    assert_eq!(e.text_lines()[2], "        <>");
     e.apply(Action::Undo);
     assert_eq!(e.text_lines()[2], "        ");
 }

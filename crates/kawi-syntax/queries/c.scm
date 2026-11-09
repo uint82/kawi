@@ -11,3 +11,4 @@
 (struct_specifier name: (type_identifier) @type.definition)
 (union_specifier name: (type_identifier) @type.definition)
 (enum_specifier name: (type_identifier) @type.definition)
+(escape_sequence) @string.escape

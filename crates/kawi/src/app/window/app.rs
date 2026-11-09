@@ -121,20 +121,28 @@ impl App {
     }
 
     fn stash_active_syntax(&mut self, id: WindowId) {
-        let key = self.syntax_key.take();
+        let key = self.syntax_spans_key.take();
         let spans = std::mem::take(&mut self.syntax_spans);
         let window = std::mem::replace(&mut self.syntax_window, 0..0);
+        let generation = std::mem::take(&mut self.syntax_applied);
         if let Some(key) = key {
-            self.window_syntax
-                .insert(id, super::super::SyntaxCache { spans, window, key });
+            self.window_syntax.insert(
+                id,
+                super::super::SyntaxCache {
+                    spans,
+                    window,
+                    key,
+                    generation,
+                },
+            );
         }
+        self.syntax_key = None;
         self.syntax_pending = false;
         self.syntax_latest = 0;
-        self.syntax_applied = 0;
     }
 
     fn stash_active_syntax_copy(&mut self, id: WindowId) {
-        let Some(key) = self.syntax_key else {
+        let Some(key) = self.syntax_spans_key else {
             return;
         };
         self.window_syntax.insert(
@@ -143,6 +151,7 @@ impl App {
                 spans: self.syntax_spans.clone(),
                 window: self.syntax_window.clone(),
                 key,
+                generation: self.syntax_applied,
             },
         );
     }
@@ -151,13 +160,15 @@ impl App {
         self.syntax_spans.clear();
         self.syntax_window = 0..0;
         self.syntax_key = None;
+        self.syntax_spans_key = None;
         self.syntax_pending = false;
         self.syntax_latest = 0;
         self.syntax_applied = 0;
         if let Some(cache) = self.window_syntax.remove(&id) {
             self.syntax_spans = cache.spans;
             self.syntax_window = cache.window;
-            self.syntax_key = Some(cache.key);
+            self.syntax_spans_key = Some(cache.key);
+            self.syntax_applied = cache.generation;
         }
     }
 
@@ -520,15 +531,20 @@ impl App {
 
     fn active_syntax_spans(&self, top: usize, end: usize) -> Cow<'_, [SyntaxSpan]> {
         let buffer = self.editor.buffer_number();
-        let Some(key) = self.syntax_key else {
+        let Some(key) = self.syntax_spans_key else {
             return Cow::Owned(Vec::new());
         };
-        if syntax_key_matches(key, buffer, self.editor.buffer_revision_at(buffer))
-            && syntax_window_covers(&self.syntax_window, top, end)
+        if syntax_window_covers(&self.syntax_window, top, end)
+            && self.syntax_spans_are_displayable(key, buffer)
         {
             return Cow::Borrowed(self.syntax_spans.as_slice());
         }
         Cow::Owned(Vec::new())
+    }
+
+    fn syntax_spans_are_displayable(&self, key: SyntaxKey, buffer: usize) -> bool {
+        syntax_key_matches(key, buffer, self.editor.buffer_revision_at(buffer))
+            || (self.syntax_pending && key.document == buffer as u64)
     }
 
     fn active_pane_data<'a>(&'a self, rect: Rect) -> PaneData<'a> {
@@ -560,7 +576,6 @@ impl App {
                 rows: &rows,
                 cursor_row: self.editor.row(),
                 cursor_column: self.editor.col(),
-                suppress: self.virtual_text_suppressed(),
             },
         );
         let buffer = self.editor.buffer_number();
@@ -571,7 +586,7 @@ impl App {
             rect,
             active: true,
             signs: self.view_signs_for_rows(&rows),
-            diagnostic_spans: self.lsp.diagnostic_spans(&lines, &rows),
+            diagnostic_spans: self.visible_diagnostic_spans(&lines, &rows),
             decorations,
             virtual_texts,
             plugin_virtual_texts,
@@ -633,7 +648,7 @@ impl App {
         end: usize,
     ) -> Cow<'a, [SyntaxSpan]> {
         let revision = self.editor.buffer_revision_at(buffer);
-        if let Some(key) = self.syntax_key {
+        if let Some(key) = self.syntax_spans_key {
             if syntax_key_matches(key, buffer, revision)
                 && syntax_window_covers(&self.syntax_window, top, end)
             {
@@ -698,7 +713,7 @@ impl App {
             .unwrap_or_default();
         let shared_document = window.buffer == self.editor.buffer_number();
         let diagnostic_spans = if shared_document {
-            self.lsp.diagnostic_spans(&lines, &rows)
+            self.visible_diagnostic_spans(&lines, &rows)
         } else {
             Vec::new()
         };
@@ -711,7 +726,6 @@ impl App {
                 rows: &rows,
                 cursor_row: row,
                 cursor_column: col,
-                suppress: false,
             },
         );
         let mut decorations = self.color_preview_spans(window.buffer, &lines, &rows);

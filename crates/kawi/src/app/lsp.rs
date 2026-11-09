@@ -11,10 +11,10 @@ use kawi_editor::{
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
-    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticSeverity,
-    DiagnosticsEvent, FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings,
-    LanguageWarning, Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent,
-    RenameEvent, RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
+    CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticsEvent,
+    FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings, LanguageWarning,
+    Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
+    RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
     WorkspaceDiagnosticState,
 };
 use kawi_syntax::LanguageId;
@@ -456,6 +456,17 @@ impl LspUi {
         std::mem::take(&mut self.diagnostic_updates)
     }
 
+    #[cfg(test)]
+    pub(super) fn queue_diagnostic_update(&mut self, update: DiagnosticUpdate) {
+        self.diagnostic_updates.push(update);
+    }
+
+    #[cfg(test)]
+    pub(super) fn apply_diagnostics_for_test(&mut self, event: DiagnosticsEvent) -> bool {
+        let path = event.path.clone();
+        self.diagnostics.apply(event, &path)
+    }
+
     pub(super) fn request_workspace_diagnostics(&mut self) -> bool {
         self.flush_pending_change();
         self.workspace_diagnostics_requested = true;
@@ -706,14 +717,6 @@ impl LspUi {
                 percentage: Some(50),
             },
         );
-    }
-
-    pub fn has_diagnostics(&self) -> bool {
-        self.diagnostics.has_diagnostics()
-    }
-
-    pub fn diagnostic_severity(&self, row: usize) -> Option<DiagnosticSeverity> {
-        self.diagnostics.severity_at(row)
     }
 
     pub fn diagnostic_spans(&self, window: &[String], rows: &[usize]) -> Vec<DiagnosticSpan> {
@@ -1103,6 +1106,7 @@ fn indent_options(indent: kawi_lsp::IndentConfig) -> IndentOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kawi_lsp::DiagnosticSeverity;
 
     #[test]
     fn inactive_workspace_diagnostics_reach_the_problem_store() {

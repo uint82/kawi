@@ -1,6 +1,6 @@
-use kawi_lsp::DiagnosticSeverity;
 use kawi_tui::frame::{DebugSign as UiDebugSign, DiagnosticSeverity as UiDiagnosticSeverity, Sign};
 
+use super::problems::ProblemSeverity;
 use super::App;
 
 const SIGN_COLUMN_WIDTH: usize = 1;
@@ -39,10 +39,15 @@ impl App {
 
     fn has_signs(&self) -> bool {
         self.merge_conflict.has_blocks()
-            || self.lsp.has_diagnostics()
+            || self.lsp_has_signs()
             || (self.git_signs && self.git.as_ref().is_some_and(|session| session.has_signs()))
             || self.plugin_has_signs()
             || self.debug_has_signs()
+    }
+
+    fn lsp_has_signs(&self) -> bool {
+        super::lsp::editor_path(&self.editor)
+            .is_some_and(|path| self.problems.diagnostic_counts(&path).highest().is_some())
     }
 
     fn debug_has_signs(&self) -> bool {
@@ -78,10 +83,16 @@ impl App {
     }
 
     fn apply_diagnostic_signs(&self, signs: &mut [Option<Sign>], rows: &[usize]) {
+        if !self.diagnostics_visible() {
+            return;
+        }
+        let Some(path) = super::lsp::editor_path(&self.editor) else {
+            return;
+        };
         for (sign, row) in signs.iter_mut().zip(rows) {
             let diagnostic = self
-                .lsp
-                .diagnostic_severity(*row)
+                .problems
+                .lsp_severity(&path, *row)
                 .map(ui_diagnostic_severity);
             *sign = preferred_sign(sign.take(), diagnostic);
         }
@@ -126,12 +137,12 @@ fn preferred_sign(git: Option<Sign>, diagnostic: Option<UiDiagnosticSeverity>) -
     diagnostic.map(Sign::Diagnostic).or(git)
 }
 
-fn ui_diagnostic_severity(severity: DiagnosticSeverity) -> UiDiagnosticSeverity {
+fn ui_diagnostic_severity(severity: ProblemSeverity) -> UiDiagnosticSeverity {
     match severity {
-        DiagnosticSeverity::Error => UiDiagnosticSeverity::Error,
-        DiagnosticSeverity::Warning => UiDiagnosticSeverity::Warning,
-        DiagnosticSeverity::Information => UiDiagnosticSeverity::Information,
-        DiagnosticSeverity::Hint => UiDiagnosticSeverity::Hint,
+        ProblemSeverity::Error => UiDiagnosticSeverity::Error,
+        ProblemSeverity::Warning => UiDiagnosticSeverity::Warning,
+        ProblemSeverity::Information => UiDiagnosticSeverity::Information,
+        ProblemSeverity::Hint => UiDiagnosticSeverity::Hint,
     }
 }
 

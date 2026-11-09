@@ -1,5 +1,6 @@
 use tree_sitter::{InputEdit, Point};
 
+#[derive(Debug, Clone)]
 pub(crate) struct LineIndex {
     starts: Vec<usize>,
     len: usize,

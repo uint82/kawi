@@ -46,6 +46,12 @@ fn next_line_start(text: &str, index: &LineIndex, row: usize) -> usize {
     }
 }
 
+pub(crate) fn line_text_end(text: &str, index: &LineIndex, row: usize) -> usize {
+    let start = index.line_start(row);
+    let end = next_line_start(text, index, row);
+    trim_ending(text, start, end)
+}
+
 fn trim_ending(text: &str, start: usize, end: usize) -> usize {
     let mut end = end;
     while end > start {

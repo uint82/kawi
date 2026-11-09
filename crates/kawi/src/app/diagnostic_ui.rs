@@ -1,13 +1,11 @@
-use kawi_tui::frame::{DiagnosticUnderline, VirtualText};
+use kawi_tui::frame::{DiagnosticSpan, DiagnosticUnderline, VirtualText};
 use std::path::Path;
-use std::time::{Duration, Instant};
 
+use super::diagnostic_deferral::diagnostics_deferred;
 use super::diagnostic_index::DiagnosticCounts;
 use super::lsp_diagnostics::ui_severity;
 use super::problems::{ProblemSeverity, Problems};
 use super::App;
-
-const DIAGNOSTIC_IDLE_DELAY: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum VirtualTextMode {
@@ -197,31 +195,35 @@ pub(super) struct VirtualTextRequest<'a> {
     pub(super) rows: &'a [usize],
     pub(super) cursor_row: usize,
     pub(super) cursor_column: usize,
-    pub(super) suppress: bool,
 }
 
 impl App {
-    pub(super) fn virtual_text_suppressed(&self) -> bool {
-        self.editor.mode().is_insert()
-            && self.last_input.elapsed() < DIAGNOSTIC_IDLE_DELAY
-            && self.diagnostic_options.virtual_text != VirtualTextMode::Off
+    pub(super) fn diagnostics_deferred(&self) -> bool {
+        diagnostics_deferred(self.editor.mode())
     }
 
-    pub(super) fn diagnostic_idle_wait_timeout(&self) -> Option<Duration> {
-        if !self.virtual_text_suppressed() {
-            return None;
+    pub(super) fn diagnostics_visible(&self) -> bool {
+        !self.diagnostics_deferred()
+    }
+
+    pub(super) fn visible_diagnostic_spans(
+        &self,
+        lines: &[String],
+        rows: &[usize],
+    ) -> Vec<DiagnosticSpan> {
+        if !self.diagnostics_visible() {
+            return Vec::new();
         }
-        Some(DIAGNOSTIC_IDLE_DELAY.saturating_sub(self.last_input.elapsed()))
-    }
-
-    pub(super) fn mark_diagnostic_input(&mut self) {
-        self.last_input = Instant::now();
+        self.lsp.diagnostic_spans(lines, rows)
     }
 
     pub(super) fn virtual_texts(
         &self,
         request: VirtualTextRequest<'_>,
     ) -> Vec<Option<VirtualText>> {
+        if !self.diagnostics_visible() {
+            return request.rows.iter().map(|_| None).collect();
+        }
         build_virtual_texts(&self.problems, &self.diagnostic_options, request)
     }
 }
@@ -234,7 +236,7 @@ fn build_virtual_texts(
     let Some(path) = request.path else {
         return Vec::new();
     };
-    if options.virtual_text == VirtualTextMode::Off || request.suppress {
+    if options.virtual_text == VirtualTextMode::Off {
         return Vec::new();
     }
     request
@@ -277,3 +279,5 @@ fn virtual_text_line(message: &str) -> String {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod visibility_tests;

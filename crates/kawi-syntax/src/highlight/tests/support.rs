@@ -5,13 +5,23 @@ use crate::registry::registry;
 use crate::span::SyntaxKey;
 
 pub(super) fn request(text: &str, top: usize, end: usize, revision: u64) -> SyntaxRequest {
+    request_for(LanguageId::Rust, text, top, end, revision)
+}
+
+pub(super) fn request_for(
+    language: LanguageId,
+    text: &str,
+    top: usize,
+    end: usize,
+    revision: u64,
+) -> SyntaxRequest {
     SyntaxRequest {
         key: SyntaxKey {
             document: 1,
             revision,
             top,
             end,
-            language: LanguageId::Rust,
+            language,
         },
         text: Rope::from_str(text),
     }

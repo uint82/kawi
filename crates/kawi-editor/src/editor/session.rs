@@ -197,6 +197,18 @@ impl Editor {
         }
     }
 
+    pub(super) fn breaks_undo_group(action: Action) -> bool {
+        matches!(
+            action,
+            Action::MoveUp
+                | Action::MoveDown
+                | Action::MoveLeft
+                | Action::MoveRight
+                | Action::MoveToLineStart
+                | Action::MoveToLineEnd
+        )
+    }
+
     pub(super) fn exit_visual(&mut self) {
         self.selection = None;
         self.mode = Mode::Normal;
@@ -307,7 +319,7 @@ impl Editor {
         self.command.pop();
     }
 
-    pub(super) fn redo(&mut self) -> bool {
+    pub fn redo(&mut self) -> bool {
         let count = self.take_count();
         let mut changed = false;
         for _ in 0..count {
@@ -320,6 +332,7 @@ impl Editor {
             changed = true;
         }
         if changed {
+            self.normalize_cursor();
             if let Some(undone) = self.undone_change.take() {
                 self.last_change = Some(undone);
             }
@@ -543,7 +556,7 @@ impl Editor {
         }
     }
 
-    pub(super) fn undo(&mut self) -> bool {
+    pub fn undo(&mut self) -> bool {
         let count = self.take_count();
         let mut changed = false;
         for _ in 0..count {
@@ -556,6 +569,7 @@ impl Editor {
             changed = true;
         }
         if changed {
+            self.normalize_cursor();
             self.undone_change = self.last_change.clone();
         }
         changed
@@ -1025,6 +1039,61 @@ mod tests {
         e.apply(Action::ExitInsert);
         e.apply(Action::Undo);
         assert_eq!(e.text_lines()[0], "ab");
+    }
+
+    #[test]
+    fn insert_move_breaks_undo_block() {
+        let mut e = editor_with("base");
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('a'));
+        e.apply(Action::InsertChar('b'));
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "abbase");
+        assert_eq!((e.row(), e.col()), (0, 3));
+    }
+
+    #[test]
+    fn insert_vertical_move_breaks_undo_block() {
+        let mut e = editor_with("base\ntop");
+        e.apply(Action::MoveDown);
+        e.apply(Action::EnterInsert);
+        e.apply(Action::InsertChar('a'));
+        e.apply(Action::InsertChar('b'));
+        e.apply(Action::MoveUp);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines(), vec!["base", "abtop"]);
+    }
+
+    #[test]
+    fn ineffective_insert_move_keeps_undo_block() {
+        let mut e = editor_with("base");
+        e.apply(Action::AppendLineEnd);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "base");
+    }
+
+    #[test]
+    fn replace_move_breaks_undo_block() {
+        let mut e = editor_with("base");
+        e.apply(Action::EnterReplace);
+        e.apply(Action::InsertChar('a'));
+        e.apply(Action::InsertChar('b'));
+        e.apply(Action::MoveRight);
+        e.apply(Action::InsertChar('X'));
+        e.apply(Action::InsertChar('Y'));
+        e.apply(Action::ExitInsert);
+        e.apply(Action::Undo);
+        assert_eq!(e.text_lines()[0], "abse");
     }
 
     #[test]
