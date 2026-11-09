@@ -1253,10 +1253,17 @@ mod tests {
         let root = std::env::temp_dir().join(format!("kawi_lsp_ui_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
+        let server = root.join("fake-server");
+        std::fs::write(&server, "#!/bin/sh\nexit 0\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&server, std::fs::Permissions::from_mode(0o755)).unwrap();
         let config = root.join("languages.toml");
         std::fs::write(
             &config,
-            "[server.fake]\ncommand = \"/bin/true\"\n\n[[language]]\nname = \"rust\"\nservers = [\"fake\"]\n",
+            format!(
+                "[server.fake]\ncommand = \"{}\"\n\n[[language]]\nname = \"rust\"\nservers = [\"fake\"]\n",
+                server.display()
+            ),
         )
         .unwrap();
         let mut ui = LspUi {
