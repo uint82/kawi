@@ -1,0 +1,111 @@
+name: Alpha feedback
+description: Report a problem or friction from a Kawi alpha release.
+title: "[alpha feedback] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for bugs, crashes, terminal problems, and documentation friction in an alpha release.
+        Do not include secrets or private data. Report security issues through the repository security advisory flow.
+  - type: input
+    id: version
+    attributes:
+      label: Kawi version
+      description: Paste the output of `kawi --version` and the release tag.
+      placeholder: "kawi 0.1.0-alpha.1, v0.1.0-alpha.1"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Include the operating system version and CPU architecture.
+      placeholder: "macOS 15.2, Apple Silicon"
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: Name and version of the terminal used to run Kawi.
+      placeholder: "iTerm2 3.5.11, Terminal.app 2.10"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - GitHub release tarball
+        - cargo install --git
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Startup or shutdown
+        - Rendering or input
+        - File editing
+        - Search or picker
+        - Terminal panel
+        - Tasks or processes
+        - Plugins
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Crash or data loss
+        - Blocker
+        - Major
+        - Minor
+        - Observation
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Remove secrets, paths, and private data before posting.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I removed secrets and private data from logs.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
