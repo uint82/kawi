@@ -67,6 +67,18 @@ cargo install --path crates/kawi --locked
 cargo install --git https://github.com/uint82/kawi --locked
 ```
 
+### Download a release
+
+Download the archive for your platform and `SHA256SUMS` from [Releases](https://github.com/uint82/kawi/releases), verify the archive, and extract it:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf kawi-v<version>-<target>.tar.gz
+./kawi-v<version>-<target>/kawi --version
+```
+
+On macOS, use `shasum -a 256 --ignore-missing -c SHA256SUMS` instead of `sha256sum`.
+
 ## Platform support
 
 Linux and macOS are supported. Linux uses Landlock for process plugin scopes when the kernel exposes a full ABI. macOS uses the native Trash and clipboard integrations; process plugins run without an OS sandbox. Release tarballs are unsigned, so clear the quarantine attribute after downloading one:
