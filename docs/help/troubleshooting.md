@@ -17,6 +17,8 @@ Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict
 
 Kawi checks the platform and process sandbox status in `kawi doctor`. Process plugins run without Landlock on macOS, so install only trusted development plugins. Text and file operations use the native `pbcopy`, `pbpaste`, and `~/.Trash` integrations.
 
+Files deleted to `~/.Trash` cannot use Finder's Put Back because Kawi does not write a Finder origin record.
+
 A release tarball is unsigned. If Gatekeeper blocks the binary, clear the quarantine attribute:
 
 ```sh
