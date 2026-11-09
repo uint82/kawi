@@ -129,7 +129,6 @@ fn keys_non_utf8_paths_by_bytes() {
     let dir = temp_dir("non_utf8");
     let name = OsString::from_vec(vec![b'a', 0xff, b'.', b't', b'x', b't']);
     let source = dir.join(name);
-    fs::write(&source, "three\n").unwrap();
     let store = UndoStore::new(dir.join("undo"));
     store
         .save(&source, &hash("three\n"), &history("three\n"))
