@@ -212,12 +212,27 @@ fn canonical_path(path: &Path) -> PathBuf {
     if let Ok(path) = fs::canonicalize(path) {
         return path;
     }
-    if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
-        if let Ok(parent) = fs::canonicalize(parent) {
-            return parent.join(name);
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    canonicalize_existing_prefix(&absolute)
+}
+
+fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
+    let mut suffix = Vec::new();
+    let mut current = path;
+    while let Some(name) = current.file_name() {
+        if let Ok(mut canonical) = fs::canonicalize(current) {
+            for part in suffix.iter().rev() {
+                canonical.push(part);
+            }
+            return canonical;
         }
+        suffix.push(name.to_os_string());
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        current = parent;
     }
-    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+    path.to_path_buf()
 }
 
 fn hex(bytes: &[u8]) -> String {
