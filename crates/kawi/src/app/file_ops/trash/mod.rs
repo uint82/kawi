@@ -93,7 +93,10 @@ impl TrashDir {
             #[cfg(any(not(target_os = "macos"), test))]
             Backend::Freedesktop(trash) => trash.trash_as(target, original),
             #[cfg(any(target_os = "macos", test))]
-            Backend::MacOs(trash) => trash.trash_as(target),
+            Backend::MacOs(trash) => {
+                let _ = original;
+                trash.trash_as(target)
+            }
         }
     }
 }

@@ -1,8 +1,11 @@
-use super::super::freedesktop::{civil_from_days, deletion_date, topdir_trash, FreedesktopTrash};
+#[cfg(target_os = "linux")]
+use super::super::freedesktop::topdir_trash;
+use super::super::freedesktop::{civil_from_days, deletion_date, FreedesktopTrash};
 use super::super::topdir::user_id;
 use super::super::TrashError;
 use super::temp_dir;
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::sync::atomic::Ordering;
 
 #[test]

@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use super::diff::Change;
 use super::entry::EntryKind;
-use super::fs::{DirectoryFs, RealFs};
+#[cfg(target_os = "linux")]
+use super::fs::DirectoryFs;
+use super::fs::RealFs;
 use super::permissions::preflight;
 use super::planner::{plan as build_plan, Operation};
 use super::test_support::FakeFs;
