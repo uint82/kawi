@@ -34,6 +34,13 @@ fn open(editor: &mut Editor, row: usize, col: usize) {
     editor.apply(Action::EnterInsert);
 }
 
+fn assert_undo_steps(editor: &mut Editor, expected: &[&str]) {
+    for text in expected {
+        editor.apply(Action::Undo);
+        assert_eq!(editor.text_lines(), vec![text.to_string()]);
+    }
+}
+
 #[test]
 fn inserts_a_pair_at_a_safe_position() {
     let mut editor = editor_with("", editing().pairs);
@@ -189,4 +196,47 @@ fn global_switch_disables_pairing() {
     editor.apply(Action::EnterInsert);
     editor.apply(Action::InsertChar('('));
     assert_eq!(editor.text_lines(), vec!["(".to_string()]);
+}
+
+#[test]
+fn auto_pair_insert_breaks_undo_block() {
+    let mut editor = editor_with("base", editing().pairs);
+    editor.apply(Action::AppendLineEnd);
+    editor.apply(Action::InsertChar('('));
+    editor.apply(Action::InsertChar('a'));
+    editor.apply(Action::ExitInsert);
+    assert_undo_steps(&mut editor, &["base()", "base"]);
+}
+
+#[test]
+fn auto_pair_newline_breaks_undo_block() {
+    let mut editor = editor_with("base", editing().pairs);
+    editor.apply(Action::AppendLineEnd);
+    editor.apply(Action::InsertChar('('));
+    editor.apply(Action::InsertNewline);
+    editor.apply(Action::InsertChar('a'));
+    editor.apply(Action::ExitInsert);
+    assert_undo_steps(&mut editor, &["base()", "base"]);
+}
+
+#[test]
+fn auto_pair_backspace_joins_following_text() {
+    let mut editor = editor_with("base", editing().pairs);
+    editor.apply(Action::AppendLineEnd);
+    editor.apply(Action::InsertChar('('));
+    editor.apply(Action::DeleteBackward);
+    editor.apply(Action::InsertChar('x'));
+    editor.apply(Action::ExitInsert);
+    assert_undo_steps(&mut editor, &["base()", "base"]);
+}
+
+#[test]
+fn auto_pair_overtype_joins_following_text() {
+    let mut editor = editor_with("base", editing().pairs);
+    editor.apply(Action::AppendLineEnd);
+    editor.apply(Action::InsertChar('('));
+    editor.apply(Action::InsertChar('x'));
+    editor.apply(Action::InsertChar(')'));
+    editor.apply(Action::ExitInsert);
+    assert_undo_steps(&mut editor, &["base()", "base"]);
 }

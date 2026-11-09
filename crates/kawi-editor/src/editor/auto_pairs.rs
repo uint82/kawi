@@ -46,6 +46,7 @@ impl Editor {
             .screen_col(row, base.chars().count(), self.tabstop());
         let width = self.smart_indent_width(row, col, current_width);
         let inner = self.indent_text(width);
+        self.record_boundary_at(row, col);
         self.split_pair_line(&base, &inner);
         self.record_insert(InsertEdit::PairNewline { base, inner });
         true
@@ -180,15 +181,16 @@ impl Editor {
     }
 
     fn insert_pair(&mut self, pair: Pair) {
-        self.record_maybe();
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        self.record_boundary_at(row, col);
         self.record_insert(InsertEdit::Pair {
             open: pair.open,
             close: pair.close,
         });
-        let (row, col) = (self.cursor.row(), self.cursor.col());
         self.buffer.insert_char(row, col, pair.open);
         self.buffer.insert_char(row, col + 1, pair.close);
         self.cursor.set_position(row, col + 1);
+        self.buffer.begin_change();
     }
 
     fn split_pair_line(&mut self, base: &str, inner: &str) {
