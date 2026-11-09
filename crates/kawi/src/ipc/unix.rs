@@ -42,8 +42,7 @@ impl Connection {
             WaitOutcome::Aborted => b"ABORT\n".as_slice(),
         };
         stream.write_all(response)?;
-        stream.flush()?;
-        stream.shutdown(std::net::Shutdown::Both)
+        stream.flush()
     }
 }
 
