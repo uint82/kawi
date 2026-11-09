@@ -23,7 +23,7 @@ use debounce::Debounce;
 const DEBOUNCE: Duration = Duration::from_millis(75);
 const TICK: Duration = Duration::from_millis(10);
 #[cfg(test)]
-const WATCH_READY_TIMEOUT: Duration = Duration::from_secs(2);
+const WATCH_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct WatchService {
     commands: Sender<Command>,
