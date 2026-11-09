@@ -1,6 +1,6 @@
 # Plugin external validation pilot
 
-Status: prepared. No editor release tag or independent author is available yet.
+Status: ready. Kawi `v0.1.0-alpha.1` and `kawi-plugin-sdk` 0.7.0 are available; no independent author is selected yet.
 
 ## Purpose
 
@@ -10,8 +10,8 @@ The pilot measures the authoring path, not the runtime feature list. Runtime and
 
 ## Prerequisites
 
-- A tagged Kawi release with the WASM runtime enabled by default.
-- `kawi-plugin-sdk` 0.7.0 published.
+- A tagged Kawi release with the WASM runtime enabled by default: `v0.1.0-alpha.1`.
+- `kawi-plugin-sdk` 0.7.0 published with a passing published-scaffold build.
 - An independent author selected.
 - A pilot tracking issue opened.
 - The feedback and tracking forms available.
@@ -34,7 +34,7 @@ The pilot does not add capabilities, change the WIT contract, or remove the proc
 
 ## Release cycle
 
-- Start: the first tagged Kawi release with the WASM runtime enabled by default and `kawi-plugin-sdk` 0.7.0.
+- Start: Kawi `v0.1.0-alpha.1`, the first tagged release with the WASM runtime enabled by default, plus `kawi-plugin-sdk` 0.7.0.
 - Use: the author installs the plugin through the documented path and uses it for at least 30 days.
 - Upgrade: the author upgrades to the next tagged Kawi release and continues using the plugin.
 - End: exit review after the upgrade.
@@ -44,18 +44,17 @@ The pilot does not add capabilities, change the WIT contract, or remove the proc
 
 | Field | Value |
 | --- | --- |
-| Status | Prepared |
+| Status | Ready |
 | Author | Unassigned |
 | Reviewer | Unassigned |
 | Plugin | Unassigned |
-| Kawi version | TBD |
+| Kawi version | 0.1.0-alpha.1 |
 | SDK version | 0.7.0 |
-| Start | TBD |
-| Exit review | TBD |
+| Start | Pending author |
+| Exit review | Pending |
 
 ## Current blockers
 
-- No tagged Kawi editor release has been published with the WASM runtime enabled by default.
 - No independent author has been selected.
 - No pilot tracking issue is open.
 
@@ -74,9 +73,9 @@ Open one issue with the [plugin pilot tracking form](https://github.com/uint82/k
 
 ### Preflight
 
-- [ ] Publish a tagged Kawi editor release with the WASM runtime enabled by default.
-- [ ] Confirm `kawi-plugin-sdk` 0.7.0 is published and the published scaffold build passed.
-- [ ] Confirm the feedback and tracking forms are current.
+- [x] Publish a tagged Kawi editor release with the WASM runtime enabled by default (`v0.1.0-alpha.1`).
+- [x] Confirm `kawi-plugin-sdk` 0.7.0 is published and the published scaffold build passed.
+- [x] Confirm the feedback and tracking forms are current.
 - [ ] Select an author who meets the independence requirements.
 - [ ] Open the tracking issue with the versions, dates, and reviewer assigned.
 - [ ] Confirm the plugin uses a real workflow and its source or artifact can be published.
