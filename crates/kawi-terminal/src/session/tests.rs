@@ -213,7 +213,9 @@ fn runs_in_the_requested_directory() {
 fn answers_terminal_queries() {
     let (wake, _wake_rx) = channel();
     let mut session = TerminalSession::start(
-        &options("stty raw -echo; printf '\\033[6n'; dd bs=1 count=6 2>/dev/null | od -An -tx1"),
+        &options(
+            "stty raw -echo; printf '\\033[6n'; dd bs=1 count=6 2>/dev/null | od -An -tx1 | tr -s ' '",
+        ),
         wake,
     )
     .unwrap();
