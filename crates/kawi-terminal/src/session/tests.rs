@@ -149,7 +149,13 @@ fn detects_exit_while_descendant_holds_the_pty() {
     let (mut session, wake) = start_with_open_descendant();
     wait_for_exit(&mut session, &wake);
     assert_eq!(session.exit_status().unwrap().exit_code(), 7);
+    #[cfg(not(target_os = "macos"))]
     assert!(!session.is_closed());
+    #[cfg(target_os = "macos")]
+    {
+        wait_for_completion(&mut session);
+        assert!(session.is_closed());
+    }
 }
 
 #[test]
