@@ -7,7 +7,7 @@ use crate::protocol::{
 fn rejects_a_command_outside_the_scope() {
     let (manager, _receiver) = manager("scoped", &["/bin/sh"]);
     let error = manager
-        .open(&plugin("scoped"), params("/bin/true", &[]))
+        .open(&plugin("scoped"), params("true", &[]))
         .unwrap_err();
     assert_eq!(error.code, CAPABILITY_DENIED);
 }
