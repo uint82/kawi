@@ -163,7 +163,8 @@ fn closing_session_stops_descendants_that_hold_the_pty() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
+// TODO: enable on macOS when the PTY retains output from a descendant after the session leader exits.
 fn completion_waits_for_output_to_close() {
     let (wake, _wake_rx) = channel();
     let mut session = TerminalSession::start(

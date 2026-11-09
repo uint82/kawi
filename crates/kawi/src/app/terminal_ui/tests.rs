@@ -117,7 +117,8 @@ fn exit_switches_to_normal_and_reports_status() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
+// TODO: enable on macOS when the PTY retains output from a descendant after the session leader exits.
 fn exit_waits_for_remaining_output() {
     let (wake, _wake_rx) = channel();
     let mut terminal = TerminalUi::default();
