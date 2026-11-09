@@ -91,7 +91,14 @@ impl SyntaxService {
     }
 
     fn signal_shutdown(&self) {
-        self.shared.shutdown.store(true, Ordering::SeqCst);
+        {
+            let _slot = self
+                .shared
+                .request
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            self.shared.shutdown.store(true, Ordering::SeqCst);
+        }
         self.shared.ready.notify_one();
     }
 }

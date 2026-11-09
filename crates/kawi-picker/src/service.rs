@@ -118,7 +118,14 @@ impl Default for ProjectService {
 
 impl Drop for ProjectService {
     fn drop(&mut self) {
-        self.shared.shutdown.store(true, Ordering::SeqCst);
+        {
+            let _slot = self
+                .shared
+                .request
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            self.shared.shutdown.store(true, Ordering::SeqCst);
+        }
         self.shared.generation.fetch_add(1, Ordering::SeqCst);
         self.shared.ready.notify_one();
         if let Some(worker) = self.worker.take() {
