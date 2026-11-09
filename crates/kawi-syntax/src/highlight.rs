@@ -8,11 +8,15 @@ use crate::limits::{WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
 use crate::rows;
 use crate::span::{SyntaxRequest, SyntaxSpan};
 
+mod errors;
 mod injection;
 mod paint;
 mod runtime;
+mod stability;
 
 pub(crate) use runtime::{Runtime, RuntimeCache};
+
+use stability::StableHighlights;
 
 pub(crate) struct Document {
     parser: Parser,
@@ -25,6 +29,7 @@ pub(crate) struct Document {
     large: bool,
     collector: injection::Collector,
     embedded_runtimes: RuntimeCache,
+    stable: Option<StableHighlights>,
 }
 
 impl Document {
@@ -42,6 +47,7 @@ impl Document {
             large: false,
             collector: injection::Collector::new(),
             embedded_runtimes: RuntimeCache::new(),
+            stable: None,
         }
     }
 
@@ -50,6 +56,20 @@ impl Document {
         request: &SyntaxRequest,
         runtime: &Runtime,
     ) -> (Range<usize>, Vec<SyntaxSpan>) {
+        self.ensure_tree(request);
+        let window = if self.large {
+            self.window_rows.clone()
+        } else {
+            window_bounds(&self.index, request.key.top, request.key.end)
+        };
+        let (spans, has_error) = self.spans(runtime, window.clone());
+        if !has_error && self.tree.is_some() {
+            self.refresh_stable(window.clone(), &spans);
+        }
+        (window, spans)
+    }
+
+    fn ensure_tree(&mut self, request: &SyntaxRequest) {
         let large = request.text.len_bytes() > WINDOW_PARSE_BYTES;
         let revision_changed = request.key.revision != self.revision;
         if large {
@@ -66,13 +86,18 @@ impl Document {
         } else if self.tree.is_none() || revision_changed || self.large {
             self.reparse_full(request);
         }
-        let window = if self.large {
-            self.window_rows.clone()
+    }
+
+    fn refresh_stable(&mut self, window: Range<usize>, spans: &[SyntaxSpan]) {
+        self.stable = if self.large {
+            StableHighlights::window(&self.text, &self.index, window, spans.to_vec())
         } else {
-            window_bounds(&self.index, request.key.top, request.key.end)
+            Some(StableHighlights::full(
+                &self.text,
+                &self.index,
+                spans.to_vec(),
+            ))
         };
-        let spans = self.spans(runtime, window.clone());
-        (window, spans)
     }
 
     fn refresh_text(&mut self, request: &SyntaxRequest) {
@@ -145,13 +170,14 @@ impl Document {
         self.window_rows.start <= request.key.top && request.key.end <= self.window_rows.end
     }
 
-    fn spans(&mut self, runtime: &Runtime, window: Range<usize>) -> Vec<SyntaxSpan> {
+    fn spans(&mut self, runtime: &Runtime, window: Range<usize>) -> (Vec<SyntaxSpan>, bool) {
         let Some(tree) = self.tree.as_ref() else {
-            return Vec::new();
+            return (Vec::new(), false);
         };
+        let has_error = tree.root_node().has_error();
         let rows = rows::visible_rows(&self.text, &self.index, window.start, window.end);
         let (Some(first), Some(last)) = (rows.first(), rows.last()) else {
-            return Vec::new();
+            return (Vec::new(), has_error);
         };
         let visible = first.start..last.text_end;
         let blocks = rows::query_blocks(&rows);
@@ -164,9 +190,31 @@ impl Document {
             visible,
             runtimes: &mut self.embedded_runtimes,
         }) else {
-            return Vec::new();
+            return (Vec::new(), has_error);
         };
-        paint::paint_captures(&self.text, &rows, &captures)
+        let mut spans = paint::paint_captures(&self.text, &rows, &captures);
+        if has_error {
+            let error_rows = errors::error_rows(tree, &self.index, &window);
+            let target = stability::StableWindow {
+                rows: &window,
+                errors: &error_rows,
+            };
+            spans = self.overlay_stable(&rows, target, spans);
+        }
+        (spans, has_error)
+    }
+
+    fn overlay_stable(
+        &self,
+        rows: &[rows::RowWindow],
+        target: stability::StableWindow<'_>,
+        spans: Vec<SyntaxSpan>,
+    ) -> Vec<SyntaxSpan> {
+        let Some(stable) = self.stable.as_ref() else {
+            return spans;
+        };
+        let stable_spans = stable.spans(&self.text, &self.index, target);
+        stability::overlay(&self.text, rows, spans, stable_spans)
     }
 }
 

@@ -9,6 +9,7 @@ mod captures;
 mod injections;
 mod languages;
 mod queries;
+mod stability;
 mod support;
 
 #[test]

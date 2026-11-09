@@ -14,14 +14,48 @@ pub(crate) fn paint_captures(
     rows: &[RowWindow],
     captures: &[Capture],
 ) -> Vec<SyntaxSpan> {
-    let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
-        .iter()
-        .map(|row| vec![None; rows::row_char_len(text, row)])
-        .collect();
+    let mut cells = blank_cells(text, rows);
     for capture in captures {
         paint_capture(text, rows, &mut cells, capture);
     }
     merge_cells(rows, cells)
+}
+
+pub(crate) fn blank_cells(text: &str, rows: &[RowWindow]) -> Vec<Vec<Option<SyntaxHighlight>>> {
+    rows.iter()
+        .map(|row| vec![None; rows::row_char_len(text, row)])
+        .collect()
+}
+
+pub(crate) fn paint_spans(
+    rows: &[RowWindow],
+    cells: &mut [Vec<Option<SyntaxHighlight>>],
+    spans: &[SyntaxSpan],
+) {
+    for span in spans {
+        let Some(line) = cells_for_span(rows, cells, *span) else {
+            continue;
+        };
+        for cell in line {
+            *cell = Some(span.highlight);
+        }
+    }
+}
+
+pub(crate) fn cells_for_span<'a>(
+    rows: &[RowWindow],
+    cells: &'a mut [Vec<Option<SyntaxHighlight>>],
+    span: SyntaxSpan,
+) -> Option<&'a mut [Option<SyntaxHighlight>]> {
+    let position = rows.partition_point(|row| row.row < span.row);
+    let row = rows.get(position)?;
+    if row.row != span.row {
+        return None;
+    }
+    let line = &mut cells[position];
+    let from = span.start.min(line.len());
+    let to = span.end.min(line.len());
+    Some(&mut line[from..to])
 }
 
 fn paint_capture(
@@ -51,7 +85,10 @@ fn paint_capture(
     }
 }
 
-fn merge_cells(rows: &[RowWindow], cells: Vec<Vec<Option<SyntaxHighlight>>>) -> Vec<SyntaxSpan> {
+pub(crate) fn merge_cells(
+    rows: &[RowWindow],
+    cells: Vec<Vec<Option<SyntaxHighlight>>>,
+) -> Vec<SyntaxSpan> {
     let mut spans = Vec::new();
     for (row, cells) in rows.iter().zip(cells) {
         let mut start = 0usize;
