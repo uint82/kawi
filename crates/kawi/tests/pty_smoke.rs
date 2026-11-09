@@ -63,7 +63,7 @@ fn launches_and_quits_in_a_pty() {
     drop(pair.slave);
     read_until(&mut reader, STARTUP_MARKER, STARTUP_TIMEOUT);
     write_keys(pair.master.as_ref(), QUIT_INPUT);
-    let status = wait_for_exit(&mut child, EXIT_TIMEOUT);
+    let status = wait_for_exit(&mut child, &mut reader, EXIT_TIMEOUT);
     assert!(status.success(), "kawi exited with {status:?}");
 }
 
@@ -143,14 +143,38 @@ fn write_keys(master: &(dyn MasterPty + Send), input: &[u8]) {
     writer.flush().expect("failed to flush keys");
 }
 
-fn wait_for_exit(child: &mut Box<dyn Child + Send + Sync>, timeout: Duration) -> ExitStatus {
+fn wait_for_exit(
+    child: &mut Box<dyn Child + Send + Sync>,
+    reader: &mut dyn Read,
+    timeout: Duration,
+) -> ExitStatus {
     let deadline = Instant::now() + timeout;
+    let mut output = Vec::new();
     while Instant::now() < deadline {
+        drain_output(reader, &mut output);
         if let Some(status) = child.try_wait().expect("failed to poll kawi") {
             return status;
         }
         thread::sleep(POLL_INTERVAL);
     }
+    drain_output(reader, &mut output);
     let _ = child.kill();
-    panic!("kawi did not exit within {timeout:?}");
+    let tail = &output[output.len().saturating_sub(4096)..];
+    panic!(
+        "kawi did not exit within {timeout:?}; output: {:?}",
+        String::from_utf8_lossy(tail)
+    );
+}
+
+fn drain_output(reader: &mut dyn Read, output: &mut Vec<u8>) {
+    let mut buffer = [0u8; 4096];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => return,
+            Ok(count) => output.extend_from_slice(&buffer[..count]),
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return,
+            Err(error) if error.kind() == ErrorKind::Interrupted => {}
+            Err(_) => return,
+        }
+    }
 }
