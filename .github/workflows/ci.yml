@@ -112,7 +112,12 @@ jobs:
       - name: Test plugin scaffold
         run: cargo test -p kawi --bin kawi plugin_cli::tests::scaffold_builds_and_runs -- --ignored
   macos:
-    runs-on: macos-14
+    name: macos (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -121,7 +126,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all -- --check
@@ -131,10 +135,6 @@ jobs:
         run: cargo test --workspace --no-default-features
       - name: Test PTY startup
         run: cargo test -p kawi --test pty_smoke --no-default-features -- --nocapture
-      - name: Cross-check both architectures
-        run: |
-          cargo check --workspace --no-default-features --target x86_64-apple-darwin
-          cargo check --workspace --no-default-features --target aarch64-apple-darwin
       - name: Check WASM feature
         run: cargo check -p kawi --features wasm
   supply-chain:
