@@ -13,6 +13,16 @@ Run `kawi doctor` to run the same checks from the command line. Use `:plugin lis
 
 Use `kawi doctor --json` for a machine-readable report and `kawi doctor --strict` to fail on warnings. Inspect another project with `kawi doctor --path PATH`.
 
+## macOS
+
+Kawi checks the platform and process sandbox status in `kawi doctor`. Process plugins run without Landlock on macOS, so install only trusted development plugins. Text and file operations use the native `pbcopy`, `pbpaste`, and `~/.Trash` integrations.
+
+A release tarball is unsigned. If Gatekeeper blocks the binary, clear the quarantine attribute:
+
+```sh
+xattr -d com.apple.quarantine kawi
+```
+
 ## A language server does not start
 
 Check `~/.config/kawi/languages.toml`, then confirm the server command exists and the project root marker matches. Kawi includes built-in definitions for many languages; run `:lsp status` or `:health lsp` to see which configured servers are missing.

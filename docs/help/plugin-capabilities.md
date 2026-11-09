@@ -212,7 +212,7 @@ An ungated command runs whenever the plugin runs.
 - Host-mediated editor, UI, and diagnostics calls require the matching declaration. Interactive prompts also require an integer JSON-RPC request id. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
 - `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
 - Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
-- Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. Network scope is advisory for process plugins.
+- Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. macOS has no Landlock, so process plugins run unsandboxed there. Network scope is advisory for process plugins.
 
 ## Updates
 
