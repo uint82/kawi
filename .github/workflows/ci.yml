@@ -132,7 +132,7 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - name: Test
-        run: cargo test --workspace --no-default-features --no-fail-fast
+        run: cargo test --workspace --no-default-features
       - name: Test PTY startup
         run: cargo test -p kawi --test pty_smoke --no-default-features -- --nocapture
       - name: Check WASM feature
