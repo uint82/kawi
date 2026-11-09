@@ -569,6 +569,12 @@ impl Editor {
             | Action::OpenParentDirectory => self.noop(),
             Action::PushCount(_) | Action::BeginSequence | Action::CancelPending => self.noop(),
         }
+        if was_insert
+            && Self::breaks_undo_group(action)
+            && (self.cursor.row(), self.cursor.col()) != jump_before
+        {
+            self.buffer.begin_change();
+        }
         if was_insert {
             self.insert_last_char = match action {
                 Action::InsertChar(c) => Some(c),
