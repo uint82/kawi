@@ -3,6 +3,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 #[cfg(any(not(target_os = "macos"), test))]
+#[cfg_attr(all(target_os = "macos", test), allow(dead_code))]
 mod freedesktop;
 #[cfg(any(target_os = "macos", test))]
 mod macos;
