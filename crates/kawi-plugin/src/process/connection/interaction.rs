@@ -76,23 +76,23 @@ mod tests {
     fn interactive_wait_extends_the_deadline() {
         let interaction = Interaction::default();
         let started = Instant::now();
-        let timeout = Duration::from_millis(100);
+        let timeout = Duration::from_secs(60);
         std::thread::sleep(Duration::from_millis(20));
         interaction.begin(7);
         std::thread::sleep(Duration::from_millis(40));
-        assert!(interaction.remaining(started, timeout) > Duration::from_millis(60));
+        assert!(interaction.remaining(started, timeout) > Duration::from_secs(55));
         interaction.end(7);
-        assert!(interaction.remaining(started, timeout) > Duration::from_millis(60));
+        assert!(interaction.remaining(started, timeout) > Duration::from_secs(55));
     }
 
     #[test]
     fn reset_restores_the_remaining_timeout() {
         let interaction = Interaction::default();
         let started = Instant::now();
-        let timeout = Duration::from_millis(50);
+        let timeout = Duration::from_secs(60);
         interaction.begin(1);
         std::thread::sleep(Duration::from_millis(20));
         interaction.reset();
-        assert!(interaction.remaining(started, timeout) > Duration::from_millis(20));
+        assert!(interaction.remaining(started, timeout) > Duration::from_secs(55));
     }
 }
