@@ -254,7 +254,15 @@ fn runtime_directory() -> PathBuf {
 }
 
 fn fallback_directory() -> PathBuf {
-    std::env::temp_dir().join(format!("kawi-{}", unsafe { libc::geteuid() }))
+    fallback_root().join(format!("kawi-{}", unsafe { libc::geteuid() }))
+}
+
+fn fallback_root() -> PathBuf {
+    if cfg!(target_os = "macos") {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    }
 }
 
 fn set_directory_mode(path: &Path) -> Result<()> {
