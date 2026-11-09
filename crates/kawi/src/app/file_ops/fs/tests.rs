@@ -87,6 +87,50 @@ fn rename_refuses_a_symlink_target_without_force() {
 }
 
 #[test]
+fn no_replace_rename_moves_a_file_to_a_new_target() {
+    let dir = temp_dir("no_replace_file");
+    let old = dir.join("old.txt");
+    let new = dir.join("new.txt");
+    fs::write(&old, "old\n").unwrap();
+    rename_noreplace(&old, &new).unwrap();
+    assert!(!old.exists());
+    assert_eq!(fs::read_to_string(&new).unwrap(), "old\n");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn no_replace_rename_refuses_an_existing_target() {
+    let dir = temp_dir("no_replace_exists");
+    let old = dir.join("old.txt");
+    let new = dir.join("new.txt");
+    fs::write(&old, "old\n").unwrap();
+    fs::write(&new, "new\n").unwrap();
+    assert_eq!(
+        rename_noreplace(&old, &new).unwrap_err().kind(),
+        io::ErrorKind::AlreadyExists
+    );
+    assert_eq!(fs::read_to_string(&old).unwrap(), "old\n");
+    assert_eq!(fs::read_to_string(&new).unwrap(), "new\n");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn no_replace_rename_moves_a_directory_to_a_new_target() {
+    let dir = temp_dir("no_replace_dir");
+    let old = dir.join("old");
+    let new = dir.join("new");
+    fs::create_dir_all(old.join("sub")).unwrap();
+    fs::write(old.join("sub/a.txt"), "alpha\n").unwrap();
+    rename_noreplace(&old, &new).unwrap();
+    assert!(!old.exists());
+    assert_eq!(
+        fs::read_to_string(new.join("sub/a.txt")).unwrap(),
+        "alpha\n"
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn remove_path_removes_directories_and_symlinks() {
     let dir = temp_dir("remove");
     let nested = dir.join("nested");
