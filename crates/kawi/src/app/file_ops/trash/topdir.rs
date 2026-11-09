@@ -1,21 +1,8 @@
-use super::*;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
-pub(super) fn topdir_trash(target: &Path) -> Option<TrashDir> {
-    let topdir = mount_point(target)?;
-    let shared = topdir.join(TOP_TRASH);
-    if is_secure_shared_trash(&shared) {
-        return Some(TrashDir {
-            root: shared.join(user_id()?),
-            topdir: Some(topdir),
-        });
-    }
-    Some(TrashDir {
-        root: topdir.join(format!(".Trash-{}", user_id()?)),
-        topdir: Some(topdir),
-    })
-}
-
-fn mount_point(path: &Path) -> Option<PathBuf> {
+pub(super) fn mount_point(path: &Path) -> Option<PathBuf> {
     let start = match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => path,
         _ => path.parent()?,
@@ -31,24 +18,6 @@ fn mount_point(path: &Path) -> Option<PathBuf> {
     Some(top.to_path_buf())
 }
 
-fn is_secure_shared_trash(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return false;
-    };
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o1000 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
 pub(super) fn user_id() -> Option<String> {
     #[cfg(unix)]
     {
@@ -58,6 +27,12 @@ pub(super) fn user_id() -> Option<String> {
     {
         std::env::var("USERNAME").ok()
     }
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(super) fn is_directory(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
 }
 
 pub(super) fn ensure_directory(path: &Path) -> io::Result<()> {
@@ -72,15 +47,19 @@ pub(super) fn ensure_directory(path: &Path) -> io::Result<()> {
     }
 }
 
-pub(super) fn ensure_root(path: &Path) -> io::Result<()> {
+pub(super) fn ensure_root(path: &Path) -> io::Result<bool> {
     match ensure_directory(path) {
-        Ok(()) => verify_owner(path),
+        Ok(()) => {
+            verify_owner(path)?;
+            Ok(false)
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::create_dir(path)?;
-            verify_owner(path)
+            verify_owner(path)?;
+            Ok(true)
         }
         Err(error) => Err(error),
     }

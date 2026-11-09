@@ -3,9 +3,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-mod topdir;
-
-use topdir::{ensure_directory, ensure_root, same_device, topdir_trash};
+use super::topdir::{ensure_directory, ensure_root, mount_point, same_device, user_id};
+use super::{is_writable_location, set_private, unique_name, TrashError};
 
 const TRASH_DIR: &str = "Trash";
 const FILES_DIR: &str = "files";
@@ -13,42 +12,18 @@ const INFO_DIR: &str = "info";
 const INFO_SUFFIX: &str = ".trashinfo";
 const DATE_PREFIX: &str = "DeletionDate=";
 const TOP_TRASH: &str = ".Trash";
+const VOLUME_TRASH_PREFIX: &str = ".Trash-";
 
-#[derive(Debug)]
-pub(in crate::app) enum TrashError {
-    Unavailable(String),
-    Io(io::Error),
-}
-
-impl std::fmt::Display for TrashError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unavailable(message) => formatter.write_str(message),
-            Self::Io(error) => write!(formatter, "{error}"),
-        }
-    }
-}
-
-impl From<io::Error> for TrashError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-pub(in crate::app) struct TrashDir {
+pub(super) struct FreedesktopTrash {
     root: PathBuf,
     topdir: Option<PathBuf>,
 }
 
-impl TrashDir {
-    pub(in crate::app) fn for_target(target: &Path) -> Option<Self> {
-        let home = Self::from_env();
-        if let Some(home) = home {
-            if same_device(target, &home.root) && is_writable_location(&home.root) {
-                return Some(home);
-            }
-        }
-        topdir_trash(target)
+impl FreedesktopTrash {
+    pub(super) fn for_target(target: &Path) -> Option<Self> {
+        Self::from_env()
+            .filter(|home| home.can_trash(target))
+            .or_else(|| topdir_trash(target))
     }
 
     fn from_env() -> Option<Self> {
@@ -67,19 +42,23 @@ impl TrashDir {
     }
 
     #[cfg(test)]
-    fn new(root: PathBuf) -> Self {
+    pub(super) fn new(root: PathBuf) -> Self {
         Self { root, topdir: None }
     }
 
-    pub(in crate::app) fn can_trash(&self, target: &Path) -> bool {
+    #[cfg(test)]
+    pub(super) fn with_topdir(root: PathBuf, topdir: PathBuf) -> Self {
+        Self {
+            root,
+            topdir: Some(topdir),
+        }
+    }
+
+    pub(super) fn can_trash(&self, target: &Path) -> bool {
         same_device(target, &self.root) && is_writable_location(&self.root)
     }
 
-    pub(in crate::app) fn trash_as(
-        &self,
-        target: &Path,
-        original: &Path,
-    ) -> Result<PathBuf, TrashError> {
+    pub(super) fn trash_as(&self, target: &Path, original: &Path) -> Result<PathBuf, TrashError> {
         self.ensure()?;
         if !same_device(target, &self.files_dir()) {
             return Err(TrashError::Unavailable(
@@ -100,7 +79,7 @@ impl TrashDir {
     }
 
     fn ensure(&self) -> io::Result<()> {
-        ensure_root(&self.root)?;
+        let _ = ensure_root(&self.root)?;
         ensure_directory(&self.files_dir())?;
         ensure_directory(&self.info_dir())?;
         set_private(&self.root)?;
@@ -112,11 +91,16 @@ impl TrashDir {
         self.root.join(FILES_DIR)
     }
 
-    fn info_dir(&self) -> PathBuf {
+    pub(super) fn info_dir(&self) -> PathBuf {
         self.root.join(INFO_DIR)
     }
 
-    fn info_path(&self, target: &Path) -> String {
+    #[cfg(test)]
+    pub(super) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(super) fn info_path(&self, target: &Path) -> String {
         let display = self
             .topdir
             .as_ref()
@@ -126,44 +110,45 @@ impl TrashDir {
     }
 
     fn unique_name(&self, target: &Path) -> io::Result<String> {
-        let base = target
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "item".to_string());
-        for index in 0..10_000 {
-            let name = if index == 0 {
-                base.clone()
-            } else {
-                format!("{base}.{index}")
-            };
-            let file = self.files_dir().join(&name);
-            let info = self.info_dir().join(format!("{name}{INFO_SUFFIX}"));
-            if !file.exists() && !info.exists() {
-                return Ok(name);
-            }
-        }
-        Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "trash contains too many items with the same name",
-        ))
+        let files = self.files_dir();
+        let info = self.info_dir();
+        unique_name(target, |name| {
+            !files.join(name).exists() && !info.join(format!("{name}{INFO_SUFFIX}")).exists()
+        })
     }
 }
 
-fn is_writable_location(path: &Path) -> bool {
-    for ancestor in path.ancestors() {
-        match fs::symlink_metadata(ancestor) {
-            Ok(metadata) => {
-                if !metadata.is_dir() || metadata.file_type().is_symlink() {
-                    return false;
-                }
-                return super::fs::can_modify_directory(ancestor);
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => return false,
-        }
+pub(super) fn topdir_trash(target: &Path) -> Option<FreedesktopTrash> {
+    let topdir = mount_point(target)?;
+    let shared = topdir.join(TOP_TRASH);
+    if is_secure_shared_trash(&shared) {
+        return Some(FreedesktopTrash {
+            root: shared.join(user_id()?),
+            topdir: Some(topdir),
+        });
     }
-    false
+    Some(FreedesktopTrash {
+        root: topdir.join(format!("{VOLUME_TRASH_PREFIX}{}", user_id()?)),
+        topdir: Some(topdir),
+    })
+}
+
+fn is_secure_shared_trash(path: &Path) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o1000 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn write_info(path: &Path, encoded: &str) -> io::Result<()> {
@@ -205,7 +190,7 @@ fn hex_digit(value: u8) -> char {
     DIGITS[usize::from(value & 0x0f)] as char
 }
 
-fn deletion_date() -> String {
+pub(super) fn deletion_date() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -219,7 +204,7 @@ fn deletion_date() -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
 }
 
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+pub(super) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = z - era * 146_097;
@@ -232,17 +217,3 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     year += i64::from(month <= 2);
     (year, month as u32, day as u32)
 }
-
-#[cfg(unix)]
-fn set_private(path: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-}
-
-#[cfg(not(unix))]
-fn set_private(_path: &Path) -> io::Result<()> {
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests;
