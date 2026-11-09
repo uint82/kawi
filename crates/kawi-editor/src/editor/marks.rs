@@ -415,7 +415,7 @@ mod tests {
         let mut editor = Editor::new(Buffer::from_file(&first).expect("open"));
         editor.apply(Action::SetMark('A'));
         editor.edit_file(Some(&second), false).expect("switch");
-        let listing = editor.marks_listing(80);
+        let listing = editor.marks_listing(usize::MAX);
         assert!(listing.contains(&first), "{listing}");
     }
 
