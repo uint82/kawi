@@ -3334,16 +3334,16 @@ mod tests {
 
     #[test]
     fn save_reports_lines_and_bytes() {
-        let path = std::env::temp_dir().join("kawi_msg_test.txt");
+        let path = temp_path("msg_test.txt");
         let _ = std::fs::remove_file(&path);
         let mut buffer = Buffer::from_string("aa\nbb");
-        buffer.path = Some(path.to_string_lossy().to_string());
+        buffer.path = Some(path.clone());
         let mut app = App::new(buffer, Flavor::Vim);
         app.handle_save(false).expect("save");
-        let expected = format!("\"{}\" [New] 2L, 6B written", path.to_string_lossy());
+        let expected = format!("\"{path}\" [New] 2L, 6B written");
         assert_eq!(app.last_message(), Some(expected.as_str()));
         app.handle_save(false).expect("save again");
-        let expected = format!("\"{}\" 2L, 6B written", path.to_string_lossy());
+        let expected = format!("\"{path}\" 2L, 6B written");
         assert_eq!(app.last_message(), Some(expected.as_str()));
         let _ = std::fs::remove_file(&path);
     }
@@ -3606,7 +3606,7 @@ mod tests {
     }
 
     fn temp_path(name: &str) -> String {
-        std::env::temp_dir()
+        crate::test_support::temp_root()
             .join(format!("kawi_app_{name}"))
             .to_string_lossy()
             .into_owned()

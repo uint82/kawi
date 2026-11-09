@@ -90,9 +90,17 @@ pub(crate) fn diagnostic_event(
     }
 }
 
+pub(crate) fn temp_root() -> PathBuf {
+    if cfg!(target_os = "macos") {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    }
+}
+
 pub(crate) fn temp_dir(prefix: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(1);
-    let dir = std::env::temp_dir().join(format!(
+    let dir = temp_root().join(format!(
         "kawi_test_{}_{}_{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed),
