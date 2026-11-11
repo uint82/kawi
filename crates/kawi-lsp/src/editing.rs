@@ -99,6 +99,22 @@ pub(crate) fn apply_auto_pairs(
     }
 }
 
+pub(crate) fn apply_auto_close_before(
+    language: &mut LanguageConfig,
+    value: Value,
+    warnings: &mut Vec<LanguageWarning>,
+) {
+    match value {
+        Value::String(chars) if !chars.chars().any(char::is_control) => {
+            language.auto_close_before = Some(chars);
+        }
+        value => warnings.push(LanguageWarning::new(format!(
+            "language {}: auto_close_before must be a string without control characters, got {value}; keeping the previous characters",
+            language.name
+        ))),
+    }
+}
+
 pub(crate) fn apply_match_pairs(
     language: &mut LanguageConfig,
     value: Value,
