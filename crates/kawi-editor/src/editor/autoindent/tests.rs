@@ -92,6 +92,7 @@ fn html_editing() -> LanguageEditing {
             Pair::new('"', '"'),
         ],
         match_pairs: Vec::new(),
+        ..LanguageEditing::default()
     }
 }
 
@@ -109,6 +110,7 @@ fn python_editing() -> LanguageEditing {
             Pair::new('"', '"'),
         ],
         match_pairs: Vec::new(),
+        ..LanguageEditing::default()
     }
 }
 

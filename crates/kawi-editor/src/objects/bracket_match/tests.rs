@@ -21,6 +21,7 @@ fn editing(line_comment: &str, block_comment: (&str, &str)) -> LanguageEditing {
         },
         pairs: default_pairs(),
         match_pairs: default_match_pairs(),
+        ..LanguageEditing::default()
     }
 }
 

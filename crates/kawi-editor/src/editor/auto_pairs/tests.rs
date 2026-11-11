@@ -16,16 +16,21 @@ fn editing() -> LanguageEditing {
             Pair::new('"', '"'),
         ],
         match_pairs: Vec::new(),
+        ..LanguageEditing::default()
     }
 }
 
 fn editor_with(text: &str, pairs: Vec<Pair>) -> Editor {
     let mut editor = Editor::new(Buffer::from_string(text));
-    editor.set_language_editing(LanguageEditing {
-        comments: editing().comments,
-        pairs,
-        match_pairs: Vec::new(),
-    });
+    editor.set_language_editing(LanguageEditing { pairs, ..editing() });
+    editor
+}
+
+fn editor_with_auto_close(text: &str, auto_close_before: &str) -> Editor {
+    let mut policy = editing();
+    policy.auto_close_before = auto_close_before.to_string();
+    let mut editor = editor_with(text, policy.pairs.clone());
+    editor.set_language_editing(policy);
     editor
 }
 
@@ -56,6 +61,60 @@ fn does_not_close_before_a_word() {
     open(&mut editor, 0, 0);
     editor.apply(Action::InsertChar('('));
     assert_eq!(editor.text_lines(), vec!["(word".to_string()]);
+}
+
+#[test]
+fn pairs_before_expression_punctuation() {
+    for (text, expected) in [
+        ("get,", "get(),"),
+        ("get;", "get();"),
+        ("get:", "get():"),
+        ("get.", "get()."),
+        ("get=", "get()="),
+    ] {
+        let mut editor = editor_with(text, editing().pairs);
+        open(&mut editor, 0, 3);
+        editor.apply(Action::InsertChar('('));
+        assert_eq!(editor.text_lines(), vec![expected.to_string()], "{text}");
+        assert_eq!((editor.row(), editor.col()), (0, 4));
+    }
+}
+
+#[test]
+fn does_not_pair_before_an_operator() {
+    let mut editor = editor_with("a + b", editing().pairs);
+    open(&mut editor, 0, 2);
+    editor.apply(Action::InsertChar('('));
+    assert_eq!(editor.text_lines(), vec!["a (+ b".to_string()]);
+}
+
+#[test]
+fn quotes_ignore_auto_close_punctuation() {
+    let mut editor = editor_with_auto_close("get,", ",?");
+    open(&mut editor, 0, 3);
+    editor.apply(Action::InsertChar('"'));
+    assert_eq!(editor.text_lines(), vec!["get\",".to_string()]);
+}
+
+#[test]
+fn empty_auto_close_before_rejects_punctuation() {
+    let mut editor = editor_with_auto_close("get,", "");
+    open(&mut editor, 0, 3);
+    editor.apply(Action::InsertChar('('));
+    assert_eq!(editor.text_lines(), vec!["get(,".to_string()]);
+
+    let mut editor = editor_with_auto_close("]", "");
+    open(&mut editor, 0, 0);
+    editor.apply(Action::InsertChar('['));
+    assert_eq!(editor.text_lines(), vec!["[]]".to_string()]);
+}
+
+#[test]
+fn custom_auto_close_before_allows_configured_characters() {
+    let mut editor = editor_with_auto_close("value?", "?");
+    open(&mut editor, 0, 5);
+    editor.apply(Action::InsertChar('('));
+    assert_eq!(editor.text_lines(), vec!["value()?".to_string()]);
 }
 
 #[test]

@@ -32,6 +32,7 @@ pub use command::{
 pub use cursor::Cursor;
 pub use editing::{
     default_match_pairs, default_pairs, BlockComment, CommentTokens, LanguageEditing, Pair,
+    DEFAULT_AUTO_CLOSE_BEFORE,
 };
 pub use editor::{
     BufferChanges, BufferError, BufferInfo, BufferOptionDefaults, EditError, Editor,

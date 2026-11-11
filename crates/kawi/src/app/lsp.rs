@@ -7,7 +7,7 @@ use super::lsp_text::{LspText, TextFailure};
 use kawi_completion::Capabilities;
 use kawi_editor::{
     default_match_pairs, default_pairs, BlockComment, CommentTokens, Editor, IndentOptions,
-    IndentRules, LanguageEditing, LanguageIndent, Pair,
+    IndentRules, LanguageEditing, LanguageIndent, Pair, DEFAULT_AUTO_CLOSE_BEFORE,
 };
 use kawi_lsp::{
     CodeActionEvent, CompletionCapabilitiesEvent, CompletionEvent, CompletionResolveEvent,
@@ -642,6 +642,7 @@ impl LspUi {
             comments,
             pairs,
             match_pairs,
+            auto_close_before: DEFAULT_AUTO_CLOSE_BEFORE.to_string(),
         }
     }
 

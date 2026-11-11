@@ -169,7 +169,9 @@ impl Editor {
     }
 
     fn can_insert_bracket_pair(&self, row: usize, col: usize) -> bool {
-        self.has_pair_boundary(row, col)
+        self.buffer.char_at(row, col).is_none_or(|ch| {
+            self.is_pair_boundary(ch) || self.language_editing.auto_close_before.contains(ch)
+        })
     }
 
     fn can_insert_quote_pair(&self, row: usize, col: usize) -> bool {
@@ -183,10 +185,13 @@ impl Editor {
     }
 
     fn has_pair_boundary(&self, row: usize, col: usize) -> bool {
-        match self.buffer.char_at(row, col) {
-            None => true,
-            Some(ch) => ch.is_whitespace() || matches!(ch, ')' | ']' | '}' | '>'),
-        }
+        self.buffer
+            .char_at(row, col)
+            .is_none_or(|ch| self.is_pair_boundary(ch))
+    }
+
+    fn is_pair_boundary(&self, ch: char) -> bool {
+        ch.is_whitespace() || matches!(ch, ')' | ']' | '}' | '>')
     }
 
     fn insert_pair(&mut self, pair: Pair) {
