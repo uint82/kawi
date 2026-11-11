@@ -161,11 +161,20 @@ impl Editor {
 
     fn can_insert_pair(&self, pair: Pair) -> bool {
         let (row, col) = (self.cursor.row(), self.cursor.col());
-        if !self.safe_closer_position(row, col) {
-            return false;
+        if pair.is_quote() {
+            self.can_insert_quote_pair(row, col)
+        } else {
+            self.can_insert_bracket_pair(row, col)
         }
-        if !pair.is_quote() {
-            return true;
+    }
+
+    fn can_insert_bracket_pair(&self, row: usize, col: usize) -> bool {
+        self.has_pair_boundary(row, col)
+    }
+
+    fn can_insert_quote_pair(&self, row: usize, col: usize) -> bool {
+        if !self.has_pair_boundary(row, col) {
+            return false;
         }
         if self.previous_char(row, col).is_some_and(is_word_char) {
             return false;
@@ -173,7 +182,7 @@ impl Editor {
         !self.inside_string_or_comment(row, col)
     }
 
-    fn safe_closer_position(&self, row: usize, col: usize) -> bool {
+    fn has_pair_boundary(&self, row: usize, col: usize) -> bool {
         match self.buffer.char_at(row, col) {
             None => true,
             Some(ch) => ch.is_whitespace() || matches!(ch, ')' | ']' | '}' | '>'),
