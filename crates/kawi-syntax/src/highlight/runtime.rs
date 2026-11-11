@@ -22,7 +22,7 @@ impl Runtime {
         let captures = config
             .names()
             .iter()
-            .map(|name| registry().resolve(name))
+            .map(|name| resolve_capture(name))
             .collect();
         Some(Self {
             config,
@@ -57,6 +57,13 @@ impl Default for RuntimeCache {
     }
 }
 
+fn resolve_capture(name: &str) -> Option<SyntaxHighlight> {
+    if name.starts_with('_') {
+        return None;
+    }
+    registry().resolve(name)
+}
+
 fn build_configuration(language: LanguageId, highlights: &str) -> Option<HighlightConfiguration> {
     HighlightConfiguration::new(language.language(), language.name(), highlights, "", "").ok()
 }
@@ -67,4 +74,15 @@ fn build_injection_query(language: LanguageId) -> Option<Query> {
         return None;
     }
     Query::new(&language.language(), injections).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helper_captures_are_not_highlighted() {
+        assert!(resolve_capture("_attr").is_none());
+        assert!(resolve_capture("keyword").is_some());
+    }
 }
