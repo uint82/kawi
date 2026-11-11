@@ -2,7 +2,7 @@ use crate::actions::Object;
 use crate::editing::Pair;
 use crate::objects;
 use crate::objects::bracket_match::{
-    find_match, BracketMatch, MatchRequest, Position, ACTION_MATCH_BOUND,
+    find_match, find_open_context, BracketMatch, MatchRequest, Position, ACTION_MATCH_BOUND,
 };
 use crate::words::WordSpan;
 
@@ -16,6 +16,21 @@ impl Editor {
         let first = self.bracket_cursor_position()?;
         let second = self.bracket_partner_at(first, bound)?;
         Some(BracketMatch { first, second })
+    }
+
+    pub fn inside_brackets(&self, opens: &[char], bound: usize) -> bool {
+        find_open_context(
+            &MatchRequest {
+                buffer: &self.buffer,
+                position: (self.cursor.row(), self.cursor.col()),
+                language: self.language_indent.language,
+                editing: &self.language_editing,
+                pairs: &self.language_editing.match_pairs,
+                bound,
+            },
+            opens,
+        )
+        .is_some()
     }
 
     pub(crate) fn bracket_cursor_position(&self) -> Option<Position> {
