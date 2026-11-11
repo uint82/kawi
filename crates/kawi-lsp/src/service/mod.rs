@@ -203,6 +203,76 @@ impl CompletionTrigger {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignatureTriggerKind {
+    Invoked,
+    TriggerCharacter,
+    ContentChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SignatureContext {
+    signatures: Vec<SignatureEntry>,
+    active_signature: Option<usize>,
+    active_parameter: Option<usize>,
+}
+
+impl SignatureContext {
+    fn from_event(event: &SignatureHelpEvent) -> Self {
+        Self {
+            signatures: event.signatures.clone(),
+            active_signature: event.active_signature,
+            active_parameter: event.active_parameter,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureTrigger {
+    kind: SignatureTriggerKind,
+    character: Option<String>,
+    is_retrigger: bool,
+    active: Option<SignatureContext>,
+}
+
+impl SignatureTrigger {
+    pub fn invoked() -> Self {
+        Self {
+            kind: SignatureTriggerKind::Invoked,
+            character: None,
+            is_retrigger: false,
+            active: None,
+        }
+    }
+
+    pub fn character(character: impl Into<String>) -> Self {
+        Self {
+            kind: SignatureTriggerKind::TriggerCharacter,
+            character: Some(character.into()),
+            is_retrigger: false,
+            active: None,
+        }
+    }
+
+    pub fn retrigger_character(character: impl Into<String>, event: &SignatureHelpEvent) -> Self {
+        Self {
+            kind: SignatureTriggerKind::TriggerCharacter,
+            character: Some(character.into()),
+            is_retrigger: true,
+            active: Some(SignatureContext::from_event(event)),
+        }
+    }
+
+    pub fn content_change(event: &SignatureHelpEvent) -> Self {
+        Self {
+            kind: SignatureTriggerKind::ContentChange,
+            character: None,
+            is_retrigger: true,
+            active: Some(SignatureContext::from_event(event)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentEdit {
     pub path: PathBuf,
@@ -329,6 +399,7 @@ pub struct CompletionCapabilitiesEvent {
     pub completion_resolve: bool,
     pub signature_help: bool,
     pub signature_triggers: Vec<String>,
+    pub signature_retriggers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -618,7 +689,7 @@ impl LspService {
         &self,
         path: &Path,
         position: CursorPosition,
-        trigger: CompletionTrigger,
+        trigger: SignatureTrigger,
     ) -> u64 {
         let request = self.allocate_request();
         self.send(Command::SignatureHelp {
@@ -829,7 +900,7 @@ pub(crate) enum Command {
         request: u64,
         path: PathBuf,
         position: CursorPosition,
-        trigger: CompletionTrigger,
+        trigger: SignatureTrigger,
     },
     CodeActions {
         request: u64,

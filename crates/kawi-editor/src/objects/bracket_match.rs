@@ -33,8 +33,10 @@ pub(crate) struct MatchResult {
     pub in_code: bool,
 }
 
+mod context;
 mod enclosing;
 
+pub use context::find_open_context;
 pub use enclosing::find_enclosing;
 
 pub fn find_match(request: &MatchRequest<'_>) -> Option<Position> {

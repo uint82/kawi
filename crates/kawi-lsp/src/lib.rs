@@ -26,8 +26,9 @@ pub use service::{
     FileOperationEvent, FileOperationKind, FormattingEvent, FormattingSettings, HoverEvent,
     LocationEvent, LspCommand, LspEvent, LspService, MarkupDocument, MessageLevel, ProgressEvent,
     RenameEvent, RenameReady, ServerState, SignatureEntry, SignatureHelpEvent, SignatureParameter,
-    StatusEvent, SymbolCapabilitiesEvent, SymbolEntry, SymbolKind, SymbolRange, TextChange,
-    TextLocation, WatchedFileChange, WorkspaceDiagnosticEvent, WorkspaceDiagnosticState,
-    WorkspaceEdit, WorkspaceSymbolEvent, WorkspaceSymbolResolvedEvent, INITIAL_DOCUMENT_VERSION,
+    SignatureTrigger, SignatureTriggerKind, StatusEvent, SymbolCapabilitiesEvent, SymbolEntry,
+    SymbolKind, SymbolRange, TextChange, TextLocation, WatchedFileChange, WorkspaceDiagnosticEvent,
+    WorkspaceDiagnosticState, WorkspaceEdit, WorkspaceSymbolEvent, WorkspaceSymbolResolvedEvent,
+    INITIAL_DOCUMENT_VERSION,
 };
 pub use warning::LanguageWarning;

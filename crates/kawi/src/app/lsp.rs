@@ -14,7 +14,7 @@ use kawi_lsp::{
     CompletionTrigger, CursorPosition, Diagnostic, DiagnosticMode, DiagnosticsEvent,
     FileOperationEvent, FormatterConfig, FormattingEvent, FormattingSettings, LanguageWarning,
     Languages, LspCommand, LspEvent, LspService, MessageLevel, ProgressEvent, RenameEvent,
-    RenameReady, ServerState, SignatureHelpEvent, StatusEvent, WatchedFileChange,
+    RenameReady, ServerState, SignatureHelpEvent, SignatureTrigger, StatusEvent, WatchedFileChange,
     WorkspaceDiagnosticState,
 };
 use kawi_syntax::LanguageId;
@@ -145,6 +145,15 @@ impl LspUi {
     ) {
         self.colors
             .set_for_test(path.to_path_buf(), revision, colors);
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_completion_capabilities_for_test(
+        &mut self,
+        event: CompletionCapabilitiesEvent,
+    ) {
+        self.completion_capabilities
+            .insert(event.server.clone(), event);
     }
 
     pub fn sync_editor(&mut self, editor: &Editor) -> bool {
@@ -300,7 +309,7 @@ impl LspUi {
     pub fn signature_help(
         &mut self,
         editor: &Editor,
-        trigger: CompletionTrigger,
+        trigger: SignatureTrigger,
     ) -> Result<u64, String> {
         let Some(path) = editor_path(editor) else {
             return Err("E32: No file name".to_string());
@@ -338,11 +347,16 @@ impl LspUi {
             capabilities
                 .signature_triggers
                 .extend(server.signature_triggers.iter().cloned());
+            capabilities
+                .signature_retriggers
+                .extend(server.signature_retriggers.iter().cloned());
         }
         capabilities.completion_triggers.sort();
         capabilities.completion_triggers.dedup();
         capabilities.signature_triggers.sort();
         capabilities.signature_triggers.dedup();
+        capabilities.signature_retriggers.sort();
+        capabilities.signature_retriggers.dedup();
         capabilities
     }
 
@@ -404,6 +418,10 @@ impl LspUi {
 
     pub fn take_signature(&mut self) -> Option<SignatureHelpEvent> {
         self.text.take_signature()
+    }
+
+    pub fn take_signature_failed(&mut self) -> Option<u64> {
+        self.text.take_signature_failed()
     }
 
     pub fn take_code_actions(&mut self) -> Option<CodeActionEvent> {

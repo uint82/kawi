@@ -166,8 +166,7 @@ impl App {
             "signature_help" => {
                 self.completion_options.signature = value.as_bool().unwrap_or(true);
                 if !self.completion_options.signature {
-                    self.signature = None;
-                    self.lsp.cancel_signature();
+                    self.hide_signature();
                 }
             }
             "completion_docs_up" => {

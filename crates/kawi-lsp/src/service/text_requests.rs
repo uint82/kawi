@@ -8,8 +8,10 @@ use crate::text;
 use crate::workspace;
 use lsp_types::{
     CodeActionContext, CodeActionParams, CodeActionTriggerKind, CompletionContext,
-    CompletionParams, DocumentFormattingParams, DocumentRangeFormattingParams, FormattingOptions,
-    Range, TextDocumentIdentifier, TextDocumentPositionParams,
+    CompletionParams, DocumentFormattingParams, DocumentRangeFormattingParams, Documentation,
+    FormattingOptions, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Range,
+    SignatureHelp, SignatureHelpContext, SignatureHelpTriggerKind, SignatureInformation,
+    TextDocumentIdentifier, TextDocumentPositionParams,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -140,7 +142,7 @@ impl Manager {
         request: u64,
         path: PathBuf,
         position: CursorPosition,
-        trigger: CompletionTrigger,
+        trigger: SignatureTrigger,
     ) {
         let path = workspace::absolute(&path);
         let targets = self.text_targets(&path, TextCapability::SignatureHelp);
@@ -166,21 +168,8 @@ impl Manager {
                 position.column,
                 &target.encoding,
             );
-            let kind = match trigger.kind {
-                CompletionTriggerKind::Invoked | CompletionTriggerKind::Incomplete => {
-                    lsp_types::SignatureHelpTriggerKind::INVOKED
-                }
-                CompletionTriggerKind::TriggerCharacter => {
-                    lsp_types::SignatureHelpTriggerKind::TRIGGER_CHARACTER
-                }
-            };
             let params = lsp_types::SignatureHelpParams {
-                context: Some(lsp_types::SignatureHelpContext {
-                    trigger_kind: kind,
-                    trigger_character: trigger.character.clone(),
-                    is_retrigger: false,
-                    active_signature_help: None,
-                }),
+                context: Some(signature_context(&trigger)),
                 text_document_position_params: TextDocumentPositionParams {
                     text_document: TextDocumentIdentifier {
                         uri: target.uri.clone(),
@@ -488,6 +477,66 @@ fn unsupported_message(capability: TextCapability) -> &'static str {
         TextCapability::Formatting => "No language server supports formatting",
         TextCapability::RangeFormatting => "No language server supports range formatting",
     }
+}
+
+fn signature_context(trigger: &SignatureTrigger) -> SignatureHelpContext {
+    SignatureHelpContext {
+        trigger_kind: match trigger.kind {
+            SignatureTriggerKind::Invoked => SignatureHelpTriggerKind::INVOKED,
+            SignatureTriggerKind::TriggerCharacter => SignatureHelpTriggerKind::TRIGGER_CHARACTER,
+            SignatureTriggerKind::ContentChange => SignatureHelpTriggerKind::CONTENT_CHANGE,
+        },
+        trigger_character: trigger.character.clone(),
+        is_retrigger: trigger.is_retrigger,
+        active_signature_help: trigger.active.as_ref().map(signature_snapshot),
+    }
+}
+
+fn signature_snapshot(context: &SignatureContext) -> SignatureHelp {
+    SignatureHelp {
+        signatures: context
+            .signatures
+            .iter()
+            .map(signature_information)
+            .collect(),
+        active_signature: context
+            .active_signature
+            .and_then(|index| u32::try_from(index).ok()),
+        active_parameter: context
+            .active_parameter
+            .and_then(|index| u32::try_from(index).ok()),
+    }
+}
+
+fn signature_information(entry: &SignatureEntry) -> SignatureInformation {
+    SignatureInformation {
+        label: entry.label.clone(),
+        documentation: entry.documentation.as_ref().map(markup_document),
+        parameters: Some(
+            entry
+                .parameters
+                .iter()
+                .map(|parameter| ParameterInformation {
+                    label: ParameterLabel::Simple(parameter.label.clone()),
+                    documentation: parameter.documentation.as_ref().map(markup_document),
+                })
+                .collect(),
+        ),
+        active_parameter: entry
+            .active_parameter
+            .and_then(|index| u32::try_from(index).ok()),
+    }
+}
+
+fn markup_document(document: &MarkupDocument) -> Documentation {
+    Documentation::MarkupContent(MarkupContent {
+        kind: if document.markdown {
+            MarkupKind::Markdown
+        } else {
+            MarkupKind::PlainText
+        },
+        value: document.text.clone(),
+    })
 }
 
 fn completion_context(trigger: CompletionTrigger) -> CompletionContext {

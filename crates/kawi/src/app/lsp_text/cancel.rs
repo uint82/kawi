@@ -32,6 +32,7 @@ impl LspText {
     }
 
     pub(in crate::app) fn cancel_signature(&mut self, service: Option<&LspService>) -> bool {
+        self.signature_failed = None;
         let Some(request) = self.signature_request.take() else {
             self.signature = None;
             return false;
@@ -96,6 +97,7 @@ impl LspText {
         self.completion = None;
         self.completion_resolved = None;
         self.signature = None;
+        self.signature_failed = None;
         self.code_actions = None;
         self.formatting = None;
         cancelled

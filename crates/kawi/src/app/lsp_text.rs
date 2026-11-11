@@ -8,6 +8,7 @@ mod tests;
 use kawi_lsp::{
     CodeActionEvent, CompletionEvent, CompletionResolveEvent, CompletionTrigger, CursorPosition,
     Diagnostic, FormattingEvent, FormattingSettings, LspService, SignatureHelpEvent,
+    SignatureTrigger,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub(super) struct LspText {
     completion_resolve_failed: Option<u64>,
     signature_request: Option<u64>,
     signature: Option<SignatureHelpEvent>,
+    signature_failed: Option<u64>,
     code_action_request: Option<u64>,
     code_actions: Option<CodeActionEvent>,
     formatting_request: Option<u64>,
@@ -74,7 +76,7 @@ impl LspText {
         service: Option<&LspService>,
         path: &Path,
         position: CursorPosition,
-        trigger: CompletionTrigger,
+        trigger: SignatureTrigger,
     ) -> Result<u64, String> {
         let Some(service) = service else {
             return Err("lsp unavailable".to_string());
@@ -85,6 +87,7 @@ impl LspText {
         let request = service.signature_help(path, position, trigger);
         self.signature_request = Some(request);
         self.signature = None;
+        self.signature_failed = None;
         Ok(request)
     }
 
@@ -144,6 +147,7 @@ impl LspText {
         }
         self.signature_request = None;
         self.signature = Some(event);
+        self.signature_failed = None;
         true
     }
 
@@ -188,6 +192,7 @@ impl LspText {
         if self.signature_request == Some(request) {
             self.signature_request = None;
             self.signature = None;
+            self.signature_failed = Some(request);
             return Some(TextFailure::Silent);
         }
         if self.code_action_request == Some(request) {
@@ -223,6 +228,10 @@ impl LspText {
 
     pub(super) fn take_signature(&mut self) -> Option<SignatureHelpEvent> {
         self.signature.take()
+    }
+
+    pub(super) fn take_signature_failed(&mut self) -> Option<u64> {
+        self.signature_failed.take()
     }
 
     pub(super) fn take_code_actions(&mut self) -> Option<CodeActionEvent> {

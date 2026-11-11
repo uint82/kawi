@@ -159,6 +159,7 @@ pub struct Capabilities {
     pub completion_triggers: Vec<String>,
     pub signature_help: bool,
     pub signature_triggers: Vec<String>,
+    pub signature_retriggers: Vec<String>,
 }
 
 pub trait Source {

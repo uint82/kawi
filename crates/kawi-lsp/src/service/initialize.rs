@@ -256,6 +256,9 @@ fn completion_capabilities_event(
         signature_triggers: signature
             .and_then(|provider| provider.trigger_characters.clone())
             .unwrap_or_default(),
+        signature_retriggers: signature
+            .and_then(|provider| provider.retrigger_characters.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -848,6 +851,7 @@ mod tests {
             ])
         );
         let signature = text_document.signature_help.expect("signature help");
+        assert_eq!(signature.context_support, Some(true));
         assert_eq!(
             signature
                 .signature_information
@@ -869,6 +873,7 @@ mod tests {
             }),
             signature_help_provider: Some(lsp_types::SignatureHelpOptions {
                 trigger_characters: Some(vec!["(".to_string()]),
+                retrigger_characters: Some(vec![",".to_string()]),
                 ..lsp_types::SignatureHelpOptions::default()
             }),
             ..lsp_types::ServerCapabilities::default()
@@ -883,6 +888,7 @@ mod tests {
         assert_eq!(event.completion_triggers, ["."]);
         assert!(event.signature_help);
         assert_eq!(event.signature_triggers, ["("]);
+        assert_eq!(event.signature_retriggers, [","]);
     }
 
     #[test]

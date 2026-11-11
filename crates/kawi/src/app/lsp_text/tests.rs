@@ -74,6 +74,17 @@ fn document_changes_keep_completion_resolve_alive() {
 }
 
 #[test]
+fn signature_failures_are_reported_to_the_editor() {
+    let mut text = LspText {
+        signature_request: Some(7),
+        ..LspText::default()
+    };
+    assert_eq!(text.fail(7), Some(TextFailure::Silent));
+    assert_eq!(text.take_signature_failed(), Some(7));
+    assert_eq!(text.take_signature_failed(), None);
+}
+
+#[test]
 fn automatic_completion_failures_are_silent() {
     let mut text = LspText {
         completion_request: Some(4),
