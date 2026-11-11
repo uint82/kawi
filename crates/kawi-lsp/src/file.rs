@@ -99,6 +99,7 @@ pub(crate) struct LanguageOverride {
     block_comment: Option<Value>,
     auto_pairs: Option<Value>,
     match_pairs: Option<Value>,
+    auto_close_before: Option<Value>,
     color_preview: Option<bool>,
     enabled: Option<bool>,
 }
@@ -177,6 +178,9 @@ impl LanguageOverride {
         }
         if let Some(value) = self.match_pairs {
             editing::apply_match_pairs(&mut language, value, &mut warnings);
+        }
+        if let Some(value) = self.auto_close_before {
+            editing::apply_auto_close_before(&mut language, value, &mut warnings);
         }
         if let Some(color_preview) = self.color_preview {
             language.color_preview = color_preview;

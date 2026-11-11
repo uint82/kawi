@@ -16,6 +16,7 @@ pub(super) fn editing() -> LanguageEditing {
             Pair::new('"', '"'),
         ],
         match_pairs: Vec::new(),
+        ..LanguageEditing::default()
     }
 }
 

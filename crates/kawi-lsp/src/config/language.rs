@@ -47,6 +47,7 @@ pub struct LanguageConfig {
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
     pub match_pairs: Option<Vec<PairConfig>>,
+    pub auto_close_before: Option<String>,
     pub color_preview: bool,
     pub enabled: bool,
 }
@@ -72,6 +73,7 @@ impl LanguageConfig {
             block_comment: None,
             auto_pairs: None,
             match_pairs: None,
+            auto_close_before: None,
             color_preview: false,
             enabled: true,
         }
@@ -104,6 +106,11 @@ impl LanguageConfig {
                 .map(|(open, close)| PairConfig::new(open, close))
                 .collect(),
         );
+        self
+    }
+
+    pub fn with_auto_close_before(mut self, chars: impl Into<String>) -> Self {
+        self.auto_close_before = Some(chars.into());
         self
     }
 

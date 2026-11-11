@@ -39,11 +39,14 @@ pub struct CommentTokens {
     pub block: Option<BlockComment>,
 }
 
+pub const DEFAULT_AUTO_CLOSE_BEFORE: &str = ";:.,=";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguageEditing {
     pub comments: CommentTokens,
     pub pairs: Vec<Pair>,
     pub match_pairs: Vec<Pair>,
+    pub auto_close_before: String,
 }
 
 impl Default for LanguageEditing {
@@ -52,6 +55,7 @@ impl Default for LanguageEditing {
             comments: CommentTokens::default(),
             pairs: default_pairs(),
             match_pairs: default_match_pairs(),
+            auto_close_before: DEFAULT_AUTO_CLOSE_BEFORE.to_string(),
         }
     }
 }

@@ -341,6 +341,7 @@ mod tests {
             comments: tokens,
             pairs: Vec::new(),
             match_pairs: Vec::new(),
+            ..LanguageEditing::default()
         });
         editor
     }

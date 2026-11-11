@@ -392,6 +392,7 @@ fn built_in_languages_define_editing_tokens() {
         .as_ref()
         .is_some_and(|pairs| pairs.contains(&crate::PairConfig::new('(', ')'))));
     assert!(rust.match_pairs.is_none());
+    assert!(rust.auto_close_before.is_none());
     let markdown = languages.language("markdown").expect("markdown");
     assert_eq!(
         markdown
@@ -468,16 +469,58 @@ fn invalid_match_pairs_warn_and_are_ignored() {
 }
 
 #[test]
+fn user_languages_override_auto_close_before() {
+    let path = temp_file(
+        "auto_close_before",
+        "[[language]]\nname = \"rust\"\nauto_close_before = \";,?\"\n",
+    );
+    let languages = Languages::load(&path);
+    let rust = languages.language("rust").expect("rust");
+    assert_eq!(rust.auto_close_before.as_deref(), Some(";,?"));
+    assert!(languages.warnings().is_empty());
+}
+
+#[test]
+fn empty_auto_close_before_is_valid() {
+    let path = temp_file(
+        "auto_close_before_empty",
+        "[[language]]\nname = \"rust\"\nauto_close_before = \"\"\n",
+    );
+    let languages = Languages::load(&path);
+    let rust = languages.language("rust").expect("rust");
+    assert_eq!(rust.auto_close_before.as_deref(), Some(""));
+    assert!(languages.warnings().is_empty());
+}
+
+#[test]
+fn invalid_auto_close_before_warns_and_is_ignored() {
+    for (name, value) in [("number", "4"), ("control", "\",\\n\"")] {
+        let path = temp_file(
+            name,
+            &format!("[[language]]\nname = \"rust\"\nauto_close_before = {value}\n"),
+        );
+        let languages = Languages::load(&path);
+        let rust = languages.language("rust").expect("rust");
+        assert!(rust.auto_close_before.is_none());
+        assert_eq!(languages.warnings().len(), 1);
+        assert!(languages.warnings()[0]
+            .message()
+            .contains("auto_close_before must be a string without control characters"));
+    }
+}
+
+#[test]
 fn empty_editing_configuration_disables_defaults() {
     let path = temp_file(
         "editing_empty",
-        "[[language]]\nname = \"rust\"\nline_comment = \"\"\nblock_comment = []\nauto_pairs = []\n",
+        "[[language]]\nname = \"rust\"\nline_comment = \"\"\nblock_comment = []\nauto_pairs = []\nauto_close_before = \"\"\n",
     );
     let languages = Languages::load(&path);
     let rust = languages.language("rust").expect("rust");
     assert_eq!(rust.line_comment, None);
     assert_eq!(rust.block_comment, None);
     assert_eq!(rust.auto_pairs, Some(Vec::new()));
+    assert_eq!(rust.auto_close_before.as_deref(), Some(""));
 }
 
 #[test]

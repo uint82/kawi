@@ -89,6 +89,7 @@ mod tests {
             },
             pairs: default_pairs(),
             match_pairs: default_match_pairs(),
+            ..LanguageEditing::default()
         }
     }
 
