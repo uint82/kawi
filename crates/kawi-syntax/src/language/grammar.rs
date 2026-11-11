@@ -44,10 +44,12 @@ pub(super) fn bundled_highlights(language: LanguageId) -> String {
 fn base_highlights(language: LanguageId) -> String {
     let javascript = tree_sitter_javascript::HIGHLIGHT_QUERY;
     let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
-    let typescript = tree_sitter_typescript::HIGHLIGHTS_QUERY;
     match language {
-        LanguageId::TypeScript => format!("{javascript}\n{typescript}"),
-        LanguageId::Tsx => format!("{javascript}\n{jsx}\n{typescript}"),
+        LanguageId::TypeScript | LanguageId::Tsx => format!(
+            "{}\n{}",
+            include_str!("../../queries/ecmascript.scm"),
+            include_str!("../../queries/ecmascript-tokens.scm")
+        ),
         LanguageId::JavaScript => javascript.to_string(),
         LanguageId::Jsx => format!("{javascript}\n{jsx}"),
         LanguageId::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.to_string(),
@@ -85,8 +87,8 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Python => include_str!("../../queries/python.scm").to_string(),
         LanguageId::JavaScript => format!("{script}\n{javascript}"),
         LanguageId::Jsx => format!("{script}\n{javascript}\n{jsx}"),
-        LanguageId::TypeScript => format!("{script}\n{typescript}"),
-        LanguageId::Tsx => format!("{script}\n{typescript}\n{jsx}"),
+        LanguageId::TypeScript => typescript.to_string(),
+        LanguageId::Tsx => format!("{typescript}\n{jsx}"),
         LanguageId::Bash => include_str!("../../queries/bash.scm").to_string(),
         LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
         LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
