@@ -112,7 +112,7 @@ fn main() -> Result<()> {
                             "triggerCharacters": ["."],
                             "resolveProvider": true
                         },
-                        "signatureHelpProvider": {"triggerCharacters": ["(", ","]},
+                        "signatureHelpProvider": {"triggerCharacters": ["(", ","], "retriggerCharacters": [","]},
                         "codeActionProvider": {"codeActionKinds": ["quickfix"]},
                         "documentFormattingProvider": true,
                         "documentRangeFormattingProvider": true
@@ -869,7 +869,14 @@ fn handle_signature_help(
     let position = &params["position"];
     let line = position["line"].as_i64().unwrap_or(0);
     let character = position["character"].as_i64().unwrap_or(0);
-    send_log(writer, &format!("signature:{line}:{character}"))?;
+    let context = &params["context"];
+    let kind = context["triggerKind"].as_i64().unwrap_or(0);
+    let retrigger = context["isRetrigger"].as_bool().unwrap_or(false);
+    let active = !context["activeSignatureHelp"].is_null();
+    send_log(
+        writer,
+        &format!("signature:{line}:{character}:{kind}:{retrigger}:{active}"),
+    )?;
     send(
         writer,
         Message::response(

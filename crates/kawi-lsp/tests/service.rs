@@ -1,7 +1,7 @@
 use kawi_lsp::{
     CompletionTrigger, CursorPosition, DiagnosticMode, DiagnosticOrigin, DiagnosticSeverity,
     FileOperationKind, FormattingSettings, Languages, LspEvent, LspService, ProgressEvent,
-    ServerState, SymbolKind, WorkspaceDiagnosticState,
+    ServerState, SignatureTrigger, SymbolKind, WorkspaceDiagnosticState,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -857,9 +857,9 @@ fn returns_signature_help() {
     let request = service.signature_help(
         &file,
         CursorPosition { line: 0, column: 5 },
-        CompletionTrigger::character("("),
+        SignatureTrigger::character("("),
     );
-    wait_for_log(&service, "signature:0:5");
+    wait_for_log(&service, "signature:0:5:2:false:false");
     let event = wait_for(&service, |event| {
         matches!(
             event,
@@ -878,6 +878,19 @@ fn returns_signature_help() {
         .documentation
         .as_ref()
         .is_some_and(|documentation| documentation.markdown));
+    let request = service.signature_help(
+        &file,
+        CursorPosition { line: 0, column: 5 },
+        SignatureTrigger::content_change(&event),
+    );
+    wait_for_log(&service, "signature:0:5:3:true:true");
+    let retriggered = wait_for(&service, |event| {
+        matches!(
+            event,
+            LspEvent::SignatureHelp(event) if event.request == request
+        )
+    });
+    assert!(matches!(retriggered, LspEvent::SignatureHelp(_)));
     drop(service);
     fs::remove_dir_all(root).expect("cleanup");
 }
