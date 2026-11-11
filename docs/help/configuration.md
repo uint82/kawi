@@ -59,6 +59,20 @@ tabstop = 2
 
 `shiftwidth` sets the indentation unit. `expandtab` inserts spaces instead of tabs. `tabstop` sets the display width of a tab.
 
+## Auto-pairs
+
+Kawi closes brackets and quotes while you type in insert mode. Brackets pair at the end of the buffer, before whitespace, before a closing bracket, and before `;:.,=` by default. Quotes stay conservative: they do not pair after a word or inside a comment or string.
+
+Override the punctuation for a language in `languages.toml`:
+
+```toml
+[[language]]
+name = "rust"
+auto_close_before = ";,?"
+```
+
+Set `auto_close_before = ""` to restrict brackets to whitespace and closing brackets.
+
 ## Color previews
 
 Kawi renders inline swatches for CSS colors in CSS, SCSS, Less, HTML, Vue, Svelte, and Astro files. The color literal keeps its text and uses the detected color as its background. The foreground switches between black and white using APCA perceptual contrast.

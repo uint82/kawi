@@ -642,7 +642,11 @@ impl LspUi {
             comments,
             pairs,
             match_pairs,
-            auto_close_before: DEFAULT_AUTO_CLOSE_BEFORE.to_string(),
+            auto_close_before: language
+                .auto_close_before
+                .as_deref()
+                .unwrap_or(DEFAULT_AUTO_CLOSE_BEFORE)
+                .to_string(),
         }
     }
 

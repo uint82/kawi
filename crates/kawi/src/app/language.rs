@@ -77,7 +77,7 @@ mod tests {
         load_languages(
             &mut app,
             &dir,
-            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = []\nauto_pairs = [[\"<\", \">\"]]\nmatch_pairs = [[\"(\", \")\"], [\"<\", \">\"]]\n",
+            "[[language]]\nname = \"rust\"\nline_comment = \"#\"\nblock_comment = []\nauto_pairs = [[\"<\", \">\"]]\nmatch_pairs = [[\"(\", \")\"], [\"<\", \">\"]]\nauto_close_before = \"?,\"\n",
         );
         app.sync_language_editing();
         let editing = app.editor.language_editing();
@@ -91,6 +91,21 @@ mod tests {
                 kawi_editor::Pair::new('<', '>'),
             ]
         );
+        assert_eq!(editing.auto_close_before, "?,");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn language_editing_can_disable_auto_close_punctuation() {
+        let dir = temp_dir("editing_auto_close_empty");
+        let mut app = app("main.rs");
+        load_languages(
+            &mut app,
+            &dir,
+            "[[language]]\nname = \"rust\"\nauto_close_before = \"\"\n",
+        );
+        let editing = app.editor.language_editing();
+        assert_eq!(editing.auto_close_before, "");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -111,6 +126,10 @@ mod tests {
                 kawi_editor::Pair::new('[', ']'),
                 kawi_editor::Pair::new('{', '}'),
             ]
+        );
+        assert_eq!(
+            editing.auto_close_before,
+            kawi_editor::DEFAULT_AUTO_CLOSE_BEFORE
         );
         let _ = fs::remove_dir_all(dir);
     }
