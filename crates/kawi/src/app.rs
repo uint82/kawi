@@ -196,6 +196,8 @@ pub struct App {
     diagnostic_options: diagnostic_ui::DiagnosticOptions,
     color_preview: bool,
     signature: Option<signature::SignatureSession>,
+    signature_auto: signature::SignatureAuto,
+    signature_open: char,
     hover: Option<hover::HoverSession>,
     diagnostic_popup: Option<diagnostic_popup::DiagnosticPopup>,
     help: Option<help::HelpSession>,
@@ -327,6 +329,8 @@ impl App {
             diagnostic_options: diagnostic_ui::DiagnosticOptions::default(),
             color_preview: true,
             signature: None,
+            signature_auto: signature::SignatureAuto::new(),
+            signature_open: signature::DEFAULT_OPEN,
             hover: None,
             diagnostic_popup: None,
             help: None,
@@ -594,6 +598,7 @@ impl App {
             redraw |= self.poll_symbol_events();
             redraw |= self.symbols_tick();
             redraw |= self.completion_tick();
+            redraw |= self.signature_tick();
             redraw |= self.poll_file_watch();
             self.sync_watched_files();
             redraw |= self.poll_directory_watch();
@@ -642,6 +647,7 @@ impl App {
                 ),
             );
             let timeout = shortest_timeout(timeout, self.completion_wait_timeout());
+            let timeout = shortest_timeout(timeout, self.signature_wait_timeout());
             let timeout = shortest_timeout(timeout, self.symbols_wait_timeout());
             let timeout = shortest_timeout(timeout, self.lsp.color_wait_timeout());
             let timeout = shortest_timeout(timeout, self.picker_preview_wait_timeout());
@@ -891,10 +897,22 @@ impl App {
         if let Some(request) = self.lsp.take_completion_resolve_failed() {
             self.handle_completion_resolve_failed(request);
         }
+        if self
+            .signature
+            .as_ref()
+            .is_some_and(|session| session.buffer() != self.editor.buffer_number())
+        {
+            self.hide_signature();
+        }
+        if self.lsp.take_signature_failed().is_some() {
+            self.hide_signature();
+        }
         if let Some(event) = self.lsp.take_signature() {
             self.signature = Some(signature::SignatureSession::new(
                 event,
                 self.editor.language_id(),
+                self.signature_open,
+                self.editor.buffer_number(),
             ));
         }
         if let Some(event) = self.lsp.take_code_actions() {
@@ -913,6 +931,7 @@ impl App {
             Event::Paste(text) => self.handle_paste(text),
             Event::FocusLost => {
                 self.autosave_focus_lost();
+                self.hide_signature();
                 Ok(false)
             }
             Event::FocusGained => {
@@ -965,6 +984,7 @@ impl App {
             || self.completion.is_some()
             || self.snippet_choices.is_some()
             || self.code_actions.is_some()
+            || self.signature.is_some()
             || self.conflict.is_some()
         {
             self.dismiss_lsp_menu();
@@ -1310,9 +1330,12 @@ impl App {
         }
         let revision = self.editor.buffer_revision();
         let result = self.process_key(key);
-        if result.is_ok() && self.editor.buffer_revision() != revision {
-            self.lsp.sync_editor(&self.editor);
-            self.after_buffer_key(key);
+        if result.is_ok() {
+            if self.editor.buffer_revision() != revision {
+                self.lsp.sync_editor(&self.editor);
+                self.after_buffer_key(key);
+            }
+            self.after_signature_key(key);
         }
         self.close_completion_on_mode_change();
         result
@@ -1839,9 +1862,7 @@ impl App {
         }
         self.hover = None;
         self.diagnostic_popup = None;
-        if self.signature.take().is_some() {
-            self.lsp.cancel_signature();
-        }
+        self.hide_signature();
     }
 
     fn refresh_picker(&mut self) -> bool {

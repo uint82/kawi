@@ -28,6 +28,7 @@ impl App {
 
     fn start_completion(&mut self, trigger: Trigger, report_errors: bool) {
         self.completion_auto.cancel();
+        self.hide_signature();
         let Some(path) = editor_path(&self.editor) else {
             if report_errors {
                 self.show_message("E32: No file name".to_string());
@@ -197,7 +198,6 @@ impl App {
         let prefix = completion_prefix(&self.editor);
         let trigger = trigger_for_key(&self.lsp, key, &prefix.text);
         let needs_incomplete = self.update_open_completion(key, &prefix, trigger.as_ref());
-        self.after_signature_key(key);
         if needs_incomplete && self.completion_request_allowed() {
             self.start_completion(Trigger::incomplete(), false);
             return;
@@ -245,8 +245,7 @@ impl App {
         }
         self.end_snippet();
         self.close_completion();
-        self.signature = None;
-        self.lsp.cancel_signature();
+        self.hide_signature();
     }
 
     fn completion_request_allowed(&self) -> bool {
