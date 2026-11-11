@@ -20,6 +20,7 @@ mod completion;
 mod config;
 mod conflict;
 mod debug;
+mod delayed;
 mod diagnostic_deferral;
 mod diagnostic_index;
 mod diagnostic_popup;
