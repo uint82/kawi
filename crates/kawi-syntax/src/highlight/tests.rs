@@ -11,6 +11,7 @@ mod languages;
 mod queries;
 mod stability;
 mod support;
+mod typescript;
 
 #[test]
 fn multiline_comments_reach_the_visible_window() {
