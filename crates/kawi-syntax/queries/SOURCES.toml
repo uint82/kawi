@@ -104,6 +104,11 @@ source = "nvim-treesitter 4916d659 queries/css/highlights.scm"
 license = "MIT"
 
 [[adaptation]]
+file = "html.scm"
+source = "nvim-treesitter 4916d659 queries/html/highlights.scm and html_tags/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
 file = "ecmascript.scm"
 source = "nvim-treesitter 4916d659 queries/ecma/highlights.scm"
 license = "Apache-2.0"

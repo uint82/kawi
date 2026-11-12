@@ -177,7 +177,7 @@ fn highlights_markdown_and_html_blocks() {
 
     let html = "<div class=\"box\">&amp;</div>\n";
     let spans = highlight(LanguageId::Html, html, 0, 1);
-    assert_eq!(name_of(&spans, html, 0, "&amp;"), Some("string.escape"));
+    assert_eq!(name_of(&spans, html, 0, "&amp;"), Some("character.special"));
 }
 
 #[test]
