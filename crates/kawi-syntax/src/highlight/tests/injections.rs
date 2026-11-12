@@ -14,7 +14,7 @@ fn highlights_html_script_blocks() {
 fn highlights_html_style_blocks() {
     let text = "<style>.box { color: red; }</style>\n";
     let spans = highlight(LanguageId::Html, text, 0, 1);
-    assert_eq!(name_of(&spans, text, 0, "box"), Some("property"));
+    assert_eq!(name_of(&spans, text, 0, "box"), Some("type"));
     assert_eq!(name_of(&spans, text, 0, "color"), Some("property"));
 }
 
