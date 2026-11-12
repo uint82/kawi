@@ -10,6 +10,7 @@ mod captures;
 mod cpp;
 mod css;
 mod go;
+mod html;
 mod injections;
 mod languages;
 mod python;
