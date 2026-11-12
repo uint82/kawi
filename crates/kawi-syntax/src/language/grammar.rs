@@ -52,7 +52,12 @@ fn base_highlights(language: LanguageId) -> String {
         ),
         LanguageId::JavaScript => javascript.to_string(),
         LanguageId::Jsx => format!("{javascript}\n{jsx}"),
-        LanguageId::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Rust => format!(
+            "{}\n{}\n{}",
+            include_str!("../../queries/rust.scm"),
+            include_str!("../../queries/rust-tokens.scm"),
+            include_str!("../../queries/rust-regex.scm")
+        ),
         LanguageId::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
@@ -83,7 +88,7 @@ fn query_additions(language: LanguageId) -> String {
     let jsx = include_str!("../../queries/jsx.scm");
     let c = include_str!("../../queries/c.scm");
     match language {
-        LanguageId::Rust => include_str!("../../queries/rust.scm").to_string(),
+        LanguageId::Rust => String::new(),
         LanguageId::Python => include_str!("../../queries/python.scm").to_string(),
         LanguageId::JavaScript => format!("{script}\n{javascript}"),
         LanguageId::Jsx => format!("{script}\n{javascript}\n{jsx}"),

@@ -71,7 +71,7 @@ fn highlights_builtin_and_macro_captures() {
     let rust = "fn show(ok: bool) { println!(\"hi\"); let value = true; }\n";
     let spans = highlight(LanguageId::Rust, rust, 0, 1);
     assert_eq!(name_of(&spans, rust, 0, "println"), Some("function.macro"));
-    assert_eq!(name_of(&spans, rust, 0, "true"), Some("constant.builtin"));
+    assert_eq!(name_of(&spans, rust, 0, "true"), Some("boolean"));
 
     let python = "class Item:\n    def show(self, name):\n        print(name)\n";
     let spans = highlight(LanguageId::Python, python, 0, 3);

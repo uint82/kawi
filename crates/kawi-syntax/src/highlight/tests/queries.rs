@@ -122,7 +122,7 @@ fn highlights_rust_uppercase_constants() {
     let spans = highlight(LanguageId::Rust, text, 0, 2);
     assert_eq!(name_of(&spans, text, 0, "LIMIT"), Some("constant"));
     assert_eq!(name_of(&spans, text, 1, "State"), Some("type"));
-    assert_eq!(name_of(&spans, text, 1, "Ready"), Some("constructor"));
+    assert_eq!(name_of(&spans, text, 1, "Ready"), Some("constant"));
 }
 
 #[test]

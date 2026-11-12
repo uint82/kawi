@@ -55,11 +55,15 @@ fn default_theme_snapshot_for_rust() {
             (":", "#8c9e9b"),
             ("u64", "#f2c27b"),
             (")", "#8c9e9b"),
+            ("->", "#8c9e9b"),
             ("u64", "#f2c27b"),
             ("{", "#8c9e9b"),
             ("let", "#ff7e87"),
+            ("text", "#e7e2d6"),
+            ("=", "#8c9e9b"),
             ("\"ok\"", "#a8d98a+italic"),
             (";", "#8c9e9b"),
+            ("value", "#e7e2d6"),
             ("}", "#8c9e9b"),
         ])
     );
