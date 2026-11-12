@@ -235,10 +235,7 @@ impl Editor {
             return true;
         }
         let smartcase = self.smartcase && !self.search_no_smartcase;
-        if smartcase && pattern.chars().any(char::is_uppercase) {
-            return true;
-        }
-        false
+        smartcase && pattern.chars().any(char::is_uppercase)
     }
 
     fn search_query(&self) -> Query {
