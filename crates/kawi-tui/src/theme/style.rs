@@ -33,6 +33,13 @@ const ALIASES: &[(&str, &str)] = &[
     ("module", "type"),
     ("namespace", "type"),
     ("special", "constant"),
+    ("markup.heading", "type"),
+    ("markup.link", "string.special"),
+    ("markup.link.label", "label"),
+    ("markup.link.url", "string.special"),
+    ("markup.list", "punctuation.special"),
+    ("markup.quote", "comment"),
+    ("markup.raw", "string"),
 ];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
