@@ -1,54 +1,280 @@
-(parameters (identifier) @variable.parameter)
-(default_parameter name: (identifier) @variable.parameter)
-(typed_default_parameter name: (identifier) @variable.parameter)
-(typed_parameter (identifier) @variable.parameter)
-(lambda_parameters (identifier) @variable.parameter)
-(list_splat_pattern (identifier) @variable.parameter)
-(dictionary_splat_pattern (identifier) @variable.parameter)
-(class_definition name: (identifier) @type)
-(class_definition superclasses: (argument_list (identifier) @type))
-(class_definition superclasses: (argument_list (keyword_argument value: (identifier) @type)))
-(type (identifier) @type)
-(type (attribute (identifier) @type))
-(generic_type (identifier) @type)
-(type (subscript value: [
-  (identifier) @type
-  (attribute (identifier) @type)
-]))
-(type (subscript subscript: [
-  (identifier) @type
-  (attribute (identifier) @type)
-]))
-(type (subscript subscript: (list [
-  (identifier) @type
-  (attribute (identifier) @type)
-])))
-(type (subscript subscript: (subscript value: [
-  (identifier) @type
-  (attribute (identifier) @type)
-])))
-(type (subscript subscript: (subscript subscript: [
-  (identifier) @type
-  (attribute (identifier) @type)
-])))
-(type (binary_operator
-  left: [
-    (identifier) @type
-    (attribute (identifier) @type)
-  ]))
-(type (binary_operator
-  right: [
-    (identifier) @type
-    (attribute (identifier) @type)
-  ]))
+; From tree-sitter-python licensed under MIT License
+; Copyright (c) 2016 Max Brunsfeld
+; Variables
+(identifier) @variable
+
+; Identifier naming conventions
+((identifier) @type
+  (#match? @type "^[A-Z].*[a-z]"))
+
+((identifier) @constant
+  (#match? @constant "^[A-Z][A-Z_0-9]*$"))
+
+((identifier) @constant.builtin
+  (#match? @constant.builtin "^__[a-zA-Z0-9_]*__$"))
+
+((identifier) @constant.builtin
+  (#any-of? @constant.builtin
+    ; https://docs.python.org/3/library/constants.html
+    "NotImplemented" "Ellipsis" "quit" "exit" "copyright" "credits" "license"))
+
+"_" @character.special ; match wildcard
+
+((assignment
+  left: (identifier) @type.definition
+  (type
+    (identifier) @_annotation))
+  (#eq? @_annotation "TypeAlias"))
+
+((assignment
+  left: (identifier) @type.definition
+  right: (call
+    function: (identifier) @_func))
+  (#any-of? @_func "TypeVar" "NewType"))
+
+; Function definitions
+(function_definition
+  name: (identifier) @function)
+
+(type
+  (identifier) @type)
+
+(type
+  (subscript
+    (identifier) @type)) ; type subscript: Tuple[int]
+
+((call
+  function: (identifier) @_isinstance
+  arguments: (argument_list
+    (_)
+    (identifier) @type))
+  (#eq? @_isinstance "isinstance"))
+
+; Literals
+(none) @constant.builtin
+
+[
+  (true)
+  (false)
+] @boolean
+
+(integer) @number
+
+(float) @number.float
+
+(comment) @comment
+
+((module
+  .
+  (comment) @keyword.directive)
+  (#match? @keyword.directive "^#!/"))
+
+(string) @string
+
+[
+  (escape_sequence)
+  (escape_interpolation)
+] @string.escape
+
+; doc-strings
+(expression_statement
+  (string) @string.documentation)
+
+; Tokens
+[
+  "-"
+  "-="
+  ":="
+  "!="
+  "*"
+  "**"
+  "**="
+  "*="
+  "/"
+  "//"
+  "//="
+  "/="
+  "&"
+  "&="
+  "%"
+  "%="
+  "^"
+  "^="
+  "+"
+  "+="
+  "<"
+  "<<"
+  "<<="
+  "<="
+  "<>"
+  "="
+  "=="
+  ">"
+  ">="
+  ">>"
+  ">>="
+  "@"
+  "@="
+  "|"
+  "|="
+  "~"
+  "->"
+] @operator
+
+; Keywords
+[
+  "and"
+  "in"
+  "is"
+  "not"
+  "or"
+  "is not"
+  "not in"
+  "del"
+] @keyword.operator
+
+[
+  "def"
+  "lambda"
+] @keyword.function
+
+[
+  "assert"
+  "exec"
+  "global"
+  "nonlocal"
+  "pass"
+  "print"
+  "with"
+  "as"
+] @keyword
+
+[
+  "type"
+  "class"
+] @keyword.type
+
+[
+  "async"
+  "await"
+] @keyword.coroutine
+
+[
+  "return"
+  "yield"
+] @keyword.return
+
+(yield
+  "from" @keyword.return)
+
+(future_import_statement
+  "from" @keyword.import
+  "__future__" @module.builtin)
+
+(import_from_statement
+  "from" @keyword.import)
+
+"import" @keyword.import
+
+(aliased_import
+  "as" @keyword.import)
+
+(wildcard_import
+  "*" @character.special)
+
+(import_statement
+  name: (dotted_name
+    (identifier) @module))
+
+(import_statement
+  name: (aliased_import
+    name: (dotted_name
+      (identifier) @module)
+    alias: (identifier) @module))
+
+(import_from_statement
+  module_name: (dotted_name
+    (identifier) @module))
+
+(import_from_statement
+  module_name: (relative_import
+    (dotted_name
+      (identifier) @module)))
+
+[
+  "if"
+  "elif"
+  "else"
+  "match"
+  "case"
+] @keyword.conditional
+
+[
+  "for"
+  "while"
+  "break"
+  "continue"
+] @keyword.repeat
+
+[
+  "try"
+  "except"
+  "raise"
+  "finally"
+] @keyword.exception
+
+(raise_statement
+  "from" @keyword.exception)
+
+(try_statement
+  (else_clause
+    "else" @keyword.exception))
+
+[
+  "("
+  ")"
+  "["
+  "]"
+  "{"
+  "}"
+] @punctuation.bracket
+
+(interpolation
+  "{" @punctuation.special
+  "}" @punctuation.special)
+
+(format_expression
+  "{" @punctuation.special
+  "}" @punctuation.special)
+
+(line_continuation) @punctuation.special
+
+(type_conversion) @function.macro
+
+[
+  ","
+  "."
+  ":"
+  ";"
+  (ellipsis)
+] @punctuation.delimiter
+
 ((identifier) @type.builtin
- (#any-of? @type.builtin
-  "bool" "bytearray" "bytes" "complex" "dict" "float" "frozenset" "int" "list"
-  "memoryview" "object" "range" "set" "str" "tuple" "type"))
-(escape_sequence) @string.escape
-(import_statement "import" @keyword.import)
-(import_from_statement "from" @keyword.import "import" @keyword.import)
-(return_statement "return" @keyword.return)
-(function_definition "def" @keyword.function)
-((identifier) @variable.builtin
- (#any-of? @variable.builtin "self" "cls"))
+  (#any-of? @type.builtin
+    ; https://docs.python.org/3/library/exceptions.html
+    "BaseException" "Exception" "ArithmeticError" "BufferError" "LookupError" "AssertionError"
+    "AttributeError" "EOFError" "FloatingPointError" "GeneratorExit" "ImportError"
+    "ModuleNotFoundError" "IndexError" "KeyError" "KeyboardInterrupt" "MemoryError" "NameError"
+    "NotImplementedError" "OSError" "OverflowError" "RecursionError" "ReferenceError" "RuntimeError"
+    "StopIteration" "StopAsyncIteration" "SyntaxError" "IndentationError" "TabError" "SystemError"
+    "SystemExit" "TypeError" "UnboundLocalError" "UnicodeError" "UnicodeEncodeError"
+    "UnicodeDecodeError" "UnicodeTranslateError" "ValueError" "ZeroDivisionError" "EnvironmentError"
+    "IOError" "WindowsError" "BlockingIOError" "ChildProcessError" "ConnectionError"
+    "BrokenPipeError" "ConnectionAbortedError" "ConnectionRefusedError" "ConnectionResetError"
+    "FileExistsError" "FileNotFoundError" "InterruptedError" "IsADirectoryError"
+    "NotADirectoryError" "PermissionError" "ProcessLookupError" "TimeoutError" "Warning"
+    "UserWarning" "DeprecationWarning" "PendingDeprecationWarning" "SyntaxWarning" "RuntimeWarning"
+    "FutureWarning" "ImportWarning" "UnicodeWarning" "BytesWarning" "ResourceWarning"
+    ; https://docs.python.org/3/library/stdtypes.html
+    "bool" "int" "float" "complex" "list" "tuple" "range" "str" "bytes" "bytearray" "memoryview"
+    "set" "frozenset" "dict" "type" "object"))

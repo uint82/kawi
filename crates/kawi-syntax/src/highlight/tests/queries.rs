@@ -182,8 +182,11 @@ fn highlights_python_callable_types() {
     assert_eq!(name_of(&spans, text, 0, "int"), Some("type.builtin"));
     assert_eq!(name_of(&spans, text, 0, "str"), Some("type.builtin"));
     let brackets = text.find("[[").expect("callable brackets");
-    assert_eq!(name_at(&spans, 0, brackets), None);
-    assert_eq!(name_at(&spans, 0, brackets + 1), None);
+    assert_eq!(name_at(&spans, 0, brackets), Some("punctuation.bracket"));
+    assert_eq!(
+        name_at(&spans, 0, brackets + 1),
+        Some("punctuation.bracket")
+    );
 }
 
 #[test]
