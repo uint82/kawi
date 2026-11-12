@@ -97,7 +97,7 @@ fn highlights_go_calls_and_constants() {
     let text =
         "package main\nconst Limit = 10\nfunc Show(value map[string]int) { fmt.Println(value) }\n";
     let spans = highlight(LanguageId::Go, text, 0, 3);
-    assert_eq!(name_of(&spans, text, 0, "main"), Some("namespace"));
+    assert_eq!(name_of(&spans, text, 0, "main"), Some("module"));
     assert_eq!(name_of(&spans, text, 1, "Limit"), Some("constant"));
     assert_eq!(
         name_of(&spans, text, 2, "value"),
@@ -105,7 +105,10 @@ fn highlights_go_calls_and_constants() {
     );
     assert_eq!(name_of(&spans, text, 2, "string"), Some("type.builtin"));
     assert_eq!(name_of(&spans, text, 2, "int"), Some("type.builtin"));
-    assert_eq!(name_of(&spans, text, 2, "Println"), Some("function.method"));
+    assert_eq!(
+        name_of(&spans, text, 2, "Println"),
+        Some("function.method.call")
+    );
 }
 
 #[test]

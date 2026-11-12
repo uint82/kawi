@@ -79,7 +79,7 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/c-symbols.scm"),
             tree_sitter_cpp::HIGHLIGHT_QUERY
         ),
-        LanguageId::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
         LanguageId::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
@@ -113,7 +113,7 @@ fn query_additions(language: LanguageId) -> String {
             include_str!("../../queries/cpp.scm"),
             include_str!("../../queries/cpp-symbols.scm")
         ),
-        LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
+        LanguageId::Go => include_str!("../../queries/go-regex.scm").to_string(),
         LanguageId::Java => include_str!("../../queries/java.scm").to_string(),
         LanguageId::CSharp => include_str!("../../queries/csharp.scm").to_string(),
         LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
