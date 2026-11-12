@@ -36,3 +36,8 @@
         (object_assignment_pattern left: (shorthand_property_identifier_pattern) @variable.parameter)
         (rest_pattern (identifier) @variable.parameter)
       ])))
+
+(arrow_function
+  parameter: (identifier) @variable.parameter)
+
+(optional_chain) @punctuation.delimiter
