@@ -5,6 +5,7 @@ use crate::limits::{MAX_LINE_BYTES, WINDOW_PARSE_BYTES};
 use crate::span::SyntaxKey;
 use support::{highlight, name_at, request};
 
+mod c;
 mod captures;
 mod injections;
 mod languages;
