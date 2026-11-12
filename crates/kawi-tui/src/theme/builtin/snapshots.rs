@@ -77,8 +77,12 @@ fn default_theme_snapshot_for_python() {
         expected(&[
             ("def", "#ff7e87"),
             ("greet", "#6ed0f0+bold"),
+            ("(", "#8c9e9b"),
             ("name", "#f0a6b8"),
+            (":", "#8c9e9b"),
             ("str", "#f2c27b"),
+            (")", "#8c9e9b"),
+            (":", "#8c9e9b"),
             ("return", "#ff7e87+bold"),
             ("\"hello\"", "#a8d98a+italic"),
         ])

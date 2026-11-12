@@ -8,6 +8,7 @@ use support::{highlight, name_at, request};
 mod captures;
 mod injections;
 mod languages;
+mod python;
 mod queries;
 mod rust;
 mod stability;

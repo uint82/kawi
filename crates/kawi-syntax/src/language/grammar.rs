@@ -59,7 +59,13 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/rust-regex.scm")
         ),
         LanguageId::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.to_string(),
-        LanguageId::Python => tree_sitter_python::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Python => format!(
+            "{}\n{}\n{}\n{}",
+            include_str!("../../queries/python.scm"),
+            include_str!("../../queries/python-symbols.scm"),
+            include_str!("../../queries/python-types.scm"),
+            include_str!("../../queries/python-regex.scm")
+        ),
         LanguageId::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
         LanguageId::C => tree_sitter_c::HIGHLIGHT_QUERY.to_string(),
@@ -89,7 +95,7 @@ fn query_additions(language: LanguageId) -> String {
     let c = include_str!("../../queries/c.scm");
     match language {
         LanguageId::Rust => String::new(),
-        LanguageId::Python => include_str!("../../queries/python.scm").to_string(),
+        LanguageId::Python => String::new(),
         LanguageId::JavaScript => format!("{script}\n{javascript}"),
         LanguageId::Jsx => format!("{script}\n{javascript}\n{jsx}"),
         LanguageId::TypeScript => typescript.to_string(),
