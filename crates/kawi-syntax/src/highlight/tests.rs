@@ -7,6 +7,7 @@ use support::{highlight, name_at, request};
 
 mod c;
 mod captures;
+mod cpp;
 mod injections;
 mod languages;
 mod python;
