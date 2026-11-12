@@ -69,6 +69,16 @@ source = "nvim-treesitter 4916d659 queries/python/highlights.scm"
 license = "MIT"
 
 [[adaptation]]
+file = "c.scm"
+source = "nvim-treesitter 4916d659 queries/c/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "c-symbols.scm"
+source = "nvim-treesitter 4916d659 queries/c/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
 file = "ecmascript.scm"
 source = "nvim-treesitter 4916d659 queries/ecma/highlights.scm"
 license = "Apache-2.0"
