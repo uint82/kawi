@@ -87,7 +87,7 @@ fn highlights_members_and_parameters() {
 
     let c = "#define LIMIT 10\nstatic int add(int left, int right) { return left + right; }\nenum State { Ready, Done };\n";
     let spans = highlight(LanguageId::C, c, 0, 3);
-    assert_eq!(name_of(&spans, c, 0, "LIMIT"), Some("constant"));
+    assert_eq!(name_of(&spans, c, 0, "LIMIT"), Some("constant.macro"));
     assert_eq!(name_of(&spans, c, 1, "left"), Some("variable.parameter"));
     assert_eq!(name_of(&spans, c, 2, "Ready"), Some("constant"));
 }
