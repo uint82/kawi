@@ -61,7 +61,7 @@ fn markdown_headings_use_standard_captures() {
 
 #[test]
 fn highlights_a_bare_signature() {
-    assert!(names(LanguageId::Rust, "fn push(&mut self, value: T)").contains(&"keyword"));
+    assert!(names(LanguageId::Rust, "fn push(&mut self, value: T)").contains(&"keyword.function"));
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn spans_stay_on_utf8_boundaries() {
 
 #[test]
 fn highlights_fragments_with_syntax_errors() {
-    assert!(names(LanguageId::Rust, "fn main(").contains(&"keyword"));
+    assert!(names(LanguageId::Rust, "fn main(").contains(&"keyword.function"));
 }
 
 #[test]

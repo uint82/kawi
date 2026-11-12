@@ -203,7 +203,7 @@ fn unrelated_rows_use_current_highlights() {
 
     let second = "struct main {}\nfn other(x: Vec<in\n";
     let spans = update(&mut document, &runtime, language, second, 2);
-    assert_eq!(name_of(&spans, second, 0, "struct"), Some("keyword"));
+    assert_eq!(name_of(&spans, second, 0, "struct"), Some("keyword.type"));
 }
 
 #[test]
