@@ -12,6 +12,7 @@ mod css;
 mod go;
 mod html;
 mod injections;
+mod javascript;
 mod json;
 mod languages;
 mod python;
