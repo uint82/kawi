@@ -114,7 +114,7 @@ fn highlights_python_imports_and_builtin_types() {
 fn highlights_json_tokens() {
     let text = "{\"name\": \"kawi\", \"count\": 2}\n";
     let spans = highlight(LanguageId::Json, text, 0, 1);
-    assert_eq!(name_at(&spans, 0, 1), Some("string.special.key"));
+    assert_eq!(name_at(&spans, 0, 1), Some("property"));
     assert_eq!(name_at(&spans, 0, 9), Some("string"));
     assert_eq!(name_at(&spans, 0, 26), Some("number"));
 }
