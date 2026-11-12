@@ -89,6 +89,16 @@ source = "nvim-treesitter 4916d659 queries/cpp/highlights.scm"
 license = "MIT"
 
 [[adaptation]]
+file = "go.scm"
+source = "nvim-treesitter 4916d659 queries/go/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "go-regex.scm"
+source = "nvim-treesitter 4916d659 queries/go/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
 file = "ecmascript.scm"
 source = "nvim-treesitter 4916d659 queries/ecma/highlights.scm"
 license = "Apache-2.0"
