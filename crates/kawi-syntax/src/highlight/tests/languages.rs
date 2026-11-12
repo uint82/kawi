@@ -79,7 +79,7 @@ fn highlights_members_and_parameters() {
     assert_eq!(name_of(&spans, csharp, 0, "System"), Some("module"));
     assert_eq!(name_of(&spans, csharp, 1, "Demo"), Some("module"));
     assert_eq!(name_of(&spans, csharp, 3, "Items"), Some("property"));
-    assert_eq!(name_of(&spans, csharp, 4, "count"), Some("property"));
+    assert_eq!(name_of(&spans, csharp, 4, "count"), Some("variable.member"));
     assert_eq!(
         name_of(&spans, csharp, 5, "item"),
         Some("variable.parameter")
