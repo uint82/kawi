@@ -87,7 +87,7 @@ fn base_highlights(language: LanguageId) -> String {
         LanguageId::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Html => tree_sitter_html::HIGHLIGHTS_QUERY.to_string(),
-        LanguageId::Css => tree_sitter_css::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
         LanguageId::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
     }
 }
@@ -121,7 +121,7 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
         LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
-        LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
+        LanguageId::Css => String::new(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
     }
 }
