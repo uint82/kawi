@@ -56,7 +56,7 @@ fn lua_conditionals_use_standard_captures() {
 
 #[test]
 fn markdown_headings_use_standard_captures() {
-    assert!(names(LanguageId::Markdown, "# Title\n").contains(&"type"));
+    assert!(names(LanguageId::Markdown, "# Title\n").contains(&"markup.heading.1"));
 }
 
 #[test]
