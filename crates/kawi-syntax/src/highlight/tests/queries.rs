@@ -102,9 +102,12 @@ fn highlights_csharp_modules_members_and_enum_members() {
         assert_eq!(name_of(&spans, text, 1, module), Some("module"), "{module}");
     }
     assert_eq!(name_of(&spans, text, 2, "Red"), Some("constant"));
-    assert_eq!(name_of(&spans, text, 4, "value"), Some("property"));
-    assert_eq!(name_of(&spans, text, 5, "label"), Some("property"));
-    assert_eq!(name_of(&spans, text, 5, "WriteLine"), Some("function"));
+    assert_eq!(name_of(&spans, text, 4, "value"), Some("variable.member"));
+    assert_eq!(name_of(&spans, text, 5, "label"), Some("variable.member"));
+    assert_eq!(
+        name_of(&spans, text, 5, "WriteLine"),
+        Some("function.method.call")
+    );
 }
 
 #[test]

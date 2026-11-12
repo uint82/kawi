@@ -9,6 +9,7 @@ mod bash;
 mod c;
 mod captures;
 mod cpp;
+mod csharp;
 mod css;
 mod go;
 mod html;
