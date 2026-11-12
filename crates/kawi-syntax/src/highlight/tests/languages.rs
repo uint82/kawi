@@ -112,11 +112,11 @@ fn highlights_go_calls_and_constants() {
 fn highlights_cpp_namespaces_and_methods() {
     let text = "namespace demo {\nclass Box { int value; int get(int input); };\n}\nint main() { std::vector<int> v; v.push_back(1); return 0; }\n";
     let spans = highlight(LanguageId::Cpp, text, 0, 4);
-    assert_eq!(name_of(&spans, text, 0, "demo"), Some("namespace"));
+    assert_eq!(name_of(&spans, text, 0, "demo"), Some("module"));
     assert_eq!(name_of(&spans, text, 1, "Box"), Some("type.definition"));
     assert_eq!(
         name_of(&spans, text, 3, "push_back"),
-        Some("function.method")
+        Some("function.method.call")
     );
 }
 

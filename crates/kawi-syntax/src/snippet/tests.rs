@@ -46,7 +46,7 @@ fn highlights_every_bundled_language() {
 
 #[test]
 fn cpp_inherits_c_highlights() {
-    assert!(names(LanguageId::Cpp, "int value = 0;").contains(&"type"));
+    assert!(names(LanguageId::Cpp, "int value = 0;").contains(&"type.builtin"));
 }
 
 #[test]

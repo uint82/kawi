@@ -74,8 +74,9 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/c-symbols.scm")
         ),
         LanguageId::Cpp => format!(
-            "{}\n{}",
-            tree_sitter_c::HIGHLIGHT_QUERY,
+            "{}\n{}\n{}",
+            include_str!("../../queries/c.scm"),
+            include_str!("../../queries/c-symbols.scm"),
             tree_sitter_cpp::HIGHLIGHT_QUERY
         ),
         LanguageId::Go => tree_sitter_go::HIGHLIGHTS_QUERY.to_string(),
@@ -96,7 +97,6 @@ fn query_additions(language: LanguageId) -> String {
     let javascript = include_str!("../../queries/javascript.scm");
     let typescript = include_str!("../../queries/typescript.scm");
     let jsx = include_str!("../../queries/jsx.scm");
-    let c_extra = include_str!("../../queries/c-extra.scm");
     match language {
         LanguageId::Rust => String::new(),
         LanguageId::Python => String::new(),
@@ -108,7 +108,11 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
         LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
         LanguageId::C => String::new(),
-        LanguageId::Cpp => format!("{c_extra}\n{}", include_str!("../../queries/cpp.scm")),
+        LanguageId::Cpp => format!(
+            "{}\n{}",
+            include_str!("../../queries/cpp.scm"),
+            include_str!("../../queries/cpp-symbols.scm")
+        ),
         LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
         LanguageId::Java => include_str!("../../queries/java.scm").to_string(),
         LanguageId::CSharp => include_str!("../../queries/csharp.scm").to_string(),
