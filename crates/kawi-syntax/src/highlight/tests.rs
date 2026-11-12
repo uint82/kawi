@@ -9,6 +9,7 @@ mod captures;
 mod injections;
 mod languages;
 mod queries;
+mod rust;
 mod stability;
 mod support;
 mod typescript;
