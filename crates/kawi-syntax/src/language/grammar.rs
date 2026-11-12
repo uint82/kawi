@@ -66,7 +66,7 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/python-types.scm"),
             include_str!("../../queries/python-regex.scm")
         ),
-        LanguageId::Json => tree_sitter_json::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
         LanguageId::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.to_string(),
         LanguageId::C => format!(
             "{}\n{}",
@@ -106,7 +106,7 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Tsx => format!("{typescript}\n{jsx}"),
         LanguageId::Bash => include_str!("../../queries/bash.scm").to_string(),
         LanguageId::Toml => include_str!("../../queries/toml.scm").to_string(),
-        LanguageId::Json => include_str!("../../queries/json.scm").to_string(),
+        LanguageId::Json => String::new(),
         LanguageId::C => String::new(),
         LanguageId::Cpp => format!(
             "{}\n{}",
