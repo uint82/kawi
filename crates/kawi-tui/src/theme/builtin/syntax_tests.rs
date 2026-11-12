@@ -109,6 +109,27 @@ fn every_default_theme_key_is_configured() {
 }
 
 #[test]
+fn markup_scopes_follow_their_text_equivalents() {
+    for name in Theme::names() {
+        let theme = Theme::named(name).expect("builtin theme");
+        for (markup, source) in [
+            ("markup.heading.1", "type"),
+            ("markup.link.label", "label"),
+            ("markup.link.url", "string.special"),
+            ("markup.list.checked", "punctuation.special"),
+            ("markup.quote", "comment"),
+            ("markup.raw.block", "string"),
+        ] {
+            assert_eq!(
+                theme.syntax.named(markup),
+                theme.syntax.named(source),
+                "{name}: {markup}"
+            );
+        }
+    }
+}
+
+#[test]
 fn builtin_floats_use_the_editor_background() {
     for name in Theme::names() {
         let theme = Theme::named(name).expect("builtin theme");

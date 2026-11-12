@@ -44,6 +44,11 @@ source = "nvim-treesitter 4916d659 queries/bash/highlights.scm"
 license = "Apache-2.0"
 
 [[adaptation]]
+file = "markdown.scm"
+source = "nvim-treesitter 4916d659 queries/markdown/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
 file = "rust.scm"
 source = "nvim-treesitter 4916d659 queries/rust/highlights.scm"
 license = "MIT"

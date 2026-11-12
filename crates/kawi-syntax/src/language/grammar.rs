@@ -86,7 +86,7 @@ fn base_highlights(language: LanguageId) -> String {
         LanguageId::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
         LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
-        LanguageId::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.to_string(),
+        LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
     }
 }
 
@@ -119,6 +119,6 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
         LanguageId::Html => String::new(),
         LanguageId::Css => String::new(),
-        LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
+        LanguageId::Markdown => String::new(),
     }
 }

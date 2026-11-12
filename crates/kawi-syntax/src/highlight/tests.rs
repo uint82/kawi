@@ -16,6 +16,7 @@ mod injections;
 mod javascript;
 mod json;
 mod languages;
+mod markdown;
 mod python;
 mod queries;
 mod rust;

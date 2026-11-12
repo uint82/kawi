@@ -165,11 +165,11 @@ fn highlights_bash_builtins_and_keywords() {
 fn highlights_markdown_and_html_blocks() {
     let markdown = "# Title\n\n- item\n\n```rust\nfn main() {}\n```\n";
     let spans = highlight(LanguageId::Markdown, markdown, 0, 7);
-    assert_eq!(name_of(&spans, markdown, 0, "Title"), Some("type"));
     assert_eq!(
-        name_of(&spans, markdown, 2, "-"),
-        Some("punctuation.special")
+        name_of(&spans, markdown, 0, "Title"),
+        Some("markup.heading.1")
     );
+    assert_eq!(name_of(&spans, markdown, 2, "-"), Some("markup.list"));
     assert_eq!(
         name_of(&spans, markdown, 4, "```"),
         Some("punctuation.delimiter")
