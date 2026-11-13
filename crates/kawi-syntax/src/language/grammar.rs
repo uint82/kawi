@@ -97,7 +97,7 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/lua.scm"),
             include_str!("../../queries/lua-tokens.scm")
         ),
-        LanguageId::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
         LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
@@ -130,7 +130,7 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
         LanguageId::Php => include_str!("../../queries/php.scm").to_string(),
         LanguageId::Lua => String::new(),
-        LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
+        LanguageId::Yaml => String::new(),
         LanguageId::Html => String::new(),
         LanguageId::Css => String::new(),
         LanguageId::Markdown => String::new(),
