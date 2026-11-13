@@ -73,6 +73,10 @@ fn normalizes_alias_names() {
         LanguageId::from_alias("markdown"),
         Some(LanguageId::Markdown)
     );
+    assert_eq!(
+        LanguageId::from_alias("markdown_inline"),
+        Some(LanguageId::MarkdownInline)
+    );
     assert_eq!(LanguageId::from_alias("brainfuck"), None);
     assert_eq!(LanguageId::from_alias(&"x".repeat(33)), None);
 }

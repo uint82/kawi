@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -30,17 +31,18 @@ pub enum LanguageId {
     Css,
     Markdown,
     Ada,
+    MarkdownInline,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 22]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 23]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -63,6 +65,7 @@ impl LanguageId {
         Self::Css,
         Self::Markdown,
         Self::Ada,
+        Self::MarkdownInline,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -100,6 +103,7 @@ impl LanguageId {
             "css" => Some(Self::Css),
             "md" | "markdown" => Some(Self::Markdown),
             "ada" | "adb" | "ads" => Some(Self::Ada),
+            "markdown_inline" => Some(Self::MarkdownInline),
             _ => None,
         }
     }
@@ -128,6 +132,7 @@ impl LanguageId {
             Self::Css => "css",
             Self::Markdown => "markdown",
             Self::Ada => "ada",
+            Self::MarkdownInline => "markdown_inline",
         }
     }
 
@@ -139,7 +144,7 @@ impl LanguageId {
         grammar::bundled_highlights(self)
     }
 
-    pub(crate) fn injections(self) -> &'static str {
+    pub(crate) fn injections(self) -> Cow<'static, str> {
         grammar::injections(self)
     }
 
@@ -179,6 +184,7 @@ impl LanguageId {
             Self::Css => 19,
             Self::Markdown => 20,
             Self::Ada => 21,
+            Self::MarkdownInline => 22,
         }
     }
 

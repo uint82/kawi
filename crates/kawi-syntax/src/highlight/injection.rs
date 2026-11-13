@@ -1,20 +1,19 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 use std::sync::Arc;
 
-use ropey::iter::Chunks;
 use ropey::Rope;
-use tree_sitter::{
-    Node, Parser, Query, QueryCursor, QueryMatch, StreamingIterator, TextProvider, Tree,
-};
+use tree_sitter::{Parser, QueryCursor, StreamingIterator, Tree};
 
 use crate::language::LanguageId;
 use crate::limits::MAX_CAPTURES;
-use crate::text;
 
 use super::paint::Capture;
-use super::parse::parse_slice;
 use super::runtime::{Runtime, RuntimeCache};
+
+mod combined;
+mod query;
+mod text;
 
 const MAX_INJECTION_DEPTH: usize = 3;
 
@@ -48,10 +47,13 @@ impl Collector {
             captures: Vec::new(),
             pending: VecDeque::new(),
         };
+        let source = 0..request.text.len_bytes();
         let host = Layer {
+            text: request.text,
+            text_source: source.clone(),
             tree: request.tree,
             runtime: request.runtime,
-            source: 0..request.text.len_bytes(),
+            source,
             blocks: request.blocks,
             layer: 0,
             language: request.language,
@@ -81,6 +83,8 @@ struct Context<'a> {
 }
 
 struct Layer<'a> {
+    text: &'a Rope,
+    text_source: Range<usize>,
     tree: &'a Tree,
     runtime: &'a Runtime,
     source: Range<usize>,
@@ -93,13 +97,10 @@ struct Job {
     tree: Tree,
     runtime: Arc<Runtime>,
     source: Range<usize>,
+    text_source: Range<usize>,
+    text: Option<Rope>,
     layer: usize,
     language: LanguageId,
-}
-
-struct Injection {
-    language: LanguageId,
-    range: Range<usize>,
 }
 
 impl Context<'_> {
@@ -111,8 +112,11 @@ impl Context<'_> {
 
     fn drain(&mut self) -> Option<()> {
         while let Some(job) = self.pending.pop_front() {
+            let text = job.text.clone().unwrap_or_else(|| self.text.clone());
             let block = 0..job.source.len();
             let layer = Layer {
+                text: &text,
+                text_source: job.text_source.clone(),
                 tree: &job.tree,
                 runtime: &job.runtime,
                 source: job.source.clone(),
@@ -132,9 +136,9 @@ impl Context<'_> {
             let mut matches = cursor.captures(
                 &layer.runtime.config.query,
                 layer.tree.root_node(),
-                NodeText {
-                    text: self.text,
-                    source: layer.source.clone(),
+                text::NodeText {
+                    text: layer.text,
+                    source: layer.text_source.clone(),
                 },
             );
             while let Some((matched, capture_index)) = matches.next() {
@@ -168,149 +172,38 @@ impl Context<'_> {
         if parent.layer >= MAX_INJECTION_DEPTH {
             return;
         }
-        for injection in self.injections(parent) {
+        for injection in query::injections(parent) {
             if injection.language == parent.language {
                 continue;
             }
-            let range = intersect(&injection.range, &self.visible);
-            if range.is_empty() {
+            let Some(prepared) = combined::prepare(&injection, self.text, &self.visible) else {
                 continue;
-            }
+            };
             let Some(runtime) = self.runtimes.get(injection.language) else {
                 continue;
             };
-            let Some(tree) = parse_embedded(self.parsers, self.text, injection.language, &range)
+            let (parse_text, parse_range) = match prepared.text.as_ref() {
+                Some(masked) => (masked, 0..masked.len_bytes()),
+                None => (self.text, prepared.source.clone()),
+            };
+            let Some(tree) =
+                text::parse_embedded(self.parsers, parse_text, injection.language, &parse_range)
             else {
                 continue;
+            };
+            let text_source = match prepared.text.as_ref() {
+                Some(masked) => 0..masked.len_bytes(),
+                None => prepared.source.clone(),
             };
             self.pending.push_back(Job {
                 tree,
                 runtime,
-                source: range,
+                source: prepared.source,
+                text_source,
+                text: prepared.text,
                 layer: parent.layer + 1,
                 language: injection.language,
             });
         }
     }
-
-    fn injections(&self, layer: &Layer<'_>) -> Vec<Injection> {
-        let Some(query) = layer.runtime.injections.as_ref() else {
-            return Vec::new();
-        };
-        let Some(content_index) = query.capture_index_for_name("injection.content") else {
-            return Vec::new();
-        };
-        let language_index = query.capture_index_for_name("injection.language");
-        let mut injections = HashSet::new();
-        for block in layer.blocks {
-            let mut cursor = QueryCursor::new();
-            cursor.set_byte_range(block.clone());
-            let mut matches = cursor.matches(
-                query,
-                layer.tree.root_node(),
-                NodeText {
-                    text: self.text,
-                    source: layer.source.clone(),
-                },
-            );
-            while let Some(matched) = matches.next() {
-                let Some(language) =
-                    injection_language(query, matched, self.text, &layer.source, language_index)
-                else {
-                    continue;
-                };
-                for capture in matched.captures() {
-                    if capture.index != content_index {
-                        continue;
-                    }
-                    let start = layer.source.start + capture.node.start_byte();
-                    let end = layer.source.start + capture.node.end_byte();
-                    if start < end {
-                        injections.insert((start, end, language));
-                    }
-                }
-            }
-        }
-        let mut injections = injections
-            .into_iter()
-            .map(|(start, end, language)| Injection {
-                language,
-                range: start..end,
-            })
-            .collect::<Vec<_>>();
-        injections.sort_by_key(|injection| (injection.range.start, injection.range.end));
-        injections
-    }
-}
-
-struct NodeText<'a> {
-    text: &'a Rope,
-    source: Range<usize>,
-}
-
-impl<'a> TextProvider<&'a str> for NodeText<'a> {
-    type I = Chunks<'a>;
-
-    fn text(&mut self, node: Node) -> Self::I {
-        let start = self
-            .source
-            .start
-            .saturating_add(node.start_byte())
-            .min(self.text.len_bytes());
-        let end = self
-            .source
-            .start
-            .saturating_add(node.end_byte())
-            .min(self.text.len_bytes())
-            .max(start);
-        self.text
-            .get_byte_slice(start..end)
-            .map(|slice| slice.chunks())
-            .unwrap_or_else(|| self.text.byte_slice(0..0).chunks())
-    }
-}
-
-fn injection_language(
-    query: &Query,
-    matched: &QueryMatch<'_, '_>,
-    text: &Rope,
-    source: &Range<usize>,
-    capture_index: Option<u32>,
-) -> Option<LanguageId> {
-    let name = query
-        .property_settings(matched.pattern_index)
-        .iter()
-        .find(|property| property.key.as_ref() == "injection.language")
-        .and_then(|property| property.value.as_deref());
-    if let Some(name) = name {
-        return LanguageId::from_alias(name);
-    }
-    let capture_index = capture_index?;
-    let capture = matched
-        .captures()
-        .iter()
-        .find(|capture| capture.index == capture_index)?;
-    let start = source.start + capture.node.start_byte();
-    let end = source.start + capture.node.end_byte();
-    let name = text::slice(text, start..end)?;
-    LanguageId::from_alias(&name)
-}
-
-fn parse_embedded(
-    parsers: &mut HashMap<LanguageId, Parser>,
-    text: &Rope,
-    language: LanguageId,
-    range: &Range<usize>,
-) -> Option<Tree> {
-    let source = text.get_byte_slice(range.clone())?;
-    let parser = parsers.entry(language).or_insert_with(|| {
-        let mut parser = Parser::new();
-        let _ = parser.set_language(&language.language());
-        parser
-    });
-    parse_slice(parser, source, None)
-}
-
-fn intersect(range: &Range<usize>, visible: &Range<usize>) -> Range<usize> {
-    range.start.max(visible.start)..range.end.min(visible.end)
 }

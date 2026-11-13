@@ -46,3 +46,24 @@ fn large_documents_highlight_visible_injections() {
         Some("keyword.function")
     );
 }
+
+#[test]
+fn highlights_html_around_php_code() {
+    let text = "<div class=\"box\"><?php echo $name; ?></div>\n";
+    let spans = highlight(LanguageId::Php, text, 0, 1);
+    assert_eq!(name_of(&spans, text, 0, "div"), Some("tag"));
+    assert_eq!(name_of(&spans, text, 0, "class"), Some("tag.attribute"));
+    assert_eq!(name_of(&spans, text, 0, "box"), Some("string"));
+    assert_eq!(name_of(&spans, text, 0, "echo"), Some("keyword"));
+    assert_eq!(name_of(&spans, text, 0, "name"), Some("variable"));
+}
+
+#[test]
+fn combines_html_fragments_split_by_php() {
+    let text = "<div <?php echo $attrs; ?>class=\"box\">body</div>\n";
+    let spans = highlight(LanguageId::Php, text, 0, 1);
+    assert_eq!(name_of(&spans, text, 0, "div"), Some("tag"));
+    assert_eq!(name_of(&spans, text, 0, "class"), Some("tag.attribute"));
+    assert_eq!(name_of(&spans, text, 0, "box"), Some("string"));
+    assert_eq!(name_of(&spans, text, 0, "body"), None);
+}

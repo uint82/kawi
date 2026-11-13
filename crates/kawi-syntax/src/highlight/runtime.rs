@@ -73,7 +73,7 @@ fn build_injection_query(language: LanguageId) -> Option<Query> {
     if injections.is_empty() {
         return None;
     }
-    Query::new(&language.language(), injections).ok()
+    Query::new(&language.language(), &injections).ok()
 }
 
 #[cfg(test)]
