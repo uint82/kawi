@@ -78,7 +78,12 @@ fn base_highlights(language: LanguageId) -> String {
             tree_sitter_cpp::HIGHLIGHT_QUERY
         ),
         LanguageId::Go => include_str!("../../queries/go.scm").to_string(),
-        LanguageId::Java => tree_sitter_java::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Java => format!(
+            "{}\n{}\n{}",
+            include_str!("../../queries/java.scm"),
+            include_str!("../../queries/java-types.scm"),
+            include_str!("../../queries/java-tokens.scm")
+        ),
         LanguageId::CSharp => format!(
             "{}\n{}\n{}",
             include_str!("../../queries/csharp.scm"),
@@ -116,7 +121,7 @@ fn query_additions(language: LanguageId) -> String {
             include_str!("../../queries/cpp-symbols.scm")
         ),
         LanguageId::Go => include_str!("../../queries/go-regex.scm").to_string(),
-        LanguageId::Java => include_str!("../../queries/java.scm").to_string(),
+        LanguageId::Java => include_str!("../../queries/java-symbols.scm").to_string(),
         LanguageId::CSharp => include_str!("../../queries/csharp-symbols.scm").to_string(),
         LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
         LanguageId::Php => include_str!("../../queries/php.scm").to_string(),

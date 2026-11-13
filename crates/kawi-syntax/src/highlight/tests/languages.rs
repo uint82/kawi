@@ -67,12 +67,15 @@ fn highlights_members_and_parameters() {
     let java = "package demo;\nimport java.util.List;\nclass Box<T> {\n    private final List<String> items;\n    void show(int count) { items.add(String.valueOf(count)); }\n}\n";
     let spans = highlight(LanguageId::Java, java, 0, 6);
     assert_eq!(name_of(&spans, java, 0, "demo"), Some("module"));
-    assert_eq!(name_of(&spans, java, 3, "items"), Some("property"));
+    assert_eq!(name_of(&spans, java, 3, "items"), Some("variable.member"));
     assert_eq!(
         name_of(&spans, java, 4, "count"),
         Some("variable.parameter")
     );
-    assert_eq!(name_of(&spans, java, 4, "add"), Some("function.method"));
+    assert_eq!(
+        name_of(&spans, java, 4, "add"),
+        Some("function.method.call")
+    );
 
     let csharp = "using System;\nnamespace Demo;\nclass Box<T> {\n    public List<T> Items { get; set; }\n    private int count;\n    void Show(T item) { count = 1; }\n}\n";
     let spans = highlight(LanguageId::CSharp, csharp, 0, 7);

@@ -14,6 +14,8 @@ mod css;
 mod go;
 mod html;
 mod injections;
+mod java;
+mod java_tokens;
 mod javascript;
 mod json;
 mod languages;

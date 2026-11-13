@@ -3,7 +3,6 @@ name = "kawi-plugin-sdk"
 version = "0.7.0"
 description = "Rust SDK for Kawi WebAssembly plugins"
 readme = "README.md"
-homepage = "https://github.com/uint82/kawi"
 documentation = "https://docs.rs/kawi-plugin-sdk"
 edition.workspace = true
 authors.workspace = true
