@@ -90,7 +90,11 @@ fn base_highlights(language: LanguageId) -> String {
             include_str!("../../queries/csharp-types.scm"),
             include_str!("../../queries/csharp-tokens.scm")
         ),
-        LanguageId::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Ruby => format!(
+            "{}\n{}",
+            include_str!("../../queries/ruby-tokens.scm"),
+            include_str!("../../queries/ruby.scm")
+        ),
         LanguageId::Php => format!(
             "{}\n{}\n{}",
             include_str!("../../queries/php-tokens.scm"),
@@ -132,7 +136,7 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Go => include_str!("../../queries/go-regex.scm").to_string(),
         LanguageId::Java => include_str!("../../queries/java-symbols.scm").to_string(),
         LanguageId::CSharp => include_str!("../../queries/csharp-symbols.scm").to_string(),
-        LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
+        LanguageId::Ruby => String::new(),
         LanguageId::Php => String::new(),
         LanguageId::Lua => String::new(),
         LanguageId::Yaml => String::new(),
