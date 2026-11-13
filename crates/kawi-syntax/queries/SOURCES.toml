@@ -282,3 +282,23 @@ license = "MIT"
 name = "tree-sitter-md"
 version = "0.5.4"
 license = "MIT"
+
+[[grammar]]
+name = "tree-sitter-ada"
+version = "0.9.2"
+license = "MIT"
+
+[[adaptation]]
+file = "ada.scm"
+source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "ada-types.scm"
+source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "ada-tokens.scm"
+source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
+license = "Apache-2.0"
