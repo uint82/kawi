@@ -8,6 +8,7 @@ use kawi_tui::frame::{
     DecorationSpan, DiagnosticSpan, Rect, SearchSpan, Selection, Sign, VirtualText,
 };
 use kawi_tui::statusbar::ModeKind;
+use ropey::Rope;
 
 use super::{
     BracketMatchCache, BracketMatchKey, FocusDirection, ResizeAxis, SplitDirection, WindowId,
@@ -123,6 +124,8 @@ impl App {
     fn stash_active_syntax(&mut self, id: WindowId) {
         let key = self.syntax_spans_key.take();
         let spans = std::mem::take(&mut self.syntax_spans);
+        let text = std::mem::take(&mut self.syntax_text);
+        let text_revision = std::mem::take(&mut self.syntax_text_revision);
         let window = std::mem::replace(&mut self.syntax_window, 0..0);
         let generation = std::mem::take(&mut self.syntax_applied);
         if let Some(key) = key {
@@ -130,6 +133,8 @@ impl App {
                 id,
                 super::super::SyntaxCache {
                     spans,
+                    text,
+                    text_revision,
                     window,
                     key,
                     generation,
@@ -149,6 +154,8 @@ impl App {
             id,
             super::super::SyntaxCache {
                 spans: self.syntax_spans.clone(),
+                text: self.syntax_text.clone(),
+                text_revision: self.syntax_text_revision,
                 window: self.syntax_window.clone(),
                 key,
                 generation: self.syntax_applied,
@@ -158,6 +165,8 @@ impl App {
 
     fn restore_window_syntax(&mut self, id: WindowId) {
         self.syntax_spans.clear();
+        self.syntax_text = Rope::new();
+        self.syntax_text_revision = 0;
         self.syntax_window = 0..0;
         self.syntax_key = None;
         self.syntax_spans_key = None;
@@ -166,6 +175,8 @@ impl App {
         self.syntax_applied = 0;
         if let Some(cache) = self.window_syntax.remove(&id) {
             self.syntax_spans = cache.spans;
+            self.syntax_text = cache.text;
+            self.syntax_text_revision = cache.text_revision;
             self.syntax_window = cache.window;
             self.syntax_spans_key = Some(cache.key);
             self.syntax_applied = cache.generation;

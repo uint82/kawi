@@ -383,14 +383,19 @@ mod tests {
     }
 
     #[test]
-    fn syntax_spans_stay_visible_while_a_new_result_is_pending() {
+    fn syntax_spans_shift_while_a_new_result_is_pending() {
         let mut app = highlighted_app();
-        app.editor.apply(Action::InsertChar('x'));
-        app.syntax_key = app.editor.syntax_key();
-        app.syntax_pending = true;
+        app.editor.apply(Action::InsertChar(' '));
+        app.refresh_syntax();
+        assert!(app.syntax_pending);
         let layout = app.window_layout();
         let panes = app.frame_panes(&layout);
         assert!(!panes[0].syntax_spans.is_empty());
+        assert!(panes[0].syntax_spans.iter().any(|span| {
+            span.row == 0
+                && span.start == 1
+                && kawi_syntax::registry().name(span.highlight) == Some("keyword.function")
+        }));
     }
 
     #[test]

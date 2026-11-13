@@ -4,6 +4,7 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use kawi_buffer::Buffer;
+use ropey::Rope;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::stdout;
 use std::path::{Path, PathBuf};
@@ -113,6 +114,8 @@ enum Redraw {
 
 struct SyntaxCache {
     spans: Vec<SyntaxSpan>,
+    text: Rope,
+    text_revision: u64,
     window: std::ops::Range<usize>,
     key: SyntaxKey,
     generation: u64,
@@ -133,7 +136,7 @@ use kawi_editor::{
     TaskCommand, WindowOptions, FALLBACK_HEIGHT, FALLBACK_WIDTH,
 };
 use kawi_picker::PickerKind;
-use kawi_syntax::{SyntaxKey, SyntaxResult, SyntaxService, SyntaxSpan};
+use kawi_syntax::{shift_spans, SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxService, SyntaxSpan};
 use kawi_task::Tasks;
 use kawi_tui::{frame::SearchSpan, terminal, theme::Theme};
 use lsp::LspUi;
@@ -170,6 +173,8 @@ pub struct App {
     last_command: Option<String>,
     syntax: Option<SyntaxService>,
     syntax_spans: Vec<SyntaxSpan>,
+    syntax_text: Rope,
+    syntax_text_revision: u64,
     syntax_window: std::ops::Range<usize>,
     syntax_key: Option<SyntaxKey>,
     syntax_spans_key: Option<SyntaxKey>,
@@ -303,6 +308,8 @@ impl App {
             last_command: None,
             syntax: None,
             syntax_spans: Vec::new(),
+            syntax_text: Rope::new(),
+            syntax_text_revision: 0,
             syntax_window: 0..0,
             syntax_key: None,
             syntax_spans_key: None,
@@ -729,8 +736,19 @@ impl App {
             .filter(|submitted| {
                 submitted.document == key.document && submitted.language == key.language
             })
-            .map_or(key.revision, |submitted| submitted.revision);
+            .map(|submitted| submitted.revision)
+            .or_else(|| {
+                self.syntax_spans_key
+                    .filter(|applied| {
+                        applied.document == key.document && applied.language == key.language
+                    })
+                    .map(|_| self.syntax_text_revision)
+            })
+            .unwrap_or(key.revision);
         if let Some(request) = self.editor.syntax_request_since(base_revision) {
+            self.shift_syntax_spans(&request);
+            self.syntax_text = request.text.clone();
+            self.syntax_text_revision = request.key.revision;
             let wake = self.events.wake();
             let service = self
                 .syntax
@@ -742,6 +760,29 @@ impl App {
             self.syntax_pending = false;
         }
         self.apply_syntax_results();
+    }
+
+    fn shift_syntax_spans(&mut self, request: &SyntaxRequest) {
+        let Some(applied) = self.syntax_spans_key else {
+            return;
+        };
+        if applied.document != request.key.document || applied.language != request.key.language {
+            return;
+        }
+        if request.edits.is_empty() {
+            if self.syntax_text_revision != request.key.revision {
+                self.clear_syntax_spans();
+            }
+            return;
+        }
+        self.syntax_spans = shift_spans(
+            &self.syntax_spans,
+            &self.syntax_text,
+            &request.text,
+            &request.edits,
+        );
+        self.syntax_text = request.text.clone();
+        self.syntax_text_revision = request.key.revision;
     }
 
     fn syntax_spans_cover(&self, key: &SyntaxKey) -> bool {
@@ -756,6 +797,8 @@ impl App {
 
     fn clear_syntax_spans(&mut self) {
         self.syntax_spans.clear();
+        self.syntax_text = Rope::new();
+        self.syntax_text_revision = 0;
         self.syntax_window = 0..0;
         self.syntax_spans_key = None;
     }
@@ -791,6 +834,7 @@ impl App {
             && current.end <= result.window.end
         {
             self.syntax_spans = result.spans;
+            self.syntax_text_revision = result.key.revision;
             self.syntax_window = result.window;
             self.syntax_spans_key = Some(result.key);
             self.syntax_applied = result.generation;

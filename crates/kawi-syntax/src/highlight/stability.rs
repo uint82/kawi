@@ -4,14 +4,11 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::registry::{registry, SyntaxHighlight};
+use crate::remap::remap_span;
 use crate::rows::RowWindow;
 use crate::span::{SyntaxEdit, SyntaxSpan};
 
 use super::paint;
-
-mod mapping;
-
-use mapping::remap_span;
 
 pub(crate) struct StableHighlights {
     text: Rope,
