@@ -62,8 +62,8 @@ fn highlights_java_modules_constants_and_members() {
         assert_eq!(name_of(&spans, text, 1, module), Some("module"), "{module}");
     }
     assert_eq!(name_of(&spans, text, 3, "LIMIT"), Some("constant"));
-    assert_eq!(name_of(&spans, text, 4, "value"), Some("property"));
-    assert_eq!(name_of(&spans, text, 5, "label"), Some("property"));
+    assert_eq!(name_of(&spans, text, 4, "value"), Some("variable.member"));
+    assert_eq!(name_of(&spans, text, 5, "label"), Some("variable.member"));
 }
 
 #[test]
