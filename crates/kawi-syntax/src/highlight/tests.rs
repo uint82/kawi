@@ -28,6 +28,8 @@ mod rust;
 mod stability;
 mod support;
 mod typescript;
+mod yaml;
+mod yaml_tokens;
 
 #[test]
 fn multiline_comments_reach_the_visible_window() {
