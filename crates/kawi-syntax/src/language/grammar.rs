@@ -92,7 +92,11 @@ fn base_highlights(language: LanguageId) -> String {
         ),
         LanguageId::Ruby => tree_sitter_ruby::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Php => tree_sitter_php::HIGHLIGHTS_QUERY.to_string(),
-        LanguageId::Lua => tree_sitter_lua::HIGHLIGHTS_QUERY.to_string(),
+        LanguageId::Lua => format!(
+            "{}\n{}",
+            include_str!("../../queries/lua.scm"),
+            include_str!("../../queries/lua-tokens.scm")
+        ),
         LanguageId::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.to_string(),
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
         LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
@@ -125,7 +129,7 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::CSharp => include_str!("../../queries/csharp-symbols.scm").to_string(),
         LanguageId::Ruby => include_str!("../../queries/ruby.scm").to_string(),
         LanguageId::Php => include_str!("../../queries/php.scm").to_string(),
-        LanguageId::Lua => include_str!("../../queries/lua.scm").to_string(),
+        LanguageId::Lua => String::new(),
         LanguageId::Yaml => include_str!("../../queries/yaml.scm").to_string(),
         LanguageId::Html => String::new(),
         LanguageId::Css => String::new(),
