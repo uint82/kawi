@@ -82,6 +82,8 @@ fn large_files_use_bounded_windows() {
         language: LanguageId::Python,
     };
     let first = SyntaxRequest {
+        base_revision: 0,
+        edits: Vec::new(),
         key,
         text: Rope::from_str(&text),
     };
@@ -92,6 +94,8 @@ fn large_files_use_bounded_windows() {
     assert_eq!(name_at(&spans, 30_000, 0), Some("comment"));
 
     let second = SyntaxRequest {
+        base_revision: 0,
+        edits: Vec::new(),
         key: SyntaxKey {
             top: 40_000,
             end: 40_020,
@@ -119,6 +123,8 @@ fn large_file_edits_refresh_the_window() {
     };
     document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key,
             text: Rope::from_str(&text),
         },
@@ -127,6 +133,8 @@ fn large_file_edits_refresh_the_window() {
     let edited = text.replacen("# marker", "# changed", 1);
     let (_, spans) = document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key: SyntaxKey { revision: 2, ..key },
             text: Rope::from_str(&edited),
         },
@@ -151,6 +159,8 @@ fn windowed_edits_keep_new_windows_correct() {
     };
     document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key,
             text: Rope::from_str(&text),
         },
@@ -159,6 +169,8 @@ fn windowed_edits_keep_new_windows_correct() {
     let edited = text.replacen("# marker", "# changed", 1);
     document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key: SyntaxKey { revision: 2, ..key },
             text: Rope::from_str(&edited),
         },
@@ -166,6 +178,8 @@ fn windowed_edits_keep_new_windows_correct() {
     );
     let (_, spans) = document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key: SyntaxKey {
                 revision: 2,
                 top: 40_000,
@@ -193,6 +207,8 @@ fn shrinking_a_large_document_restores_a_full_tree() {
     };
     document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key,
             text: Rope::from_str(&text),
         },
@@ -201,6 +217,8 @@ fn shrinking_a_large_document_restores_a_full_tree() {
     let small = "def main():\n    return True\n";
     let (_, spans) = document.update(
         &SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key: SyntaxKey {
                 revision: 2,
                 top: 0,
@@ -222,5 +240,123 @@ fn long_lines_are_left_plain() {
     let text = format!("{long}fn main() {{}}\n");
     let spans = highlight(LanguageId::Rust, &text, 0, 2);
     assert_eq!(name_at(&spans, 0, 0), None);
+    assert_eq!(name_at(&spans, 1, 0), Some("keyword.function"));
+}
+
+#[test]
+fn supplied_edits_update_the_tree_incrementally() {
+    let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
+    let mut document = Document::new(LanguageId::Rust);
+    document.update(&request("fn main() {}\n", 0, 1, 1), &runtime);
+
+    let edited = "// note\nfn main() {}\n";
+    let request = SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 2,
+            top: 0,
+            end: 2,
+            language: LanguageId::Rust,
+        },
+        base_revision: 1,
+        edits: vec![SyntaxEdit {
+            start: 0,
+            end: 0,
+            text: "// note\n".to_string(),
+        }],
+        text: Rope::from_str(edited),
+    };
+    let spans = document.update(&request, &runtime).1;
+    assert_eq!(name_at(&spans, 0, 0), Some("comment"));
+    assert_eq!(name_at(&spans, 1, 0), Some("keyword.function"));
+}
+
+#[test]
+fn supplied_edits_apply_in_sequence() {
+    let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
+    let mut document = Document::new(LanguageId::Rust);
+    document.update(&request("alpha beta\n", 0, 1, 1), &runtime);
+
+    let edited = "one alpha beta two\n";
+    let request = SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 2,
+            top: 0,
+            end: 2,
+            language: LanguageId::Rust,
+        },
+        base_revision: 1,
+        edits: vec![
+            SyntaxEdit {
+                start: 0,
+                end: 0,
+                text: "one ".to_string(),
+            },
+            SyntaxEdit {
+                start: 10,
+                end: 10,
+                text: " two".to_string(),
+            },
+        ],
+        text: Rope::from_str(edited),
+    };
+    document.update(&request, &runtime);
+    assert_eq!(document.text.to_string(), edited);
+}
+
+#[test]
+fn mismatched_edit_base_falls_back_to_the_snapshot() {
+    let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
+    let mut document = Document::new(LanguageId::Rust);
+    document.update(&request("fn main() {}\n", 0, 1, 1), &runtime);
+
+    let edited = "/* note */\nfn main() {}\n";
+    let request = SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 2,
+            top: 0,
+            end: 2,
+            language: LanguageId::Rust,
+        },
+        base_revision: 0,
+        edits: vec![SyntaxEdit {
+            start: 0,
+            end: 0,
+            text: "/* note */\n".to_string(),
+        }],
+        text: Rope::from_str(edited),
+    };
+    let spans = document.update(&request, &runtime).1;
+    assert_eq!(name_at(&spans, 0, 0), Some("comment"));
+    assert_eq!(name_at(&spans, 1, 0), Some("keyword.function"));
+}
+
+#[test]
+fn invalid_edits_recover_from_the_snapshot() {
+    let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
+    let mut document = Document::new(LanguageId::Rust);
+    document.update(&request("fn main() {}\n", 0, 1, 1), &runtime);
+
+    let edited = "// fixed\nfn main() {}\n";
+    let request = SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 2,
+            top: 0,
+            end: 2,
+            language: LanguageId::Rust,
+        },
+        base_revision: 1,
+        edits: vec![SyntaxEdit {
+            start: 999,
+            end: 999,
+            text: "// fixed\n".to_string(),
+        }],
+        text: Rope::from_str(edited),
+    };
+    let spans = document.update(&request, &runtime).1;
+    assert_eq!(name_at(&spans, 0, 0), Some("comment"));
     assert_eq!(name_at(&spans, 1, 0), Some("keyword.function"));
 }

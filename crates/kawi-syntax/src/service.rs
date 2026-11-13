@@ -73,6 +73,13 @@ impl SyntaxService {
             .request
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        if let Some(queued) = slot.as_mut() {
+            if can_merge(queued, &request) {
+                merge_request(queued, generation, request);
+                self.shared.ready.notify_one();
+                return generation;
+            }
+        }
         *slot = Some(Queued {
             generation,
             request,
@@ -127,6 +134,22 @@ fn run(shared: Arc<Shared>, sender: Sender<SyntaxResult>, wake: Sender<()>) {
         }
         let _ = wake.send(());
     }
+}
+
+fn can_merge(queued: &Queued, request: &SyntaxRequest) -> bool {
+    let current = &queued.request;
+    current.key.document == request.key.document
+        && current.key.language == request.key.language
+        && !current.edits.is_empty()
+        && current.key.revision == request.base_revision
+}
+
+fn merge_request(queued: &mut Queued, generation: u64, request: SyntaxRequest) {
+    let current = &mut queued.request;
+    current.edits.extend(request.edits);
+    current.key = request.key;
+    current.text = request.text;
+    queued.generation = generation;
 }
 
 fn next_request(shared: &Shared) -> Option<Queued> {
@@ -210,9 +233,40 @@ mod tests {
 
     use super::*;
     use crate::registry::registry;
+    use crate::span::SyntaxEdit;
+
+    fn edit_request(
+        revision: u64,
+        base_revision: u64,
+        text: &str,
+        edits: Vec<SyntaxEdit>,
+    ) -> SyntaxRequest {
+        SyntaxRequest {
+            base_revision,
+            edits,
+            key: SyntaxKey {
+                document: 1,
+                revision,
+                top: 0,
+                end: text.lines().count(),
+                language: LanguageId::Rust,
+            },
+            text: Rope::from_str(text),
+        }
+    }
+
+    fn insertion(start: usize, text: &str) -> SyntaxEdit {
+        SyntaxEdit {
+            start,
+            end: start,
+            text: text.to_string(),
+        }
+    }
 
     fn request(text: &str, rows: usize) -> SyntaxRequest {
         SyntaxRequest {
+            base_revision: 0,
+            edits: Vec::new(),
             key: SyntaxKey {
                 document: 1,
                 revision: 1,
@@ -269,6 +323,84 @@ mod tests {
             .spans
             .iter()
             .any(|span| highlight_is(span, "comment") && span.row == 1));
+    }
+
+    #[test]
+    fn service_applies_incremental_edits() {
+        let service = SyntaxService::new();
+        service.submit(edit_request(1, 1, "fn main() {}\n", Vec::new()));
+        wait_for(&service).expect("first result");
+
+        let edited = "// note\nfn main() {}\n";
+        service.submit(edit_request(2, 1, edited, vec![insertion(0, "// note\n")]));
+        let second = wait_for(&service).expect("second result");
+        assert!(second
+            .spans
+            .iter()
+            .any(|span| highlight_is(span, "comment") && span.row == 0));
+    }
+
+    #[test]
+    fn queued_requests_merge_when_edits_chain() {
+        let mut queued = Queued {
+            generation: 1,
+            request: edit_request(1, 0, "a", vec![insertion(0, "a")]),
+        };
+        let next = edit_request(2, 1, "ab", vec![insertion(1, "b")]);
+        assert!(can_merge(&queued, &next));
+        merge_request(&mut queued, 2, next);
+        assert_eq!(queued.generation, 2);
+        assert_eq!(queued.request.base_revision, 0);
+        assert_eq!(queued.request.key.revision, 2);
+        assert_eq!(queued.request.edits.len(), 2);
+        assert_eq!(queued.request.text.to_string(), "ab");
+    }
+
+    #[test]
+    fn queued_requests_without_edits_do_not_merge() {
+        let queued = Queued {
+            generation: 1,
+            request: edit_request(1, 0, "a", Vec::new()),
+        };
+        let next = edit_request(2, 1, "ab", vec![insertion(1, "b")]);
+        assert!(!can_merge(&queued, &next));
+    }
+
+    #[test]
+    fn queued_requests_do_not_merge_across_a_base_gap() {
+        let queued = Queued {
+            generation: 1,
+            request: edit_request(1, 0, "a", vec![insertion(0, "a")]),
+        };
+        let next = edit_request(2, 2, "ab", vec![insertion(1, "b")]);
+        assert!(!can_merge(&queued, &next));
+    }
+
+    #[test]
+    fn queued_requests_do_not_merge_across_documents_or_languages() {
+        let queued = Queued {
+            generation: 1,
+            request: edit_request(1, 0, "a", vec![insertion(0, "a")]),
+        };
+        let mut other_document = edit_request(2, 1, "ab", vec![insertion(1, "b")]);
+        other_document.key.document = 2;
+        assert!(!can_merge(&queued, &other_document));
+
+        let mut other_language = edit_request(2, 1, "ab", vec![insertion(1, "b")]);
+        other_language.key.language = LanguageId::Python;
+        assert!(!can_merge(&queued, &other_language));
+    }
+
+    #[test]
+    fn queued_requests_merge_viewport_only_updates() {
+        let mut queued = Queued {
+            generation: 1,
+            request: edit_request(1, 0, "a", vec![insertion(0, "a")]),
+        };
+        let next = edit_request(1, 1, "a", Vec::new());
+        assert!(can_merge(&queued, &next));
+        merge_request(&mut queued, 2, next);
+        assert_eq!(queued.request.edits.len(), 1);
     }
 
     fn highlight_is(span: &SyntaxSpan, name: &str) -> bool {

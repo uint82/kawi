@@ -42,6 +42,8 @@ fn assert_reference(language: LanguageId, text: &str) {
     let runtime = configured_runtime(language);
     let row_end = text.lines().count();
     let request = SyntaxRequest {
+        base_revision: 0,
+        edits: Vec::new(),
         key: SyntaxKey {
             document: 1,
             revision: 1,

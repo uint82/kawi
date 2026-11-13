@@ -5,7 +5,7 @@ use tree_sitter::{InputEdit, Parser, Range as TreeRange, Tree};
 
 use crate::diff::diff_edit;
 use crate::language::LanguageId;
-use crate::limits::{WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
+use crate::limits::{MAX_STABLE_EDITS, WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
 use crate::rows;
 use crate::span::{SyntaxEdit, SyntaxRequest, SyntaxSpan};
 use crate::text;
@@ -33,6 +33,7 @@ pub(crate) struct Document {
     embedded_runtimes: RuntimeCache,
     stable: Option<StableHighlights>,
     stable_edits: Vec<SyntaxEdit>,
+    initialized: bool,
 }
 
 impl Document {
@@ -51,6 +52,7 @@ impl Document {
             embedded_runtimes: RuntimeCache::new(),
             stable: None,
             stable_edits: Vec::new(),
+            initialized: false,
         }
     }
 
@@ -98,19 +100,53 @@ impl Document {
     }
 
     fn refresh_text(&mut self, request: &SyntaxRequest) {
-        if self.tree.is_some() {
-            if let Some(edit) = diff_edit(&self.text, &request.text) {
-                if self.apply_edit(&edit) {
-                    if self.stable.is_some() {
-                        self.stable_edits.push(edit);
+        if self.apply_edits(request) {
+            self.text = request.text.clone();
+            self.revision = request.key.revision;
+            self.initialized = true;
+            return;
+        }
+        if self.initialized && self.tree.is_some() {
+            if request.edits.is_empty() {
+                if let Some(edit) = diff_edit(&self.text, &request.text) {
+                    if self.apply_edit(&edit) {
+                        self.track_stable_edit(&edit);
+                    } else {
+                        self.reset_stable();
                     }
-                } else {
-                    self.reset_stable();
                 }
+            } else {
+                self.tree = None;
+                self.reset_stable();
             }
         }
         self.text = request.text.clone();
         self.revision = request.key.revision;
+        self.initialized = true;
+    }
+
+    fn apply_edits(&mut self, request: &SyntaxRequest) -> bool {
+        if !self.initialized || request.base_revision != self.revision || request.edits.is_empty() {
+            return false;
+        }
+        for edit in &request.edits {
+            if !self.apply_edit(edit) {
+                return false;
+            }
+            self.track_stable_edit(edit);
+        }
+        true
+    }
+
+    fn track_stable_edit(&mut self, edit: &SyntaxEdit) {
+        if self.stable.is_none() {
+            return;
+        }
+        if self.stable_edits.len() >= MAX_STABLE_EDITS {
+            self.reset_stable();
+            return;
+        }
+        self.stable_edits.push(edit.clone());
     }
 
     fn apply_edit(&mut self, edit: &SyntaxEdit) -> bool {

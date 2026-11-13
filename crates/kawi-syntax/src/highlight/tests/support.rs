@@ -16,6 +16,8 @@ pub(super) fn request_for(
     revision: u64,
 ) -> SyntaxRequest {
     SyntaxRequest {
+        base_revision: 0,
+        edits: Vec::new(),
         key: SyntaxKey {
             document: 1,
             revision,

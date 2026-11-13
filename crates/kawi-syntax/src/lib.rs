@@ -14,4 +14,4 @@ pub use limits::{file_size_supported, MAX_FILE_BYTES, MAX_SNIPPET_BYTES};
 pub use registry::{registry, HighlightRegistry, SyntaxHighlight};
 pub use service::SyntaxService;
 pub use snippet::{highlight_snippet, highlight_snippet_with_cancel};
-pub use span::{SnippetSpan, SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxSpan};
+pub use span::{SnippetSpan, SyntaxEdit, SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxSpan};

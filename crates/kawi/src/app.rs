@@ -724,7 +724,13 @@ impl App {
         if document_changed {
             self.clear_syntax_spans();
         }
-        if let Some(request) = self.editor.syntax_request() {
+        let base_revision = self
+            .syntax_key
+            .filter(|submitted| {
+                submitted.document == key.document && submitted.language == key.language
+            })
+            .map_or(key.revision, |submitted| submitted.revision);
+        if let Some(request) = self.editor.syntax_request_since(base_revision) {
             let wake = self.events.wake();
             let service = self
                 .syntax

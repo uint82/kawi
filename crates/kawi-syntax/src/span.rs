@@ -31,6 +31,8 @@ pub struct SnippetSpan {
 
 pub struct SyntaxRequest {
     pub key: SyntaxKey,
+    pub base_revision: u64,
+    pub edits: Vec<SyntaxEdit>,
     pub text: Rope,
 }
 

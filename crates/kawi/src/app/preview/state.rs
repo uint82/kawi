@@ -178,7 +178,12 @@ impl PreviewState {
             self.loading = false;
             return;
         };
-        self.syntax_request = Some(syntax.submit(SyntaxRequest { key, text }));
+        self.syntax_request = Some(syntax.submit(SyntaxRequest {
+            key,
+            base_revision: key.revision,
+            edits: Vec::new(),
+            text,
+        }));
     }
 
     fn poll_syntax(&mut self) -> bool {
