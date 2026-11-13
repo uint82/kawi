@@ -69,6 +69,26 @@ source = "nvim-treesitter 4916d659 queries/c_sharp/highlights.scm"
 license = "Apache-2.0"
 
 [[adaptation]]
+file = "java.scm"
+source = "nvim-treesitter 4916d659 queries/java/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "java-types.scm"
+source = "nvim-treesitter 4916d659 queries/java/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "java-tokens.scm"
+source = "nvim-treesitter 4916d659 queries/java/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "java-symbols.scm"
+source = "nvim-treesitter 4916d659 queries/java/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
 file = "rust.scm"
 source = "nvim-treesitter 4916d659 queries/rust/highlights.scm"
 license = "MIT"
