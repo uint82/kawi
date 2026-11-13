@@ -5,6 +5,9 @@ use crate::limits::{MAX_LINE_BYTES, WINDOW_PARSE_BYTES};
 use crate::span::SyntaxKey;
 use support::{highlight, name_at, request};
 
+mod ada;
+mod ada_tokens;
+mod ada_types;
 mod bash;
 mod c;
 mod captures;
