@@ -22,6 +22,8 @@ mod languages;
 mod lua;
 mod lua_tokens;
 mod markdown;
+mod php;
+mod php_tokens;
 mod python;
 mod queries;
 mod rust;
