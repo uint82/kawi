@@ -22,6 +22,7 @@ pub(super) fn language(language: LanguageId) -> tree_sitter::Language {
         LanguageId::Html => tree_sitter_html::LANGUAGE.into(),
         LanguageId::Css => tree_sitter_css::LANGUAGE.into(),
         LanguageId::Markdown => tree_sitter_md::LANGUAGE.into(),
+        LanguageId::Ada => tree_sitter_ada::LANGUAGE.into(),
     }
 }
 
@@ -110,6 +111,12 @@ fn base_highlights(language: LanguageId) -> String {
         LanguageId::Html => include_str!("../../queries/html.scm").to_string(),
         LanguageId::Css => include_str!("../../queries/css.scm").to_string(),
         LanguageId::Markdown => include_str!("../../queries/markdown.scm").to_string(),
+        LanguageId::Ada => format!(
+            "{}\n{}\n{}",
+            include_str!("../../queries/ada-tokens.scm"),
+            include_str!("../../queries/ada.scm"),
+            include_str!("../../queries/ada-types.scm")
+        ),
     }
 }
 
@@ -143,5 +150,6 @@ fn query_additions(language: LanguageId) -> String {
         LanguageId::Html => String::new(),
         LanguageId::Css => String::new(),
         LanguageId::Markdown => String::new(),
+        LanguageId::Ada => String::new(),
     }
 }
