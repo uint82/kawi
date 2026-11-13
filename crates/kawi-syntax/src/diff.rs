@@ -1,156 +1,141 @@
-use tree_sitter::{InputEdit, Point};
+use ropey::Rope;
 
-#[derive(Debug, Clone)]
-pub(crate) struct LineIndex {
-    starts: Vec<usize>,
-    len: usize,
-}
+use crate::span::SyntaxEdit;
 
-impl LineIndex {
-    pub(crate) fn new(text: &str) -> Self {
-        let mut starts = vec![0];
-        starts.extend(
-            text.match_indices('\n')
-                .map(|(index, _)| index.saturating_add(1)),
-        );
-        Self {
-            starts,
-            len: text.len(),
-        }
-    }
-
-    pub(crate) fn line_start(&self, row: usize) -> usize {
-        self.starts.get(row).copied().unwrap_or(self.len)
-    }
-
-    pub(crate) fn line_count(&self) -> usize {
-        self.starts.len()
-    }
-
-    pub(crate) fn point(&self, byte: usize) -> Point {
-        let byte = byte.min(self.len);
-        let row = self
-            .starts
-            .partition_point(|start| *start <= byte)
-            .saturating_sub(1);
-        Point::new(row, byte.saturating_sub(self.starts[row]))
-    }
-}
-
-pub(crate) fn input_edit(
-    old: &str,
-    new: &str,
-    old_index: &LineIndex,
-    new_index: &LineIndex,
-) -> Option<InputEdit> {
-    if old == new {
-        return None;
-    }
-    let prefix = char_boundary(old, shared_prefix(old, new));
-    let mut suffix = shared_suffix(&old[prefix..], &new[prefix..]);
-    while suffix > 0
-        && (!old.is_char_boundary(old.len().saturating_sub(suffix))
-            || !new.is_char_boundary(new.len().saturating_sub(suffix)))
-    {
-        suffix -= 1;
-    }
-    let old_end = old.len().saturating_sub(suffix);
-    let new_end = new.len().saturating_sub(suffix);
-    Some(InputEdit {
-        start_byte: prefix,
-        old_end_byte: old_end,
-        new_end_byte: new_end,
-        start_position: old_index.point(prefix),
-        old_end_position: old_index.point(old_end),
-        new_end_position: new_index.point(new_end),
+pub(crate) fn diff_edit(old: &Rope, new: &Rope) -> Option<SyntaxEdit> {
+    let prefix = common_prefix(old, new);
+    let suffix = common_suffix(old, new, prefix);
+    let old_end = old.len_chars().saturating_sub(suffix);
+    let new_end = new.len_chars().saturating_sub(suffix);
+    (prefix != old_end || prefix != new_end).then(|| SyntaxEdit {
+        start: prefix,
+        end: old_end,
+        text: new.slice(prefix..new_end).to_string(),
     })
 }
 
-fn shared_prefix(old: &str, new: &str) -> usize {
-    old.bytes()
-        .zip(new.bytes())
+fn common_prefix(old: &Rope, new: &Rope) -> usize {
+    old.chars()
+        .zip(new.chars())
         .take_while(|(left, right)| left == right)
         .count()
 }
 
-fn shared_suffix(old: &str, new: &str) -> usize {
-    old.bytes()
-        .rev()
-        .zip(new.bytes().rev())
+fn common_suffix(old: &Rope, new: &Rope, prefix: usize) -> usize {
+    let limit = old
+        .len_chars()
+        .saturating_sub(prefix)
+        .min(new.len_chars().saturating_sub(prefix));
+    old.chars_at(old.len_chars())
+        .reversed()
+        .zip(new.chars_at(new.len_chars()).reversed())
+        .take(limit)
         .take_while(|(left, right)| left == right)
         .count()
-}
-
-fn char_boundary(text: &str, byte: usize) -> usize {
-    let mut byte = byte.min(text.len());
-    while byte > 0 && !text.is_char_boundary(byte) {
-        byte -= 1;
-    }
-    byte
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn edit(old: &str, new: &str) -> Option<InputEdit> {
-        input_edit(old, new, &LineIndex::new(old), &LineIndex::new(new))
+    fn rope(text: &str) -> Rope {
+        Rope::from_str(text)
+    }
+
+    fn edit(old: &str, new: &str) -> Option<SyntaxEdit> {
+        diff_edit(&rope(old), &rope(new))
     }
 
     #[test]
-    fn insertion_has_zero_width_old_range() {
-        let edit = edit("abcd", "abXcd").expect("edit");
-        assert_eq!(edit.start_byte, 2);
-        assert_eq!(edit.old_end_byte, 2);
-        assert_eq!(edit.new_end_byte, 3);
-        assert_eq!(edit.start_position, Point::new(0, 2));
-        assert_eq!(edit.old_end_position, Point::new(0, 2));
-        assert_eq!(edit.new_end_position, Point::new(0, 3));
+    fn identical_ropes_have_no_edit() {
+        assert_eq!(edit("same", "same"), None);
+        assert_eq!(edit("", ""), None);
     }
 
     #[test]
-    fn deletion_has_zero_width_new_range() {
-        let edit = edit("abXcd", "abcd").expect("edit");
-        assert_eq!(edit.start_byte, 2);
-        assert_eq!(edit.old_end_byte, 3);
-        assert_eq!(edit.new_end_byte, 2);
+    fn detects_insertions() {
+        assert_eq!(
+            edit("abcd", "abXcd"),
+            Some(SyntaxEdit {
+                start: 2,
+                end: 2,
+                text: "X".to_string(),
+            })
+        );
+        assert_eq!(
+            edit("", "text"),
+            Some(SyntaxEdit {
+                start: 0,
+                end: 0,
+                text: "text".to_string(),
+            })
+        );
     }
 
     #[test]
-    fn replacement_spans_the_changed_bytes() {
-        let edit = edit("abcdef", "abXYef").expect("edit");
-        assert_eq!(edit.start_byte, 2);
-        assert_eq!(edit.old_end_byte, 4);
-        assert_eq!(edit.new_end_byte, 4);
+    fn detects_deletions() {
+        assert_eq!(
+            edit("abXcd", "abcd"),
+            Some(SyntaxEdit {
+                start: 2,
+                end: 3,
+                text: String::new(),
+            })
+        );
     }
 
     #[test]
-    fn unchanged_text_has_no_edit() {
-        assert!(edit("same", "same").is_none());
+    fn detects_replacements() {
+        assert_eq!(
+            edit("abcdef", "abXYef"),
+            Some(SyntaxEdit {
+                start: 2,
+                end: 4,
+                text: "XY".to_string(),
+            })
+        );
     }
 
     #[test]
-    fn unicode_edits_start_at_char_boundaries() {
-        let edit = edit("aé", "aè").expect("edit");
-        assert_eq!(edit.start_byte, 1);
-        assert_eq!(edit.old_end_byte, 3);
-        assert_eq!(edit.new_end_byte, 3);
+    fn supports_multiline_and_unicode_edits() {
+        assert_eq!(
+            edit("a\nb\nc", "a\nbx\nc"),
+            Some(SyntaxEdit {
+                start: 3,
+                end: 3,
+                text: "x".to_string(),
+            })
+        );
+        assert_eq!(
+            edit("a𝄞b", "a𝄢b"),
+            Some(SyntaxEdit {
+                start: 1,
+                end: 2,
+                text: "𝄢".to_string(),
+            })
+        );
     }
 
     #[test]
-    fn multiline_points_track_rows_and_byte_columns() {
-        let edit = edit("a\nb\nc", "a\nbx\nc").expect("edit");
-        assert_eq!(edit.start_position, Point::new(1, 1));
-        assert_eq!(edit.new_end_position, Point::new(1, 2));
+    fn covers_the_unchanged_middle_between_edits() {
+        assert_eq!(
+            edit("abcdefg", "abXdefYg"),
+            Some(SyntaxEdit {
+                start: 2,
+                end: 6,
+                text: "XdefY".to_string(),
+            })
+        );
     }
 
     #[test]
-    fn line_index_handles_trailing_newline() {
-        let index = LineIndex::new("ab\ncd\n");
-        assert_eq!(index.line_count(), 3);
-        assert_eq!(index.line_start(0), 0);
-        assert_eq!(index.line_start(1), 3);
-        assert_eq!(index.line_start(2), 6);
-        assert_eq!(index.point(6), Point::new(2, 0));
+    fn applies_the_edit_back_to_the_new_rope() {
+        let old = rope("alpha\nbeta\ngamma\n");
+        let new = rope("alpha\nBETA\ngamma\n");
+        let edit = diff_edit(&old, &new).expect("edit");
+        let mut text = old;
+        text.remove(edit.start..edit.end);
+        text.insert(edit.start, &edit.text);
+        assert_eq!(text, new);
     }
 }

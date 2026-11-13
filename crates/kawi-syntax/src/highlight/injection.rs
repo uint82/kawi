@@ -2,18 +2,24 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
 use std::sync::Arc;
 
-use tree_sitter::{Parser, Query, QueryCursor, QueryMatch, StreamingIterator, Tree};
+use ropey::iter::Chunks;
+use ropey::Rope;
+use tree_sitter::{
+    Node, Parser, Query, QueryCursor, QueryMatch, StreamingIterator, TextProvider, Tree,
+};
 
 use crate::language::LanguageId;
 use crate::limits::MAX_CAPTURES;
+use crate::text;
 
 use super::paint::Capture;
+use super::parse::parse_slice;
 use super::runtime::{Runtime, RuntimeCache};
 
 const MAX_INJECTION_DEPTH: usize = 3;
 
 pub(crate) struct CollectRequest<'a> {
-    pub(crate) text: &'a str,
+    pub(crate) text: &'a Rope,
     pub(crate) tree: &'a Tree,
     pub(crate) runtime: &'a Runtime,
     pub(crate) language: LanguageId,
@@ -45,7 +51,7 @@ impl Collector {
         let host = Layer {
             tree: request.tree,
             runtime: request.runtime,
-            source: 0..request.text.len(),
+            source: 0..request.text.len_bytes(),
             blocks: request.blocks,
             layer: 0,
             language: request.language,
@@ -66,7 +72,7 @@ impl Default for Collector {
 }
 
 struct Context<'a> {
-    text: &'a str,
+    text: &'a Rope,
     visible: Range<usize>,
     runtimes: &'a mut RuntimeCache,
     parsers: &'a mut HashMap<LanguageId, Parser>,
@@ -120,14 +126,16 @@ impl Context<'_> {
     }
 
     fn collect_highlights(&mut self, layer: &Layer<'_>) -> Option<()> {
-        let source = self.text.get(layer.source.clone())?;
         for block in layer.blocks {
             let mut cursor = QueryCursor::new();
             cursor.set_byte_range(block.clone());
             let mut matches = cursor.captures(
                 &layer.runtime.config.query,
                 layer.tree.root_node(),
-                source.as_bytes(),
+                NodeText {
+                    text: self.text,
+                    source: layer.source.clone(),
+                },
             );
             while let Some((matched, capture_index)) = matches.next() {
                 let Some(capture) = matched.captures().get(*capture_index) else {
@@ -189,9 +197,6 @@ impl Context<'_> {
         let Some(query) = layer.runtime.injections.as_ref() else {
             return Vec::new();
         };
-        let Some(source) = self.text.get(layer.source.clone()) else {
-            return Vec::new();
-        };
         let Some(content_index) = query.capture_index_for_name("injection.content") else {
             return Vec::new();
         };
@@ -200,9 +205,17 @@ impl Context<'_> {
         for block in layer.blocks {
             let mut cursor = QueryCursor::new();
             cursor.set_byte_range(block.clone());
-            let mut matches = cursor.matches(query, layer.tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(
+                query,
+                layer.tree.root_node(),
+                NodeText {
+                    text: self.text,
+                    source: layer.source.clone(),
+                },
+            );
             while let Some(matched) = matches.next() {
-                let Some(language) = injection_language(query, matched, source, language_index)
+                let Some(language) =
+                    injection_language(query, matched, self.text, &layer.source, language_index)
                 else {
                     continue;
                 };
@@ -230,10 +243,38 @@ impl Context<'_> {
     }
 }
 
+struct NodeText<'a> {
+    text: &'a Rope,
+    source: Range<usize>,
+}
+
+impl<'a> TextProvider<&'a str> for NodeText<'a> {
+    type I = Chunks<'a>;
+
+    fn text(&mut self, node: Node) -> Self::I {
+        let start = self
+            .source
+            .start
+            .saturating_add(node.start_byte())
+            .min(self.text.len_bytes());
+        let end = self
+            .source
+            .start
+            .saturating_add(node.end_byte())
+            .min(self.text.len_bytes())
+            .max(start);
+        self.text
+            .get_byte_slice(start..end)
+            .map(|slice| slice.chunks())
+            .unwrap_or_else(|| self.text.byte_slice(0..0).chunks())
+    }
+}
+
 fn injection_language(
     query: &Query,
     matched: &QueryMatch<'_, '_>,
-    source: &str,
+    text: &Rope,
+    source: &Range<usize>,
     capture_index: Option<u32>,
 ) -> Option<LanguageId> {
     let name = query
@@ -249,23 +290,25 @@ fn injection_language(
         .captures()
         .iter()
         .find(|capture| capture.index == capture_index)?;
-    let name = capture.node.utf8_text(source.as_bytes()).ok()?;
-    LanguageId::from_alias(name)
+    let start = source.start + capture.node.start_byte();
+    let end = source.start + capture.node.end_byte();
+    let name = text::slice(text, start..end)?;
+    LanguageId::from_alias(&name)
 }
 
 fn parse_embedded(
     parsers: &mut HashMap<LanguageId, Parser>,
-    text: &str,
+    text: &Rope,
     language: LanguageId,
     range: &Range<usize>,
 ) -> Option<Tree> {
-    let source = text.get(range.clone())?;
+    let source = text.get_byte_slice(range.clone())?;
     let parser = parsers.entry(language).or_insert_with(|| {
         let mut parser = Parser::new();
         let _ = parser.set_language(&language.language());
         parser
     });
-    parser.parse(source, None)
+    parse_slice(parser, source, None)
 }
 
 fn intersect(range: &Range<usize>, visible: &Range<usize>) -> Range<usize> {

@@ -212,7 +212,7 @@ fn shrinking_a_large_document_restores_a_full_tree() {
         &runtime,
     );
     assert!(!document.large);
-    assert_eq!(document.window_rows, 0..document.index.line_count());
+    assert_eq!(document.window_rows, 0..text::line_count(&document.text));
     assert_eq!(name_at(&spans, 0, 0), Some("keyword.function"));
 }
 

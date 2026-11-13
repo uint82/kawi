@@ -1,31 +1,20 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use crate::diff::{input_edit, LineIndex};
+use ropey::Rope;
+
 use crate::registry::{registry, SyntaxHighlight};
 use crate::rows::RowWindow;
-use crate::span::SyntaxSpan;
+use crate::span::{SyntaxEdit, SyntaxSpan};
 
 use super::paint;
 
 mod mapping;
 
-use mapping::{global_span, keep_span, local_span, remap, window_text, SpanMap};
-
-enum StableSource {
-    Full {
-        text: String,
-        index: LineIndex,
-    },
-    Window {
-        text: String,
-        index: LineIndex,
-        window: Range<usize>,
-    },
-}
+use mapping::remap_span;
 
 pub(crate) struct StableHighlights {
-    source: StableSource,
+    text: Rope,
     spans: Vec<SyntaxSpan>,
 }
 
@@ -36,91 +25,29 @@ pub(crate) struct StableWindow<'a> {
 }
 
 impl StableHighlights {
-    pub(crate) fn full(text: &str, index: &LineIndex, spans: Vec<SyntaxSpan>) -> Self {
+    pub(crate) fn new(text: &Rope, spans: Vec<SyntaxSpan>) -> Self {
         Self {
-            source: StableSource::Full {
-                text: text.to_string(),
-                index: index.clone(),
-            },
+            text: text.clone(),
             spans,
         }
-    }
-
-    pub(crate) fn window(
-        text: &str,
-        index: &LineIndex,
-        window: Range<usize>,
-        spans: Vec<SyntaxSpan>,
-    ) -> Option<Self> {
-        let window_text = window_text(text, index, &window)?;
-        let window_index = LineIndex::new(window_text);
-        let spans = spans
-            .into_iter()
-            .filter_map(|span| local_span(span, window.start))
-            .collect();
-        Some(Self {
-            source: StableSource::Window {
-                text: window_text.to_string(),
-                index: window_index,
-                window,
-            },
-            spans,
-        })
     }
 
     pub(crate) fn spans(
         &self,
-        text: &str,
-        index: &LineIndex,
+        text: &Rope,
+        edits: &[SyntaxEdit],
         target: StableWindow<'_>,
     ) -> Vec<SyntaxSpan> {
-        match &self.source {
-            StableSource::Full {
-                text: old_text,
-                index: old_index,
-            } => {
-                let edit = input_edit(old_text, text, old_index, index);
-                let map = SpanMap {
-                    old_text,
-                    old_index,
-                    new_text: text,
-                    new_index: index,
-                    edit: edit.as_ref(),
-                };
-                remap(&self.spans, &map, |span| {
-                    keep_span(span, target.rows, target.errors)
-                })
-            }
-            StableSource::Window {
-                text: old_text,
-                index: old_index,
-                window: old_window,
-            } => {
-                if *old_window != *target.rows {
-                    return Vec::new();
-                }
-                let Some(new_text) = window_text(text, index, target.rows) else {
-                    return Vec::new();
-                };
-                let new_index = LineIndex::new(new_text);
-                let edit = input_edit(old_text, new_text, old_index, &new_index);
-                let map = SpanMap {
-                    old_text,
-                    old_index,
-                    new_text,
-                    new_index: &new_index,
-                    edit: edit.as_ref(),
-                };
-                remap(&self.spans, &map, |span| {
-                    global_span(span, target.rows, target.errors)
-                })
-            }
-        }
+        self.spans
+            .iter()
+            .filter_map(|span| remap_span(*span, &self.text, text, edits))
+            .filter(|span| target.rows.contains(&span.row) && target.errors.contains(&span.row))
+            .collect()
     }
 }
 
 pub(crate) fn overlay(
-    text: &str,
+    text: &Rope,
     rows: &[RowWindow],
     current: Vec<SyntaxSpan>,
     stable: Vec<SyntaxSpan>,

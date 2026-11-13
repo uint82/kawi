@@ -35,6 +35,13 @@ pub struct SyntaxRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntaxEdit {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxResult {
     pub key: SyntaxKey,
     pub generation: u64,

@@ -7,6 +7,7 @@ mod rows;
 mod service;
 mod snippet;
 mod span;
+mod text;
 
 pub use language::{set_user_query_dir, LanguageId};
 pub use limits::{file_size_supported, MAX_FILE_BYTES, MAX_SNIPPET_BYTES};

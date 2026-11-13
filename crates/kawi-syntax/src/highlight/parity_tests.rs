@@ -2,8 +2,9 @@ use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter}
 
 use super::*;
 use crate::registry::{registry, SyntaxHighlight};
-use crate::rows::{char_column, row_char_len, visible_rows, RowWindow};
+use crate::rows::{visible_rows, RowWindow};
 use crate::span::SyntaxKey;
+use crate::text::{char_column, row_char_len};
 
 #[test]
 fn rust_range_resolution_matches_the_reference_highlighter() {
@@ -52,9 +53,10 @@ fn assert_reference(language: LanguageId, text: &str) {
     };
     let mut document = Document::new(language);
     let spans = document.update(&request, &runtime).1;
-    let rows = visible_rows(text, &LineIndex::new(text), 0, row_end);
-    let ours = our_cells(text, &rows, &spans);
-    let reference = reference_cells(text, &rows, &runtime.config);
+    let text = ropey::Rope::from_str(text);
+    let rows = visible_rows(&text, 0, row_end);
+    let ours = our_cells(&text, &rows, &spans);
+    let reference = reference_cells(&text, &rows, &runtime.config);
     assert_eq!(ours, reference);
 }
 
@@ -63,13 +65,13 @@ fn configured_runtime(language: LanguageId) -> Runtime {
 }
 
 fn our_cells(
-    text: &str,
+    text: &ropey::Rope,
     rows: &[RowWindow],
     spans: &[SyntaxSpan],
 ) -> Vec<Vec<Option<SyntaxHighlight>>> {
     let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
         .iter()
-        .map(|row| vec![None; row_char_len(text, row)])
+        .map(|row| vec![None; row_char_len(text, row.row)])
         .collect();
     for span in spans {
         let Some(position) = rows.iter().position(|row| row.row == span.row) else {
@@ -86,17 +88,18 @@ fn our_cells(
 }
 
 fn reference_cells(
-    text: &str,
+    text: &ropey::Rope,
     rows: &[RowWindow],
     config: &HighlightConfiguration,
 ) -> Vec<Vec<Option<SyntaxHighlight>>> {
     let mut cells: Vec<Vec<Option<SyntaxHighlight>>> = rows
         .iter()
-        .map(|row| vec![None; row_char_len(text, row)])
+        .map(|row| vec![None; row_char_len(text, row.row)])
         .collect();
     let mut highlighter = Highlighter::new();
+    let source = text.to_string();
     let events = highlighter
-        .highlight(config, text.as_bytes(), None, None, |_| None)
+        .highlight(config, source.as_bytes(), None, None, |_| None)
         .expect("highlight");
     let mut stack = Vec::new();
     for event in events {
@@ -121,7 +124,7 @@ fn reference_cells(
 }
 
 fn paint_source(
-    text: &str,
+    text: &ropey::Rope,
     rows: &[RowWindow],
     cells: &mut [Vec<Option<SyntaxHighlight>>],
     start: usize,

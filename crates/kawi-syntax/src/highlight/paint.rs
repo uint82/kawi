@@ -1,6 +1,9 @@
+use ropey::Rope;
+
 use crate::registry::SyntaxHighlight;
-use crate::rows::{self, RowWindow};
+use crate::rows::RowWindow;
 use crate::span::SyntaxSpan;
+use crate::text;
 
 pub(crate) struct Capture {
     pub(crate) start: usize,
@@ -10,7 +13,7 @@ pub(crate) struct Capture {
 }
 
 pub(crate) fn paint_captures(
-    text: &str,
+    text: &Rope,
     rows: &[RowWindow],
     captures: &[Capture],
 ) -> Vec<SyntaxSpan> {
@@ -21,9 +24,9 @@ pub(crate) fn paint_captures(
     merge_cells(rows, cells)
 }
 
-pub(crate) fn blank_cells(text: &str, rows: &[RowWindow]) -> Vec<Vec<Option<SyntaxHighlight>>> {
+pub(crate) fn blank_cells(text: &Rope, rows: &[RowWindow]) -> Vec<Vec<Option<SyntaxHighlight>>> {
     rows.iter()
-        .map(|row| vec![None; rows::row_char_len(text, row)])
+        .map(|row| vec![None; text::row_char_len(text, row.row)])
         .collect()
 }
 
@@ -59,7 +62,7 @@ pub(crate) fn cells_for_span<'a>(
 }
 
 fn paint_capture(
-    text: &str,
+    text: &Rope,
     rows: &[RowWindow],
     cells: &mut [Vec<Option<SyntaxHighlight>>],
     capture: &Capture,
@@ -74,8 +77,8 @@ fn paint_capture(
         if start >= end {
             continue;
         }
-        let from = rows::char_column(text, row.start, start);
-        let to = rows::char_column(text, row.start, end);
+        let from = text::char_column(text, row.start, start);
+        let to = text::char_column(text, row.start, end);
         let line = &mut cells[position];
         let from = from.min(line.len());
         let to = to.min(line.len());

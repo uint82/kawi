@@ -1,88 +1,35 @@
-use std::collections::HashSet;
 use std::ops::Range;
 
-use tree_sitter::InputEdit;
+use ropey::Rope;
 
-use crate::diff::LineIndex;
-use crate::rows;
-use crate::span::SyntaxSpan;
+use crate::span::{SyntaxEdit, SyntaxSpan};
+use crate::text;
 
-pub(super) struct SpanMap<'a> {
-    pub(super) old_text: &'a str,
-    pub(super) old_index: &'a LineIndex,
-    pub(super) new_text: &'a str,
-    pub(super) new_index: &'a LineIndex,
-    pub(super) edit: Option<&'a InputEdit>,
-}
-
-pub(super) fn remap(
-    spans: &[SyntaxSpan],
-    map: &SpanMap<'_>,
-    keep: impl Fn(SyntaxSpan) -> Option<SyntaxSpan>,
-) -> Vec<SyntaxSpan> {
-    spans
-        .iter()
-        .filter_map(|span| map_span(span, map))
-        .filter_map(keep)
-        .collect()
-}
-
-pub(super) fn window_text<'a>(
-    text: &'a str,
-    index: &LineIndex,
-    window: &Range<usize>,
-) -> Option<&'a str> {
-    let start = index.line_start(window.start);
-    let end = index.line_start(window.end);
-    text.get(start..end)
-}
-
-pub(super) fn local_span(span: SyntaxSpan, offset: usize) -> Option<SyntaxSpan> {
-    Some(SyntaxSpan {
-        row: span.row.checked_sub(offset)?,
-        ..span
-    })
-}
-
-pub(super) fn global_span(
+pub(super) fn remap_span(
     span: SyntaxSpan,
-    window: &Range<usize>,
-    error_rows: &HashSet<usize>,
+    old_text: &Rope,
+    new_text: &Rope,
+    edits: &[SyntaxEdit],
 ) -> Option<SyntaxSpan> {
-    let row = window.start.checked_add(span.row)?;
-    keep_span(SyntaxSpan { row, ..span }, window, error_rows)
-}
-
-pub(super) fn keep_span(
-    span: SyntaxSpan,
-    window: &Range<usize>,
-    error_rows: &HashSet<usize>,
-) -> Option<SyntaxSpan> {
-    (window.contains(&span.row) && error_rows.contains(&span.row)).then_some(span)
-}
-
-fn map_span(span: &SyntaxSpan, map: &SpanMap<'_>) -> Option<SyntaxSpan> {
-    let old_start = char_byte(map.old_text, map.old_index, span.row, span.start)?;
-    let old_end = char_byte(map.old_text, map.old_index, span.row, span.end)?;
-    if !is_token_boundary(map.old_text, old_start, old_end) {
+    let old_chars = span_chars(span, old_text)?;
+    let new_chars = apply_edits(old_chars.clone(), edits)?;
+    let old_bytes = text::byte_range(old_text, old_chars.clone());
+    let new_bytes = text::byte_range(new_text, new_chars.clone());
+    if old_text.get_byte_slice(old_bytes.clone())? != new_text.get_byte_slice(new_bytes.clone())? {
         return None;
     }
-    let (new_start, new_end) = map_bytes(old_start, old_end, map.edit)?;
-    let start = map.new_index.point(new_start);
-    let end = map.new_index.point(new_end);
+    if !is_token_boundary(old_text, old_bytes) || !is_token_boundary(new_text, new_bytes.clone()) {
+        return None;
+    }
+    let start = text::point(new_text, new_bytes.start);
+    let end = text::point(new_text, new_bytes.end);
     if start.row != end.row {
         return None;
     }
-    let line_start = map.new_index.line_start(start.row);
-    let start_column = rows::char_column(map.new_text, line_start, new_start);
-    let end_column = rows::char_column(map.new_text, line_start, new_end);
+    let line_start = text::line_start(new_text, start.row);
+    let start_column = text::char_column(new_text, line_start, new_bytes.start);
+    let end_column = text::char_column(new_text, line_start, new_bytes.end);
     if start_column >= end_column {
-        return None;
-    }
-    if map.old_text.get(old_start..old_end)? != map.new_text.get(new_start..new_end)? {
-        return None;
-    }
-    if !is_token_boundary(map.new_text, new_start, new_end) {
         return None;
     }
     Some(SyntaxSpan {
@@ -93,15 +40,48 @@ fn map_span(span: &SyntaxSpan, map: &SpanMap<'_>) -> Option<SyntaxSpan> {
     })
 }
 
-fn is_token_boundary(text: &str, start: usize, end: usize) -> bool {
-    let Some(span) = text.get(start..end) else {
-        return false;
-    };
-    let before = text.get(..start).and_then(|text| text.chars().next_back());
-    let first = span.chars().next();
-    let last = span.chars().next_back();
-    let after = text.get(end..).and_then(|text| text.chars().next());
+fn span_chars(span: SyntaxSpan, text: &Rope) -> Option<Range<usize>> {
+    if span.row >= text.len_lines() {
+        return None;
+    }
+    let line_start = text.line_to_char(span.row);
+    let line_len = text::row_char_len(text, span.row);
+    let start = line_start.saturating_add(span.start.min(line_len));
+    let end = line_start.saturating_add(span.end.min(line_len));
+    (start < end).then_some(start..end)
+}
+
+fn apply_edits(mut span: Range<usize>, edits: &[SyntaxEdit]) -> Option<Range<usize>> {
+    for edit in edits {
+        if span.end <= edit.start {
+            continue;
+        }
+        if span.start >= edit.end {
+            let delta = edit.text.chars().count() as isize - (edit.end - edit.start) as isize;
+            span.start = span.start.checked_add_signed(delta)?;
+            span.end = span.end.checked_add_signed(delta)?;
+            continue;
+        }
+        return None;
+    }
+    Some(span)
+}
+
+fn is_token_boundary(text: &Rope, bytes: Range<usize>) -> bool {
+    let before = char_before(text, bytes.start);
+    let first = char_at(text, bytes.start);
+    let last = char_before(text, bytes.end);
+    let after = char_at(text, bytes.end);
     !(is_word(before, first) || is_word(last, after))
+}
+
+fn char_at(text: &Rope, byte: usize) -> Option<char> {
+    text.get_char(text.try_byte_to_char(byte).ok()?)
+}
+
+fn char_before(text: &Rope, byte: usize) -> Option<char> {
+    let index = text.try_byte_to_char(byte).ok()?.checked_sub(1)?;
+    text.get_char(index)
 }
 
 fn is_word(left: Option<char>, right: Option<char>) -> bool {
@@ -110,36 +90,4 @@ fn is_word(left: Option<char>, right: Option<char>) -> bool {
 
 fn is_identifier_char(character: char) -> bool {
     character.is_alphanumeric() || character == '_'
-}
-
-fn char_byte(text: &str, index: &LineIndex, row: usize, column: usize) -> Option<usize> {
-    if row >= index.line_count() {
-        return None;
-    }
-    let start = index.line_start(row);
-    let end = rows::line_text_end(text, index, row);
-    let line = text.get(start..end)?;
-    let offset = line
-        .char_indices()
-        .nth(column)
-        .map(|(offset, _)| offset)
-        .unwrap_or(line.len());
-    Some(start + offset)
-}
-
-fn map_bytes(start: usize, end: usize, edit: Option<&InputEdit>) -> Option<(usize, usize)> {
-    let Some(edit) = edit else {
-        return Some((start, end));
-    };
-    if end <= edit.start_byte {
-        return Some((start, end));
-    }
-    if start >= edit.old_end_byte {
-        let delta = edit.new_end_byte as isize - edit.old_end_byte as isize;
-        return Some((
-            (start as isize + delta) as usize,
-            (end as isize + delta) as usize,
-        ));
-    }
-    None
 }
