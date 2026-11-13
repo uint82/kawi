@@ -104,6 +104,21 @@ source = "nvim-treesitter 4916d659 queries/yaml/highlights.scm"
 license = "Apache-2.0"
 
 [[adaptation]]
+file = "php.scm"
+source = "nvim-treesitter 4916d659 queries/php_only/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "php-imports.scm"
+source = "nvim-treesitter 4916d659 queries/php_only/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "php-tokens.scm"
+source = "nvim-treesitter 4916d659 queries/php_only/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
 file = "rust.scm"
 source = "nvim-treesitter 4916d659 queries/rust/highlights.scm"
 license = "MIT"
