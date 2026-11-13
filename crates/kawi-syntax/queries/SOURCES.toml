@@ -89,6 +89,16 @@ source = "nvim-treesitter 4916d659 queries/java/highlights.scm"
 license = "Apache-2.0"
 
 [[adaptation]]
+file = "lua.scm"
+source = "nvim-treesitter 4916d659 queries/lua/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "lua-tokens.scm"
+source = "nvim-treesitter 4916d659 queries/lua/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
 file = "rust.scm"
 source = "nvim-treesitter 4916d659 queries/rust/highlights.scm"
 license = "MIT"
