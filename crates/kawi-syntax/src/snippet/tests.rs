@@ -51,7 +51,7 @@ fn cpp_inherits_c_highlights() {
 
 #[test]
 fn lua_conditionals_use_standard_captures() {
-    assert!(names(LanguageId::Lua, "if true then end").contains(&"keyword.control"));
+    assert!(names(LanguageId::Lua, "if true then end").contains(&"keyword.conditional"));
 }
 
 #[test]

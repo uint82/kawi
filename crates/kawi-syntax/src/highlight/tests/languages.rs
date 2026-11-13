@@ -145,7 +145,7 @@ fn highlights_ruby_php_and_lua_tokens() {
     let lua = "local M = {}\nfunction M.show(item)\n    print(item.name)\n    M.show(item)\nend\nreturn M\n";
     let spans = highlight(LanguageId::Lua, lua, 0, 6);
     assert_eq!(name_of(&spans, lua, 1, "show"), Some("function"));
-    assert_eq!(name_of(&spans, lua, 2, "name"), Some("property"));
+    assert_eq!(name_of(&spans, lua, 2, "name"), Some("variable.member"));
     assert_eq!(name_of(&spans, lua, 3, "show"), Some("function.call"));
 }
 

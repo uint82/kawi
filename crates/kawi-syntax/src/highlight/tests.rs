@@ -19,6 +19,8 @@ mod java_tokens;
 mod javascript;
 mod json;
 mod languages;
+mod lua;
+mod lua_tokens;
 mod markdown;
 mod python;
 mod queries;
