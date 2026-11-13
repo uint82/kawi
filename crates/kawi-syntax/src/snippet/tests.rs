@@ -29,6 +29,10 @@ fn highlights_every_bundled_language() {
         ),
         (LanguageId::CSharp, "class Main { static void Main() {} }"),
         (LanguageId::Ruby, "def run\n  1\nend"),
+        (
+            LanguageId::Ada,
+            "procedure Run is\nbegin\n   null;\nend Run;\n",
+        ),
         (LanguageId::Php, "<?php function run() { return 1; }"),
         (LanguageId::Lua, "local function run() return 1 end"),
         (LanguageId::Yaml, "key: value"),
@@ -82,6 +86,7 @@ fn highlights_a_single_expression_in_every_language() {
         (LanguageId::Java, "return 1;"),
         (LanguageId::CSharp, "return 1;"),
         (LanguageId::Ruby, "value + 1"),
+        (LanguageId::Ada, "Value + 1"),
         (LanguageId::Php, "<?php return 1;"),
         (LanguageId::Lua, "return 1"),
         (LanguageId::Yaml, "key: value"),

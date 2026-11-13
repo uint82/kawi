@@ -29,17 +29,18 @@ pub enum LanguageId {
     Html,
     Css,
     Markdown,
+    Ada,
 }
 
 static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 21]> = OnceLock::new();
+static HIGHLIGHTS: OnceLock<[String; 22]> = OnceLock::new();
 
 pub fn set_user_query_dir(path: PathBuf) {
     let _ = USER_QUERY_DIR.set(path);
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -61,6 +62,7 @@ impl LanguageId {
         Self::Html,
         Self::Css,
         Self::Markdown,
+        Self::Ada,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -97,6 +99,7 @@ impl LanguageId {
             "html" | "htm" => Some(Self::Html),
             "css" => Some(Self::Css),
             "md" | "markdown" => Some(Self::Markdown),
+            "ada" | "adb" | "ads" => Some(Self::Ada),
             _ => None,
         }
     }
@@ -124,6 +127,7 @@ impl LanguageId {
             Self::Html => "html",
             Self::Css => "css",
             Self::Markdown => "markdown",
+            Self::Ada => "ada",
         }
     }
 
@@ -174,6 +178,7 @@ impl LanguageId {
             Self::Html => 18,
             Self::Css => 19,
             Self::Markdown => 20,
+            Self::Ada => 21,
         }
     }
 
