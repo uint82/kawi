@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use ropey::Rope;
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -13,11 +14,21 @@ use crate::history::History;
 use crate::history_persist::PersistedHistory;
 use crate::line_adjust::{self, LineAdjust};
 use crate::line_ending::{self, LineEnding};
+use crate::text_edit::TextEdit;
 use crate::unicode;
 use crate::write;
 
 mod graphemes;
 mod undo_tree;
+
+const EDIT_HISTORY_REVISIONS: usize = 64;
+const EDIT_HISTORY_BYTES: usize = 1024 * 1024;
+
+struct EditBatch {
+    revision: u64,
+    bytes: usize,
+    edits: Vec<TextEdit>,
+}
 
 pub struct Buffer {
     id: String,
@@ -28,6 +39,10 @@ pub struct Buffer {
     line_changes: u64,
     adjustments: Vec<LineAdjust>,
     changes: Vec<BufferChange>,
+    pending_edits: Vec<TextEdit>,
+    edit_history: VecDeque<EditBatch>,
+    edit_history_base: u64,
+    edit_history_bytes: usize,
     origin: BufferChangeOrigin,
     readonly: bool,
     internal: bool,
@@ -55,6 +70,10 @@ impl Buffer {
             line_changes: 0,
             adjustments: Vec::new(),
             changes: Vec::new(),
+            pending_edits: Vec::new(),
+            edit_history: VecDeque::new(),
+            edit_history_base: 0,
+            edit_history_bytes: 0,
             origin: BufferChangeOrigin::User,
             readonly: false,
             internal: false,
@@ -115,7 +134,11 @@ impl Buffer {
             }
         };
         self.line_ending = LineEnding::detect(&text);
-        self.rope = Rope::from_str(&line_ending::normalize(&text));
+        let old = std::mem::replace(
+            &mut self.rope,
+            Rope::from_str(&line_ending::normalize(&text)),
+        );
+        self.record_rope_diff(&old);
         self.source_hash = source_hash;
         self.touch();
         Ok(())
@@ -202,7 +225,7 @@ impl Buffer {
         self.origin = previous;
         self.path = Some(name.to_string());
         self.history = History::new();
-        self.revision = self.revision.wrapping_add(1);
+        self.advance_revision();
         self.line_changes = 0;
         self.adjustments.clear();
         self.source_hash = None;
@@ -229,7 +252,58 @@ impl Buffer {
         if self.readonly {
             return;
         }
+        self.advance_revision();
+    }
+
+    fn advance_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1);
+        self.flush_edits();
+    }
+
+    fn flush_edits(&mut self) {
+        if self.pending_edits.is_empty() {
+            return;
+        }
+        let edits = std::mem::take(&mut self.pending_edits);
+        let bytes = edits.iter().map(|edit| edit.text.len()).sum();
+        if self.edit_history.is_empty() {
+            self.edit_history_base = self.revision.wrapping_sub(1);
+        }
+        self.edit_history.push_back(EditBatch {
+            revision: self.revision,
+            bytes,
+            edits,
+        });
+        self.edit_history_bytes += bytes;
+        self.trim_edits();
+    }
+
+    fn trim_edits(&mut self) {
+        while self.edit_history.len() > EDIT_HISTORY_REVISIONS
+            || self.edit_history_bytes > EDIT_HISTORY_BYTES
+        {
+            let Some(batch) = self.edit_history.pop_front() else {
+                break;
+            };
+            self.edit_history_base = batch.revision;
+            self.edit_history_bytes -= batch.bytes;
+        }
+    }
+
+    pub fn text_edits_since(&self, revision: u64) -> Option<Vec<TextEdit>> {
+        if revision == self.revision {
+            return Some(Vec::new());
+        }
+        if revision > self.revision || revision < self.edit_history_base {
+            return None;
+        }
+        let mut edits = Vec::new();
+        for batch in &self.edit_history {
+            if batch.revision > revision {
+                edits.extend(batch.edits.iter().cloned());
+            }
+        }
+        Some(edits)
     }
 
     pub fn len(&self) -> usize {
@@ -438,14 +512,20 @@ impl Buffer {
     }
 
     fn record_change(&mut self, start: usize, end: usize, text: &str) {
-        let start = self.text_position(start);
-        let end = self.text_position(end);
+        let start = start.min(self.rope.len_chars());
+        let end = end.min(self.rope.len_chars()).max(start);
+        let start_position = self.text_position(start);
+        let end_position = self.text_position(end);
+        let text = text.to_string();
         self.changes.push(BufferChange {
-            start,
-            end,
-            text: text.to_string(),
+            start: start_position,
+            end: end_position,
+            text: text.clone(),
             origin: self.origin.clone(),
         });
+        if start != end || !text.is_empty() {
+            self.pending_edits.push(TextEdit { start, end, text });
+        }
     }
 
     fn text_position(&self, index: usize) -> TextPosition {
@@ -475,8 +555,13 @@ impl Buffer {
         self.changes.push(BufferChange {
             start: start_position,
             end: end_position,
-            text,
+            text: text.clone(),
             origin: self.origin.clone(),
+        });
+        self.pending_edits.push(TextEdit {
+            start: change.start,
+            end: change.old_end,
+            text,
         });
     }
 
@@ -2049,5 +2134,90 @@ mod tests {
         assert_eq!(b.revision(), before.saturating_add(1));
         assert!(b.redo(0, 0).is_some());
         assert_eq!(b.revision(), before.saturating_add(2));
+    }
+
+    #[test]
+    fn text_edits_describe_insertions() {
+        let mut b = Buffer::from_string("ac");
+        b.insert_char(0, 1, 'b');
+        let edits = b.text_edits_since(0).expect("edits");
+        assert_eq!(
+            edits,
+            vec![TextEdit {
+                start: 1,
+                end: 1,
+                text: "b".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn text_edits_join_every_revision_since_the_base() {
+        let mut b = Buffer::from_string("a");
+        b.insert_char(0, 1, 'b');
+        b.insert_char(0, 2, 'c');
+        let edits = b.text_edits_since(0).expect("edits");
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].start, 1);
+        assert_eq!(edits[1].start, 2);
+        assert!(b.text_edits_since(1).expect("edits").len() == 1);
+        assert!(b.text_edits_since(2).expect("edits").is_empty());
+    }
+
+    #[test]
+    fn text_edits_cover_replacements_and_deletions() {
+        let mut b = Buffer::from_string("one two");
+        b.replace_all("three");
+        let edits = b.text_edits_since(0).expect("edits");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].text, "three");
+        b.delete_span(0, 0, 0, 5);
+        let edits = b.text_edits_since(1).expect("edits");
+        let before = Rope::from_str("three");
+        let after = crate::text_edit::apply_text_edits(&before, &edits).expect("edits apply");
+        assert_eq!(after.to_string(), b.snapshot().to_string());
+    }
+
+    #[test]
+    fn text_edits_describe_undo() {
+        let mut b = Buffer::from_string("ab");
+        b.checkpoint(0, 0);
+        b.insert_char(0, 2, 'c');
+        assert!(b.undo(0, 0).is_some());
+        let edits = b.text_edits_since(1).expect("edits");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].start, 2);
+        assert_eq!(edits[0].end, 3);
+        assert_eq!(edits[0].text, "");
+    }
+
+    #[test]
+    fn text_edits_describe_internal_replacements() {
+        let mut b = Buffer::from_string("old");
+        b.set_internal(true);
+        assert!(b.replace_internal_text("help:index", "new"));
+        let edits = b.text_edits_since(0).expect("edits");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].text, "new");
+    }
+
+    #[test]
+    fn text_edits_reject_revisions_outside_the_history() {
+        let mut b = Buffer::from_string("");
+        assert!(b.text_edits_since(0).is_some());
+        assert!(b.text_edits_since(1).is_none());
+        b.insert_char(0, 0, 'a');
+        assert!(b.text_edits_since(0).is_some());
+        assert!(b.text_edits_since(2).is_none());
+    }
+
+    #[test]
+    fn text_edit_history_drops_old_revisions() {
+        let mut b = Buffer::from_string("");
+        for _ in 0..=EDIT_HISTORY_REVISIONS {
+            b.insert_char(0, 0, 'a');
+        }
+        assert!(b.text_edits_since(0).is_none());
+        assert!(b.text_edits_since(b.revision()).is_some());
     }
 }
