@@ -26,6 +26,8 @@ mod php;
 mod php_tokens;
 mod python;
 mod queries;
+mod ruby;
+mod ruby_tokens;
 mod rust;
 mod stability;
 mod support;

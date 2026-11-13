@@ -119,6 +119,16 @@ source = "nvim-treesitter 4916d659 queries/php_only/highlights.scm"
 license = "Apache-2.0"
 
 [[adaptation]]
+file = "ruby.scm"
+source = "nvim-treesitter 4916d659 queries/ruby/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "ruby-tokens.scm"
+source = "nvim-treesitter 4916d659 queries/ruby/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
 file = "rust.scm"
 source = "nvim-treesitter 4916d659 queries/rust/highlights.scm"
 license = "MIT"
