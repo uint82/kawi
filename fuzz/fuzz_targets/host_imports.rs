@@ -12,7 +12,7 @@ use serde_json::Value;
 
 #[derive(Arbitrary, Debug)]
 struct Input {
-    grants: u16,
+    grants: u32,
     calls: Vec<Call>,
 }
 
@@ -75,7 +75,7 @@ fn method_name(index: u8) -> &'static str {
     }
 }
 
-fn expected_allowed(grants: u16, method: &str) -> bool {
+fn expected_allowed(grants: u32, method: &str) -> bool {
     match host_method_capability(method) {
         MethodCapability::Required(capability) => {
             let index = kawi_plugin::Capability::ALL

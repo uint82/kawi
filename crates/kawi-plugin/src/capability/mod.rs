@@ -10,8 +10,9 @@ use sha2::{Digest, Sha256};
 
 pub(crate) use command::{authorize_command, resolve as resolve_command};
 pub use method::{
-    advertised_events, advertised_host_methods, event_capability, host_method_capability,
-    is_event_allowed, is_host_method_allowed, MethodCapability,
+    advertised_events, advertised_host_methods, event_capability, event_minor,
+    host_method_capability, host_method_minor, is_event_allowed, is_host_method_allowed,
+    is_process_event, is_process_host_method, MethodCapability,
 };
 pub use registry::CapabilityRegistry;
 #[cfg(feature = "wasm")]
@@ -22,6 +23,10 @@ pub use scope::{intersect_scope, Scope};
 pub enum Capability {
     EditorRead,
     EditorWrite,
+    EditorBuffers,
+    EditorBuffersWrite,
+    EditorWindows,
+    EditorControl,
     EditorExecute,
     EditorDecorations,
     UiMessage,
@@ -31,6 +36,7 @@ pub enum Capability {
     UiPanel,
     DiagnosticsRead,
     DiagnosticsPublish,
+    OptionsRead,
     FsRead,
     FsWrite,
     ProcessSpawn,
@@ -38,9 +44,13 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 20] = [
         Self::EditorRead,
         Self::EditorWrite,
+        Self::EditorBuffers,
+        Self::EditorBuffersWrite,
+        Self::EditorWindows,
+        Self::EditorControl,
         Self::EditorExecute,
         Self::EditorDecorations,
         Self::UiMessage,
@@ -50,6 +60,7 @@ impl Capability {
         Self::UiPanel,
         Self::DiagnosticsRead,
         Self::DiagnosticsPublish,
+        Self::OptionsRead,
         Self::FsRead,
         Self::FsWrite,
         Self::ProcessSpawn,
@@ -60,6 +71,10 @@ impl Capability {
         match name {
             "editor.read" => Some(Self::EditorRead),
             "editor.write" => Some(Self::EditorWrite),
+            "editor.buffers" => Some(Self::EditorBuffers),
+            "editor.buffers.write" => Some(Self::EditorBuffersWrite),
+            "editor.windows" => Some(Self::EditorWindows),
+            "editor.control" => Some(Self::EditorControl),
             "editor.execute" => Some(Self::EditorExecute),
             "editor.decorations" => Some(Self::EditorDecorations),
             "ui.message" => Some(Self::UiMessage),
@@ -69,6 +84,7 @@ impl Capability {
             "ui.panel" => Some(Self::UiPanel),
             "diagnostics.read" => Some(Self::DiagnosticsRead),
             "diagnostics.publish" => Some(Self::DiagnosticsPublish),
+            "options.read" => Some(Self::OptionsRead),
             "fs.read" => Some(Self::FsRead),
             "fs.write" => Some(Self::FsWrite),
             "process.spawn" => Some(Self::ProcessSpawn),
@@ -81,6 +97,10 @@ impl Capability {
         match self {
             Self::EditorRead => "editor.read",
             Self::EditorWrite => "editor.write",
+            Self::EditorBuffers => "editor.buffers",
+            Self::EditorBuffersWrite => "editor.buffers.write",
+            Self::EditorWindows => "editor.windows",
+            Self::EditorControl => "editor.control",
             Self::EditorExecute => "editor.execute",
             Self::EditorDecorations => "editor.decorations",
             Self::UiMessage => "ui.message",
@@ -90,6 +110,7 @@ impl Capability {
             Self::UiPanel => "ui.panel",
             Self::DiagnosticsRead => "diagnostics.read",
             Self::DiagnosticsPublish => "diagnostics.publish",
+            Self::OptionsRead => "options.read",
             Self::FsRead => "fs.read",
             Self::FsWrite => "fs.write",
             Self::ProcessSpawn => "process.spawn",
@@ -100,7 +121,8 @@ impl Capability {
     pub fn is_scoped(self) -> bool {
         matches!(
             self,
-            Self::EditorExecute
+            Self::EditorBuffersWrite
+                | Self::EditorExecute
                 | Self::FsRead
                 | Self::FsWrite
                 | Self::ProcessSpawn

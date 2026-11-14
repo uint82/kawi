@@ -103,8 +103,98 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         reason:
             "requires a live child process and queued WASM events; covered by app WASM job tests",
     },
+    Uncovered {
+        name: "buffer.list",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "buffer.get",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "buffer.open",
+        reason:
+            "requires a workspace and editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "buffer.apply_edit",
+        reason: "requires editor buffer state and path scope; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "window.list",
+        reason: "requires editor window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "window.get",
+        reason: "requires editor window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "window.focus",
+        reason: "requires editor window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "window.open",
+        reason: "requires editor window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "window.close",
+        reason: "requires editor window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "editor.set_cursor",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "editor.set_selection",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "editor.set_mode",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "options.list",
+        reason: "requires the editor option registry; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "options.get",
+        reason: "requires the editor option registry; covered by app plugin host API tests",
+    },
 ];
-pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[];
+pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[
+    Uncovered {
+        name: "buffer_enter",
+        reason: "requires editor buffer focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "buffer_leave",
+        reason: "requires editor buffer focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "window_enter",
+        reason: "requires editor window focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "window_leave",
+        reason: "requires editor window focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "cursor_moved",
+        reason: "requires editor cursor state; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "selection_changed",
+        reason: "requires editor selection state; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "focus_gained",
+        reason: "requires editor focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "focus_lost",
+        reason: "requires editor focus transitions; covered by app plugin event tests",
+    },
+];
 
 pub(crate) fn covered_methods() -> Vec<&'static str> {
     scenarios()

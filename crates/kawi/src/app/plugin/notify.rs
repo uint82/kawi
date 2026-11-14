@@ -10,6 +10,8 @@ use kawi_plugin::{
 use serde_json::Value;
 
 use super::PluginRuntime;
+
+mod state;
 use crate::app::path_match::glob_matches;
 use crate::keymap::KeyContext;
 
@@ -20,11 +22,14 @@ impl PluginRuntime {
         &mut self,
         editor: &mut kawi_editor::Editor,
         problems: &mut crate::app::problems::Problems,
+        windows: &super::super::window::Windows,
+        focus: Option<(u64, u64)>,
     ) {
         let closed = self.sync_open_buffers(editor);
         for path in closed {
             problems.clear_plugin_paths(&path);
         }
+        self.sync_editor_events(editor, windows, focus);
         self.sync_mode(editor);
         self.sync_diagnostics(editor, problems);
         let changes = editor.take_buffer_changes();
@@ -220,6 +225,8 @@ impl PluginRuntime {
     }
 
     fn notify_event(&mut self, event: &str, payload: Value) {
+        #[cfg(test)]
+        self.test_events.push((event.to_string(), payload.clone()));
         let mut overflowed = Vec::new();
         for plugin in &self.catalog.plugins {
             if self.send(&plugin.manifest.name, event, payload.clone())

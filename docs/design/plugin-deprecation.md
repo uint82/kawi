@@ -8,7 +8,7 @@ The process runtime must not be removed until every criterion below is true and 
 
 ## Progress
 
-- Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI. `kawi-plugin-sdk` 0.7.0 is packaged and published by the release workflow for tagged releases.
+- Authoring readiness: complete. The guide, scaffold, build command, inspection command, and versioned WIT package are exercised by CI. `kawi-plugin-sdk` 0.8.0 is packaged and published by the release workflow for tagged releases.
 - Port coverage: complete. The WASM echo and trim fixtures pass the shared conformance scenarios, including stale revision retry, retry exhaustion, buffer identity changes, and denied editor write.
 - External validation: pilot prepared, awaiting an editor release and independent author. The protocol, release-cycle definition, checklists, and feedback and tracking forms are in [plugin-external-validation](plugin-external-validation.md).
 - Default and migration window: open. The `wasm` feature is enabled by default, `:plugin list` marks process plugins as a trusted compatibility runtime, and the migration guide is published. Deprecation warnings and the two-minor-release window start after external validation.
@@ -19,7 +19,7 @@ Removal remains blocked until external validation completes and the deprecation 
 ## Authoring readiness
 
 - The WASM authoring guide and `kawi plugin new` template are shipped and exercised by CI.
-- `kawi-plugin-sdk` 0.7.0 is packaged with the versioned WIT package and published by the release workflow for tagged releases. A mismatched SDK reports a clear build or load error. See [plugin-sdk-release](plugin-sdk-release.md).
+- `kawi-plugin-sdk` 0.8.0 is packaged with the versioned WIT package and published by the release workflow for tagged releases. A mismatched SDK reports a clear build or load error. See [plugin-sdk-release](plugin-sdk-release.md).
 - `kawi plugin build` updates the component path and SHA-256 without manual editing.
 - `kawi plugin inspect` prints requested capabilities and component imports before a plugin is installed.
 - A Rust-free path is documented honestly. Other component languages are supported only when a maintained binding path exists.

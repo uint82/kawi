@@ -13,6 +13,7 @@ use serde_json::Value;
 use super::super::problems::{plugin_source, Problem, ProblemSeverity};
 use super::super::App;
 
+mod api;
 mod util;
 
 use util::mode_name;
@@ -50,7 +51,7 @@ impl App {
             "process.kill" => self.plugin_kill_job(plugin, params),
             "process.status" => self.plugin_job_status(plugin, params),
             "process.poll" => self.plugin_poll_job(plugin, params),
-            _ => Err(RpcError::method_not_found(method)),
+            _ => api::handle(self, plugin, method, params),
         }
     }
 
@@ -224,7 +225,7 @@ pub(super) fn position_to_char(snapshot: &Rope, position: &Position) -> Result<u
         .map_err(|error| RpcError::invalid_position(error.to_string()))
 }
 
-fn position_at(snapshot: &Rope, line: usize, column: usize) -> Position {
+pub(super) fn position_at(snapshot: &Rope, line: usize, column: usize) -> Position {
     let line = line.min(snapshot.len_lines().saturating_sub(1));
     let text = snapshot.line(line);
     Position {

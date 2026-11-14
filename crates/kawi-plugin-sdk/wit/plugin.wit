@@ -1,4 +1,4 @@
-package kawi:plugin@0.7.0;
+package kawi:plugin@0.8.0;
 
 interface types {
   record position {
@@ -9,6 +9,62 @@ interface types {
   record selection {
     start: position,
     end: position,
+  }
+
+  record buffer-info {
+    buffer: u64,
+    revision: u64,
+    path: option<string>,
+    language: option<string>,
+    modified: bool,
+  }
+
+  record buffer-state {
+    buffer: u64,
+    revision: u64,
+    path: option<string>,
+    language: option<string>,
+    modified: bool,
+    text: option<string>,
+  }
+
+  record window-info {
+    window: u64,
+    buffer: u64,
+    active: bool,
+    width: u32,
+    height: u32,
+  }
+
+  enum split-direction {
+    horizontal,
+    vertical,
+  }
+
+  enum option-kind {
+    boolean,
+    integer,
+    text,
+    enumeration,
+    list-values,
+  }
+
+  enum option-scope {
+    global,
+    buffer,
+    window,
+  }
+
+  record option-info {
+    name: string,
+    aliases: list<string>,
+    description: string,
+    kind: option-kind,
+    scope: option-scope,
+    section: string,
+    default: string,
+    value: string,
+    values: list<string>,
   }
 
   record state {
@@ -156,6 +212,44 @@ interface types {
     diagnostics: list<diagnostic>,
   }
 
+  record buffer-enter {
+    buffer: u64,
+    path: option<string>,
+    language: option<string>,
+    revision: u64,
+  }
+
+  record buffer-leave {
+    buffer: u64,
+    path: option<string>,
+  }
+
+  record window-enter {
+    window: u64,
+    buffer: u64,
+  }
+
+  record window-leave {
+    window: u64,
+    buffer: u64,
+  }
+
+  record cursor-moved {
+    buffer: u64,
+    cursor: position,
+    selection: option<selection>,
+  }
+
+  record selection-changed {
+    buffer: u64,
+    selection: option<selection>,
+  }
+
+  record focus-changed {
+    window: u64,
+    buffer: u64,
+  }
+
   variant prompt-outcome {
     text(string),
     selected(string),
@@ -171,6 +265,14 @@ interface types {
     file-saved(file-saved),
     mode-changed(mode-changed),
     diagnostics-changed(diagnostics-changed),
+    buffer-enter(buffer-enter),
+    buffer-leave(buffer-leave),
+    window-enter(window-enter),
+    window-leave(window-leave),
+    cursor-moved(cursor-moved),
+    selection-changed(selection-changed),
+    focus-gained(focus-changed),
+    focus-lost(focus-changed),
   }
 }
 
@@ -188,6 +290,40 @@ interface editor-execute {
   use types.{command-info, error};
   execute: func(command: string) -> result<_, error>;
   list-commands: func() -> result<list<command-info>, error>;
+}
+
+interface editor-buffers {
+  use types.{buffer-info, buffer-state, error};
+  list-buffers: func() -> result<list<buffer-info>, error>;
+  get: func(buffer: u64, include-text: bool) -> result<buffer-state, error>;
+}
+
+interface editor-buffers-write {
+  use types.{buffer-state, edit, error};
+  open: func(path: string) -> result<buffer-state, error>;
+  apply-edit: func(buffer: u64, revision: u64, edits: list<edit>) -> result<u64, error>;
+}
+
+interface editor-windows {
+  use types.{split-direction, window-info, error};
+  list-windows: func() -> result<list<window-info>, error>;
+  get: func(window: u64) -> result<window-info, error>;
+  focus: func(window: u64) -> result<window-info, error>;
+  open: func(buffer: u64, direction: split-direction) -> result<window-info, error>;
+  close: func(window: u64, force: bool) -> result<window-info, error>;
+}
+
+interface editor-control {
+  use types.{position, selection, state, error};
+  set-cursor: func(buffer: u64, cursor: position) -> result<state, error>;
+  set-selection: func(buffer: u64, selection: option<selection>) -> result<state, error>;
+  set-mode: func(buffer: u64, mode: string) -> result<state, error>;
+}
+
+interface options-read {
+  use types.{option-info, error};
+  list-options: func(prefix: option<string>) -> result<list<option-info>, error>;
+  get: func(name: string) -> result<option-info, error>;
 }
 
 interface config-read {
@@ -364,6 +500,11 @@ interface lifecycle {
 world host {
   import editor-read;
   import editor-write;
+  import editor-buffers;
+  import editor-buffers-write;
+  import editor-windows;
+  import editor-control;
+  import options-read;
   import editor-execute;
   import config-read;
   import ui-message;

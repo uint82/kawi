@@ -15,6 +15,10 @@ impl HostEnvironment {
             home: std::env::var_os("HOME").map(PathBuf::from),
         }
     }
+
+    pub fn resolve_path(&self, raw: &str, plugin_dir: &Path) -> Option<PathBuf> {
+        expand_path(raw, plugin_dir, self)
+    }
 }
 
 pub(crate) const WORKSPACE_VAR: &str = "WORKSPACE";

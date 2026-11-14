@@ -7,9 +7,10 @@ use std::thread;
 use serde_json::Value;
 
 use super::channel::{fail_pending, send_log, ReaderContext};
+use crate::capability::is_process_host_method;
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
-use crate::protocol::{error_response_value, is_interactive_host_method, RpcError, HOST_METHODS};
+use crate::protocol::{error_response_value, is_interactive_host_method, RpcError};
 
 pub(super) fn spawn_reader(
     stdout: ChildStdout,
@@ -66,7 +67,7 @@ fn handle_request_or_notification(
     method: &str,
     context: &ReaderContext,
 ) -> Result<(), PluginError> {
-    if !HOST_METHODS.contains(&method) {
+    if !is_process_host_method(method) {
         if let Some(id) = value.get("id").cloned() {
             let error = RpcError::method_not_found(method);
             let _ = context.writer.try_send(error_response_value(id, &error));

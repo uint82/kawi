@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.7.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.7.0 bumps the WIT package, so rebuild components built against 0.6.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.8.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.8.0 bumps the WIT package, so rebuild components built against 0.6.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -127,7 +127,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 ## Host API declarations
 
 - `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, except `config-read`, which needs no declaration.
-- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant.
+- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files and editing the active buffer use the path-scoped `editor.buffers.write`. Window operations use `editor.windows`, cursor and selection control use `editor.control`, and option reads use `options.read`.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
@@ -388,4 +388,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.7.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.8.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

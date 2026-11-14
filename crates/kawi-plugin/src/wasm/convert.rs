@@ -2,22 +2,28 @@ use serde_json::Value;
 
 use crate::error::PluginError;
 use crate::protocol::{
-    BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent, DiagnosticSummary,
-    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, GetStateResult, ModeChangedEvent,
-    Position, ProtocolTextEdit, RpcError, UiPromptOutcome, INTERNAL_ERROR, INVALID_PARAMS,
+    DiagnosticSummary, GetStateResult, Position, ProtocolTextEdit, RpcError, UiPromptOutcome,
+    INTERNAL_ERROR, INVALID_PARAMS,
 };
 
 use super::bindings::kawi::plugin::types::{
-    BufferChanged, BufferClosed, BufferOpened, Diagnostic, DiagnosticsChanged, Event, FileOpened,
-    FileSaved, ModeChanged, Position as WitPosition, ProcessOutput, PromptOutcome, Severity, State,
+    Diagnostic, Position as WitPosition, ProcessOutput, PromptOutcome, Severity, State,
 };
 
 mod arguments;
 mod plugin_api;
+mod plugin_control;
 mod visual;
 
 pub use arguments::{argument_from_json, argument_to_json};
 pub use plugin_api::{command_infos_from_json, setting_value_from_json, settings_from_json};
+mod events;
+
+pub use events::event_from_json;
+pub use plugin_control::{
+    buffer_infos_from_json, buffer_state_from_json, option_info_from_json, option_infos_from_json,
+    selection_to_protocol, split_direction_name, window_info_from_json, window_infos_from_json,
+};
 pub(crate) use visual::decoration_style_to_protocol;
 pub use visual::{decorations_to_protocol, signs_to_protocol, statusline_to_protocol};
 
@@ -73,83 +79,6 @@ pub fn diagnostics_to_protocol(diagnostics: Vec<Diagnostic>) -> Vec<DiagnosticSu
         .collect()
 }
 
-pub fn event_from_json(event: &str, payload: Value) -> Result<Event, RpcError> {
-    match event {
-        "buffer_changed" => {
-            let event: BufferChangedEvent = parse(payload)?;
-            Ok(Event::BufferChanged(BufferChanged {
-                buffer: event.buffer,
-                revision: event.revision,
-                previous_revision: event.previous_revision,
-                origin: event.origin,
-                full_resync: event.full_resync,
-                changes: event
-                    .changes
-                    .into_iter()
-                    .map(edit_from_protocol)
-                    .collect::<Result<_, _>>()?,
-            }))
-        }
-        "buffer_opened" => {
-            let event: BufferOpenedEvent = parse(payload)?;
-            Ok(Event::BufferOpened(BufferOpened {
-                buffer: event.buffer,
-                path: event.path,
-                language: event.language,
-                revision: event.revision,
-            }))
-        }
-        "file_opened" => {
-            let event: FileOpenedEvent = parse(payload)?;
-            Ok(Event::FileOpened(FileOpened {
-                buffer: event.buffer,
-                path: event.path,
-                language: event.language,
-                revision: event.revision,
-            }))
-        }
-        "buffer_closed" => {
-            let event: BufferClosedEvent = parse(payload)?;
-            Ok(Event::BufferClosed(BufferClosed {
-                buffer: event.buffer,
-                path: event.path,
-            }))
-        }
-        "file_saved" => {
-            let event: FileSavedEvent = parse(payload)?;
-            Ok(Event::FileSaved(FileSaved {
-                buffer: event.buffer,
-                path: event.path,
-                revision: event.revision,
-            }))
-        }
-        "mode_changed" => {
-            let event: ModeChangedEvent = parse(payload)?;
-            Ok(Event::ModeChanged(ModeChanged {
-                buffer: event.buffer,
-                previous: event.from,
-                next: event.to,
-            }))
-        }
-        "diagnostics_changed" => {
-            let event: DiagnosticsChangedEvent = parse(payload)?;
-            Ok(Event::DiagnosticsChanged(DiagnosticsChanged {
-                buffer: event.buffer,
-                path: event.path,
-                revision: event.revision,
-                diagnostics: event
-                    .diagnostics
-                    .into_iter()
-                    .map(diagnostic_from_protocol)
-                    .collect(),
-            }))
-        }
-        _ => Err(RpcError::invalid_params(format!(
-            "unknown plugin event: {event}"
-        ))),
-    }
-}
-
 pub fn rpc_from_wit_error(error: super::bindings::kawi::plugin::types::Error) -> PluginError {
     let mut rpc = RpcError::new(i64::from(error.code), error.message);
     if let Some(capability) = error.capability {
@@ -178,31 +107,6 @@ pub fn process_output(stdout: String, stderr: String, code: Option<i32>) -> Proc
         code,
         stdout,
         stderr,
-    }
-}
-
-fn parse<T: serde::de::DeserializeOwned>(payload: Value) -> Result<T, RpcError> {
-    serde_json::from_value(payload).map_err(|error| RpcError::invalid_params(error.to_string()))
-}
-
-fn edit_from_protocol(
-    edit: ProtocolTextEdit,
-) -> Result<super::bindings::kawi::plugin::types::Edit, RpcError> {
-    Ok(super::bindings::kawi::plugin::types::Edit {
-        start: position_from_protocol(edit.start)?,
-        end: position_from_protocol(edit.end)?,
-        text: edit.text,
-    })
-}
-
-fn diagnostic_from_protocol(diagnostic: DiagnosticSummary) -> Diagnostic {
-    Diagnostic {
-        start: position_from_protocol_lossy(diagnostic.start),
-        end: position_from_protocol_lossy(diagnostic.end),
-        severity: severity_from_name(&diagnostic.severity),
-        message: diagnostic.message,
-        source: diagnostic.source,
-        code: diagnostic.code,
     }
 }
 

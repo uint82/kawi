@@ -1,5 +1,6 @@
+use crate::capability::{is_process_event, is_process_host_method};
 use crate::error::PluginError;
-use crate::protocol::{InitializeResult, HOST_METHODS, PROTOCOL_VERSION};
+use crate::protocol::{InitializeResult, PROTOCOL_VERSION};
 
 pub(super) fn spawn_error_message(
     plugin: &str,
@@ -36,10 +37,15 @@ pub(super) fn validate_initialize(result: &InitializeResult) -> Result<(), Plugi
     if let Some(method) = result
         .host_capabilities
         .iter()
-        .find(|method| !HOST_METHODS.contains(&method.as_str()))
+        .find(|method| !is_process_host_method(method))
     {
         return Err(PluginError::Initialize(format!(
-            "plugin declared unknown host capability: {method}"
+            "plugin declared host capability unavailable to process plugins: {method}"
+        )));
+    }
+    if let Some(event) = result.events.iter().find(|event| !is_process_event(event)) {
+        return Err(PluginError::Initialize(format!(
+            "plugin declared event unavailable to process plugins: {event}"
         )));
     }
     Ok(())

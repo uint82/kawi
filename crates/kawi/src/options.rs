@@ -108,12 +108,33 @@ pub(crate) enum OptionScope {
     Window,
 }
 
+impl OptionScope {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Buffer => "buffer",
+            Self::Window => "window",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigSection {
     Ui,
     Editor,
     History,
     Explorer,
+}
+
+impl ConfigSection {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Ui => "ui",
+            Self::Editor => "editor",
+            Self::History => "history",
+            Self::Explorer => "explorer",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,6 +144,18 @@ pub(crate) enum OptionKind {
     Enum(OptionValues),
     List(&'static [&'static str]),
     Text,
+}
+
+impl OptionKind {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Bool => "boolean",
+            Self::Int { .. } => "integer",
+            Self::Enum(_) => "enumeration",
+            Self::List(_) => "list-values",
+            Self::Text => "text",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

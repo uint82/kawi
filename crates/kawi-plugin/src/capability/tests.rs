@@ -207,3 +207,49 @@ fn component_hash_changes_the_request_hash() {
         .canonical_json()
         .contains("\"component\":\"sha256:first\""));
 }
+
+#[test]
+fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
+    for method in crate::protocol::HOST_METHODS {
+        assert_eq!(
+            is_process_host_method(method),
+            host_method_minor(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+        );
+    }
+    for event in crate::protocol::EVENT_NAMES {
+        assert_eq!(
+            is_process_event(event),
+            event_minor(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+        );
+    }
+    for method in [
+        "buffer.list",
+        "buffer.get",
+        "buffer.open",
+        "buffer.apply_edit",
+        "window.list",
+        "window.get",
+        "window.focus",
+        "window.open",
+        "window.close",
+        "editor.set_cursor",
+        "editor.set_selection",
+        "editor.set_mode",
+        "options.list",
+        "options.get",
+    ] {
+        assert!(!is_process_host_method(method), "{method}");
+    }
+    for event in [
+        "buffer_enter",
+        "buffer_leave",
+        "window_enter",
+        "window_leave",
+        "cursor_moved",
+        "selection_changed",
+        "focus_gained",
+        "focus_lost",
+    ] {
+        assert!(!is_process_event(event), "{event}");
+    }
+}

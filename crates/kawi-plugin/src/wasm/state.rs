@@ -30,6 +30,11 @@ use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
 
+mod editor_api;
+mod util;
+
+pub(super) use util::{decode_json, serialize_params};
+
 pub struct WasmState {
     pub wasi: WasiCtx,
     pub table: ResourceTable,
@@ -80,6 +85,18 @@ impl WasmState {
         self.bridge.call_expired()
     }
 
+    fn set_control_state(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<State, Error> {
+        let value = self
+            .bridge
+            .request(method, params)
+            .map_err(error_from_rpc)?;
+        state_from_json(value).map_err(error_from_rpc)
+    }
+
     pub(crate) fn tracked_sockets(&mut self) -> super::connection_cap::TrackedSocketsView<'_> {
         let policy = self.network.clone();
         let deadline = self.bridge.deadline();
@@ -89,8 +106,8 @@ impl WasmState {
     }
 
     pub fn drain_output(&mut self) {
-        self.stdout_offset = drain(&self.stdout, self.stdout_offset, "stdout", &self.bridge);
-        self.stderr_offset = drain(&self.stderr, self.stderr_offset, "stderr", &self.bridge);
+        self.stdout_offset = util::drain(&self.stdout, self.stdout_offset, "stdout", &self.bridge);
+        self.stderr_offset = util::drain(&self.stderr, self.stderr_offset, "stderr", &self.bridge);
     }
 }
 
@@ -118,20 +135,7 @@ impl editor_read::Host for WasmState {
 
 impl editor_write::Host for WasmState {
     fn apply_edit(&mut self, buffer: u64, revision: u64, edits: Vec<Edit>) -> Result<u64, Error> {
-        let edits = edits_to_protocol(edits).map_err(error_from_rpc)?;
-        let params = serialize_params(ApplyEditParams {
-            buffer,
-            revision,
-            edits,
-        })?;
-        let value = self
-            .bridge
-            .request("editor.apply_edit", params)
-            .map_err(error_from_rpc)?;
-        let result: ApplyEditResult = serde_json::from_value(value).map_err(|error| {
-            error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string()))
-        })?;
-        Ok(result.revision)
+        apply_edit_request(self, buffer, revision, edits)
     }
 }
 
@@ -273,26 +277,23 @@ impl process_run::Host for WasmState {
     }
 }
 
-pub(super) fn decode_json<T: serde::de::DeserializeOwned>(
-    value: serde_json::Value,
-) -> Result<T, Error> {
-    serde_json::from_value(value)
-        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))
-}
-
-pub(super) fn serialize_params<T: serde::Serialize>(params: T) -> Result<serde_json::Value, Error> {
-    serde_json::to_value(params)
-        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))
-}
-
-fn drain(pipe: &MemoryOutputPipe, offset: usize, stream: &str, bridge: &HostBridge) -> usize {
-    let contents = pipe.contents();
-    if contents.len() <= offset {
-        return offset;
-    }
-    let text = String::from_utf8_lossy(&contents[offset..]);
-    for line in text.lines() {
-        bridge.log(format!("{stream}: {line}"));
-    }
-    contents.len()
+fn apply_edit_request(
+    state: &mut WasmState,
+    buffer: u64,
+    revision: u64,
+    edits: Vec<Edit>,
+) -> Result<u64, Error> {
+    let edits = edits_to_protocol(edits).map_err(error_from_rpc)?;
+    let params = serialize_params(ApplyEditParams {
+        buffer,
+        revision,
+        edits,
+    })?;
+    let value = state
+        .bridge
+        .request("editor.apply_edit", params)
+        .map_err(error_from_rpc)?;
+    let result: ApplyEditResult = serde_json::from_value(value)
+        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))?;
+    Ok(result.revision)
 }

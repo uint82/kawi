@@ -6,7 +6,7 @@ use kawi_plugin::{
 
 use super::*;
 
-fn bit(capability: Capability) -> u16 {
+fn bit(capability: Capability) -> u32 {
     let index = Capability::ALL
         .iter()
         .position(|candidate| *candidate == capability)

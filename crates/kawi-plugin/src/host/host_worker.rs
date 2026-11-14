@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::capability::Capability;
+use crate::capability::{is_process_event, Capability};
 
 use crate::error::PluginError;
 use crate::host::PluginStatus;
@@ -29,7 +29,11 @@ impl HostWorker {
 
     pub(super) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
-            Self::Process(worker) => worker.notify(event, payload),
+            Self::Process(worker) if is_process_event(event) => worker.notify(event, payload),
+            Self::Process(worker) if !crate::protocol::EVENT_NAMES.contains(&event) => {
+                worker.notify(event, payload)
+            }
+            Self::Process(_) => NotifyOutcome::Denied,
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.notify(event, payload),
             Self::Disabled(_) => NotifyOutcome::NotRunning,

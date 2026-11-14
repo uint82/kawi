@@ -160,7 +160,7 @@ pub fn position_is_valid(text: &Rope, line: usize, byte_column: usize) -> bool {
     line_text.char_to_byte(character) == byte_column
 }
 
-pub fn registry(grants: u16) -> CapabilityRegistry {
+pub fn registry(grants: u32) -> CapabilityRegistry {
     let mut effective = EffectiveCapabilities::default();
     for (index, capability) in Capability::ALL.iter().enumerate() {
         if grants & (1 << index) != 0 {

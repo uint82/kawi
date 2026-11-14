@@ -144,6 +144,7 @@ impl PluginRuntime {
             Some(workspace.to_path_buf()),
             config.map(Path::to_path_buf),
         );
+        self.environment = Some(environment.clone());
         self.host = Some(PluginHost::start(
             catalog,
             self.capabilities.clone(),
