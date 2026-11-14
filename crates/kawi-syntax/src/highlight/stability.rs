@@ -83,15 +83,61 @@ fn should_override(stable: SyntaxHighlight, current: Option<SyntaxHighlight>) ->
         return false;
     }
     let Some(stable_name) = registry().name(stable) else {
-        return true;
+        return false;
     };
     let Some(current_name) = registry().name(current) else {
-        return true;
+        return false;
     };
-    !is_descendant(current_name, stable_name)
+    is_descendant(stable_name, current_name)
 }
 
 fn is_descendant(name: &str, parent: &str) -> bool {
     name.strip_prefix(parent)
         .is_some_and(|rest| rest.starts_with('.'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn highlight(name: &str) -> SyntaxHighlight {
+        registry().index_of(name).expect(name)
+    }
+
+    #[test]
+    fn stable_capture_fills_an_empty_cell() {
+        assert!(should_override(highlight("keyword"), None));
+    }
+
+    #[test]
+    fn identical_captures_do_not_repaint() {
+        assert!(!should_override(
+            highlight("keyword"),
+            Some(highlight("keyword"))
+        ));
+    }
+
+    #[test]
+    fn more_specific_stable_capture_wins() {
+        assert!(should_override(
+            highlight("string.escape"),
+            Some(highlight("string"))
+        ));
+    }
+
+    #[test]
+    fn more_specific_current_capture_wins() {
+        assert!(!should_override(
+            highlight("string"),
+            Some(highlight("string.escape"))
+        ));
+    }
+
+    #[test]
+    fn unrelated_current_capture_wins() {
+        assert!(!should_override(
+            highlight("function.call"),
+            Some(highlight("type.definition"))
+        ));
+    }
 }
