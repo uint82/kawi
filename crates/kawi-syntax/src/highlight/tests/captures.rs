@@ -257,3 +257,15 @@ fn highlights_tsx_tokens() {
     assert_eq!(name_at(&spans, 0, 36), Some("string"));
     assert_eq!(name_at(&spans, 0, 22), Some("tag"));
 }
+
+#[test]
+fn capture_limit_keeps_partial_highlights() {
+    let mut text = String::from("fn main() {\n");
+    for _ in 0..7_000 {
+        text.push_str("    let value = 42;\n");
+    }
+    text.push_str("}\n");
+    let spans = highlight(LanguageId::Rust, &text, 0, 7_002);
+    assert_eq!(name_at(&spans, 0, 3), Some("function"));
+    assert_eq!(name_at(&spans, 1, 4), Some("keyword"));
+}

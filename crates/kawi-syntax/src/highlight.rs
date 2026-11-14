@@ -229,7 +229,7 @@ impl Document {
         };
         let visible = first.start..last.text_end;
         let blocks = rows::query_blocks(&rows);
-        let Some(captures) = self.collector.captures(injection::CollectRequest {
+        let captures = self.collector.captures(injection::CollectRequest {
             text: &self.text,
             tree,
             runtime,
@@ -237,9 +237,7 @@ impl Document {
             blocks: &blocks,
             visible,
             runtimes: &mut self.embedded_runtimes,
-        }) else {
-            return (Vec::new(), has_error);
-        };
+        });
         let mut spans = paint::paint_captures(&self.text, &rows, &captures);
         if has_error {
             let error_rows = errors::error_rows(tree, &self.text, &window);

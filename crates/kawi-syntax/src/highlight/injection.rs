@@ -39,7 +39,7 @@ impl Collector {
         }
     }
 
-    pub(crate) fn captures(&mut self, request: CollectRequest<'_>) -> Option<Vec<Capture>> {
+    pub(crate) fn captures(&mut self, request: CollectRequest<'_>) -> Vec<Capture> {
         let mut context = Context {
             text: request.text,
             visible: request.visible,
@@ -47,6 +47,7 @@ impl Collector {
             parsers: &mut self.parsers,
             captures: Vec::new(),
             pending: VecDeque::new(),
+            limit_reached: false,
         };
         let source = 0..request.text.len_bytes();
         let host = Layer {
@@ -59,12 +60,12 @@ impl Collector {
             layer: 0,
             language: request.language,
         };
-        context.collect(&host)?;
-        context.drain()?;
+        context.collect(&host);
+        context.drain();
         context
             .captures
             .sort_by_key(|capture| (capture.priority, capture.layer, capture.start));
-        Some(context.captures)
+        context.captures
     }
 }
 
@@ -81,6 +82,7 @@ struct Context<'a> {
     parsers: &'a mut HashMap<LanguageId, Parser>,
     captures: Vec<Capture>,
     pending: VecDeque<Job>,
+    limit_reached: bool,
 }
 
 struct Layer<'a> {
@@ -121,11 +123,10 @@ fn resolve_references(captures: &mut [Capture], locals: &Resolution) {
 }
 
 impl Context<'_> {
-    fn collect(&mut self, layer: &Layer<'_>) -> Option<()> {
+    fn collect(&mut self, layer: &Layer<'_>) {
         let locals = self.local_resolution(layer);
-        self.collect_highlights(layer, &locals)?;
+        self.collect_highlights(layer, &locals);
         self.enqueue(layer);
-        Some(())
     }
 
     fn local_resolution(&self, layer: &Layer<'_>) -> Resolution {
@@ -143,8 +144,11 @@ impl Context<'_> {
         )
     }
 
-    fn drain(&mut self) -> Option<()> {
-        while let Some(job) = self.pending.pop_front() {
+    fn drain(&mut self) {
+        while !self.limit_reached {
+            let Some(job) = self.pending.pop_front() else {
+                break;
+            };
             let text = job.text.clone().unwrap_or_else(|| self.text.clone());
             let block = 0..job.source.len();
             let layer = Layer {
@@ -157,14 +161,13 @@ impl Context<'_> {
                 layer: job.layer,
                 language: job.language,
             };
-            self.collect(&layer)?;
+            self.collect(&layer);
         }
-        Some(())
     }
 
-    fn collect_highlights(&mut self, layer: &Layer<'_>, locals: &Resolution) -> Option<()> {
+    fn collect_highlights(&mut self, layer: &Layer<'_>, locals: &Resolution) {
         let mut captures = Vec::new();
-        for block in layer.blocks {
+        'blocks: for block in layer.blocks {
             let mut cursor = QueryCursor::new();
             cursor.set_byte_range(block.clone());
             let mut matches = cursor.captures(
@@ -201,7 +204,8 @@ impl Context<'_> {
                     continue;
                 }
                 if self.captures.len() + captures.len() >= MAX_CAPTURES {
-                    return None;
+                    self.limit_reached = true;
+                    break 'blocks;
                 }
                 captures.push(Capture {
                     start,
@@ -219,11 +223,10 @@ impl Context<'_> {
         }
         resolve_references(&mut captures, locals);
         self.captures.extend(captures);
-        Some(())
     }
 
     fn enqueue(&mut self, parent: &Layer<'_>) {
-        if parent.layer >= MAX_INJECTION_DEPTH {
+        if self.limit_reached || parent.layer >= MAX_INJECTION_DEPTH {
             return;
         }
         for injection in query::injections(parent) {
