@@ -4000,6 +4000,25 @@ mod tests {
     }
 
     #[test]
+    fn click_past_line_end_places_insert_caret_after_last_char() {
+        let mut app = App::new(Buffer::from_string("abc"), Flavor::Vim);
+        app.handle_key(key(KeyCode::Char('i'))).expect("insert");
+        app.handle_mouse(press(30, 0)).expect("click past end");
+        assert_eq!(app.editor_mode(), Mode::Insert);
+        assert_eq!(app.cursor_position(), (0, 3));
+        app.handle_key(key(KeyCode::Char('x'))).expect("type");
+        assert_eq!(app.editor.visible_lines(0, 1), vec!["abcx"]);
+    }
+
+    #[test]
+    fn click_past_line_end_keeps_normal_caret_on_last_char() {
+        let mut app = App::new(Buffer::from_string("abc"), Flavor::Vim);
+        app.handle_mouse(press(30, 0)).expect("click past end");
+        assert_eq!(app.editor_mode(), Mode::Normal);
+        assert_eq!(app.cursor_position(), (0, 2));
+    }
+
+    #[test]
     fn search_cancel_restores_origin() {
         let mut app = App::new(Buffer::from_string("foo bar foo"), Flavor::Vim);
         for _ in 0..4 {

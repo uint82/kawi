@@ -108,7 +108,46 @@ fn buffer_col_at_screen_skips_gutter_and_snaps_tabs() {
     assert_eq!(e.buffer_col_at_screen(0, 5), 0);
     assert_eq!(e.buffer_col_at_screen(0, 11), 0);
     assert_eq!(e.buffer_col_at_screen(0, 13), 1);
-    assert_eq!(e.buffer_col_at_screen(0, 99), 10);
+    assert_eq!(e.buffer_col_at_screen(0, 99), 11);
+}
+
+#[test]
+fn buffer_col_at_screen_reaches_the_end_slot_only_past_the_text() {
+    let mut e = editor_with("abc");
+    e.set_number(false);
+    let gutter = e.gutter_width();
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 2), 2);
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 3), 3);
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 99), 3);
+}
+
+#[test]
+fn buffer_col_at_screen_handles_tabs_wide_chars_and_empty_lines() {
+    let mut e = editor_with("a\tb\n漢\n");
+    e.set_number(false);
+    let gutter = e.gutter_width();
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 8), 2);
+    assert_eq!(e.buffer_col_at_screen(0, gutter + 9), 3);
+    assert_eq!(e.buffer_col_at_screen(1, gutter + 1), 0);
+    assert_eq!(e.buffer_col_at_screen(1, gutter + 2), 1);
+    assert_eq!(e.buffer_col_at_screen(2, gutter), 0);
+}
+
+#[test]
+fn jump_to_past_line_end_respects_mode() {
+    let mut e = editor_with("abc");
+    let target = e.buffer_col_at_screen(0, 999);
+    e.apply(Action::JumpTo(0, target));
+    assert_eq!(e.col(), 2);
+
+    e.apply(Action::EnterVisual);
+    e.apply(Action::JumpTo(0, target));
+    assert_eq!(e.col(), 3);
+
+    e.apply(Action::ExitVisual);
+    e.apply(Action::InsertAtColumnStart);
+    e.apply(Action::JumpTo(0, target));
+    assert_eq!(e.col(), 3);
 }
 
 #[test]

@@ -845,7 +845,7 @@ impl Editor {
             let (start, end) = buffer.screen_span(row, col, tabstop);
             Some(end.saturating_sub(1).max(start))
         } else {
-            Some(buffer.screen_col(row, width, tabstop))
+            Some(buffer.line_screen_width(row, tabstop))
         }
     }
 
