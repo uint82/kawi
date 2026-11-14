@@ -110,6 +110,17 @@ fn large_files_use_bounded_windows() {
 }
 
 #[test]
+fn first_paint_parses_only_the_viewport_window() {
+    let text = "// marker\n".repeat(3_000);
+    let runtime = Runtime::new(LanguageId::Rust).expect("runtime");
+    let mut document = Document::new(LanguageId::Rust);
+    let (window, spans) = document.first_paint(&request(&text, 1_500, 1_520, 1), &runtime);
+    assert!(document.large);
+    assert_eq!(window, 500..2_520);
+    assert_eq!(name_at(&spans, 1_500, 0), Some("comment"));
+}
+
+#[test]
 fn large_file_edits_refresh_the_window() {
     let text = "# marker\n".repeat(60_000);
     let runtime = Runtime::new(LanguageId::Python).expect("runtime");

@@ -38,7 +38,12 @@ pub(crate) struct Document {
 }
 
 impl Document {
+    #[cfg(test)]
     pub(crate) fn new(language: LanguageId) -> Self {
+        Self::with_runtimes(language, RuntimeCache::new())
+    }
+
+    pub(crate) fn with_runtimes(language: LanguageId, runtimes: RuntimeCache) -> Self {
         let mut parser = Parser::new();
         let _ = parser.set_language(&language.language());
         Self {
@@ -50,11 +55,23 @@ impl Document {
             window_rows: 0..0,
             large: false,
             collector: injection::Collector::new(),
-            embedded_runtimes: RuntimeCache::new(),
+            embedded_runtimes: runtimes,
             stable: None,
             stable_edits: Vec::new(),
             initialized: false,
         }
+    }
+
+    pub(crate) fn first_paint(
+        &mut self,
+        request: &SyntaxRequest,
+        runtime: &Runtime,
+    ) -> (Range<usize>, Vec<SyntaxSpan>) {
+        self.refresh_text(request);
+        self.parse_window(request);
+        let window = self.window_rows.clone();
+        let (spans, _) = self.spans(runtime, window.clone());
+        (window, spans)
     }
 
     pub(crate) fn update(
@@ -236,7 +253,7 @@ impl Document {
             language: self.language,
             blocks: &blocks,
             visible,
-            runtimes: &mut self.embedded_runtimes,
+            runtimes: &self.embedded_runtimes,
         });
         let mut spans = paint::paint_captures(&self.text, &rows, &captures);
         if has_error {

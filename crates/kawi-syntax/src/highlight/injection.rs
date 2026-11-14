@@ -25,7 +25,7 @@ pub(crate) struct CollectRequest<'a> {
     pub(crate) language: LanguageId,
     pub(crate) blocks: &'a [Range<usize>],
     pub(crate) visible: Range<usize>,
-    pub(crate) runtimes: &'a mut RuntimeCache,
+    pub(crate) runtimes: &'a RuntimeCache,
 }
 
 pub(crate) struct Collector {
@@ -78,7 +78,7 @@ impl Default for Collector {
 struct Context<'a> {
     text: &'a Rope,
     visible: Range<usize>,
-    runtimes: &'a mut RuntimeCache,
+    runtimes: &'a RuntimeCache,
     parsers: &'a mut HashMap<LanguageId, Parser>,
     captures: Vec<Capture>,
     pending: VecDeque<Job>,

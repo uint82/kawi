@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tree_sitter::Query;
 use tree_sitter_highlight::HighlightConfiguration;
@@ -45,19 +45,24 @@ impl Runtime {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct RuntimeCache {
-    entries: HashMap<LanguageId, Option<Arc<Runtime>>>,
+    entries: Arc<Mutex<HashMap<LanguageId, Option<Arc<Runtime>>>>>,
 }
 
 impl RuntimeCache {
     pub(crate) fn new() -> Self {
         Self {
-            entries: HashMap::new(),
+            entries: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub(crate) fn get(&mut self, language: LanguageId) -> Option<Arc<Runtime>> {
-        self.entries
+    pub(crate) fn get(&self, language: LanguageId) -> Option<Arc<Runtime>> {
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        entries
             .entry(language)
             .or_insert_with(|| Runtime::new(language).map(Arc::new))
             .clone()
@@ -145,5 +150,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn shared_cache_reuses_a_runtime_across_threads() {
+        let cache = RuntimeCache::new();
+        let first = cache.get(LanguageId::Rust).expect("runtime");
+        let other = cache.clone();
+        let second = std::thread::spawn(move || other.get(LanguageId::Rust))
+            .join()
+            .expect("thread")
+            .expect("runtime");
+        assert!(Arc::ptr_eq(&first, &second));
     }
 }
