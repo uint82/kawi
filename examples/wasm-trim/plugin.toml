@@ -4,7 +4,7 @@ protocol = 1
 runtime = "wasm"
 description = "Trim trailing whitespace"
 component = "trim.wasm"
-sha256 = "sha256:f4cbaeee3f1fc94f7cf48c06b89f1c258f5b5dc0e106336d4884d5ccfc23aa45"
+sha256 = "sha256:7408e90b3ccd3d247305af67319d6bafc7397a091e3ea0c269ca44f688a724f8"
 timeout_ms = 5000
 subscribes = ["file_saved"]
 
