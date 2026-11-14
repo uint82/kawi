@@ -153,6 +153,11 @@ impl Editor {
         let col = screen
             .saturating_sub(self.gutter_width())
             .saturating_add(self.viewport.leftcol());
+        // Clicks past the last cell still have a valid caret position: the
+        // one-past-end slot insert mode uses. Normal mode clamps it later.
+        if col >= self.buffer.line_screen_width(row, tabstop) {
+            return self.line_width(row);
+        }
         self.buffer.char_col(row, col, tabstop)
     }
 
