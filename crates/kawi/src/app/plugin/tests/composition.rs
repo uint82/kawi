@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use super::common::{app, load_plugins, temp_dir};
 use crate::app::App;
+use crate::command::PluginCommandRegistration;
 use crate::keymap::Flavor;
 
 const PLUGIN: &str = "test";
@@ -54,12 +55,13 @@ fn list_commands(app: &mut App) -> Vec<EditorCommandInfo> {
 fn lists_only_allowed_composable_commands() {
     let mut app = app_with_commands(&["file.save", "edit.undo", "echo.ping", "keys.send"]);
     app.commands
-        .register_plugin(
-            "echo.ping".to_string(),
-            "Ping".to_string(),
-            "echo".to_string(),
-            0,
-        )
+        .register_plugin(PluginCommandRegistration {
+            name: "echo.ping".to_string(),
+            aliases: Vec::new(),
+            description: "Ping".to_string(),
+            plugin: "echo".to_string(),
+            target: 0,
+        })
         .unwrap();
     let commands = list_commands(&mut app);
     let ids = commands
@@ -92,12 +94,13 @@ fn rejects_commands_outside_the_scope() {
 fn rejects_unknown_and_non_composable_commands() {
     let mut app = app_with_commands(&["missing.command", "echo.ping", "keys.send"]);
     app.commands
-        .register_plugin(
-            "echo.ping".to_string(),
-            "Ping".to_string(),
-            "echo".to_string(),
-            0,
-        )
+        .register_plugin(PluginCommandRegistration {
+            name: "echo.ping".to_string(),
+            aliases: Vec::new(),
+            description: "Ping".to_string(),
+            plugin: "echo".to_string(),
+            target: 0,
+        })
         .unwrap();
     for command in ["missing.command", "echo.ping", "keys.send"] {
         let error = execute(&mut app, command).expect_err(command);

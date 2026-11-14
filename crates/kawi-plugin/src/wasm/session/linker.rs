@@ -4,10 +4,10 @@ use crate::capability::{Capability, CapabilityRegistry};
 use crate::error::PluginError;
 
 use super::super::bindings::kawi::plugin::{
-    config_read, diagnostics_publish, editor_buffers, editor_buffers_write, editor_control,
-    editor_decorations, editor_execute, editor_read, editor_signs, editor_windows, editor_write,
-    options_read, process_jobs, process_run, types, ui_message, ui_panel, ui_progress, ui_prompt,
-    ui_statusline,
+    config_read, diagnostics_publish, editor_buffers, editor_buffers_write, editor_commands,
+    editor_control, editor_decorations, editor_execute, editor_keymaps, editor_read, editor_signs,
+    editor_windows, editor_write, options_read, process_jobs, process_run, types, ui_message,
+    ui_panel, ui_progress, ui_prompt, ui_statusline,
 };
 use super::super::state::WasmState;
 
@@ -50,6 +50,14 @@ pub(crate) fn add_kawi_interfaces(
     }
     if capabilities.has(plugin, Capability::EditorExecute) {
         editor_execute::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::EditorCommands) {
+        editor_commands::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::EditorKeymaps) {
+        editor_keymaps::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
             .map_err(linker_error)?;
     }
     if capabilities.has(plugin, Capability::UiMessage) {

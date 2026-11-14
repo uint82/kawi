@@ -46,6 +46,14 @@ pub const WASM_IMPORTS: &[ImportRule] = &[
         capabilities: &[Capability::EditorExecute],
     },
     ImportRule {
+        prefix: "kawi:plugin/editor-commands@0.9.0",
+        capabilities: &[Capability::EditorCommands],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/editor-keymaps@0.9.0",
+        capabilities: &[Capability::EditorKeymaps],
+    },
+    ImportRule {
         prefix: "kawi:plugin/config-read@0.9.0",
         capabilities: &[],
     },

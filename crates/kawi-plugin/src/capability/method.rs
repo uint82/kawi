@@ -22,7 +22,13 @@ pub fn host_method_minor(method: &str) -> u64 {
         | "editor.set_selection"
         | "editor.set_mode"
         | "options.list"
-        | "options.get" => crate::protocol::PROTOCOL_MINOR,
+        | "options.get"
+        | "command.register"
+        | "command.unregister"
+        | "command.list"
+        | "keymap.set"
+        | "keymap.remove"
+        | "keymap.list" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -62,6 +68,12 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         "options.list" | "options.get" => MethodCapability::Required(Capability::OptionsRead),
         "editor.execute" | "editor.list_commands" => {
             MethodCapability::Required(Capability::EditorExecute)
+        }
+        "command.register" | "command.unregister" | "command.list" => {
+            MethodCapability::Required(Capability::EditorCommands)
+        }
+        "keymap.set" | "keymap.remove" | "keymap.list" => {
+            MethodCapability::Required(Capability::EditorKeymaps)
         }
         "ui.message" => MethodCapability::Required(Capability::UiMessage),
         "ui.input" | "ui.select" | "ui.confirm" => MethodCapability::Required(Capability::UiPrompt),

@@ -4,6 +4,16 @@ fn registry() -> CommandRegistry {
     CommandRegistry::new()
 }
 
+fn plugin(name: &str, owner: &str, target: u32) -> PluginCommandRegistration {
+    PluginCommandRegistration {
+        name: name.to_string(),
+        aliases: Vec::new(),
+        description: "Command".to_string(),
+        plugin: owner.to_string(),
+        target,
+    }
+}
+
 #[test]
 fn builtin_names_are_unique() {
     let mut names = Vec::new();
@@ -62,24 +72,14 @@ fn action_commands_are_parameterless() {
 fn removed_plugin_commands_are_hidden_and_ids_are_reused() {
     let mut registry = registry();
     let id = registry
-        .register_plugin(
-            "demo.ping".to_string(),
-            "Ping".to_string(),
-            "demo".to_string(),
-            2,
-        )
+        .register_plugin(plugin("demo.ping", "demo", 2))
         .expect("register");
     registry.remove_plugin("demo");
     assert!(registry.find("demo.ping").is_none());
     assert!(registry.spec(id).is_none());
     assert!(!registry.specs().any(|spec| spec.name == "demo.ping"));
     let reused = registry
-        .register_plugin(
-            "demo.ping".to_string(),
-            "Ping again".to_string(),
-            "demo".to_string(),
-            3,
-        )
+        .register_plugin(plugin("demo.ping", "demo", 3))
         .expect("re-register");
     assert_eq!(id, reused);
     assert_eq!(
@@ -92,23 +92,57 @@ fn removed_plugin_commands_are_hidden_and_ids_are_reused() {
 fn removing_a_plugin_keeps_builtins_and_other_plugins() {
     let mut registry = registry();
     registry
-        .register_plugin(
-            "demo.ping".to_string(),
-            "Ping".to_string(),
-            "demo".to_string(),
-            0,
-        )
+        .register_plugin(plugin("demo.ping", "demo", 0))
         .expect("demo");
     registry
-        .register_plugin(
-            "other.ping".to_string(),
-            "Ping".to_string(),
-            "other".to_string(),
-            1,
-        )
+        .register_plugin(plugin("other.ping", "other", 1))
         .expect("other");
     registry.remove_plugin("demo");
     assert!(registry.find("demo.ping").is_none());
     assert!(registry.find("other.ping").is_some());
     assert!(registry.find("file.save").is_some());
+}
+
+#[test]
+fn plugin_aliases_resolve_and_are_removed_with_the_command() {
+    let mut registry = registry();
+    let mut registration = plugin("demo.ping", "demo", 0);
+    registration.aliases = vec!["dp".to_string(), "dping".to_string()];
+    let id = registry.register_plugin(registration).expect("register");
+    assert_eq!(registry.find("dp"), Some(id));
+    assert_eq!(registry.find("dping"), Some(id));
+    registry
+        .unregister_plugin("demo.ping", "demo")
+        .expect("unregister");
+    assert!(registry.find("demo.ping").is_none());
+    assert!(registry.find("dp").is_none());
+    assert!(registry.spec(id).is_none());
+}
+
+#[test]
+fn plugin_alias_collisions_are_rejected() {
+    let mut registry = registry();
+    let mut first = plugin("demo.ping", "demo", 0);
+    first.aliases = vec!["shared".to_string()];
+    registry.register_plugin(first).expect("first");
+    let mut second = plugin("other.ping", "other", 1);
+    second.aliases = vec!["shared".to_string()];
+    assert!(registry.register_plugin(second).is_err());
+    assert!(registry.find("other.ping").is_none());
+    assert!(!registry.find("shared").is_some_and(|id| {
+        registry
+            .spec(id)
+            .is_some_and(|spec| spec.name == "other.ping")
+    }));
+}
+
+#[test]
+fn only_the_owning_plugin_can_unregister_a_command() {
+    let mut registry = registry();
+    registry
+        .register_plugin(plugin("demo.ping", "demo", 0))
+        .expect("register");
+    assert!(registry.unregister_plugin("demo.ping", "other").is_err());
+    assert!(registry.find("demo.ping").is_some());
+    assert!(registry.unregister_plugin("demo.ping", "demo").is_ok());
 }

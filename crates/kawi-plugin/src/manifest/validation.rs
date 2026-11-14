@@ -138,7 +138,7 @@ fn validate_timeout(timeout_ms: u64) -> Result<(), String> {
 fn validate_commands(commands: &[PluginCommand]) -> Result<(), String> {
     let mut ids = HashSet::new();
     for command in commands {
-        validate_command_id(&command.id)?;
+        crate::protocol::validate_command_id(&command.id)?;
         if command.title.trim().is_empty() {
             return Err(format!("command {} has an empty title", command.id));
         }
@@ -176,25 +176,6 @@ pub(super) fn command_capabilities(
         }
     }
     Ok(gates)
-}
-
-fn validate_command_id(id: &str) -> Result<(), String> {
-    if id.is_empty() || id.len() > MAX_NAME_LEN {
-        return Err(format!("command id must be 1 to {MAX_NAME_LEN} characters"));
-    }
-    if !id.chars().all(|character| {
-        character.is_ascii_lowercase()
-            || character.is_ascii_digit()
-            || matches!(character, '.' | '-' | '_')
-    }) {
-        return Err(format!("command id {id} contains an invalid character"));
-    }
-    if !id
-        .starts_with(|character: char| character.is_ascii_lowercase() || character.is_ascii_digit())
-    {
-        return Err(format!("command id {id} must start with a letter or digit"));
-    }
-    Ok(())
 }
 
 fn validate_keybindings(bindings: &BTreeMap<String, Vec<String>>) -> Result<(), String> {

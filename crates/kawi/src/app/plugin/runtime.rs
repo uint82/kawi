@@ -39,6 +39,9 @@ pub(crate) struct PluginRuntime {
     pub(super) events: Option<Receiver<PluginHostEvent>>,
     pub(super) catalog: PluginCatalog,
     pub(super) targets: Vec<PluginCommandTarget>,
+    pub(super) runtime_commands:
+        BTreeMap<String, BTreeMap<String, super::extensions::RuntimeCommand>>,
+    pub(super) runtime_keymaps: BTreeMap<String, Vec<super::keymaps::RuntimeKeymap>>,
     pub(super) bindings: Vec<Binding>,
     pub(super) queues: BTreeMap<String, VecDeque<QueuedInvocation>>,
     pub(super) queue_stats: BTreeMap<String, QueueCounters>,
@@ -82,6 +85,7 @@ pub(crate) struct PluginCommandTarget {
     pub(super) command: String,
     pub(super) required: Vec<Capability>,
     pub(super) coalesce: bool,
+    pub(super) accepts_args: bool,
 }
 
 impl PluginRuntime {

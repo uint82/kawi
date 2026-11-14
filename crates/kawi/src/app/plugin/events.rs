@@ -52,6 +52,13 @@ impl App {
                     let dropped = self.plugins.drop_queues(Some(&plugin));
                     self.log_queue_drops(&dropped, "plugin stopped");
                     self.plugins.stop_jobs(&plugin);
+                    self.plugins
+                        .clear_runtime_keymaps(&plugin, &mut self.keymaps);
+                    self.plugins.clear_runtime_commands(
+                        &plugin,
+                        &mut self.commands,
+                        &mut self.keymaps,
+                    );
                     self.plugins.clear_plugin_state(&plugin);
                     self.plugin_decorations.remove_plugin(&plugin);
                     self.plugin_statusline.remove_plugin(&plugin);

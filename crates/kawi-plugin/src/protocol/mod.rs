@@ -3,6 +3,7 @@ use std::fmt;
 mod decorations;
 mod diagnostics;
 mod events;
+mod extensions;
 mod jobs;
 mod panel;
 mod sanitize;
@@ -21,6 +22,15 @@ use serde_json::Value;
 
 pub use decorations::{decoration_ref, validate_decoration_scope, validate_decorations};
 pub use diagnostics::validate_diagnostics;
+pub use extensions::{
+    validate_command_id, validate_command_spec, validate_keymap_keys, validate_keymap_spec,
+    CommandRegisterParams, CommandUnregisterParams, KeyMode, KeymapRemoveParams, KeymapSetParams,
+    RegisteredCommand, RegisteredKeymap, MAX_RUNTIME_COMMANDS_PER_PLUGIN,
+    MAX_RUNTIME_COMMAND_ALIASES, MAX_RUNTIME_COMMAND_DESCRIPTION_BYTES,
+    MAX_RUNTIME_COMMAND_ID_BYTES, MAX_RUNTIME_COMMAND_TITLE_BYTES, MAX_RUNTIME_KEYMAPS_PER_PLUGIN,
+    MAX_RUNTIME_KEYMAP_COMMAND_BYTES, MAX_RUNTIME_KEYMAP_DESCRIPTION_BYTES,
+    MAX_RUNTIME_KEYMAP_KEYS_BYTES,
+};
 pub use jobs::{
     JobExitedEvent, JobOutputEvent, JobState, JobStream, ProcessJobEvent, ProcessJobParams,
     ProcessOpenParams, ProcessOpenResult, ProcessSignal, ProcessSignalParams, ProcessStatusResult,

@@ -70,6 +70,12 @@ pub(crate) struct CommandSpec {
     pub(crate) source: CommandSource,
 }
 
+impl CommandSpec {
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))
+    }
+}
+
 pub(crate) struct CommandRegistry {
     specs: Vec<Option<CommandSpec>>,
     index: HashMap<String, CommandId>,
@@ -119,30 +125,56 @@ impl CommandRegistry {
 
     pub(crate) fn register_plugin(
         &mut self,
-        name: String,
-        description: String,
-        plugin: String,
-        target: u32,
+        registration: PluginCommandRegistration,
     ) -> Result<CommandId, String> {
-        if self.index.contains_key(&name) {
-            return Err(format!("command name already exists: {name}"));
+        for name in registration.names() {
+            if self.index.contains_key(name) {
+                return Err(format!("command name already exists: {name}"));
+            }
         }
         let spec = CommandSpec {
-            name: name.clone(),
-            aliases: Vec::new(),
-            description,
-            handler: CommandHandler::Plugin(target),
-            source: CommandSource::Plugin(plugin),
+            name: registration.name.clone(),
+            aliases: registration.aliases,
+            description: registration.description,
+            handler: CommandHandler::Plugin(registration.target),
+            source: CommandSource::Plugin(registration.plugin),
         };
-        let id = if let Some(id) = self.retired.remove(&name) {
-            self.specs[id.0 as usize] = Some(spec);
+        let id = if let Some(id) = self.retired.remove(&spec.name) {
+            self.specs[id.0 as usize] = Some(spec.clone());
             id
         } else {
             let id = CommandId(self.specs.len() as u32);
-            self.specs.push(Some(spec));
+            self.specs.push(Some(spec.clone()));
             id
         };
-        self.index.insert(name, id);
+        for name in spec.names() {
+            self.index.insert(name.to_string(), id);
+        }
+        Ok(id)
+    }
+
+    pub(crate) fn unregister_plugin(
+        &mut self,
+        name: &str,
+        plugin: &str,
+    ) -> Result<CommandId, String> {
+        let id = *self
+            .index
+            .get(name)
+            .ok_or_else(|| format!("unknown command: {name}"))?;
+        let spec = self
+            .specs
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| format!("unknown command: {name}"))?;
+        if spec.name != name {
+            return Err(format!("command alias cannot be unregistered: {name}"));
+        }
+        if !matches!(&spec.source, CommandSource::Plugin(owner) if owner == plugin) {
+            return Err(format!("command is not owned by plugin: {name}"));
+        }
+        let spec = spec.clone();
+        self.retire(id, spec);
         Ok(id)
     }
 
@@ -152,16 +184,41 @@ impl CommandRegistry {
             .iter()
             .enumerate()
             .filter_map(|(index, spec)| {
-                let spec = spec.as_ref()?;
-                matches!(&spec.source, CommandSource::Plugin(name) if name == plugin)
-                    .then(|| (CommandId(index as u32), spec.name.clone()))
+                matches!(spec.as_ref()?.source, CommandSource::Plugin(ref name) if name == plugin)
+                    .then_some(CommandId(index as u32))
             })
             .collect::<Vec<_>>();
-        for (id, name) in removed {
-            self.index.remove(&name);
-            self.retired.insert(name, id);
-            self.specs[id.0 as usize] = None;
+        for id in removed {
+            if let Some(spec) = self.specs[id.0 as usize].take() {
+                self.retire_names(id, &spec);
+            }
         }
+    }
+
+    fn retire(&mut self, id: CommandId, spec: CommandSpec) {
+        self.specs[id.0 as usize] = None;
+        self.retire_names(id, &spec);
+    }
+
+    fn retire_names(&mut self, id: CommandId, spec: &CommandSpec) {
+        for name in spec.names() {
+            self.index.remove(name);
+        }
+        self.retired.insert(spec.name.clone(), id);
+    }
+}
+
+pub(crate) struct PluginCommandRegistration {
+    pub(crate) name: String,
+    pub(crate) aliases: Vec<String>,
+    pub(crate) description: String,
+    pub(crate) plugin: String,
+    pub(crate) target: u32,
+}
+
+impl PluginCommandRegistration {
+    fn names(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))
     }
 }
 
