@@ -8,7 +8,7 @@ use kawi_plugin::{
 };
 
 use super::{PluginCommandTarget, PluginRuntime};
-use crate::command::{CommandId, CommandRegistry};
+use crate::command::{CommandId, CommandRegistry, PluginCommandRegistration};
 use crate::keymap::KeyChord;
 use crate::keymap::{has_reserved_prefix, Binding, BindingSource, KeyContext, KeymapResolver};
 
@@ -27,6 +27,8 @@ pub(crate) struct PluginLoadContext<'a> {
 impl PluginRuntime {
     pub(crate) fn load(&mut self, context: PluginLoadContext<'_>, enabled: bool) -> Vec<String> {
         if !enabled {
+            self.clear_all_runtime_keymaps(context.keymaps);
+            self.clear_all_runtime_commands(context.commands, context.keymaps);
             self.host = None;
             self.events = None;
             self.catalog = PluginCatalog::default();
@@ -74,6 +76,8 @@ impl PluginRuntime {
         leaders: &[KeyChord],
     ) -> Vec<String> {
         let mut warnings = Vec::new();
+        self.clear_all_runtime_keymaps(keymaps);
+        self.clear_all_runtime_commands(commands, keymaps);
         let removed = self
             .catalog
             .plugins
@@ -94,12 +98,13 @@ impl PluginRuntime {
                 let name = plugin.command_name(contribution);
                 let target = self.targets.len() as u32;
                 let description = command_description(contribution);
-                match commands.register_plugin(
-                    name.clone(),
-                    description.clone(),
-                    plugin.manifest.name.clone(),
+                match commands.register_plugin(PluginCommandRegistration {
+                    name: name.clone(),
+                    aliases: Vec::new(),
+                    description: description.clone(),
+                    plugin: plugin.manifest.name.clone(),
                     target,
-                ) {
+                }) {
                     Ok(id) => {
                         self.targets.push(PluginCommandTarget {
                             plugin: plugin.manifest.name.clone(),
@@ -110,6 +115,7 @@ impl PluginRuntime {
                                 .filter_map(|name| kawi_plugin::Capability::parse(name))
                                 .collect(),
                             coalesce: contribution.coalesce_queued,
+                            accepts_args: false,
                         });
                         let (mut plugin_bindings, mut binding_warnings) =
                             plugin_bindings(plugin, contribution, id, leaders);

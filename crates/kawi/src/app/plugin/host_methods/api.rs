@@ -6,6 +6,7 @@ use super::super::super::App;
 
 mod buffer_api;
 mod control_api;
+mod extensions;
 mod options_api;
 mod window_api;
 
@@ -30,6 +31,8 @@ pub(super) fn handle(
         "editor.set_mode" => app.plugin_set_mode(params),
         "options.list" => app.plugin_options_list(params),
         "options.get" => app.plugin_options_get(params),
+        "command.register" | "command.unregister" | "command.list" | "keymap.set"
+        | "keymap.remove" | "keymap.list" => extensions::handle(app, plugin, method, params),
         _ => Err(RpcError::method_not_found(method)),
     }
 }

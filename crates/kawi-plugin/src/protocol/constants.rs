@@ -1,12 +1,18 @@
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 13;
+pub const PROTOCOL_MINOR: u64 = 14;
 pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 41] = [
+pub const HOST_METHODS: [&str; 47] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
     "editor.list_commands",
+    "command.register",
+    "command.unregister",
+    "command.list",
+    "keymap.set",
+    "keymap.remove",
+    "keymap.list",
     "editor.set_diagnostics",
     "editor.set_decorations",
     "ui.set_statusline",

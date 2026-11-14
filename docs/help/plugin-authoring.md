@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.8.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.8.0 bumps the WIT package, so rebuild components built against 0.6.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.9.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.9.0 bumps the WIT package, so rebuild components built against 0.8.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -131,10 +131,40 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
+- `editor.commands` enables runtime command registration; `editor.keymaps` enables runtime key bindings. Both are WebAssembly-only, namespaced to the plugin, and cleared when it stops.
 - `editor.decorations` enables highlights, virtual text, and gutter signs. `ui.statusline` enables status line segments.
 - A component that imports an undeclared interface is rejected before it runs.
 - A denied host call returns `Error` with code `-32012`, a message, and the API name. Handle it by reporting a useful message or stopping the operation.
 - On update, Kawi prompts only when the declared API surface grows. The prompt shows the new commit and the added or widened APIs.
+
+## Runtime commands and keymaps
+
+Declare the APIs and register during `init`:
+
+```toml
+[capabilities]
+"editor.commands" = true
+"editor.keymaps" = true
+```
+
+```rust
+use kawi_plugin_sdk::{editor_commands, editor_keymaps};
+
+let command = editor_commands::register(&editor_commands::CommandSpec {
+    id: "greet".to_string(),
+    title: "Greet".to_string(),
+    description: Some("Greet the editor".to_string()),
+    aliases: vec!["hello".to_string()],
+})?;
+editor_keymaps::set(&editor_keymaps::KeymapSpec {
+    mode: editor_keymaps::KeyMode::Normal,
+    keys: "<leader>pg".to_string(),
+    command: command.name,
+    description: Some("Greet".to_string()),
+})?;
+```
+
+The returned name is namespaced, so `greet` becomes `<plugin>.greet`. Aliases are global and must not collide. Runtime commands receive trailing command-line text as one `Text` argument. `editor_commands::unregister` removes the command and any bindings that target it. Kawi clears both on stop, restart, and disable.
 
 ## Interactive UI
 
@@ -388,4 +418,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.8.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.9.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

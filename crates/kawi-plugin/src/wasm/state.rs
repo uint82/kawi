@@ -31,6 +31,8 @@ use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
 
 mod editor_api;
+mod extensions_api;
+mod keymaps_api;
 mod util;
 
 pub(super) use util::{decode_json, serialize_params};

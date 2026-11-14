@@ -1,4 +1,4 @@
-package kawi:plugin@0.8.0;
+package kawi:plugin@0.9.0;
 
 interface types {
   record position {
@@ -490,6 +490,50 @@ interface process-jobs {
   poll: func(job: u64) -> result<list<job-event>, error>;
 }
 
+interface editor-commands {
+  use types.{error};
+
+  record command-spec {
+    id: string,
+    title: string,
+    description: option<string>,
+    aliases: list<string>,
+  }
+
+  record registered-command {
+    id: string,
+    name: string,
+    title: string,
+    description: string,
+    aliases: list<string>,
+  }
+
+  register: func(spec: command-spec) -> result<registered-command, error>;
+  unregister: func(id: string) -> result<_, error>;
+  list-registered: func() -> result<list<registered-command>, error>;
+}
+
+interface editor-keymaps {
+  use types.{error};
+
+  enum key-mode {
+    normal,
+    insert,
+    visual,
+  }
+
+  record keymap-spec {
+    mode: key-mode,
+    keys: string,
+    command: string,
+    description: option<string>,
+  }
+
+  set: func(spec: keymap-spec) -> result<_, error>;
+  remove: func(mode: key-mode, keys: string) -> result<_, error>;
+  list-registered: func() -> result<list<keymap-spec>, error>;
+}
+
 interface lifecycle {
   use types.{argument, error, event};
   init: func(host-protocol: u32) -> result<_, error>;
@@ -506,6 +550,8 @@ world host {
   import editor-control;
   import options-read;
   import editor-execute;
+  import editor-commands;
+  import editor-keymaps;
   import config-read;
   import ui-message;
   import ui-prompt;

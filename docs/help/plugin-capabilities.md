@@ -21,6 +21,8 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.control` | none | Set the active buffer cursor, selection, and mode |
 | `options.read` | none | List and read editor options |
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
+| `editor.commands` | none | Register commands at runtime |
+| `editor.keymaps` | none | Register key bindings at runtime |
 | `editor.decorations` | none | Publish buffer highlights, virtual text, and gutter signs |
 | `ui.message` | none | Show status messages |
 | `ui.prompt` | none | Request text input, a selection, or confirmation |
@@ -46,6 +48,8 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "editor.control" = true
 "options.read" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
+"editor.commands" = true
+"editor.keymaps" = true
 "editor.decorations" = true
 "ui.message" = true
 "ui.prompt" = true
@@ -78,6 +82,37 @@ The WebAssembly runtime exposes the `process-run` one-shot interface and the `pr
 The plugin can call `editor.list_commands` to discover the allowed commands and `editor.execute` to run one. Listing returns canonical IDs, descriptions, and aliases. The scope is an allowlist: a command outside the list returns `-32012`. Plugin-defined commands, `keys.send`, and commands that require arguments are not composable and return `-32602`.
 
 The editor runs the command synchronously before responding. Changes made by the command carry the `plugin:<name>` change origin.
+
+## Plugin commands and keymaps
+
+`editor.commands` and `editor.keymaps` enable runtime registration for WebAssembly plugins. Process plugins remain on protocol minor 12 and cannot use them.
+
+`editor.commands` enables the `editor-commands` interface. A plugin registers a command ID, title, description, and aliases during `init` or any invocation. Kawi prefixes the command with the plugin name, so `greet` from plugin `hello` becomes `hello.greet`. Aliases are global, must not collide with an existing command, and obey the same lowercase ID rules. A plugin can register up to 256 commands. IDs are at most 64 bytes, titles 256 bytes, descriptions 1024 bytes, and each command may declare eight aliases.
+
+Runtime commands accept trailing command-line text as one `Text` argument. Manifest commands reject trailing arguments with `E488`, so declare a command in `plugin.toml` when it takes structured arguments.
+
+Registered commands, their aliases, and their key bindings are removed when the plugin stops, restarts, or is disabled. Unregistering a runtime command also removes key bindings that target it.
+
+`editor.keymaps` enables the `editor-keymaps` interface. A plugin sets a binding in normal, insert, or visual mode with a key sequence, a command name, and an optional description. The command must exist. A plugin can register up to 256 bindings. Key sequences are at most 256 bytes and command names 128 bytes.
+
+Kawi rejects a binding owned by the user or by another plugin. A plugin may replace its own binding and may shadow a default binding; removing the plugin binding restores the default. Key bindings are removed with their plugin.
+
+```rust
+use kawi_plugin_sdk::{editor_commands, editor_keymaps};
+
+let command = editor_commands::register(&editor_commands::CommandSpec {
+    id: "greet".to_string(),
+    title: "Greet".to_string(),
+    description: Some("Greet the editor".to_string()),
+    aliases: vec!["hello".to_string()],
+})?;
+editor_keymaps::set(&editor_keymaps::KeymapSpec {
+    mode: editor_keymaps::KeyMode::Normal,
+    keys: "<leader>pg".to_string(),
+    command: command.name,
+    description: Some("Greet".to_string()),
+})?;
+```
 
 ## Visual customization
 
@@ -217,6 +252,7 @@ An ungated command runs whenever the plugin runs.
 ## Enforcement
 
 - WebAssembly plugins can only import interfaces declared in the manifest. An undeclared import fails before instantiation.
+- Runtime commands and key bindings are namespaced to the plugin and removed when it stops. A plugin cannot register a command name or bind keys owned by another plugin.
 - WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
 - WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
 - Host-mediated editor, UI, and diagnostics calls require the matching declaration. Interactive prompts also require an integer JSON-RPC request id. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.

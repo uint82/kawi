@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -307,6 +307,67 @@ Request params:
 Result is `null`. The command must be a built-in composable command inside the `editor.execute` allowlist. A command outside the allowlist returns `-32012`. An unknown command, a plugin-defined command, `keys.send`, or a command that requires arguments returns `-32602`. The editor runs the command synchronously and reports any execution error as `-32603`. Buffer changes use the `plugin:<name>` origin.
 
 Aliases are accepted when the canonical command is allowed. The canonical ID is used for the allowlist and for `editor.list_commands`.
+
+### command.register
+
+Requires `editor.commands`. This method is available only to WebAssembly components. Request params:
+
+```json
+{
+  "id": "greet",
+  "title": "Greet",
+  "description": "Greet the editor",
+  "aliases": ["hello"]
+}
+```
+
+Result:
+
+```json
+{
+  "id": "greet",
+  "name": "example.greet",
+  "title": "Greet",
+  "description": "Greet the editor",
+  "aliases": ["hello"]
+}
+```
+
+`name` is the namespaced command. IDs are lowercase and contain letters, digits, dots, hyphens, and underscores, and must start with a letter or digit. Titles are limited to 256 bytes, descriptions to 1024 bytes, and aliases to eight entries. Trailing text passed to a runtime command arrives as one `Text` argument.
+
+### command.unregister
+
+Requires `editor.commands`. Request params are `{"id": "greet"}`. Result is `null`. The command, its aliases, and any key bindings that target it are removed.
+
+### command.list
+
+Requires `editor.commands`. Request params are `{}`. Result:
+
+```json
+[{"id": "greet", "name": "example.greet", "title": "Greet", "description": "Greet the editor", "aliases": ["hello"]}]
+```
+
+### keymap.set
+
+Requires `editor.keymaps`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"mode": "normal", "keys": "<leader>pg", "command": "example.greet", "description": "Greet"}
+```
+
+`mode` is `normal`, `insert`, or `visual`. Result is `null`. Kawi rejects a binding owned by the user or by another plugin and reports the conflict as `-32602`. A plugin may replace its own binding and may shadow a default binding.
+
+### keymap.remove
+
+Requires `editor.keymaps`. Request params are `{"mode": "normal", "keys": "<leader>pg"}`. Result is `null`. The binding must belong to the calling plugin.
+
+### keymap.list
+
+Requires `editor.keymaps`. Request params are `{}`. Result:
+
+```json
+[{"mode": "normal", "keys": "<leader>pg", "command": "example.greet", "description": "Greet"}]
+```
 
 ### editor.list_commands
 

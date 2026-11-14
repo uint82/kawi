@@ -159,6 +159,10 @@ impl KeymapResolver {
         self.pending_context
     }
 
+    pub(crate) fn binding_at(&self, mode: KeyContext, keys: &[KeyChord]) -> Option<&Binding> {
+        self.exact_binding(mode, keys)
+    }
+
     pub(crate) fn has_user_binding(&self, mode: KeyContext, keys: &[KeyChord]) -> bool {
         self.bindings
             .iter()

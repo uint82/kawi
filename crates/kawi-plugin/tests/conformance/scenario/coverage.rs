@@ -160,6 +160,30 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "options.get",
         reason: "requires the editor option registry; covered by app plugin host API tests",
     },
+    Uncovered {
+        name: "command.register",
+        reason: "requires the editor command registry; covered by app plugin extension tests",
+    },
+    Uncovered {
+        name: "command.unregister",
+        reason: "requires the editor command registry; covered by app plugin extension tests",
+    },
+    Uncovered {
+        name: "command.list",
+        reason: "requires the editor command registry; covered by app plugin extension tests",
+    },
+    Uncovered {
+        name: "keymap.set",
+        reason: "requires the editor keymap registry; covered by app plugin extension tests",
+    },
+    Uncovered {
+        name: "keymap.remove",
+        reason: "requires the editor keymap registry; covered by app plugin extension tests",
+    },
+    Uncovered {
+        name: "keymap.list",
+        reason: "requires the editor keymap registry; covered by app plugin extension tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[
     Uncovered {

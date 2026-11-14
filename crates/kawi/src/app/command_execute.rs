@@ -27,10 +27,18 @@ impl App {
     }
 
     fn execute_plugin_command(&mut self, id: CommandId, rest: &str) -> Result<bool> {
-        if !rest.is_empty() {
+        let Some(CommandHandler::Plugin(target)) = self.commands.spec(id).map(|spec| spec.handler)
+        else {
+            return Ok(false);
+        };
+        let args = if rest.is_empty() {
+            None
+        } else if self.plugins.target_accepts_args(target) {
+            Some(toml::Value::String(rest.to_string()))
+        } else {
             self.show_message(format!("E488: Trailing characters: {rest}"));
             return Ok(false);
-        }
-        self.dispatch_command_id(id, None)
+        };
+        self.dispatch_command_id(id, args)
     }
 }
