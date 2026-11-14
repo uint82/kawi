@@ -85,6 +85,7 @@ mod signcolumn;
 mod snippet;
 mod status;
 mod symbols;
+mod syntax_first_paint;
 mod syntax_prewarm;
 mod task;
 mod terminal_ui;
@@ -559,8 +560,8 @@ impl App {
                 self.pending_permission = None;
                 return Ok(());
             }
-            if self.picker.is_none() && self.replace.is_none() {
-                self.refresh_syntax();
+            if self.picker.is_none() && self.replace.is_none() && self.refresh_syntax() {
+                self.wait_for_first_paint();
             }
             self.problem_pane_tick();
             self.refresh_picker();
@@ -705,13 +706,14 @@ impl App {
         }
     }
 
-    fn refresh_syntax(&mut self) {
+    // Returns true when the first frame should wait for a new small document.
+    fn refresh_syntax(&mut self) -> bool {
         let Some(key) = self.editor.syntax_key() else {
             self.clear_syntax_spans();
             self.syntax_key = None;
             self.syntax_pending = false;
             self.apply_syntax_results();
-            return;
+            return false;
         };
         let same_request = self.syntax_key.is_some_and(|submitted| {
             submitted.document == key.document
@@ -723,7 +725,7 @@ impl App {
         let covered = self.syntax_spans_cover(&key);
         if (self.syntax_pending && same_request) || covered {
             self.apply_syntax_results();
-            return;
+            return false;
         }
         let document_changed = self.syntax_spans_key.is_none_or(|applied| {
             applied.document != key.document || applied.language != key.language
@@ -745,7 +747,9 @@ impl App {
                     .map(|_| self.syntax_text_revision)
             })
             .unwrap_or(key.revision);
-        if let Some(request) = self.editor.syntax_request_since(base_revision) {
+        let first_paint = if let Some(request) = self.editor.syntax_request_since(base_revision) {
+            let first_paint =
+                document_changed && syntax_first_paint::fits_first_paint(request.text.len_bytes());
             self.shift_syntax_spans(&request);
             self.syntax_text = request.text.clone();
             self.syntax_text_revision = request.key.revision;
@@ -756,10 +760,13 @@ impl App {
             self.syntax_latest = service.submit(request);
             self.syntax_pending = true;
             self.syntax_key = Some(key);
+            first_paint
         } else {
             self.syntax_pending = false;
-        }
+            false
+        };
         self.apply_syntax_results();
+        first_paint
     }
 
     fn shift_syntax_spans(&mut self, request: &SyntaxRequest) {
