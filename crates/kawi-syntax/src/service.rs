@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 pub struct SyntaxService {
     shared: Arc<Shared>,
@@ -90,6 +91,10 @@ impl SyntaxService {
 
     pub fn try_recv(&self) -> Option<SyntaxResult> {
         self.results.try_recv().ok()
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Option<SyntaxResult> {
+        self.results.recv_timeout(timeout).ok()
     }
 
     pub fn detach(&mut self) {
@@ -303,6 +308,22 @@ mod tests {
             .spans
             .iter()
             .any(|span| highlight_is(span, "keyword.function")));
+    }
+
+    #[test]
+    fn service_receives_a_result_with_a_timeout() {
+        let service = SyntaxService::new();
+        service.submit(request("fn main() {}\n", 1));
+        let result = service
+            .recv_timeout(Duration::from_secs(5))
+            .expect("result");
+        assert_eq!(result.key.revision, 1);
+    }
+
+    #[test]
+    fn service_reports_an_empty_timeout() {
+        let service = SyntaxService::new();
+        assert!(service.recv_timeout(Duration::ZERO).is_none());
     }
 
     #[test]
