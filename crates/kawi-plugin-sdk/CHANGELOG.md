@@ -1,3 +1,18 @@
+## 0.9.0 - 2026-11-15
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.9.0 (`kawi:plugin@0.9.0`).
+- Components built against `kawi:plugin@0.8.0` must be rebuilt with this release.
+- Process plugins remain on protocol minor 12. The new interfaces and host methods are available only to WebAssembly components.
+
+### Added
+
+- Add the `editor-commands` interface for registering, unregistering, and listing runtime commands with aliases.
+- Add the `editor-keymaps` interface for setting, removing, and listing runtime key bindings in normal, insert, and visual modes.
+- Add `editor_commands` and `editor_keymaps` re-exports.
+- Remove runtime commands and key bindings when a plugin stops, restarts, or is disabled.
+
 ## 0.8.0 - 2026-11-14
 
 ### Breaking
