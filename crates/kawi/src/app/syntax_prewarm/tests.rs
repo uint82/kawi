@@ -22,8 +22,9 @@ fn prewarm_starts_syntax_for_the_current_buffer() {
     assert!(app.syntax.is_none());
     app.prewarm_syntax();
     assert!(app.syntax.is_some());
-    assert!(app.syntax_pending);
+    assert!(!app.syntax_pending);
     assert!(app.syntax_key.is_some());
+    assert!(!app.syntax_spans.is_empty());
     drop(app);
     fs::remove_dir_all(dir).unwrap();
 }

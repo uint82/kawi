@@ -560,8 +560,8 @@ impl App {
                 self.pending_permission = None;
                 return Ok(());
             }
-            if self.picker.is_none() && self.replace.is_none() && self.refresh_syntax() {
-                self.wait_for_first_paint();
+            if self.picker.is_none() && self.replace.is_none() {
+                self.refresh_syntax();
             }
             self.problem_pane_tick();
             self.refresh_picker();
@@ -706,7 +706,7 @@ impl App {
         }
     }
 
-    // Returns true when the first frame should wait for a new small document.
+    // Returns true after painting a new document synchronously.
     fn refresh_syntax(&mut self) -> bool {
         let Some(key) = self.editor.syntax_key() else {
             self.clear_syntax_spans();
@@ -747,9 +747,11 @@ impl App {
                     .map(|_| self.syntax_text_revision)
             })
             .unwrap_or(key.revision);
-        let first_paint = if let Some(request) = self.editor.syntax_request_since(base_revision) {
-            let first_paint =
-                document_changed && syntax_first_paint::fits_first_paint(request.text.len_bytes());
+        if let Some(request) = self.editor.syntax_request_since(base_revision) {
+            if document_changed {
+                self.paint_syntax_first(request);
+                return true;
+            }
             self.shift_syntax_spans(&request);
             self.syntax_text = request.text.clone();
             self.syntax_text_revision = request.key.revision;
@@ -760,13 +762,11 @@ impl App {
             self.syntax_latest = service.submit(request);
             self.syntax_pending = true;
             self.syntax_key = Some(key);
-            first_paint
-        } else {
-            self.syntax_pending = false;
-            false
-        };
+            return false;
+        }
+        self.syntax_pending = false;
         self.apply_syntax_results();
-        first_paint
+        false
     }
 
     fn shift_syntax_spans(&mut self, request: &SyntaxRequest) {
