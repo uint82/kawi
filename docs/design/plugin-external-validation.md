@@ -1,6 +1,6 @@
 # Plugin external validation pilot
 
-Status: ready. Kawi `v0.1.0-alpha.1` and `kawi-plugin-sdk` 0.7.0 are available; no independent author is selected yet.
+Status: ready. Kawi `v0.1.0-alpha.1` and `kawi-plugin-sdk` 0.8.0 are available; no independent author is selected yet.
 
 ## Purpose
 
@@ -11,7 +11,7 @@ The pilot measures the authoring path, not the runtime feature list. Runtime and
 ## Prerequisites
 
 - A tagged Kawi release with the WASM runtime enabled by default: `v0.1.0-alpha.1`.
-- `kawi-plugin-sdk` 0.7.0 published with a passing published-scaffold build.
+- `kawi-plugin-sdk` 0.8.0 published with a passing published-scaffold build.
 - An independent author selected.
 - A pilot tracking issue opened.
 - The feedback and tracking forms available.
@@ -34,7 +34,7 @@ The pilot does not add capabilities, change the WIT contract, or remove the proc
 
 ## Release cycle
 
-- Start: Kawi `v0.1.0-alpha.1`, the first tagged release with the WASM runtime enabled by default, plus `kawi-plugin-sdk` 0.7.0.
+- Start: Kawi `v0.1.0-alpha.1`, the first tagged release with the WASM runtime enabled by default, plus `kawi-plugin-sdk` 0.8.0.
 - Use: the author installs the plugin through the documented path and uses it for at least 30 days.
 - Upgrade: the author upgrades to the next tagged Kawi release and continues using the plugin.
 - End: exit review after the upgrade.
@@ -49,7 +49,7 @@ The pilot does not add capabilities, change the WIT contract, or remove the proc
 | Reviewer | Unassigned |
 | Plugin | Unassigned |
 | Kawi version | 0.1.0-alpha.1 |
-| SDK version | 0.7.0 |
+| SDK version | 0.8.0 |
 | Start | Pending author |
 | Exit review | Pending |
 
@@ -74,7 +74,7 @@ Open one issue with the [plugin pilot tracking form](https://github.com/uint82/k
 ### Preflight
 
 - [x] Publish a tagged Kawi editor release with the WASM runtime enabled by default (`v0.1.0-alpha.1`).
-- [x] Confirm `kawi-plugin-sdk` 0.7.0 is published and the published scaffold build passed.
+- [x] Confirm `kawi-plugin-sdk` 0.8.0 is published and the published scaffold build passed.
 - [x] Confirm the feedback and tracking forms are current.
 - [ ] Select an author who meets the independence requirements.
 - [ ] Open the tracking issue with the versions, dates, and reviewer assigned.

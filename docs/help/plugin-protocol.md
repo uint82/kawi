@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -202,6 +202,14 @@ Event names:
 - `file_saved`
 - `mode_changed`
 - `diagnostics_changed`
+- `buffer_enter`
+- `buffer_leave`
+- `window_enter`
+- `window_leave`
+- `cursor_moved`
+- `selection_changed`
+- `focus_gained`
+- `focus_lost`
 
 `buffer_opened` reports that a buffer exists. `file_opened` reports that a buffer was loaded from a path. Scratch buffers have `path: null`. `mode_changed` carries `from` and `to` using the same names as keymap configuration. `buffer_closed` lets plugins release per-buffer state.
 
@@ -210,6 +218,10 @@ Event names:
 `origin` is one of `user`, `undo`, `plugin:<name>`, `external_reload`, or `mixed`. A plugin does not receive its own `plugin:<name>` edits by default. When origins or own edits mix, Kawi sends `full_resync` instead of filtering part of the change.
 
 `diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision.
+
+`buffer_enter` carries `buffer`, `path`, `language`, and `revision` when a buffer becomes active. `buffer_leave` carries the previous `buffer` and `path`. `window_enter` and `window_leave` carry `window` and `buffer` when the active window changes. `focus_gained` and `focus_lost` carry `window` and `buffer` when the editor focus enters or leaves a plugin window. `cursor_moved` carries `buffer`, `cursor`, and the current `selection`. `selection_changed` carries `buffer` and the current `selection`; both use `null` when no selection exists.
+
+Buffer events require `editor.buffers`, window and focus events require `editor.windows`, and cursor and selection events require `editor.control`. Kawi emits the new events only on an actual transition, never at startup, and never to process plugins, which remain on protocol minor 12.
 
 Events are post-hoc notifications. They never wait for a plugin response. Kawi does not implement `will_save` in version 1. Use `file_saved` and invoke a command for format-on-save behavior.
 
@@ -593,6 +605,146 @@ Result:
 
 Settings are sorted by key. Invalid user values and unknown keys are logged, and invalid values fall back to the manifest default. Kawi reads `$XDG_CONFIG_HOME/kawi/plugins.toml` on demand, so changes apply on the next call without restarting the plugin.
 
+### buffer.list
+
+Requires `editor.buffers`. Request params are `{}` or `null`. Result is an array of buffer records:
+
+```json
+[
+  {"buffer": 1, "revision": 14, "path": "/home/u/src/main.rs", "language": "rust", "modified": false},
+  {"buffer": 2, "revision": 1, "path": null, "language": null, "modified": false}
+]
+```
+
+### buffer.get
+
+Requires `editor.buffers`. Request params:
+
+```json
+{"buffer": 1, "include_text": true}
+```
+
+Result is a buffer record whose `text` field is the buffer text when `include_text` is true and `null` otherwise. An unknown buffer returns `-32070`.
+
+### buffer.open
+
+Requires `editor.buffers.write` and a path inside its declared scope. Request params:
+
+```json
+{"path": "$WORKSPACE/src/main.rs"}
+```
+
+Kawi opens or focuses the file, makes it active, and returns its buffer record without text. An unavailable path or a path outside the declared scope fails with `-32602` or `-32012`.
+
+### buffer.apply_edit
+
+Requires `editor.buffers.write`. Request params use the same `revision` and `edits` shape as `editor.apply_edit`, plus the target `buffer`:
+
+```json
+{"buffer": 1, "revision": 14, "edits": [{"start": {"line": 0, "byte_column": 0}, "end": {"line": 0, "byte_column": 0}, "text": "use std::fmt;\n"}]}
+```
+
+The target must be the active buffer and its path must be inside the declared scope. Result is `{"revision": 15}`. An unknown buffer returns `-32070`, a parked or inactive buffer returns `-32071`, a stale revision returns `-32010`, and a path outside scope returns `-32012`.
+
+### window.list
+
+Requires `editor.windows`. Request params are `{}` or `null`. Result is an array of window records:
+
+```json
+[
+  {"window": 1, "buffer": 1, "active": true, "width": 80, "height": 24},
+  {"window": 2, "buffer": 2, "active": false, "width": 40, "height": 24}
+]
+```
+
+### window.get
+
+Requires `editor.windows`. Request params:
+
+```json
+{"window": 1}
+```
+
+Result is a window record. An unknown window returns `-32072`.
+
+### window.focus
+
+Requires `editor.windows`. Request params are `{"window": 1}`. Kawi makes the window and its buffer active and returns the updated window record. An unknown window returns `-32072`.
+
+### window.open
+
+Requires `editor.windows`. Request params:
+
+```json
+{"buffer": 2, "direction": "vertical"}
+```
+
+`direction` is `horizontal` or `vertical`. Kawi splits the active window and shows the buffer in the new window. An unknown buffer returns `-32070`. A split that cannot be opened returns `-32602`.
+
+### window.close
+
+Requires `editor.windows`. Request params:
+
+```json
+{"window": 2, "force": false}
+```
+
+`force` defaults to `false`. Kawi returns the active window record after closing. An unknown window returns `-32072`. Closing the last window returns `-32073`. Unsaved changes without `force` return `-32602`.
+
+### editor.set_cursor
+
+Requires `editor.control`. The buffer must be active. Request params:
+
+```json
+{"buffer": 1, "cursor": {"line": 4, "byte_column": 8}}
+```
+
+The position is clamped to a valid UTF-8 boundary. The result has the same shape as `editor.get_state`.
+
+### editor.set_selection
+
+Requires `editor.control`. The buffer must be active. Request params:
+
+```json
+{"buffer": 1, "selection": {"start": {"line": 4, "byte_column": 8}, "end": {"line": 4, "byte_column": 12}}}
+```
+
+`selection` may be `null` to clear the selection. A selection enters charwise Visual mode; clearing leaves Visual mode. The result has the same shape as `editor.get_state`.
+
+### editor.set_mode
+
+Requires `editor.control`. The buffer must be active. Request params:
+
+```json
+{"buffer": 1, "mode": "insert"}
+```
+
+Supported modes are `normal`, `insert`, `replace`, `visual`, `visual_line`, and `visual_block`. Other modes, including `command` and `search`, return `-32075`. The result has the same shape as `editor.get_state`.
+
+### options.list
+
+Requires `options.read`. Request params are `{}` or `null`, optionally with a `prefix`:
+
+```json
+{"prefix": "editor."}
+```
+
+Result is an array of option records:
+
+```json
+[{"name": "tab_width", "aliases": ["shiftwidth"], "description": "Indentation width", "kind": "integer", "scope": "buffer", "section": "editor", "default": "4", "value": "4", "values": []}]
+```
+
+### options.get
+
+Requires `options.read`. Request params:
+
+```json
+{"name": "tab_width"}
+```
+
+Aliases resolve to the canonical option. Result is one option record. An unknown name returns `-32074`.
+
 ## Process jobs
 
 Background jobs let a running process plugin start a long-lived child, stream its output, write to its stdin, signal it, and observe its exit. A job keeps running after the command invocation that started it returns. Output and exit events are delivered to the running plugin while no invocation is in flight.
@@ -779,6 +931,12 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32052` | Job or job stdin is closed |
 | `-32053` | Job output or input queue is full |
 | `-32060` | Panel not found or owned by another plugin |
+| `-32070` | Buffer not found |
+| `-32071` | Buffer not active |
+| `-32072` | Window not found |
+| `-32073` | Cannot close the last window |
+| `-32074` | Option not found |
+| `-32075` | Mode not supported |
 
 Transport failures are host errors, not JSON-RPC errors. A process exit fails in-flight requests with `plugin process exited`.
 

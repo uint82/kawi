@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.7.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.8.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.7.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.8.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -43,6 +43,20 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `editor.get_state` | `editor-read.get-state` |
 | `editor.apply_edit` | `editor-write.apply-edit` |
 | `editor.execute` | `editor-execute.execute` |
+| `buffer.list` | `editor-buffers.list-buffers` |
+| `buffer.get` | `editor-buffers.get-buffer` |
+| `buffer.open` | `editor-buffers.open-buffer` |
+| `buffer.apply_edit` | `editor-buffers-write.apply-edit` |
+| `window.list` | `editor-windows.list-windows` |
+| `window.get` | `editor-windows.get-window` |
+| `window.focus` | `editor-windows.focus-window` |
+| `window.open` | `editor-windows.open-window` |
+| `window.close` | `editor-windows.close-window` |
+| `editor.set_cursor` | `editor-control.set-cursor` |
+| `editor.set_selection` | `editor-control.set-selection` |
+| `editor.set_mode` | `editor-control.set-mode` |
+| `options.list` | `options-read.list-options` |
+| `options.get` | `options-read.get-option` |
 | `editor.list_commands` | `editor-execute.list-commands` |
 | `config.get` | `config-read.get` |
 | `config.list` | `config-read.get-all` |
@@ -82,7 +96,7 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
-| `editor.read`, `editor.write`, `editor.execute`, `editor.decorations`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
+| `editor.read`, `editor.write`, `editor.buffers`, `editor.buffers.write`, `editor.windows`, `editor.control`, `editor.execute`, `editor.decorations`, `options.read`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory; unsandboxed on macOS | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory; unsandboxed on macOS | `process-run` and `process-jobs` host interfaces |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |

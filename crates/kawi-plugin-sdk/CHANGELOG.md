@@ -1,4 +1,19 @@
-# Changelog
+## 0.8.0 - 2026-11-14
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.8.0 (`kawi:plugin@0.8.0`).
+- Components built against `kawi:plugin@0.7.0` must be rebuilt with this release.
+- Process plugins remain on protocol minor 12. The new host methods and events are available only to WebAssembly components.
+
+### Added
+
+- Add `editor-buffers` and `editor-buffers-write` interfaces for listing, reading, opening, and editing buffers. `editor-buffers-write` is scoped by the manifest `editor.buffers.write` path list.
+- Add the `editor-windows` interface for listing, inspecting, focusing, opening, and closing windows.
+- Add the `editor-control` interface for setting the active buffer cursor, selection, and mode.
+- Add the `options-read` interface for listing and reading editor options.
+- Add `buffer-enter`, `buffer-leave`, `window-enter`, `window-leave`, `cursor-moved`, `selection-changed`, `focus-gained`, and `focus-lost` events.
+- Add `BUFFER_NOT_FOUND`, `BUFFER_NOT_ACTIVE`, `WINDOW_NOT_FOUND`, `LAST_WINDOW`, `OPTION_NOT_FOUND`, and `MODE_NOT_SUPPORTED` error codes with matching `ErrorKind` variants.
 
 ## 0.7.0 - 2026-11-03
 

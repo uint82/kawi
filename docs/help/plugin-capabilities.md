@@ -5,7 +5,7 @@ related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration",
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, and options APIs are available only to WebAssembly components.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -15,6 +15,11 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | --- | --- | --- |
 | `editor.read` | none | Read editor state and receive editor events |
 | `editor.write` | none | Apply text edits |
+| `editor.buffers` | none | List and read buffers, including text and revisions |
+| `editor.buffers.write` | `paths` | Open files and apply edits to the active buffer |
+| `editor.windows` | none | List, inspect, focus, open, and close windows |
+| `editor.control` | none | Set the active buffer cursor, selection, and mode |
+| `options.read` | none | List and read editor options |
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
 | `editor.decorations` | none | Publish buffer highlights, virtual text, and gutter signs |
 | `ui.message` | none | Show status messages |
@@ -35,6 +40,11 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 [capabilities]
 "editor.read" = true
 "editor.write" = true
+"editor.buffers" = true
+"editor.buffers.write" = { paths = ["$WORKSPACE/src"] }
+"editor.windows" = true
+"editor.control" = true
+"options.read" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
 "editor.decorations" = true
 "ui.message" = true
@@ -49,9 +59,9 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 
 ## Paths
 
-`fs.read` and `fs.write` take `paths`, an array of directories or files. Paths may use `$WORKSPACE`, `$PLUGIN_DIR`, `$CONFIG`, and `$HOME`. Other variables are rejected. Expanded paths must be absolute and must not contain `..`.
+`fs.read`, `fs.write`, and `editor.buffers.write` take `paths`, an array of directories or files. Paths may use `$WORKSPACE`, `$PLUGIN_DIR`, `$CONFIG`, and `$HOME`. Other variables are rejected. Expanded paths must be absolute and must not contain `..`.
 
-Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. WebAssembly preopens require directories, so a file path is skipped with a warning for WASM plugins.
+Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/proj`. `/home/u/projection` is not inside `/home/u/proj`. A trailing separator is ignored. WebAssembly preopens require directories, so a file path is skipped with a warning for WASM plugins. `editor.buffers.write` resolves and canonicalizes the target before opening or editing; a path outside the declared scope returns the capability error.
 
 ## Process commands
 
