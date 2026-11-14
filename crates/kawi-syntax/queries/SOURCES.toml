@@ -302,3 +302,23 @@ license = "Apache-2.0"
 file = "ada-tokens.scm"
 source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
 license = "Apache-2.0"
+
+[[adaptation]]
+file = "markdown-inline.scm"
+source = "nvim-treesitter 692b051b09935653befdb8f7ba8afdb640adf17b queries/markdown_inline/highlights.scm"
+license = "Apache-2.0"
+
+[[adaptation]]
+file = "php-injections.scm"
+source = "tree-sitter-php 0.25.1 queries/injections-text.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "markdown-injections.scm"
+source = "tree-sitter-md 0.5.4 tree-sitter-markdown/queries/injections.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "markdown-inline-injections.scm"
+source = "tree-sitter-md 0.5.4 tree-sitter-markdown-inline/queries/injections.scm"
+license = "MIT"

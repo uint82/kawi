@@ -96,3 +96,22 @@ fn highlights_markdown_metadata() {
     assert_eq!(name_of(&spans, text, 1, "key"), Some("property"));
     assert_eq!(name_of(&spans, text, 4, "Head"), Some("markup.heading.1"));
 }
+
+#[test]
+fn highlights_inline_markup() {
+    let text = "Some *italic* and **bold** and `code` with [label](https://example.com).\n";
+    let spans = highlight(LanguageId::Markdown, text, 0, 1);
+    assert_eq!(name_of(&spans, text, 0, "italic"), Some("markup.italic"));
+    assert_eq!(name_of(&spans, text, 0, "bold"), Some("markup.strong"));
+    assert_eq!(name_of(&spans, text, 0, "code"), Some("markup.raw"));
+    assert_eq!(name_of(&spans, text, 0, "label"), Some("markup.link.label"));
+    assert_eq!(name_of(&spans, text, 0, "https"), Some("markup.link.url"));
+}
+
+#[test]
+fn highlights_inline_html() {
+    let text = "Text <span>inside</span> tail\n";
+    let spans = highlight(LanguageId::Markdown, text, 0, 1);
+    assert_eq!(name_of(&spans, text, 0, "span"), Some("tag"));
+    assert_eq!(name_of(&spans, text, 0, "inside"), None);
+}

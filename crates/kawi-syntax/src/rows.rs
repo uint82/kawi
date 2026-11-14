@@ -1,7 +1,9 @@
 use std::ops::Range;
 
-use crate::diff::LineIndex;
+use ropey::Rope;
+
 use crate::limits::MAX_LINE_BYTES;
+use crate::text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RowWindow {
@@ -11,22 +13,14 @@ pub(crate) struct RowWindow {
     pub end: usize,
 }
 
-pub(crate) fn visible_rows(
-    text: &str,
-    index: &LineIndex,
-    top: usize,
-    end: usize,
-) -> Vec<RowWindow> {
-    let end = end.min(index.line_count());
-    (top..end)
-        .filter_map(|row| row_window(text, index, row))
-        .collect()
+pub(crate) fn visible_rows(text: &Rope, top: usize, end: usize) -> Vec<RowWindow> {
+    let end = end.min(text::line_count(text));
+    (top..end).filter_map(|row| row_window(text, row)).collect()
 }
 
-fn row_window(text: &str, index: &LineIndex, row: usize) -> Option<RowWindow> {
-    let start = index.line_start(row);
-    let end = next_line_start(text, index, row);
-    let text_end = trim_ending(text, start, end);
+fn row_window(text: &Rope, row: usize) -> Option<RowWindow> {
+    let start = text::line_start(text, row);
+    let text_end = text::line_text_end(text, row);
     if text_end.saturating_sub(start) > MAX_LINE_BYTES {
         return None;
     }
@@ -34,33 +28,8 @@ fn row_window(text: &str, index: &LineIndex, row: usize) -> Option<RowWindow> {
         row,
         start,
         text_end,
-        end,
+        end: text::line_end(text, row),
     })
-}
-
-fn next_line_start(text: &str, index: &LineIndex, row: usize) -> usize {
-    if row.saturating_add(1) < index.line_count() {
-        index.line_start(row.saturating_add(1))
-    } else {
-        text.len()
-    }
-}
-
-pub(crate) fn line_text_end(text: &str, index: &LineIndex, row: usize) -> usize {
-    let start = index.line_start(row);
-    let end = next_line_start(text, index, row);
-    trim_ending(text, start, end)
-}
-
-fn trim_ending(text: &str, start: usize, end: usize) -> usize {
-    let mut end = end;
-    while end > start {
-        match text.as_bytes()[end - 1] {
-            b'\n' | b'\r' => end -= 1,
-            _ => break,
-        }
-    }
-    end
 }
 
 pub(crate) fn query_blocks(rows: &[RowWindow]) -> Vec<Range<usize>> {
@@ -80,24 +49,16 @@ pub(crate) fn query_blocks(rows: &[RowWindow]) -> Vec<Range<usize>> {
     blocks
 }
 
-pub(crate) fn row_char_len(text: &str, row: &RowWindow) -> usize {
-    text[row.start..row.text_end].chars().count()
-}
-
-pub(crate) fn char_column(text: &str, line_start: usize, byte: usize) -> usize {
-    let mut byte = byte.clamp(line_start, text.len());
-    while byte > line_start && !text.is_char_boundary(byte) {
-        byte -= 1;
-    }
-    text[line_start..byte].chars().count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn rope(text: &str) -> Rope {
+        Rope::from_str(text)
+    }
+
     fn rows_of(text: &str, top: usize, end: usize) -> Vec<RowWindow> {
-        visible_rows(text, &LineIndex::new(text), top, end)
+        visible_rows(&rope(text), top, end)
     }
 
     #[test]
@@ -160,20 +121,5 @@ mod tests {
     fn blocks_join_consecutive_rows() {
         let rows = rows_of("ab\ncd\nef\n", 0, 3);
         assert_eq!(query_blocks(&rows), vec![0.."ab\ncd\nef\n".len()]);
-    }
-
-    #[test]
-    fn character_columns_count_unicode() {
-        let text = "éx";
-        assert_eq!(char_column(text, 0, 0), 0);
-        assert_eq!(char_column(text, 0, 2), 1);
-        assert_eq!(char_column(text, 0, 3), 2);
-    }
-
-    #[test]
-    fn row_char_len_ignores_line_endings() {
-        let rows = rows_of("é\nx\n", 0, 2);
-        assert_eq!(row_char_len("é\nx\n", &rows[0]), 1);
-        assert_eq!(row_char_len("é\nx\n", &rows[1]), 1);
     }
 }

@@ -1,23 +1,24 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
+use ropey::Rope;
 use tree_sitter::{Node, Tree};
 
-use crate::diff::LineIndex;
+use crate::text;
 
-pub(crate) fn error_rows(tree: &Tree, index: &LineIndex, window: &Range<usize>) -> HashSet<usize> {
+pub(crate) fn error_rows(tree: &Tree, text: &Rope, window: &Range<usize>) -> HashSet<usize> {
     let mut rows = HashSet::new();
     if window.is_empty() {
         return rows;
     }
-    let bounds = index.line_start(window.start)..index.line_start(window.end);
+    let bounds = text::line_start(text, window.start)..text::line_start(text, window.end);
     let mut pending = vec![tree.root_node()];
     while let Some(node) = pending.pop() {
         if !node.has_error() {
             continue;
         }
         if node.is_error() || node.is_missing() {
-            mark_rows(node, index, &bounds, &mut rows);
+            mark_rows(node, text, &bounds, &mut rows);
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -29,7 +30,7 @@ pub(crate) fn error_rows(tree: &Tree, index: &LineIndex, window: &Range<usize>) 
     rows
 }
 
-fn mark_rows(node: Node<'_>, index: &LineIndex, bounds: &Range<usize>, rows: &mut HashSet<usize>) {
+fn mark_rows(node: Node<'_>, text: &Rope, bounds: &Range<usize>, rows: &mut HashSet<usize>) {
     let start = node.start_byte().max(bounds.start);
     let end = node.end_byte().min(bounds.end);
     if start > end {
@@ -37,11 +38,11 @@ fn mark_rows(node: Node<'_>, index: &LineIndex, bounds: &Range<usize>, rows: &mu
     }
     if start == end {
         if bounds.contains(&start) {
-            rows.insert(index.point(start).row);
+            rows.insert(text::point(text, start).row);
         }
         return;
     }
-    let first = index.point(start).row;
-    let last = index.point(end.saturating_sub(1)).row;
+    let first = text::point(text, start).row;
+    let last = text::point(text, end.saturating_sub(1)).row;
     rows.extend(first..=last);
 }

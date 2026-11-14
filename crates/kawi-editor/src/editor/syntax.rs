@@ -1,4 +1,4 @@
-use kawi_syntax::{file_size_supported, LanguageId, SyntaxKey, SyntaxRequest};
+use kawi_syntax::{file_size_supported, LanguageId, SyntaxEdit, SyntaxKey, SyntaxRequest};
 
 use super::Editor;
 
@@ -36,8 +36,29 @@ impl Editor {
 
     pub fn syntax_request(&self) -> Option<SyntaxRequest> {
         let key = self.syntax_key()?;
+        self.syntax_request_since(key.revision)
+    }
+
+    pub fn syntax_request_since(&self, base_revision: u64) -> Option<SyntaxRequest> {
+        let key = self.syntax_key()?;
+        let edits = if base_revision == key.revision {
+            Vec::new()
+        } else {
+            self.buffer
+                .text_edits_since(base_revision)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|edit| SyntaxEdit {
+                    start: edit.start,
+                    end: edit.end,
+                    text: edit.text,
+                })
+                .collect()
+        };
         Some(SyntaxRequest {
             key,
+            base_revision,
+            edits,
             text: self.buffer.snapshot(),
         })
     }
@@ -71,10 +92,34 @@ mod tests {
         assert_eq!(request.key.top, 0);
         assert_eq!(request.key.end, 2);
         assert_eq!(request.key.language, LanguageId::Rust);
+        assert_eq!(request.base_revision, 0);
+        assert!(request.edits.is_empty());
         assert_eq!(
             request.text.to_string(),
             "fn main() {}\nfn other() {}\nfn third() {}\n"
         );
+    }
+
+    #[test]
+    fn requests_include_edits_since_the_base_revision() {
+        let mut editor = editor("test.rs", "fn main() {}\n");
+        let base = editor.buffer.revision();
+        editor.buffer.insert_char(0, 0, '/');
+        let request = editor.syntax_request_since(base).expect("request");
+        assert_eq!(request.base_revision, base);
+        assert_eq!(request.edits.len(), 1);
+        assert_eq!(request.edits[0].start, 0);
+        assert_eq!(request.edits[0].end, 0);
+        assert_eq!(request.edits[0].text, "/");
+        assert_eq!(request.text.to_string(), "/fn main() {}\n");
+    }
+
+    #[test]
+    fn requests_without_changes_have_no_edits() {
+        let editor = editor("test.rs", "fn main() {}\n");
+        let request = editor.syntax_request().expect("request");
+        assert_eq!(request.base_revision, request.key.revision);
+        assert!(request.edits.is_empty());
     }
 
     #[test]

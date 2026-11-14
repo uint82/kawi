@@ -296,3 +296,16 @@ fn large_file_window_keeps_parameter() {
     let (_, spans) = document.update(&request, &runtime);
     assert_eq!(name_of(&spans, &second, 0, "x"), Some("variable.parameter"));
 }
+
+#[test]
+fn unrelated_stable_capture_does_not_replace_current_token() {
+    let language = LanguageId::Rust;
+    let runtime = runtime_for(language);
+    let mut document = Document::new(language);
+    let first = "fn main() { foo(); }\n";
+    update(&mut document, &runtime, language, first, 1);
+
+    let second = "fn main() { struct foo\n";
+    let spans = update(&mut document, &runtime, language, second, 2);
+    assert_ne!(name_of(&spans, second, 0, "foo"), Some("function.call"));
+}

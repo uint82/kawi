@@ -86,7 +86,7 @@ impl HighlightRegistry {
             .collect::<BTreeSet<_>>();
         for language in LanguageId::ALL {
             names.extend(
-                capture_names(language.highlights())
+                capture_names(&language.highlights())
                     .into_iter()
                     .map(str::to_string),
             );
