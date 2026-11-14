@@ -766,6 +766,10 @@ impl Buffer {
         screen
     }
 
+    pub fn line_screen_width(&self, row: usize, tabstop: usize) -> usize {
+        self.screen_col(row, self.line_len(row), tabstop)
+    }
+
     pub fn char_at(&self, row: usize, col: usize) -> Option<char> {
         self.line_cow(row)?.chars().nth(col)
     }
@@ -1849,6 +1853,14 @@ mod tests {
         assert_eq!(b.screen_col(0, 0, 8), 0);
         assert_eq!(b.screen_col(0, 1, 8), 8);
         assert_eq!(b.screen_col(0, 2, 8), 9);
+    }
+
+    #[test]
+    fn line_screen_width_measures_the_rendered_line() {
+        let b = Buffer::from_string("a\tb\n漢\n");
+        assert_eq!(b.line_screen_width(0, 8), 9);
+        assert_eq!(b.line_screen_width(1, 8), 2);
+        assert_eq!(b.line_screen_width(2, 8), 0);
     }
 
     #[test]
