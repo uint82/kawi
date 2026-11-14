@@ -10,7 +10,7 @@ mod snippet;
 mod span;
 mod text;
 
-pub use language::{set_user_query_dir, LanguageId};
+pub use language::{reload_user_queries, set_user_query_dir, user_query_warnings, LanguageId};
 pub use limits::{file_size_supported, MAX_FILE_BYTES, MAX_SNIPPET_BYTES};
 pub use registry::{registry, HighlightRegistry, SyntaxHighlight};
 pub use remap::shift_spans;

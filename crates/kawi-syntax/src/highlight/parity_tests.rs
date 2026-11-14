@@ -202,7 +202,7 @@ fn reference_config(language: LanguageId) -> HighlightConfiguration {
     let mut config = HighlightConfiguration::new(
         language.language(),
         language.name(),
-        language.highlights(),
+        &language.highlights(),
         &language.injections(),
         language.locals(),
     )

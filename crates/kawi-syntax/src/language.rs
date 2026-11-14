@@ -1,11 +1,12 @@
 use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, PoisonError, RwLock};
 
 mod grammar;
 
 const MAX_QUERY_INHERITANCE: usize = 4;
+const LANGUAGE_COUNT: usize = 23;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LanguageId {
@@ -34,11 +35,96 @@ pub enum LanguageId {
     MarkdownInline,
 }
 
-static USER_QUERY_DIR: OnceLock<PathBuf> = OnceLock::new();
-static HIGHLIGHTS: OnceLock<[String; 23]> = OnceLock::new();
+static QUERIES: RwLock<QueryCache> = RwLock::new(QueryCache::new());
 
 pub fn set_user_query_dir(path: PathBuf) {
-    let _ = USER_QUERY_DIR.set(path);
+    QUERIES
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .set_dir(path);
+}
+
+pub fn reload_user_queries() {
+    QUERIES
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .reload();
+}
+
+pub fn user_query_warnings() -> Vec<String> {
+    let dir = QUERIES
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .dir
+        .clone();
+    dir.map_or_else(Vec::new, |dir| query_warnings(&dir))
+}
+
+struct QueryCache {
+    dir: Option<PathBuf>,
+    highlights: Option<[Arc<str>; LANGUAGE_COUNT]>,
+}
+
+impl QueryCache {
+    const fn new() -> Self {
+        Self {
+            dir: None,
+            highlights: None,
+        }
+    }
+
+    fn set_dir(&mut self, path: PathBuf) {
+        if self.dir.as_ref() == Some(&path) {
+            return;
+        }
+        self.dir = Some(path);
+        self.highlights = None;
+    }
+
+    fn reload(&mut self) {
+        self.highlights = None;
+    }
+
+    fn highlights(&mut self, language: LanguageId) -> Arc<str> {
+        let dir = self.dir.clone();
+        let highlights = self.highlights.get_or_insert_with(|| {
+            std::array::from_fn(|index| cached_highlights(LanguageId::ALL[index], dir.as_deref()))
+        });
+        Arc::clone(&highlights[language.index()])
+    }
+}
+
+fn cached_highlights(language: LanguageId, dir: Option<&Path>) -> Arc<str> {
+    let text = language.highlights_from(dir, MAX_QUERY_INHERITANCE);
+    let has_user_query =
+        dir.is_some_and(|dir| dir.join(format!("{}.scm", language.name())).is_file());
+    if !has_user_query || tree_sitter::Query::new(&language.language(), &text).is_ok() {
+        return Arc::from(text);
+    }
+    Arc::from(language.bundled_highlights())
+}
+
+fn query_warnings(dir: &Path) -> Vec<String> {
+    LanguageId::ALL
+        .into_iter()
+        .filter_map(|language| {
+            let path = dir.join(format!("{}.scm", language.name()));
+            let Ok(text) = fs::read_to_string(&path) else {
+                return path
+                    .exists()
+                    .then(|| format!("{}: cannot read", path.display()));
+            };
+            let highlights = merge_user_query(
+                language,
+                &language.bundled_highlights(),
+                &text,
+                Some(dir),
+                MAX_QUERY_INHERITANCE,
+            );
+            let error = tree_sitter::Query::new(&language.language(), &highlights).err()?;
+            Some(format!("{}: {error}", path.display()))
+        })
+        .collect()
 }
 
 impl LanguageId {
@@ -152,16 +238,11 @@ impl LanguageId {
         grammar::locals(self)
     }
 
-    pub(crate) fn highlights(self) -> &'static str {
-        let highlights = HIGHLIGHTS.get_or_init(|| {
-            LanguageId::ALL.map(|language| {
-                language.highlights_from(
-                    USER_QUERY_DIR.get().map(PathBuf::as_path),
-                    MAX_QUERY_INHERITANCE,
-                )
-            })
-        });
-        &highlights[self.index()]
+    pub(crate) fn highlights(self) -> Arc<str> {
+        QUERIES
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .highlights(self)
     }
 
     fn index(self) -> usize {

@@ -29,6 +29,7 @@ impl App {
             (&debug_warnings, &paths.debug),
             (&task_load.warnings, &paths.tasks),
         );
+        warnings.extend(kawi_syntax::user_query_warnings());
         let project_tasks = self.project_tasks_path();
         if project_tasks != paths.tasks {
             let project_load = kawi_task::load(&project_tasks);

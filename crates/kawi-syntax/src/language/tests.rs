@@ -132,3 +132,74 @@ fn builds_queries_for_every_language() {
             .unwrap_or_else(|error| panic!("{language:?}: {error}"));
     }
 }
+
+#[test]
+fn query_cache_reloads_after_a_file_change() {
+    let dir = temp_query_dir("cache_reload");
+    let path = dir.join("python.scm");
+    fs::write(&path, "(identifier) @variable.member\n").unwrap();
+    let mut cache = QueryCache::new();
+    cache.set_dir(dir.clone());
+    assert!(cache
+        .highlights(LanguageId::Python)
+        .contains("variable.member"));
+
+    fs::write(&path, "(identifier) @function\n").unwrap();
+    cache.reload();
+    let highlights = cache.highlights(LanguageId::Python);
+    assert!(highlights.contains("@function"));
+    assert!(!highlights.contains("variable.member"));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn query_cache_switches_directories() {
+    let first = temp_query_dir("cache_first");
+    let second = temp_query_dir("cache_second");
+    fs::write(first.join("python.scm"), "(identifier) @variable.member\n").unwrap();
+    fs::write(second.join("python.scm"), "(identifier) @function\n").unwrap();
+    let mut cache = QueryCache::new();
+    cache.set_dir(first.clone());
+    assert!(cache
+        .highlights(LanguageId::Python)
+        .contains("variable.member"));
+
+    cache.set_dir(second.clone());
+    let highlights = cache.highlights(LanguageId::Python);
+    assert!(highlights.contains("@function"));
+    assert!(!highlights.contains("variable.member"));
+    let _ = fs::remove_dir_all(first);
+    let _ = fs::remove_dir_all(second);
+}
+
+#[test]
+fn invalid_user_queries_are_reported() {
+    let dir = temp_query_dir("invalid_warning");
+    let path = dir.join("python.scm");
+    fs::write(&path, "(identifier\n").unwrap();
+    let warnings = query_warnings(&dir);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].starts_with(&path.display().to_string()));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn valid_user_queries_produce_no_warnings() {
+    let dir = temp_query_dir("valid_warning");
+    fs::write(dir.join("python.scm"), "(identifier) @variable.member\n").unwrap();
+    assert!(query_warnings(&dir).is_empty());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn invalid_user_queries_fall_back_to_bundled_queries() {
+    let dir = temp_query_dir("invalid_fallback");
+    fs::write(dir.join("python.scm"), "(identifier\n").unwrap();
+    let mut cache = QueryCache::new();
+    cache.set_dir(dir.clone());
+    assert_eq!(
+        &*cache.highlights(LanguageId::Python),
+        LanguageId::Python.bundled_highlights()
+    );
+    let _ = fs::remove_dir_all(dir);
+}

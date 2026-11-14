@@ -20,7 +20,7 @@ impl Runtime {
     pub(crate) fn new(language: LanguageId) -> Option<Self> {
         let highlights = language.highlights();
         let locals = language.locals();
-        let mut config = build_configuration(language, highlights, locals)
+        let mut config = build_configuration(language, &highlights, locals)
             .or_else(|| build_configuration(language, &language.bundled_highlights(), locals))?;
         config.configure(registry().names());
         let captures = config
