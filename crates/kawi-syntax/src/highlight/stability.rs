@@ -4,7 +4,7 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::registry::{registry, SyntaxHighlight};
-use crate::remap::remap_span;
+use crate::remap::SpanMapper;
 use crate::rows::RowWindow;
 use crate::span::{SyntaxEdit, SyntaxSpan};
 
@@ -35,9 +35,10 @@ impl StableHighlights {
         edits: &[SyntaxEdit],
         target: StableWindow<'_>,
     ) -> Vec<SyntaxSpan> {
+        let mapper = SpanMapper::exact(&self.text, text, edits);
         self.spans
             .iter()
-            .filter_map(|span| remap_span(*span, &self.text, text, edits))
+            .filter_map(|span| mapper.remap(*span))
             .filter(|span| target.rows.contains(&span.row) && target.errors.contains(&span.row))
             .collect()
     }

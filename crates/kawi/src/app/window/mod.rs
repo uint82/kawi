@@ -399,6 +399,35 @@ mod tests {
     }
 
     #[test]
+    fn syntax_spans_preserve_a_string_while_typing_inside_it() {
+        let mut buffer = Buffer::from_string("let value = \"text\";\n");
+        buffer.path = Some("main.rs".to_string());
+        let mut app = App::new(buffer, Flavor::Vim);
+        app.refresh_syntax();
+        wait_for_syntax(&mut app);
+        let string = app
+            .syntax_spans
+            .iter()
+            .find(|span| {
+                span.row == 0 && kawi_syntax::registry().name(span.highlight) == Some("string")
+            })
+            .copied()
+            .expect("string span");
+        app.editor.apply(Action::JumpTo(0, string.start + 2));
+        app.editor.apply(Action::InsertChar('x'));
+        app.refresh_syntax();
+        assert!(app.syntax_pending);
+        let layout = app.window_layout();
+        let panes = app.frame_panes(&layout);
+        assert!(panes[0].syntax_spans.iter().any(|span| {
+            span.row == 0
+                && span.start == string.start
+                && span.end == string.end + 1
+                && span.highlight == string.highlight
+        }));
+    }
+
+    #[test]
     fn stale_syntax_spans_are_hidden_after_a_rejected_result() {
         let mut app = highlighted_app();
         app.editor.apply(Action::InsertChar('x'));

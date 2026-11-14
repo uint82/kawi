@@ -14,72 +14,164 @@ pub fn shift_spans(
     if edits.is_empty() {
         return spans.to_vec();
     }
+    let mapper = SpanMapper::optimistic(old_text, new_text, edits);
     spans
         .iter()
-        .filter_map(|span| remap_span(*span, old_text, new_text, edits))
+        .filter_map(|span| mapper.remap(*span))
         .collect()
 }
 
-pub(crate) fn remap_span(
-    span: SyntaxSpan,
-    old_text: &Rope,
-    new_text: &Rope,
-    edits: &[SyntaxEdit],
-) -> Option<SyntaxSpan> {
-    let old_chars = span_chars(span, old_text)?;
-    let new_chars = apply_edits(old_chars.clone(), edits)?;
-    let old_bytes = text::byte_range(old_text, old_chars.clone());
-    let new_bytes = text::byte_range(new_text, new_chars.clone());
-    if old_text.get_byte_slice(old_bytes.clone())? != new_text.get_byte_slice(new_bytes.clone())? {
-        return None;
-    }
-    if !is_token_boundary(old_text, old_bytes) || !is_token_boundary(new_text, new_bytes.clone()) {
-        return None;
-    }
-    let start = text::point(new_text, new_bytes.start);
-    let end = text::point(new_text, new_bytes.end);
-    if start.row != end.row {
-        return None;
-    }
-    let line_start = text::line_start(new_text, start.row);
-    let start_column = text::char_column(new_text, line_start, new_bytes.start);
-    let end_column = text::char_column(new_text, line_start, new_bytes.end);
-    if start_column >= end_column {
-        return None;
-    }
-    Some(SyntaxSpan {
-        row: start.row,
-        start: start_column,
-        end: end_column,
-        highlight: span.highlight,
-    })
+pub(crate) struct SpanMapper<'a> {
+    old_text: &'a Rope,
+    new_text: &'a Rope,
+    edits: Vec<EditDelta>,
+    mode: Mode,
 }
 
-fn span_chars(span: SyntaxSpan, text: &Rope) -> Option<Range<usize>> {
-    if span.row >= text.len_lines() {
-        return None;
-    }
-    let line_start = text.line_to_char(span.row);
-    let line_len = text::row_char_len(text, span.row);
-    let start = line_start.saturating_add(span.start.min(line_len));
-    let end = line_start.saturating_add(span.end.min(line_len));
-    (start < end).then_some(start..end)
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Optimistic,
+    Exact,
 }
 
-fn apply_edits(mut span: Range<usize>, edits: &[SyntaxEdit]) -> Option<Range<usize>> {
+impl<'a> SpanMapper<'a> {
+    pub(crate) fn optimistic(old_text: &'a Rope, new_text: &'a Rope, edits: &[SyntaxEdit]) -> Self {
+        Self::new(old_text, new_text, edits, Mode::Optimistic)
+    }
+
+    pub(crate) fn exact(old_text: &'a Rope, new_text: &'a Rope, edits: &[SyntaxEdit]) -> Self {
+        Self::new(old_text, new_text, edits, Mode::Exact)
+    }
+
+    fn new(old_text: &'a Rope, new_text: &'a Rope, edits: &[SyntaxEdit], mode: Mode) -> Self {
+        Self {
+            old_text,
+            new_text,
+            edits: edits.iter().map(EditDelta::from).collect(),
+            mode,
+        }
+    }
+
+    pub(crate) fn remap(&self, span: SyntaxSpan) -> Option<SyntaxSpan> {
+        let old_chars = span_chars(span, self.old_text)?;
+        let new_chars = match self.mode {
+            Mode::Optimistic => apply_edits(old_chars.clone(), &self.edits)?,
+            Mode::Exact => apply_exact_edits(old_chars.clone(), &self.edits)?,
+        };
+        let new_bytes = text::byte_range(self.new_text, new_chars);
+        if self.mode == Mode::Exact {
+            let old_bytes = text::byte_range(self.old_text, old_chars);
+            if !self.unchanged(old_bytes, new_bytes.clone()) {
+                return None;
+            }
+        }
+        let start = text::point(self.new_text, new_bytes.start);
+        let end = text::point(self.new_text, new_bytes.end);
+        if start.row != end.row {
+            return None;
+        }
+        let line_start = text::line_start(self.new_text, start.row);
+        let start_column = text::char_column(self.new_text, line_start, new_bytes.start);
+        let end_column = text::char_column(self.new_text, line_start, new_bytes.end);
+        if start_column >= end_column {
+            return None;
+        }
+        Some(SyntaxSpan {
+            row: start.row,
+            start: start_column,
+            end: end_column,
+            highlight: span.highlight,
+        })
+    }
+
+    fn unchanged(&self, old: Range<usize>, new: Range<usize>) -> bool {
+        let old_slice = self.old_text.get_byte_slice(old.clone());
+        let new_slice = self.new_text.get_byte_slice(new.clone());
+        old_slice.is_some_and(|old| new_slice.is_some_and(|new| old == new))
+            && is_token_boundary(self.old_text, old)
+            && is_token_boundary(self.new_text, new)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct EditDelta {
+    start: usize,
+    end: usize,
+    inserted: usize,
+    has_line_break: bool,
+}
+
+impl From<&SyntaxEdit> for EditDelta {
+    fn from(edit: &SyntaxEdit) -> Self {
+        Self {
+            start: edit.start,
+            end: edit.end,
+            inserted: edit.text.chars().count(),
+            has_line_break: edit.text.contains('\n') || edit.text.contains('\r'),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Gravity {
+    Left,
+    Right,
+}
+
+fn apply_edits(mut span: Range<usize>, edits: &[EditDelta]) -> Option<Range<usize>> {
+    for edit in edits {
+        let covered = span.start == edit.start && span.end == edit.end;
+        let start_gravity = if covered {
+            Gravity::Left
+        } else {
+            Gravity::Right
+        };
+        let end_gravity = if edit.has_line_break && !covered {
+            Gravity::Left
+        } else {
+            Gravity::Right
+        };
+        span = map_position(span.start, edit, start_gravity)
+            ..map_position(span.end, edit, end_gravity);
+        if span.start >= span.end {
+            return None;
+        }
+    }
+    Some(span)
+}
+
+fn map_position(position: usize, edit: &EditDelta, gravity: Gravity) -> usize {
+    if position < edit.start {
+        return position;
+    }
+    if position > edit.end {
+        return position - (edit.end - edit.start) + edit.inserted;
+    }
+    match gravity {
+        Gravity::Left => edit.start,
+        Gravity::Right => edit.start + edit.inserted,
+    }
+}
+
+fn apply_exact_edits(mut span: Range<usize>, edits: &[EditDelta]) -> Option<Range<usize>> {
     for edit in edits {
         if span.end <= edit.start {
             continue;
         }
         if span.start >= edit.end {
-            let delta = edit.text.chars().count() as isize - (edit.end - edit.start) as isize;
-            span.start = span.start.checked_add_signed(delta)?;
-            span.end = span.end.checked_add_signed(delta)?;
+            span.start = shifted_position(span.start, edit)?;
+            span.end = shifted_position(span.end, edit)?;
             continue;
         }
         return None;
     }
     Some(span)
+}
+
+fn shifted_position(position: usize, edit: &EditDelta) -> Option<usize> {
+    position
+        .checked_sub(edit.end - edit.start)?
+        .checked_add(edit.inserted)
 }
 
 fn is_token_boundary(text: &Rope, bytes: Range<usize>) -> bool {
@@ -107,121 +199,16 @@ fn is_identifier_char(character: char) -> bool {
     character.is_alphanumeric() || character == '_'
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::registry::SyntaxHighlight;
-
-    fn span(row: usize, start: usize, end: usize) -> SyntaxSpan {
-        SyntaxSpan {
-            row,
-            start,
-            end,
-            highlight: SyntaxHighlight(0),
-        }
+fn span_chars(span: SyntaxSpan, text: &Rope) -> Option<Range<usize>> {
+    if span.row >= text.len_lines() {
+        return None;
     }
-
-    fn edit(start: usize, end: usize, text: &str) -> SyntaxEdit {
-        SyntaxEdit {
-            start,
-            end,
-            text: text.to_string(),
-        }
-    }
-
-    fn shifted(
-        spans: &[SyntaxSpan],
-        old: &str,
-        new: &str,
-        edits: &[SyntaxEdit],
-    ) -> Vec<SyntaxSpan> {
-        shift_spans(spans, &Rope::from_str(old), &Rope::from_str(new), edits)
-    }
-
-    #[test]
-    fn shifts_spans_after_an_insertion() {
-        let spans = [span(0, 4, 7)];
-        assert_eq!(
-            shifted(&spans, "foo bar", "foo  bar", &[edit(4, 4, " ")]),
-            vec![span(0, 5, 8)]
-        );
-    }
-
-    #[test]
-    fn leaves_spans_before_an_insertion_alone() {
-        let spans = [span(0, 0, 3)];
-        assert_eq!(
-            shifted(&spans, "foo bar", "foo Xbar", &[edit(3, 3, " ")]),
-            vec![span(0, 0, 3)]
-        );
-    }
-
-    #[test]
-    fn drops_spans_that_contain_the_edit() {
-        let spans = [span(0, 4, 7)];
-        assert!(shifted(&spans, "foo bar", "foo baz", &[edit(6, 7, "z")]).is_empty());
-    }
-
-    #[test]
-    fn shifts_spans_after_a_deletion() {
-        let spans = [span(0, 8, 13)];
-        assert_eq!(
-            shifted(&spans, "one two three", "one three", &[edit(3, 7, "")]),
-            vec![span(0, 4, 9)]
-        );
-    }
-
-    #[test]
-    fn moves_spans_between_rows() {
-        let spans = [span(1, 0, 4)];
-        assert_eq!(
-            shifted(
-                &spans,
-                "alpha\nbeta\n",
-                "\nalpha\nbeta\n",
-                &[edit(0, 0, "\n")]
-            ),
-            vec![span(2, 0, 4)]
-        );
-    }
-
-    #[test]
-    fn shifts_unicode_columns_by_characters() {
-        let spans = [span(0, 2, 3)];
-        assert_eq!(
-            shifted(&spans, "é-x", "éé-x", &[edit(0, 0, "é")]),
-            vec![span(0, 3, 4)]
-        );
-    }
-
-    #[test]
-    fn applies_multiple_edits_in_order() {
-        let spans = [span(0, 4, 7)];
-        assert_eq!(
-            shifted(
-                &spans,
-                "foo bar baz",
-                "Xfoo bar bazY",
-                &[edit(0, 0, "X"), edit(11, 11, "Y")]
-            ),
-            vec![span(0, 5, 8)]
-        );
-    }
-
-    #[test]
-    fn drops_spans_joined_to_neighbours() {
-        let spans = [span(0, 4, 7)];
-        assert!(shifted(&spans, "foo bar", "foobar", &[edit(3, 4, "")]).is_empty());
-        assert_eq!(
-            shifted(&spans, "foo bar", "foox bar", &[edit(3, 3, "x")]),
-            vec![span(0, 5, 8)]
-        );
-        assert!(shifted(&spans, "foo bar", "foo xbar", &[edit(4, 4, "x")]).is_empty());
-    }
-
-    #[test]
-    fn drops_spans_when_their_text_changes_elsewhere() {
-        let spans = [span(0, 0, 3)];
-        assert!(shifted(&spans, "abc def", "abX def", &[edit(2, 3, "X")]).is_empty());
-    }
+    let line_start = text.line_to_char(span.row);
+    let line_len = text::row_char_len(text, span.row);
+    let start = line_start.saturating_add(span.start.min(line_len));
+    let end = line_start.saturating_add(span.end.min(line_len));
+    (start < end).then_some(start..end)
 }
+
+#[cfg(test)]
+mod tests;
