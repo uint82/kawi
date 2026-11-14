@@ -12,7 +12,7 @@ fuzz_target!(|data: &[u8]| {
     let mut lines = text.lines();
     let grants = lines
         .next()
-        .and_then(|line| line.trim().parse::<u16>().ok())
+        .and_then(|line| line.trim().parse::<u32>().ok())
         .unwrap_or(0);
     let registry = registry(grants);
     let advertised = advertised_host_methods(&registry, "fuzz");
@@ -30,7 +30,7 @@ fuzz_target!(|data: &[u8]| {
     }
 });
 
-fn granted(grants: u16, capability: Capability) -> bool {
+fn granted(grants: u32, capability: Capability) -> bool {
     let index = Capability::ALL
         .iter()
         .position(|candidate| *candidate == capability)

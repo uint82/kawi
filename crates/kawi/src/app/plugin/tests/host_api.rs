@@ -139,7 +139,7 @@ fn lists_and_reads_options_by_name_or_alias() {
 
 #[test]
 fn authorizes_buffer_writes_by_path_scope() {
-    let root = temp_dir("host_api_paths");
+    let root = temp_dir("host_api_paths").canonicalize().unwrap();
     let outside = root.parent().unwrap().join(format!(
         "{}_outside.txt",
         root.file_name().unwrap().to_string_lossy()
