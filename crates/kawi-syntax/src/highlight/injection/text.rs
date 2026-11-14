@@ -9,9 +9,9 @@ use crate::language::LanguageId;
 
 use super::super::parse::parse_slice;
 
-pub(super) struct NodeText<'a> {
-    pub(super) text: &'a Rope,
-    pub(super) source: Range<usize>,
+pub(crate) struct NodeText<'a> {
+    pub(crate) text: &'a Rope,
+    pub(crate) source: Range<usize>,
 }
 
 impl<'a> TextProvider<&'a str> for NodeText<'a> {

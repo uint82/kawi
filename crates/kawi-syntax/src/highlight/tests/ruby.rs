@@ -55,7 +55,7 @@ end
     );
     assert_eq!(name_of(&spans, text, 1, "object"), Some("variable"));
     assert_eq!(name_of(&spans, text, 1, "show"), Some("function.call"));
-    assert_eq!(name_of(&spans, text, 1, "name"), Some("variable"));
+    assert_eq!(name_of(&spans, text, 1, "name"), Some("variable.parameter"));
     assert_eq!(
         name_of(&spans, text, 2, "private"),
         Some("keyword.modifier")
@@ -170,7 +170,7 @@ end
         Some("variable.parameter")
     );
     assert_eq!(name_of(&spans, text, 0, "rest"), Some("variable.parameter"));
-    assert_eq!(name_of(&spans, text, 1, "left"), Some("variable"));
+    assert_eq!(name_of(&spans, text, 1, "left"), Some("variable.parameter"));
     assert_eq!(
         name_of(&spans, text, 3, "first"),
         Some("variable.parameter")

@@ -312,3 +312,13 @@ license = "Apache-2.0"
 file = "php-injections.scm"
 source = "tree-sitter-php 0.25.1 queries/injections-text.scm"
 license = "MIT"
+
+[[adaptation]]
+file = "markdown-injections.scm"
+source = "tree-sitter-md 0.5.4 tree-sitter-markdown/queries/injections.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "markdown-inline-injections.scm"
+source = "tree-sitter-md 0.5.4 tree-sitter-markdown-inline/queries/injections.scm"
+license = "MIT"

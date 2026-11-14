@@ -131,7 +131,10 @@ fn highlights_ruby_php_and_lua_tokens() {
     let ruby = "def show(name)\n  renamed = name\n  return renamed\nend\n";
     let spans = highlight(LanguageId::Ruby, ruby, 0, 4);
     assert_eq!(name_of(&spans, ruby, 0, "def"), Some("keyword.function"));
-    assert_eq!(name_of_last(&spans, ruby, 1, "name"), Some("variable"));
+    assert_eq!(
+        name_of_last(&spans, ruby, 1, "name"),
+        Some("variable.parameter")
+    );
     assert_eq!(name_of(&spans, ruby, 2, "return"), Some("keyword.return"));
 
     let php = "<?php\nuse Other\\Thing;\nclass Item extends Base {\n    public function show(int $count): void { return; }\n}\n";

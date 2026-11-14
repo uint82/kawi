@@ -12,6 +12,7 @@ use crate::text;
 
 mod errors;
 mod injection;
+mod locals;
 mod paint;
 mod parse;
 mod runtime;

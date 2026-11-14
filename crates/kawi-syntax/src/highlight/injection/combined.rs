@@ -22,14 +22,14 @@ pub(super) fn prepare(
     {
         return None;
     }
-    if !injection.combined {
-        let range = injection.ranges.first()?;
+    let first = injection.ranges.first()?;
+    if !injection.combined && injection.ranges.len() == 1 {
         return Some(Prepared {
-            source: intersect(range, visible),
+            source: intersect(first, visible),
             text: None,
         });
     }
-    let source = injection.ranges.first()?.start..injection.ranges.last()?.end;
+    let source = first.start..injection.ranges.last()?.end;
     Some(Prepared {
         source: source.clone(),
         text: Some(mask(text, &injection.ranges, &source)),

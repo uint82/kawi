@@ -8,12 +8,13 @@ use tree_sitter::{Parser, QueryCursor, StreamingIterator, Tree};
 use crate::language::LanguageId;
 use crate::limits::MAX_CAPTURES;
 
+use super::locals::{self, LocalSource, Resolution};
 use super::paint::Capture;
 use super::runtime::{Runtime, RuntimeCache};
 
 mod combined;
 mod query;
-mod text;
+pub(super) mod text;
 
 const MAX_INJECTION_DEPTH: usize = 3;
 
@@ -62,7 +63,7 @@ impl Collector {
         context.drain()?;
         context
             .captures
-            .sort_by_key(|capture| (capture.layer, capture.start));
+            .sort_by_key(|capture| (capture.priority, capture.layer, capture.start));
         Some(context.captures)
     }
 }
@@ -103,11 +104,43 @@ struct Job {
     language: LanguageId,
 }
 
+fn resolve_references(captures: &mut [Capture], locals: &Resolution) {
+    let definitions = captures
+        .iter()
+        .filter(|capture| locals.definitions().contains(&(capture.start..capture.end)))
+        .map(|capture| (capture.start..capture.end, capture.highlight))
+        .collect::<HashMap<_, _>>();
+    for capture in captures {
+        let range = capture.start..capture.end;
+        if let Some(definition) = locals.definition_for(&range) {
+            if let Some(highlight) = definitions.get(definition) {
+                capture.highlight = *highlight;
+            }
+        }
+    }
+}
+
 impl Context<'_> {
     fn collect(&mut self, layer: &Layer<'_>) -> Option<()> {
-        self.collect_highlights(layer)?;
+        let locals = self.local_resolution(layer);
+        self.collect_highlights(layer, &locals)?;
         self.enqueue(layer);
         Some(())
+    }
+
+    fn local_resolution(&self, layer: &Layer<'_>) -> Resolution {
+        let Some(query) = layer.runtime.locals.as_ref() else {
+            return Resolution::default();
+        };
+        locals::resolve(
+            query,
+            LocalSource {
+                tree: layer.tree,
+                text: layer.text,
+                text_source: layer.text_source.clone(),
+                source: layer.source.clone(),
+            },
+        )
     }
 
     fn drain(&mut self) -> Option<()> {
@@ -129,7 +162,8 @@ impl Context<'_> {
         Some(())
     }
 
-    fn collect_highlights(&mut self, layer: &Layer<'_>) -> Option<()> {
+    fn collect_highlights(&mut self, layer: &Layer<'_>, locals: &Resolution) -> Option<()> {
+        let mut captures = Vec::new();
         for block in layer.blocks {
             let mut cursor = QueryCursor::new();
             cursor.set_byte_range(block.clone());
@@ -154,17 +188,37 @@ impl Context<'_> {
                 else {
                     continue;
                 };
-                if self.captures.len() >= MAX_CAPTURES {
+                let start = layer.source.start + capture.node.start_byte();
+                let end = layer.source.start + capture.node.end_byte();
+                if layer
+                    .runtime
+                    .non_local
+                    .get(matched.pattern_index)
+                    .copied()
+                    .unwrap_or(false)
+                    && locals.is_local(&(start..end))
+                {
+                    continue;
+                }
+                if self.captures.len() + captures.len() >= MAX_CAPTURES {
                     return None;
                 }
-                self.captures.push(Capture {
-                    start: layer.source.start + capture.node.start_byte(),
-                    end: layer.source.start + capture.node.end_byte(),
+                captures.push(Capture {
+                    start,
+                    end,
                     highlight,
                     layer: layer.layer,
+                    priority: layer
+                        .runtime
+                        .priorities
+                        .get(matched.pattern_index)
+                        .copied()
+                        .unwrap_or(0),
                 });
             }
         }
+        resolve_references(&mut captures, locals);
+        self.captures.extend(captures);
         Some(())
     }
 

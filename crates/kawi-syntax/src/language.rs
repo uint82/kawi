@@ -148,6 +148,10 @@ impl LanguageId {
         grammar::injections(self)
     }
 
+    pub(crate) fn locals(self) -> &'static str {
+        grammar::locals(self)
+    }
+
     pub(crate) fn highlights(self) -> &'static str {
         let highlights = HIGHLIGHTS.get_or_init(|| {
             LanguageId::ALL.map(|language| {

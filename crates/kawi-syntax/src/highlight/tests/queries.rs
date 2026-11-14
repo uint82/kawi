@@ -202,10 +202,10 @@ fn highlights_ruby_locals_calls_and_constants() {
     assert_eq!(name_of(&spans, text, 4, "show"), Some("function"));
     assert_eq!(name_of(&spans, text, 4, "name"), Some("variable.parameter"));
     assert_eq!(name_of(&spans, text, 5, "puts"), Some("function.call"));
-    assert_eq!(name_of(&spans, text, 5, "name"), Some("variable"));
+    assert_eq!(name_of(&spans, text, 5, "name"), Some("variable.parameter"));
     assert_eq!(name_of(&spans, text, 6, "object"), Some("variable"));
     assert_eq!(name_of(&spans, text, 6, "show"), Some("function.call"));
-    assert_eq!(name_of(&spans, text, 6, "name"), Some("variable"));
+    assert_eq!(name_of(&spans, text, 6, "name"), Some("variable.parameter"));
 }
 
 #[test]
