@@ -12,8 +12,11 @@ impl App {
             redraw |= self.handle_plugin_event(event);
         }
         self.plugins.flush_activation_events();
+        let focus = self
+            .is_editor_focused()
+            .then(|| (self.windows.active(), self.editor.buffer_number() as u64));
         self.plugins
-            .sync_plugin_state(&mut self.editor, &mut self.problems);
+            .sync_plugin_state(&mut self.editor, &mut self.problems, &self.windows, focus);
         self.plugin_decorations.retain_live(&self.editor);
         redraw
     }
@@ -127,6 +130,14 @@ impl App {
                 | "editor.execute"
                 | "editor.set_diagnostics"
                 | "editor.set_decorations"
+                | "buffer.open"
+                | "buffer.apply_edit"
+                | "window.focus"
+                | "window.open"
+                | "window.close"
+                | "editor.set_cursor"
+                | "editor.set_selection"
+                | "editor.set_mode"
                 | "ui.set_statusline"
                 | "ui.message"
                 | "ui.input"
@@ -140,7 +151,10 @@ impl App {
                 | "ui.panel_focus"
                 | "ui.panel_close"
         );
-        if matches!(method, "editor.apply_edit" | "editor.execute") {
+        if matches!(
+            method,
+            "editor.apply_edit" | "editor.execute" | "buffer.apply_edit"
+        ) {
             self.editor
                 .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
         }

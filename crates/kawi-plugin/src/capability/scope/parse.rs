@@ -42,7 +42,9 @@ fn parse_scoped_table(
         return Err(format!("{key} must not be empty"));
     }
     match capability {
-        Capability::FsRead | Capability::FsWrite => parse_paths(values).map(super::Scope::Paths),
+        Capability::EditorBuffersWrite | Capability::FsRead | Capability::FsWrite => {
+            parse_paths(values).map(super::Scope::Paths)
+        }
         Capability::ProcessSpawn => parse_commands(values).map(super::Scope::Commands),
         Capability::EditorExecute => {
             parse_editor_commands(values).map(super::Scope::EditorCommands)
@@ -54,7 +56,7 @@ fn parse_scoped_table(
 
 fn scope_key(capability: Capability) -> &'static str {
     match capability {
-        Capability::FsRead | Capability::FsWrite => "paths",
+        Capability::EditorBuffersWrite | Capability::FsRead | Capability::FsWrite => "paths",
         Capability::ProcessSpawn | Capability::EditorExecute => "commands",
         Capability::NetConnect => "hosts",
         _ => "",

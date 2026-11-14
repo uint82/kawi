@@ -10,9 +10,11 @@ mod statusline;
 mod types;
 
 pub use events::{
-    event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferOpenedEvent,
-    DiagnosticSummary, DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, ModeChangedEvent,
-    EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER,
+    event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferEnterEvent,
+    BufferLeaveEvent, BufferOpenedEvent, CursorMovedEvent, DiagnosticSummary,
+    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, FocusChangedEvent, ModeChangedEvent,
+    SelectionChangedEvent, WindowEnterEvent, WindowLeaveEvent, EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD,
+    ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER,
 };
 
 use serde_json::Value;
@@ -36,65 +38,9 @@ pub use panel::{
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
 
-pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 12;
-pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 27] = [
-    "editor.get_state",
-    "editor.apply_edit",
-    "editor.execute",
-    "editor.list_commands",
-    "editor.set_diagnostics",
-    "editor.set_decorations",
-    "ui.set_statusline",
-    "ui.message",
-    "ui.input",
-    "ui.select",
-    "ui.confirm",
-    "ui.progress_start",
-    "ui.progress_update",
-    "ui.progress_finish",
-    "ui.panel_open",
-    "ui.panel_update",
-    "ui.panel_focus",
-    "ui.panel_close",
-    "config.get",
-    "config.list",
-    "process.open",
-    "process.write",
-    "process.close_stdin",
-    "process.signal",
-    "process.kill",
-    "process.status",
-    "process.poll",
-];
-pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
-pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];
-pub const MAX_PLUGIN_DECORATIONS: usize = 10_000;
-pub const MAX_DECORATION_TEXT_BYTES: usize = 512;
-pub const MAX_PLUGIN_STATUSLINE_SEGMENTS: usize = 16;
-pub const MAX_STATUSLINE_TEXT_BYTES: usize = 256;
-pub const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
-pub const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
-pub const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
+mod constants;
 
-pub const PARSE_ERROR: i64 = -32700;
-pub const INVALID_REQUEST: i64 = -32600;
-pub const METHOD_NOT_FOUND: i64 = -32601;
-pub const INVALID_PARAMS: i64 = -32602;
-pub const INTERNAL_ERROR: i64 = -32603;
-pub const PLUGIN_ERROR: i64 = -32000;
-pub const STALE_REVISION: i64 = -32010;
-pub const INVALID_POSITION: i64 = -32011;
-pub const CAPABILITY_DENIED: i64 = -32012;
-pub const REQUEST_CANCELED: i64 = -32020;
-pub const PLUGIN_UNAVAILABLE: i64 = -32030;
-pub const UI_BUSY: i64 = -32040;
-pub const JOB_NOT_FOUND: i64 = -32050;
-pub const JOB_LIMIT: i64 = -32051;
-pub const JOB_CLOSED: i64 = -32052;
-pub const JOB_QUEUE_FULL: i64 = -32053;
-pub const PANEL_NOT_FOUND: i64 = -32060;
+pub use constants::*;
 
 pub use types::*;
 
@@ -164,6 +110,30 @@ impl RpcError {
             STALE_REVISION,
             format!("stale buffer revision: expected {expected}, current {actual}"),
         )
+    }
+
+    pub fn buffer_not_found(buffer: u64) -> Self {
+        Self::new(BUFFER_NOT_FOUND, format!("buffer not found: {buffer}"))
+    }
+
+    pub fn buffer_not_active(buffer: u64) -> Self {
+        Self::new(BUFFER_NOT_ACTIVE, format!("buffer is not active: {buffer}"))
+    }
+
+    pub fn window_not_found(window: u64) -> Self {
+        Self::new(WINDOW_NOT_FOUND, format!("window not found: {window}"))
+    }
+
+    pub fn last_window() -> Self {
+        Self::new(LAST_WINDOW, "cannot close the last window")
+    }
+
+    pub fn option_not_found(name: &str) -> Self {
+        Self::new(OPTION_NOT_FOUND, format!("option not found: {name}"))
+    }
+
+    pub fn mode_not_supported(mode: &str) -> Self {
+        Self::new(MODE_NOT_SUPPORTED, format!("mode not supported: {mode}"))
     }
 
     pub fn stale_buffer(expected: u64, actual: u64) -> Self {

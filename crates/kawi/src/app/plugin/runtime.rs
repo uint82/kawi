@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use crate::keymap::{Binding, KeymapResolver};
 use kawi_editor::BufferInfo;
 use kawi_plugin::{
-    Capability, CapabilityRegistry, InvocationContext, LoadedPlugin, PluginCatalog, PluginError,
-    PluginHost, PluginHostEvent, PluginLock, PluginStatus, RpcError,
+    Capability, CapabilityRegistry, HostEnvironment, InvocationContext, LoadedPlugin,
+    PluginCatalog, PluginError, PluginHost, PluginHostEvent, PluginLock, PluginStatus, RpcError,
 };
 use serde_json::Value;
 
@@ -50,6 +50,13 @@ pub(crate) struct PluginRuntime {
     pub(super) pending: BTreeMap<(String, u64), PendingBufferEvent>,
     pub(super) last_delivered: BTreeMap<(String, u64), u64>,
     pub(super) last_mode: Option<(u64, String)>,
+    pub(super) last_active_buffer: Option<u64>,
+    pub(super) last_active_window: Option<(u64, u64)>,
+    pub(super) last_cursor: Option<(u64, kawi_plugin::Position)>,
+    pub(super) last_selection: Option<(u64, Option<kawi_plugin::Selection>)>,
+    pub(super) last_focus: Option<Option<(u64, u64)>>,
+    #[cfg(test)]
+    pub(super) test_events: Vec<(String, Value)>,
     pub(super) last_diagnostics_revision: u64,
     pub(super) resync_buffers: BTreeSet<(String, u64)>,
     pub(super) pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
@@ -58,6 +65,7 @@ pub(crate) struct PluginRuntime {
     pub(super) lock: PluginLock,
     pub(super) dev_plugins: BTreeSet<String>,
     pub(super) workspace: Option<PathBuf>,
+    pub(super) environment: Option<HostEnvironment>,
     pub(super) wake: Option<std::sync::mpsc::Sender<()>>,
     pub(super) capabilities: CapabilityRegistry,
     pub(super) denials: BTreeMap<(String, Capability), DenialRecord>,

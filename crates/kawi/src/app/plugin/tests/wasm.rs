@@ -91,26 +91,26 @@ fn wasm_resolution_warning_is_listed_without_counting_as_failure() {
         &bytes,
         None,
         &["editor.read"],
-        "\"net.connect\" = { hosts = [\"localhost:443\"] }\n",
+        "\"net.connect\" = { hosts = [\"kawi-resolution.invalid:443\"] }\n",
     );
     let mut app = app();
     load_plugins(&mut app, &root);
     app.plugins.restart(Some("wasm")).unwrap();
     wait_until_ready(&mut app);
-    app.poll_plugins();
+    wait_for_network_warning(&mut app);
     app.handle_plugin_command("list");
     let lines = app.pager.as_ref().expect("pager");
     assert!(
         lines
             .iter()
-            .any(|line| line.contains("network warning: localhost")),
+            .any(|line| line.contains("network warning: kawi-resolution.invalid")),
         "{lines:?}"
     );
     assert!(app
         .plugins
         .logs("wasm")
         .iter()
-        .any(|line| line.contains("network warning: localhost")));
+        .any(|line| line.contains("network warning: kawi-resolution.invalid")));
     for _ in 0..6 {
         app.plugins.restart(Some("wasm")).unwrap();
         wait_until_ready(&mut app);
@@ -126,6 +126,25 @@ fn wasm_resolution_warning_is_listed_without_counting_as_failure() {
         1
     );
     fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(feature = "wasm")]
+fn wait_for_network_warning(app: &mut crate::app::App) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !app
+        .plugins
+        .logs("wasm")
+        .iter()
+        .any(|line| line.contains("network warning: kawi-resolution.invalid"))
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "network warning did not arrive: {:?}",
+            app.plugins.logs("wasm")
+        );
+        app.poll_plugins();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 #[cfg(feature = "wasm")]

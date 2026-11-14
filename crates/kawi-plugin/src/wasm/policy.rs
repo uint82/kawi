@@ -10,63 +10,83 @@ pub struct ImportRule {
 
 pub const WASM_IMPORTS: &[ImportRule] = &[
     ImportRule {
-        prefix: "kawi:plugin/types@0.7.0",
+        prefix: "kawi:plugin/types@0.8.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-read@0.7.0",
+        prefix: "kawi:plugin/editor-read@0.8.0",
         capabilities: &[Capability::EditorRead],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-write@0.7.0",
+        prefix: "kawi:plugin/editor-write@0.8.0",
         capabilities: &[Capability::EditorWrite],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-execute@0.7.0",
+        prefix: "kawi:plugin/editor-buffers@0.8.0",
+        capabilities: &[Capability::EditorBuffers],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/editor-buffers-write@0.8.0",
+        capabilities: &[Capability::EditorBuffersWrite],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/editor-windows@0.8.0",
+        capabilities: &[Capability::EditorWindows],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/editor-control@0.8.0",
+        capabilities: &[Capability::EditorControl],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/options-read@0.8.0",
+        capabilities: &[Capability::OptionsRead],
+    },
+    ImportRule {
+        prefix: "kawi:plugin/editor-execute@0.8.0",
         capabilities: &[Capability::EditorExecute],
     },
     ImportRule {
-        prefix: "kawi:plugin/config-read@0.7.0",
+        prefix: "kawi:plugin/config-read@0.8.0",
         capabilities: &[],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-message@0.7.0",
+        prefix: "kawi:plugin/ui-message@0.8.0",
         capabilities: &[Capability::UiMessage],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-prompt@0.7.0",
+        prefix: "kawi:plugin/ui-prompt@0.8.0",
         capabilities: &[Capability::UiPrompt],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-progress@0.7.0",
+        prefix: "kawi:plugin/ui-progress@0.8.0",
         capabilities: &[Capability::UiProgress],
     },
     ImportRule {
-        prefix: "kawi:plugin/diagnostics-publish@0.7.0",
+        prefix: "kawi:plugin/diagnostics-publish@0.8.0",
         capabilities: &[Capability::DiagnosticsPublish],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-decorations@0.7.0",
+        prefix: "kawi:plugin/editor-decorations@0.8.0",
         capabilities: &[Capability::EditorDecorations],
     },
     ImportRule {
-        prefix: "kawi:plugin/editor-signs@0.7.0",
+        prefix: "kawi:plugin/editor-signs@0.8.0",
         capabilities: &[Capability::EditorDecorations],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-statusline@0.7.0",
+        prefix: "kawi:plugin/ui-statusline@0.8.0",
         capabilities: &[Capability::UiStatusline],
     },
     ImportRule {
-        prefix: "kawi:plugin/ui-panel@0.7.0",
+        prefix: "kawi:plugin/ui-panel@0.8.0",
         capabilities: &[Capability::UiPanel],
     },
     ImportRule {
-        prefix: "kawi:plugin/process-run@0.7.0",
+        prefix: "kawi:plugin/process-run@0.8.0",
         capabilities: &[Capability::ProcessSpawn],
     },
     ImportRule {
-        prefix: "kawi:plugin/process-jobs@0.7.0",
+        prefix: "kawi:plugin/process-jobs@0.8.0",
         capabilities: &[Capability::ProcessSpawn],
     },
     ImportRule {

@@ -277,7 +277,7 @@ impl App {
         self.complete_split(vertical)
     }
 
-    fn begin_split(&mut self) -> WindowId {
+    pub(super) fn begin_split(&mut self) -> WindowId {
         self.sync_active_window();
         let previous = self.windows.active();
         self.stash_active_syntax_copy(previous);
@@ -285,7 +285,7 @@ impl App {
         previous
     }
 
-    fn complete_split(&mut self, vertical: bool) -> Result<bool> {
+    pub(super) fn complete_split(&mut self, vertical: bool) -> Result<bool> {
         let view = self.editor.view_state();
         let buffer = self.editor.buffer_number();
         let direction = if vertical {

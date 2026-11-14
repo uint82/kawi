@@ -11,15 +11,17 @@ mod offsets;
 
 pub use edit::apply_edit_with_retry;
 pub use error::{
-    error_kind, ErrorKind, CAPABILITY_DENIED, INTERNAL_ERROR, INVALID_PARAMS, INVALID_POSITION,
-    INVALID_REQUEST, METHOD_NOT_FOUND, PANEL_NOT_FOUND, PARSE_ERROR, PLUGIN_ERROR,
-    PLUGIN_UNAVAILABLE, REQUEST_CANCELED, STALE_REVISION, UI_BUSY,
+    error_kind, ErrorKind, BUFFER_NOT_ACTIVE, BUFFER_NOT_FOUND, CAPABILITY_DENIED, INTERNAL_ERROR,
+    INVALID_PARAMS, INVALID_POSITION, INVALID_REQUEST, LAST_WINDOW, METHOD_NOT_FOUND,
+    MODE_NOT_SUPPORTED, OPTION_NOT_FOUND, PANEL_NOT_FOUND, PARSE_ERROR, PLUGIN_ERROR,
+    PLUGIN_UNAVAILABLE, REQUEST_CANCELED, STALE_REVISION, UI_BUSY, WINDOW_NOT_FOUND,
 };
 pub use kawi::plugin::types;
 pub use kawi::plugin::{
-    config_read, diagnostics_publish, editor_decorations, editor_execute, editor_read,
-    editor_signs, editor_write, process_jobs, process_run, ui_message, ui_panel, ui_progress,
-    ui_prompt, ui_statusline,
+    config_read, diagnostics_publish, editor_buffers, editor_buffers_write, editor_control,
+    editor_decorations, editor_execute, editor_read, editor_signs, editor_windows, editor_write,
+    options_read, process_jobs, process_run, ui_message, ui_panel, ui_progress, ui_prompt,
+    ui_statusline,
 };
 pub use offsets::{byte_offset, position_at};
 

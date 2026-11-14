@@ -80,7 +80,7 @@ fn inspects_component_imports_and_hash() {
         .unwrap();
     assert_eq!(
         inspection.imports,
-        vec!["kawi:plugin/editor-read@0.7.0".to_string()]
+        vec!["kawi:plugin/editor-read@0.8.0".to_string()]
     );
     assert_eq!(inspection.requested, vec![Capability::EditorRead]);
     assert!(inspection.hash.starts_with("sha256:"));
@@ -98,7 +98,7 @@ fn inspects_renamed_imports_by_their_implements_name() {
         .unwrap();
     assert_eq!(
         inspection.imports,
-        vec!["kawi:plugin/editor-read@0.7.0".to_string()]
+        vec!["kawi:plugin/editor-read@0.8.0".to_string()]
     );
 }
 
@@ -286,6 +286,6 @@ fn accepts_structural_type_imports() {
     let inspection = runtime.inspect(&fixture("echo.wasm"), None, &[]).unwrap();
     assert_eq!(
         inspection.imports,
-        vec!["kawi:plugin/types@0.7.0".to_string()]
+        vec!["kawi:plugin/types@0.8.0".to_string()]
     );
 }

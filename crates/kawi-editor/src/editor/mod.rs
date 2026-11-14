@@ -40,6 +40,7 @@ mod motions;
 mod operators;
 mod options;
 mod paste;
+mod plugin_control;
 mod preview;
 mod prompt_history;
 mod registers;

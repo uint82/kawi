@@ -7,6 +7,7 @@ use kawi_tui::frame::Rect;
 mod app;
 mod layout;
 mod metadata;
+mod plugin;
 mod snapshot;
 
 #[cfg(test)]
@@ -103,6 +104,10 @@ impl Windows {
 
     pub fn len(&self) -> usize {
         self.windows.len()
+    }
+
+    pub(crate) fn ids(&self) -> Vec<WindowId> {
+        self.windows.keys().copied().collect()
     }
 
     pub fn active(&self) -> WindowId {

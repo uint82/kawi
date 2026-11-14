@@ -168,3 +168,53 @@ impl PluginRuntime {
         lines
     }
 }
+
+impl PluginRuntime {
+    pub(crate) fn allows_buffer_path(&self, plugin: &str, raw: &str) -> bool {
+        self.resolve_buffer_path(plugin, raw).is_some()
+    }
+
+    pub(crate) fn resolve_buffer_path(
+        &self,
+        plugin: &str,
+        raw: &str,
+    ) -> Option<std::path::PathBuf> {
+        let environment = self.environment.as_ref()?;
+        let plugin_dir = self
+            .catalog
+            .plugins
+            .iter()
+            .find(|loaded| loaded.manifest.name == plugin)
+            .map(|loaded| loaded.dir.as_path())?;
+        let Scope::Paths(roots) = self
+            .capabilities
+            .scope(plugin, Capability::EditorBuffersWrite)?
+        else {
+            return None;
+        };
+        let target = canonical_target(&environment.resolve_path(raw, plugin_dir)?)?;
+        roots
+            .iter()
+            .any(|root| {
+                environment
+                    .resolve_path(root, plugin_dir)
+                    .and_then(|root| canonicalize_existing(&root))
+                    .is_some_and(|root| target.starts_with(root))
+            })
+            .then_some(target)
+    }
+}
+
+fn canonical_target(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let absolute = std::path::absolute(path).ok()?;
+    if let Ok(canonical) = absolute.canonicalize() {
+        return Some(canonical);
+    }
+    let parent = absolute.parent()?;
+    let name = absolute.file_name()?;
+    Some(parent.canonicalize().ok()?.join(name))
+}
+
+fn canonicalize_existing(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::path::absolute(path).ok()?.canonicalize().ok()
+}

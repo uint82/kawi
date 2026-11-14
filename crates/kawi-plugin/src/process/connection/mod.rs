@@ -18,14 +18,17 @@ pub(crate) use self::interaction::Interaction;
 use self::read::spawn_reader;
 use self::startup::{spawn_error_message, validate_initialize};
 use self::write::{spawn_stderr, spawn_writer};
-use crate::capability::{advertised_events, advertised_host_methods, CapabilityRegistry};
+use crate::capability::{
+    advertised_events, advertised_host_methods, is_process_event, is_process_host_method,
+    CapabilityRegistry,
+};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
 use crate::protocol::{
     notification_value, request_value, HostInfo, InitializeParams, InitializeResult, InvokeParams,
-    PLUGIN_METHODS, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
+    PLUGIN_METHODS, POSITION_ENCODING, PROCESS_PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
 
 pub(super) type WriterSlot = Arc<Mutex<Option<SyncSender<Value>>>>;
@@ -185,7 +188,7 @@ impl Connection {
     pub(super) fn initialize(&mut self) -> Result<InitializeResult, PluginError> {
         let params = InitializeParams {
             protocol_version: PROTOCOL_VERSION,
-            protocol_minor: PROTOCOL_MINOR,
+            protocol_minor: PROCESS_PROTOCOL_MINOR,
             host: HostInfo {
                 name: "kawi".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -193,6 +196,7 @@ impl Connection {
             position_encoding: POSITION_ENCODING.to_string(),
             host_capabilities: advertised_host_methods(&self.capabilities, &self.plugin_name)
                 .into_iter()
+                .filter(|method| is_process_host_method(method))
                 .map(str::to_string)
                 .collect(),
             plugin_capabilities: PLUGIN_METHODS
@@ -201,6 +205,7 @@ impl Connection {
                 .collect(),
             events: advertised_events(&self.capabilities, &self.plugin_name)
                 .into_iter()
+                .filter(|event| is_process_event(event))
                 .map(str::to_string)
                 .collect(),
         };
