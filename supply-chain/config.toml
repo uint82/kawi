@@ -432,7 +432,7 @@ version = "0.10.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.kawi-plugin-sdk]]
-version = "0.11.0"
+version = "0.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.kqueue]]

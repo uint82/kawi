@@ -1,3 +1,20 @@
+## 0.12.0 - 2026-11-15
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.12.0 (`kawi:plugin@0.12.0`).
+- Components built against `kawi:plugin@0.11.0` must be rebuilt with this release.
+- Process plugins remain on protocol minor 12. The new interfaces and host methods are available only to WebAssembly components.
+
+### Added
+
+- Add the `ui-overlay` interface for a floating styled text overlay with cursor, center, and corner anchors.
+- Add `ui_overlay::open`, `update`, `wait`, and `close`. `wait` blocks for key, paste, and closed events and suspends the invocation timeout.
+- Add the `ui-picker` interface for a native selection list with stable IDs, detail text, deprecated markers, and search.
+- Add `ui_picker::pick`, which blocks until the user selects an item or cancels.
+- Add the `ui.overlay` and `ui.picker` capabilities and the `OVERLAY_NOT_FOUND` error code with `ErrorKind::OverlayNotFound`.
+- Add `ui_overlay` and `ui_picker` re-exports.
+
 ## 0.11.0 - 2026-11-15
 
 ### Breaking
