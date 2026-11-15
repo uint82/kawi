@@ -95,3 +95,13 @@ pub use protocol::{
     PLUGIN_ERROR, PLUGIN_UNAVAILABLE, POSITION_ENCODING, PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR,
     PROTOCOL_VERSION, REQUEST_CANCELED, STALE_REVISION, UI_BUSY, WINDOW_NOT_FOUND,
 };
+pub use protocol::{
+    validate_overlay_open, validate_overlay_update, validate_picker, Key, KeyModifier,
+    OverlayAnchor, OverlayCloseReason, OverlayEvent, OverlayKeyEvent, OverlayLine,
+    OverlayOpenParams, OverlayOpenResult, OverlayParams, OverlaySpan, OverlayUpdateParams,
+    PickerItem, PickerOutcome, PickerParams, DEFAULT_OVERLAY_HEIGHT, DEFAULT_OVERLAY_WIDTH,
+    MAX_OVERLAY_BYTES, MAX_OVERLAY_EVENTS, MAX_OVERLAY_HEIGHT, MAX_OVERLAY_LINES,
+    MAX_OVERLAY_LINE_BYTES, MAX_OVERLAY_STATUS_BYTES, MAX_OVERLAY_TITLE_BYTES, MAX_OVERLAY_WIDTH,
+    MAX_PICKER_DETAIL_BYTES, MAX_PICKER_ID_BYTES, MAX_PICKER_ITEMS, MAX_PICKER_LABEL_BYTES,
+    MIN_OVERLAY_HEIGHT, MIN_OVERLAY_WIDTH, OVERLAY_NOT_FOUND,
+};

@@ -25,7 +25,11 @@ mod net;
 #[cfg(feature = "wasm")]
 mod outbound_cap;
 #[cfg(feature = "wasm")]
+mod overlay_host;
+#[cfg(feature = "wasm")]
 mod panel_host;
+#[cfg(feature = "wasm")]
+mod picker_host;
 #[cfg(feature = "wasm")]
 mod policy;
 #[cfg(feature = "wasm")]

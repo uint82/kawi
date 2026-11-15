@@ -7,7 +7,9 @@ mod events;
 mod extensions;
 mod jobs;
 mod options;
+mod overlay;
 mod panel;
+mod picker;
 mod sanitize;
 mod statusline;
 mod timers;
@@ -50,11 +52,23 @@ pub use jobs::{
     MAX_JOB_EVENT_QUEUE_ITEMS, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
 };
 pub use options::{validate_option_value, OptionsResetParams, OptionsSetParams};
+pub use overlay::{
+    validate_overlay_open, validate_overlay_update, Key, KeyModifier, OverlayAnchor,
+    OverlayCloseReason, OverlayEvent, OverlayKeyEvent, OverlayLine, OverlayOpenParams,
+    OverlayOpenResult, OverlayParams, OverlaySpan, OverlayUpdateParams, DEFAULT_OVERLAY_HEIGHT,
+    DEFAULT_OVERLAY_WIDTH, MAX_OVERLAY_BYTES, MAX_OVERLAY_EVENTS, MAX_OVERLAY_HEIGHT,
+    MAX_OVERLAY_LINES, MAX_OVERLAY_LINE_BYTES, MAX_OVERLAY_STATUS_BYTES, MAX_OVERLAY_TITLE_BYTES,
+    MAX_OVERLAY_WIDTH, MIN_OVERLAY_HEIGHT, MIN_OVERLAY_WIDTH,
+};
 pub use panel::{
     validate_panel_open, validate_panel_update, PanelLine, PanelOpenParams, PanelOpenResult,
     PanelParams, PanelUpdateParams, DEFAULT_PLUGIN_PANEL_HEIGHT, MAX_PANEL_LINE_BYTES,
     MAX_PANEL_STATUS_BYTES, MAX_PANEL_TITLE_BYTES, MAX_PLUGIN_PANEL_BYTES, MAX_PLUGIN_PANEL_HEIGHT,
     MAX_PLUGIN_PANEL_LINES, MIN_PLUGIN_PANEL_HEIGHT,
+};
+pub use picker::{
+    validate_picker, PickerItem, PickerOutcome, PickerParams, MAX_PICKER_DETAIL_BYTES,
+    MAX_PICKER_ID_BYTES, MAX_PICKER_ITEMS, MAX_PICKER_LABEL_BYTES,
 };
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
