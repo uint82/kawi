@@ -4,6 +4,7 @@ use kawi_plugin::RpcError;
 
 use super::super::super::App;
 
+mod autocmds;
 mod buffer_api;
 mod control_api;
 mod extensions;
@@ -33,6 +34,11 @@ pub(super) fn handle(
         "options.get" => app.plugin_options_get(params),
         "command.register" | "command.unregister" | "command.list" | "keymap.set"
         | "keymap.remove" | "keymap.list" => extensions::handle(app, plugin, method, params),
+        "autocmd.register"
+        | "autocmd.remove"
+        | "autocmd.list"
+        | "autocmd.clear"
+        | "editor.emit_user_event" => autocmds::handle(app, plugin, method, params),
         _ => Err(RpcError::method_not_found(method)),
     }
 }

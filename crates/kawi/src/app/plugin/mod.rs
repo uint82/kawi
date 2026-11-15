@@ -1,3 +1,4 @@
+mod autocmds;
 mod coalesce;
 mod commands;
 mod composition;

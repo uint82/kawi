@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
-const SDK_VERSION: &str = "0.9.0";
+const SDK_VERSION: &str = "0.10.0";
 const DEFAULT_SHA256: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 const BUILD_SCRIPT: &str = "\
@@ -128,7 +128,7 @@ fn plugin_manifest(name: &str) -> String {
 
 fn source(name: &str) -> String {
     format!(
-        "use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;\nuse kawi_plugin_sdk::types::{{Argument, Error, Event}};\nuse kawi_plugin_sdk::INVALID_PARAMS;\n\nconst COMMAND_ID: &str = \"hello\";\nconst MESSAGE: &str = \"hello from {name}\";\n\nstruct Plugin;\n\nimpl Guest for Plugin {{\n    fn init(_host_protocol: u32) -> Result<(), Error> {{\n        Ok(())\n    }}\n\n    fn invoke_command(id: String, _args: Vec<Argument>) -> Result<Argument, Error> {{\n        if id != COMMAND_ID {{\n            return Err(Error {{\n                code: INVALID_PARAMS,\n                message: \"unknown command\".to_string(),\n                capability: None,\n            }});\n        }}\n        Ok(Argument::Text(MESSAGE.to_string()))\n    }}\n\n    fn on_event(_event: Event) {{}}\n}}\n\nkawi_plugin_sdk::export!(Plugin);\n"
+        "use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{{\n    Callback, Guest as CallbackGuest,\n}};\nuse kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;\nuse kawi_plugin_sdk::types::{{Argument, Error, Event}};\nuse kawi_plugin_sdk::INVALID_PARAMS;\n\nconst COMMAND_ID: &str = \"hello\";\nconst MESSAGE: &str = \"hello from {name}\";\n\nstruct Plugin;\n\nimpl Guest for Plugin {{\n    fn init(_host_protocol: u32) -> Result<(), Error> {{\n        Ok(())\n    }}\n\n    fn invoke_command(id: String, _args: Vec<Argument>) -> Result<Argument, Error> {{\n        if id != COMMAND_ID {{\n            return Err(Error {{\n                code: INVALID_PARAMS,\n                message: \"unknown command\".to_string(),\n                capability: None,\n            }});\n        }}\n        Ok(Argument::Text(MESSAGE.to_string()))\n    }}\n\n    fn on_event(_event: Event) {{}}\n}}\n\nimpl CallbackGuest for Plugin {{\n    fn on_callback(_callback: Callback) -> Result<(), Error> {{\n        Ok(())\n    }}\n}}\n\nkawi_plugin_sdk::export!(Plugin);\n"
     )
 }
 
@@ -151,13 +151,13 @@ mod tests {
     #[test]
     fn sdk_path_keeps_the_version_requirement() {
         let dependency = sdk_dependency(Some(Path::new("/tmp/sdk")));
-        assert!(dependency.contains("version = \"0.9.0\""));
+        assert!(dependency.contains("version = \"0.10.0\""));
         assert!(dependency.contains("path = \"/tmp/sdk\""));
     }
 
     #[test]
     fn default_dependency_uses_the_published_sdk() {
-        assert_eq!(sdk_dependency(None), "kawi-plugin-sdk = \"0.9.0\"");
+        assert_eq!(sdk_dependency(None), "kawi-plugin-sdk = \"0.10.0\"");
     }
 
     #[test]
@@ -172,6 +172,7 @@ mod tests {
         let source = source("demo");
         assert!(source.contains("impl Guest for Plugin"));
         assert!(source.contains("hello from demo"));
+        assert!(source.contains("impl CallbackGuest for Plugin"));
         assert!(source.contains("kawi_plugin_sdk::export!(Plugin);"));
     }
 }

@@ -3,14 +3,15 @@ use serde_json::Value;
 use crate::protocol::{
     BufferChangedEvent, BufferClosedEvent, BufferEnterEvent, BufferLeaveEvent, BufferOpenedEvent,
     CursorMovedEvent, DiagnosticSummary, DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent,
-    FocusChangedEvent, ModeChangedEvent, ProtocolTextEdit, RpcError, SelectionChangedEvent,
-    WindowEnterEvent, WindowLeaveEvent,
+    FocusChangedEvent, LanguageChangedEvent, ModeChangedEvent, ProtocolTextEdit, RpcError,
+    SelectionChangedEvent, UserEvent, WindowClosedEvent, WindowCreatedEvent, WindowEnterEvent,
+    WindowLeaveEvent,
 };
 
 use super::super::bindings::kawi::plugin::types::{
     BufferChanged, BufferClosed, BufferEnter, BufferLeave, BufferOpened, CursorMoved, Diagnostic,
-    DiagnosticsChanged, Event, FileOpened, FileSaved, FocusChanged, ModeChanged, SelectionChanged,
-    WindowEnter, WindowLeave,
+    DiagnosticsChanged, Event, FileOpened, FileSaved, FocusChanged, LanguageChanged, ModeChanged,
+    SelectionChanged, UserEvent as WitUserEvent, WindowEnter, WindowLeave, WindowLifecycle,
 };
 
 use super::plugin_control::selection_from_protocol;
@@ -173,5 +174,130 @@ fn diagnostic_from_protocol(diagnostic: DiagnosticSummary) -> Diagnostic {
         message: diagnostic.message,
         source: diagnostic.source,
         code: diagnostic.code,
+    }
+}
+
+pub fn callback_event_from_json(
+    event: &str,
+    payload: Value,
+) -> Result<super::super::bindings::CallbackEvent, RpcError> {
+    match event {
+        "window_created" => {
+            let event: WindowCreatedEvent = parse(payload)?;
+            Ok(super::super::bindings::CallbackEvent::WindowCreated(
+                WindowLifecycle {
+                    window: event.window,
+                    buffer: event.buffer,
+                },
+            ))
+        }
+        "window_closed" => {
+            let event: WindowClosedEvent = parse(payload)?;
+            Ok(super::super::bindings::CallbackEvent::WindowClosed(
+                WindowLifecycle {
+                    window: event.window,
+                    buffer: event.buffer,
+                },
+            ))
+        }
+        "language_changed" => {
+            let event: LanguageChangedEvent = parse(payload)?;
+            Ok(super::super::bindings::CallbackEvent::LanguageChanged(
+                LanguageChanged {
+                    buffer: event.buffer,
+                    path: event.path,
+                    previous: event.previous,
+                    language: event.language,
+                },
+            ))
+        }
+        "user" => {
+            let event: UserEvent = parse(payload)?;
+            Ok(super::super::bindings::CallbackEvent::User(WitUserEvent {
+                name: event.name,
+                payload: event.payload,
+            }))
+        }
+        _ => Ok(super::super::bindings::CallbackEvent::Legacy(
+            event_from_json(event, payload)?,
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn maps_window_callbacks() {
+        let created = callback_event_from_json("window_created", json!({"window": 1, "buffer": 2}))
+            .expect("window_created");
+        assert!(matches!(
+            created,
+            super::super::super::bindings::CallbackEvent::WindowCreated(WindowLifecycle {
+                window: 1,
+                buffer: 2,
+            })
+        ));
+        let closed = callback_event_from_json("window_closed", json!({"window": 3, "buffer": 4}))
+            .expect("window_closed");
+        assert!(matches!(
+            closed,
+            super::super::super::bindings::CallbackEvent::WindowClosed(WindowLifecycle {
+                window: 3,
+                buffer: 4,
+            })
+        ));
+    }
+
+    #[test]
+    fn maps_language_and_user_callbacks() {
+        let language = callback_event_from_json(
+            "language_changed",
+            json!({"buffer": 1, "path": "src/main.rs", "previous": null, "language": "rust"}),
+        )
+        .expect("language_changed");
+        assert!(matches!(
+            language,
+            super::super::super::bindings::CallbackEvent::LanguageChanged(LanguageChanged {
+                buffer: 1,
+                ref path,
+                previous: None,
+                ref language,
+            }) if path.as_deref() == Some("src/main.rs") && language.as_deref() == Some("rust")
+        ));
+        let user = callback_event_from_json("user", json!({"name": "custom", "payload": "data"}))
+            .expect("user");
+        assert!(matches!(
+            user,
+            super::super::super::bindings::CallbackEvent::User(WitUserEvent {
+                ref name,
+                payload: Some(ref payload),
+            }) if name == "custom" && payload == "data"
+        ));
+    }
+
+    #[test]
+    fn maps_known_events_to_legacy_callbacks() {
+        let callback = callback_event_from_json(
+            "file_saved",
+            json!({"buffer": 1, "path": "src/main.rs", "revision": 2}),
+        )
+        .expect("file_saved");
+        assert!(matches!(
+            callback,
+            super::super::super::bindings::CallbackEvent::Legacy(Event::FileSaved(FileSaved {
+                buffer: 1,
+                revision: 2,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_callbacks() {
+        assert!(callback_event_from_json("unknown", Value::Null).is_err());
     }
 }

@@ -1,3 +1,20 @@
+## 0.10.0 - 2026-11-15
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.10.0 (`kawi:plugin@0.10.0`).
+- Components built against `kawi:plugin@0.9.0` must be rebuilt with this release.
+- Add the exported `callback-handler` interface and its required `on-callback` function. Existing components must implement it.
+- Process plugins remain on protocol minor 12. The new interfaces, host methods, and events are available only to WebAssembly components.
+
+### Added
+
+- Add the `editor-autocmds` interface for registering, removing, listing, and clearing asynchronous autocmds, plus `emit-user-event`.
+- Add typed autocmd callback events so the host can invoke a registered plugin with the event payload after an event matches.
+- Add the `window-created`, `window-closed`, and `language-changed` autocmd events. These events are not delivered through `on-event` in 0.10.
+- Add the `user` autocmd event for host-emitted user events.
+- Add the `editor_autocmds` re-export.
+
 ## 0.9.0 - 2026-11-15
 
 ### Breaking

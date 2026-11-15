@@ -19,7 +19,7 @@ pub use arguments::{argument_from_json, argument_to_json};
 pub use plugin_api::{command_infos_from_json, setting_value_from_json, settings_from_json};
 mod events;
 
-pub use events::event_from_json;
+pub use events::{callback_event_from_json, event_from_json};
 pub use plugin_control::{
     buffer_infos_from_json, buffer_state_from_json, option_info_from_json, option_infos_from_json,
     selection_to_protocol, split_direction_name, window_info_from_json, window_infos_from_json,

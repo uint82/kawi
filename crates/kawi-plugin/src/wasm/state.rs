@@ -30,6 +30,7 @@ use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
 
+mod autocmds_api;
 mod editor_api;
 mod extensions_api;
 mod keymaps_api;

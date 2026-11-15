@@ -59,6 +59,7 @@ impl App {
                         &mut self.commands,
                         &mut self.keymaps,
                     );
+                    self.plugins.clear_autocmds(&plugin);
                     self.plugins.clear_plugin_state(&plugin);
                     self.plugin_decorations.remove_plugin(&plugin);
                     self.plugin_statusline.remove_plugin(&plugin);

@@ -40,6 +40,19 @@ impl HostWorker {
         }
     }
 
+    pub(super) fn callback(
+        &self,
+        _registration: u64,
+        _event: &str,
+        _payload: Value,
+    ) -> Result<NotifyOutcome, PluginError> {
+        match self {
+            Self::Process(_) | Self::Disabled(_) => Ok(NotifyOutcome::Denied),
+            #[cfg(feature = "wasm")]
+            Self::Wasm(worker) => worker.callback(_registration, _event, _payload),
+        }
+    }
+
     pub(super) fn notify_internal(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
             Self::Process(worker) | Self::Disabled(worker) => {

@@ -25,6 +25,11 @@ pub enum WasmCommand {
         event: String,
         payload: Value,
     },
+    Callback {
+        registration: u64,
+        event: String,
+        payload: Value,
+    },
     Restart,
     Shutdown,
 }
@@ -61,6 +66,23 @@ impl WasmWorkerHandle {
             Ok(()) => NotifyOutcome::Queued,
             Err(TrySendError::Full(_)) => NotifyOutcome::Overflow,
             Err(TrySendError::Disconnected(_)) => NotifyOutcome::NotRunning,
+        }
+    }
+
+    pub(crate) fn callback(
+        &self,
+        registration: u64,
+        event: &str,
+        payload: Value,
+    ) -> Result<NotifyOutcome, PluginError> {
+        match self.commands.try_send(WasmCommand::Callback {
+            registration,
+            event: event.to_string(),
+            payload,
+        }) {
+            Ok(()) => Ok(NotifyOutcome::Queued),
+            Err(TrySendError::Full(_)) => Ok(NotifyOutcome::Overflow),
+            Err(TrySendError::Disconnected(_)) => Ok(NotifyOutcome::NotRunning),
         }
     }
 

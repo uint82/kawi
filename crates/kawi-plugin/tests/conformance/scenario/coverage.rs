@@ -184,6 +184,26 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "keymap.list",
         reason: "requires the editor keymap registry; covered by app plugin extension tests",
     },
+    Uncovered {
+        name: "autocmd.register",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "autocmd.remove",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "autocmd.list",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "autocmd.clear",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "editor.emit_user_event",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[
     Uncovered {
@@ -217,6 +237,22 @@ pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[
     Uncovered {
         name: "focus_lost",
         reason: "requires editor focus transitions; covered by app plugin event tests",
+    },
+    Uncovered {
+        name: "window_created",
+        reason: "requires editor window state; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "window_closed",
+        reason: "requires editor window state; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "language_changed",
+        reason: "requires editor buffer state; covered by app WASM autocmd tests",
+    },
+    Uncovered {
+        name: "user",
+        reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
     },
 ];
 

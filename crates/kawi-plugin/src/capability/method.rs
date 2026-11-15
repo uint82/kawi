@@ -28,7 +28,12 @@ pub fn host_method_minor(method: &str) -> u64 {
         | "command.list"
         | "keymap.set"
         | "keymap.remove"
-        | "keymap.list" => crate::protocol::PROTOCOL_MINOR,
+        | "keymap.list"
+        | "autocmd.register"
+        | "autocmd.remove"
+        | "autocmd.list"
+        | "autocmd.clear"
+        | "editor.emit_user_event" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -36,7 +41,8 @@ pub fn host_method_minor(method: &str) -> u64 {
 pub fn event_minor(event: &str) -> u64 {
     match event {
         "buffer_enter" | "buffer_leave" | "window_enter" | "window_leave" | "cursor_moved"
-        | "selection_changed" | "focus_gained" | "focus_lost" => crate::protocol::PROTOCOL_MINOR,
+        | "selection_changed" | "focus_gained" | "focus_lost" | "window_created"
+        | "window_closed" | "language_changed" | "user" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -75,6 +81,10 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         "keymap.set" | "keymap.remove" | "keymap.list" => {
             MethodCapability::Required(Capability::EditorKeymaps)
         }
+        "autocmd.register" | "autocmd.remove" | "autocmd.list" | "autocmd.clear" => {
+            MethodCapability::Required(Capability::EditorAutocmds)
+        }
+        "editor.emit_user_event" => MethodCapability::Required(Capability::EditorAutocmds),
         "ui.message" => MethodCapability::Required(Capability::UiMessage),
         "ui.input" | "ui.select" | "ui.confirm" => MethodCapability::Required(Capability::UiPrompt),
         "ui.progress_start" | "ui.progress_update" | "ui.progress_finish" => {
@@ -131,11 +141,12 @@ pub fn event_capability(event: &str) -> Option<Capability> {
         "buffer_changed" | "buffer_opened" | "file_opened" | "buffer_closed" | "file_saved"
         | "mode_changed" => Some(Capability::EditorRead),
         "buffer_enter" | "buffer_leave" => Some(Capability::EditorBuffers),
-        "window_enter" | "window_leave" | "focus_gained" | "focus_lost" => {
-            Some(Capability::EditorWindows)
-        }
+        "window_enter" | "window_leave" | "focus_gained" | "focus_lost" | "window_created"
+        | "window_closed" => Some(Capability::EditorWindows),
         "cursor_moved" | "selection_changed" => Some(Capability::EditorControl),
         "diagnostics_changed" => Some(Capability::DiagnosticsRead),
+        "language_changed" => Some(Capability::EditorRead),
+        "user" => Some(Capability::EditorAutocmds),
         _ => None,
     }
 }

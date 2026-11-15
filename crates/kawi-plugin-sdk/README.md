@@ -1,12 +1,12 @@
 # kawi-plugin-sdk
 
-Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.9.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
+Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.10.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
 
 ## Install
 
 ```toml
 [dependencies]
-kawi-plugin-sdk = "0.9.0"
+kawi-plugin-sdk = "0.10.0"
 ```
 
 The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components built against an earlier `kawi:plugin` package must be rebuilt because the WIT import namespace is versioned.
@@ -14,6 +14,9 @@ The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components b
 ## Example
 
 ```rust
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, Guest as CallbackGuest,
+};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, Error, Event};
 use kawi_plugin_sdk::INVALID_PARAMS;
@@ -39,6 +42,12 @@ impl Guest for Plugin {
     }
 
     fn on_event(_event: Event) {}
+}
+
+impl CallbackGuest for Plugin {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 kawi_plugin_sdk::export!(Plugin);

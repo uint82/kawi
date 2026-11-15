@@ -1,6 +1,6 @@
 use kawi_plugin::{
     BufferEnterEvent, BufferLeaveEvent, CursorMovedEvent, FocusChangedEvent, SelectionChangedEvent,
-    WindowEnterEvent, WindowLeaveEvent,
+    WindowClosedEvent, WindowCreatedEvent, WindowEnterEvent, WindowLeaveEvent,
 };
 use serde_json::Value;
 
@@ -14,6 +14,7 @@ impl PluginRuntime {
         focus: Option<(u64, u64)>,
     ) {
         self.sync_active_buffer(editor);
+        self.sync_windows(windows);
         self.sync_active_window(windows);
         self.sync_cursor_and_selection(editor);
         self.sync_focus(focus);
@@ -56,6 +57,44 @@ impl PluginRuntime {
             })
             .unwrap_or(Value::Null),
         );
+    }
+
+    fn sync_windows(&mut self, windows: &crate::app::window::Windows) {
+        let current = windows
+            .ids()
+            .into_iter()
+            .filter_map(|window| {
+                windows
+                    .view(window)
+                    .map(|view| (window, view.buffer as u64))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for (window, buffer) in &current {
+            if self.known_windows.contains_key(window) {
+                continue;
+            }
+            self.notify_autocmd_event(
+                "window_created",
+                serde_json::to_value(WindowCreatedEvent {
+                    window: *window,
+                    buffer: *buffer,
+                })
+                .unwrap_or(Value::Null),
+            );
+        }
+        let closed = self
+            .known_windows
+            .iter()
+            .filter(|(window, _)| !current.contains_key(window))
+            .map(|(window, buffer)| (*window, *buffer))
+            .collect::<Vec<_>>();
+        for (window, buffer) in closed {
+            self.notify_autocmd_event(
+                "window_closed",
+                serde_json::to_value(WindowClosedEvent { window, buffer }).unwrap_or(Value::Null),
+            );
+        }
+        self.known_windows = current;
     }
 
     fn sync_active_window(&mut self, windows: &crate::app::window::Windows) {

@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use super::{Position, ProtocolTextEdit, Selection};
 
-pub const EVENT_NAMES: [&str; 15] = [
+pub const EVENT_NAMES: [&str; 19] = [
     "buffer_changed",
     "buffer_opened",
     "file_opened",
@@ -19,6 +19,10 @@ pub const EVENT_NAMES: [&str; 15] = [
     "selection_changed",
     "focus_gained",
     "focus_lost",
+    "window_created",
+    "window_closed",
+    "language_changed",
+    "user",
 ];
 
 pub const ORIGIN_USER: &str = "user";
@@ -225,4 +229,30 @@ pub struct SelectionChangedEvent {
 pub struct FocusChangedEvent {
     pub window: u64,
     pub buffer: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowCreatedEvent {
+    pub window: u64,
+    pub buffer: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WindowClosedEvent {
+    pub window: u64,
+    pub buffer: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LanguageChangedEvent {
+    pub buffer: u64,
+    pub path: Option<String>,
+    pub previous: Option<String>,
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UserEvent {
+    pub name: String,
+    pub payload: Option<String>,
 }

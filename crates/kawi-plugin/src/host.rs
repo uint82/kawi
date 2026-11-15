@@ -99,6 +99,23 @@ impl PluginHost {
         Ok(worker.notify(event, payload))
     }
 
+    pub fn callback(
+        &self,
+        plugin: &str,
+        registration: u64,
+        event: &str,
+        payload: Value,
+    ) -> Result<NotifyOutcome, PluginError> {
+        let worker = self
+            .workers
+            .get(plugin)
+            .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        if payload_too_large(&payload) {
+            return Ok(NotifyOutcome::Overflow);
+        }
+        worker.callback(registration, event, payload)
+    }
+
     pub fn activate(&self, plugin: &str) -> Result<(), PluginError> {
         let worker = self
             .workers

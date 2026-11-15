@@ -1,5 +1,6 @@
 use std::fmt;
 
+mod autocmds;
 mod decorations;
 mod diagnostics;
 mod events;
@@ -10,11 +11,17 @@ mod sanitize;
 mod statusline;
 mod types;
 
+pub use autocmds::{
+    validate_autocmd_pattern, validate_autocmd_spec, validate_user_event, AutocmdRemoveParams,
+    AutocmdSpec, RegisteredAutocmd, UserEventParams, MAX_AUTOCMD_PATTERN_BYTES,
+    MAX_PLUGIN_AUTOCMDS, MAX_USER_EVENT_NAME_BYTES, MAX_USER_EVENT_PAYLOAD_BYTES,
+};
 pub use events::{
     event_value, plugin_origin, BufferChangedEvent, BufferClosedEvent, BufferEnterEvent,
     BufferLeaveEvent, BufferOpenedEvent, CursorMovedEvent, DiagnosticSummary,
-    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, FocusChangedEvent, ModeChangedEvent,
-    SelectionChangedEvent, WindowEnterEvent, WindowLeaveEvent, EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD,
+    DiagnosticsChangedEvent, FileOpenedEvent, FileSavedEvent, FocusChangedEvent,
+    LanguageChangedEvent, ModeChangedEvent, SelectionChangedEvent, UserEvent, WindowClosedEvent,
+    WindowCreatedEvent, WindowEnterEvent, WindowLeaveEvent, EVENT_NAMES, ORIGIN_EXTERNAL_RELOAD,
     ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER,
 };
 

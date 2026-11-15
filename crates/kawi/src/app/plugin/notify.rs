@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use kawi_editor::BufferInfo;
 use kawi_plugin::{
-    ActivationEvent, BufferClosedEvent, BufferOpenedEvent, FileOpenedEvent, ModeChangedEvent,
-    NotifyOutcome,
+    ActivationEvent, BufferClosedEvent, BufferOpenedEvent, FileOpenedEvent, LanguageChangedEvent,
+    ModeChangedEvent, NotifyOutcome,
 };
 use serde_json::Value;
 
@@ -68,6 +68,12 @@ impl PluginRuntime {
         }
     }
 
+    pub(crate) fn emit_user_event(&mut self, name: String, payload: Option<String>) {
+        let payload =
+            serde_json::to_value(kawi_plugin::UserEvent { name, payload }).unwrap_or(Value::Null);
+        self.notify_autocmd_event("user", payload);
+    }
+
     pub(crate) fn file_saved(&mut self, buffer: usize, path: Option<String>, revision: u64) {
         self.notify_event(
             "file_saved",
@@ -85,8 +91,21 @@ impl PluginRuntime {
         let mut current = BTreeMap::new();
         for info in infos {
             let number = info.number as u64;
-            if !self.known_buffers.contains_key(&number) {
-                self.publish_buffer_opened(&info);
+            match self.known_buffers.get(&number) {
+                None => self.publish_buffer_opened(&info),
+                Some(previous) if previous.language != info.language => {
+                    self.notify_autocmd_event(
+                        "language_changed",
+                        serde_json::to_value(LanguageChangedEvent {
+                            buffer: number,
+                            path: info.path.clone(),
+                            previous: previous.language.clone(),
+                            language: info.language.clone(),
+                        })
+                        .unwrap_or(Value::Null),
+                    );
+                }
+                Some(_) => {}
             }
             current.insert(number, info);
         }
@@ -224,6 +243,12 @@ impl PluginRuntime {
         );
     }
 
+    fn notify_autocmd_event(&mut self, event: &str, payload: Value) {
+        #[cfg(test)]
+        self.test_events.push((event.to_string(), payload.clone()));
+        self.dispatch_autocmd_callbacks(event, &payload);
+    }
+
     fn notify_event(&mut self, event: &str, payload: Value) {
         #[cfg(test)]
         self.test_events.push((event.to_string(), payload.clone()));
@@ -237,6 +262,29 @@ impl PluginRuntime {
         }
         for plugin in overflowed {
             self.push_log(&plugin, "event queue full; dropping event");
+        }
+        self.dispatch_autocmd_callbacks(event, &payload);
+    }
+
+    fn dispatch_autocmd_callbacks(&mut self, event: &str, payload: &Value) {
+        let fires = self.dispatch_autocmds(event, payload);
+        if fires.is_empty() {
+            return;
+        }
+        let Some(host) = self.host.as_ref() else {
+            return;
+        };
+        let mut overflowed = Vec::new();
+        for fire in fires {
+            if host
+                .callback(&fire.plugin, fire.id, event, payload.clone())
+                .is_ok_and(|outcome| outcome == NotifyOutcome::Overflow)
+            {
+                overflowed.push(fire.plugin);
+            }
+        }
+        for plugin in overflowed {
+            self.push_log(&plugin, "callback queue full; dropping autocmd callback");
         }
     }
 
