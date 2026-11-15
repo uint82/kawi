@@ -1,3 +1,6 @@
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, Guest as CallbackGuest,
+};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, Error, Event};
 use kawi_plugin_sdk::{editor_commands, editor_keymaps, ui_message};
@@ -87,3 +90,9 @@ fn error(message: &str) -> Error {
 }
 
 kawi_plugin_sdk::export!(Plugin);
+
+impl CallbackGuest for Plugin {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
+}

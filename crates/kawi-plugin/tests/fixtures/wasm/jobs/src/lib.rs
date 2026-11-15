@@ -1,3 +1,6 @@
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, Guest as CallbackGuest,
+};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::process_jobs::{
     self, JobEvent, JobSignal, JobState, JobStatus, JobStream, OpenParams, StdinMode,
@@ -144,3 +147,9 @@ fn error(message: &str) -> Error {
 }
 
 kawi_plugin_sdk::export!(Plugin);
+
+impl CallbackGuest for Plugin {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
+}

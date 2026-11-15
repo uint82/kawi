@@ -1,5 +1,8 @@
 use std::sync::Mutex;
 
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, Guest as CallbackGuest,
+};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, DecorationStyle, Error, Event};
 use kawi_plugin_sdk::{ui_message, ui_panel, INVALID_PARAMS};
@@ -109,3 +112,9 @@ fn error(message: &str) -> Error {
 }
 
 kawi_plugin_sdk::export!(Plugin);
+
+impl CallbackGuest for Plugin {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
+}

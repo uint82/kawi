@@ -1,3 +1,4 @@
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{Callback, Guest as CallbackGuest};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, Edit, Error, Event, Position};
 use kawi_plugin_sdk::{
@@ -90,3 +91,9 @@ fn plugin_error(code: i32, message: &str) -> Error {
 }
 
 kawi_plugin_sdk::export!(Trim);
+
+impl CallbackGuest for Trim {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
+}
