@@ -5,7 +5,7 @@ related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration",
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, and options APIs are available only to WebAssembly components.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, options, and autocmd APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds; in 0.10 they are not delivered to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -23,6 +23,7 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
 | `editor.commands` | none | Register commands at runtime |
 | `editor.keymaps` | none | Register key bindings at runtime |
+| `editor.autocmds` | none | Register, remove, list, and clear asynchronous autocmds and emit user events |
 | `editor.decorations` | none | Publish buffer highlights, virtual text, and gutter signs |
 | `ui.message` | none | Show status messages |
 | `ui.prompt` | none | Request text input, a selection, or confirmation |
