@@ -1,3 +1,4 @@
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{Callback, Guest as CallbackGuest};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, Error, Event, SettingValue};
 use kawi_plugin_sdk::{config_read, editor_execute, ui_message};
@@ -80,3 +81,9 @@ fn error(code: i32, message: &str) -> Error {
 }
 
 kawi_plugin_sdk::export!(Config);
+
+impl CallbackGuest for Config {
+    fn on_callback(_callback: Callback) -> Result<(), Error> {
+        Ok(())
+    }
+}

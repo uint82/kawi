@@ -29,6 +29,7 @@ impl PluginRuntime {
         if !enabled {
             self.clear_all_runtime_keymaps(context.keymaps);
             self.clear_all_runtime_commands(context.commands, context.keymaps);
+            self.clear_all_autocmds();
             self.host = None;
             self.events = None;
             self.catalog = PluginCatalog::default();
@@ -78,6 +79,7 @@ impl PluginRuntime {
         let mut warnings = Vec::new();
         self.clear_all_runtime_keymaps(keymaps);
         self.clear_all_runtime_commands(commands, keymaps);
+        self.clear_all_autocmds();
         let removed = self
             .catalog
             .plugins

@@ -99,6 +99,11 @@ impl WasmWorker {
                     context,
                 } => self.handle_invocation(request, command, args, context),
                 WasmCommand::Notify { event, payload } => self.handle_event(&event, payload),
+                WasmCommand::Callback {
+                    registration,
+                    event,
+                    payload,
+                } => self.handle_callback(registration, &event, payload),
                 WasmCommand::Restart => self.restart(),
                 WasmCommand::Shutdown => break,
             }
@@ -241,6 +246,28 @@ impl WasmWorker {
             .as_mut()
             .ok_or(PluginError::ProcessExited)
             .and_then(|session| session.event(event, payload));
+        if let Err(error) = result {
+            self.log(error.to_string());
+            self.session = None;
+            if had_session {
+                self.backoff.record_failure();
+                self.update_backoff_status();
+            }
+        }
+    }
+
+    fn handle_callback(&mut self, registration: u64, event: &str, payload: Value) {
+        if let Err(error) = self.backoff.check() {
+            self.log(error.to_string());
+            return;
+        }
+        self.ensure_start();
+        let had_session = self.session.is_some();
+        let result = self
+            .session
+            .as_mut()
+            .ok_or(PluginError::ProcessExited)
+            .and_then(|session| session.callback(registration, event, payload));
         if let Err(error) = result {
             self.log(error.to_string());
             self.session = None;

@@ -14,7 +14,11 @@ use crate::protocol::PROTOCOL_VERSION;
 
 use super::bindings::kawi::plugin::types::Argument;
 use super::bindings::Host_;
-use super::convert::{argument_from_json, argument_to_json, event_from_json, rpc_from_wit_error};
+use super::bindings::{AutocmdCallback, Callback, Callbacks};
+use super::convert::{
+    argument_from_json, argument_to_json, callback_event_from_json, event_from_json,
+    rpc_from_wit_error,
+};
 use super::name_lookup;
 use super::net::NetworkPolicy;
 use super::policy::missing_import_capabilities;
@@ -33,6 +37,7 @@ pub(crate) use linker::add_kawi_interfaces;
 pub(crate) struct Session {
     pub(crate) store: Store<WasmState>,
     pub(crate) instance: Host_,
+    raw_instance: wasmtime::component::Instance,
 }
 
 impl Session {
@@ -71,6 +76,25 @@ impl Session {
             .kawi_plugin_lifecycle()
             .call_on_event(&mut self.store, &event);
         self.finish_call(result)
+    }
+
+    pub(crate) fn callback(
+        &mut self,
+        registration: u64,
+        event: &str,
+        payload: Value,
+    ) -> Result<(), PluginError> {
+        let callback = Callback::Autocmd(AutocmdCallback {
+            registration,
+            event: callback_event_from_json(event, payload).map_err(PluginError::Rpc)?,
+        });
+        let callbacks = Callbacks::new(&mut self.store, &self.raw_instance)
+            .map_err(|error| PluginError::Trap(format!("wasm callback: {error:#}")))?;
+        self.begin_call();
+        let result = callbacks
+            .kawi_plugin_callback_handler()
+            .call_on_callback(&mut self.store, &callback);
+        self.finish_call(result)?.map_err(rpc_from_wit_error)
     }
 
     fn begin_call(&mut self) {
@@ -228,9 +252,19 @@ impl Session {
         });
         store.data_mut().begin_call();
         store.set_epoch_deadline(WALL_CLOCK_CHECK_TICKS);
-        let instance = Host_::instantiate(&mut store, &component, &linker)
+        let pre = linker
+            .instantiate_pre(&component)
+            .map_err(|error| PluginError::Initialize(format!("wasm instantiate: {error}")))?;
+        let raw_instance = pre
+            .instantiate(&mut store)
+            .map_err(|error| PluginError::Initialize(format!("wasm instantiate: {error}")))?;
+        let instance = Host_::new(&mut store, &raw_instance)
             .map_err(|error| PluginError::Initialize(format!("wasm instantiate: {error}")))?;
         store.data_mut().clear_call();
-        Ok(Self { store, instance })
+        Ok(Self {
+            store,
+            instance,
+            raw_instance,
+        })
     }
 }

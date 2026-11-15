@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.9.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.10.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.9.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.10.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -30,7 +30,7 @@ A WASM manifest cannot declare `command`. A process manifest cannot declare `com
 | `$/cancelRequest` | No export. The host cancels through the invocation deadline. |
 | Unsolicited plugin notification | Not supported. Return values and host calls are the only output. |
 
-`init` receives the host protocol version and runs once per instance. An error from `init` is a start failure. A trap is a crash and uses the same backoff and five-strike disable path as a process exit.
+`init` receives the host protocol version and runs once per instance. An error from `init` is a start failure. A trap is a crash and uses the same backoff and five-strike disable path as a process exit. WASM 0.10 components also export `callback-handler.on-callback`. Autocmd registrations made through `editor-autocmds` are delivered there; process plugins have no autocmd equivalent.
 
 Command arguments and results use the `argument` variant. JSON numbers map to `integer` or `float`, strings to `text`, booleans to `boolean`, and null to `null`. Arrays and objects are not representable in this variant. A process plugin returns arbitrary JSON. A WASM plugin receives scalar arguments and returns one `argument`.
 

@@ -30,6 +30,7 @@ pub enum Capability {
     EditorExecute,
     EditorCommands,
     EditorKeymaps,
+    EditorAutocmds,
     EditorDecorations,
     UiMessage,
     UiPrompt,
@@ -46,7 +47,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 23] = [
         Self::EditorRead,
         Self::EditorWrite,
         Self::EditorBuffers,
@@ -56,6 +57,7 @@ impl Capability {
         Self::EditorExecute,
         Self::EditorCommands,
         Self::EditorKeymaps,
+        Self::EditorAutocmds,
         Self::EditorDecorations,
         Self::UiMessage,
         Self::UiPrompt,
@@ -82,6 +84,7 @@ impl Capability {
             "editor.execute" => Some(Self::EditorExecute),
             "editor.commands" => Some(Self::EditorCommands),
             "editor.keymaps" => Some(Self::EditorKeymaps),
+            "editor.autocmds" => Some(Self::EditorAutocmds),
             "editor.decorations" => Some(Self::EditorDecorations),
             "ui.message" => Some(Self::UiMessage),
             "ui.prompt" => Some(Self::UiPrompt),
@@ -110,6 +113,7 @@ impl Capability {
             Self::EditorExecute => "editor.execute",
             Self::EditorCommands => "editor.commands",
             Self::EditorKeymaps => "editor.keymaps",
+            Self::EditorAutocmds => "editor.autocmds",
             Self::EditorDecorations => "editor.decorations",
             Self::UiMessage => "ui.message",
             Self::UiPrompt => "ui.prompt",

@@ -1,4 +1,4 @@
-package kawi:plugin@0.9.0;
+package kawi:plugin@0.10.0;
 
 interface types {
   record position {
@@ -248,6 +248,23 @@ interface types {
   record focus-changed {
     window: u64,
     buffer: u64,
+  }
+
+  record window-lifecycle {
+    window: u64,
+    buffer: u64,
+  }
+
+  record language-changed {
+    buffer: u64,
+    path: option<string>,
+    previous: option<string>,
+    language: option<string>,
+  }
+
+  record user-event {
+    name: string,
+    payload: option<string>,
   }
 
   variant prompt-outcome {
@@ -534,6 +551,54 @@ interface editor-keymaps {
   list-registered: func() -> result<list<keymap-spec>, error>;
 }
 
+interface editor-autocmds {
+  use types.{error};
+
+  record autocmd-spec {
+    event: string,
+    pattern: option<string>,
+    buffer: option<u64>,
+    once: bool,
+  }
+
+  record autocmd-info {
+    id: u64,
+    event: string,
+    pattern: option<string>,
+    buffer: option<u64>,
+    once: bool,
+  }
+
+  register: func(spec: autocmd-spec) -> result<autocmd-info, error>;
+  remove: func(id: u64) -> result<_, error>;
+  list-registered: func() -> result<list<autocmd-info>, error>;
+  clear: func() -> result<_, error>;
+  emit-user-event: func(name: string, payload: option<string>) -> result<_, error>;
+}
+
+interface callback-handler {
+  use types.{error, event, language-changed, user-event, window-lifecycle};
+
+  variant callback-event {
+    legacy(event),
+    window-created(window-lifecycle),
+    window-closed(window-lifecycle),
+    language-changed(language-changed),
+    user(user-event),
+  }
+
+  record autocmd-callback {
+    registration: u64,
+    event: callback-event,
+  }
+
+  variant callback {
+    autocmd(autocmd-callback),
+  }
+
+  on-callback: func(callback: callback) -> result<_, error>;
+}
+
 interface lifecycle {
   use types.{argument, error, event};
   init: func(host-protocol: u32) -> result<_, error>;
@@ -552,6 +617,7 @@ world host {
   import editor-execute;
   import editor-commands;
   import editor-keymaps;
+  import editor-autocmds;
   import config-read;
   import ui-message;
   import ui-prompt;
@@ -564,4 +630,13 @@ world host {
   import process-run;
   import process-jobs;
   export lifecycle;
+}
+
+world guest {
+  include host;
+  export callback-handler;
+}
+
+world callbacks {
+  export callback-handler;
 }

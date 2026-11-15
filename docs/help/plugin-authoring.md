@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.9.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.9.0 bumps the WIT package, so rebuild components built against 0.8.0. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.10.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.10.0 bumps the WIT package, so rebuild components built against 0.9.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -333,6 +333,42 @@ ui_statusline::set(&segments)?;
 
 Decorations are data. The host owns colors, layout, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops, so publish again after a `buffer_changed` event to keep positions current. Diagnostics outrank plugin signs, and plugin signs outrank Git signs. Themes remain separate data packages and are not part of the executable plugin API.
 
+## Autocmds
+
+Declare `editor.autocmds` and implement the exported callback handler. Registration is asynchronous: the callback runs later on the plugin worker.
+
+```rust
+use kawi_plugin_sdk::editor_autocmds::{self, AutocmdSpec};
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, CallbackEvent, Guest as CallbackGuest,
+};
+use kawi_plugin_sdk::types::Error;
+
+impl CallbackGuest for Plugin {
+    fn on_callback(callback: Callback) -> Result<(), Error> {
+        let Callback::Autocmd(callback) = callback;
+        match callback.event {
+            CallbackEvent::Legacy(event) => handle_event(event),
+            CallbackEvent::User(event) => handle_user_event(event),
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+fn register_saved() -> Result<(), Error> {
+    editor_autocmds::register(&AutocmdSpec {
+        event: "file_saved".to_string(),
+        pattern: Some("*.rs".to_string()),
+        buffer: None,
+        once: false,
+    })?;
+    Ok(())
+}
+```
+
+An autocmd can register only for events allowed by the plugin's other capabilities. The `user` event needs `editor.autocmds`; buffer and language events need `editor.read`; window events need `editor.windows`. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmd callbacks but not to `on_event` in 0.10.
+
 ## Settings
 
 Declare settings in `plugin.toml`:
@@ -418,4 +454,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.9.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.10.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

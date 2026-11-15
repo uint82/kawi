@@ -1,8 +1,8 @@
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 14;
+pub const PROTOCOL_MINOR: u64 = 15;
 pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 47] = [
+pub const HOST_METHODS: [&str; 52] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -50,6 +50,11 @@ pub const HOST_METHODS: [&str; 47] = [
     "editor.set_mode",
     "options.list",
     "options.get",
+    "autocmd.register",
+    "autocmd.remove",
+    "autocmd.list",
+    "autocmd.clear",
+    "editor.emit_user_event",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];

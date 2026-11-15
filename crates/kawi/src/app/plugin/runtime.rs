@@ -42,6 +42,8 @@ pub(crate) struct PluginRuntime {
     pub(super) runtime_commands:
         BTreeMap<String, BTreeMap<String, super::extensions::RuntimeCommand>>,
     pub(super) runtime_keymaps: BTreeMap<String, Vec<super::keymaps::RuntimeKeymap>>,
+    pub(super) autocmds: Vec<super::autocmds::AutocmdRegistration>,
+    pub(super) next_autocmd_id: u64,
     pub(super) bindings: Vec<Binding>,
     pub(super) queues: BTreeMap<String, VecDeque<QueuedInvocation>>,
     pub(super) queue_stats: BTreeMap<String, QueueCounters>,
@@ -50,6 +52,7 @@ pub(crate) struct PluginRuntime {
     pub(super) queue_wait_override: Option<Duration>,
     pub(super) logs: BTreeMap<String, VecDeque<String>>,
     pub(super) known_buffers: BTreeMap<u64, BufferInfo>,
+    pub(super) known_windows: BTreeMap<u64, u64>,
     pub(super) pending: BTreeMap<(String, u64), PendingBufferEvent>,
     pub(super) last_delivered: BTreeMap<(String, u64), u64>,
     pub(super) last_mode: Option<(u64, String)>,
