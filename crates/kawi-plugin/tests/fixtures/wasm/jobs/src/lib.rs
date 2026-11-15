@@ -1,6 +1,4 @@
-use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
-    Callback, Guest as CallbackGuest,
-};
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{Callback, Guest as CallbackGuest};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::process_jobs::{
     self, JobEvent, JobSignal, JobState, JobStatus, JobStream, OpenParams, StdinMode,

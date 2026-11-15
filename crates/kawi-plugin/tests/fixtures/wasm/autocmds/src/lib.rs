@@ -111,7 +111,12 @@ fn count() -> Result<Argument, Error> {
 }
 
 fn last() -> Result<Argument, Error> {
-    let last = CALLBACKS.lock().unwrap().last().cloned().unwrap_or_default();
+    let last = CALLBACKS
+        .lock()
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap_or_default();
     ui_message::message(&last)?;
     Ok(Argument::Text(last))
 }

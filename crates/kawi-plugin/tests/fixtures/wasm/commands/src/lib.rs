@@ -1,6 +1,4 @@
-use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
-    Callback, Guest as CallbackGuest,
-};
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{Callback, Guest as CallbackGuest};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
 use kawi_plugin_sdk::types::{Argument, Error, Event};
 use kawi_plugin_sdk::{editor_commands, editor_keymaps, ui_message};
