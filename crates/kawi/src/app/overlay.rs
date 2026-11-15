@@ -1,7 +1,8 @@
-use kawi_tui::frame::{CompletionLine, Overlay, OverlayList, OverlayPanel, Rect};
+use kawi_tui::frame::Rect;
 use kawi_tui::markdown::{self, MarkdownLine};
 use kawi_tui::overlay::{self as placement, DocsSide, PlacementInput, Size, COMPLETION_MAX_ROWS};
 
+use self::data::ListData;
 use self::size::{
     cursor_vertical_capacity, side_vertical_capacity, size_panel, PanelLimits, SizedPanel,
 };
@@ -9,6 +10,7 @@ use super::completion::CompletionSession;
 use super::App;
 
 pub(super) mod code;
+mod data;
 mod diagnostic;
 pub(crate) mod document;
 mod hover;
@@ -17,26 +19,9 @@ pub(super) mod options;
 mod signature;
 mod size;
 
+pub(crate) use self::data::{OverlayData, PanelData, PluginPanelView};
+
 const MAX_LIST_WIDTH: usize = 50;
-
-pub(super) struct OverlayData<'a> {
-    list: Option<ListData<'a>>,
-    panel: Option<PanelData>,
-    key_menu: Option<keymenu::KeyMenuData>,
-}
-
-struct ListData<'a> {
-    rect: Rect,
-    items: &'a [CompletionLine],
-    kind_width: usize,
-    selected: Option<usize>,
-}
-
-struct PanelData {
-    rect: Rect,
-    lines: Vec<MarkdownLine>,
-    scroll: usize,
-}
 
 struct PanelLayout {
     rect: Rect,
@@ -52,25 +37,6 @@ pub(super) struct CompletionGeometry {
     docs_width: usize,
     max_scroll: usize,
     page: usize,
-}
-
-impl OverlayData<'_> {
-    pub(super) fn view(&self) -> Overlay<'_> {
-        Overlay {
-            list: self.list.as_ref().map(|list| OverlayList {
-                rect: list.rect,
-                items: list.items,
-                kind_width: list.kind_width,
-                selected: list.selected,
-            }),
-            panel: self.panel.as_ref().map(|panel| OverlayPanel {
-                rect: panel.rect,
-                lines: &panel.lines,
-                scroll: panel.scroll,
-            }),
-            key_menu: self.key_menu.as_ref().map(keymenu::KeyMenuData::view),
-        }
-    }
 }
 
 impl App {
@@ -97,6 +63,9 @@ impl App {
     }
 
     pub(super) fn overlay_data(&self) -> Option<OverlayData<'_>> {
+        if let Some(overlay) = self.plugin_overlay_data() {
+            return Some(overlay);
+        }
         if self.keyguide_visible {
             if let Some(overlay) = self.leader_overlay() {
                 return Some(overlay);
@@ -130,10 +99,12 @@ impl App {
             kind_width: session.kind_width(),
             selected: session.selected(),
         };
-        let panel = geometry.docs.map(|rect| PanelData {
-            rect,
-            lines: geometry.docs_lines,
-            scroll: session.docs_scroll().min(max_scroll),
+        let panel = geometry.docs.map(|rect| {
+            PanelData::new(
+                rect,
+                geometry.docs_lines,
+                session.docs_scroll().min(max_scroll),
+            )
         });
         Some(OverlayData {
             list: Some(list),
@@ -233,7 +204,7 @@ impl App {
             .limits(area, max_width, min_width, available)
     }
 
-    fn overlay_anchor(&self, area: Rect) -> Option<(usize, usize)> {
+    pub(super) fn overlay_anchor(&self, area: Rect) -> Option<(usize, usize)> {
         let layout = self.window_layout();
         let (_, rect) = layout
             .panes

@@ -1,13 +1,7 @@
-use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
-    Callback, Guest as CallbackGuest,
-};
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{Callback, Guest as CallbackGuest};
 use kawi_plugin_sdk::exports::kawi::plugin::lifecycle::Guest;
-use kawi_plugin_sdk::types::{
-    Argument, Error, Event, TimerFired, VariableScope, VariableTarget,
-};
-use kawi_plugin_sdk::{
-    editor_schedule, editor_variables, options_write, ui_message,
-};
+use kawi_plugin_sdk::types::{Argument, Error, Event, TimerFired, VariableScope, VariableTarget};
+use kawi_plugin_sdk::{editor_schedule, editor_variables, options_write, ui_message};
 
 const PROTOCOL_VERSION: u32 = 1;
 const INVALID_PARAMS: i32 = -32602;
@@ -21,11 +15,7 @@ impl Guest for Plugin {
         if host_protocol != PROTOCOL_VERSION {
             return Err(error("unsupported host protocol version"));
         }
-        editor_variables::set(
-            global_target(),
-            "ready",
-            &Argument::Text("yes".to_string()),
-        )?;
+        editor_variables::set(global_target(), "ready", &Argument::Text("yes".to_string()))?;
         match editor_variables::get(global_target(), "ready")? {
             Some(Argument::Text(value)) if value == "yes" => {}
             _ => return Err(error("global variable did not round trip")),

@@ -8,7 +8,7 @@ mod callback_bindings {
         path: "../kawi-plugin-sdk/wit",
         world: "callbacks",
         with: {
-            "kawi:plugin/types@0.11.0": super::kawi::plugin::types,
+            "kawi:plugin/types@0.12.0": super::kawi::plugin::types,
         },
     });
 }

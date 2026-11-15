@@ -2,7 +2,10 @@ use std::collections::BTreeSet;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use kawi_picker::{Picker, PickerOutcome, PickerRow, TextInput};
-use kawi_plugin::{RpcError, UiConfirmParams, UiInputParams, UiPromptOutcome, UiSelectParams};
+use kawi_plugin::{
+    validate_picker, PickerParams, RpcError, UiConfirmParams, UiInputParams, UiPromptOutcome,
+    UiSelectParams,
+};
 use kawi_tui::frame::PromptMenu;
 use serde_json::Value;
 
@@ -24,7 +27,13 @@ pub(super) struct PromptSession {
 enum PromptKind {
     Input(InputPrompt),
     Select(Box<Picker>),
+    Picker(Box<PickerPrompt>),
     Confirm(ConfirmPrompt),
+}
+
+struct PickerPrompt {
+    picker: Picker,
+    ids: Vec<String>,
 }
 
 struct InputPrompt {
@@ -116,6 +125,18 @@ impl PromptSession {
         })
     }
 
+    pub(super) fn new_picker(
+        plugin: &str,
+        request: Value,
+        params: PickerParams,
+    ) -> Result<Self, RpcError> {
+        Ok(Self {
+            request,
+            plugin: plugin.to_string(),
+            kind: PromptKind::Picker(Box::new(picker_prompt(params)?)),
+        })
+    }
+
     pub(super) fn confirm(
         plugin: &str,
         request: Value,
@@ -138,6 +159,7 @@ impl PromptSession {
         match &mut self.kind {
             PromptKind::Input(prompt) => handle_input_key(prompt, key),
             PromptKind::Select(picker) => handle_select_key(picker, key),
+            PromptKind::Picker(prompt) => handle_picker_key(prompt, key),
             PromptKind::Confirm(_) => handle_confirm_key(key),
         }
     }
@@ -148,6 +170,7 @@ impl PromptSession {
                 insert_text(&mut prompt.input, text, prompt.max_length);
             }
             PromptKind::Select(picker) => picker.insert_text(text),
+            PromptKind::Picker(prompt) => prompt.picker.insert_text(text),
             PromptKind::Confirm(_) => {}
         }
     }
@@ -164,13 +187,14 @@ impl PromptSession {
                 value: "",
                 cursor: 0,
             }),
-            PromptKind::Select(_) => None,
+            PromptKind::Select(_) | PromptKind::Picker(_) => None,
         }
     }
 
     pub(super) fn picker(&self) -> Option<&Picker> {
         match self.kind {
             PromptKind::Select(ref picker) => Some(picker),
+            PromptKind::Picker(ref prompt) => Some(&prompt.picker),
             _ => None,
         }
     }
@@ -187,6 +211,48 @@ fn handle_input_key(prompt: &mut InputPrompt, key: KeyEvent) -> Option<UiPromptO
 fn handle_select_key(picker: &mut Picker, key: KeyEvent) -> Option<UiPromptOutcome> {
     match picker.handle_key(key) {
         PickerOutcome::Open(row) => Some(UiPromptOutcome::Selected(row.display)),
+        PickerOutcome::Cancel => Some(UiPromptOutcome::Canceled),
+        PickerOutcome::Consumed | PickerOutcome::QueryChanged => None,
+    }
+}
+
+fn picker_prompt(params: PickerParams) -> Result<PickerPrompt, RpcError> {
+    validate_picker(&params)?;
+    let title = required_text(&params.title, "title", MAX_TITLE_BYTES)?;
+    let ids = params
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<Vec<_>>();
+    let rows = params
+        .items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| PickerRow {
+            display: sanitize(&item.label),
+            secondary: item.detail.as_deref().map(sanitize),
+            path: String::new(),
+            line: None,
+            column: None,
+            buffer: None,
+            deprecated: item.deprecated,
+            id: Some(index as u64),
+        })
+        .collect::<Vec<_>>();
+    let mut picker = Picker::locations(title, rows);
+    if let Some(selected) = params.selected {
+        picker.select_symbol(selected as u64);
+    }
+    Ok(PickerPrompt { picker, ids })
+}
+
+fn handle_picker_key(prompt: &mut PickerPrompt, key: KeyEvent) -> Option<UiPromptOutcome> {
+    match prompt.picker.handle_key(key) {
+        PickerOutcome::Open(row) => row
+            .id
+            .and_then(|index| prompt.ids.get(index as usize))
+            .cloned()
+            .map(UiPromptOutcome::Selected),
         PickerOutcome::Cancel => Some(UiPromptOutcome::Canceled),
         PickerOutcome::Consumed | PickerOutcome::QueryChanged => None,
     }

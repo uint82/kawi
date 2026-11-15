@@ -77,6 +77,13 @@ impl App {
                             Err(RpcError::unavailable("plugin stopped")),
                         );
                     }
+                    if let Some(waiter) = self.plugin_overlays.remove_plugin(&plugin) {
+                        let _ = self.plugins.respond(
+                            &waiter.plugin,
+                            waiter.request,
+                            Err(RpcError::unavailable("plugin stopped")),
+                        );
+                    }
                 }
                 true
             }
@@ -161,6 +168,11 @@ impl App {
                 | "ui.panel_update"
                 | "ui.panel_focus"
                 | "ui.panel_close"
+                | "ui.overlay_open"
+                | "ui.overlay_update"
+                | "ui.overlay_close"
+                | "ui.overlay_wait"
+                | "ui.picker"
         );
         if matches!(
             method,
@@ -169,7 +181,10 @@ impl App {
             self.editor
                 .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
         }
-        if matches!(method, "ui.input" | "ui.select" | "ui.confirm") {
+        if matches!(
+            method,
+            "ui.input" | "ui.select" | "ui.confirm" | "ui.overlay_wait" | "ui.picker"
+        ) {
             if let Some(result) = self.handle_plugin_prompt_request(plugin, &id, method, params) {
                 if !id.is_null() {
                     let _ = self.plugins.respond(plugin, id, result);

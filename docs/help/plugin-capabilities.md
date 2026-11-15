@@ -5,7 +5,7 @@ related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration",
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, and variable APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, variable, overlay, and picker APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -33,6 +33,8 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `ui.progress` | none | Show cancellable progress |
 | `ui.statusline` | none | Publish status line segments |
 | `ui.panel` | none | Open and control a docked text panel |
+| `ui.overlay` | none | Open a floating text overlay with keyboard and paste input |
+| `ui.picker` | none | Show a native picker and wait for the selected item |
 | `diagnostics.read` | none | Receive diagnostics events |
 | `diagnostics.publish` | none | Publish diagnostics for the current buffer |
 | `fs.read` | `paths` | Read files under the declared paths |
@@ -64,6 +66,8 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "ui.progress" = true
 "ui.statusline" = true
 "ui.panel" = true
+"ui.overlay" = true
+"ui.picker" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
@@ -206,6 +210,78 @@ Kawi accepts at most 16 segments and 256 bytes of text per segment. Control char
 `ui.progress` enables `ui.progress_start`, `ui.progress_update`, and `ui.progress_finish`. Progress is displayed in the status area. The user cancels with `:plugin cancel` or a key binding for `plugin.cancel`; the next `ui.progress_update` returns `{"canceled": true}`. Only one progress can be active at a time across all plugins. A second progress returns `-32040`.
 
 Prompt calls do not count against the invocation timeout. Progress calls do. Stopping a plugin clears its prompt and progress and fails a pending prompt with `-32030`.
+
+## Plugin overlays
+
+`ui.overlay` enables `ui.overlay_open`, `ui.overlay_update`, `ui.overlay_wait`, and `ui.overlay_close`. An overlay is a floating text surface anchored to the cursor, the screen center, or a corner. Only one overlay can be active across all plugins. A second open returns `-32040`; an unknown or foreign overlay returns `-32061`. An active prompt or picker also blocks an overlay open with `-32040`.
+
+Overlays accept at most 1000 lines, 4096 bytes per line, 1 MiB of total line text, a 256-byte title, and a 256-byte status. Width must be between 8 and 160 and defaults to 60. Height must be between 3 and 40 and defaults to the content height plus the border, capped at 12. A value outside either range returns `-32602`. Each span may set an `accent`, `info`, `success`, `warning`, `error`, or `muted` style. Control characters and terminal escapes are removed before display.
+
+`ui.overlay_open` reports the actual width and height. `ui.overlay_update` replaces any supplied field and keeps omitted fields. `ui.overlay_close` removes the overlay and queues a `plugin` close event. The plugin owns selection and scroll state and reports it back through update fields.
+
+A focused overlay receives raw key and paste events through `ui.overlay_wait`. The call suspends the invocation timeout until an event or close arrives. `Esc` and `Ctrl+C` close the overlay with `escape`; `:` closes it with `command` and opens command mode; a click outside closes it with `focus-lost`; `ui.overlay_close` closes it with `plugin`. The `wait` result is always a key, paste, or closed event. Closing queues the closed event, so a plugin may wait after the overlay has already closed.
+
+```rust
+use kawi_plugin_sdk::{ui_message, ui_overlay};
+
+let result = ui_overlay::open(&ui_overlay::OverlayOpenParams {
+    title: "Quick fix".to_string(),
+    status: Some("Enter accepts, Esc closes".to_string()),
+    anchor: ui_overlay::OverlayAnchor::Cursor,
+    width: Some(60),
+    height: Some(8),
+    focus: true,
+    selected: Some(0),
+    scroll: None,
+    lines: vec![ui_overlay::OverlayLine {
+        spans: vec![ui_overlay::OverlaySpan {
+            text: "Replace with the suggested fix".to_string(),
+            style: None,
+        }],
+    }],
+})?;
+
+loop {
+    match ui_overlay::wait(result.overlay)? {
+        ui_overlay::OverlayEvent::Key(event) => {
+            if matches!(event.key, ui_overlay::Key::Enter) {
+                break;
+            }
+        }
+        ui_overlay::OverlayEvent::Paste(text) => {
+            ui_message::message(&format!("pasted {text}"))?;
+        }
+        ui_overlay::OverlayEvent::Closed(_) => break,
+    }
+}
+```
+
+Overlays are removed when their plugin stops, restarts, reloads, or is disabled.
+
+## Pickers
+
+`ui.picker` enables the blocking `ui.picker` host method and the `ui-picker` WIT interface. A picker shows a native selection list with stable IDs, optional detail text, and a deprecated marker. Kawi provides search, navigation, and cancellation. The call returns `selected` with the item ID or `canceled`. Only one prompt, picker, or overlay can be active at a time; a competing call returns `-32040`.
+
+A picker accepts 1 through 256 items. IDs and detail text are at most 256 and 512 bytes; labels are at most 512 bytes. The initial selection defaults to the first item. The pick suspends the invocation timeout until the user responds.
+
+```rust
+use kawi_plugin_sdk::ui_picker;
+
+let outcome = ui_picker::pick(&ui_picker::PickerParams {
+    title: "Symbols".to_string(),
+    items: vec![ui_picker::PickerItem {
+        id: "main".to_string(),
+        label: "fn main()".to_string(),
+        detail: Some("src/main.rs:1".to_string()),
+        deprecated: false,
+    }],
+    selected: Some(0),
+})?;
+
+if let ui_picker::PickerOutcome::Selected(id) = outcome {
+    // open the item identified by id
+}
+```
 
 ## Plugin panels
 

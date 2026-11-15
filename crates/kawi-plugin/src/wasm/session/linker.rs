@@ -7,8 +7,8 @@ use super::super::bindings::kawi::plugin::{
     config_read, diagnostics_publish, editor_autocmds, editor_buffers, editor_buffers_write,
     editor_commands, editor_control, editor_decorations, editor_execute, editor_keymaps,
     editor_read, editor_schedule, editor_signs, editor_variables, editor_windows, editor_write,
-    options_read, options_write, process_jobs, process_run, types, ui_message, ui_panel,
-    ui_progress, ui_prompt, ui_statusline,
+    options_read, options_write, process_jobs, process_run, types, ui_message, ui_overlay,
+    ui_panel, ui_picker, ui_progress, ui_prompt, ui_statusline,
 };
 use super::super::state::WasmState;
 
@@ -105,6 +105,14 @@ pub(crate) fn add_kawi_interfaces(
     }
     if capabilities.has(plugin, Capability::UiPanel) {
         ui_panel::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::UiOverlay) {
+        ui_overlay::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
+            .map_err(linker_error)?;
+    }
+    if capabilities.has(plugin, Capability::UiPicker) {
+        ui_picker::add_to_linker::<WasmState, HasSelf<WasmState>>(linker, |state| state)
             .map_err(linker_error)?;
     }
     if capabilities.has(plugin, Capability::ProcessSpawn) {

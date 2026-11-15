@@ -1,4 +1,4 @@
-package kawi:plugin@0.11.0;
+package kawi:plugin@0.12.0;
 
 interface types {
   record position {
@@ -455,6 +455,136 @@ interface ui-panel {
   close: func(panel: u64) -> result<_, error>;
 }
 
+interface ui-overlay {
+  use types.{decoration-style, error};
+
+  enum overlay-anchor {
+    cursor,
+    center,
+    top-left,
+    top-right,
+    bottom-left,
+    bottom-right,
+  }
+
+  record overlay-span {
+    text: string,
+    style: option<decoration-style>,
+  }
+
+  record overlay-line {
+    spans: list<overlay-span>,
+  }
+
+  record overlay-open-params {
+    title: string,
+    status: option<string>,
+    anchor: overlay-anchor,
+    width: option<u32>,
+    height: option<u32>,
+    focus: bool,
+    selected: option<u32>,
+    scroll: option<u32>,
+    lines: list<overlay-line>,
+  }
+
+  record overlay-open-result {
+    overlay: u64,
+    width: u32,
+    height: u32,
+  }
+
+  record overlay-update-params {
+    overlay: u64,
+    title: option<string>,
+    status: option<string>,
+    anchor: option<overlay-anchor>,
+    width: option<u32>,
+    height: option<u32>,
+    focus: option<bool>,
+    selected: option<u32>,
+    scroll: option<u32>,
+    lines: option<list<overlay-line>>,
+  }
+
+  enum overlay-close-reason {
+    plugin,
+    escape,
+    command,
+    focus-lost,
+  }
+
+  enum key-modifier {
+    shift,
+    control,
+    alt,
+    super,
+    hyper,
+    meta,
+  }
+
+  variant key {
+    character(char),
+    enter,
+    escape,
+    tab,
+    backspace,
+    delete,
+    insert,
+    left,
+    right,
+    up,
+    down,
+    home,
+    end,
+    page-up,
+    page-down,
+    function(u8),
+    other(string),
+  }
+
+  record key-event {
+    key: key,
+    modifiers: list<key-modifier>,
+    text: option<string>,
+  }
+
+  variant overlay-event {
+    key(key-event),
+    paste(string),
+    closed(overlay-close-reason),
+  }
+
+  open: func(params: overlay-open-params) -> result<overlay-open-result, error>;
+  update: func(params: overlay-update-params) -> result<_, error>;
+  wait: func(overlay: u64) -> result<overlay-event, error>;
+  close: func(overlay: u64) -> result<_, error>;
+}
+
+interface ui-picker {
+  use types.{error};
+
+  record picker-item {
+    id: string,
+    label: string,
+    detail: option<string>,
+    deprecated: bool,
+  }
+
+  record picker-params {
+    title: string,
+    items: list<picker-item>,
+    selected: option<u32>,
+  }
+
+  variant picker-outcome {
+    selected(string),
+    canceled,
+  }
+
+  pick: func(params: picker-params) -> result<picker-outcome, error>;
+}
+
 interface diagnostics-publish {
   use types.{diagnostic, error};
   set: func(source: string, buffer: u64, revision: u64, items: list<diagnostic>) -> result<_, error>;
@@ -682,6 +812,8 @@ world host {
   import editor-signs;
   import ui-statusline;
   import ui-panel;
+  import ui-overlay;
+  import ui-picker;
   import process-run;
   import process-jobs;
   export lifecycle;

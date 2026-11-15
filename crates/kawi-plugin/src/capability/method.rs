@@ -36,6 +36,8 @@ pub fn host_method_minor(method: &str) -> u64 {
         | "autocmd.list"
         | "autocmd.clear"
         | "editor.emit_user_event" => BASE_WASM_MINOR,
+        "ui.overlay_open" | "ui.overlay_update" | "ui.overlay_wait" | "ui.overlay_close"
+        | "ui.picker" => crate::protocol::PROTOCOL_MINOR,
         "timer.after" | "timer.every" | "timer.cancel" | "timer.list" | "variable.get"
         | "variable.set" | "variable.delete" | "variable.list" | "options.set"
         | "options.reset" => crate::protocol::PROTOCOL_MINOR,
@@ -106,6 +108,10 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         "ui.panel_open" | "ui.panel_update" | "ui.panel_focus" | "ui.panel_close" => {
             MethodCapability::Required(Capability::UiPanel)
         }
+        "ui.overlay_open" | "ui.overlay_update" | "ui.overlay_wait" | "ui.overlay_close" => {
+            MethodCapability::Required(Capability::UiOverlay)
+        }
+        "ui.picker" => MethodCapability::Required(Capability::UiPicker),
         "editor.set_diagnostics" => MethodCapability::Required(Capability::DiagnosticsPublish),
         "editor.set_decorations" => MethodCapability::Required(Capability::EditorDecorations),
         "config.get" | "config.list" => MethodCapability::None,

@@ -1,8 +1,8 @@
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 16;
+pub const PROTOCOL_MINOR: u64 = 17;
 pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 62] = [
+pub const HOST_METHODS: [&str; 67] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -27,6 +27,11 @@ pub const HOST_METHODS: [&str; 62] = [
     "ui.panel_update",
     "ui.panel_focus",
     "ui.panel_close",
+    "ui.overlay_open",
+    "ui.overlay_update",
+    "ui.overlay_wait",
+    "ui.overlay_close",
+    "ui.picker",
     "config.get",
     "config.list",
     "process.open",
@@ -67,7 +72,13 @@ pub const HOST_METHODS: [&str; 62] = [
     "options.reset",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
-pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];
+pub const INTERACTIVE_HOST_METHODS: [&str; 5] = [
+    "ui.input",
+    "ui.select",
+    "ui.confirm",
+    "ui.overlay_wait",
+    "ui.picker",
+];
 pub const MAX_PLUGIN_DECORATIONS: usize = 10_000;
 pub const MAX_DECORATION_TEXT_BYTES: usize = 512;
 pub const MAX_PLUGIN_STATUSLINE_SEGMENTS: usize = 16;
@@ -103,6 +114,7 @@ pub const JOB_LIMIT: i64 = -32051;
 pub const JOB_CLOSED: i64 = -32052;
 pub const JOB_QUEUE_FULL: i64 = -32053;
 pub const PANEL_NOT_FOUND: i64 = -32060;
+pub const OVERLAY_NOT_FOUND: i64 = -32061;
 pub const BUFFER_NOT_FOUND: i64 = -32070;
 pub const BUFFER_NOT_ACTIVE: i64 = -32071;
 pub const WINDOW_NOT_FOUND: i64 = -32072;

@@ -1,8 +1,8 @@
 use crossterm::event::KeyEvent;
 use kawi_picker::Picker;
 use kawi_plugin::{
-    RpcError, UiConfirmParams, UiInputParams, UiProgressFinishParams, UiProgressStartParams,
-    UiProgressUpdateParams, UiPromptOutcome, UiSelectParams,
+    PickerParams, RpcError, UiConfirmParams, UiInputParams, UiProgressFinishParams,
+    UiProgressStartParams, UiProgressUpdateParams, UiPromptOutcome, UiSelectParams,
 };
 use kawi_tui::frame::PromptMenu;
 use serde_json::Value;
@@ -48,6 +48,17 @@ impl PluginUi {
     ) -> Result<(), RpcError> {
         self.ensure_prompt_available()?;
         self.prompt = Some(PromptSession::select(plugin, request, params)?);
+        Ok(())
+    }
+
+    pub(crate) fn open_picker(
+        &mut self,
+        plugin: &str,
+        request: Value,
+        params: PickerParams,
+    ) -> Result<(), RpcError> {
+        self.ensure_prompt_available()?;
+        self.prompt = Some(PromptSession::new_picker(plugin, request, params)?);
         Ok(())
     }
 

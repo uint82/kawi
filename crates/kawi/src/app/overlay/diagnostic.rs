@@ -13,11 +13,11 @@ impl App {
         let layout = self.panel_layout(self.diagnostic_panel(popup));
         Some(OverlayData {
             list: None,
-            panel: Some(PanelData {
-                rect: layout.rect,
-                lines: layout.lines,
-                scroll: popup.scroll().min(layout.max_scroll),
-            }),
+            panel: Some(PanelData::new(
+                layout.rect,
+                layout.lines,
+                popup.scroll().min(layout.max_scroll),
+            )),
             key_menu: None,
         })
     }

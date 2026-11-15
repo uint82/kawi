@@ -67,6 +67,26 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         reason: "requires editor panel state; covered by app process and wasm panel tests",
     },
     Uncovered {
+        name: "ui.overlay_open",
+        reason: "requires editor overlay state; covered by app plugin overlay tests",
+    },
+    Uncovered {
+        name: "ui.overlay_update",
+        reason: "requires editor overlay state; covered by app plugin overlay tests",
+    },
+    Uncovered {
+        name: "ui.overlay_wait",
+        reason: "requires interactive editor input; covered by app plugin overlay tests",
+    },
+    Uncovered {
+        name: "ui.overlay_close",
+        reason: "requires editor overlay state; covered by app plugin overlay tests",
+    },
+    Uncovered {
+        name: "ui.picker",
+        reason: "requires interactive editor input; covered by app plugin picker tests",
+    },
+    Uncovered {
         name: "editor.set_decorations",
         reason: "requires editor buffer state; covered by app plugin visual tests",
     },

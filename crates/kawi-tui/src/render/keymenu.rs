@@ -19,7 +19,7 @@ pub(super) fn draw(
     menu: &KeyMenu<'_>,
 ) -> Result<()> {
     clear_overlay_rect(out, menu.rect, frame.theme)?;
-    draw_rounded_box(out, menu.rect, frame.theme)?;
+    draw_rounded_box(out, menu.rect, frame.theme, frame.theme.non_text)?;
     let width = menu.rect.width.saturating_sub(PANEL_BORDER);
     let height = menu.rect.height.saturating_sub(PANEL_BORDER);
     if width == 0 || height == 0 {

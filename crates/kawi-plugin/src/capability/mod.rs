@@ -39,6 +39,8 @@ pub enum Capability {
     UiProgress,
     UiStatusline,
     UiPanel,
+    UiOverlay,
+    UiPicker,
     DiagnosticsRead,
     DiagnosticsPublish,
     OptionsRead,
@@ -50,7 +52,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: [Self; 28] = [
         Self::EditorRead,
         Self::EditorWrite,
         Self::EditorBuffers,
@@ -69,6 +71,8 @@ impl Capability {
         Self::UiProgress,
         Self::UiStatusline,
         Self::UiPanel,
+        Self::UiOverlay,
+        Self::UiPicker,
         Self::DiagnosticsRead,
         Self::DiagnosticsPublish,
         Self::OptionsRead,
@@ -99,6 +103,8 @@ impl Capability {
             "ui.progress" => Some(Self::UiProgress),
             "ui.statusline" => Some(Self::UiStatusline),
             "ui.panel" => Some(Self::UiPanel),
+            "ui.overlay" => Some(Self::UiOverlay),
+            "ui.picker" => Some(Self::UiPicker),
             "diagnostics.read" => Some(Self::DiagnosticsRead),
             "diagnostics.publish" => Some(Self::DiagnosticsPublish),
             "options.read" => Some(Self::OptionsRead),
@@ -131,6 +137,8 @@ impl Capability {
             Self::UiProgress => "ui.progress",
             Self::UiStatusline => "ui.statusline",
             Self::UiPanel => "ui.panel",
+            Self::UiOverlay => "ui.overlay",
+            Self::UiPicker => "ui.picker",
             Self::DiagnosticsRead => "diagnostics.read",
             Self::DiagnosticsPublish => "diagnostics.publish",
             Self::OptionsRead => "options.read",

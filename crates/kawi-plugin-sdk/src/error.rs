@@ -13,6 +13,7 @@ pub const REQUEST_CANCELED: i32 = -32020;
 pub const PLUGIN_UNAVAILABLE: i32 = -32030;
 pub const UI_BUSY: i32 = -32040;
 pub const PANEL_NOT_FOUND: i32 = -32060;
+pub const OVERLAY_NOT_FOUND: i32 = -32061;
 pub const BUFFER_NOT_FOUND: i32 = -32070;
 pub const BUFFER_NOT_ACTIVE: i32 = -32071;
 pub const WINDOW_NOT_FOUND: i32 = -32072;
@@ -33,6 +34,7 @@ pub enum ErrorKind {
     CapabilityDenied,
     Busy,
     PanelNotFound,
+    OverlayNotFound,
     BufferNotFound,
     BufferNotActive,
     WindowNotFound,
@@ -57,6 +59,7 @@ pub fn error_kind(error: &Error) -> ErrorKind {
         CAPABILITY_DENIED => ErrorKind::CapabilityDenied,
         UI_BUSY => ErrorKind::Busy,
         PANEL_NOT_FOUND => ErrorKind::PanelNotFound,
+        OVERLAY_NOT_FOUND => ErrorKind::OverlayNotFound,
         BUFFER_NOT_FOUND => ErrorKind::BufferNotFound,
         BUFFER_NOT_ACTIVE => ErrorKind::BufferNotActive,
         WINDOW_NOT_FOUND => ErrorKind::WindowNotFound,
@@ -92,6 +95,10 @@ mod tests {
         assert_eq!(
             error_kind(&error(PANEL_NOT_FOUND)),
             ErrorKind::PanelNotFound
+        );
+        assert_eq!(
+            error_kind(&error(OVERLAY_NOT_FOUND)),
+            ErrorKind::OverlayNotFound
         );
         assert_eq!(
             error_kind(&error(BUFFER_NOT_ACTIVE)),

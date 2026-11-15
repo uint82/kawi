@@ -157,6 +157,7 @@ pub struct App {
     plugin_prompt: Option<crate::plugin_manager::PluginPrompt>,
     plugin_ui: plugin::PluginUi,
     plugin_panel: plugin::PluginPanels,
+    plugin_overlays: plugin::PluginOverlays,
     plugin_decorations: plugin::PluginDecorations,
     plugin_styles: plugin::PluginStyles,
     plugin_statusline: plugin::PluginStatusline,
@@ -292,6 +293,7 @@ impl App {
             plugin_prompt: None,
             plugin_ui: plugin::PluginUi::default(),
             plugin_panel: plugin::PluginPanels::default(),
+            plugin_overlays: plugin::PluginOverlays::default(),
             plugin_decorations: plugin::PluginDecorations::default(),
             plugin_styles: plugin::PluginStyles::default(),
             plugin_statusline: plugin::PluginStatusline::default(),
@@ -1011,7 +1013,18 @@ impl App {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<bool> {
-        if self.is_plugin_prompt_active() || self.plugin_settings.is_some() {
+        if self.is_plugin_prompt_active()
+            || self.plugin_settings.is_some()
+            || self.plugin_overlays.is_focused()
+        {
+            if self.plugin_overlays.is_focused()
+                && matches!(mouse.kind, MouseEventKind::Down(_))
+                && !self
+                    .plugin_overlay_rect()
+                    .contains(mouse.column as usize, mouse.row as usize)
+            {
+                self.close_plugin_overlay(kawi_plugin::OverlayCloseReason::FocusLost);
+            }
             return self.handle_noop();
         }
         self.window_prefix = false;
@@ -1223,6 +1236,7 @@ impl App {
             || self.merge_conflict.has_pending_abort()
             || self.has_pending_branch_action()
             || self.signature.is_some()
+            || self.plugin_overlays.has_overlay()
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -1247,6 +1261,13 @@ impl App {
         if self.plugin_ui.has_prompt() {
             self.handle_plugin_ui_key(key);
             return Ok(false);
+        }
+        if self.plugin_overlays.is_focused() {
+            if key.code == KeyCode::Char(':') {
+                self.close_plugin_overlay(kawi_plugin::OverlayCloseReason::Command);
+            } else {
+                return self.handle_plugin_overlay_key(key);
+            }
         }
         if self.apply_recovery_prompt_visible() {
             return Ok(self.handle_apply_recovery_prompt_key(key));
@@ -2012,6 +2033,9 @@ impl App {
             return Ok(false);
         }
         if self.paste_plugin_ui(&text) {
+            return Ok(false);
+        }
+        if self.paste_plugin_overlay(&text) {
             return Ok(false);
         }
         self.window_prefix = false;

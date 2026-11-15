@@ -44,6 +44,10 @@ fn markdown_style(
             foreground: syntax("comment"),
             ..MarkdownRenderStyle::default()
         }),
+        MarkdownStyle::Decoration(style) => Some(MarkdownRenderStyle {
+            foreground: Some(theme.decoration_colors(style).foreground),
+            ..MarkdownRenderStyle::default()
+        }),
         MarkdownStyle::Syntax(highlight) => Some(theme.syntax.style(highlight).map_or_else(
             MarkdownRenderStyle::default,
             |style| MarkdownRenderStyle {
