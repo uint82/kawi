@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.10.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.10.0 bumps the WIT package, so rebuild components built against 0.9.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.11.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.11.0 bumps the WIT package, so rebuild components built against 0.10.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -127,7 +127,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 ## Host API declarations
 
 - `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, except `config-read`, which needs no declaration.
-- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files and editing the active buffer use the path-scoped `editor.buffers.write`. Window operations use `editor.windows`, cursor and selection control use `editor.control`, and option reads use `options.read`.
+- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files and editing the active buffer use the path-scoped `editor.buffers.write`. Window operations use `editor.windows`, cursor and selection control use `editor.control`, option reads use `options.read`, and option changes use `options.write`.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
@@ -346,7 +346,9 @@ use kawi_plugin_sdk::types::Error;
 
 impl CallbackGuest for Plugin {
     fn on_callback(callback: Callback) -> Result<(), Error> {
-        let Callback::Autocmd(callback) = callback;
+        let Callback::Autocmd(callback) = callback else {
+            return Ok(());
+        };
         match callback.event {
             CallbackEvent::Legacy(event) => handle_event(event),
             CallbackEvent::User(event) => handle_user_event(event),
@@ -367,7 +369,75 @@ fn register_saved() -> Result<(), Error> {
 }
 ```
 
-An autocmd can register only for events allowed by the plugin's other capabilities. The `user` event needs `editor.autocmds`; buffer and language events need `editor.read`; window events need `editor.windows`. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmd callbacks but not to `on_event` in 0.10.
+An autocmd can register only for events allowed by the plugin's other capabilities. The `user` event needs `editor.autocmds`; buffer and language events need `editor.read`; window events need `editor.windows`. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmd callbacks but not to `on_event`.
+
+## Timers
+
+Declare `editor.schedule` to create one-shot and repeating timers. Timers fire asynchronously and arrive through the same `callback-handler.on-callback` export as autocmds.
+
+```rust
+use kawi_plugin_sdk::editor_schedule;
+
+editor_schedule::after(250, Some("save"))?;
+let timer = editor_schedule::every(5_000, Some("tick"))?;
+editor_schedule::cancel(timer)?;
+```
+
+`after` accepts a delay from 0 ms to 24 hours. `every` accepts an interval from 10 ms to 24 hours. A payload is at most 4096 bytes. Each plugin can hold 64 timers; repeating timers coalesce missed ticks instead of queueing a backlog.
+
+```rust
+use kawi_plugin_sdk::exports::kawi::plugin::callback_handler::{
+    Callback, Guest as CallbackGuest,
+};
+use kawi_plugin_sdk::types::{Error, TimerFired};
+
+impl CallbackGuest for Plugin {
+    fn on_callback(callback: Callback) -> Result<(), Error> {
+        let Callback::Timer(TimerFired { timer, payload }) = callback else {
+            return Ok(());
+        };
+        handle_timer(timer, payload.unwrap_or_default());
+        Ok(())
+    }
+}
+```
+
+Timers are cleared when the plugin stops, restarts, or is disabled. A callback that overruns the plugin timeout is treated like any other callback failure.
+
+## Variables
+
+Declare `editor.variables` to store scalar values in global, plugin, buffer, and window scopes. Values are booleans, 64-bit integers, floats, or text; arrays and objects are rejected.
+
+```rust
+use kawi_plugin_sdk::editor_variables::{self, VariableTarget};
+use kawi_plugin_sdk::types::{Argument, VariableScope};
+
+let target = VariableTarget {
+    scope: VariableScope::Plugin,
+    buffer: None,
+    window: None,
+};
+editor_variables::set(target, "indexed", &Argument::Integer(42))?;
+let value = editor_variables::get(target, "indexed")?;
+let variables = editor_variables::list_variables(target)?;
+editor_variables::delete(target, "indexed")?;
+```
+
+Buffer and window targets require the corresponding id. Global and plugin targets reject ids. Keys are at most 128 bytes and values at most 4096 bytes when serialized. Limits are 1024 global variables, 256 plugin variables, 256 per buffer, and 256 per window. Buffer variables are removed when the buffer closes and window variables when the window closes; plugin variables are removed when the plugin stops.
+
+## Options
+
+Declare `options.write` to set or reset editor options. The option registry validates the value and scope as it does for `:set`, and the result describes the option after the change.
+
+```rust
+use kawi_plugin_sdk::options_write;
+use kawi_plugin_sdk::types::Argument;
+
+let info = options_write::set("number", &Argument::Boolean(false))?;
+let info = options_write::reset("number")?;
+```
+
+`options.set` accepts booleans, integers, and text. Floats, arrays, objects, and null are rejected. Aliases resolve to the canonical option. `options.write` does not imply `options.read`; declare both when the plugin also lists or reads options.
 
 ## Settings
 
@@ -454,4 +524,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.10.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.11.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.

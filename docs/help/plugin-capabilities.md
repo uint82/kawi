@@ -5,7 +5,7 @@ related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration",
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, options, and autocmd APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds; in 0.10 they are not delivered to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, and variable APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -20,10 +20,13 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.windows` | none | List, inspect, focus, open, and close windows |
 | `editor.control` | none | Set the active buffer cursor, selection, and mode |
 | `options.read` | none | List and read editor options |
+| `options.write` | none | Set and reset editor options |
 | `editor.execute` | `commands` | Execute the declared built-in editor commands |
 | `editor.commands` | none | Register commands at runtime |
 | `editor.keymaps` | none | Register key bindings at runtime |
 | `editor.autocmds` | none | Register, remove, list, and clear asynchronous autocmds and emit user events |
+| `editor.schedule` | none | Create, cancel, and list asynchronous timers |
+| `editor.variables` | none | Store global, plugin, buffer, and window variables |
 | `editor.decorations` | none | Publish buffer highlights, virtual text, and gutter signs |
 | `ui.message` | none | Show status messages |
 | `ui.prompt` | none | Request text input, a selection, or confirmation |
@@ -48,9 +51,13 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "editor.windows" = true
 "editor.control" = true
 "options.read" = true
+"options.write" = true
 "editor.execute" = { commands = ["edit.format", "file.save"] }
 "editor.commands" = true
 "editor.keymaps" = true
+"editor.autocmds" = true
+"editor.schedule" = true
+"editor.variables" = true
 "editor.decorations" = true
 "ui.message" = true
 "ui.prompt" = true
@@ -114,6 +121,16 @@ editor_keymaps::set(&editor_keymaps::KeymapSpec {
     description: Some("Greet".to_string()),
 })?;
 ```
+
+## Timers and variables
+
+`editor.schedule` enables the `editor-schedule` interface and the `timer.after`, `timer.every`, `timer.cancel`, and `timer.list` host methods. One-shot delays range from 0 ms to 24 hours. Repeating intervals range from 10 ms to 24 hours, and missed ticks coalesce instead of queueing. A payload is at most 4096 bytes, and each plugin can hold 64 timers. Timer firings arrive through `callback-handler.on-callback` as `timer(timer-fired)`. Timers are cleared when the plugin stops, restarts, or is disabled.
+
+`editor.variables` enables the `editor-variables` interface and the `variable.get`, `variable.set`, `variable.delete`, and `variable.list` host methods. Values are booleans, integers, floats, or text. Keys are at most 128 bytes and serialized values at most 4096 bytes. Limits are 1024 global variables, 256 plugin variables, 256 per buffer, and 256 per window. Buffer variables are removed with their buffer and window variables with their window; plugin variables are removed when the plugin stops.
+
+## Option writes
+
+`options.write` enables the `options-write` interface and the `options.set` and `options.reset` host methods. Values are booleans, integers, or text, and the option registry validates the value and scope exactly as it does for `:set`. An unknown option returns `-32074`; an invalid value returns `-32602`. `options.write` does not imply `options.read`, so declare both when the plugin also lists or reads options.
 
 ## Visual customization
 
