@@ -5,7 +5,7 @@ related = ["plugins", "plugin-authoring", "plugin-protocol", "plugin-capabilitie
 ---
 # Migrating a process plugin to WASM
 
-Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.11.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
+Process plugins remain available as a trusted development runtime. Managed installs use WASM, the complete mediation path and the recommended target. This guide maps the process JSON-RPC contract to the `kawi:plugin@0.12.0` component contract. See [Writing a WASM plugin](help:plugin-authoring) for the build and release flow.
 
 ## Manifest
 
@@ -13,7 +13,7 @@ Process plugins remain available as a trusted development runtime. Managed insta
 | --- | --- |
 | `runtime = "process"` or omitted | `runtime = "wasm"` |
 | `command = ["python3", "${plugin_dir}/plugin.py"]` | `component = "plugin.wasm"` and `sha256 = "..."` |
-| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.11.0` |
+| `protocol = 1` | Keep `protocol = 1`; the component targets `kawi:plugin@0.12.0` |
 | `timeout_ms`, `commands`, `settings`, `subscribes`, `debounce`, `activation_events` | Unchanged |
 | `capabilities` | Same names and scope shapes, now declarations rather than user grants |
 
@@ -68,6 +68,8 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `ui.input`, `ui.select`, `ui.confirm` | `ui-prompt.input`, `ui-prompt.select`, `ui-prompt.confirm` |
 | `ui.progress_start`, `ui.progress_update`, `ui.progress_finish` | `ui-progress.start`, `ui-progress.update`, `ui-progress.finish` |
 | `ui.panel_open`, `ui.panel_update`, `ui.panel_focus`, `ui.panel_close` | `ui-panel.open`, `ui-panel.update`, `ui-panel.focus`, `ui-panel.close` |
+| No process equivalent | `ui-overlay.open`, `update`, `wait`, and `close` for a focused floating text surface with raw key and paste events |
+| No process equivalent | `ui-picker.pick` for a native selection list with stable item IDs |
 | `editor.set_diagnostics` | `diagnostics-publish.set` |
 | `editor.set_decorations` with highlights or virtual text | `editor-decorations.set` |
 | `editor.set_decorations` with signs | `editor-signs.set` |
@@ -100,12 +102,12 @@ Host API names and scope shapes are the same in both runtimes. There is no grant
 
 | Host API | Process enforcement | WASM enforcement |
 | --- | --- | --- |
-| `editor.read`, `editor.write`, `editor.buffers`, `editor.buffers.write`, `editor.windows`, `editor.control`, `editor.execute`, `editor.decorations`, `editor.schedule`, `editor.variables`, `options.read`, `options.write`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
+| `editor.read`, `editor.write`, `editor.buffers`, `editor.buffers.write`, `editor.windows`, `editor.control`, `editor.execute`, `editor.decorations`, `editor.schedule`, `editor.variables`, `options.read`, `options.write`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `ui.overlay`, `ui.picker`, `diagnostics.read`, `diagnostics.publish`, `config.get`, `config.list` | Host mediated | Host mediated |
 | `fs.read`, `fs.write` | Landlock on supported Linux kernels, otherwise advisory; unsandboxed on macOS | WASI preopens |
 | `process.spawn` | Landlock execute scope on supported Linux kernels, otherwise advisory; unsandboxed on macOS | `process-run` and `process-jobs` host interfaces |
 | `net.connect` | Advisory | WASI socket policy with DNS pinning |
 
-Process plugins are development-only trusted code. Managed installs require WASM.
+Process plugins are development-only trusted code. Managed installs require WASM. Overlays and pickers have no process equivalent; they are available only through the WASM interfaces.
 
 ## Errors
 
@@ -126,6 +128,7 @@ The WIT `error` record keeps the JSON-RPC code in `code`, the message in `messag
 | `-32030` | `PLUGIN_UNAVAILABLE` | Plugin unavailable |
 | `-32040` | `UI_BUSY` | Interactive UI is busy |
 | `-32060` | `PANEL_NOT_FOUND` | Panel not found or owned by another plugin |
+| `-32061` | `OVERLAY_NOT_FOUND` | Overlay not found or owned by another plugin |
 
 Transport failures are host errors. A process plugin exit and a WASM trap both fail the in-flight request and count toward restart backoff.
 

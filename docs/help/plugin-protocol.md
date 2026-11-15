@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins. Minor version 17 adds overlays and native pickers for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -106,8 +106,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 10,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
+    "protocol_minor": 17,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -122,11 +122,11 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 10,
+    "protocol_minor": 17,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
@@ -631,7 +631,112 @@ Request params:
 
 Result is `null`. Closing removes the panel and returns focus to the editor. An unknown panel or a panel owned by another plugin returns `-32060`.
 
-The host owns panel layout, focus, scrolling, and closing. The panel is docked above the task panel and reserves at least four editor rows. It hides if the editor becomes too small and is removed when its plugin stops. While focused, `j`, `k`, the arrow keys, the mouse wheel, `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp`, `g`, `G`, `Home`, and `End` scroll; `Esc` returns focus to the editor; `q` closes the panel and `x` is also accepted. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API in protocol minor 12.
+The host owns panel layout, focus, scrolling, and closing. The panel is docked above the task panel and reserves at least four editor rows. It hides if the editor becomes too small and is removed when its plugin stops. While focused, `j`, `k`, the arrow keys, the mouse wheel, `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp`, `g`, `G`, `Home`, and `End` scroll; `Esc` returns focus to the editor; `q` closes the panel and `x` is also accepted. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. The docked panel API has no raw key input. Use `ui.overlay` when a plugin needs key or paste events.
+
+### ui.overlay_open
+
+Request params:
+
+```json
+{
+  "title": "Results",
+  "status": "12 matches",
+  "anchor": "cursor",
+  "width": 60,
+  "height": 8,
+  "focus": true,
+  "selected": 0,
+  "scroll": 0,
+  "lines": [
+    {"spans": [{"text": "src/main.rs:4", "style": "accent"}, {"text": "  main"}]}
+  ]
+}
+```
+
+Result:
+
+```json
+{"overlay": 1, "width": 60, "height": 8}
+```
+
+Requires the `ui.overlay` capability. Only one overlay can be active across all plugins. A second open returns `-32040`, and a prompt or picker also blocks it with `-32040`. `anchor` accepts `cursor`, `center`, `top-left`, `top-right`, `bottom-left`, or `bottom-right` and defaults to `cursor`. Width must be between 8 and 160 and defaults to 60. Height must be between 3 and 40 and defaults to the content height plus the border, capped at 12. A value outside either range returns `-32602`. The result reports the actual size.
+
+Kawi accepts at most 1000 lines, 4096 bytes per line, 1 MiB of total line text, a 256-byte title, and a 256-byte status. A payload that exceeds a limit returns `-32602`. Control characters and terminal escapes are removed before display. A span style accepts `accent`, `info`, `success`, `warning`, `error`, or `muted`.
+
+### ui.overlay_update
+
+Request params:
+
+```json
+{
+  "overlay": 1,
+  "status": "done",
+  "selected": 3,
+  "scroll": 0,
+  "lines": [{"spans": [{"text": "src/lib.rs:12"}]}]
+}
+```
+
+Result is `null`. Every field except `overlay` is optional. Omitted fields keep their value, and omitted `lines` preserves the current content. The same limits as `ui.overlay_open` apply. An unknown overlay or one owned by another plugin returns `-32061`. Setting `status` to an empty string clears it.
+
+### ui.overlay_wait
+
+Request params:
+
+```json
+{"overlay": 1}
+```
+
+Result is one event:
+
+```json
+{"kind": "key", "value": {"key": {"kind": "character", "value": "j"}, "modifiers": [], "text": "j"}}
+```
+
+```json
+{"kind": "paste", "value": "pasted text"}
+```
+
+```json
+{"kind": "closed", "value": "escape"}
+```
+
+The call suspends the invocation timeout until an event or close arrives. Interactive calls require an integer request id and the `ui.overlay` declaration. Key variants are `character`, `enter`, `escape`, `tab`, `backspace`, `delete`, `insert`, every arrow, `home`, `end`, `page-up`, `page-down`, `function`, and `other`. Modifiers are `shift`, `control`, `alt`, `super`, `hyper`, and `meta`. Close reasons are `plugin`, `escape`, `command`, and `focus-lost`.
+
+A focused overlay receives raw keys and paste. `Esc` and `Ctrl+C` close with `escape`; `:` closes with `command` and opens command mode; a click outside closes with `focus-lost`; `ui.overlay_close` closes with `plugin`. Closing queues the closed event, so a later wait still returns it. An unknown overlay returns `-32061`. Only one wait can be pending across all plugins; a second returns `-32040`.
+
+### ui.overlay_close
+
+Request params:
+
+```json
+{"overlay": 1}
+```
+
+Result is `null`. Closing removes the overlay, queues a `plugin` close event, and drops its local state. An unknown overlay or one owned by another plugin returns `-32061`. Overlays are removed when their plugin stops, restarts, reloads, or is disabled.
+
+### ui.picker
+
+Request params:
+
+```json
+{
+  "title": "Symbols",
+  "items": [
+    {"id": "main", "label": "fn main()", "detail": "src/main.rs:1"},
+    {"id": "helper", "label": "fn helper()", "deprecated": true}
+  ],
+  "selected": 0
+}
+```
+
+Result:
+
+```json
+{"kind": "selected", "value": "helper"}
+```
+
+Result is `{"kind": "canceled"}` when the user cancels. Requires the `ui.picker` capability. A picker accepts 1 through 256 items. IDs and detail text are at most 256 and 512 bytes; labels are at most 512 bytes. The initial selection defaults to the first item and must be in bounds. The call suspends the invocation timeout until the user responds and requires an integer request id. Only one prompt, picker, or overlay can be active across all plugins; a competing call returns `-32040`.
 
 ### config.get
 

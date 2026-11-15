@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.11.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.11.0 bumps the WIT package, so rebuild components built against 0.10.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.12.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.12.0 bumps the WIT package, so rebuild components built against 0.11.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -175,6 +175,8 @@ Declare the UI APIs in `plugin.toml`:
 "ui.prompt" = true
 "ui.progress" = true
 "ui.panel" = true
+"ui.overlay" = true
+"ui.picker" = true
 ```
 
 Prompts block until the user responds and return `PromptOutcome`:
@@ -242,6 +244,71 @@ ui_panel::close(panel.panel)?;
 ```
 
 Only one panel can be active across all plugins. A second open returns `UI_BUSY`. Each plugin may update only its own panel. The host owns focus, layout, scrolling, and closing. While focused, `Esc` returns focus to the editor and `q` closes the panel. The panel reserves at least four editor rows and hides when the editor is too small. The `plugin.panel` command toggles focus, and `:plugin panel close` closes it. There is no raw key input API.
+
+## Overlays and pickers
+
+An overlay is a floating text surface for completion menus, quick fixes, and other transient lists. It receives raw key and paste events while focused, so the plugin can implement its own navigation:
+
+```rust
+use kawi_plugin_sdk::{ui_message, ui_overlay};
+
+let overlay = ui_overlay::open(&ui_overlay::OverlayOpenParams {
+    title: "Quick fix".to_string(),
+    status: Some("Enter accepts, Esc closes".to_string()),
+    anchor: ui_overlay::OverlayAnchor::Cursor,
+    width: Some(60),
+    height: Some(8),
+    focus: true,
+    selected: Some(0),
+    scroll: None,
+    lines: vec![ui_overlay::OverlayLine {
+        spans: vec![ui_overlay::OverlaySpan {
+            text: "Replace with the suggested fix".to_string(),
+            style: None,
+        }],
+    }],
+})?;
+
+loop {
+    match ui_overlay::wait(overlay.overlay)? {
+        ui_overlay::OverlayEvent::Key(event) => {
+            if matches!(event.key, ui_overlay::Key::Enter) {
+                break;
+            }
+        }
+        ui_overlay::OverlayEvent::Paste(text) => {
+            ui_message::message(&format!("pasted {text}"))?;
+        }
+        ui_overlay::OverlayEvent::Closed(_) => break,
+    }
+}
+```
+
+`ui_overlay::update` replaces supplied fields and preserves omitted ones. Use it to move the selection, change the status, or replace the lines. `Esc` and `Ctrl+C` close with `Escape`; `:` closes with `Command` and opens command mode; a click outside closes with `FocusLost`; `ui_overlay::close` closes with `Plugin` and queues a close event. Only one overlay can be active across all plugins; a prompt or picker blocks an overlay open with `UI_BUSY`.
+
+A picker uses the editor's native list and search instead of a custom overlay:
+
+```rust
+use kawi_plugin_sdk::ui_picker;
+
+let outcome = ui_picker::pick(&ui_picker::PickerParams {
+    title: "Symbols".to_string(),
+    items: vec![ui_picker::PickerItem {
+        id: "main".to_string(),
+        label: "fn main()".to_string(),
+        detail: Some("src/main.rs:1".to_string()),
+        deprecated: false,
+    }],
+    selected: Some(0),
+})?;
+
+match outcome {
+    ui_picker::PickerOutcome::Selected(id) => ui_message::message(&format!("selected {id}"))?,
+    ui_picker::PickerOutcome::Canceled => {}
+}
+```
+
+Both calls suspend `timeout_ms` until the user responds. A prompt, picker, and overlay share one interactive slot; a conflict returns `UI_BUSY`.
 
 ## Visual customization
 
@@ -524,4 +591,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.11.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.12.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
