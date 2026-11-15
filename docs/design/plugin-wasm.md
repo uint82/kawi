@@ -1,6 +1,6 @@
 # WebAssembly plugin runtime
 
-Status: phases 1-4 implemented. The install-time trust model in `docs/help/plugins.md` supersedes the grant flow described in older sections. Managed plugins declare host APIs and are trusted at install time; the WASM sandbox still enforces the linked interface set. The `wasm` feature is enabled by default and can be omitted with `--no-default-features`. The release workflow publishes the Rust authoring surface as `kawi-plugin-sdk` 0.10.0 with the `kawi:plugin@0.10.0` WIT package. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, delivers background jobs to process and WASM plugins, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event that has a conformance fixture. Editor command composition, runtime command registration, runtime keymaps, and plugin settings are covered by app integration tests because they depend on the editor command, keymap, and settings stores. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. A build with `--no-default-features` does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
+Status: phases 1-4 implemented. The install-time trust model in `docs/help/plugins.md` supersedes the grant flow described in older sections. Managed plugins declare host APIs and are trusted at install time; the WASM sandbox still enforces the linked interface set. The `wasm` feature is enabled by default and can be omitted with `--no-default-features`. The release workflow publishes the Rust authoring surface as `kawi-plugin-sdk` 0.11.0 with the `kawi:plugin@0.11.0` WIT package. The runtime validates hashes, inspects imports, instantiates components, calls lifecycle functions, bridges granted host interfaces, forwards events, scopes WASI preopens, enforces epoch and memory limits, runs authorized processes, delivers background jobs to process and WASM plugins, enforces outbound TCP policy, and caps inbound and outbound bytes per connection and per session. The shared conformance harness covers core semantics, grant parity, stale revisions, queued revocation including mid-write revocation, trap and recovery, oversize invocation, event, host response, diagnostics, and component payloads, input hygiene, advertised versus linked interface parity, WASM limits and load-time failures, and every host method and event that has a conformance fixture. Editor command composition, runtime command registration, runtime keymaps, plugin settings, timers, variables, and option writes are covered by app integration tests because they depend on editor state and the event loop. Guest network rows cover explicit IP success, denied destinations, DNS lookup denial and allowlisting, UDP, bind, accept, mapped, link-local, loopback, restart socket closure, connection caps, connection reuse, inbound and outbound byte caps, session byte totals, rebinding, mixed answers, and all-private answers. Hostname-positive connect and scripted resolver rows run under the debug-only `wasm-test-network` feature; the default build still denies loopback hostnames and uses the real resolver. A build with `--no-default-features` does not compile or execute WebAssembly plugins. The separate `fuzz` workspace exercises host imports, network policy, byte wrappers, process framing, authorization, and mock process execution.
 
 ## Principles
 
@@ -35,7 +35,7 @@ Epoch accounting excludes time spent blocked in host calls because the guest is 
 
 ## Contract
 
-The WIT package is `kawi:plugin@0.10.0` in `crates/kawi-plugin-sdk/wit/plugin.wit`. The SDK owns the contract and the runtime consumes the same file. Components built against an earlier package must be rebuilt because the import namespace includes the version.
+The WIT package is `kawi:plugin@0.11.0` in `crates/kawi-plugin-sdk/wit/plugin.wit`. The SDK owns the contract and the runtime consumes the same file. Components built against an earlier package must be rebuilt because the import namespace includes the version.
 
 Interfaces:
 
@@ -46,6 +46,9 @@ Interfaces:
 - `editor-windows` requires `editor.windows` and lists, inspects, focuses, opens, and closes windows.
 - `editor-control` requires `editor.control` and sets the active buffer cursor, selection, and mode.
 - `options-read` requires `options.read` and lists and reads editor options.
+- `options-write` requires `options.write` and sets and resets editor options.
+- `editor-schedule` requires `editor.schedule` and manages one-shot and repeating timers.
+- `editor-variables` requires `editor.variables` and manages global, plugin, buffer, and window variables.
 - `editor-execute` requires `editor.execute`.
 - `editor-decorations` requires `editor.decorations` and publishes highlights and virtual text.
 - `editor-signs` requires `editor.decorations` and publishes gutter signs.
@@ -55,12 +58,13 @@ Interfaces:
 - `ui-progress` requires `ui.progress`.
 - `ui-statusline` requires `ui.statusline` and publishes status line segments.
 - `ui-panel` requires `ui.panel` and controls a read-only docked text panel.
+- `callback-handler` delivers autocmd and timer callbacks to the component.
 - `diagnostics-publish` requires `diagnostics.publish`.
 - `process-run` requires `process.spawn`.
 - `process-jobs` requires `process.spawn`, exposes the job lifecycle, and queues output and exit events for `poll` because components are passive.
 - `editor-autocmds` requires `editor.autocmds` and registers, removes, lists, and clears asynchronous autocmds.
 - `lifecycle` is exported by the plugin and contains `init`, `invoke-command`, and `on-event`.
-- `callback-handler` is exported by 0.10 components and receives matched autocmd callbacks. The callback payload is typed for the new window, language, and user events. These events are delivered to autocmds, not to `on-event` subscribers.
+- `callback-handler` is exported by components and receives matched autocmd callbacks and timer firings. The callback payload is typed for the new window, language, and user events. These events are delivered to autocmds, not to `on-event` subscribers.
 
 Interactive prompt calls suspend the invocation deadline until the host responds. Progress calls remain bounded by the invocation deadline.
 

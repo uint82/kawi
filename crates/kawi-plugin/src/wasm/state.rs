@@ -34,7 +34,10 @@ mod autocmds_api;
 mod editor_api;
 mod extensions_api;
 mod keymaps_api;
+mod options_write_api;
+mod timers_api;
 mod util;
+mod variables_api;
 
 pub(super) use util::{decode_json, serialize_params};
 

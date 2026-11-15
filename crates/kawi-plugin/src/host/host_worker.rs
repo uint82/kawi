@@ -53,6 +53,21 @@ impl HostWorker {
         }
     }
 
+    pub(super) fn timer_callback(
+        &self,
+        timer: u64,
+        payload: Option<String>,
+    ) -> Result<NotifyOutcome, PluginError> {
+        match self {
+            Self::Process(_) | Self::Disabled(_) => {
+                let _ = (timer, payload);
+                Ok(NotifyOutcome::Denied)
+            }
+            #[cfg(feature = "wasm")]
+            Self::Wasm(worker) => worker.timer_callback(timer, payload),
+        }
+    }
+
     pub(super) fn notify_internal(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
             Self::Process(worker) | Self::Disabled(worker) => {

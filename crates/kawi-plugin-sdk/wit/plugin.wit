@@ -1,4 +1,4 @@
-package kawi:plugin@0.10.0;
+package kawi:plugin@0.11.0;
 
 interface types {
   record position {
@@ -267,6 +267,35 @@ interface types {
     payload: option<string>,
   }
 
+  enum variable-scope {
+    global,
+    plugin,
+    buffer,
+    window,
+  }
+
+  record variable-target {
+    scope: variable-scope,
+    buffer: option<u64>,
+    window: option<u64>,
+  }
+
+  record variable {
+    key: string,
+    value: argument,
+  }
+
+  record timer-info {
+    id: u64,
+    interval-ms: option<u32>,
+    payload: option<string>,
+  }
+
+  record timer-fired {
+    timer: u64,
+    payload: option<string>,
+  }
+
   variant prompt-outcome {
     text(string),
     selected(string),
@@ -341,6 +370,28 @@ interface options-read {
   use types.{option-info, error};
   list-options: func(prefix: option<string>) -> result<list<option-info>, error>;
   get: func(name: string) -> result<option-info, error>;
+}
+
+interface options-write {
+  use types.{argument, option-info, error};
+  set: func(name: string, value: argument) -> result<option-info, error>;
+  reset: func(name: string) -> result<option-info, error>;
+}
+
+interface editor-schedule {
+  use types.{error, timer-info};
+  after: func(delay-ms: u32, payload: option<string>) -> result<u64, error>;
+  every: func(interval-ms: u32, payload: option<string>) -> result<u64, error>;
+  cancel: func(timer: u64) -> result<bool, error>;
+  list-timers: func() -> result<list<timer-info>, error>;
+}
+
+interface editor-variables {
+  use types.{argument, error, variable, variable-target};
+  get: func(target: variable-target, key: string) -> result<option<argument>, error>;
+  set: func(target: variable-target, key: string, value: argument) -> result<_, error>;
+  delete: func(target: variable-target, key: string) -> result<bool, error>;
+  list-variables: func(target: variable-target) -> result<list<variable>, error>;
 }
 
 interface config-read {
@@ -577,7 +628,7 @@ interface editor-autocmds {
 }
 
 interface callback-handler {
-  use types.{error, event, language-changed, user-event, window-lifecycle};
+  use types.{error, event, language-changed, timer-fired, user-event, window-lifecycle};
 
   variant callback-event {
     legacy(event),
@@ -594,6 +645,7 @@ interface callback-handler {
 
   variant callback {
     autocmd(autocmd-callback),
+    timer(timer-fired),
   }
 
   on-callback: func(callback: callback) -> result<_, error>;
@@ -614,6 +666,9 @@ world host {
   import editor-windows;
   import editor-control;
   import options-read;
+  import options-write;
+  import editor-schedule;
+  import editor-variables;
   import editor-execute;
   import editor-commands;
   import editor-keymaps;

@@ -104,6 +104,9 @@ impl WasmWorker {
                     event,
                     payload,
                 } => self.handle_callback(registration, &event, payload),
+                WasmCommand::TimerCallback { timer, payload } => {
+                    self.handle_timer_callback(timer, payload)
+                }
                 WasmCommand::Restart => self.restart(),
                 WasmCommand::Shutdown => break,
             }
@@ -246,6 +249,28 @@ impl WasmWorker {
             .as_mut()
             .ok_or(PluginError::ProcessExited)
             .and_then(|session| session.event(event, payload));
+        if let Err(error) = result {
+            self.log(error.to_string());
+            self.session = None;
+            if had_session {
+                self.backoff.record_failure();
+                self.update_backoff_status();
+            }
+        }
+    }
+
+    fn handle_timer_callback(&mut self, timer: u64, payload: Option<String>) {
+        if let Err(error) = self.backoff.check() {
+            self.log(error.to_string());
+            return;
+        }
+        self.ensure_start();
+        let had_session = self.session.is_some();
+        let result = self
+            .session
+            .as_mut()
+            .ok_or(PluginError::ProcessExited)
+            .and_then(|session| session.timer_callback(timer, payload));
         if let Err(error) = result {
             self.log(error.to_string());
             self.session = None;

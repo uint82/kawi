@@ -20,8 +20,9 @@ pub use kawi::plugin::types;
 pub use kawi::plugin::{
     config_read, diagnostics_publish, editor_autocmds, editor_buffers, editor_buffers_write,
     editor_commands, editor_control, editor_decorations, editor_execute, editor_keymaps,
-    editor_read, editor_signs, editor_windows, editor_write, options_read, process_jobs,
-    process_run, ui_message, ui_panel, ui_progress, ui_prompt, ui_statusline,
+    editor_read, editor_schedule, editor_signs, editor_variables, editor_windows, editor_write,
+    options_read, options_write, process_jobs, process_run, ui_message, ui_panel, ui_progress,
+    ui_prompt, ui_statusline,
 };
 pub use offsets::{byte_offset, position_at};
 

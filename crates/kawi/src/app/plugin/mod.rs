@@ -23,7 +23,9 @@ mod settings_ui;
 mod statusline;
 mod style;
 mod text;
+mod timers;
 mod ui;
+mod variables;
 mod visual;
 
 pub(super) use self::commands::SUBCOMMANDS;

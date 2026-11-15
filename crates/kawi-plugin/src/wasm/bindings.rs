@@ -8,12 +8,12 @@ mod callback_bindings {
         path: "../kawi-plugin-sdk/wit",
         world: "callbacks",
         with: {
-            "kawi:plugin/types@0.10.0": super::kawi::plugin::types,
+            "kawi:plugin/types@0.11.0": super::kawi::plugin::types,
         },
     });
 }
 
 pub(crate) use callback_bindings::exports::kawi::plugin::callback_handler::{
-    AutocmdCallback, Callback, CallbackEvent,
+    AutocmdCallback, Callback, CallbackEvent, TimerFired,
 };
 pub(crate) use callback_bindings::Callbacks;

@@ -43,7 +43,9 @@ impl Guest for Plugin {
 
 impl CallbackGuest for Plugin {
     fn on_callback(callback: Callback) -> Result<(), Error> {
-        let Callback::Autocmd(callback) = callback;
+        let Callback::Autocmd(callback) = callback else {
+            return Ok(());
+        };
         let text = match callback.event {
             CallbackEvent::Legacy(Event::FileSaved(event)) => format!(
                 "{}:{}:{}",

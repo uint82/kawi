@@ -253,3 +253,33 @@ fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
         assert!(!is_process_event(event), "{event}");
     }
 }
+
+#[test]
+fn automation_capabilities_gate_their_methods_at_the_current_minor() {
+    for (method, capability) in [
+        ("timer.after", Capability::EditorSchedule),
+        ("timer.every", Capability::EditorSchedule),
+        ("timer.cancel", Capability::EditorSchedule),
+        ("timer.list", Capability::EditorSchedule),
+        ("variable.get", Capability::EditorVariables),
+        ("variable.set", Capability::EditorVariables),
+        ("variable.delete", Capability::EditorVariables),
+        ("variable.list", Capability::EditorVariables),
+        ("options.set", Capability::OptionsWrite),
+        ("options.reset", Capability::OptionsWrite),
+    ] {
+        assert_eq!(
+            host_method_capability(method),
+            MethodCapability::Required(capability)
+        );
+        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert!(!is_process_host_method(method));
+    }
+}
+
+#[test]
+fn every_capability_name_round_trips() {
+    for capability in Capability::ALL {
+        assert_eq!(Capability::parse(capability.name()), Some(capability));
+    }
+}

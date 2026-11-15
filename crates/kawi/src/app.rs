@@ -693,7 +693,14 @@ impl App {
     }
 
     fn plugin_wait_timeout(&self) -> Option<Duration> {
-        self.plugins.pending_deadline(Instant::now())
+        let now = Instant::now();
+        match (
+            self.plugins.pending_deadline(now),
+            self.plugins.timer_deadline(now),
+        ) {
+            (Some(pending), Some(timer)) => Some(pending.min(timer)),
+            (pending, timer) => pending.or(timer),
+        }
     }
 
     fn wait_for_frame_budget(&self) -> Result<()> {

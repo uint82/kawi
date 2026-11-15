@@ -9,6 +9,8 @@ mod buffer_api;
 mod control_api;
 mod extensions;
 mod options_api;
+mod scheduler_api;
+mod variables_api;
 mod window_api;
 
 pub(super) fn handle(
@@ -32,6 +34,14 @@ pub(super) fn handle(
         "editor.set_mode" => app.plugin_set_mode(params),
         "options.list" => app.plugin_options_list(params),
         "options.get" => app.plugin_options_get(params),
+        "options.set" => app.plugin_options_set(params),
+        "options.reset" => app.plugin_options_reset(params),
+        "timer.after" | "timer.every" | "timer.cancel" | "timer.list" => {
+            scheduler_api::handle(app, plugin, method, params)
+        }
+        "variable.get" | "variable.set" | "variable.delete" | "variable.list" => {
+            variables_api::handle(app, plugin, method, params)
+        }
         "command.register" | "command.unregister" | "command.list" | "keymap.set"
         | "keymap.remove" | "keymap.list" => extensions::handle(app, plugin, method, params),
         "autocmd.register"

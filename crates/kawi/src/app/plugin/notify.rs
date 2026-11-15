@@ -109,6 +109,8 @@ impl PluginRuntime {
             }
             current.insert(number, info);
         }
+        self.buffer_variables
+            .retain(|number, _| current.contains_key(number));
         let closed = self
             .known_buffers
             .iter()

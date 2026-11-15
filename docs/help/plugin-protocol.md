@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -805,6 +805,110 @@ Requires `options.read`. Request params:
 ```
 
 Aliases resolve to the canonical option. Result is one option record. An unknown name returns `-32074`.
+
+### options.set
+
+Requires `options.write`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"name": "number", "value": false}
+```
+
+Values are booleans, integers, and text. Floats, arrays, objects, and null return `-32602`. Aliases resolve to the canonical option, and the result is the option record after the change. An unknown option returns `-32074`.
+
+### options.reset
+
+Requires `options.write`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"name": "number"}
+```
+
+The option returns to its default for the current scope. The result is the option record after the reset. An unknown option returns `-32074`.
+
+### timer.after
+
+Requires `editor.schedule`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"delay_ms": 250, "payload": "save"}
+```
+
+The delay ranges from 0 ms to 24 hours. `payload` is optional and at most 4096 bytes. Result is the timer id. This method maps to `editor-schedule.after`.
+
+### timer.every
+
+Requires `editor.schedule`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"interval_ms": 5000, "payload": "tick"}
+```
+
+The interval ranges from 10 ms to 24 hours. Missed ticks coalesce. `payload` is optional and at most 4096 bytes. Result is the timer id. This method maps to `editor-schedule.every`.
+
+### timer.cancel
+
+Requires `editor.schedule`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"timer": 1}
+```
+
+Result is `true` when the timer existed and was removed, and `false` otherwise. Only the calling plugin's timers can be canceled.
+
+### timer.list
+
+Requires `editor.schedule`. This method is available only to WebAssembly components. Request params are `{}`. Result is an array of timer records:
+
+```json
+[{"id": 1, "interval_ms": 5000, "payload": "tick"}]
+```
+
+`interval_ms` is `null` for a one-shot timer.
+
+### variable.get
+
+Requires `editor.variables`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"target": {"scope": "plugin"}, "key": "indexed"}
+```
+
+`scope` is `global`, `plugin`, `buffer`, or `window`. Buffer targets require `buffer`; window targets require `window`; global and plugin targets reject both. Result is the stored boolean, integer, float, or text value, or `null` when the key is absent.
+
+### variable.set
+
+Requires `editor.variables`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"target": {"scope": "plugin"}, "key": "indexed", "value": 42}
+```
+
+Keys are at most 128 bytes and serialized values at most 4096 bytes. Arrays, objects, and null return `-32602`. Result is `null`. Scopes hold 1024 global, 256 plugin, 256 per buffer, and 256 per window variables.
+
+### variable.delete
+
+Requires `editor.variables`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"target": {"scope": "plugin"}, "key": "indexed"}
+```
+
+Result is `true` when the key existed and was removed, and `false` otherwise.
+
+### variable.list
+
+Requires `editor.variables`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"target": {"scope": "buffer", "buffer": 2}}
+```
+
+Result is an array of `{"key": "...", "value": ...}` records for that scope. An unknown buffer returns `-32070`; an unknown window returns `-32072`.
+
+### timer and variable cleanup
+
+Buffer variables are removed when the buffer closes, window variables when the window closes, and plugin timers and variables when the plugin stops, restarts, or is disabled.
 
 ## Process jobs
 

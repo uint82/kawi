@@ -17,6 +17,8 @@ mod ui;
 mod visual;
 mod wasm;
 #[cfg(feature = "wasm")]
+mod wasm_automation;
+#[cfg(feature = "wasm")]
 mod wasm_composition;
 #[cfg(feature = "wasm")]
 mod wasm_extensions;
