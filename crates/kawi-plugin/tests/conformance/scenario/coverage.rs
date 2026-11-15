@@ -204,6 +204,46 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         name: "editor.emit_user_event",
         reason: "requires the editor autocmd registry; covered by app WASM autocmd tests",
     },
+    Uncovered {
+        name: "timer.after",
+        reason: "requires the editor event loop; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "timer.every",
+        reason: "requires the editor event loop; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "timer.cancel",
+        reason: "requires the editor event loop; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "timer.list",
+        reason: "requires the editor event loop; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "variable.get",
+        reason: "requires editor buffer and window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "variable.set",
+        reason: "requires editor buffer and window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "variable.delete",
+        reason: "requires editor buffer and window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "variable.list",
+        reason: "requires editor buffer and window state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "options.set",
+        reason: "requires the editor option registry; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "options.reset",
+        reason: "requires the editor option registry; covered by app plugin host API tests",
+    },
 ];
 pub(crate) const UNCOVERED_EVENTS: &[Uncovered] = &[
     Uncovered {

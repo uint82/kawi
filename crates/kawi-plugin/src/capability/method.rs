@@ -7,6 +7,8 @@ pub enum MethodCapability {
     Required(Capability),
 }
 
+const BASE_WASM_MINOR: u64 = 15;
+
 pub fn host_method_minor(method: &str) -> u64 {
     match method {
         "buffer.list"
@@ -33,7 +35,10 @@ pub fn host_method_minor(method: &str) -> u64 {
         | "autocmd.remove"
         | "autocmd.list"
         | "autocmd.clear"
-        | "editor.emit_user_event" => crate::protocol::PROTOCOL_MINOR,
+        | "editor.emit_user_event" => BASE_WASM_MINOR,
+        "timer.after" | "timer.every" | "timer.cancel" | "timer.list" | "variable.get"
+        | "variable.set" | "variable.delete" | "variable.list" | "options.set"
+        | "options.reset" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -42,7 +47,7 @@ pub fn event_minor(event: &str) -> u64 {
     match event {
         "buffer_enter" | "buffer_leave" | "window_enter" | "window_leave" | "cursor_moved"
         | "selection_changed" | "focus_gained" | "focus_lost" | "window_created"
-        | "window_closed" | "language_changed" | "user" => crate::protocol::PROTOCOL_MINOR,
+        | "window_closed" | "language_changed" | "user" => BASE_WASM_MINOR,
         _ => 0,
     }
 }
@@ -72,6 +77,13 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
             MethodCapability::Required(Capability::EditorControl)
         }
         "options.list" | "options.get" => MethodCapability::Required(Capability::OptionsRead),
+        "options.set" | "options.reset" => MethodCapability::Required(Capability::OptionsWrite),
+        "timer.after" | "timer.every" | "timer.cancel" | "timer.list" => {
+            MethodCapability::Required(Capability::EditorSchedule)
+        }
+        "variable.get" | "variable.set" | "variable.delete" | "variable.list" => {
+            MethodCapability::Required(Capability::EditorVariables)
+        }
         "editor.execute" | "editor.list_commands" => {
             MethodCapability::Required(Capability::EditorExecute)
         }

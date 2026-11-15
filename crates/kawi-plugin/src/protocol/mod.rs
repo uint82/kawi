@@ -6,10 +6,13 @@ mod diagnostics;
 mod events;
 mod extensions;
 mod jobs;
+mod options;
 mod panel;
 mod sanitize;
 mod statusline;
+mod timers;
 mod types;
+mod variables;
 
 pub use autocmds::{
     validate_autocmd_pattern, validate_autocmd_spec, validate_user_event, AutocmdRemoveParams,
@@ -46,6 +49,7 @@ pub use jobs::{
     MAX_JOB_ENV_ENTRIES, MAX_JOB_ENV_KEY_BYTES, MAX_JOB_ENV_VALUE_BYTES, MAX_JOB_EVENT_QUEUE_BYTES,
     MAX_JOB_EVENT_QUEUE_ITEMS, MAX_JOB_OUTPUT_BYTES, MAX_JOB_STDIN_BYTES,
 };
+pub use options::{validate_option_value, OptionsResetParams, OptionsSetParams};
 pub use panel::{
     validate_panel_open, validate_panel_update, PanelLine, PanelOpenParams, PanelOpenResult,
     PanelParams, PanelUpdateParams, DEFAULT_PLUGIN_PANEL_HEIGHT, MAX_PANEL_LINE_BYTES,
@@ -54,6 +58,14 @@ pub use panel::{
 };
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
+pub use timers::{
+    validate_timer_count, validate_timer_delay, validate_timer_interval, validate_timer_payload,
+    TimerAfterParams, TimerCancelParams, TimerEveryParams, TimerFired, TimerInfo,
+};
+pub use variables::{
+    validate_variable_key, validate_variable_value, Variable, VariableParams, VariableScope,
+    VariableSetParams, VariableTarget, VariableTargetParams,
+};
 
 mod constants;
 

@@ -1,5 +1,7 @@
 use kawi_plugin::{PluginHostEvent, PluginStatus, RpcError};
 
+use std::time::Instant;
+
 use super::super::App;
 
 impl App {
@@ -17,6 +19,7 @@ impl App {
             .then(|| (self.windows.active(), self.editor.buffer_number() as u64));
         self.plugins
             .sync_plugin_state(&mut self.editor, &mut self.problems, &self.windows, focus);
+        self.plugins.dispatch_due_timers(Instant::now());
         self.plugin_decorations.retain_live(&self.editor);
         redraw
     }

@@ -1,8 +1,8 @@
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 15;
+pub const PROTOCOL_MINOR: u64 = 16;
 pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 52] = [
+pub const HOST_METHODS: [&str; 62] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -55,6 +55,16 @@ pub const HOST_METHODS: [&str; 52] = [
     "autocmd.list",
     "autocmd.clear",
     "editor.emit_user_event",
+    "timer.after",
+    "timer.every",
+    "timer.cancel",
+    "timer.list",
+    "variable.get",
+    "variable.set",
+    "variable.delete",
+    "variable.list",
+    "options.set",
+    "options.reset",
 ];
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const INTERACTIVE_HOST_METHODS: [&str; 3] = ["ui.input", "ui.select", "ui.confirm"];
@@ -65,6 +75,16 @@ pub const MAX_STATUSLINE_TEXT_BYTES: usize = 256;
 pub const MAX_PLUGIN_DIAGNOSTICS: usize = 1_000;
 pub const MAX_DIAGNOSTIC_MESSAGE_BYTES: usize = 4_096;
 pub const MAX_DIAGNOSTIC_CODE_BYTES: usize = 256;
+pub const MAX_PLUGIN_TIMERS: usize = 64;
+pub const MIN_TIMER_INTERVAL_MS: u32 = 10;
+pub const MAX_TIMER_DELAY_MS: u32 = 24 * 60 * 60 * 1_000;
+pub const MAX_TIMER_PAYLOAD_BYTES: usize = 4_096;
+pub const MAX_VARIABLE_KEY_BYTES: usize = 128;
+pub const MAX_VARIABLE_VALUE_BYTES: usize = 4_096;
+pub const MAX_GLOBAL_VARIABLES: usize = 1_024;
+pub const MAX_PLUGIN_VARIABLES: usize = 256;
+pub const MAX_BUFFER_VARIABLES: usize = 256;
+pub const MAX_WINDOW_VARIABLES: usize = 256;
 
 pub const PARSE_ERROR: i64 = -32700;
 pub const INVALID_REQUEST: i64 = -32600;

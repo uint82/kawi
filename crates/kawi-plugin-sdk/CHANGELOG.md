@@ -1,3 +1,20 @@
+## 0.11.0 - 2026-11-15
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.11.0 (`kawi:plugin@0.11.0`).
+- Components built against `kawi:plugin@0.10.0` must be rebuilt with this release.
+- The `callback` variant gains a `timer(timer-fired)` case. Update exhaustive matches in `on-callback`.
+- Process plugins remain on protocol minor 12. The new interfaces, host methods, and timer callbacks are available only to WebAssembly components.
+
+### Added
+
+- Add the `editor-schedule` interface with one-shot and repeating timers, cancellation, and listing.
+- Add the `editor-variables` interface for global, plugin, buffer, and window variables.
+- Add the `options-write` interface for setting and resetting editor options.
+- Add timer callbacks through `callback-handler.on-callback`.
+- Add `editor_schedule`, `editor_variables`, and `options_write` re-exports.
+
 ## 0.10.0 - 2026-11-15
 
 ### Breaking

@@ -116,6 +116,19 @@ impl PluginHost {
         worker.callback(registration, event, payload)
     }
 
+    pub fn timer_callback(
+        &self,
+        plugin: &str,
+        timer: u64,
+        payload: Option<String>,
+    ) -> Result<NotifyOutcome, PluginError> {
+        let worker = self
+            .workers
+            .get(plugin)
+            .ok_or_else(|| PluginError::Spawn(format!("unknown plugin: {plugin}")))?;
+        worker.timer_callback(timer, payload)
+    }
+
     pub fn activate(&self, plugin: &str) -> Result<(), PluginError> {
         let worker = self
             .workers

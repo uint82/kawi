@@ -30,6 +30,10 @@ pub enum WasmCommand {
         event: String,
         payload: Value,
     },
+    TimerCallback {
+        timer: u64,
+        payload: Option<String>,
+    },
     Restart,
     Shutdown,
 }
@@ -80,6 +84,21 @@ impl WasmWorkerHandle {
             event: event.to_string(),
             payload,
         }) {
+            Ok(()) => Ok(NotifyOutcome::Queued),
+            Err(TrySendError::Full(_)) => Ok(NotifyOutcome::Overflow),
+            Err(TrySendError::Disconnected(_)) => Ok(NotifyOutcome::NotRunning),
+        }
+    }
+
+    pub(crate) fn timer_callback(
+        &self,
+        timer: u64,
+        payload: Option<String>,
+    ) -> Result<NotifyOutcome, PluginError> {
+        match self
+            .commands
+            .try_send(WasmCommand::TimerCallback { timer, payload })
+        {
             Ok(()) => Ok(NotifyOutcome::Queued),
             Err(TrySendError::Full(_)) => Ok(NotifyOutcome::Overflow),
             Err(TrySendError::Disconnected(_)) => Ok(NotifyOutcome::NotRunning),

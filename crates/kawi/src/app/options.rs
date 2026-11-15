@@ -80,6 +80,22 @@ impl App {
         }
     }
 
+    pub(super) fn write_option(
+        &mut self,
+        spec: &'static OptionSpec,
+        input: OptionInput<'_>,
+    ) -> Result<(), String> {
+        let value = options::validate_spec(spec, input, &self.option_context())
+            .map_err(|error| option_error_message(spec, &error))?;
+        self.apply_option(spec, value)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn reset_option(&mut self, spec: &'static OptionSpec) -> Result<(), String> {
+        self.apply_option(spec, spec.default_value())
+            .map_err(|error| error.to_string())
+    }
+
     pub(super) fn apply_option(
         &mut self,
         spec: &'static OptionSpec,

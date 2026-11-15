@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use super::common::{app, temp_dir};
 use crate::app::App;
 
+mod automation;
 mod events;
 mod windows;
 

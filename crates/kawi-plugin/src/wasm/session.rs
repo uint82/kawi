@@ -14,7 +14,7 @@ use crate::protocol::PROTOCOL_VERSION;
 
 use super::bindings::kawi::plugin::types::Argument;
 use super::bindings::Host_;
-use super::bindings::{AutocmdCallback, Callback, Callbacks};
+use super::bindings::{AutocmdCallback, Callback, Callbacks, TimerFired};
 use super::convert::{
     argument_from_json, argument_to_json, callback_event_from_json, event_from_json,
     rpc_from_wit_error,
@@ -88,6 +88,21 @@ impl Session {
             registration,
             event: callback_event_from_json(event, payload).map_err(PluginError::Rpc)?,
         });
+        let callbacks = Callbacks::new(&mut self.store, &self.raw_instance)
+            .map_err(|error| PluginError::Trap(format!("wasm callback: {error:#}")))?;
+        self.begin_call();
+        let result = callbacks
+            .kawi_plugin_callback_handler()
+            .call_on_callback(&mut self.store, &callback);
+        self.finish_call(result)?.map_err(rpc_from_wit_error)
+    }
+
+    pub(crate) fn timer_callback(
+        &mut self,
+        timer: u64,
+        payload: Option<String>,
+    ) -> Result<(), PluginError> {
+        let callback = Callback::Timer(TimerFired { timer, payload });
         let callbacks = Callbacks::new(&mut self.store, &self.raw_instance)
             .map_err(|error| PluginError::Trap(format!("wasm callback: {error:#}")))?;
         self.begin_call();

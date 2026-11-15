@@ -82,6 +82,8 @@ impl PluginRuntime {
                 .unwrap_or(Value::Null),
             );
         }
+        self.window_variables
+            .retain(|window, _| current.contains_key(window));
         let closed = self
             .known_windows
             .iter()
