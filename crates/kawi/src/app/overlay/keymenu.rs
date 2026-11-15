@@ -16,7 +16,7 @@ const BOTTOM_MARGIN: usize = 1;
 const LEADER_TITLE: &str = "Leader";
 const KEYGUIDE_TITLE: &str = "Keys";
 
-pub(super) struct KeyMenuData {
+pub(crate) struct KeyMenuData {
     rect: Rect,
     title: &'static str,
     breadcrumb: String,

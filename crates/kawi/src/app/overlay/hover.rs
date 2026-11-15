@@ -10,11 +10,11 @@ impl App {
         let layout = self.panel_layout(self.hover_panel(session.documents()));
         Some(OverlayData {
             list: None,
-            panel: Some(PanelData {
-                rect: layout.rect,
-                lines: layout.lines,
-                scroll: session.scroll().min(layout.max_scroll),
-            }),
+            panel: Some(PanelData::new(
+                layout.rect,
+                layout.lines,
+                session.scroll().min(layout.max_scroll),
+            )),
             key_menu: None,
         })
     }

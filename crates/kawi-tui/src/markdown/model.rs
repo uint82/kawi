@@ -8,6 +8,7 @@ pub enum MarkdownStyle {
     Code,
     Heading,
     Quote,
+    Decoration(crate::frame::DecorationStyle),
     Syntax(SyntaxHighlight),
 }
 

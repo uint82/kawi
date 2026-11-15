@@ -422,6 +422,10 @@ pub struct OverlayPanel<'a> {
     pub rect: Rect,
     pub lines: &'a [MarkdownLine],
     pub scroll: usize,
+    pub selected: Option<usize>,
+    pub title: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub focused: bool,
 }
 
 pub struct PickerMenu<'a> {

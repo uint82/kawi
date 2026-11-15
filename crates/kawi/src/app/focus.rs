@@ -38,6 +38,9 @@ impl App {
         self.explorer.focus_editor();
         self.debug_focus = false;
         self.plugin_panel.unfocus();
+        if self.plugin_overlays.is_focused() {
+            self.close_plugin_overlay(kawi_plugin::OverlayCloseReason::FocusLost);
+        }
     }
 
     pub(crate) fn focus_target(&mut self, target: FocusTarget) -> bool {
