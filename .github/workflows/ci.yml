@@ -103,6 +103,8 @@ jobs:
         run: cargo clippy --manifest-path crates/kawi-plugin/tests/fixtures/wasm/panels/Cargo.toml --target wasm32-wasip2 -- -D warnings
       - name: Lint commands fixture
         run: cargo clippy --manifest-path crates/kawi-plugin/tests/fixtures/wasm/commands/Cargo.toml --target wasm32-wasip2 -- -D warnings
+      - name: Lint automation fixture
+        run: cargo clippy --manifest-path crates/kawi-plugin/tests/fixtures/wasm/automation/Cargo.toml --target wasm32-wasip2 -- -D warnings
       - name: Lint WASM feature
         run: cargo clippy -p kawi --all-targets --features wasm -- -D warnings
       - name: Lint WASM test network feature
