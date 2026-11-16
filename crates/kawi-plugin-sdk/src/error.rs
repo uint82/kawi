@@ -14,6 +14,9 @@ pub const PLUGIN_UNAVAILABLE: i32 = -32030;
 pub const UI_BUSY: i32 = -32040;
 pub const PANEL_NOT_FOUND: i32 = -32060;
 pub const OVERLAY_NOT_FOUND: i32 = -32061;
+pub const TASK_NOT_FOUND: i32 = -32062;
+pub const TASK_LIMIT: i32 = -32063;
+pub const TASK_START_FAILED: i32 = -32064;
 pub const BUFFER_NOT_FOUND: i32 = -32070;
 pub const BUFFER_NOT_ACTIVE: i32 = -32071;
 pub const WINDOW_NOT_FOUND: i32 = -32072;
@@ -35,6 +38,9 @@ pub enum ErrorKind {
     Busy,
     PanelNotFound,
     OverlayNotFound,
+    TaskNotFound,
+    TaskLimit,
+    TaskStartFailed,
     BufferNotFound,
     BufferNotActive,
     WindowNotFound,
@@ -60,6 +66,9 @@ pub fn error_kind(error: &Error) -> ErrorKind {
         UI_BUSY => ErrorKind::Busy,
         PANEL_NOT_FOUND => ErrorKind::PanelNotFound,
         OVERLAY_NOT_FOUND => ErrorKind::OverlayNotFound,
+        TASK_NOT_FOUND => ErrorKind::TaskNotFound,
+        TASK_LIMIT => ErrorKind::TaskLimit,
+        TASK_START_FAILED => ErrorKind::TaskStartFailed,
         BUFFER_NOT_FOUND => ErrorKind::BufferNotFound,
         BUFFER_NOT_ACTIVE => ErrorKind::BufferNotActive,
         WINDOW_NOT_FOUND => ErrorKind::WindowNotFound,
@@ -99,6 +108,12 @@ mod tests {
         assert_eq!(
             error_kind(&error(OVERLAY_NOT_FOUND)),
             ErrorKind::OverlayNotFound
+        );
+        assert_eq!(error_kind(&error(TASK_NOT_FOUND)), ErrorKind::TaskNotFound);
+        assert_eq!(error_kind(&error(TASK_LIMIT)), ErrorKind::TaskLimit);
+        assert_eq!(
+            error_kind(&error(TASK_START_FAILED)),
+            ErrorKind::TaskStartFailed
         );
         assert_eq!(
             error_kind(&error(BUFFER_NOT_ACTIVE)),
