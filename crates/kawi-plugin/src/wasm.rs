@@ -40,6 +40,8 @@ mod process_jobs;
 mod session;
 #[cfg(feature = "wasm")]
 mod state;
+#[cfg(feature = "wasm")]
+mod task_runner;
 
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 mod test_resolver;
