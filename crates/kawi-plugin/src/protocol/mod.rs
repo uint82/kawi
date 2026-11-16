@@ -12,6 +12,7 @@ mod panel;
 mod picker;
 mod sanitize;
 mod statusline;
+mod tasks;
 mod timers;
 mod types;
 mod variables;
@@ -72,6 +73,14 @@ pub use picker::{
 };
 pub use sanitize::sanitize;
 pub use statusline::validate_statusline;
+pub use tasks::{
+    TaskEvent, TaskExitedEvent, TaskFindingEvent, TaskInfo, TaskJobParams, TaskOutputEvent,
+    TaskSeverity, TaskStartParams, TaskStartResult, TaskState, TaskStatusResult, TaskStream,
+    MAX_TASKS_PER_PLUGIN, MAX_TASK_EVENT_QUEUE_BYTES, MAX_TASK_EVENT_QUEUE_ITEMS,
+    MAX_TASK_FINDING_MESSAGE_BYTES, MAX_TASK_FINDING_PATH_BYTES, MAX_TASK_LINE_BYTES,
+    MAX_TASK_NAME_BYTES, TASK_EXITED_EVENT, TASK_FINDING_EVENT, TASK_OUTPUT_EVENT,
+    TASK_RETENTION_SECS,
+};
 pub use timers::{
     validate_timer_count, validate_timer_delay, validate_timer_interval, validate_timer_payload,
     TimerAfterParams, TimerCancelParams, TimerEveryParams, TimerFired, TimerInfo,
@@ -217,6 +226,25 @@ impl RpcError {
 
     pub fn ui_busy(message: impl Into<String>) -> Self {
         Self::new(UI_BUSY, message)
+    }
+
+    pub fn task_not_found(job: u64) -> Self {
+        Self::new(TASK_NOT_FOUND, format!("task job not found: {job}"))
+    }
+
+    pub fn task_name_not_found(name: &str) -> Self {
+        Self::new(TASK_NOT_FOUND, format!("task not found: {name}"))
+    }
+
+    pub fn task_limit(limit: usize) -> Self {
+        Self::new(
+            TASK_LIMIT,
+            format!("task limit reached: at most {limit} tasks may run at once"),
+        )
+    }
+
+    pub fn task_start_failed(message: impl Into<String>) -> Self {
+        Self::new(TASK_START_FAILED, message)
     }
 
     pub fn with_data(mut self, data: Value) -> Self {

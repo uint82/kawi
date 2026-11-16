@@ -49,10 +49,11 @@ pub enum Capability {
     FsWrite,
     ProcessSpawn,
     NetConnect,
+    TaskRun,
 }
 
 impl Capability {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 29] = [
         Self::EditorRead,
         Self::EditorWrite,
         Self::EditorBuffers,
@@ -81,6 +82,7 @@ impl Capability {
         Self::FsWrite,
         Self::ProcessSpawn,
         Self::NetConnect,
+        Self::TaskRun,
     ];
 
     pub fn parse(name: &str) -> Option<Self> {
@@ -113,6 +115,7 @@ impl Capability {
             "fs.write" => Some(Self::FsWrite),
             "process.spawn" => Some(Self::ProcessSpawn),
             "net.connect" => Some(Self::NetConnect),
+            "task.run" => Some(Self::TaskRun),
             _ => None,
         }
     }
@@ -147,6 +150,7 @@ impl Capability {
             Self::FsWrite => "fs.write",
             Self::ProcessSpawn => "process.spawn",
             Self::NetConnect => "net.connect",
+            Self::TaskRun => "task.run",
         }
     }
 
@@ -159,6 +163,7 @@ impl Capability {
                 | Self::FsWrite
                 | Self::ProcessSpawn
                 | Self::NetConnect
+                | Self::TaskRun
         )
     }
 

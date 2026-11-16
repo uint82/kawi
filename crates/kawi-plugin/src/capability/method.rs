@@ -40,7 +40,8 @@ pub fn host_method_minor(method: &str) -> u64 {
         | "ui.picker" => crate::protocol::PROTOCOL_MINOR,
         "timer.after" | "timer.every" | "timer.cancel" | "timer.list" | "variable.get"
         | "variable.set" | "variable.delete" | "variable.list" | "options.set"
-        | "options.reset" => crate::protocol::PROTOCOL_MINOR,
+        | "options.reset" | "task.list" | "task.start" | "task.status" | "task.poll"
+        | "task.cancel" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -122,6 +123,9 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         | "process.kill"
         | "process.status"
         | "process.poll" => MethodCapability::Required(Capability::ProcessSpawn),
+        "task.list" | "task.start" | "task.status" | "task.poll" | "task.cancel" => {
+            MethodCapability::Required(Capability::TaskRun)
+        }
         _ => MethodCapability::Unknown,
     }
 }
