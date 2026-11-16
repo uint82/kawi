@@ -23,6 +23,7 @@ mod settings;
 mod settings_ui;
 mod statusline;
 mod style;
+mod tasks;
 mod text;
 mod timers;
 mod ui;
