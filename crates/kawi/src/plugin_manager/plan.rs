@@ -221,6 +221,7 @@ fn scope_label(scope: &Scope) -> String {
         Scope::Commands(commands) => format!("commands {commands:?}"),
         Scope::EditorCommands(commands) => format!("editor commands {commands:?}"),
         Scope::Hosts(hosts) => format!("hosts {hosts:?}"),
+        Scope::Tasks(tasks) => format!("tasks {tasks:?}"),
     }
 }
 

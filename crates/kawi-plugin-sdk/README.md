@@ -1,12 +1,12 @@
 # kawi-plugin-sdk
 
-Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.12.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
+Rust SDK for Kawi WebAssembly plugins. It re-exports the versioned `kawi:plugin@0.13.0` WIT bindings and provides helpers for UTF-8 positions, stale-revision retries, and protocol error codes.
 
 ## Install
 
 ```toml
 [dependencies]
-kawi-plugin-sdk = "0.12.0"
+kawi-plugin-sdk = "0.13.0"
 ```
 
 The SDK requires Rust 1.98 or newer and the `wasm32-wasip2` target. Components built against an earlier `kawi:plugin` package must be rebuilt because the WIT import namespace is versioned.
@@ -167,6 +167,40 @@ for event in process_jobs::poll(job)? {
 ```
 
 The `process_jobs` module exposes `open`, `write`, `close_stdin`, `signal`, `kill`, `status`, and `poll`. WASM plugins are passive, so the host queues job output and exit events and `poll` drains them on the next plugin call. Process plugins receive the same events through the JSON-RPC event stream.
+
+## Project tasks
+
+Declare the task names in `plugin.toml` and use `task_runner` to list and run configured project tasks:
+
+```toml
+[capabilities]
+"task.run" = { tasks = ["check", "test"] }
+```
+
+```rust
+use kawi_plugin_sdk::task_runner::{self, TaskEvent, TaskState};
+
+let _tasks = task_runner::list_tasks()?;
+let started = task_runner::start("check")?;
+loop {
+    let status = task_runner::status(started.job)?;
+    if status.state != TaskState::Running {
+        break;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
+for event in task_runner::poll(started.job)? {
+    match event {
+        TaskEvent::Output(output) => println!("{}", output.line),
+        TaskEvent::Finding(finding) => {
+            println!("{}:{}: {}", finding.path, finding.line, finding.message)
+        }
+        TaskEvent::Exited(exited) => println!("exited {:?}", exited.exit_code),
+    }
+}
+```
+
+The module exposes `list_tasks`, `start`, `status`, `poll`, and `cancel`. A task outside the declared scope returns `CAPABILITY_DENIED`; a name in the allowlist that is not configured returns `TASK_NOT_FOUND`. Four tasks may run at once. Output, findings, and the exit event are queued and drained by `poll`.
 
 ## Visual decorations
 

@@ -10,6 +10,7 @@ mod control_api;
 mod extensions;
 mod options_api;
 mod scheduler_api;
+mod tasks_api;
 mod variables_api;
 mod window_api;
 
@@ -49,6 +50,9 @@ pub(super) fn handle(
         | "autocmd.list"
         | "autocmd.clear"
         | "editor.emit_user_event" => autocmds::handle(app, plugin, method, params),
+        "task.list" | "task.start" | "task.status" | "task.poll" | "task.cancel" => {
+            tasks_api::handle(app, plugin, method, params)
+        }
         _ => Err(RpcError::method_not_found(method)),
     }
 }

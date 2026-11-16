@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins. Minor version 17 adds overlays and native pickers for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins. Minor version 17 adds overlays and native pickers for WASM plugins. Minor version 18 adds project tasks for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -106,7 +106,7 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 17,
+    "protocol_minor": 18,
     "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
@@ -122,7 +122,7 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 17,
+    "protocol_minor": 18,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
@@ -1201,6 +1201,9 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32052` | Job or job stdin is closed |
 | `-32053` | Job output or input queue is full |
 | `-32060` | Panel not found or owned by another plugin |
+| `-32062` | Task not found |
+| `-32063` | Too many running tasks |
+| `-32064` | Task failed to start |
 | `-32070` | Buffer not found |
 | `-32071` | Buffer not active |
 | `-32072` | Window not found |

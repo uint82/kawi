@@ -2,5 +2,5 @@
   (type $t (;0;)
     (instance)
   )
-  (import "kawi:plugin/editor-read@0.12.0" (instance (;0;) (type $t)))
+  (import "kawi:plugin/editor-read@0.13.0" (instance (;0;) (type $t)))
 )

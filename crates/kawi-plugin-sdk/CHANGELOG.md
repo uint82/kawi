@@ -1,3 +1,18 @@
+## 0.13.0 - 2026-11-16
+
+### Breaking
+
+- Bump the SDK and WIT package to 0.13.0 (`kawi:plugin@0.13.0`).
+- Components built against `kawi:plugin@0.12.0` must be rebuilt with this release.
+- Process plugins remain on protocol minor 12. The new interface and host methods are available only to WebAssembly components.
+
+### Added
+
+- Add the `task-runner` interface for listing, starting, polling, cancelling, and inspecting configured project tasks.
+- Add the `task.run` capability, scoped by the manifest `tasks` name list.
+- Add `TASK_NOT_FOUND`, `TASK_LIMIT`, and `TASK_START_FAILED` error codes with matching `ErrorKind` variants.
+- Add `task_runner` re-exports.
+
 ## 0.12.0 - 2026-11-15
 
 ### Breaking

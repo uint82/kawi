@@ -1,4 +1,4 @@
-package kawi:plugin@0.12.0;
+package kawi:plugin@0.13.0;
 
 interface types {
   record position {
@@ -688,6 +688,89 @@ interface process-jobs {
   poll: func(job: u64) -> result<list<job-event>, error>;
 }
 
+interface task-runner {
+  use types.{error};
+
+  enum task-stream {
+    stdout,
+    stderr,
+  }
+
+  enum task-state {
+    running,
+    exited,
+    cancelled,
+    failed,
+  }
+
+  enum task-severity {
+    error,
+    warning,
+    information,
+    hint,
+  }
+
+  record task-info {
+    name: string,
+    command: string,
+    args: list<string>,
+  }
+
+  record started-task {
+    job: u64,
+    name: string,
+  }
+
+  record task-status {
+    job: u64,
+    name: string,
+    state: task-state,
+    exit-code: option<s32>,
+    success: bool,
+    cancelled: bool,
+    duration-ms: u64,
+    findings: u64,
+    dropped-events: u64,
+  }
+
+  record task-output {
+    job: u64,
+    channel: task-stream,
+    line: string,
+    truncated: bool,
+  }
+
+  record task-finding {
+    job: u64,
+    path: string,
+    line: u32,
+    column: u32,
+    severity: task-severity,
+    message: string,
+  }
+
+  record task-exited {
+    job: u64,
+    state: task-state,
+    exit-code: option<s32>,
+    success: bool,
+    cancelled: bool,
+    duration-ms: u64,
+  }
+
+  variant task-event {
+    output(task-output),
+    finding(task-finding),
+    exited(task-exited),
+  }
+
+  list-tasks: func() -> result<list<task-info>, error>;
+  start: func(name: string) -> result<started-task, error>;
+  status: func(job: u64) -> result<task-status, error>;
+  poll: func(job: u64) -> result<list<task-event>, error>;
+  cancel: func(job: u64) -> result<_, error>;
+}
+
 interface editor-commands {
   use types.{error};
 
@@ -816,6 +899,7 @@ world host {
   import ui-picker;
   import process-run;
   import process-jobs;
+  import task-runner;
   export lifecycle;
 }
 

@@ -283,3 +283,50 @@ fn every_capability_name_round_trips() {
         assert_eq!(Capability::parse(capability.name()), Some(capability));
     }
 }
+
+#[test]
+fn parses_task_scope_and_deduplicates_names() {
+    let (requests, warnings) = requests(
+        r#"
+"task.run" = { tasks = ["check", "test", "check"] }
+"#,
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        requests.get(Capability::TaskRun),
+        Some(&Scope::Tasks(vec!["check".to_string(), "test".to_string()]))
+    );
+}
+
+#[test]
+fn rejects_invalid_task_scopes() {
+    for text in [
+        r#""task.run" = true"#,
+        r#""task.run" = { tasks = [] }"#,
+        r#""task.run" = { tasks = ["check", 1] }"#,
+        r#""task.run" = { tasks = ["bad\nname"] }"#,
+        r#""task.run" = { commands = ["check"] }"#,
+    ] {
+        let (requests, warnings) = requests(text);
+        assert!(!requests.contains(Capability::TaskRun), "{text}");
+        assert_eq!(warnings.len(), 1, "{text}");
+    }
+}
+
+#[test]
+fn task_methods_require_task_run_at_the_current_minor() {
+    for method in [
+        "task.list",
+        "task.start",
+        "task.status",
+        "task.poll",
+        "task.cancel",
+    ] {
+        assert_eq!(
+            host_method_capability(method),
+            MethodCapability::Required(Capability::TaskRun)
+        );
+        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert!(!is_process_host_method(method));
+    }
+}

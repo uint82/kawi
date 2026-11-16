@@ -28,6 +28,7 @@ pub struct TaskOptions {
 pub struct TaskStatus {
     pub success: bool,
     pub cancelled: bool,
+    pub exit_code: Option<i32>,
     pub duration: Duration,
 }
 
@@ -211,10 +212,12 @@ fn monitor(
     let cancelled = cancel.load(Ordering::SeqCst);
     let status = child.wait().ok().or(exited);
     let success = !cancelled && status.as_ref().is_some_and(|status| status.success());
+    let exit_code = status.as_ref().and_then(std::process::ExitStatus::code);
     let event = TaskEvent::Finished {
         status: TaskStatus {
             success,
             cancelled,
+            exit_code,
             duration: start.elapsed(),
         },
         description: finish_description(cancelled, status),

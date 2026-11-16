@@ -50,6 +50,7 @@ fn parse_scoped_table(
             parse_editor_commands(values).map(super::Scope::EditorCommands)
         }
         Capability::NetConnect => parse_hosts(values).map(super::Scope::Hosts),
+        Capability::TaskRun => parse_tasks(values).map(super::Scope::Tasks),
         _ => Err("unscoped capability".to_string()),
     }
 }
@@ -59,6 +60,7 @@ fn scope_key(capability: Capability) -> &'static str {
         Capability::EditorBuffersWrite | Capability::FsRead | Capability::FsWrite => "paths",
         Capability::ProcessSpawn | Capability::EditorExecute => "commands",
         Capability::NetConnect => "hosts",
+        Capability::TaskRun => "tasks",
         _ => "",
     }
 }
@@ -121,6 +123,26 @@ fn validate_editor_command(command: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn parse_tasks(values: &[toml::Value]) -> Result<Vec<String>, String> {
+    let mut tasks = BTreeSet::new();
+    for value in values {
+        let task = value
+            .as_str()
+            .ok_or_else(|| "tasks must be strings".to_string())?;
+        if task.is_empty() || task.len() > crate::protocol::MAX_TASK_NAME_BYTES {
+            return Err(format!(
+                "tasks must be 1 to {} bytes",
+                crate::protocol::MAX_TASK_NAME_BYTES
+            ));
+        }
+        if task.chars().any(char::is_control) {
+            return Err(format!("task {task} contains a control character"));
+        }
+        tasks.insert(task.to_string());
+    }
+    Ok(tasks.into_iter().collect())
 }
 
 fn parse_hosts(values: &[toml::Value]) -> Result<Vec<String>, String> {

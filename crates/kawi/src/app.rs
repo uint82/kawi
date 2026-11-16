@@ -552,6 +552,7 @@ impl App {
             self.poll_symbol_events();
             self.symbols_tick();
             self.sync_task();
+            self.plugins.sync_tasks();
             self.sync_terminal();
             self.sync_watched_files();
             self.sync_directory_watch();
@@ -627,6 +628,7 @@ impl App {
             redraw |= self.poll_permission_check();
             redraw |= self.poll_plugins();
             redraw |= self.sync_task();
+            self.plugins.sync_tasks();
             redraw |= self.sync_terminal();
             redraw |= self.problem_pane_tick();
             redraw |= self.save_tick();

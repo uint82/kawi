@@ -8,6 +8,7 @@ use kawi_editor::BufferInfo;
 use kawi_plugin::{
     Capability, CapabilityRegistry, HostEnvironment, InvocationContext, LoadedPlugin,
     PluginCatalog, PluginError, PluginHost, PluginHostEvent, PluginLock, PluginStatus, RpcError,
+    Scope,
 };
 use serde_json::Value;
 
@@ -80,6 +81,7 @@ pub(crate) struct PluginRuntime {
     pub(super) environment: Option<HostEnvironment>,
     pub(super) wake: Option<std::sync::mpsc::Sender<()>>,
     pub(super) capabilities: CapabilityRegistry,
+    pub(super) tasks: super::tasks::PluginTaskManager,
     pub(super) denials: BTreeMap<(String, Capability), DenialRecord>,
     pub(super) warnings: BTreeMap<String, Vec<String>>,
     pub(super) last_message: BTreeMap<String, Instant>,
@@ -227,8 +229,31 @@ impl PluginRuntime {
 
     pub(crate) fn shutdown(&mut self) {
         self.drop_queues(None);
+        self.tasks.shutdown();
         if let Some(host) = self.host.as_ref() {
             host.shutdown();
+        }
+    }
+
+    pub(crate) fn sync_tasks(&mut self) {
+        self.tasks.sync_all();
+    }
+
+    pub(crate) fn stop_tasks(&mut self, plugin: &str) {
+        self.tasks.stop_plugin(plugin);
+    }
+
+    pub(crate) fn allows_task(&self, plugin: &str, name: &str) -> bool {
+        matches!(
+            self.capabilities.scope(plugin, Capability::TaskRun),
+            Some(Scope::Tasks(tasks)) if tasks.iter().any(|task| task == name)
+        )
+    }
+
+    pub(crate) fn task_names(&self, plugin: &str) -> Vec<String> {
+        match self.capabilities.scope(plugin, Capability::TaskRun) {
+            Some(Scope::Tasks(tasks)) => tasks,
+            _ => Vec::new(),
         }
     }
 

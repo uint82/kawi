@@ -26,3 +26,5 @@ mod wasm_extensions;
 mod wasm_jobs;
 #[cfg(all(feature = "wasm", unix))]
 mod wasm_panels;
+#[cfg(all(feature = "wasm", unix))]
+mod wasm_tasks;

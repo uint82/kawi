@@ -87,6 +87,7 @@ pub enum Scope {
     Commands(Vec<String>),
     EditorCommands(Vec<String>),
     Hosts(Vec<String>),
+    Tasks(Vec<String>),
 }
 
 impl Scope {
@@ -101,6 +102,9 @@ impl Scope {
                 inner.iter().all(|inner| outer.contains(inner))
             }
             (Self::Hosts(outer), Self::Hosts(inner)) => {
+                inner.iter().all(|inner| outer.contains(inner))
+            }
+            (Self::Tasks(outer), Self::Tasks(inner)) => {
                 inner.iter().all(|inner| outer.contains(inner))
             }
             _ => false,
@@ -119,6 +123,9 @@ impl Scope {
             }
             Self::Hosts(hosts) => {
                 object.insert("hosts".to_string(), string_array(hosts));
+            }
+            Self::Tasks(tasks) => {
+                object.insert("tasks".to_string(), string_array(tasks));
             }
         }
         object
@@ -140,6 +147,9 @@ pub fn intersect_scope(requested: &Scope, granted: &Scope) -> Option<Scope> {
             intersect_editor_commands(requested, granted)
         }
         (Scope::Hosts(requested), Scope::Hosts(granted)) => intersect_hosts(requested, granted),
+        (Scope::Tasks(requested), Scope::Tasks(granted)) => {
+            exact_values(requested, granted).map(Scope::Tasks)
+        }
         _ => None,
     }
 }

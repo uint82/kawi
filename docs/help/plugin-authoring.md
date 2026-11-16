@@ -7,7 +7,7 @@ related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migratio
 
 WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
 
-The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.12.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.12.0 bumps the WIT package, so rebuild components built against 0.11.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
+The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.13.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.13.0 bumps the WIT package, so rebuild components built against 0.12.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
 ## Prerequisites
 
@@ -130,6 +130,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 - Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files and editing the active buffer use the path-scoped `editor.buffers.write`. Window operations use `editor.windows`, cursor and selection control use `editor.control`, option reads use `options.read`, and option changes use `options.write`.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
+- `task.run` is scoped by an explicit `tasks` allowlist. Declare it with `"task.run" = { tasks = ["check", "test"] }`.
 - Settings are declared with `[settings.<name>]` tables. The `config-read` interface needs no capability declaration because it only reads the plugin's own namespace.
 - `editor.commands` enables runtime command registration; `editor.keymaps` enables runtime key bindings. Both are WebAssembly-only, namespaced to the plugin, and cleared when it stops.
 - `editor.decorations` enables highlights, virtual text, and gutter signs. `ui.statusline` enables status line segments.
@@ -506,6 +507,40 @@ let info = options_write::reset("number")?;
 
 `options.set` accepts booleans, integers, and text. Floats, arrays, objects, and null are rejected. Aliases resolve to the canonical option. `options.write` does not imply `options.read`; declare both when the plugin also lists or reads options.
 
+## Project tasks
+
+`task.run` lets a component run tasks configured in the project `tasks.toml` or the global task file. Declare the exact task names:
+
+```toml
+[capabilities]
+"task.run" = { tasks = ["check", "test"] }
+```
+
+The component calls `task_runner::list_tasks`, `start`, `status`, `poll`, and `cancel`. `start` returns a job ID. Tasks run in the background and are passive, so call `poll` to drain output, findings, and the exit event:
+
+```rust
+use kawi_plugin_sdk::task_runner::{self, TaskEvent, TaskState};
+
+let _tasks = task_runner::list_tasks()?;
+let started = task_runner::start("check")?;
+loop {
+    let status = task_runner::status(started.job)?;
+    if status.state != TaskState::Running {
+        break;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
+for event in task_runner::poll(started.job)? {
+    match event {
+        TaskEvent::Output(line) => { /* line.channel, line.line */ }
+        TaskEvent::Finding(finding) => { /* finding.path, line, column, severity */ }
+        TaskEvent::Exited(exited) => { /* exited.exit_code, success, cancelled */ }
+    }
+}
+```
+
+A task outside the declared scope returns `-32012`. A declared name that is not configured returns `-32062`. Four tasks may run at once; a fifth returns `-32063`. A failed spawn returns `-32064`. Output lines are capped at 4096 bytes, queues drop the oldest events, and finished jobs remain queryable for 300 seconds.
+
 ## Settings
 
 Declare settings in `plugin.toml`:
@@ -591,4 +626,4 @@ A denied call returns `-32012`. The component tried to use an interface it did n
 
 ## Honest scope
 
-The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.12.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
+The Rust SDK and template are the supported authoring path. Any language that can produce a component targeting `kawi:plugin@0.13.0` can work, but it must provide its own bindings, UTF-8 position handling, stale-revision retry, and error mapping. The conformance suite is the source of truth for behavior across runtimes.
