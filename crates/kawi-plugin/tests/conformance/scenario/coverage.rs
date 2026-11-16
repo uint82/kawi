@@ -124,6 +124,26 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
             "requires a live child process and queued WASM events; covered by app WASM job tests",
     },
     Uncovered {
+        name: "task.list",
+        reason: "requires configured project tasks; covered by app WASM task tests",
+    },
+    Uncovered {
+        name: "task.start",
+        reason: "requires configured project tasks; covered by app WASM task tests",
+    },
+    Uncovered {
+        name: "task.status",
+        reason: "requires configured project tasks; covered by app WASM task tests",
+    },
+    Uncovered {
+        name: "task.poll",
+        reason: "requires configured project tasks; covered by app WASM task tests",
+    },
+    Uncovered {
+        name: "task.cancel",
+        reason: "requires configured project tasks; covered by app WASM task tests",
+    },
+    Uncovered {
         name: "buffer.list",
         reason: "requires editor buffer state; covered by app plugin host API tests",
     },
