@@ -5,7 +5,7 @@ related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration",
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, variable, overlay, and picker APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, variable, overlay, picker, and task APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -40,6 +40,7 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `fs.read` | `paths` | Read files under the declared paths |
 | `fs.write` | `paths` | Write files under the declared paths |
 | `process.spawn` | `commands` | Spawn the declared executables |
+| `task.run` | `tasks` | List and run the declared project tasks |
 | `net.connect` | `hosts` | Open outbound TCP connections to the declared hosts |
 
 Unscoped APIs use `true`. Scoped APIs use tables:
@@ -70,6 +71,7 @@ Unscoped APIs use `true`. Scoped APIs use tables:
 "ui.picker" = true
 "fs.read" = { paths = ["$WORKSPACE/src"] }
 "process.spawn" = { commands = ["git", "rg"] }
+"task.run" = { tasks = ["check", "test"] }
 "net.connect" = { hosts = ["api.example.com:443"] }
 ```
 
@@ -86,6 +88,16 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 `process.spawn` also enables background jobs. Process plugins use `process.open`, `process.write`, `process.close_stdin`, `process.signal`, `process.kill`, `process.status`, and `process.poll`. WASM plugins use the `process-jobs` WIT interface with the same operations. A job command must resolve to an entry in the same command scope. Jobs run in the plugin directory by default. A job `cwd` may be the plugin directory, the workspace, or the configuration directory; relative paths resolve from the plugin directory. Job environment entries add to or override the inherited environment. Each plugin may run 16 jobs, each job may emit 8 MiB of output, and each write may send 1 MiB. Kawi kills a plugin's jobs when the plugin stops, restarts, reloads, or is disabled. Process plugins receive job events as notifications; WASM plugins drain queued events with `process.poll`. See [Plugin protocol](help:plugin-protocol) for the job methods and events.
 
 The WebAssembly runtime exposes the `process-run` one-shot interface and the `process-jobs` interface. Both use the same `process.spawn` command scope. WASM job events are queued because components are passive; call `poll` on the next invocation to drain them.
+
+## Project tasks
+
+`task.run` takes `tasks`, an array of task names from the project `tasks.toml` and the global task file. A plugin can list only the configured tasks in its scope and can start only those names. The scope is an exact allowlist; an unlisted name returns `-32012`, and a listed name that is not configured returns `-32062`.
+
+The `task-runner` WIT interface exposes `list-tasks`, `start`, `status`, `poll`, and `cancel`. `start` returns a job ID. Tasks are passive, so `poll` drains queued output, findings, and exit events on the next host call. A plugin may run four tasks at once; starting a fifth returns `-32063`. A task that cannot spawn returns `-32064`. Kawi kills a plugin's tasks when the plugin stops, restarts, reloads, or is disabled.
+
+Task output is line-oriented. Each line is at most 4096 bytes and is truncated on a UTF-8 boundary. A finding path and message are each at most 4096 bytes. A job queue holds 10000 events or 8 MiB, whichever is reached first, and drops the oldest events when full; `dropped-events` counts the drops. Finished jobs remain queryable for 300 seconds.
+
+Tasks run with the workspace root as the default working directory. A task `cwd` may be relative to the workspace root. Task commands are not sandboxed by `process.spawn`; `task.run` is the permission to run the configured project tasks.
 
 ## Editor commands
 
