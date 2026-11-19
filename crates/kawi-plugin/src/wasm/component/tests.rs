@@ -162,6 +162,24 @@ fn accepts_versioned_wasi_imports_with_a_grant() {
 }
 
 #[test]
+fn accepts_read_only_filesystem_imports() {
+    use std::collections::BTreeSet;
+
+    let runtime = WasmRuntime::new().unwrap();
+    let inspection = runtime
+        .inspect(
+            &fixture("editor-and-fs.wasm"),
+            None,
+            &[Capability::EditorRead, Capability::FsRead],
+        )
+        .unwrap();
+    assert_eq!(
+        inspection.requested.into_iter().collect::<BTreeSet<_>>(),
+        BTreeSet::from([Capability::EditorRead, Capability::FsRead])
+    );
+}
+
+#[test]
 fn rejects_component_imports_without_a_request() {
     let runtime = WasmRuntime::new().unwrap();
     let error = runtime

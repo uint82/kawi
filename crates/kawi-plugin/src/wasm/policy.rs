@@ -5,6 +5,8 @@ use crate::capability::Capability;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImportRule {
     pub prefix: &'static str,
+    /// Any one of these capabilities authorizes the import. A read-only
+    /// filesystem grant must not force the plugin to request write access.
     pub capabilities: &'static [Capability],
 }
 
@@ -163,11 +165,13 @@ pub fn import_capabilities(name: &str) -> Option<&'static [Capability]> {
 
 pub fn requested_import_capabilities<'a>(
     imports: impl IntoIterator<Item = &'a str>,
+    requested: &BTreeSet<Capability>,
 ) -> BTreeSet<Capability> {
     imports
         .into_iter()
         .filter_map(import_capabilities)
         .flatten()
+        .filter(|capability| requested.contains(capability))
         .copied()
         .collect()
 }
@@ -190,7 +194,7 @@ pub fn missing_import_capabilities<'a>(
         }
         if let Some(capability) = capabilities
             .iter()
-            .find(|capability| requested.contains(capability) && !granted.contains(capability))
+            .find(|capability| requested.contains(capability))
         {
             missing.insert(*capability);
         }
@@ -206,9 +210,12 @@ pub fn unauthorized_imports<'a>(
         .into_iter()
         .filter(|name| match import_capabilities(name) {
             None => true,
-            Some(capabilities) => capabilities
-                .iter()
-                .any(|capability| !requested.contains(capability)),
+            Some(capabilities) => {
+                !capabilities.is_empty()
+                    && !capabilities
+                        .iter()
+                        .any(|capability| requested.contains(capability))
+            }
         })
         .collect()
 }

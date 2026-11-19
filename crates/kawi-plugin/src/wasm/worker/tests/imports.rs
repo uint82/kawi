@@ -125,7 +125,7 @@ fn rejects_an_import_outside_the_manifest_without_prompting() {
 }
 
 #[test]
-fn rejects_a_partially_requested_filesystem_import() {
+fn requests_the_grant_for_a_read_only_filesystem_import() {
     let path = std::env::temp_dir();
     let plugin = request_paths(
         plugin_with("fs-sandbox.wasm"),
@@ -143,8 +143,11 @@ fn rejects_a_partially_requested_filesystem_import() {
         )
         .unwrap();
     let (requested, error) = wait_for_import_failure(&events_rx);
-    assert!(requested.is_empty());
-    assert!(error.to_string().contains("not requested"), "{error}");
+    assert_eq!(requested, BTreeSet::from([Capability::FsRead]), "{error}");
+    assert_eq!(
+        error,
+        PluginError::MissingCapabilities(vec![Capability::FsRead])
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

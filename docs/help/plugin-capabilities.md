@@ -359,7 +359,7 @@ An ungated command runs whenever the plugin runs.
 
 - WebAssembly plugins can only import interfaces declared in the manifest. An undeclared import fails before instantiation.
 - Runtime commands and key bindings are namespaced to the plugin and removed when it stops. A plugin cannot register a command name or bind keys owned by another plugin.
-- WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths.
+- WASI filesystem preopens come only from declared `fs.read` and `fs.write` paths. Either declaration is enough to import the WASI filesystem interfaces: `fs.read` alone yields read-only preopens, so a plugin cannot write through them.
 - WASI network access comes only from declared `net.connect` hosts and is limited to outbound TCP connect.
 - Host-mediated editor, UI, and diagnostics calls require the matching declaration. Interactive prompts also require an integer JSON-RPC request id. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
 - `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
