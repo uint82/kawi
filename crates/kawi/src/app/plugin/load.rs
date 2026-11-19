@@ -120,7 +120,7 @@ impl PluginRuntime {
                             accepts_args: false,
                         });
                         let (mut plugin_bindings, mut binding_warnings) =
-                            plugin_bindings(plugin, contribution, id, leaders);
+                            plugin_bindings(plugin, contribution, id, leaders, keymaps);
                         bindings.append(&mut plugin_bindings);
                         warnings.append(&mut binding_warnings);
                     }
@@ -233,6 +233,7 @@ fn plugin_bindings(
     contribution: &PluginCommand,
     command: CommandId,
     leaders: &[KeyChord],
+    keymaps: &KeymapResolver,
 ) -> (Vec<Binding>, Vec<String>) {
     let mut bindings = Vec::new();
     let mut warnings = Vec::new();
@@ -252,6 +253,13 @@ fn plugin_bindings(
                         if has_reserved_prefix(&keys) {
                             warnings.push(format!(
                                 "{}: count and register prefixes are reserved: {sequence}",
+                                plugin.path.display()
+                            ));
+                            continue;
+                        }
+                        if keymaps.has_user_prefix_conflict(context, keys.chords()) {
+                            warnings.push(format!(
+                                "{}: keybinding conflicts with a user mapping: {sequence}",
                                 plugin.path.display()
                             ));
                             continue;

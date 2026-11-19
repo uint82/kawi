@@ -168,6 +168,9 @@ impl PluginRuntime {
 
     pub(crate) fn apply_bindings(&self, keymaps: &mut KeymapResolver) {
         for binding in &self.bindings {
+            if keymaps.has_user_prefix_conflict(binding.mode, binding.keys.chords()) {
+                continue;
+            }
             keymaps.bind(binding.clone());
         }
     }

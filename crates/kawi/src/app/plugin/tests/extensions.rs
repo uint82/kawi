@@ -222,6 +222,80 @@ fn rejects_runtime_keymap_collisions() {
 }
 
 #[test]
+fn rejects_runtime_keymaps_with_reserved_prefixes() {
+    let (root, mut app) = loaded();
+    for keys in ["1", "\"a"] {
+        let error = app
+            .handle_plugin_request(
+                "echo",
+                "keymap.set",
+                json!({
+                    "mode": "normal",
+                    "keys": keys,
+                    "command": "echo.ping"
+                }),
+            )
+            .expect_err("reserved prefix");
+        assert_eq!(error.code, INVALID_PARAMS);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_runtime_keymaps_that_shadow_a_user_prefix() {
+    let (root, mut app) = loaded();
+    let user_command = app.commands.find("file.save").expect("builtin");
+    let mode = crate::keymap::KeyContext::Normal;
+    let user_keys = crate::keymap::KeySequence::parse("<leader>pg", &app.leaders).unwrap();
+    app.keymaps.bind(crate::keymap::Binding::new(
+        user_command,
+        mode,
+        user_keys,
+        crate::keymap::BindingSource::User,
+    ));
+    let error = app
+        .handle_plugin_request(
+            "echo",
+            "keymap.set",
+            json!({
+                "mode": "normal",
+                "keys": "<leader>p",
+                "command": "echo.ping"
+            }),
+        )
+        .expect_err("shorter than user mapping");
+    assert_eq!(error.code, INVALID_PARAMS);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_runtime_keymaps_that_extend_a_user_prefix() {
+    let (root, mut app) = loaded();
+    let user_command = app.commands.find("file.save").expect("builtin");
+    let mode = crate::keymap::KeyContext::Normal;
+    let user_keys = crate::keymap::KeySequence::parse("<leader>p", &app.leaders).unwrap();
+    app.keymaps.bind(crate::keymap::Binding::new(
+        user_command,
+        mode,
+        user_keys,
+        crate::keymap::BindingSource::User,
+    ));
+    let error = app
+        .handle_plugin_request(
+            "echo",
+            "keymap.set",
+            json!({
+                "mode": "normal",
+                "keys": "<leader>pg",
+                "command": "echo.ping"
+            }),
+        )
+        .expect_err("longer than user mapping");
+    assert_eq!(error.code, INVALID_PARAMS);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn stopping_a_plugin_removes_runtime_keymaps() {
     let (root, mut app) = loaded();
     set_keymap(&mut app, "normal", "<leader>pg", "echo.ping");
@@ -250,4 +324,78 @@ fn set_keymap(
         )
         .expect("set keymap");
     serde_json::from_value(value).expect("keymap")
+}
+
+#[test]
+fn skips_manifest_keybindings_that_shadow_a_user_prefix() {
+    let root = temp_dir("manifest_user_prefix");
+    let dir = root.join("echo");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("plugin.toml"),
+        r#"name = "echo"
+version = "0.1.0"
+protocol = 1
+command = ["/bin/true"]
+
+[[commands]]
+id = "ping"
+title = "Ping"
+
+[commands.keybindings]
+normal = ["<leader>p"]
+"#,
+    )
+    .unwrap();
+    let mut app = app();
+    let user_command = app.commands.find("file.save").expect("builtin");
+    let mode = crate::keymap::KeyContext::Normal;
+    let user_keys = crate::keymap::KeySequence::parse("<leader>pg", &app.leaders).unwrap();
+    app.keymaps.bind(crate::keymap::Binding::new(
+        user_command,
+        mode,
+        user_keys.clone(),
+        crate::keymap::BindingSource::User,
+    ));
+    let warnings = load_plugins(&mut app, &root);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("conflicts with a user mapping")),
+        "{warnings:?}"
+    );
+    let plugin_keys = crate::keymap::KeySequence::parse("<leader>p", &app.leaders).unwrap();
+    assert!(app.keymaps.binding_at(mode, plugin_keys.chords()).is_none());
+    assert_eq!(
+        app.keymaps
+            .binding_at(mode, user_keys.chords())
+            .map(|binding| binding.source),
+        Some(crate::keymap::BindingSource::User)
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn user_prefix_wins_when_keymaps_reload() {
+    let (root, mut app) = loaded();
+    let user_command = app.commands.find("file.save").expect("builtin");
+    let mode = crate::keymap::KeyContext::Normal;
+    let user_keys = crate::keymap::KeySequence::parse("<leader>p", &app.leaders).unwrap();
+    let mut load = crate::keymap::config::KeymapLoad::default();
+    load.bindings.push(crate::keymap::Binding::new(
+        user_command,
+        mode,
+        user_keys.clone(),
+        crate::keymap::BindingSource::User,
+    ));
+    app.apply_keymaps(load);
+    let plugin_keys = crate::keymap::KeySequence::parse("<leader>pp", &app.leaders).unwrap();
+    assert!(app.keymaps.binding_at(mode, plugin_keys.chords()).is_none());
+    assert_eq!(
+        app.keymaps
+            .binding_at(mode, user_keys.chords())
+            .map(|binding| binding.source),
+        Some(crate::keymap::BindingSource::User)
+    );
+    fs::remove_dir_all(root).unwrap();
 }

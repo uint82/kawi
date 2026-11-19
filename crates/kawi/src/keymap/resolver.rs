@@ -169,6 +169,15 @@ impl KeymapResolver {
             .any(|binding| binding.source == BindingSource::User && binding.matches(mode, keys))
     }
 
+    pub(crate) fn has_user_prefix_conflict(&self, mode: KeyContext, keys: &[KeyChord]) -> bool {
+        self.bindings.iter().any(|binding| {
+            binding.source == BindingSource::User
+                && binding.mode == mode
+                && binding.keys.chords() != keys
+                && (binding.keys.starts_with(keys) || keys.starts_with(binding.keys.chords()))
+        })
+    }
+
     fn exact_binding(&self, context: KeyContext, keys: &[KeyChord]) -> Option<&Binding> {
         self.bindings
             .iter()
