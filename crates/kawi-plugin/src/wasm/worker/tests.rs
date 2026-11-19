@@ -270,6 +270,7 @@ fn forwards_events_to_a_wasm_component() {
 }
 
 mod editor;
+mod errors;
 mod events;
 #[cfg(unix)]
 mod fs;

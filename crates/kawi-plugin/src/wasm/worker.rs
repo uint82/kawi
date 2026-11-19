@@ -19,6 +19,7 @@ use super::session::Session;
 use super::state::{fail_pending, pending_calls, PendingCalls};
 
 const COMMAND_QUEUE: usize = 64;
+const SESSION_NOT_READY: &str = "wasm session is not ready";
 
 pub(crate) fn start_wasm_worker(
     plugin: LoadedPlugin,
@@ -173,56 +174,26 @@ impl WasmWorker {
         _context: InvocationContext,
     ) {
         if let Some(capability) = self.plugin.denied_command(&self.capabilities, &command) {
-            send_event(
-                &self.events,
-                &self.wake,
-                PluginHostEvent::InvocationFinished {
-                    plugin: self.plugin.manifest.name.clone(),
-                    request,
-                    result: Err(PluginError::Rpc(RpcError::capability_denied(
-                        capability.name(),
-                        None,
-                    ))),
-                },
+            self.finish_request(
+                request,
+                Err(PluginError::Rpc(RpcError::capability_denied(
+                    capability.name(),
+                    None,
+                ))),
             );
             return;
         }
-        if let Err(error) = self.backoff.check() {
-            send_event(
-                &self.events,
-                &self.wake,
-                PluginHostEvent::InvocationFinished {
-                    plugin: self.plugin.manifest.name.clone(),
-                    request,
-                    result: Err(error),
-                },
-            );
-            self.update_backoff_status();
-            return;
-        }
-        self.ensure_start();
-        let had_session = self.session.is_some();
-        let not_ready = || {
-            self.start_error
-                .clone()
-                .unwrap_or_else(|| PluginError::Initialize("wasm session is not ready".to_string()))
-        };
-        let result = self
-            .session
-            .as_mut()
-            .ok_or_else(not_ready)
-            .and_then(|session| session.invoke(&command, args));
-        match &result {
-            Ok(_) => self.backoff.record_success(),
+        let result = match self.backoff.check() {
+            Ok(()) => self.service_call(|session| session.invoke(&command, args)),
             Err(error) => {
-                self.session = None;
-                if had_session {
-                    self.backoff.record_failure();
-                    self.update_backoff_status();
-                }
-                self.log(error.to_string());
+                self.update_backoff_status();
+                Err(error)
             }
-        }
+        };
+        self.finish_request(request, result);
+    }
+
+    fn finish_request(&self, request: u64, result: Result<Value, PluginError>) {
         send_event(
             &self.events,
             &self.wake,
@@ -234,6 +205,37 @@ impl WasmWorker {
         );
     }
 
+    /// Runs one guest entry point and keeps the session only while the guest is
+    /// healthy. RPC errors are valid replies, so they do not count as crashes.
+    fn service_call<T>(
+        &mut self,
+        call: impl FnOnce(&mut Session) -> Result<T, PluginError>,
+    ) -> Result<T, PluginError> {
+        self.ensure_start();
+        let Some(mut session) = self.session.take() else {
+            return Err(self.session_unavailable());
+        };
+        let result = call(&mut session);
+        if matches!(&result, Err(error) if error.is_transport_failure()) {
+            self.backoff.record_failure();
+            self.update_backoff_status();
+        } else {
+            self.session = Some(session);
+            self.backoff.record_success();
+            self.set_status(PluginStatus::Ready);
+        }
+        if let Err(error) = &result {
+            self.log(error.to_string());
+        }
+        result
+    }
+
+    fn session_unavailable(&self) -> PluginError {
+        self.start_error
+            .clone()
+            .unwrap_or_else(|| PluginError::Initialize(SESSION_NOT_READY.to_string()))
+    }
+
     fn handle_event(&mut self, event: &str, payload: Value) {
         if !is_event_allowed(&self.capabilities, &self.plugin.manifest.name, event) {
             return;
@@ -242,21 +244,7 @@ impl WasmWorker {
             self.log(error.to_string());
             return;
         }
-        self.ensure_start();
-        let had_session = self.session.is_some();
-        let result = self
-            .session
-            .as_mut()
-            .ok_or(PluginError::ProcessExited)
-            .and_then(|session| session.event(event, payload));
-        if let Err(error) = result {
-            self.log(error.to_string());
-            self.session = None;
-            if had_session {
-                self.backoff.record_failure();
-                self.update_backoff_status();
-            }
-        }
+        let _ = self.service_call(|session| session.event(event, payload));
     }
 
     fn handle_timer_callback(&mut self, timer: u64, payload: Option<String>) {
@@ -264,21 +252,7 @@ impl WasmWorker {
             self.log(error.to_string());
             return;
         }
-        self.ensure_start();
-        let had_session = self.session.is_some();
-        let result = self
-            .session
-            .as_mut()
-            .ok_or(PluginError::ProcessExited)
-            .and_then(|session| session.timer_callback(timer, payload));
-        if let Err(error) = result {
-            self.log(error.to_string());
-            self.session = None;
-            if had_session {
-                self.backoff.record_failure();
-                self.update_backoff_status();
-            }
-        }
+        let _ = self.service_call(|session| session.timer_callback(timer, payload));
     }
 
     fn handle_callback(&mut self, registration: u64, event: &str, payload: Value) {
@@ -286,21 +260,7 @@ impl WasmWorker {
             self.log(error.to_string());
             return;
         }
-        self.ensure_start();
-        let had_session = self.session.is_some();
-        let result = self
-            .session
-            .as_mut()
-            .ok_or(PluginError::ProcessExited)
-            .and_then(|session| session.callback(registration, event, payload));
-        if let Err(error) = result {
-            self.log(error.to_string());
-            self.session = None;
-            if had_session {
-                self.backoff.record_failure();
-                self.update_backoff_status();
-            }
-        }
+        let _ = self.service_call(|session| session.callback(registration, event, payload));
     }
 
     fn restart(&mut self) {
