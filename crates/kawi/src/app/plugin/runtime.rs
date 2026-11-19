@@ -39,7 +39,8 @@ pub(crate) struct PluginRuntime {
     pub(super) host: Option<PluginHost>,
     pub(super) events: Option<Receiver<PluginHostEvent>>,
     pub(super) catalog: PluginCatalog,
-    pub(super) targets: Vec<PluginCommandTarget>,
+    pub(super) targets: Vec<Option<PluginCommandTarget>>,
+    pub(super) free_targets: Vec<u32>,
     pub(super) runtime_commands:
         BTreeMap<String, BTreeMap<String, super::extensions::RuntimeCommand>>,
     pub(super) runtime_keymaps: BTreeMap<String, Vec<super::keymaps::RuntimeKeymap>>,
@@ -103,7 +104,29 @@ impl PluginRuntime {
     pub(crate) fn target(&self, index: u32) -> Option<(&str, &str)> {
         self.targets
             .get(index as usize)
+            .and_then(Option::as_ref)
             .map(|target| (target.plugin.as_str(), target.command.as_str()))
+    }
+
+    pub(super) fn take_target_slot(&mut self, target: PluginCommandTarget) -> u32 {
+        match self.free_targets.pop() {
+            Some(index) => {
+                self.targets[index as usize] = Some(target);
+                index
+            }
+            None => {
+                let index = self.targets.len() as u32;
+                self.targets.push(Some(target));
+                index
+            }
+        }
+    }
+
+    pub(super) fn release_target_slot(&mut self, index: u32) {
+        if let Some(slot) = self.targets.get_mut(index as usize) {
+            *slot = None;
+            self.free_targets.push(index);
+        }
     }
 
     pub(crate) fn invoke_named(

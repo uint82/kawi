@@ -76,6 +76,24 @@ fn lists_and_unregisters_runtime_commands() {
 }
 
 #[test]
+fn reuses_target_slots_after_unregistering_a_command() {
+    let (root, mut app) = loaded();
+    register(&mut app);
+    let before = app.plugins.targets.len();
+    app.handle_plugin_request("echo", "command.unregister", json!({ "id": "greet" }))
+        .expect("unregister");
+    let registered = register(&mut app);
+    assert_eq!(app.plugins.targets.len(), before);
+    let id = app.commands.find(&registered.name).expect("command");
+    let Some(CommandHandler::Plugin(target)) = app.commands.spec(id).map(|spec| spec.handler)
+    else {
+        panic!("plugin target");
+    };
+    assert_eq!(app.plugins.target(target), Some(("echo", "greet")));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rejects_duplicate_and_reserved_runtime_commands() {
     let (root, mut app) = loaded();
     register(&mut app);
@@ -192,13 +210,13 @@ fn rejects_runtime_keymap_collisions() {
         .unwrap();
     app.plugins
         .targets
-        .push(crate::app::plugin::runtime::PluginCommandTarget {
+        .push(Some(crate::app::plugin::runtime::PluginCommandTarget {
             plugin: "other".to_string(),
             command: "ping".to_string(),
             required: Vec::new(),
             coalesce: false,
             accepts_args: false,
-        });
+        }));
     let other = app.commands.find("other.ping").expect("other");
     app.keymaps.bind(crate::keymap::Binding::new(
         other,
