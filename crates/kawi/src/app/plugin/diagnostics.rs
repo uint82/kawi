@@ -7,8 +7,9 @@ pub(super) fn summaries(problems: &[&Problem], snapshot: &Rope) -> Vec<Diagnosti
     problems
         .iter()
         .map(|problem| {
-            let start = position(snapshot, problem.line, problem.column);
-            let end = position(snapshot, problem.end_line, problem.end_column);
+            let utf16 = problem.columns_are_utf16();
+            let start = position(snapshot, problem.line, problem.column, utf16);
+            let end = position(snapshot, problem.end_line, problem.end_column, utf16);
             DiagnosticSummary {
                 start,
                 end,
@@ -21,7 +22,7 @@ pub(super) fn summaries(problems: &[&Problem], snapshot: &Rope) -> Vec<Diagnosti
         .collect()
 }
 
-fn position(snapshot: &Rope, line: usize, column: usize) -> Position {
+fn position(snapshot: &Rope, line: usize, column: usize, utf16: bool) -> Position {
     let line = line
         .saturating_sub(1)
         .min(snapshot.len_lines().saturating_sub(1));
@@ -31,10 +32,18 @@ fn position(snapshot: &Rope, line: usize, column: usize) -> Position {
     } else {
         snapshot.line(line).to_string()
     };
-    Position {
-        line,
-        byte_column: utf16_to_byte(&text, units),
-    }
+    let byte_column = if utf16 {
+        utf16_to_byte(&text, units)
+    } else {
+        char_to_byte(&text, units)
+    };
+    Position { line, byte_column }
+}
+
+fn char_to_byte(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map_or(text.len(), |(byte, _)| byte)
 }
 
 fn utf16_to_byte(text: &str, units: usize) -> usize {
@@ -63,6 +72,37 @@ mod tests {
         assert_eq!(utf16_to_byte("a😀b", 1), 1);
         assert_eq!(utf16_to_byte("a😀b", 2), 5);
         assert_eq!(utf16_to_byte("a😀b", 4), 6);
+    }
+
+    #[test]
+    fn converts_character_columns_to_bytes() {
+        assert_eq!(char_to_byte("😀abc", 0), 0);
+        assert_eq!(char_to_byte("😀abc", 1), 4);
+        assert_eq!(char_to_byte("😀abc", 3), 6);
+        assert_eq!(char_to_byte("😀abc", 9), 7);
+    }
+
+    #[test]
+    fn plugin_summaries_use_utf8_byte_columns() {
+        let problem = Problem {
+            source: "plugin:lint".to_string(),
+            path: PathBuf::from("a.rs"),
+            line: 1,
+            column: 3,
+            end_line: 1,
+            end_column: 4,
+            severity: ProblemSeverity::Warning,
+            message: "unused".to_string(),
+            code: None,
+            code_description: None,
+            provider: None,
+            tags: Vec::new(),
+            related: Vec::new(),
+        };
+        let snapshot = Rope::from_str("😀abc\n");
+        let summaries = summaries(&[&problem], &snapshot);
+        assert_eq!(summaries[0].start.byte_column, 5);
+        assert_eq!(summaries[0].end.byte_column, 6);
     }
 
     #[test]
