@@ -11,6 +11,7 @@ pub(super) struct RuntimeCommand {
     pub(super) title: String,
     pub(super) description: String,
     pub(super) aliases: Vec<String>,
+    pub(super) target: u32,
 }
 
 impl PluginRuntime {
@@ -23,41 +24,48 @@ impl PluginRuntime {
         if !self.contains(plugin) {
             return Err(format!("unknown plugin: {plugin}"));
         }
-        let registered = self.runtime_commands.entry(plugin.to_string()).or_default();
-        if registered.contains_key(&params.id) {
+        let registered = self.runtime_commands.get(plugin);
+        if registered.is_some_and(|registered| registered.contains_key(&params.id)) {
             return Err(format!("command already registered: {}", params.id));
         }
-        if registered.len() >= MAX_RUNTIME_COMMANDS_PER_PLUGIN {
+        if registered.is_some_and(|registered| registered.len() >= MAX_RUNTIME_COMMANDS_PER_PLUGIN)
+        {
             return Err(format!(
                 "at most {MAX_RUNTIME_COMMANDS_PER_PLUGIN} runtime commands are allowed"
             ));
         }
         let name = format!("{plugin}.{}", params.id);
         let description = command_description(&params);
-        let target = self.targets.len() as u32;
-        commands.register_plugin(PluginCommandRegistration {
-            name: name.clone(),
-            aliases: params.aliases.clone(),
-            description: description.clone(),
-            plugin: plugin.to_string(),
-            target,
-        })?;
-        self.targets.push(PluginCommandTarget {
+        let target = self.take_target_slot(PluginCommandTarget {
             plugin: plugin.to_string(),
             command: params.id.clone(),
             required: Vec::new(),
             coalesce: false,
             accepts_args: true,
         });
-        registered.insert(
-            params.id.clone(),
-            RuntimeCommand {
-                name: name.clone(),
-                title: params.title.clone(),
-                description: description.clone(),
-                aliases: params.aliases.clone(),
-            },
-        );
+        if let Err(error) = commands.register_plugin(PluginCommandRegistration {
+            name: name.clone(),
+            aliases: params.aliases.clone(),
+            description: description.clone(),
+            plugin: plugin.to_string(),
+            target,
+        }) {
+            self.release_target_slot(target);
+            return Err(error);
+        }
+        self.runtime_commands
+            .entry(plugin.to_string())
+            .or_default()
+            .insert(
+                params.id.clone(),
+                RuntimeCommand {
+                    name: name.clone(),
+                    title: params.title.clone(),
+                    description: description.clone(),
+                    aliases: params.aliases.clone(),
+                    target,
+                },
+            );
         Ok(RegisteredCommand {
             id: params.id,
             name,
@@ -82,6 +90,7 @@ impl PluginRuntime {
             .ok_or_else(|| format!("command is not registered: {id}"))?;
         commands.unregister_plugin(&command.name, plugin)?;
         self.remove_keymaps_for_command(&command, keymaps);
+        self.release_target_slot(command.target);
         if let Some(registered) = self.runtime_commands.get_mut(plugin) {
             registered.remove(id);
             if registered.is_empty() {
@@ -121,6 +130,7 @@ impl PluginRuntime {
         for command in registered.into_values() {
             let _ = commands.unregister_plugin(&command.name, plugin);
             self.remove_keymaps_for_command(&command, keymaps);
+            self.release_target_slot(command.target);
         }
     }
 
@@ -138,6 +148,7 @@ impl PluginRuntime {
     pub(crate) fn target_accepts_args(&self, target: u32) -> bool {
         self.targets
             .get(target as usize)
+            .and_then(Option::as_ref)
             .is_some_and(|target| target.accepts_args)
     }
 }

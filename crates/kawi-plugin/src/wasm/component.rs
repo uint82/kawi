@@ -164,7 +164,7 @@ impl WasmRuntime {
                 unauthorized.join(", ")
             )));
         }
-        let used = requested_import_capabilities(imports.iter().map(String::as_str))
+        let used = requested_import_capabilities(imports.iter().map(String::as_str), &requested)
             .into_iter()
             .collect();
         Ok(ComponentInspection {

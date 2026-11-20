@@ -114,7 +114,7 @@ impl Worker {
     fn handle_invocation(&mut self, job: InvocationJob) {
         let request = job.request;
         let result = self.invoke(job);
-        if matches!(&result, Err(error) if is_transport_failure(error)) {
+        if matches!(&result, Err(error) if error.is_transport_failure()) {
             if let Some(mut failed) = self.connection.take() {
                 failed.shutdown();
             }
@@ -122,7 +122,7 @@ impl Worker {
         self.update_backoff(&result);
         self.update_status(&result);
         if let Err(error) = &result {
-            if is_transport_failure(error) {
+            if error.is_transport_failure() {
                 send_event(
                     &self.events,
                     &self.wake,
@@ -240,7 +240,7 @@ impl Worker {
     }
 
     fn update_backoff(&mut self, result: &Result<Value, PluginError>) {
-        if matches!(result, Err(error) if is_transport_failure(error)) {
+        if matches!(result, Err(error) if error.is_transport_failure()) {
             self.backoff.record_failure();
         } else if result.is_ok() || matches!(result, Err(PluginError::Rpc(_))) {
             self.backoff.record_success();
@@ -248,7 +248,7 @@ impl Worker {
     }
 
     fn update_status(&self, result: &Result<Value, PluginError>) {
-        if matches!(result, Err(error) if is_transport_failure(error)) {
+        if matches!(result, Err(error) if error.is_transport_failure()) {
             if self.backoff.is_disabled() {
                 self.set_status(PluginStatus::Disabled);
             } else {
@@ -270,16 +270,4 @@ impl Worker {
             status,
         );
     }
-}
-
-fn is_transport_failure(error: &PluginError) -> bool {
-    matches!(
-        error,
-        PluginError::Spawn(_)
-            | PluginError::Timeout
-            | PluginError::ProcessExited
-            | PluginError::Trap(_)
-            | PluginError::Protocol(_)
-            | PluginError::Initialize(_)
-    )
 }

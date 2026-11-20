@@ -65,6 +65,7 @@ impl PluginRuntime {
     fn resolved_target(&self, target: u32) -> Result<(String, String, bool), PluginError> {
         self.targets
             .get(target as usize)
+            .and_then(Option::as_ref)
             .map(|target| {
                 (
                     target.plugin.clone(),
@@ -195,6 +196,7 @@ impl PluginRuntime {
         let target = self
             .targets
             .iter()
+            .flatten()
             .find(|target| target.plugin == plugin && target.command == command)?;
         target
             .required

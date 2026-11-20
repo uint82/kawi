@@ -4,7 +4,9 @@ use kawi_plugin::{
 
 use super::PluginRuntime;
 use crate::command::{CommandRegistry, CommandSource};
-use crate::keymap::{Binding, BindingSource, KeyChord, KeyContext, KeySequence, KeymapResolver};
+use crate::keymap::{
+    has_reserved_prefix, Binding, BindingSource, KeyChord, KeyContext, KeySequence, KeymapResolver,
+};
 
 pub(super) struct RuntimeKeymap {
     pub(super) mode: KeyContext,
@@ -32,7 +34,9 @@ impl PluginRuntime {
         let command = commands
             .find(&params.command)
             .ok_or_else(|| format!("unknown command: {}", params.command))?;
-        self.check_keymap_owner(plugin, mode, &keys, commands, keymaps)?;
+        check_reserved_prefix(&keys)?;
+        check_keymap_owner(plugin, mode, &keys, commands, keymaps)?;
+        check_user_prefixes(mode, &keys, keymaps)?;
         let is_replacement = self.runtime_keymaps.get(plugin).is_some_and(|registered| {
             registered
                 .iter()
@@ -143,37 +147,54 @@ impl PluginRuntime {
             self.runtime_keymaps.remove(&plugin);
         }
     }
+}
 
-    fn check_keymap_owner(
-        &self,
-        plugin: &str,
-        mode: KeyContext,
-        keys: &KeySequence,
-        commands: &CommandRegistry,
-        keymaps: &KeymapResolver,
-    ) -> Result<(), String> {
-        let Some(binding) = keymaps.binding_at(mode, keys.chords()) else {
-            return Ok(());
-        };
-        match binding.source {
-            BindingSource::User => Err("keymap is owned by the user".to_string()),
-            BindingSource::Plugin => {
-                let owner = commands
-                    .spec(binding.command)
-                    .and_then(|spec| match &spec.source {
-                        CommandSource::Plugin(owner) => Some(owner.as_str()),
-                        CommandSource::Builtin => None,
-                    });
-                match owner {
-                    Some(owner) if owner != plugin => {
-                        Err(format!("keymap is owned by plugin {owner}"))
-                    }
-                    _ => Ok(()),
-                }
-            }
-            BindingSource::Default => Ok(()),
-        }
+fn check_reserved_prefix(keys: &KeySequence) -> Result<(), String> {
+    if has_reserved_prefix(keys) {
+        return Err("count and register prefixes are reserved".to_string());
     }
+    Ok(())
+}
+
+fn check_keymap_owner(
+    plugin: &str,
+    mode: KeyContext,
+    keys: &KeySequence,
+    commands: &CommandRegistry,
+    keymaps: &KeymapResolver,
+) -> Result<(), String> {
+    let Some(binding) = keymaps.binding_at(mode, keys.chords()) else {
+        return Ok(());
+    };
+    match binding.source {
+        BindingSource::User => Err("keymap is owned by the user".to_string()),
+        BindingSource::Plugin => {
+            let owner = commands
+                .spec(binding.command)
+                .and_then(|spec| match &spec.source {
+                    CommandSource::Plugin(owner) => Some(owner.as_str()),
+                    CommandSource::Builtin => None,
+                });
+            match owner {
+                Some(owner) if owner != plugin => Err(format!("keymap is owned by plugin {owner}")),
+                _ => Ok(()),
+            }
+        }
+        BindingSource::Default => Ok(()),
+    }
+}
+
+/// The resolver waits for a longer sequence when prefixes overlap, so a plugin
+/// binding that shares a prefix with a user binding would delay or steal it.
+fn check_user_prefixes(
+    mode: KeyContext,
+    keys: &KeySequence,
+    keymaps: &KeymapResolver,
+) -> Result<(), String> {
+    if keymaps.has_user_prefix_conflict(mode, keys.chords()) {
+        return Err("keymap conflicts with a user mapping".to_string());
+    }
+    Ok(())
 }
 
 fn key_context(mode: KeyMode) -> KeyContext {

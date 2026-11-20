@@ -34,6 +34,7 @@ impl PluginRuntime {
             self.events = None;
             self.catalog = PluginCatalog::default();
             self.targets.clear();
+            self.free_targets.clear();
             self.bindings.clear();
             self.settings.set_path(context.settings.to_path_buf());
             return Vec::new();
@@ -94,6 +95,7 @@ impl PluginRuntime {
             keymaps.unbind_source(binding.mode, &binding.keys, BindingSource::Plugin);
         }
         self.targets.clear();
+        self.free_targets.clear();
         let mut bindings = Vec::new();
         for plugin in &catalog.plugins {
             for contribution in &plugin.manifest.commands {
@@ -108,7 +110,7 @@ impl PluginRuntime {
                     target,
                 }) {
                     Ok(id) => {
-                        self.targets.push(PluginCommandTarget {
+                        self.targets.push(Some(PluginCommandTarget {
                             plugin: plugin.manifest.name.clone(),
                             command: contribution.id.clone(),
                             required: contribution
@@ -118,9 +120,9 @@ impl PluginRuntime {
                                 .collect(),
                             coalesce: contribution.coalesce_queued,
                             accepts_args: false,
-                        });
+                        }));
                         let (mut plugin_bindings, mut binding_warnings) =
-                            plugin_bindings(plugin, contribution, id, leaders);
+                            plugin_bindings(plugin, contribution, id, leaders, keymaps);
                         bindings.append(&mut plugin_bindings);
                         warnings.append(&mut binding_warnings);
                     }
@@ -233,6 +235,7 @@ fn plugin_bindings(
     contribution: &PluginCommand,
     command: CommandId,
     leaders: &[KeyChord],
+    keymaps: &KeymapResolver,
 ) -> (Vec<Binding>, Vec<String>) {
     let mut bindings = Vec::new();
     let mut warnings = Vec::new();
@@ -252,6 +255,13 @@ fn plugin_bindings(
                         if has_reserved_prefix(&keys) {
                             warnings.push(format!(
                                 "{}: count and register prefixes are reserved: {sequence}",
+                                plugin.path.display()
+                            ));
+                            continue;
+                        }
+                        if keymaps.has_user_prefix_conflict(context, keys.chords()) {
+                            warnings.push(format!(
+                                "{}: keybinding conflicts with a user mapping: {sequence}",
                                 plugin.path.display()
                             ));
                             continue;

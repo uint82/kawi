@@ -109,8 +109,16 @@ fn ignores_satisfied_imports() {
 }
 
 #[test]
-fn rejects_partially_requested_alternatives() {
+fn allows_read_only_filesystem_imports() {
     let requested = BTreeSet::from([Capability::EditorRead, Capability::FsRead]);
+    assert!(
+        unauthorized_imports(["wasi:filesystem/types@0.2.12"].into_iter(), &requested).is_empty()
+    );
+}
+
+#[test]
+fn rejects_filesystem_imports_without_a_grant() {
+    let requested = BTreeSet::from([Capability::EditorRead]);
     assert_eq!(
         unauthorized_imports(["wasi:filesystem/types@0.2.12"].into_iter(), &requested),
         vec!["wasi:filesystem/types@0.2.12"]
@@ -225,6 +233,7 @@ fn host_interfaces_share_the_process_capability_table() {
 
 #[test]
 fn records_capabilities_used_by_imports() {
+    let requested = BTreeSet::from([Capability::EditorRead, Capability::EditorExecute]);
     assert_eq!(
         requested_import_capabilities(
             [
@@ -232,13 +241,18 @@ fn records_capabilities_used_by_imports() {
                 "kawi:plugin/editor-execute@0.13.0",
                 "wasi:filesystem/types@0.2.12",
             ]
-            .into_iter()
+            .into_iter(),
+            &requested
         ),
-        BTreeSet::from([
-            Capability::EditorRead,
-            Capability::EditorExecute,
-            Capability::FsRead,
-            Capability::FsWrite
-        ])
+        BTreeSet::from([Capability::EditorRead, Capability::EditorExecute])
+    );
+}
+
+#[test]
+fn records_only_the_requested_filesystem_alternative() {
+    let requested = BTreeSet::from([Capability::FsRead]);
+    assert_eq!(
+        requested_import_capabilities(["wasi:filesystem/types@0.2.12"].into_iter(), &requested),
+        BTreeSet::from([Capability::FsRead])
     );
 }

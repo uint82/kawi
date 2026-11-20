@@ -12,6 +12,10 @@ pub const CAPABILITY_DENIED: i32 = -32012;
 pub const REQUEST_CANCELED: i32 = -32020;
 pub const PLUGIN_UNAVAILABLE: i32 = -32030;
 pub const UI_BUSY: i32 = -32040;
+pub const JOB_NOT_FOUND: i32 = -32050;
+pub const JOB_LIMIT: i32 = -32051;
+pub const JOB_CLOSED: i32 = -32052;
+pub const JOB_QUEUE_FULL: i32 = -32053;
 pub const PANEL_NOT_FOUND: i32 = -32060;
 pub const OVERLAY_NOT_FOUND: i32 = -32061;
 pub const TASK_NOT_FOUND: i32 = -32062;
@@ -36,6 +40,10 @@ pub enum ErrorKind {
     InvalidPosition,
     CapabilityDenied,
     Busy,
+    JobNotFound,
+    JobLimit,
+    JobClosed,
+    JobQueueFull,
     PanelNotFound,
     OverlayNotFound,
     TaskNotFound,
@@ -64,6 +72,10 @@ pub fn error_kind(error: &Error) -> ErrorKind {
         INVALID_POSITION => ErrorKind::InvalidPosition,
         CAPABILITY_DENIED => ErrorKind::CapabilityDenied,
         UI_BUSY => ErrorKind::Busy,
+        JOB_NOT_FOUND => ErrorKind::JobNotFound,
+        JOB_LIMIT => ErrorKind::JobLimit,
+        JOB_CLOSED => ErrorKind::JobClosed,
+        JOB_QUEUE_FULL => ErrorKind::JobQueueFull,
         PANEL_NOT_FOUND => ErrorKind::PanelNotFound,
         OVERLAY_NOT_FOUND => ErrorKind::OverlayNotFound,
         TASK_NOT_FOUND => ErrorKind::TaskNotFound,
@@ -101,6 +113,10 @@ mod tests {
             ErrorKind::CapabilityDenied
         );
         assert_eq!(error_kind(&error(UI_BUSY)), ErrorKind::Busy);
+        assert_eq!(error_kind(&error(JOB_NOT_FOUND)), ErrorKind::JobNotFound);
+        assert_eq!(error_kind(&error(JOB_LIMIT)), ErrorKind::JobLimit);
+        assert_eq!(error_kind(&error(JOB_CLOSED)), ErrorKind::JobClosed);
+        assert_eq!(error_kind(&error(JOB_QUEUE_FULL)), ErrorKind::JobQueueFull);
         assert_eq!(
             error_kind(&error(PANEL_NOT_FOUND)),
             ErrorKind::PanelNotFound

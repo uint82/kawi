@@ -52,6 +52,22 @@ impl fmt::Display for PluginError {
     }
 }
 
+impl PluginError {
+    /// A transport failure means the session can no longer be trusted. RPC errors
+    /// are normal replies from a healthy guest and must not tear the session down.
+    pub fn is_transport_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::Spawn(_)
+                | Self::Timeout
+                | Self::ProcessExited
+                | Self::Trap(_)
+                | Self::Protocol(_)
+                | Self::Initialize(_)
+        )
+    }
+}
+
 impl std::error::Error for PluginError {}
 
 fn write_missing_capabilities(
@@ -67,4 +83,29 @@ fn write_missing_capabilities(
         write!(formatter, ", {}", capability.name())?;
     }
     formatter.write_str(", not granted")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transport_failures_require_a_new_session() {
+        for error in [
+            PluginError::Spawn(String::new()),
+            PluginError::Timeout,
+            PluginError::ProcessExited,
+            PluginError::Trap(String::new()),
+            PluginError::Protocol(String::new()),
+            PluginError::Initialize(String::new()),
+        ] {
+            assert!(error.is_transport_failure(), "{error} should be transport");
+        }
+    }
+
+    #[test]
+    fn rpc_errors_leave_the_session_running() {
+        let error = PluginError::Rpc(RpcError::new(crate::protocol::STALE_REVISION, "stale"));
+        assert!(!error.is_transport_failure());
+    }
 }

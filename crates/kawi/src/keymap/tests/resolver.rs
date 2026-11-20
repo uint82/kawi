@@ -4,7 +4,7 @@ use crossterm::event::KeyCode;
 use kawi_editor::Mode;
 
 use super::super::*;
-use super::{binding, plain, registry};
+use super::{binding, plain, registry, sequence};
 
 #[test]
 fn resolver_prefers_complete_matches() {
@@ -298,4 +298,45 @@ fn unbind_source_preserves_user_bindings() {
         resolver.bindings()[0].command,
         registry.find("file.save").expect("save")
     );
+}
+
+#[test]
+fn user_prefix_conflicts_cover_shorter_and_longer_sequences() {
+    let registry = registry();
+    let mut resolver = KeymapResolver::new();
+    resolver.bind(binding(
+        &registry,
+        "file.save",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::User,
+    ));
+    let short = sequence("g");
+    let long = sequence("gxy");
+    assert!(resolver.has_user_prefix_conflict(KeyContext::Normal, short.chords()));
+    assert!(resolver.has_user_prefix_conflict(KeyContext::Normal, long.chords()));
+    assert!(!resolver.has_user_prefix_conflict(KeyContext::Normal, sequence("gy").chords()));
+}
+
+#[test]
+fn user_prefix_conflicts_ignore_exact_and_plugin_bindings() {
+    let registry = registry();
+    let mut resolver = KeymapResolver::new();
+    resolver.bind(binding(
+        &registry,
+        "file.save",
+        KeyContext::Normal,
+        "gx",
+        BindingSource::User,
+    ));
+    resolver.bind(binding(
+        &registry,
+        "file.quit",
+        KeyContext::Normal,
+        "gy",
+        BindingSource::Plugin,
+    ));
+    assert!(!resolver.has_user_prefix_conflict(KeyContext::Normal, sequence("gx").chords()));
+    assert!(!resolver.has_user_prefix_conflict(KeyContext::Normal, sequence("gy").chords()));
+    assert!(!resolver.has_user_prefix_conflict(KeyContext::Insert, sequence("g").chords()));
 }

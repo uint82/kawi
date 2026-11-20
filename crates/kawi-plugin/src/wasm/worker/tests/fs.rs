@@ -185,3 +185,25 @@ fn fs_plugin(component: &str, path: &str) -> LoadedPlugin {
         &[(Capability::FsRead, path), (Capability::FsWrite, path)],
     )
 }
+
+#[cfg(unix)]
+#[test]
+fn starts_a_read_only_plugin_without_fs_write() {
+    let (root, allowed) = sandbox_root();
+    let path = allowed.to_string_lossy();
+    let plugin = request_paths(
+        plugin_with("fs-sandbox.wasm"),
+        &[(Capability::FsRead, path.as_ref())],
+    );
+    let dir = plugin.dir.clone();
+    let name = plugin.manifest.name.clone();
+    let result = run_probe(
+        plugin,
+        read_capabilities(&name, path.as_ref()),
+        HostEnvironment::default(),
+    );
+    assert_eq!(result, json!("blocked"));
+    assert!(!allowed.join("write-test.txt").exists());
+    let _ = fs::remove_dir_all(dir);
+    let _ = fs::remove_dir_all(root);
+}
