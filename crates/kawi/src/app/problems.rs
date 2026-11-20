@@ -206,10 +206,6 @@ impl Problem {
             .filter(|provider| !provider.is_empty())
             .unwrap_or_else(|| self.source.strip_prefix(LSP_PREFIX).unwrap_or(&self.source))
     }
-
-    pub(super) fn columns_are_utf16(&self) -> bool {
-        self.source.starts_with(LSP_PREFIX)
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -7,9 +7,8 @@ pub(super) fn summaries(problems: &[&Problem], snapshot: &Rope) -> Vec<Diagnosti
     problems
         .iter()
         .map(|problem| {
-            let utf16 = problem.columns_are_utf16();
-            let start = position(snapshot, problem.line, problem.column, utf16);
-            let end = position(snapshot, problem.end_line, problem.end_column, utf16);
+            let start = position(snapshot, problem.line, problem.column);
+            let end = position(snapshot, problem.end_line, problem.end_column);
             DiagnosticSummary {
                 start,
                 end,
@@ -22,22 +21,19 @@ pub(super) fn summaries(problems: &[&Problem], snapshot: &Rope) -> Vec<Diagnosti
         .collect()
 }
 
-fn position(snapshot: &Rope, line: usize, column: usize, utf16: bool) -> Position {
+fn position(snapshot: &Rope, line: usize, column: usize) -> Position {
     let line = line
         .saturating_sub(1)
         .min(snapshot.len_lines().saturating_sub(1));
-    let units = column.saturating_sub(1);
     let text = if snapshot.len_lines() == 0 {
         String::new()
     } else {
         snapshot.line(line).to_string()
     };
-    let byte_column = if utf16 {
-        utf16_to_byte(&text, units)
-    } else {
-        char_to_byte(&text, units)
-    };
-    Position { line, byte_column }
+    Position {
+        line,
+        byte_column: char_to_byte(&text, column.saturating_sub(1)),
+    }
 }
 
 fn char_to_byte(text: &str, chars: usize) -> usize {
@@ -46,33 +42,12 @@ fn char_to_byte(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(byte, _)| byte)
 }
 
-fn utf16_to_byte(text: &str, units: usize) -> usize {
-    let mut utf16 = 0;
-    let mut bytes = 0;
-    for ch in text.chars() {
-        if utf16 >= units {
-            break;
-        }
-        utf16 += ch.len_utf16();
-        bytes += ch.len_utf8();
-    }
-    bytes.min(text.len())
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use super::*;
     use crate::app::problems::ProblemSeverity;
-
-    #[test]
-    fn converts_utf16_columns_to_bytes() {
-        assert_eq!(utf16_to_byte("a😀b", 0), 0);
-        assert_eq!(utf16_to_byte("a😀b", 1), 1);
-        assert_eq!(utf16_to_byte("a😀b", 2), 5);
-        assert_eq!(utf16_to_byte("a😀b", 4), 6);
-    }
 
     #[test]
     fn converts_character_columns_to_bytes() {
@@ -113,7 +88,7 @@ mod tests {
             line: 1,
             column: 3,
             end_line: 1,
-            end_column: 5,
+            end_column: 4,
             severity: ProblemSeverity::Warning,
             message: "unused".to_string(),
             code: Some("W1".to_string()),
