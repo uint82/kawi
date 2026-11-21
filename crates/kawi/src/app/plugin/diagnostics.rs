@@ -25,7 +25,6 @@ fn position(snapshot: &Rope, line: usize, column: usize) -> Position {
     let line = line
         .saturating_sub(1)
         .min(snapshot.len_lines().saturating_sub(1));
-    let units = column.saturating_sub(1);
     let text = if snapshot.len_lines() == 0 {
         String::new()
     } else {
@@ -33,21 +32,14 @@ fn position(snapshot: &Rope, line: usize, column: usize) -> Position {
     };
     Position {
         line,
-        byte_column: utf16_to_byte(&text, units),
+        byte_column: char_to_byte(&text, column.saturating_sub(1)),
     }
 }
 
-fn utf16_to_byte(text: &str, units: usize) -> usize {
-    let mut utf16 = 0;
-    let mut bytes = 0;
-    for ch in text.chars() {
-        if utf16 >= units {
-            break;
-        }
-        utf16 += ch.len_utf16();
-        bytes += ch.len_utf8();
-    }
-    bytes.min(text.len())
+fn char_to_byte(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map_or(text.len(), |(byte, _)| byte)
 }
 
 #[cfg(test)]
@@ -58,11 +50,34 @@ mod tests {
     use crate::app::problems::ProblemSeverity;
 
     #[test]
-    fn converts_utf16_columns_to_bytes() {
-        assert_eq!(utf16_to_byte("a😀b", 0), 0);
-        assert_eq!(utf16_to_byte("a😀b", 1), 1);
-        assert_eq!(utf16_to_byte("a😀b", 2), 5);
-        assert_eq!(utf16_to_byte("a😀b", 4), 6);
+    fn converts_character_columns_to_bytes() {
+        assert_eq!(char_to_byte("😀abc", 0), 0);
+        assert_eq!(char_to_byte("😀abc", 1), 4);
+        assert_eq!(char_to_byte("😀abc", 3), 6);
+        assert_eq!(char_to_byte("😀abc", 9), 7);
+    }
+
+    #[test]
+    fn plugin_summaries_use_utf8_byte_columns() {
+        let problem = Problem {
+            source: "plugin:lint".to_string(),
+            path: PathBuf::from("a.rs"),
+            line: 1,
+            column: 3,
+            end_line: 1,
+            end_column: 4,
+            severity: ProblemSeverity::Warning,
+            message: "unused".to_string(),
+            code: None,
+            code_description: None,
+            provider: None,
+            tags: Vec::new(),
+            related: Vec::new(),
+        };
+        let snapshot = Rope::from_str("😀abc\n");
+        let summaries = summaries(&[&problem], &snapshot);
+        assert_eq!(summaries[0].start.byte_column, 5);
+        assert_eq!(summaries[0].end.byte_column, 6);
     }
 
     #[test]
@@ -73,7 +88,7 @@ mod tests {
             line: 1,
             column: 3,
             end_line: 1,
-            end_column: 5,
+            end_column: 4,
             severity: ProblemSeverity::Warning,
             message: "unused".to_string(),
             code: Some("W1".to_string()),
