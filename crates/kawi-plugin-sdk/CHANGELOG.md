@@ -1,3 +1,10 @@
+## Unreleased
+
+### Added
+
+- Add `editor_buffers_write::create` and `close` for plugin-owned scratch buffers.
+- Add `BUFFER_MODIFIED` and `BUFFER_NOT_OWNED` error codes with matching `ErrorKind` variants.
+
 ## 0.13.0 - 2026-11-16
 
 ### Breaking

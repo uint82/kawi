@@ -41,7 +41,7 @@ pub fn host_method_minor(method: &str) -> u64 {
         "timer.after" | "timer.every" | "timer.cancel" | "timer.list" | "variable.get"
         | "variable.set" | "variable.delete" | "variable.list" | "options.set"
         | "options.reset" | "task.list" | "task.start" | "task.status" | "task.poll"
-        | "task.cancel" => crate::protocol::PROTOCOL_MINOR,
+        | "task.cancel" | "buffer.create" | "buffer.close" => crate::protocol::PROTOCOL_MINOR,
         _ => 0,
     }
 }
@@ -70,7 +70,7 @@ pub fn host_method_capability(method: &str) -> MethodCapability {
         "editor.get_state" => MethodCapability::Required(Capability::EditorRead),
         "editor.apply_edit" => MethodCapability::Required(Capability::EditorWrite),
         "buffer.list" | "buffer.get" => MethodCapability::Required(Capability::EditorBuffers),
-        "buffer.open" | "buffer.apply_edit" => {
+        "buffer.open" | "buffer.apply_edit" | "buffer.create" | "buffer.close" => {
             MethodCapability::Required(Capability::EditorBuffersWrite)
         }
         "window.list" | "window.get" | "window.focus" | "window.open" | "window.close" => {

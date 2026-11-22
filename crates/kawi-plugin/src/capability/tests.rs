@@ -227,6 +227,8 @@ fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
         "buffer.get",
         "buffer.open",
         "buffer.apply_edit",
+        "buffer.create",
+        "buffer.close",
         "window.list",
         "window.get",
         "window.focus",
@@ -325,6 +327,18 @@ fn task_methods_require_task_run_at_the_current_minor() {
         assert_eq!(
             host_method_capability(method),
             MethodCapability::Required(Capability::TaskRun)
+        );
+        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert!(!is_process_host_method(method));
+    }
+}
+
+#[test]
+fn buffer_lifecycle_methods_require_write_at_the_current_minor() {
+    for method in ["buffer.create", "buffer.close"] {
+        assert_eq!(
+            host_method_capability(method),
+            MethodCapability::Required(Capability::EditorBuffersWrite)
         );
         assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
         assert!(!is_process_host_method(method));

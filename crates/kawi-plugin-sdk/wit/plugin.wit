@@ -348,6 +348,8 @@ interface editor-buffers-write {
   use types.{buffer-state, edit, error};
   open: func(path: string) -> result<buffer-state, error>;
   apply-edit: func(buffer: u64, revision: u64, edits: list<edit>) -> result<u64, error>;
+  create: func(text: string) -> result<buffer-state, error>;
+  close: func(buffer: u64, force: bool) -> result<_, error>;
 }
 
 interface editor-windows {

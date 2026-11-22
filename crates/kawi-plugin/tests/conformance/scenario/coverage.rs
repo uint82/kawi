@@ -161,6 +161,14 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
         reason: "requires editor buffer state and path scope; covered by app plugin host API tests",
     },
     Uncovered {
+        name: "buffer.create",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
+        name: "buffer.close",
+        reason: "requires editor buffer state; covered by app plugin host API tests",
+    },
+    Uncovered {
         name: "window.list",
         reason: "requires editor window state; covered by app plugin host API tests",
     },

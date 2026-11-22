@@ -12,8 +12,9 @@ use super::super::convert::{
 };
 use super::{apply_edit_request, serialize_params, WasmState};
 use crate::protocol::{
-    BufferGetParams, BufferOpenParams, OptionsGetParams, OptionsListParams, SetCursorParams,
-    SetModeParams, SetSelectionParams, WindowCloseParams, WindowOpenParams, WindowParams,
+    BufferCloseParams, BufferCreateParams, BufferGetParams, BufferOpenParams, OptionsGetParams,
+    OptionsListParams, SetCursorParams, SetModeParams, SetSelectionParams, WindowCloseParams,
+    WindowOpenParams, WindowParams,
 };
 
 impl editor_buffers::Host for WasmState {
@@ -50,6 +51,23 @@ impl editor_buffers_write::Host for WasmState {
 
     fn apply_edit(&mut self, buffer: u64, revision: u64, edits: Vec<Edit>) -> Result<u64, Error> {
         apply_edit_request(self, buffer, revision, edits)
+    }
+
+    fn create(&mut self, text: String) -> Result<WitBufferState, Error> {
+        let params = serialize_params(BufferCreateParams { text })?;
+        let value = self
+            .bridge
+            .request("buffer.create", params)
+            .map_err(error_from_rpc)?;
+        buffer_state_from_json(value).map_err(error_from_rpc)
+    }
+
+    fn close(&mut self, buffer: u64, force: bool) -> Result<(), Error> {
+        let params = serialize_params(BufferCloseParams { buffer, force })?;
+        self.bridge
+            .request("buffer.close", params)
+            .map_err(error_from_rpc)?;
+        Ok(())
     }
 }
 
