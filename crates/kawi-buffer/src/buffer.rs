@@ -47,6 +47,7 @@ pub struct Buffer {
     readonly: bool,
     internal: bool,
     directory: bool,
+    scratch: bool,
     source_hash: Option<[u8; 32]>,
     line_ending: LineEnding,
 }
@@ -78,6 +79,7 @@ impl Buffer {
             readonly: false,
             internal: false,
             directory: false,
+            scratch: false,
             source_hash: None,
             line_ending,
         }
@@ -206,6 +208,14 @@ impl Buffer {
 
     pub fn is_directory(&self) -> bool {
         self.directory
+    }
+
+    pub fn is_scratch(&self) -> bool {
+        self.scratch
+    }
+
+    pub fn set_scratch(&mut self, scratch: bool) {
+        self.scratch = scratch;
     }
 
     pub fn set_directory(&mut self, directory: bool) {
@@ -1055,6 +1065,9 @@ impl Buffer {
         if self.directory {
             anyhow::bail!("E382: Cannot write, directory buffer");
         }
+        if self.scratch {
+            anyhow::bail!("E382: Cannot write, scratch buffer");
+        }
         if self.readonly {
             anyhow::bail!("E45: 'readonly' option is set (add ! to override)");
         }
@@ -1114,6 +1127,9 @@ impl Buffer {
     pub fn set_path(&mut self, path: Option<&str>, source_hash: Option<[u8; 32]>) {
         self.path = path.map(str::to_string);
         self.source_hash = source_hash;
+        if self.path.is_some() {
+            self.scratch = false;
+        }
     }
 
     pub fn byte_count(&self) -> usize {
@@ -1619,6 +1635,16 @@ mod tests {
         b.checkpoint(0, 0);
         b.insert_char(0, 1, 'b');
         assert!(b.is_dirty());
+    }
+
+    #[test]
+    fn scratch_buffers_refuse_to_save_until_named() {
+        let mut buffer = Buffer::from_string("hi");
+        buffer.set_scratch(true);
+        assert!(buffer.is_scratch());
+        assert!(buffer.save(false).is_err());
+        buffer.set_path(Some("/tmp/kawi_scratch_named.txt"), None);
+        assert!(!buffer.is_scratch());
     }
 
     #[test]
