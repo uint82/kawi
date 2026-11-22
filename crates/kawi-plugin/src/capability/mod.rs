@@ -8,11 +8,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+pub use crate::api_maturity::{event_since as event_minor, host_method_since as host_method_minor};
 pub(crate) use command::{authorize_command, resolve as resolve_command};
 pub use method::{
-    advertised_events, advertised_host_methods, event_capability, event_minor,
-    host_method_capability, host_method_minor, is_event_allowed, is_host_method_allowed,
-    is_process_event, is_process_host_method, MethodCapability,
+    advertised_events, advertised_host_methods, event_capability, host_method_capability,
+    is_event_allowed, is_host_method_allowed, is_process_event, is_process_host_method,
+    MethodCapability,
 };
 pub use registry::CapabilityRegistry;
 #[cfg(feature = "wasm")]
