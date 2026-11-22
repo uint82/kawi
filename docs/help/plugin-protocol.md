@@ -5,7 +5,7 @@ related = ["plugins", "plugin-capabilities", "plugin-authoring", "plugin-migrati
 ---
 # Plugin protocol
 
-This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins. Minor version 17 adds overlays and native pickers for WASM plugins. Minor version 18 adds project tasks for WASM plugins; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
+This document defines Kawi plugin protocol version 1. Minor version 1 adds events. Minor version 2 adds plugin-published diagnostics. Minor version 3 adds editor command composition. Minor version 4 adds plugin settings. Minor version 7 adds buffer decorations and status line segments. Minor version 8 adds decoration scopes. Minor version 9 adds named decoration groups. Minor version 10 adds background process jobs for process plugins. Minor version 11 adds WASM job parity and `process.poll`. Minor version 12 adds plugin panels. Minor version 13 adds buffer, window, editor control, and option APIs for WASM plugins. Minor version 14 adds runtime command and keymap registration for WASM plugins. Minor version 15 adds asynchronous autocmds and editor events for WASM plugins. Minor version 16 adds timers, variables, and option writes for WASM plugins. Minor version 17 adds overlays and native pickers for WASM plugins. Minor version 18 adds project tasks for WASM plugins. Minor version 19 adds plugin-owned scratch buffer creation and closure; the process protocol remains at minor 12. A plugin that implements an earlier minor version still initializes and receives its declared events; it simply does not use the newer host methods. The protocol is a JSON-RPC 2.0 contract between Kawi and an external process. WebAssembly plugins implement the same behavior through the versioned WIT contract described in [Migrating a process plugin to WASM](help:plugin-migration). Process plugins receive job events as notifications; WASM plugins drain queued job events with `process.poll`.
 
 ## Trust model
 
@@ -106,7 +106,7 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 18,
+    "protocol_minor": 19,
     "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
@@ -122,7 +122,7 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 18,
+    "protocol_minor": 19,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
@@ -812,6 +812,26 @@ Requires `editor.buffers.write`. Request params use the same `revision` and `edi
 
 The target must be the active buffer and its path must be inside the declared scope. Result is `{"revision": 15}`. An unknown buffer returns `-32070`, a parked or inactive buffer returns `-32071`, a stale revision returns `-32010`, and a path outside scope returns `-32012`.
 
+### buffer.create
+
+Requires `editor.buffers.write`. Request params:
+
+```json
+{"text": "scratch contents\n"}
+```
+
+Kawi creates a listed, editable scratch buffer owned by the calling plugin. The buffer has no path, is not focused, and starts in normal mode. Result is a buffer record without text. Open the buffer in a window with `window.open` when it should be visible. The host closes every buffer created by a plugin when that plugin stops.
+
+### buffer.close
+
+Requires `editor.buffers.write`. Request params:
+
+```json
+{"buffer": 4, "force": false}
+```
+
+Kawi closes a buffer created by the calling plugin. `force` defaults to `false`; an owned buffer with unsaved changes returns `-32076` until forced. Result is `null`. A buffer the plugin does not own, including an unknown buffer, returns `-32077`.
+
 ### window.list
 
 Requires `editor.windows`. Request params are `{}` or `null`. Result is an array of window records:
@@ -1210,6 +1230,8 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32073` | Cannot close the last window |
 | `-32074` | Option not found |
 | `-32075` | Mode not supported |
+| `-32076` | Buffer has unsaved changes |
+| `-32077` | Buffer is not owned by the plugin |
 
 Transport failures are host errors, not JSON-RPC errors. A process exit fails in-flight requests with `plugin process exited`.
 

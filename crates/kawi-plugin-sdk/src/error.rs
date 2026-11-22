@@ -27,6 +27,8 @@ pub const WINDOW_NOT_FOUND: i32 = -32072;
 pub const LAST_WINDOW: i32 = -32073;
 pub const OPTION_NOT_FOUND: i32 = -32074;
 pub const MODE_NOT_SUPPORTED: i32 = -32075;
+pub const BUFFER_MODIFIED: i32 = -32076;
+pub const BUFFER_NOT_OWNED: i32 = -32077;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
@@ -55,6 +57,8 @@ pub enum ErrorKind {
     LastWindow,
     OptionNotFound,
     ModeNotSupported,
+    BufferModified,
+    BufferNotOwned,
     RequestCanceled,
     Unavailable,
     Other,
@@ -87,6 +91,8 @@ pub fn error_kind(error: &Error) -> ErrorKind {
         LAST_WINDOW => ErrorKind::LastWindow,
         OPTION_NOT_FOUND => ErrorKind::OptionNotFound,
         MODE_NOT_SUPPORTED => ErrorKind::ModeNotSupported,
+        BUFFER_MODIFIED => ErrorKind::BufferModified,
+        BUFFER_NOT_OWNED => ErrorKind::BufferNotOwned,
         REQUEST_CANCELED => ErrorKind::RequestCanceled,
         PLUGIN_UNAVAILABLE => ErrorKind::Unavailable,
         _ => ErrorKind::Other,
@@ -138,6 +144,14 @@ mod tests {
         assert_eq!(
             error_kind(&error(MODE_NOT_SUPPORTED)),
             ErrorKind::ModeNotSupported
+        );
+        assert_eq!(
+            error_kind(&error(BUFFER_MODIFIED)),
+            ErrorKind::BufferModified
+        );
+        assert_eq!(
+            error_kind(&error(BUFFER_NOT_OWNED)),
+            ErrorKind::BufferNotOwned
         );
         assert_eq!(error_kind(&error(42)), ErrorKind::Other);
     }

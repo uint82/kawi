@@ -1,8 +1,8 @@
 pub const PROTOCOL_VERSION: u64 = 1;
-pub const PROTOCOL_MINOR: u64 = 18;
+pub const PROTOCOL_MINOR: u64 = 19;
 pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
-pub const HOST_METHODS: [&str; 72] = [
+pub const HOST_METHODS: [&str; 74] = [
     "editor.get_state",
     "editor.apply_edit",
     "editor.execute",
@@ -45,6 +45,8 @@ pub const HOST_METHODS: [&str; 72] = [
     "buffer.get",
     "buffer.open",
     "buffer.apply_edit",
+    "buffer.create",
+    "buffer.close",
     "window.list",
     "window.get",
     "window.focus",
@@ -129,3 +131,5 @@ pub const WINDOW_NOT_FOUND: i64 = -32072;
 pub const LAST_WINDOW: i64 = -32073;
 pub const OPTION_NOT_FOUND: i64 = -32074;
 pub const MODE_NOT_SUPPORTED: i64 = -32075;
+pub const BUFFER_MODIFIED: i64 = -32076;
+pub const BUFFER_NOT_OWNED: i64 = -32077;

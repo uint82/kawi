@@ -994,16 +994,11 @@ impl Editor {
     }
 
     pub fn open_scratch_buffer(&mut self, name: &str, text: &str, readonly: bool) -> usize {
-        self.store_current();
-        let number = self.buffers.allocate_number();
         let mut buffer = Buffer::from_string(text);
         buffer.path = Some(name.to_string());
         buffer.set_readonly(readonly);
         buffer.mark_clean();
-        self.load_fresh(buffer);
-        self.reset_buffer_options();
-        self.buffers.set_current(number);
-        number
+        self.insert_buffer(buffer)
     }
 
     pub fn open_directory_buffer(&mut self, name: &str, text: &str, reuse_empty: bool) -> usize {
@@ -1093,17 +1088,34 @@ impl Editor {
     }
 
     pub fn open_internal_buffer(&mut self, name: &str, text: &str) -> usize {
-        self.store_current();
-        let number = self.buffers.allocate_number();
         let mut buffer = Buffer::from_string(text);
         buffer.path = Some(name.to_string());
         buffer.set_readonly(true);
         buffer.set_internal(true);
         buffer.mark_clean();
+        let number = self.insert_buffer(buffer);
+        self.buffers.current_listed = false;
+        number
+    }
+
+    pub fn create_scratch_buffer(&mut self, text: &str, focus: bool) -> usize {
+        let previous = self.buffers.current();
+        let mut buffer = Buffer::from_string(text);
+        buffer.set_scratch(true);
+        buffer.mark_clean();
+        let number = self.insert_buffer(buffer);
+        if !focus {
+            self.switch_buffer(previous);
+        }
+        number
+    }
+
+    fn insert_buffer(&mut self, buffer: Buffer) -> usize {
+        self.store_current();
+        let number = self.buffers.allocate_number();
         self.load_fresh(buffer);
         self.reset_buffer_options();
         self.buffers.set_current(number);
-        self.buffers.current_listed = false;
         number
     }
 
@@ -2205,6 +2217,37 @@ mod tests {
         let current = editor.buffer_number();
         assert!(editor.mark_buffer_clean(current));
         assert!(!editor.is_dirty());
+    }
+
+    #[test]
+    fn creates_parked_scratch_buffers_without_stealing_focus() {
+        let mut editor = Editor::new(Buffer::from_string("alpha\n"));
+        let original = editor.buffer_number();
+        let number = editor.create_scratch_buffer("scratch text\n", false);
+        assert_ne!(number, original);
+        assert_eq!(editor.buffer_number(), original);
+        assert_eq!(
+            editor.buffer_text(number).as_deref(),
+            Some("scratch text\n")
+        );
+        assert_eq!(editor.buffer_path(number), None);
+        assert!(editor
+            .buffer_at(number)
+            .is_some_and(kawi_buffer::Buffer::is_scratch));
+        assert_eq!(editor.buffer_numbers(), vec![original, number]);
+    }
+
+    #[test]
+    fn creates_focused_scratch_buffers_and_keeps_them_editable() {
+        let mut editor = Editor::new(Buffer::from_string("alpha\n"));
+        let number = editor.create_scratch_buffer("scratch\n", true);
+        assert_eq!(editor.buffer_number(), number);
+        assert_eq!(editor.buffer_is_readonly(number), Some(false));
+        editor.apply(Action::EnterInsert);
+        editor.apply(Action::InsertChar('!'));
+        editor.apply(Action::ExitInsert);
+        assert_eq!(editor.buffer_text(number).as_deref(), Some("!scratch\n"));
+        assert!(editor.buffer_is_dirty(number).unwrap_or(false));
     }
 
     #[test]

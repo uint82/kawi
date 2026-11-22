@@ -65,6 +65,7 @@ impl App {
                     );
                     self.plugins.clear_autocmds(&plugin);
                     self.plugins.clear_plugin_state(&plugin);
+                    self.close_plugin_buffers(&plugin);
                     self.plugin_decorations.remove_plugin(&plugin);
                     self.plugin_statusline.remove_plugin(&plugin);
                     self.problems.clear_plugin(&plugin);
@@ -110,6 +111,23 @@ impl App {
         }
     }
 
+    fn close_plugin_buffers(&mut self, plugin: &str) {
+        let buffers = self.plugins.take_owned_buffers(plugin);
+        if buffers.is_empty() {
+            return;
+        }
+        for buffer in buffers {
+            let Ok(number) = usize::try_from(buffer) else {
+                continue;
+            };
+            if let Err(error) = self.editor.close_buffer(number, true) {
+                self.plugins
+                    .push_log(plugin, &format!("buffer {buffer} close failed: {error:?}"));
+            }
+        }
+        self.reconcile_unlisted_buffers();
+    }
+
     pub(super) fn handle_plugin_host_request(
         &mut self,
         plugin: &str,
@@ -151,6 +169,8 @@ impl App {
                 | "editor.set_decorations"
                 | "buffer.open"
                 | "buffer.apply_edit"
+                | "buffer.create"
+                | "buffer.close"
                 | "window.focus"
                 | "window.open"
                 | "window.close"

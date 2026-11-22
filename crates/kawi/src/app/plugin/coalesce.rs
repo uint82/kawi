@@ -203,6 +203,37 @@ impl PluginRuntime {
         }
     }
 
+    pub(crate) fn claim_buffer(&mut self, plugin: &str, buffer: u64) {
+        self.owned_buffers.insert(buffer, plugin.to_string());
+    }
+
+    pub(crate) fn owns_buffer(&self, plugin: &str, buffer: u64) -> bool {
+        self.owned_buffers
+            .get(&buffer)
+            .is_some_and(|owner| owner == plugin)
+    }
+
+    pub(crate) fn release_buffer(&mut self, plugin: &str, buffer: u64) -> bool {
+        if !self.owns_buffer(plugin, buffer) {
+            return false;
+        }
+        self.owned_buffers.remove(&buffer);
+        true
+    }
+
+    pub(crate) fn take_owned_buffers(&mut self, plugin: &str) -> Vec<u64> {
+        let owned = self
+            .owned_buffers
+            .iter()
+            .filter(|(_, owner)| owner.as_str() == plugin)
+            .map(|(buffer, _)| *buffer)
+            .collect::<Vec<_>>();
+        for buffer in &owned {
+            self.owned_buffers.remove(buffer);
+        }
+        owned
+    }
+
     pub(super) fn clear_plugin_state(&mut self, plugin: &str) {
         self.pending_activation_events.remove(plugin);
         self.diagnostic_windows.remove(plugin);

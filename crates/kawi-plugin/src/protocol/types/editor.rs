@@ -33,6 +33,19 @@ pub struct BufferOpenParams {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct BufferCreateParams {
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BufferCloseParams {
+    pub buffer: u64,
+    #[serde(default)]
+    pub force: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WindowInfo {
     pub window: u64,

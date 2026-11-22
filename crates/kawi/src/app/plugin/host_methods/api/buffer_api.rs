@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use kawi_editor::BufferError;
 use kawi_plugin::{
-    ApplyEditParams, BufferGetParams, BufferInfo, BufferOpenParams, BufferState, Capability,
-    RpcError, INTERNAL_ERROR,
+    ApplyEditParams, BufferCloseParams, BufferCreateParams, BufferGetParams, BufferInfo,
+    BufferOpenParams, BufferState, Capability, RpcError, INTERNAL_ERROR,
 };
 use serde_json::Value;
 
@@ -53,6 +54,51 @@ impl App {
             .buffer_state(buffer, false)
             .ok_or_else(|| RpcError::buffer_not_found(buffer))?;
         json_result(state)
+    }
+
+    pub(super) fn plugin_buffer_create(
+        &mut self,
+        plugin: &str,
+        params: Value,
+    ) -> Result<Value, RpcError> {
+        let params: BufferCreateParams = serde_json::from_value(params).map_err(invalid_params)?;
+        let number = self.editor.create_scratch_buffer(&params.text, false);
+        let buffer = number as u64;
+        self.plugins.claim_buffer(plugin, buffer);
+        let state = self
+            .buffer_state(buffer, false)
+            .ok_or_else(|| RpcError::buffer_not_found(buffer))?;
+        json_result(state)
+    }
+
+    pub(super) fn plugin_buffer_close(
+        &mut self,
+        plugin: &str,
+        params: Value,
+    ) -> Result<Value, RpcError> {
+        let params: BufferCloseParams = serde_json::from_value(params).map_err(invalid_params)?;
+        let number = usize::try_from(params.buffer).map_err(|_| {
+            RpcError::invalid_params(format!("buffer id out of range: {}", params.buffer))
+        })?;
+        if !self.plugins.owns_buffer(plugin, params.buffer) {
+            return Err(RpcError::buffer_not_owned(params.buffer));
+        }
+        if self.editor.buffer_is_dirty(number).is_none() {
+            self.plugins.release_buffer(plugin, params.buffer);
+            return Err(RpcError::buffer_not_found(params.buffer));
+        }
+        if let Err(error) = self.editor.close_buffer(number, params.force) {
+            if !matches!(&error, BufferError::NoWrite(_)) {
+                self.plugins.release_buffer(plugin, params.buffer);
+            }
+            return Err(match error {
+                BufferError::NoWrite(_) => RpcError::buffer_modified(params.buffer),
+                _ => RpcError::buffer_not_found(params.buffer),
+            });
+        }
+        self.plugins.release_buffer(plugin, params.buffer);
+        self.reconcile_unlisted_buffers();
+        json_result(())
     }
 
     pub(super) fn plugin_buffer_apply_edit(

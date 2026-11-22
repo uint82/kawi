@@ -172,6 +172,20 @@ impl RpcError {
         Self::new(BUFFER_NOT_ACTIVE, format!("buffer is not active: {buffer}"))
     }
 
+    pub fn buffer_modified(buffer: u64) -> Self {
+        Self::new(
+            BUFFER_MODIFIED,
+            format!("buffer has unsaved changes: {buffer}"),
+        )
+    }
+
+    pub fn buffer_not_owned(buffer: u64) -> Self {
+        Self::new(
+            BUFFER_NOT_OWNED,
+            format!("buffer is not owned by the plugin: {buffer}"),
+        )
+    }
+
     pub fn window_not_found(window: u64) -> Self {
         Self::new(WINDOW_NOT_FOUND, format!("window not found: {window}"))
     }
