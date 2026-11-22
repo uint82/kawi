@@ -1,4 +1,5 @@
 mod api_maturity;
+pub mod api_metadata;
 pub mod capability;
 mod decoration_group;
 

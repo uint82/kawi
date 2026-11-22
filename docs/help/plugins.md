@@ -90,6 +90,8 @@ Declarations are a compatibility and audit surface, not a user grant. Kawi enabl
 
 Available host APIs are `editor.read`, `editor.write`, `editor.buffers`, `editor.buffers.write`, `editor.windows`, `editor.control`, `editor.execute`, `editor.commands`, `editor.keymaps`, `editor.autocmds`, `editor.schedule`, `editor.variables`, `editor.decorations`, `options.read`, `options.write`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `ui.overlay`, `ui.picker`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, `task.run`, and `net.connect`. Scoped APIs use `paths`, `commands`, `hosts`, or `tasks` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
+`kawi plugin api` lists every host method and event with the protocol minor that introduced it, its stability, and its replacement when deprecated. Use `kawi plugin api --json` to get the same report as machine-readable JSON. The report comes from the same registry that gates the process runtime, so a plugin author sees the maturity the host actually enforces rather than a separate doc table.
+
 Plugins can declare settings and read their effective values without a capability declaration:
 
 ```toml
