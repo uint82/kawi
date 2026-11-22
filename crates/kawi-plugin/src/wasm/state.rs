@@ -4,9 +4,9 @@ use wasmtime_wasi::sockets::WasiSocketsView;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use crate::protocol::{
-    ApplyEditParams, ApplyEditResult, ConfigGetParams, ConfigGetResult, ConfigListResult,
-    DecorationScope, EditorExecuteParams, GetStateParams, RpcError, SetDecorationsParams,
-    SetDiagnosticsParams, SetStatuslineParams, UiMessageParams, PLUGIN_UNAVAILABLE,
+    ConfigGetParams, ConfigGetResult, ConfigListResult, DecorationScope, EditorExecuteParams,
+    GetStateParams, RpcError, SetDecorationsParams, SetDiagnosticsParams, SetStatuslineParams,
+    UiMessageParams, PLUGIN_UNAVAILABLE,
 };
 
 pub use super::bridge::{fail_pending, output_pipes, pending_calls, HostBridge, PendingCalls};
@@ -22,19 +22,22 @@ use super::bindings::kawi::plugin::{
 };
 use super::byte_budget::NetworkBudget;
 use super::convert::{
-    command_infos_from_json, decorations_to_protocol, diagnostics_to_protocol, edits_to_protocol,
-    error_from_rpc, setting_value_from_json, settings_from_json, signs_to_protocol,
-    state_from_json, statusline_to_protocol,
+    command_infos_from_json, decorations_to_protocol, diagnostics_to_protocol, error_from_rpc,
+    setting_value_from_json, settings_from_json, signs_to_protocol, state_from_json,
+    statusline_to_protocol,
 };
 use super::limits::WasmLimits;
 use super::net::NetworkPolicy;
 use super::process::ProcessRunner;
 
+mod apply_edit;
 mod autocmds_api;
 mod editor_api;
 mod extensions_api;
 mod keymaps_api;
 mod options_write_api;
+#[cfg(test)]
+mod tests;
 mod timers_api;
 mod util;
 mod variables_api;
@@ -141,7 +144,15 @@ impl editor_read::Host for WasmState {
 
 impl editor_write::Host for WasmState {
     fn apply_edit(&mut self, buffer: u64, revision: u64, edits: Vec<Edit>) -> Result<u64, Error> {
-        apply_edit_request(self, buffer, revision, edits)
+        apply_edit::send(
+            self,
+            apply_edit::Request {
+                method: apply_edit::EDITOR_METHOD,
+                buffer,
+                revision,
+                edits,
+            },
+        )
     }
 }
 
@@ -281,25 +292,4 @@ impl process_run::Host for WasmState {
             .run(&command, &args, timeout_ms)
             .map_err(error_from_rpc)
     }
-}
-
-fn apply_edit_request(
-    state: &mut WasmState,
-    buffer: u64,
-    revision: u64,
-    edits: Vec<Edit>,
-) -> Result<u64, Error> {
-    let edits = edits_to_protocol(edits).map_err(error_from_rpc)?;
-    let params = serialize_params(ApplyEditParams {
-        buffer,
-        revision,
-        edits,
-    })?;
-    let value = state
-        .bridge
-        .request("editor.apply_edit", params)
-        .map_err(error_from_rpc)?;
-    let result: ApplyEditResult = serde_json::from_value(value)
-        .map_err(|error| error_from_rpc(RpcError::new(PLUGIN_UNAVAILABLE, error.to_string())))?;
-    Ok(result.revision)
 }

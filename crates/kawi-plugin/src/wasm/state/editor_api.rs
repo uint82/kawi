@@ -10,7 +10,7 @@ use super::super::convert::{
     option_infos_from_json, position_to_protocol, selection_to_protocol, split_direction_name,
     window_info_from_json, window_infos_from_json,
 };
-use super::{apply_edit_request, serialize_params, WasmState};
+use super::{apply_edit, serialize_params, WasmState};
 use crate::protocol::{
     BufferCloseParams, BufferCreateParams, BufferGetParams, BufferOpenParams, OptionsGetParams,
     OptionsListParams, SetCursorParams, SetModeParams, SetSelectionParams, WindowCloseParams,
@@ -50,7 +50,15 @@ impl editor_buffers_write::Host for WasmState {
     }
 
     fn apply_edit(&mut self, buffer: u64, revision: u64, edits: Vec<Edit>) -> Result<u64, Error> {
-        apply_edit_request(self, buffer, revision, edits)
+        apply_edit::send(
+            self,
+            apply_edit::Request {
+                method: apply_edit::BUFFER_METHOD,
+                buffer,
+                revision,
+                edits,
+            },
+        )
     }
 
     fn create(&mut self, text: String) -> Result<WitBufferState, Error> {
