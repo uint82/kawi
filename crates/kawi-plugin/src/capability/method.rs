@@ -7,62 +7,16 @@ pub enum MethodCapability {
     Required(Capability),
 }
 
-const BASE_WASM_MINOR: u64 = 15;
-
-pub fn host_method_minor(method: &str) -> u64 {
-    match method {
-        "buffer.list"
-        | "buffer.get"
-        | "buffer.open"
-        | "buffer.apply_edit"
-        | "window.list"
-        | "window.get"
-        | "window.focus"
-        | "window.open"
-        | "window.close"
-        | "editor.set_cursor"
-        | "editor.set_selection"
-        | "editor.set_mode"
-        | "options.list"
-        | "options.get"
-        | "command.register"
-        | "command.unregister"
-        | "command.list"
-        | "keymap.set"
-        | "keymap.remove"
-        | "keymap.list"
-        | "autocmd.register"
-        | "autocmd.remove"
-        | "autocmd.list"
-        | "autocmd.clear"
-        | "editor.emit_user_event" => BASE_WASM_MINOR,
-        "ui.overlay_open" | "ui.overlay_update" | "ui.overlay_wait" | "ui.overlay_close"
-        | "ui.picker" => crate::protocol::PROTOCOL_MINOR,
-        "timer.after" | "timer.every" | "timer.cancel" | "timer.list" | "variable.get"
-        | "variable.set" | "variable.delete" | "variable.list" | "options.set"
-        | "options.reset" | "task.list" | "task.start" | "task.status" | "task.poll"
-        | "task.cancel" | "buffer.create" | "buffer.close" => crate::protocol::PROTOCOL_MINOR,
-        _ => 0,
-    }
-}
-
-pub fn event_minor(event: &str) -> u64 {
-    match event {
-        "buffer_enter" | "buffer_leave" | "window_enter" | "window_leave" | "cursor_moved"
-        | "selection_changed" | "focus_gained" | "focus_lost" | "window_created"
-        | "window_closed" | "language_changed" | "user" => BASE_WASM_MINOR,
-        _ => 0,
-    }
-}
+use crate::api_maturity::{event_since, host_method_since};
 
 pub fn is_process_host_method(method: &str) -> bool {
     crate::protocol::HOST_METHODS.contains(&method)
-        && host_method_minor(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+        && host_method_since(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
 }
 
 pub fn is_process_event(event: &str) -> bool {
     crate::protocol::EVENT_NAMES.contains(&event)
-        && event_minor(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+        && event_since(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR
 }
 
 pub fn host_method_capability(method: &str) -> MethodCapability {
