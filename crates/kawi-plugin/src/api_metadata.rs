@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::api_maturity::{event_maturity, host_method_maturity, ApiMaturity};
+use crate::api_maturity::{event_maturity, host_method_maturity, ApiMaturity, ApiStability};
 use crate::protocol::{
     EVENT_NAMES, HOST_METHODS, PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
@@ -29,12 +29,10 @@ pub struct ApiMetadata {
 }
 
 fn stability_label(maturity: ApiMaturity) -> &'static str {
-    if maturity.is_stable() {
-        "stable"
-    } else if maturity.is_experimental() {
-        "experimental"
-    } else {
-        "deprecated"
+    match maturity.stability {
+        ApiStability::Stable => "stable",
+        ApiStability::Experimental => "experimental",
+        ApiStability::Deprecated => "deprecated",
     }
 }
 

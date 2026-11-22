@@ -213,13 +213,15 @@ fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
     for &method in crate::protocol::HOST_METHODS {
         assert_eq!(
             is_process_host_method(method),
-            host_method_minor(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+            host_method_minor(method)
+                .is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
         );
     }
     for &event in crate::protocol::EVENT_NAMES {
         assert_eq!(
             is_process_event(event),
-            event_minor(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+            event_minor(event)
+                .is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
         );
     }
     for method in [
@@ -274,7 +276,10 @@ fn automation_capabilities_gate_their_methods_at_the_current_minor() {
             host_method_capability(method),
             MethodCapability::Required(capability)
         );
-        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert_eq!(
+            host_method_minor(method),
+            Some(crate::protocol::PROTOCOL_MINOR)
+        );
         assert!(!is_process_host_method(method));
     }
 }
@@ -328,7 +333,10 @@ fn task_methods_require_task_run_at_the_current_minor() {
             host_method_capability(method),
             MethodCapability::Required(Capability::TaskRun)
         );
-        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert_eq!(
+            host_method_minor(method),
+            Some(crate::protocol::PROTOCOL_MINOR)
+        );
         assert!(!is_process_host_method(method));
     }
 }
@@ -340,7 +348,10 @@ fn buffer_lifecycle_methods_require_write_at_the_current_minor() {
             host_method_capability(method),
             MethodCapability::Required(Capability::EditorBuffersWrite)
         );
-        assert_eq!(host_method_minor(method), crate::protocol::PROTOCOL_MINOR);
+        assert_eq!(
+            host_method_minor(method),
+            Some(crate::protocol::PROTOCOL_MINOR)
+        );
         assert!(!is_process_host_method(method));
     }
 }

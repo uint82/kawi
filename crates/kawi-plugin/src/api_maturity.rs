@@ -1,6 +1,9 @@
 const LEGACY_MINOR: u64 = 0;
 const BASE_WASM_MINOR: u64 = 15;
-const CURRENT_MINOR: u64 = crate::protocol::PROTOCOL_MINOR;
+// Experimental APIs landed in protocol minor 19. Pinning the number keeps the report honest
+// when PROTOCOL_MINOR moves on; otherwise every experimental method would quietly claim it
+// was born in the newest release.
+const EXPERIMENTAL_API_MINOR: u64 = 19;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiStability {
@@ -14,6 +17,7 @@ pub enum MaturityError {
     DeprecatedWithoutVersion,
     DeprecatedWithoutReplacement,
     DeprecatedBeforeIntroduction,
+    ActiveWithDeprecationData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,8 +70,19 @@ impl ApiMaturity {
 
     pub const fn validate(self) -> Result<(), MaturityError> {
         if !self.is_deprecated() {
-            return Ok(());
+            return self.validate_active();
         }
+        self.validate_deprecated()
+    }
+
+    const fn validate_active(self) -> Result<(), MaturityError> {
+        if self.deprecated_since.is_some() || self.replacement.is_some() {
+            return Err(MaturityError::ActiveWithDeprecationData);
+        }
+        Ok(())
+    }
+
+    const fn validate_deprecated(self) -> Result<(), MaturityError> {
         let Some(deprecated_since) = self.deprecated_since else {
             return Err(MaturityError::DeprecatedWithoutVersion);
         };
@@ -81,6 +96,8 @@ impl ApiMaturity {
     }
 }
 
+// One declaration feeds both the lookup table and the public name list.
+// Drift between them is how a method ends up advertised but unreachable.
 macro_rules! registry {
     ($entries:ident, $names:ident; $(($name:literal, $maturity:expr)),+ $(,)?) => {
         pub(crate) const $entries: &'static [(&'static str, ApiMaturity)] = &[
@@ -98,8 +115,8 @@ registry!(
     ("autocmd.register", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("autocmd.remove", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("buffer.apply_edit", ApiMaturity::stable(BASE_WASM_MINOR)),
-    ("buffer.close", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("buffer.create", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("buffer.close", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("buffer.create", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("buffer.get", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("buffer.list", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("buffer.open", ApiMaturity::stable(BASE_WASM_MINOR)),
@@ -123,8 +140,8 @@ registry!(
     ("keymap.set", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("options.get", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("options.list", ApiMaturity::stable(BASE_WASM_MINOR)),
-    ("options.reset", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("options.set", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("options.reset", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("options.set", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("process.close_stdin", ApiMaturity::stable(LEGACY_MINOR)),
     ("process.kill", ApiMaturity::stable(LEGACY_MINOR)),
     ("process.open", ApiMaturity::stable(LEGACY_MINOR)),
@@ -132,36 +149,36 @@ registry!(
     ("process.signal", ApiMaturity::stable(LEGACY_MINOR)),
     ("process.status", ApiMaturity::stable(LEGACY_MINOR)),
     ("process.write", ApiMaturity::stable(LEGACY_MINOR)),
-    ("task.cancel", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("task.list", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("task.poll", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("task.start", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("task.status", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("timer.after", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("timer.cancel", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("timer.every", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("timer.list", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("task.cancel", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("task.list", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("task.poll", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("task.start", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("task.status", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("timer.after", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("timer.cancel", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("timer.every", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("timer.list", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("ui.confirm", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.input", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.message", ApiMaturity::stable(LEGACY_MINOR)),
-    ("ui.overlay_close", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("ui.overlay_open", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("ui.overlay_update", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("ui.overlay_wait", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("ui.overlay_close", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("ui.overlay_open", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("ui.overlay_update", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("ui.overlay_wait", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("ui.panel_close", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.panel_focus", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.panel_open", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.panel_update", ApiMaturity::stable(LEGACY_MINOR)),
-    ("ui.picker", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("ui.picker", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("ui.progress_finish", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.progress_start", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.progress_update", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.select", ApiMaturity::stable(LEGACY_MINOR)),
     ("ui.set_statusline", ApiMaturity::stable(LEGACY_MINOR)),
-    ("variable.delete", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("variable.get", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("variable.list", ApiMaturity::experimental(CURRENT_MINOR)),
-    ("variable.set", ApiMaturity::experimental(CURRENT_MINOR)),
+    ("variable.delete", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("variable.get", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("variable.list", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
+    ("variable.set", ApiMaturity::experimental(EXPERIMENTAL_API_MINOR)),
     ("window.close", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("window.focus", ApiMaturity::stable(BASE_WASM_MINOR)),
     ("window.get", ApiMaturity::stable(BASE_WASM_MINOR)),
@@ -197,6 +214,10 @@ fn lookup(name: &str, entries: &'static [(&'static str, ApiMaturity)]) -> Option
     Some(entries[index].1)
 }
 
+fn introduction_minor(name: &str, entries: &'static [(&'static str, ApiMaturity)]) -> Option<u64> {
+    lookup(name, entries).map(|maturity| maturity.since)
+}
+
 pub fn host_method_maturity(method: &str) -> Option<ApiMaturity> {
     lookup(method, HOST_METHOD_ENTRIES)
 }
@@ -205,12 +226,12 @@ pub fn event_maturity(event: &str) -> Option<ApiMaturity> {
     lookup(event, EVENT_ENTRIES)
 }
 
-pub fn host_method_since(method: &str) -> u64 {
-    host_method_maturity(method).map_or(LEGACY_MINOR, |maturity| maturity.since)
+pub fn host_method_since(method: &str) -> Option<u64> {
+    introduction_minor(method, HOST_METHOD_ENTRIES)
 }
 
-pub fn event_since(event: &str) -> u64 {
-    event_maturity(event).map_or(LEGACY_MINOR, |maturity| maturity.since)
+pub fn event_since(event: &str) -> Option<u64> {
+    introduction_minor(event, EVENT_ENTRIES)
 }
 
 #[cfg(test)]

@@ -36,14 +36,9 @@ fn every_registered_api_is_valid() {
 }
 
 #[test]
-fn stability_tracks_the_current_protocol_minor() {
+fn introduction_minors_never_exceed_the_protocol_minor() {
     for (name, maturity) in HOST_METHOD_ENTRIES.iter().chain(EVENT_ENTRIES) {
-        let expected = if maturity.since == CURRENT_MINOR {
-            ApiStability::Experimental
-        } else {
-            ApiStability::Stable
-        };
-        assert_eq!(maturity.stability, expected, "{name}");
+        assert!(maturity.since <= crate::protocol::PROTOCOL_MINOR, "{name}");
     }
 }
 
@@ -73,11 +68,8 @@ fn lookups_find_the_first_and_last_entries() {
 fn unknown_names_do_not_inherit_maturity() {
     assert_eq!(host_method_maturity("method.that_does_not_exist"), None);
     assert_eq!(event_maturity("event_that_does_not_exist"), None);
-    assert_eq!(
-        host_method_since("method.that_does_not_exist"),
-        LEGACY_MINOR
-    );
-    assert_eq!(event_since("event_that_does_not_exist"), LEGACY_MINOR);
+    assert_eq!(host_method_since("method.that_does_not_exist"), None);
+    assert_eq!(event_since("event_that_does_not_exist"), None);
 }
 
 #[test]
@@ -137,4 +129,60 @@ fn deprecated_metadata_needs_a_version_and_a_replacement() {
         too_early.validate(),
         Err(MaturityError::DeprecatedBeforeIntroduction)
     );
+}
+
+#[test]
+fn active_api_rejects_deprecation_fields() {
+    let with_version = ApiMaturity {
+        since: 3,
+        stability: ApiStability::Stable,
+        deprecated_since: Some(4),
+        replacement: None,
+    };
+    assert_eq!(
+        with_version.validate(),
+        Err(MaturityError::ActiveWithDeprecationData)
+    );
+
+    let with_replacement = ApiMaturity {
+        since: 3,
+        stability: ApiStability::Experimental,
+        deprecated_since: None,
+        replacement: Some("new.method"),
+    };
+    assert_eq!(
+        with_replacement.validate(),
+        Err(MaturityError::ActiveWithDeprecationData)
+    );
+}
+
+#[test]
+fn lookups_are_exact_and_case_sensitive() {
+    assert_eq!(host_method_maturity(""), None);
+    assert_eq!(host_method_maturity("Editor.get_state"), None);
+    assert_eq!(host_method_maturity("editor.get_state "), None);
+    assert_eq!(host_method_maturity("editor.get"), None);
+    assert_eq!(event_maturity("buffer_change"), None);
+    assert_eq!(event_maturity("buffer_changedx"), None);
+}
+
+#[test]
+fn since_accessors_cover_the_whole_protocol_universe() {
+    for &(name, maturity) in HOST_METHOD_ENTRIES {
+        assert_eq!(host_method_since(name), Some(maturity.since), "{name}");
+    }
+    for &(name, maturity) in EVENT_ENTRIES {
+        assert_eq!(event_since(name), Some(maturity.since), "{name}");
+    }
+}
+
+#[test]
+fn stability_is_declared_not_derived_from_introduction_minor() {
+    let stable_now = ApiMaturity::stable(crate::protocol::PROTOCOL_MINOR);
+    let experimental_earlier = ApiMaturity::experimental(BASE_WASM_MINOR);
+
+    assert_eq!(stable_now.validate(), Ok(()));
+    assert_eq!(experimental_earlier.validate(), Ok(()));
+    assert!(stable_now.is_stable());
+    assert!(experimental_earlier.is_experimental());
 }
