@@ -16,7 +16,7 @@ Declarations are a compatibility and audit surface. They tell the user what the 
 | `editor.read` | none | Read editor state and receive editor events |
 | `editor.write` | none | Apply text edits |
 | `editor.buffers` | none | List and read buffers, including text and revisions |
-| `editor.buffers.write` | `paths` | Open files and apply edits to the active buffer |
+| `editor.buffers.write` | `paths` | Open files, edit the active buffer, and manage plugin-owned scratch buffers |
 | `editor.windows` | none | List, inspect, focus, open, and close windows |
 | `editor.control` | none | Set the active buffer cursor, selection, and mode |
 | `options.read` | none | List and read editor options |

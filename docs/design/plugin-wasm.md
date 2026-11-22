@@ -42,7 +42,7 @@ Interfaces:
 - `editor-read` requires `editor.read`.
 - `editor-write` requires `editor.write`.
 - `editor-buffers` requires `editor.buffers` and lists and reads buffers.
-- `editor-buffers-write` requires `editor.buffers.write` and is scoped to its declared paths for opening files and editing the active buffer.
+- `editor-buffers-write` requires `editor.buffers.write` and is scoped to its declared paths for opening files and editing the active buffer. It also creates and closes plugin-owned scratch buffers.
 - `editor-windows` requires `editor.windows` and lists, inspects, focuses, opens, and closes windows.
 - `editor-control` requires `editor.control` and sets the active buffer cursor, selection, and mode.
 - `options-read` requires `options.read` and lists and reads editor options.

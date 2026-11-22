@@ -47,6 +47,8 @@ Command arguments and results use the `argument` variant. JSON numbers map to `i
 | `buffer.get` | `editor-buffers.get-buffer` |
 | `buffer.open` | `editor-buffers.open-buffer` |
 | `buffer.apply_edit` | `editor-buffers-write.apply-edit` |
+| `buffer.create` | `editor-buffers-write.create` |
+| `buffer.close` | `editor-buffers-write.close` |
 | `window.list` | `editor-windows.list-windows` |
 | `window.get` | `editor-windows.get-window` |
 | `window.focus` | `editor-windows.focus-window` |
