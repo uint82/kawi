@@ -1,3 +1,4 @@
+mod api;
 mod build;
 mod inspect;
 mod scaffold;
@@ -12,12 +13,14 @@ Usage:
   kawi plugin new <name> [--sdk-path <path>]
   kawi plugin build [directory]
   kawi plugin inspect [directory]
+  kawi plugin api [--json]
 
 The build and inspect commands require a wasm plugin directory.
 The default SDK is fetched from crates.io. Use --sdk-path for an unreleased checkout.";
 
 pub(crate) fn run(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
+        Some("api") => api::run(&args[1..]),
         Some("new") => scaffold::run(&args[1..]),
         Some("build") => build::run(&args[1..]),
         Some("inspect") => inspect::run(&args[1..]),

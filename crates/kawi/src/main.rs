@@ -39,6 +39,7 @@ Usage:
   kawi plugin new <name> [--sdk-path <path>]
   kawi plugin build [directory]
   kawi plugin inspect [directory]
+  kawi plugin api [--json]
   kawi --version
   kawi --help
 
