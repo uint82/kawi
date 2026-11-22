@@ -359,9 +359,9 @@ pub(crate) fn covered_events() -> Vec<&'static str> {
 }
 
 pub(crate) fn all_methods() -> &'static [&'static str] {
-    &HOST_METHODS
+    HOST_METHODS
 }
 
 pub(crate) fn all_events() -> &'static [&'static str] {
-    &EVENT_NAMES
+    EVENT_NAMES
 }

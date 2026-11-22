@@ -1,3 +1,4 @@
+mod api_maturity;
 pub mod capability;
 mod decoration_group;
 
@@ -25,6 +26,10 @@ pub use wasm::{
 #[cfg(all(feature = "wasm-test-network", debug_assertions))]
 pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};
 
+pub use api_maturity::{
+    event_maturity, event_since, host_method_maturity, host_method_since, ApiMaturity,
+    ApiStability, MaturityError,
+};
 pub use capability::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
     is_event_allowed, is_host_method_allowed, Capability, CapabilityRegistry, CapabilityRequests,

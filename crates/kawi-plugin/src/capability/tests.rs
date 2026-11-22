@@ -150,7 +150,7 @@ fn rejects_unknown_path_variables_and_unbracketed_ipv6() {
 
 #[test]
 fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
-    for method in crate::protocol::HOST_METHODS {
+    for &method in crate::protocol::HOST_METHODS {
         assert_ne!(host_method_capability(method), MethodCapability::Unknown);
     }
     let registry = CapabilityRegistry::default();
@@ -161,7 +161,7 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
         EffectiveCapabilities { granted },
     )]));
     let advertised = advertised_host_methods(&registry, "plugin");
-    for method in crate::protocol::HOST_METHODS {
+    for &method in crate::protocol::HOST_METHODS {
         assert_eq!(
             advertised.contains(&method),
             is_host_method_allowed(&registry, "plugin", method)
@@ -172,7 +172,7 @@ fn host_method_table_is_exhaustive_and_advertisement_matches_enforcement() {
         );
     }
     let advertised_events = advertised_events(&registry, "plugin");
-    for event in crate::protocol::EVENT_NAMES {
+    for &event in crate::protocol::EVENT_NAMES {
         assert_eq!(
             advertised_events.contains(&event),
             is_event_allowed(&registry, "plugin", event)
@@ -210,13 +210,13 @@ fn component_hash_changes_the_request_hash() {
 
 #[test]
 fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
-    for method in crate::protocol::HOST_METHODS {
+    for &method in crate::protocol::HOST_METHODS {
         assert_eq!(
             is_process_host_method(method),
             host_method_minor(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
         );
     }
-    for event in crate::protocol::EVENT_NAMES {
+    for &event in crate::protocol::EVENT_NAMES {
         assert_eq!(
             is_process_event(event),
             event_minor(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR

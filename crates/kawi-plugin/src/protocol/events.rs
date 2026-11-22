@@ -3,27 +3,7 @@ use serde_json::Value;
 
 use super::{Position, ProtocolTextEdit, Selection};
 
-pub const EVENT_NAMES: [&str; 19] = [
-    "buffer_changed",
-    "buffer_opened",
-    "file_opened",
-    "buffer_closed",
-    "file_saved",
-    "mode_changed",
-    "diagnostics_changed",
-    "buffer_enter",
-    "buffer_leave",
-    "window_enter",
-    "window_leave",
-    "cursor_moved",
-    "selection_changed",
-    "focus_gained",
-    "focus_lost",
-    "window_created",
-    "window_closed",
-    "language_changed",
-    "user",
-];
+pub const EVENT_NAMES: &[&str] = crate::api_maturity::EVENT_NAMES;
 
 pub const ORIGIN_USER: &str = "user";
 pub const ORIGIN_UNDO: &str = "undo";
