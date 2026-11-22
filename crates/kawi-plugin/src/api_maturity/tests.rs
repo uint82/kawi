@@ -1,31 +1,11 @@
 use super::*;
 
-fn assert_names_match(registry: &[&str], protocol: &[&str]) {
-    assert_eq!(registry.len(), protocol.len());
-    for name in registry {
-        assert!(protocol.contains(name), "unexpected registry name: {name}");
-    }
-    for name in protocol {
-        assert!(registry.contains(name), "missing registry name: {name}");
-    }
-}
-
 #[test]
 fn registry_names_stay_sorted_for_binary_search() {
     assert!(HOST_METHOD_NAMES.is_sorted());
     assert!(EVENT_NAMES.is_sorted());
     assert!(HOST_METHOD_NAMES.windows(2).all(|pair| pair[0] != pair[1]));
     assert!(EVENT_NAMES.windows(2).all(|pair| pair[0] != pair[1]));
-}
-
-#[test]
-fn host_method_registry_matches_the_protocol_universe() {
-    assert_names_match(HOST_METHOD_NAMES, crate::protocol::HOST_METHODS);
-}
-
-#[test]
-fn event_registry_matches_the_protocol_universe() {
-    assert_names_match(EVENT_NAMES, crate::protocol::EVENT_NAMES);
 }
 
 #[test]

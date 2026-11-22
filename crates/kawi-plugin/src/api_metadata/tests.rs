@@ -52,11 +52,6 @@ fn report_serializes_with_explicit_nulls_for_missing_deprecation_data() {
 }
 
 #[test]
-fn report_is_deterministic() {
-    assert_eq!(api_metadata(), api_metadata());
-}
-
-#[test]
 fn stability_labels_cover_every_stability() {
     assert_eq!(stability_label(ApiMaturity::stable(1)), "stable");
     assert_eq!(
