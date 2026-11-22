@@ -17,6 +17,7 @@ pub enum MaturityError {
     DeprecatedWithoutVersion,
     DeprecatedWithoutReplacement,
     DeprecatedBeforeIntroduction,
+    ActiveWithDeprecationData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,8 +70,19 @@ impl ApiMaturity {
 
     pub const fn validate(self) -> Result<(), MaturityError> {
         if !self.is_deprecated() {
-            return Ok(());
+            return self.validate_active();
         }
+        self.validate_deprecated()
+    }
+
+    const fn validate_active(self) -> Result<(), MaturityError> {
+        if self.deprecated_since.is_some() || self.replacement.is_some() {
+            return Err(MaturityError::ActiveWithDeprecationData);
+        }
+        Ok(())
+    }
+
+    const fn validate_deprecated(self) -> Result<(), MaturityError> {
         let Some(deprecated_since) = self.deprecated_since else {
             return Err(MaturityError::DeprecatedWithoutVersion);
         };

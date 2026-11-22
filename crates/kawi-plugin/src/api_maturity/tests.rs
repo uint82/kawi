@@ -130,3 +130,28 @@ fn deprecated_metadata_needs_a_version_and_a_replacement() {
         Err(MaturityError::DeprecatedBeforeIntroduction)
     );
 }
+
+#[test]
+fn active_api_rejects_deprecation_fields() {
+    let with_version = ApiMaturity {
+        since: 3,
+        stability: ApiStability::Stable,
+        deprecated_since: Some(4),
+        replacement: None,
+    };
+    assert_eq!(
+        with_version.validate(),
+        Err(MaturityError::ActiveWithDeprecationData)
+    );
+
+    let with_replacement = ApiMaturity {
+        since: 3,
+        stability: ApiStability::Experimental,
+        deprecated_since: None,
+        replacement: Some("new.method"),
+    };
+    assert_eq!(
+        with_replacement.validate(),
+        Err(MaturityError::ActiveWithDeprecationData)
+    );
+}
