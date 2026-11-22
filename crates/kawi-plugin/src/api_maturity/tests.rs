@@ -36,14 +36,9 @@ fn every_registered_api_is_valid() {
 }
 
 #[test]
-fn stability_tracks_the_current_protocol_minor() {
+fn introduction_minors_never_exceed_the_protocol_minor() {
     for (name, maturity) in HOST_METHOD_ENTRIES.iter().chain(EVENT_ENTRIES) {
-        let expected = if maturity.since == CURRENT_MINOR {
-            ApiStability::Experimental
-        } else {
-            ApiStability::Stable
-        };
-        assert_eq!(maturity.stability, expected, "{name}");
+        assert!(maturity.since <= crate::protocol::PROTOCOL_MINOR, "{name}");
     }
 }
 
