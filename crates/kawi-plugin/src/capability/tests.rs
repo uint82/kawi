@@ -220,7 +220,8 @@ fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
     for &event in crate::protocol::EVENT_NAMES {
         assert_eq!(
             is_process_event(event),
-            event_minor(event).is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
+            event_minor(event)
+                .is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
         );
     }
     for method in [

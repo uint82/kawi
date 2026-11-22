@@ -96,6 +96,8 @@ impl ApiMaturity {
     }
 }
 
+// One declaration feeds both the lookup table and the public name list.
+// Drift between them is how a method ends up advertised but unreachable.
 macro_rules! registry {
     ($entries:ident, $names:ident; $(($name:literal, $maturity:expr)),+ $(,)?) => {
         pub(crate) const $entries: &'static [(&'static str, ApiMaturity)] = &[
@@ -212,10 +214,7 @@ fn lookup(name: &str, entries: &'static [(&'static str, ApiMaturity)]) -> Option
     Some(entries[index].1)
 }
 
-fn introduction_minor(
-    name: &str,
-    entries: &'static [(&'static str, ApiMaturity)],
-) -> Option<u64> {
+fn introduction_minor(name: &str, entries: &'static [(&'static str, ApiMaturity)]) -> Option<u64> {
     lookup(name, entries).map(|maturity| maturity.since)
 }
 

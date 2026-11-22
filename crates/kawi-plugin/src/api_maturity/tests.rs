@@ -155,3 +155,34 @@ fn active_api_rejects_deprecation_fields() {
         Err(MaturityError::ActiveWithDeprecationData)
     );
 }
+
+#[test]
+fn lookups_are_exact_and_case_sensitive() {
+    assert_eq!(host_method_maturity(""), None);
+    assert_eq!(host_method_maturity("Editor.get_state"), None);
+    assert_eq!(host_method_maturity("editor.get_state "), None);
+    assert_eq!(host_method_maturity("editor.get"), None);
+    assert_eq!(event_maturity("buffer_change"), None);
+    assert_eq!(event_maturity("buffer_changedx"), None);
+}
+
+#[test]
+fn since_accessors_cover_the_whole_protocol_universe() {
+    for &(name, maturity) in HOST_METHOD_ENTRIES {
+        assert_eq!(host_method_since(name), Some(maturity.since), "{name}");
+    }
+    for &(name, maturity) in EVENT_ENTRIES {
+        assert_eq!(event_since(name), Some(maturity.since), "{name}");
+    }
+}
+
+#[test]
+fn stability_is_declared_not_derived_from_introduction_minor() {
+    let stable_now = ApiMaturity::stable(crate::protocol::PROTOCOL_MINOR);
+    let experimental_earlier = ApiMaturity::experimental(BASE_WASM_MINOR);
+
+    assert_eq!(stable_now.validate(), Ok(()));
+    assert_eq!(experimental_earlier.validate(), Ok(()));
+    assert!(stable_now.is_stable());
+    assert!(experimental_earlier.is_experimental());
+}
