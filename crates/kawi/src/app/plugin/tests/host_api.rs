@@ -3,8 +3,8 @@ use std::fs;
 
 use kawi_plugin::{
     BufferInfo as PluginBufferInfo, BufferState, Capability, EffectiveCapabilities,
-    HostEnvironment, Scope, BUFFER_NOT_ACTIVE, BUFFER_NOT_FOUND, CAPABILITY_DENIED,
-    MODE_NOT_SUPPORTED, OPTION_NOT_FOUND,
+    HostEnvironment, PluginHostEvent, PluginStatus, Scope, BUFFER_MODIFIED, BUFFER_NOT_ACTIVE,
+    BUFFER_NOT_FOUND, BUFFER_NOT_OWNED, CAPABILITY_DENIED, MODE_NOT_SUPPORTED, OPTION_NOT_FOUND,
 };
 use serde_json::{json, Value};
 
@@ -18,8 +18,11 @@ mod windows;
 const PLUGIN: &str = "test";
 
 fn grant(app: &mut App, capability: Capability, scope: Scope) {
-    let mut granted = BTreeMap::new();
-    granted.insert(capability, scope);
+    grant_all(app, [(capability, scope)]);
+}
+
+fn grant_all(app: &mut App, capabilities: impl IntoIterator<Item = (Capability, Scope)>) {
+    let granted = capabilities.into_iter().collect::<BTreeMap<_, _>>();
     app.plugins.capabilities.replace(BTreeMap::from([(
         PLUGIN.to_string(),
         EffectiveCapabilities { granted },
@@ -205,4 +208,144 @@ fn authorizes_buffer_writes_by_path_scope() {
 
     fs::remove_dir_all(root).unwrap();
     let _ = fs::remove_file(outside);
+}
+
+#[test]
+fn creates_and_closes_owned_scratch_buffers() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+
+    let value = request(
+        &mut app,
+        "buffer.create",
+        json!({ "text": "scratch text\n" }),
+    )
+    .expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+    assert_ne!(state.buffer, 1);
+    assert_eq!(state.path, None);
+    assert_eq!(state.text, None);
+    assert!(!state.modified);
+    assert_eq!(app.editor.buffer_number(), 1);
+
+    let value = request(
+        &mut app,
+        "buffer.get",
+        json!({ "buffer": state.buffer, "include_text": true }),
+    )
+    .expect("get scratch");
+    let text: BufferState = serde_json::from_value(value).expect("buffer state");
+    assert_eq!(text.text.as_deref(), Some("scratch text\n"));
+
+    request(&mut app, "buffer.close", json!({ "buffer": state.buffer })).expect("close");
+    let error = request(&mut app, "buffer.get", json!({ "buffer": state.buffer }))
+        .expect_err("closed buffer");
+    assert_eq!(error.code, BUFFER_NOT_FOUND);
+}
+
+#[test]
+fn closing_an_owned_buffer_replaces_it_in_every_window() {
+    let mut app = app();
+    grant_all(
+        &mut app,
+        [
+            (Capability::EditorBuffersWrite, Scope::Unscoped),
+            (Capability::EditorWindows, Scope::Unscoped),
+        ],
+    );
+    let value = request(&mut app, "buffer.create", json!({ "text": "note\n" })).expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+    request(
+        &mut app,
+        "window.open",
+        json!({ "buffer": state.buffer, "direction": "vertical" }),
+    )
+    .expect("open window");
+    assert_eq!(app.windows.count_buffer(state.buffer as usize), 1);
+
+    request(&mut app, "buffer.close", json!({ "buffer": state.buffer })).expect("close");
+    assert_eq!(app.windows.count_buffer(state.buffer as usize), 0);
+    assert_eq!(app.windows.count_buffer(1), 2);
+}
+
+#[test]
+fn buffer_lifecycle_requires_the_buffer_write_capability() {
+    let mut app = app();
+    for method in ["buffer.create", "buffer.close"] {
+        assert_eq!(
+            app.plugins.denied_capability(PLUGIN, method),
+            Some(Capability::EditorBuffersWrite)
+        );
+    }
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    for method in ["buffer.create", "buffer.close"] {
+        assert_eq!(app.plugins.denied_capability(PLUGIN, method), None);
+    }
+}
+
+#[test]
+fn rejects_closing_buffers_the_plugin_does_not_own() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+
+    let error = request(&mut app, "buffer.close", json!({ "buffer": 1 })).expect_err("user buffer");
+    assert_eq!(error.code, BUFFER_NOT_OWNED);
+    assert!(app.editor.buffer_is_dirty(1).is_some());
+
+    let error = request(&mut app, "buffer.close", json!({ "buffer": 99 })).expect_err("unknown");
+    assert_eq!(error.code, BUFFER_NOT_OWNED);
+}
+
+#[test]
+fn closing_a_vanished_buffer_releases_ownership() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    let value = request(&mut app, "buffer.create", json!({ "text": "gone\n" })).expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+    app.editor
+        .close_buffer(state.buffer as usize, true)
+        .unwrap();
+
+    let error = request(&mut app, "buffer.close", json!({ "buffer": state.buffer }))
+        .expect_err("vanished buffer");
+    assert_eq!(error.code, BUFFER_NOT_FOUND);
+    assert!(!app.plugins.owns_buffer(PLUGIN, state.buffer));
+}
+
+#[test]
+fn closing_a_modified_owned_buffer_requires_force() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    let value = request(&mut app, "buffer.create", json!({ "text": "note\n" })).expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+    app.editor.buffer_select(state.buffer as usize);
+    app.editor.apply(kawi_editor::Action::EnterInsert);
+    app.editor.apply(kawi_editor::Action::InsertChar('x'));
+    app.editor.apply(kawi_editor::Action::ExitInsert);
+
+    let error = request(&mut app, "buffer.close", json!({ "buffer": state.buffer }))
+        .expect_err("modified buffer");
+    assert_eq!(error.code, BUFFER_MODIFIED);
+
+    request(
+        &mut app,
+        "buffer.close",
+        json!({ "buffer": state.buffer, "force": true }),
+    )
+    .expect("forced close");
+    assert!(app.editor.buffer_is_dirty(state.buffer as usize).is_none());
+}
+
+#[test]
+fn stopping_a_plugin_closes_the_buffers_it_created() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    let value = request(&mut app, "buffer.create", json!({ "text": "temp\n" })).expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+
+    app.handle_plugin_event(PluginHostEvent::StatusChanged {
+        plugin: PLUGIN.to_string(),
+        status: PluginStatus::Stopped,
+    });
+    assert!(app.editor.buffer_is_dirty(state.buffer as usize).is_none());
 }

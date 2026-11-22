@@ -25,6 +25,8 @@ pub(super) fn handle(
         "buffer.get" => app.plugin_buffer_get(params),
         "buffer.open" => app.plugin_buffer_open(plugin, params),
         "buffer.apply_edit" => app.plugin_buffer_apply_edit(plugin, params),
+        "buffer.create" => app.plugin_buffer_create(plugin, params),
+        "buffer.close" => app.plugin_buffer_close(plugin, params),
         "window.list" => app.plugin_window_list(),
         "window.get" => app.plugin_window_get(params),
         "window.focus" => app.plugin_window_focus(params),

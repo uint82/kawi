@@ -52,6 +52,7 @@ pub(crate) struct PluginRuntime {
     pub(super) plugin_variables: BTreeMap<String, BTreeMap<String, Value>>,
     pub(super) buffer_variables: BTreeMap<u64, BTreeMap<String, Value>>,
     pub(super) window_variables: BTreeMap<u64, BTreeMap<String, Value>>,
+    pub(super) owned_buffers: BTreeMap<u64, String>,
     pub(super) bindings: Vec<Binding>,
     pub(super) queues: BTreeMap<String, VecDeque<QueuedInvocation>>,
     pub(super) queue_stats: BTreeMap<String, QueueCounters>,
