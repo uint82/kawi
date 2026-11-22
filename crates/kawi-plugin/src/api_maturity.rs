@@ -200,6 +200,13 @@ fn lookup(name: &str, entries: &'static [(&'static str, ApiMaturity)]) -> Option
     Some(entries[index].1)
 }
 
+fn introduction_minor(
+    name: &str,
+    entries: &'static [(&'static str, ApiMaturity)],
+) -> Option<u64> {
+    lookup(name, entries).map(|maturity| maturity.since)
+}
+
 pub fn host_method_maturity(method: &str) -> Option<ApiMaturity> {
     lookup(method, HOST_METHOD_ENTRIES)
 }
@@ -208,12 +215,12 @@ pub fn event_maturity(event: &str) -> Option<ApiMaturity> {
     lookup(event, EVENT_ENTRIES)
 }
 
-pub fn host_method_since(method: &str) -> u64 {
-    host_method_maturity(method).map_or(LEGACY_MINOR, |maturity| maturity.since)
+pub fn host_method_since(method: &str) -> Option<u64> {
+    introduction_minor(method, HOST_METHOD_ENTRIES)
 }
 
-pub fn event_since(event: &str) -> u64 {
-    event_maturity(event).map_or(LEGACY_MINOR, |maturity| maturity.since)
+pub fn event_since(event: &str) -> Option<u64> {
+    introduction_minor(event, EVENT_ENTRIES)
 }
 
 #[cfg(test)]

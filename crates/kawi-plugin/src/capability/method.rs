@@ -1,3 +1,5 @@
+use crate::api_maturity::{event_since, host_method_since};
+
 use super::{Capability, CapabilityRegistry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -7,16 +9,12 @@ pub enum MethodCapability {
     Required(Capability),
 }
 
-use crate::api_maturity::{event_since, host_method_since};
-
 pub fn is_process_host_method(method: &str) -> bool {
-    crate::protocol::HOST_METHODS.contains(&method)
-        && host_method_since(method) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+    host_method_since(method).is_some_and(|since| since <= crate::protocol::PROCESS_PROTOCOL_MINOR)
 }
 
 pub fn is_process_event(event: &str) -> bool {
-    crate::protocol::EVENT_NAMES.contains(&event)
-        && event_since(event) <= crate::protocol::PROCESS_PROTOCOL_MINOR
+    event_since(event).is_some_and(|since| since <= crate::protocol::PROCESS_PROTOCOL_MINOR)
 }
 
 pub fn host_method_capability(method: &str) -> MethodCapability {

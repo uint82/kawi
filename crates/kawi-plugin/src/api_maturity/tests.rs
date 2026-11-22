@@ -68,11 +68,8 @@ fn lookups_find_the_first_and_last_entries() {
 fn unknown_names_do_not_inherit_maturity() {
     assert_eq!(host_method_maturity("method.that_does_not_exist"), None);
     assert_eq!(event_maturity("event_that_does_not_exist"), None);
-    assert_eq!(
-        host_method_since("method.that_does_not_exist"),
-        LEGACY_MINOR
-    );
-    assert_eq!(event_since("event_that_does_not_exist"), LEGACY_MINOR);
+    assert_eq!(host_method_since("method.that_does_not_exist"), None);
+    assert_eq!(event_since("event_that_does_not_exist"), None);
 }
 
 #[test]
