@@ -43,6 +43,43 @@ fn introduction_minors_never_exceed_the_protocol_minor() {
 }
 
 #[test]
+fn method_introduction_minors_follow_the_protocol_history() {
+    for (name, minor) in [
+        ("editor.get_state", LEGACY_MINOR),
+        ("editor.set_diagnostics", DIAGNOSTICS_MINOR),
+        ("editor.execute", COMMAND_COMPOSITION_MINOR),
+        ("config.get", SETTINGS_MINOR),
+        ("ui.input", INTERACTIVE_UI_MINOR),
+        ("editor.set_decorations", DECORATIONS_MINOR),
+        ("process.open", PROCESS_JOBS_MINOR),
+        ("process.poll", PROCESS_POLL_MINOR),
+        ("ui.panel_open", PANELS_MINOR),
+        ("buffer.get", WASM_EDITOR_MINOR),
+        ("command.register", WASM_EXTENSIONS_MINOR),
+        ("autocmd.register", WASM_AUTOCMDS_MINOR),
+        ("timer.after", WASM_AUTOMATION_MINOR),
+        ("ui.overlay_open", WASM_OVERLAYS_MINOR),
+        ("task.start", WASM_TASKS_MINOR),
+        ("buffer.create", WASM_SCRATCH_BUFFERS_MINOR),
+    ] {
+        assert_eq!(host_method_since(name), Some(minor), "{name}");
+    }
+}
+
+#[test]
+fn event_introduction_minors_follow_the_protocol_history() {
+    for (name, minor) in [
+        ("buffer_changed", EVENTS_MINOR),
+        ("diagnostics_changed", EVENTS_MINOR),
+        ("buffer_enter", WASM_EDITOR_MINOR),
+        ("user", WASM_AUTOCMDS_MINOR),
+        ("window_created", WASM_AUTOCMDS_MINOR),
+    ] {
+        assert_eq!(event_since(name), Some(minor), "{name}");
+    }
+}
+
+#[test]
 fn lookups_find_the_first_and_last_entries() {
     let first_method = HOST_METHOD_NAMES.first().copied().unwrap();
     let last_method = HOST_METHOD_NAMES.last().copied().unwrap();
@@ -179,7 +216,7 @@ fn since_accessors_cover_the_whole_protocol_universe() {
 #[test]
 fn stability_is_declared_not_derived_from_introduction_minor() {
     let stable_now = ApiMaturity::stable(crate::protocol::PROTOCOL_MINOR);
-    let experimental_earlier = ApiMaturity::experimental(BASE_WASM_MINOR);
+    let experimental_earlier = ApiMaturity::experimental(WASM_EDITOR_MINOR);
 
     assert_eq!(stable_now.validate(), Ok(()));
     assert_eq!(experimental_earlier.validate(), Ok(()));
