@@ -99,7 +99,15 @@ pub fn advertised_host_methods(registry: &CapabilityRegistry, plugin: &str) -> V
 }
 
 pub fn is_event_allowed(registry: &CapabilityRegistry, plugin: &str, event: &str) -> bool {
-    event_capability(event).is_none_or(|capability| registry.has(plugin, capability))
+    missing_event_capability(registry, plugin, event).is_none()
+}
+
+pub fn missing_event_capability(
+    registry: &CapabilityRegistry,
+    plugin: &str,
+    event: &str,
+) -> Option<Capability> {
+    event_capability(event).filter(|capability| !registry.has(plugin, *capability))
 }
 
 pub fn advertised_events(registry: &CapabilityRegistry, plugin: &str) -> Vec<&'static str> {

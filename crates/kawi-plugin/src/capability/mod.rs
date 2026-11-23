@@ -13,7 +13,7 @@ pub(crate) use command::{authorize_command, resolve as resolve_command};
 pub use method::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
     is_event_allowed, is_host_method_allowed, is_process_event, is_process_host_method,
-    MethodCapability,
+    missing_event_capability, MethodCapability,
 };
 pub use registry::CapabilityRegistry;
 #[cfg(feature = "wasm")]
