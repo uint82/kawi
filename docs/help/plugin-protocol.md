@@ -210,6 +210,10 @@ Event names:
 - `selection_changed`
 - `focus_gained`
 - `focus_lost`
+- `language_changed`
+- `window_created`
+- `window_closed`
+- `user`
 
 `buffer_opened` reports that a buffer exists. `file_opened` reports that a buffer was loaded from a path. Scratch buffers have `path: null`. `mode_changed` carries `from` and `to` using the same names as keymap configuration. `buffer_closed` lets plugins release per-buffer state.
 
@@ -219,9 +223,9 @@ Event names:
 
 `diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision.
 
-`buffer_enter` carries `buffer`, `path`, `language`, and `revision` when a buffer becomes active. `buffer_leave` carries the previous `buffer` and `path`. `window_enter` and `window_leave` carry `window` and `buffer` when the active window changes. `focus_gained` and `focus_lost` carry `window` and `buffer` when the editor focus enters or leaves a plugin window. `cursor_moved` carries `buffer`, `cursor`, and the current `selection`. `selection_changed` carries `buffer` and the current `selection`; both use `null` when no selection exists.
+`buffer_enter` carries `buffer`, `path`, `language`, and `revision` when a buffer becomes active. `buffer_leave` carries the previous `buffer` and `path`. `window_enter` and `window_leave` carry `window` and `buffer` when the active window changes. `focus_gained` and `focus_lost` carry `window` and `buffer` when the editor focus enters or leaves a plugin window. `window_created` and `window_closed` carry `window` and `buffer` when a split is created or closed. `cursor_moved` carries `buffer`, `cursor`, and the current `selection`. `selection_changed` carries `buffer` and the current `selection`; both use `null` when no selection exists. `language_changed` carries `buffer`, `path`, `previous`, and `language` when the detected language changes. `user` carries `name` and an optional `payload` from `editor.emit_user_event`.
 
-Buffer events require `editor.buffers`, window and focus events require `editor.windows`, and cursor and selection events require `editor.control`. Kawi emits the new events only on an actual transition, never at startup, and never to process plugins, which remain on protocol minor 12.
+Buffer content, file, mode, and language events require `editor.read`; buffer enter and leave events require `editor.buffers`; window and focus events require `editor.windows`; cursor and selection events require `editor.control`; diagnostics events require `diagnostics.read`; user events require `editor.autocmds`. Kawi emits the minor 15 events only on an actual transition, never at startup; `user` is emitted on demand. The minor 15 events are not delivered to process plugins, which remain on protocol minor 12.
 
 Events are post-hoc notifications. They never wait for a plugin response. Kawi does not implement `will_save` in version 1. Use `file_saved` and invoke a command for format-on-save behavior.
 
@@ -1035,6 +1039,48 @@ Result is an array of `{"key": "...", "value": ...}` records for that scope. An 
 
 Buffer variables are removed when the buffer closes, window variables when the window closes, and plugin timers and variables when the plugin stops, restarts, or is disabled.
 
+### autocmd.register
+
+Requires `editor.autocmds`, and the event must be allowed by the plugin's other capabilities: `editor.read` covers buffer, file, mode, and language events, `editor.windows` covers window and focus events, `editor.control` covers cursor and selection events, `diagnostics.read` covers `diagnostics_changed`, and `editor.autocmds` covers `user`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"event": "file_saved", "pattern": "*.rs", "buffer": 1, "once": false}
+```
+
+`pattern` is an optional comma-separated list of globs, 1 to 256 bytes, with no empty entries or control characters. It matches the full path or file name for buffer and file events, the language for `language_changed`, and the event name for `user`. Events without a target match only the `*` pattern. `buffer` restricts delivery to one buffer. `once` removes the registration after its first delivery. Result:
+
+```json
+{"id": 1, "event": "file_saved", "pattern": "*.rs", "buffer": 1, "once": false}
+```
+
+An unknown event or invalid pattern returns `-32602`; an event outside the plugin's capabilities returns `-32012`; registering more than 256 autocmds returns `-32602`.
+
+### autocmd.remove
+
+Requires `editor.autocmds`. This method is available only to WebAssembly components. Request params are `{"id": 1}`. Result is `null`. An unknown id returns `-32602`.
+
+### autocmd.list
+
+Requires `editor.autocmds`. This method is available only to WebAssembly components. Request params are `{}`. Result is an array of the calling plugin's registrations:
+
+```json
+[{"id": 1, "event": "file_saved", "pattern": "*.rs", "buffer": 1, "once": false}]
+```
+
+### autocmd.clear
+
+Requires `editor.autocmds`. This method is available only to WebAssembly components. Request params are `{}`. Result is `null`. Every autocmd owned by the calling plugin is removed.
+
+### editor.emit_user_event
+
+Requires `editor.autocmds`. This method is available only to WebAssembly components. Request params:
+
+```json
+{"name": "build-done", "payload": "ok"}
+```
+
+`name` is 1 to 64 bytes with no control characters; `payload` is at most 4096 bytes. Result is `null`. The event is delivered only to `user` autocmds whose pattern matches the name, not to `on-event` subscribers.
+
 ## Process jobs
 
 Background jobs let a running process plugin start a long-lived child, stream its output, write to its stdin, signal it, and observe its exit. A job keeps running after the command invocation that started it returns. Output and exit events are delivered to the running plugin while no invocation is in flight.
@@ -1195,6 +1241,58 @@ Result is a list of queued job events:
 - WASM job events use a per-job queue capped at 1024 events or 8 MiB. `process.poll` drains the oldest events first; a full queue drops the oldest output.
 
 Stopping, crashing, restarting, reloading, or disabling a plugin kills every job owned by that plugin.
+
+## Tasks
+
+Tasks run project commands defined in `tasks.toml` or the global task file. Every task method requires `task.run` with a scope listing the allowed task names; an unlisted name returns `-32012`. Task methods are available only to WebAssembly components. Task events are queued per job and drained with `task.poll`; they are not delivered as notifications.
+
+### task.list
+
+Requires `task.run`. Request params are `{}`. Result is an array of the configured tasks inside the plugin's scope:
+
+```json
+[{"name": "test", "command": "cargo", "args": ["test"]}]
+```
+
+A scoped name that is not configured is omitted.
+
+### task.start
+
+Requires `task.run`. Request params are `{"name": "test"}`. Result:
+
+```json
+{"job": 1, "name": "test"}
+```
+
+A scoped name that is not configured returns `-32062`. A fifth concurrent task for the same plugin returns `-32063`. A task that cannot start returns `-32064`.
+
+### task.status
+
+Requires `task.run`. Request params are `{"job": 1}`. Result:
+
+```json
+{"job": 1, "name": "test", "state": "exited", "exit_code": 0, "success": true, "cancelled": false, "duration_ms": 12, "findings": 0, "dropped_events": 0}
+```
+
+`state` is `running`, `exited`, `cancelled`, or `failed`. An unknown or expired job returns `-32062`. Exited jobs are retained for five minutes.
+
+### task.poll
+
+Requires `task.run`. Request params are `{"job": 1}`. Result is the queued events, oldest first:
+
+```json
+[
+  {"event": "task_output", "payload": {"job": 1, "channel": "stdout", "line": "ok", "truncated": false}},
+  {"event": "task_finding", "payload": {"job": 1, "path": "src/main.rs", "line": 4, "column": 8, "severity": "warning", "message": "unused"}},
+  {"event": "task_exited", "payload": {"job": 1, "state": "exited", "exit_code": 0, "success": true, "cancelled": false, "duration_ms": 12}}
+]
+```
+
+`channel` is `stdout` or `stderr`; `severity` is `error`, `warning`, `information`, or `hint`. Output lines are truncated to 4 KiB. The queue holds up to 10,000 events or 8 MiB per job and drops the oldest events when full. `task.status` remains available after the queue drops events. An unknown job returns `-32062`.
+
+### task.cancel
+
+Requires `task.run`. Request params are `{"job": 1}`. Result is `null`. An unknown job returns `-32062`. The job remains visible through `task.status` until it exits and is pruned.
 
 ## Versioning
 
