@@ -70,6 +70,54 @@ fn stability_labels_cover_every_stability() {
 }
 
 #[test]
+fn every_host_method_declares_a_signature() {
+    let report = api_metadata();
+    for entry in &report.methods {
+        let signature = entry
+            .signature
+            .unwrap_or_else(|| panic!("{} has no signature", entry.name));
+        assert!(!signature.returns.is_empty(), "{}", entry.name);
+    }
+    for entry in &report.events {
+        assert!(entry.signature.is_none(), "{}", entry.name);
+    }
+}
+
+#[test]
+fn signatures_have_unique_named_and_typed_parameters() {
+    for entry in api_metadata().methods {
+        let signature = entry.signature.expect("method signature");
+        let mut names = std::collections::BTreeSet::new();
+        for parameter in signature.parameters {
+            assert!(!parameter.name.is_empty(), "{}", entry.name);
+            assert!(!parameter.ty.is_empty(), "{}", entry.name);
+            assert!(
+                names.insert(parameter.name),
+                "{} repeats {}",
+                entry.name,
+                parameter.name
+            );
+        }
+    }
+}
+
+#[test]
+fn required_parameters_are_listed_before_optional_ones() {
+    for entry in api_metadata().methods {
+        let signature = entry.signature.expect("method signature");
+        let mut optional_seen = false;
+        for parameter in signature.parameters {
+            assert!(
+                !optional_seen || !parameter.required,
+                "{} lists a required parameter after an optional one",
+                entry.name
+            );
+            optional_seen |= !parameter.required;
+        }
+    }
+}
+
+#[test]
 fn deprecated_entry_keeps_its_version_and_replacement() {
     let maturity = ApiMaturity::deprecated(4, 6, "new.method");
     let entry = entry_metadata("old.method", maturity);
