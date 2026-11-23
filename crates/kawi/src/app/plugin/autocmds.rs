@@ -1,10 +1,19 @@
 use std::path::Path;
 
-use kawi_plugin::{validate_autocmd_spec, AutocmdSpec, RegisteredAutocmd, MAX_PLUGIN_AUTOCMDS};
+use kawi_plugin::{
+    missing_event_capability, validate_autocmd_spec, AutocmdSpec, Capability, RegisteredAutocmd,
+    MAX_PLUGIN_AUTOCMDS,
+};
 use serde_json::Value;
 
 use super::PluginRuntime;
 use crate::app::path_match::glob_matches;
+
+#[derive(Debug)]
+pub(crate) enum AutocmdError {
+    Invalid(String),
+    Capability(Capability),
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct AutocmdRegistration {
@@ -27,19 +36,14 @@ impl PluginRuntime {
         &mut self,
         plugin: &str,
         spec: AutocmdSpec,
-    ) -> Result<RegisteredAutocmd, String> {
+    ) -> Result<RegisteredAutocmd, AutocmdError> {
         if !self.contains(plugin) {
-            return Err(format!("unknown plugin: {plugin}"));
+            return Err(AutocmdError::Invalid(format!("unknown plugin: {plugin}")));
         }
-        validate_autocmd_spec(&spec)?;
-        if !kawi_plugin::is_event_allowed(&self.capabilities, plugin, &spec.event) {
-            return Err(format!(
-                "event {} requires the {} capability",
-                spec.event,
-                kawi_plugin::event_capability(&spec.event)
-                    .map(kawi_plugin::Capability::name)
-                    .unwrap_or("matching")
-            ));
+        validate_autocmd_spec(&spec).map_err(AutocmdError::Invalid)?;
+        if let Some(capability) = missing_event_capability(&self.capabilities, plugin, &spec.event)
+        {
+            return Err(AutocmdError::Capability(capability));
         }
         let count = self
             .autocmds
@@ -47,9 +51,9 @@ impl PluginRuntime {
             .filter(|autocmd| autocmd.plugin == plugin)
             .count();
         if count >= MAX_PLUGIN_AUTOCMDS {
-            return Err(format!(
+            return Err(AutocmdError::Invalid(format!(
                 "at most {MAX_PLUGIN_AUTOCMDS} autocmds are allowed per plugin"
-            ));
+            )));
         }
         let id = self.next_autocmd_id;
         self.next_autocmd_id += 1;
@@ -67,7 +71,7 @@ impl PluginRuntime {
         self.registered_autocmds(plugin)
             .into_iter()
             .find(|autocmd| autocmd.id == id)
-            .ok_or_else(|| "autocmd registration failed".to_string())
+            .ok_or_else(|| AutocmdError::Invalid("autocmd registration failed".to_string()))
     }
 
     pub(crate) fn remove_autocmd(&mut self, plugin: &str, id: u64) -> Result<(), String> {

@@ -33,8 +33,8 @@ pub use api_maturity::{
 };
 pub use capability::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
-    is_event_allowed, is_host_method_allowed, Capability, CapabilityRegistry, CapabilityRequests,
-    EffectiveCapabilities, MethodCapability, Scope,
+    is_event_allowed, is_host_method_allowed, missing_event_capability, Capability,
+    CapabilityRegistry, CapabilityRequests, EffectiveCapabilities, MethodCapability, Scope,
 };
 pub use decoration_group::{
     validate_decoration_group, MAX_DECORATION_GROUPS, MAX_DECORATION_GROUP_LEN,
