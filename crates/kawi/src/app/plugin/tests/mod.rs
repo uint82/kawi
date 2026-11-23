@@ -1,3 +1,4 @@
+mod autocmds;
 mod common;
 mod composition;
 mod core;

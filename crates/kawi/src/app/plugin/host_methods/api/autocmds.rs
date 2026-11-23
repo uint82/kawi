@@ -5,6 +5,7 @@ use kawi_plugin::{
 use serde_json::Value;
 
 use super::super::super::super::App;
+use crate::app::plugin::autocmds::AutocmdError;
 use crate::app::plugin::host_methods::util::invalid_params;
 
 pub(super) fn handle(
@@ -25,10 +26,13 @@ pub(super) fn handle(
 
 fn register(app: &mut App, plugin: &str, params: Value) -> Result<Value, RpcError> {
     let spec: AutocmdSpec = serde_json::from_value(params).map_err(invalid_params)?;
-    let registered = app
-        .plugins
-        .register_autocmd(plugin, spec)
-        .map_err(RpcError::invalid_params)?;
+    let registered = match app.plugins.register_autocmd(plugin, spec) {
+        Ok(registered) => registered,
+        Err(AutocmdError::Invalid(message)) => return Err(RpcError::invalid_params(message)),
+        Err(AutocmdError::Capability(capability)) => {
+            return Err(app.plugins.capability_error(plugin, capability));
+        }
+    };
     serde_json::to_value(registered).map_err(internal_error)
 }
 
