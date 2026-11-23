@@ -17,6 +17,17 @@ fn json_output_reports_the_registered_api() {
     assert!(report["methods"].as_array().unwrap().len() >= 74);
     assert_eq!(report["events"].as_array().unwrap().len(), 19);
     assert_eq!(report["error_types"].as_array().unwrap().len(), 29);
+
+    let state = report["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["name"] == "editor.get_state")
+        .expect("editor.get_state entry");
+    assert_eq!(state["signature"]["returns"], "GetStateResult");
+    assert_eq!(state["signature"]["parameters"][0]["name"], "include_text");
+    assert_eq!(state["signature"]["parameters"][0]["required"], false);
+    assert!(report["events"][0].get("signature").is_none());
 }
 
 #[test]
@@ -30,6 +41,7 @@ fn text_output_lists_methods_and_events() {
     assert!(text.contains("Errors (29):"));
     assert!(text.contains("editor.get_state"));
     assert!(text.contains("CAPABILITY_DENIED"));
+    assert!(text.contains("(include_text?: boolean) -> GetStateResult"));
 }
 
 #[test]

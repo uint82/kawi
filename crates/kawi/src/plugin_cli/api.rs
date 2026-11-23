@@ -1,5 +1,7 @@
 use anyhow::{bail, Result};
-use kawi_plugin::api_metadata::{api_metadata, ApiEntryMetadata, ApiErrorMetadata, ApiMetadata};
+use kawi_plugin::api_metadata::{
+    api_metadata, ApiEntryMetadata, ApiErrorMetadata, ApiMetadata, ApiSignatureMetadata,
+};
 
 enum Output {
     Text,
@@ -19,14 +21,30 @@ fn optional_number(value: Option<u64>) -> String {
     value.map_or_else(|| "-".to_string(), |number| number.to_string())
 }
 
+fn render_signature(signature: Option<&ApiSignatureMetadata>) -> String {
+    let Some(signature) = signature else {
+        return "-".to_string();
+    };
+    let parameters: Vec<String> = signature
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let marker = if parameter.required { "" } else { "?" };
+            format!("{}{}: {}", parameter.name, marker, parameter.ty)
+        })
+        .collect();
+    format!("({}) -> {}", parameters.join(", "), signature.returns)
+}
+
 fn render_entry(entry: &ApiEntryMetadata) -> String {
     format!(
-        "{:<26} {:<6} {:<12} {:<14} {}",
+        "{:<26} {:<6} {:<12} {:<14} {:<20} {}",
         entry.name,
         entry.since,
         entry.stability,
         optional_number(entry.deprecated_since),
-        entry.replacement.unwrap_or("-")
+        entry.replacement.unwrap_or("-"),
+        render_signature(entry.signature.as_ref())
     )
 }
 
@@ -34,8 +52,8 @@ fn render_section(title: &str, entries: &[ApiEntryMetadata]) -> String {
     let mut lines = vec![
         format!("{title} ({}):", entries.len()),
         format!(
-            "{:<26} {:<6} {:<12} {:<14} {}",
-            "NAME", "SINCE", "STABILITY", "DEPRECATED", "REPLACEMENT"
+            "{:<26} {:<6} {:<12} {:<14} {:<20} {}",
+            "NAME", "SINCE", "STABILITY", "DEPRECATED", "REPLACEMENT", "SIGNATURE"
         ),
     ];
     lines.extend(entries.iter().map(render_entry));
@@ -81,6 +99,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kawi_plugin::api_metadata::ApiParameterMetadata;
 
     fn string(value: &str) -> String {
         value.to_string()
@@ -105,18 +124,50 @@ mod tests {
     }
 
     #[test]
-    fn render_entry_aligns_all_five_columns() {
+    fn render_entry_aligns_all_six_columns() {
         let entry = ApiEntryMetadata {
             name: "old.method",
             since: 4,
             stability: "deprecated",
             deprecated_since: Some(6),
             replacement: Some("new.method"),
+            signature: Some(ApiSignatureMetadata {
+                parameters: &[ApiParameterMetadata {
+                    name: "flag",
+                    ty: "boolean",
+                    required: false,
+                }],
+                returns: "null",
+            }),
         };
         assert_eq!(
             render_entry(&entry),
-            "old.method                 4      deprecated   6              new.method"
+            "old.method                 4      deprecated   6              new.method           (flag?: boolean) -> null"
         );
+    }
+
+    #[test]
+    fn render_signature_marks_optional_parameters_and_returns() {
+        let signature = ApiSignatureMetadata {
+            parameters: &[
+                ApiParameterMetadata {
+                    name: "buffer",
+                    ty: "integer",
+                    required: true,
+                },
+                ApiParameterMetadata {
+                    name: "include_text",
+                    ty: "boolean",
+                    required: false,
+                },
+            ],
+            returns: "BufferState",
+        };
+        assert_eq!(
+            render_signature(Some(&signature)),
+            "(buffer: integer, include_text?: boolean) -> BufferState"
+        );
+        assert_eq!(render_signature(None), "-");
     }
 
     #[test]
@@ -157,6 +208,7 @@ mod tests {
         assert!(text.contains("Events ("));
         assert!(text.contains("Errors ("));
         assert!(text.contains("editor.get_state"));
+        assert!(text.contains("(include_text?: boolean) -> GetStateResult"));
     }
 
     #[test]

@@ -14,6 +14,19 @@ pub struct ApiVersionMetadata {
     pub process_protocol_minor: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ApiParameterMetadata {
+    pub name: &'static str,
+    pub ty: &'static str,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ApiSignatureMetadata {
+    pub parameters: &'static [ApiParameterMetadata],
+    pub returns: &'static str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiEntryMetadata {
     pub name: &'static str,
@@ -21,6 +34,8 @@ pub struct ApiEntryMetadata {
     pub stability: &'static str,
     pub deprecated_since: Option<u64>,
     pub replacement: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<ApiSignatureMetadata>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -53,6 +68,14 @@ fn entry_metadata(name: &'static str, maturity: ApiMaturity) -> ApiEntryMetadata
         stability: stability_label(maturity),
         deprecated_since: maturity.deprecated_since,
         replacement: maturity.replacement,
+        signature: None,
+    }
+}
+
+fn method_metadata(name: &'static str, maturity: ApiMaturity) -> ApiEntryMetadata {
+    ApiEntryMetadata {
+        signature: Some(signatures::method(name)),
+        ..entry_metadata(name, maturity)
     }
 }
 
@@ -62,7 +85,7 @@ fn method_entries() -> Vec<ApiEntryMetadata> {
         .copied()
         .map(|name| {
             let maturity = host_method_maturity(name).expect("registry covers every host method");
-            entry_metadata(name, maturity)
+            method_metadata(name, maturity)
         })
         .collect()
 }
@@ -93,3 +116,5 @@ pub fn api_metadata() -> ApiMetadata {
 
 #[cfg(test)]
 mod tests;
+
+mod signatures;
