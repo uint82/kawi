@@ -106,8 +106,8 @@ Host request:
     "protocol_version": 1,
     "host": {"name": "kawi", "version": "0.0.1"},
     "position_encoding": "utf-8-bytes",
-    "protocol_minor": 19,
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
+    "protocol_minor": 12,
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
     "plugin_capabilities": ["invoke_command"],
     "events": ["buffer_changed", "buffer_opened", "file_opened", "buffer_closed", "file_saved", "mode_changed", "diagnostics_changed"]
   }
@@ -122,17 +122,17 @@ Plugin response:
   "id": 1,
   "result": {
     "protocol_version": 1,
-    "protocol_minor": 19,
+    "protocol_minor": 12,
     "name": "example",
     "version": "0.1.0",
     "plugin_capabilities": ["invoke_command"],
-    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "ui.overlay_open", "ui.overlay_update", "ui.overlay_wait", "ui.overlay_close", "ui.picker", "config.get", "config.list"],
+    "host_capabilities": ["editor.get_state", "editor.apply_edit", "editor.execute", "editor.list_commands", "editor.set_diagnostics", "editor.set_decorations", "ui.set_statusline", "ui.message", "ui.input", "ui.select", "ui.confirm", "ui.progress_start", "ui.progress_update", "ui.progress_finish", "ui.panel_open", "ui.panel_update", "ui.panel_focus", "ui.panel_close", "config.get", "config.list"],
     "events": ["buffer_changed", "file_saved"]
   }
 }
 ```
 
-Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares an unknown host capability. Calling an unknown method returns `-32601`; a known method outside the declared host APIs returns `-32012`.
+Initialization fails when the protocol version differs, `invoke_command` is not declared, or the plugin declares an unknown host capability. Calling an unknown method returns `-32601`; a known method outside the declared host APIs returns `-32012`. The host advertises only methods available at process minor 12, so WASM-only methods such as `buffer.*`, `window.*`, timers, variables, tasks, overlays, and pickers never appear in a process handshake.
 
 Kawi sends only events present in both the manifest `subscribes` list and the plugin `events` list. A plugin that returns no `events` receives no notifications.
 
