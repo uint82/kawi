@@ -7,26 +7,51 @@ fn report_covers_the_whole_protocol_universe() {
     let report = api_metadata();
     let method_names: Vec<&str> = report.methods.iter().map(|entry| entry.name).collect();
     let event_names: Vec<&str> = report.events.iter().map(|entry| entry.name).collect();
-    assert_eq!(method_names, HOST_METHODS);
-    assert_eq!(event_names, EVENT_NAMES);
+    let expected_methods: Vec<&str> = HOST_METHOD_ENTRIES.iter().map(|entry| entry.name).collect();
+    let expected_events: Vec<&str> = EVENT_ENTRIES.iter().map(|entry| entry.name).collect();
+    assert_eq!(method_names, expected_methods);
+    assert_eq!(event_names, expected_events);
 }
 
 #[test]
 fn report_entries_mirror_the_registry() {
     let report = api_metadata();
-    for entry in &report.methods {
-        let maturity = host_method_maturity(entry.name).unwrap();
-        assert_eq!(entry.since, maturity.since, "{}", entry.name);
-        assert_eq!(entry.stability, stability_label(maturity), "{}", entry.name);
-        assert_eq!(entry.deprecated_since, maturity.deprecated_since);
-        assert_eq!(entry.replacement, maturity.replacement);
+    for (entry, registry) in report.methods.iter().zip(HOST_METHOD_ENTRIES) {
+        assert_eq!(entry.name, registry.name);
+        assert_eq!(entry.since, registry.maturity.since, "{}", entry.name);
+        assert_eq!(
+            entry.stability,
+            stability_label(registry.maturity),
+            "{}",
+            entry.name
+        );
+        assert_eq!(entry.deprecated_since, registry.maturity.deprecated_since);
+        assert_eq!(entry.replacement, registry.maturity.replacement);
+        assert_eq!(
+            entry.capability,
+            registry.capability.map(Capability::name),
+            "{}",
+            entry.name
+        );
+        assert_eq!(entry.process, is_process_available(registry.maturity));
+        assert_eq!(entry.interactive, registry.interactive, "{}", entry.name);
+        assert_eq!(entry.mutates, registry.mutates, "{}", entry.name);
     }
-    for entry in &report.events {
-        let maturity = event_maturity(entry.name).unwrap();
-        assert_eq!(entry.since, maturity.since, "{}", entry.name);
-        assert_eq!(entry.stability, stability_label(maturity), "{}", entry.name);
-        assert_eq!(entry.deprecated_since, maturity.deprecated_since);
-        assert_eq!(entry.replacement, maturity.replacement);
+    for (entry, registry) in report.events.iter().zip(EVENT_ENTRIES) {
+        assert_eq!(entry.name, registry.name);
+        assert_eq!(entry.since, registry.maturity.since, "{}", entry.name);
+        assert_eq!(
+            entry.stability,
+            stability_label(registry.maturity),
+            "{}",
+            entry.name
+        );
+        assert_eq!(entry.deprecated_since, registry.maturity.deprecated_since);
+        assert_eq!(entry.replacement, registry.maturity.replacement);
+        assert_eq!(entry.capability, Some(registry.capability.name()));
+        assert_eq!(entry.process, is_process_available(registry.maturity));
+        assert!(!entry.interactive);
+        assert!(!entry.mutates);
     }
 }
 
@@ -99,9 +124,12 @@ fn report_serializes_with_explicit_nulls_for_missing_deprecation_data() {
     assert_eq!(value["version"]["protocol"], PROTOCOL_VERSION);
     assert_eq!(
         value["methods"].as_array().unwrap().len(),
-        HOST_METHODS.len()
+        HOST_METHOD_ENTRIES.len()
     );
-    assert_eq!(value["events"].as_array().unwrap().len(), EVENT_NAMES.len());
+    assert_eq!(
+        value["events"].as_array().unwrap().len(),
+        EVENT_ENTRIES.len()
+    );
     assert_eq!(
         value["error_types"].as_array().unwrap().len(),
         api_metadata().error_types.len()
@@ -110,6 +138,10 @@ fn report_serializes_with_explicit_nulls_for_missing_deprecation_data() {
     let first = &value["methods"][0];
     assert!(first["deprecated_since"].is_null());
     assert!(first["replacement"].is_null());
+    assert_eq!(first["capability"], "editor.autocmds");
+    assert_eq!(first["process"], false);
+    assert_eq!(first["interactive"], false);
+    assert_eq!(first["mutates"], false);
 }
 
 #[test]
@@ -176,11 +208,94 @@ fn required_parameters_are_listed_before_optional_ones() {
 #[test]
 fn deprecated_entry_keeps_its_version_and_replacement() {
     let maturity = ApiMaturity::deprecated(4, 6, "new.method");
-    let entry = entry_metadata("old.method", maturity);
+    let entry = base_entry("old.method", maturity, None);
     let value = serde_json::to_value(entry).unwrap();
     assert_eq!(value["name"], "old.method");
     assert_eq!(value["since"], 4);
     assert_eq!(value["stability"], "deprecated");
     assert_eq!(value["deprecated_since"], 6);
     assert_eq!(value["replacement"], "new.method");
+}
+
+#[test]
+fn report_exposes_capability_and_runtime_flags() {
+    let report = api_metadata();
+    let method = |name: &str| {
+        report
+            .methods
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap()
+    };
+
+    let state = method("editor.get_state");
+    assert_eq!(state.capability, Some("editor.read"));
+    assert!(state.process);
+    assert!(!state.interactive);
+    assert!(!state.mutates);
+
+    let input = method("ui.input");
+    assert_eq!(input.capability, Some("ui.prompt"));
+    assert!(input.process);
+    assert!(input.interactive);
+    assert!(input.mutates);
+
+    let picker = method("ui.picker");
+    assert_eq!(picker.capability, Some("ui.picker"));
+    assert!(!picker.process);
+    assert!(picker.interactive);
+    assert!(picker.mutates);
+
+    let config = method("config.get");
+    assert_eq!(config.capability, None);
+    assert!(config.process);
+
+    let create = method("buffer.create");
+    assert_eq!(create.capability, Some("editor.buffers.write"));
+    assert!(!create.process);
+}
+
+#[test]
+fn every_reported_capability_is_known() {
+    for entry in api_metadata().methods {
+        if let Some(capability) = entry.capability {
+            assert!(Capability::parse(capability).is_some(), "{}", entry.name);
+        }
+    }
+    for entry in api_metadata().events {
+        assert!(entry.capability.is_some(), "{}", entry.name);
+    }
+}
+
+#[test]
+fn report_capabilities_and_flags_match_runtime_gating() {
+    use crate::api_maturity::{host_method_mutates, is_interactive_host_method};
+    use crate::capability::{host_method_capability, is_process_host_method, MethodCapability};
+
+    for entry in api_metadata().methods {
+        let expected = match host_method_capability(entry.name) {
+            MethodCapability::Unknown => panic!("{} is not registered", entry.name),
+            MethodCapability::None => None,
+            MethodCapability::Required(capability) => Some(capability.name()),
+        };
+        assert_eq!(entry.capability, expected, "{}", entry.name);
+        assert_eq!(
+            entry.process,
+            is_process_host_method(entry.name),
+            "{}",
+            entry.name
+        );
+        assert_eq!(
+            entry.interactive,
+            is_interactive_host_method(entry.name),
+            "{}",
+            entry.name
+        );
+        assert_eq!(
+            entry.mutates,
+            host_method_mutates(entry.name),
+            "{}",
+            entry.name
+        );
+    }
 }
