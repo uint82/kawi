@@ -1,4 +1,5 @@
 use super::*;
+use crate::api_maturity::{WASM_AUTOMATION_MINOR, WASM_SCRATCH_BUFFERS_MINOR, WASM_TASKS_MINOR};
 
 fn requests(text: &str) -> (CapabilityRequests, Vec<String>) {
     let value: toml::Value = toml::from_str(text).expect("toml");
@@ -259,7 +260,7 @@ fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
 }
 
 #[test]
-fn automation_capabilities_gate_their_methods_at_the_current_minor() {
+fn automation_capabilities_gate_their_methods_at_the_introduction_minor() {
     for (method, capability) in [
         ("timer.after", Capability::EditorSchedule),
         ("timer.every", Capability::EditorSchedule),
@@ -276,10 +277,7 @@ fn automation_capabilities_gate_their_methods_at_the_current_minor() {
             host_method_capability(method),
             MethodCapability::Required(capability)
         );
-        assert_eq!(
-            host_method_minor(method),
-            Some(crate::protocol::PROTOCOL_MINOR)
-        );
+        assert_eq!(host_method_minor(method), Some(WASM_AUTOMATION_MINOR));
         assert!(!is_process_host_method(method));
     }
 }
@@ -321,7 +319,7 @@ fn rejects_invalid_task_scopes() {
 }
 
 #[test]
-fn task_methods_require_task_run_at_the_current_minor() {
+fn task_methods_require_task_run_at_the_introduction_minor() {
     for method in [
         "task.list",
         "task.start",
@@ -333,25 +331,19 @@ fn task_methods_require_task_run_at_the_current_minor() {
             host_method_capability(method),
             MethodCapability::Required(Capability::TaskRun)
         );
-        assert_eq!(
-            host_method_minor(method),
-            Some(crate::protocol::PROTOCOL_MINOR)
-        );
+        assert_eq!(host_method_minor(method), Some(WASM_TASKS_MINOR));
         assert!(!is_process_host_method(method));
     }
 }
 
 #[test]
-fn buffer_lifecycle_methods_require_write_at_the_current_minor() {
+fn buffer_lifecycle_methods_require_write_at_the_introduction_minor() {
     for method in ["buffer.create", "buffer.close"] {
         assert_eq!(
             host_method_capability(method),
             MethodCapability::Required(Capability::EditorBuffersWrite)
         );
-        assert_eq!(
-            host_method_minor(method),
-            Some(crate::protocol::PROTOCOL_MINOR)
-        );
+        assert_eq!(host_method_minor(method), Some(WASM_SCRATCH_BUFFERS_MINOR));
         assert!(!is_process_host_method(method));
     }
 }
