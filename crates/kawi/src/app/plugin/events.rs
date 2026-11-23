@@ -1,4 +1,6 @@
-use kawi_plugin::{PluginHostEvent, PluginStatus, RpcError};
+use kawi_plugin::{
+    host_method_mutates, is_interactive_host_method, PluginHostEvent, PluginStatus, RpcError,
+};
 
 use std::time::Instant;
 
@@ -161,40 +163,7 @@ impl App {
             }
             return false;
         }
-        let redraw = matches!(
-            method,
-            "editor.apply_edit"
-                | "editor.execute"
-                | "editor.set_diagnostics"
-                | "editor.set_decorations"
-                | "buffer.open"
-                | "buffer.apply_edit"
-                | "buffer.create"
-                | "buffer.close"
-                | "window.focus"
-                | "window.open"
-                | "window.close"
-                | "editor.set_cursor"
-                | "editor.set_selection"
-                | "editor.set_mode"
-                | "ui.set_statusline"
-                | "ui.message"
-                | "ui.input"
-                | "ui.select"
-                | "ui.confirm"
-                | "ui.progress_start"
-                | "ui.progress_update"
-                | "ui.progress_finish"
-                | "ui.panel_open"
-                | "ui.panel_update"
-                | "ui.panel_focus"
-                | "ui.panel_close"
-                | "ui.overlay_open"
-                | "ui.overlay_update"
-                | "ui.overlay_close"
-                | "ui.overlay_wait"
-                | "ui.picker"
-        );
+        let redraw = host_method_mutates(method);
         if matches!(
             method,
             "editor.apply_edit" | "editor.execute" | "buffer.apply_edit"
@@ -202,10 +171,7 @@ impl App {
             self.editor
                 .set_change_origin(kawi_buffer::BufferChangeOrigin::Plugin(plugin.to_string()));
         }
-        if matches!(
-            method,
-            "ui.input" | "ui.select" | "ui.confirm" | "ui.overlay_wait" | "ui.picker"
-        ) {
+        if is_interactive_host_method(method) {
             if let Some(result) = self.handle_plugin_prompt_request(plugin, &id, method, params) {
                 if !id.is_null() {
                     let _ = self.plugins.respond(plugin, id, result);

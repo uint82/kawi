@@ -4,13 +4,6 @@ pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
 pub const HOST_METHODS: &[&str] = crate::api_maturity::HOST_METHOD_NAMES;
 pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
-pub const INTERACTIVE_HOST_METHODS: [&str; 5] = [
-    "ui.input",
-    "ui.select",
-    "ui.confirm",
-    "ui.overlay_wait",
-    "ui.picker",
-];
 pub const MAX_PLUGIN_DECORATIONS: usize = 10_000;
 pub const MAX_DECORATION_TEXT_BYTES: usize = 512;
 pub const MAX_PLUGIN_STATUSLINE_SEGMENTS: usize = 16;

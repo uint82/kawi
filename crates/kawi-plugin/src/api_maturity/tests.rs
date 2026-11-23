@@ -10,14 +10,30 @@ fn registry_names_stay_sorted_for_binary_search() {
 
 #[test]
 fn every_registered_api_is_valid() {
-    for (name, maturity) in HOST_METHOD_ENTRIES.iter().chain(EVENT_ENTRIES) {
+    for (name, maturity) in HOST_METHOD_ENTRIES
+        .iter()
+        .map(|entry| (entry.name, entry.maturity))
+        .chain(
+            EVENT_ENTRIES
+                .iter()
+                .map(|entry| (entry.name, entry.maturity)),
+        )
+    {
         assert_eq!(maturity.validate(), Ok(()), "{name}");
     }
 }
 
 #[test]
 fn introduction_minors_never_exceed_the_protocol_minor() {
-    for (name, maturity) in HOST_METHOD_ENTRIES.iter().chain(EVENT_ENTRIES) {
+    for (name, maturity) in HOST_METHOD_ENTRIES
+        .iter()
+        .map(|entry| (entry.name, entry.maturity))
+        .chain(
+            EVENT_ENTRIES
+                .iter()
+                .map(|entry| (entry.name, entry.maturity)),
+        )
+    {
         assert!(maturity.since <= crate::protocol::PROTOCOL_MINOR, "{name}");
     }
 }
@@ -65,19 +81,19 @@ fn lookups_find_the_first_and_last_entries() {
     let last_method = HOST_METHOD_NAMES.last().copied().unwrap();
     assert_eq!(
         host_method_maturity(first_method),
-        Some(HOST_METHOD_ENTRIES[0].1)
+        Some(HOST_METHOD_ENTRIES[0].maturity)
     );
     assert_eq!(
         host_method_maturity(last_method),
-        Some(HOST_METHOD_ENTRIES[HOST_METHOD_ENTRIES.len() - 1].1)
+        Some(HOST_METHOD_ENTRIES[HOST_METHOD_ENTRIES.len() - 1].maturity)
     );
 
     let first_event = EVENT_NAMES.first().copied().unwrap();
     let last_event = EVENT_NAMES.last().copied().unwrap();
-    assert_eq!(event_maturity(first_event), Some(EVENT_ENTRIES[0].1));
+    assert_eq!(event_maturity(first_event), Some(EVENT_ENTRIES[0].maturity));
     assert_eq!(
         event_maturity(last_event),
-        Some(EVENT_ENTRIES[EVENT_ENTRIES.len() - 1].1)
+        Some(EVENT_ENTRIES[EVENT_ENTRIES.len() - 1].maturity)
     );
 }
 
@@ -185,11 +201,21 @@ fn lookups_are_exact_and_case_sensitive() {
 
 #[test]
 fn since_accessors_cover_the_whole_protocol_universe() {
-    for &(name, maturity) in HOST_METHOD_ENTRIES {
-        assert_eq!(host_method_since(name), Some(maturity.since), "{name}");
+    for entry in HOST_METHOD_ENTRIES {
+        assert_eq!(
+            host_method_since(entry.name),
+            Some(entry.maturity.since),
+            "{}",
+            entry.name
+        );
     }
-    for &(name, maturity) in EVENT_ENTRIES {
-        assert_eq!(event_since(name), Some(maturity.since), "{name}");
+    for entry in EVENT_ENTRIES {
+        assert_eq!(
+            event_since(entry.name),
+            Some(entry.maturity.since),
+            "{}",
+            entry.name
+        );
     }
 }
 
@@ -202,4 +228,108 @@ fn stability_is_declared_not_derived_from_introduction_minor() {
     assert_eq!(experimental_earlier.validate(), Ok(()));
     assert!(stable_now.is_stable());
     assert!(experimental_earlier.is_experimental());
+}
+
+#[test]
+fn every_capability_is_known() {
+    for entry in HOST_METHOD_ENTRIES {
+        if let Some(capability) = entry.capability {
+            assert_eq!(
+                Capability::parse(capability.name()),
+                Some(capability),
+                "{}",
+                entry.name
+            );
+        }
+    }
+    for entry in EVENT_ENTRIES {
+        assert_eq!(
+            Capability::parse(entry.capability.name()),
+            Some(entry.capability),
+            "{}",
+            entry.name
+        );
+    }
+}
+
+#[test]
+fn interactive_methods_are_the_prompting_methods() {
+    let interactive: Vec<&str> = HOST_METHOD_ENTRIES
+        .iter()
+        .filter(|entry| entry.interactive)
+        .map(|entry| entry.name)
+        .collect();
+    assert_eq!(
+        interactive,
+        [
+            "ui.confirm",
+            "ui.input",
+            "ui.overlay_wait",
+            "ui.picker",
+            "ui.select"
+        ]
+    );
+}
+
+#[test]
+fn mutating_methods_are_the_ones_that_need_a_redraw() {
+    let mutating: Vec<&str> = HOST_METHOD_ENTRIES
+        .iter()
+        .filter(|entry| entry.mutates)
+        .map(|entry| entry.name)
+        .collect();
+    assert_eq!(
+        mutating,
+        [
+            "buffer.apply_edit",
+            "buffer.close",
+            "buffer.create",
+            "buffer.open",
+            "editor.apply_edit",
+            "editor.execute",
+            "editor.set_cursor",
+            "editor.set_decorations",
+            "editor.set_diagnostics",
+            "editor.set_mode",
+            "editor.set_selection",
+            "ui.confirm",
+            "ui.input",
+            "ui.message",
+            "ui.overlay_close",
+            "ui.overlay_open",
+            "ui.overlay_update",
+            "ui.overlay_wait",
+            "ui.panel_close",
+            "ui.panel_focus",
+            "ui.panel_open",
+            "ui.panel_update",
+            "ui.picker",
+            "ui.progress_finish",
+            "ui.progress_start",
+            "ui.progress_update",
+            "ui.select",
+            "ui.set_statusline",
+            "window.close",
+            "window.focus",
+            "window.open",
+        ]
+    );
+}
+
+#[test]
+fn process_availability_stops_at_the_process_protocol_minor() {
+    for entry in HOST_METHOD_ENTRIES {
+        assert_eq!(
+            is_process_available(entry.maturity),
+            entry.maturity.since <= crate::protocol::PROCESS_PROTOCOL_MINOR,
+            "{}",
+            entry.name
+        );
+    }
+    assert!(is_process_available(ApiMaturity::stable(
+        crate::protocol::PROCESS_PROTOCOL_MINOR
+    )));
+    assert!(!is_process_available(ApiMaturity::stable(
+        crate::protocol::PROCESS_PROTOCOL_MINOR + 1
+    )));
 }

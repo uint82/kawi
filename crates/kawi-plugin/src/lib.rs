@@ -28,8 +28,8 @@ pub use wasm::{
 pub use wasm::{install_resolver_script, remove_resolver_script, resolver_call_count};
 
 pub use api_maturity::{
-    event_maturity, event_since, host_method_maturity, host_method_since, ApiMaturity,
-    ApiStability, MaturityError,
+    event_maturity, event_since, host_method_maturity, host_method_mutates, host_method_since,
+    is_interactive_host_method, ApiMaturity, ApiStability, MaturityError,
 };
 pub use capability::{
     advertised_events, advertised_host_methods, event_capability, host_method_capability,
