@@ -5,6 +5,8 @@ use crate::protocol::{
     EVENT_NAMES, HOST_METHODS, PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR, PROTOCOL_VERSION,
 };
 
+mod errors;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiVersionMetadata {
     pub protocol: u64,
@@ -21,11 +23,19 @@ pub struct ApiEntryMetadata {
     pub replacement: Option<&'static str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ApiErrorMetadata {
+    pub name: &'static str,
+    pub code: i64,
+    pub description: &'static str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiMetadata {
     pub version: ApiVersionMetadata,
     pub methods: Vec<ApiEntryMetadata>,
     pub events: Vec<ApiEntryMetadata>,
+    pub error_types: Vec<ApiErrorMetadata>,
 }
 
 fn stability_label(maturity: ApiMaturity) -> &'static str {
@@ -77,6 +87,7 @@ pub fn api_metadata() -> ApiMetadata {
         },
         methods: method_entries(),
         events: event_entries(),
+        error_types: errors::ERROR_TYPES.to_vec(),
     }
 }
 

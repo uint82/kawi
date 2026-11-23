@@ -1221,6 +1221,7 @@ Unknown event types and unknown fields are ignored. New events and fields are ad
 | `-32052` | Job or job stdin is closed |
 | `-32053` | Job output or input queue is full |
 | `-32060` | Panel not found or owned by another plugin |
+| `-32061` | Overlay not found or owned by another plugin |
 | `-32062` | Task not found |
 | `-32063` | Too many running tasks |
 | `-32064` | Task failed to start |

@@ -1,5 +1,7 @@
 use super::*;
 
+use std::collections::HashSet;
+
 #[test]
 fn report_covers_the_whole_protocol_universe() {
     let report = api_metadata();
@@ -29,6 +31,61 @@ fn report_entries_mirror_the_registry() {
 }
 
 #[test]
+fn error_types_are_unique_and_described() {
+    let errors = api_metadata().error_types;
+    let mut names = HashSet::new();
+    let mut codes = HashSet::new();
+    for error in &errors {
+        assert!(names.insert(error.name), "{}", error.name);
+        assert!(codes.insert(error.code), "{}", error.code);
+        assert!(!error.description.is_empty(), "{}", error.name);
+    }
+    assert_eq!(errors.len(), 29);
+}
+
+#[test]
+fn error_codes_match_the_protocol_constants() {
+    let errors = api_metadata().error_types;
+    for (name, code) in [
+        ("PARSE_ERROR", crate::protocol::PARSE_ERROR),
+        ("INVALID_REQUEST", crate::protocol::INVALID_REQUEST),
+        ("METHOD_NOT_FOUND", crate::protocol::METHOD_NOT_FOUND),
+        ("INVALID_PARAMS", crate::protocol::INVALID_PARAMS),
+        ("INTERNAL_ERROR", crate::protocol::INTERNAL_ERROR),
+        ("PLUGIN_ERROR", crate::protocol::PLUGIN_ERROR),
+        ("STALE_REVISION", crate::protocol::STALE_REVISION),
+        ("INVALID_POSITION", crate::protocol::INVALID_POSITION),
+        ("CAPABILITY_DENIED", crate::protocol::CAPABILITY_DENIED),
+        ("REQUEST_CANCELED", crate::protocol::REQUEST_CANCELED),
+        ("PLUGIN_UNAVAILABLE", crate::protocol::PLUGIN_UNAVAILABLE),
+        ("UI_BUSY", crate::protocol::UI_BUSY),
+        ("JOB_NOT_FOUND", crate::protocol::JOB_NOT_FOUND),
+        ("JOB_LIMIT", crate::protocol::JOB_LIMIT),
+        ("JOB_CLOSED", crate::protocol::JOB_CLOSED),
+        ("JOB_QUEUE_FULL", crate::protocol::JOB_QUEUE_FULL),
+        ("PANEL_NOT_FOUND", crate::protocol::PANEL_NOT_FOUND),
+        ("OVERLAY_NOT_FOUND", crate::protocol::OVERLAY_NOT_FOUND),
+        ("TASK_NOT_FOUND", crate::protocol::TASK_NOT_FOUND),
+        ("TASK_LIMIT", crate::protocol::TASK_LIMIT),
+        ("TASK_START_FAILED", crate::protocol::TASK_START_FAILED),
+        ("BUFFER_NOT_FOUND", crate::protocol::BUFFER_NOT_FOUND),
+        ("BUFFER_NOT_ACTIVE", crate::protocol::BUFFER_NOT_ACTIVE),
+        ("WINDOW_NOT_FOUND", crate::protocol::WINDOW_NOT_FOUND),
+        ("LAST_WINDOW", crate::protocol::LAST_WINDOW),
+        ("OPTION_NOT_FOUND", crate::protocol::OPTION_NOT_FOUND),
+        ("MODE_NOT_SUPPORTED", crate::protocol::MODE_NOT_SUPPORTED),
+        ("BUFFER_MODIFIED", crate::protocol::BUFFER_MODIFIED),
+        ("BUFFER_NOT_OWNED", crate::protocol::BUFFER_NOT_OWNED),
+    ] {
+        let entry = errors
+            .iter()
+            .find(|error| error.name == name)
+            .unwrap_or_else(|| panic!("missing error type: {name}"));
+        assert_eq!(entry.code, code, "{name}");
+    }
+}
+
+#[test]
 fn report_version_matches_protocol_constants() {
     let version = api_metadata().version;
     assert_eq!(version.protocol, PROTOCOL_VERSION);
@@ -45,6 +102,10 @@ fn report_serializes_with_explicit_nulls_for_missing_deprecation_data() {
         HOST_METHODS.len()
     );
     assert_eq!(value["events"].as_array().unwrap().len(), EVENT_NAMES.len());
+    assert_eq!(
+        value["error_types"].as_array().unwrap().len(),
+        api_metadata().error_types.len()
+    );
 
     let first = &value["methods"][0];
     assert!(first["deprecated_since"].is_null());
