@@ -62,11 +62,14 @@ impl App {
 
     pub(super) fn plugin_window_close(&mut self, params: Value) -> Result<Value, RpcError> {
         let params: WindowCloseParams = serde_json::from_value(params).map_err(invalid_params)?;
-        if self.window_info(params.window).is_none() {
+        let Some((buffer, _, _)) = self.window_info_at(params.window) else {
             return Err(RpcError::window_not_found(params.window));
-        }
+        };
         if self.windows.len() <= 1 {
             return Err(RpcError::last_window());
+        }
+        if !params.force && self.editor.buffer_is_dirty(buffer).unwrap_or(false) {
+            return Err(RpcError::buffer_modified(buffer as u64));
         }
         let before = self.windows.len();
         self.close_window(params.window, params.force)

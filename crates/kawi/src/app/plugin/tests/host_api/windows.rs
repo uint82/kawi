@@ -1,4 +1,4 @@
-use kawi_plugin::{Capability, Scope, LAST_WINDOW, WINDOW_NOT_FOUND};
+use kawi_plugin::{Capability, Scope, BUFFER_MODIFIED, LAST_WINDOW, WINDOW_NOT_FOUND};
 use serde_json::{json, Value};
 
 use super::{app, grant, request};
@@ -47,4 +47,38 @@ fn opens_focuses_and_closes_windows() {
     let error =
         request(&mut app, "window.get", json!({ "window": 99 })).expect_err("unknown window");
     assert_eq!(error.code, WINDOW_NOT_FOUND);
+}
+
+#[test]
+fn closing_a_window_with_unsaved_changes_requires_force() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorWindows, Scope::Unscoped);
+
+    let value = request(
+        &mut app,
+        "window.open",
+        json!({ "buffer": 1, "direction": "vertical" }),
+    )
+    .expect("open split");
+    let opened: kawi_plugin::WindowInfo = serde_json::from_value(value).expect("window");
+    app.editor.apply(kawi_editor::Action::EnterInsert);
+    app.editor.apply(kawi_editor::Action::InsertChar('x'));
+    app.editor.apply(kawi_editor::Action::ExitInsert);
+
+    let error = request(
+        &mut app,
+        "window.close",
+        json!({ "window": opened.window, "force": false }),
+    )
+    .expect_err("modified buffer");
+    assert_eq!(error.code, BUFFER_MODIFIED);
+
+    request(
+        &mut app,
+        "window.close",
+        json!({ "window": opened.window, "force": true }),
+    )
+    .expect("forced close");
+    assert_eq!(app.windows.len(), 1);
+    assert_eq!(app.editor.buffer_is_dirty(1), Some(true));
 }
