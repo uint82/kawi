@@ -16,6 +16,17 @@ fn json_output_reports_the_registered_api() {
     assert_eq!(report["version"]["protocol"], 1);
     assert!(report["methods"].as_array().unwrap().len() >= 74);
     assert_eq!(report["events"].as_array().unwrap().len(), 19);
+
+    let state = report["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["name"] == "editor.get_state")
+        .expect("editor.get_state entry");
+    assert_eq!(state["signature"]["returns"], "GetStateResult");
+    assert_eq!(state["signature"]["parameters"][0]["name"], "include_text");
+    assert_eq!(state["signature"]["parameters"][0]["required"], false);
+    assert!(report["events"][0].get("signature").is_none());
 }
 
 #[test]
@@ -27,6 +38,7 @@ fn text_output_lists_methods_and_events() {
     assert!(text.contains("Host methods (74):"));
     assert!(text.contains("Events (19):"));
     assert!(text.contains("editor.get_state"));
+    assert!(text.contains("(include_text?: boolean) -> GetStateResult"));
 }
 
 #[test]
