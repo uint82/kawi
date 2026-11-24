@@ -21,11 +21,6 @@ pub(in crate::app) struct FakeFs {
     paths: BTreeMap<PathBuf, bool>,
     pub(super) calls: Vec<Call>,
     fail_at: Option<usize>,
-    denied_write: BTreeSet<PathBuf>,
-    denied_directory_write: BTreeSet<PathBuf>,
-    denied_read: BTreeSet<PathBuf>,
-    denied_entry_remove: BTreeSet<PathBuf>,
-    denied_delete: BTreeSet<PathBuf>,
     cross_device: BTreeSet<(PathBuf, PathBuf)>,
 }
 
@@ -38,11 +33,6 @@ impl FakeFs {
                 .collect(),
             calls: Vec::new(),
             fail_at: None,
-            denied_write: BTreeSet::new(),
-            denied_directory_write: BTreeSet::new(),
-            denied_read: BTreeSet::new(),
-            denied_entry_remove: BTreeSet::new(),
-            denied_delete: BTreeSet::new(),
             cross_device: BTreeSet::new(),
         }
     }
@@ -55,31 +45,6 @@ impl FakeFs {
 
     pub(super) fn fail_at(mut self, index: usize) -> Self {
         self.fail_at = Some(index);
-        self
-    }
-
-    pub(super) fn deny_write(mut self, path: &str) -> Self {
-        self.denied_write.insert(PathBuf::from(path));
-        self
-    }
-
-    pub(super) fn deny_directory_write(mut self, path: &str) -> Self {
-        self.denied_directory_write.insert(PathBuf::from(path));
-        self
-    }
-
-    pub(super) fn deny_read(mut self, path: &str) -> Self {
-        self.denied_read.insert(PathBuf::from(path));
-        self
-    }
-
-    pub(super) fn deny_entry_remove(mut self, path: &str) -> Self {
-        self.denied_entry_remove.insert(PathBuf::from(path));
-        self
-    }
-
-    pub(super) fn deny_delete(mut self, path: &str) -> Self {
-        self.denied_delete.insert(PathBuf::from(path));
         self
     }
 
@@ -177,28 +142,6 @@ impl DirectoryFs for FakeFs {
     fn is_dir(&self, path: &Path) -> bool {
         self.paths.get(path).copied().unwrap_or(false)
     }
-
-    fn can_modify_directory(&self, path: &Path) -> bool {
-        !self.denied_write.contains(path)
-    }
-
-    fn can_write_directory(&self, path: &Path) -> bool {
-        !self.denied_directory_write.contains(path)
-    }
-
-    fn can_read(&self, path: &Path) -> bool {
-        !self.denied_read.contains(path)
-    }
-
-    fn can_remove_entry(&self, path: &Path) -> bool {
-        !self.denied_entry_remove.contains(path)
-    }
-
-    fn delete_error(&self, path: &Path) -> Option<String> {
-        self.denied_delete
-            .contains(path)
-            .then(|| "no trash available on this filesystem".to_string())
-    }
 }
 
 impl FakeFs {
@@ -222,10 +165,9 @@ pub(super) fn message_text(app: &App) -> String {
 
 pub(super) fn settle(app: &mut App) {
     let deadline = Instant::now() + Duration::from_secs(5);
-    while app.directory_loading.has_loads() || app.has_pending_permission_check() {
+    while app.directory_loading.has_loads() {
         app.poll_directory_loads();
-        app.poll_permission_check();
-        if app.directory_loading.has_loads() || app.has_pending_permission_check() {
+        if app.directory_loading.has_loads() {
             assert!(Instant::now() < deadline, "directory load timed out");
             std::thread::sleep(Duration::from_millis(1));
         }

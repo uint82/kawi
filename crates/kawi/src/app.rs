@@ -234,7 +234,6 @@ pub struct App {
     explorer: explorer::ExplorerState,
     directory: directory::DirectoryBuffers,
     directory_loading: directory::DirectoryLoading,
-    pending_permission: Option<directory::PendingPermissionCheck>,
     directory_options: directory::DirectoryOptions,
     disk: disk::DiskState,
     file_watch: Option<kawi_watch::WatchService>,
@@ -370,7 +369,6 @@ impl App {
             explorer: explorer::ExplorerState::default(),
             directory: directory::DirectoryBuffers::default(),
             directory_loading: directory::DirectoryLoading::default(),
-            pending_permission: None,
             directory_options: directory::DirectoryOptions::default(),
             disk: disk::DiskState::default(),
             file_watch: None,
@@ -547,7 +545,6 @@ impl App {
             self.poll_git_status();
             self.poll_explorer();
             self.poll_directory_loads();
-            self.poll_permission_check();
             self.sync_lsp();
             self.poll_symbol_events();
             self.symbols_tick();
@@ -560,7 +557,6 @@ impl App {
             self.save_tick();
             self.autosave_tick();
             if self.quit_pending {
-                self.pending_permission = None;
                 return Ok(());
             }
             if self.picker.is_none() && self.replace.is_none() {
@@ -625,7 +621,6 @@ impl App {
             redraw |= self.poll_explorer();
             redraw |= self.poll_directory_loads();
             redraw |= self.poll_session_restore();
-            redraw |= self.poll_permission_check();
             redraw |= self.poll_plugins();
             redraw |= self.sync_task();
             self.plugins.sync_tasks();
@@ -634,7 +629,6 @@ impl App {
             redraw |= self.save_tick();
             redraw |= self.autosave_tick();
             if self.quit_pending {
-                self.pending_permission = None;
                 return Ok(Redraw::Quit);
             }
             if self.picker.is_some() || self.replace.is_some() {

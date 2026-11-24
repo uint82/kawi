@@ -7,9 +7,7 @@ mod copy;
 
 use copy::copy_across_filesystems;
 
-pub(in crate::app) use access::{
-    can_modify_directory, can_read, can_remove_tree, can_write_directory, sticky_allows,
-};
+pub(in crate::app) use access::can_modify_directory;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum RenameKind {
