@@ -164,10 +164,10 @@ impl App {
 }
 
 fn delete_message(request: &DeleteRequest, target: &Path, warning: Option<String>) -> String {
-    let action = match (request.permanent, warning.is_some()) {
-        (_, true) => "Removed",
-        (true, false) => "Deleted",
-        (false, false) => "Trashed",
+    let action = if request.permanent {
+        "Deleted"
+    } else {
+        "Trashed"
     };
     with_warning(format!("{action} \"{}\"", target.display()), warning)
 }
@@ -213,4 +213,37 @@ fn canonical_or_absolute(path: &Path) -> PathBuf {
             &std::env::current_dir().unwrap_or_default(),
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(target: &Path, permanent: bool) -> DeleteRequest {
+        DeleteRequest {
+            target: target.to_path_buf(),
+            permanent,
+            dirty: Vec::new(),
+            items: None,
+        }
+    }
+
+    #[test]
+    fn delete_message_reports_permanent_removal() {
+        let target = PathBuf::from("/tmp/a.txt");
+        let message = delete_message(&request(&target, true), &target, None);
+        assert_eq!(message, "Deleted \"/tmp/a.txt\"");
+    }
+
+    #[test]
+    fn cleanup_warning_keeps_the_delete_action() {
+        let target = PathBuf::from("/tmp/a.txt");
+        let message = delete_message(
+            &request(&target, false),
+            &target,
+            Some("cannot empty the trash".to_string()),
+        );
+        assert!(message.starts_with("Trashed \"/tmp/a.txt\""));
+        assert!(message.contains("cannot empty the trash"));
+    }
 }
