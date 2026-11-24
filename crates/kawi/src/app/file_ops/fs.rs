@@ -128,21 +128,29 @@ pub(in crate::app) fn remove_path(path: &Path, permanent: bool) -> io::Result<()
     }
 }
 
-pub(super) fn count_tree(path: &Path) -> io::Result<usize> {
+const MAX_COUNTED_ITEMS: usize = 4096;
+
+pub(super) fn count_tree(path: &Path) -> io::Result<Option<usize>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Ok(0);
+        return Ok(Some(0));
     }
-    let mut count: usize = 0;
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        count = count.saturating_add(1);
-        let metadata = fs::symlink_metadata(entry.path())?;
-        if metadata.is_dir() && !metadata.file_type().is_symlink() {
-            count = count.saturating_add(count_tree(&entry.path())?);
+    let mut pending = vec![path.to_path_buf()];
+    let mut count = 0;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            count += 1;
+            if count >= MAX_COUNTED_ITEMS {
+                return Ok(None);
+            }
+            let metadata = fs::symlink_metadata(entry.path())?;
+            if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                pending.push(entry.path());
+            }
         }
     }
-    Ok(count)
+    Ok(Some(count))
 }
 
 pub(in crate::app) fn path_exists(path: &Path) -> bool {

@@ -62,7 +62,7 @@ fn rename_moves_directories_and_counts_items() {
     fs::create_dir_all(old.join("sub")).unwrap();
     fs::write(old.join("a.txt"), "a\n").unwrap();
     fs::write(old.join("sub/b.txt"), "b\n").unwrap();
-    assert_eq!(count_tree(&old).unwrap(), 3);
+    assert_eq!(count_tree(&old).unwrap(), Some(3));
     rename_path(&old, &new, false).unwrap();
     assert!(!old.exists());
     assert!(new.join("sub/b.txt").exists());

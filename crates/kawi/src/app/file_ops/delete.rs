@@ -2,8 +2,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kawi_editor::paths;
-
 use super::pending::{DeletePending, PendingFileOp};
 use super::prompt::{DeleteRequest, DeleteSession, FileOpSession};
 use super::trash::TrashDir;
@@ -26,17 +24,12 @@ impl App {
                 return;
             }
         };
-        if !delete_allowed(self, &target, permanent) {
-            self.show_message(format!(
-                "Refusing to delete protected path {} (use :delete! to override)",
-                target.display()
-            ));
-            return;
-        }
         let directory = metadata.is_dir() && !metadata.file_type().is_symlink();
-        let items = directory
-            .then(|| file_fs::count_tree(&target).ok())
-            .flatten();
+        let items = if directory {
+            file_fs::count_tree(&target).ok().flatten()
+        } else {
+            None
+        };
         let trash = TrashDir::for_target(&target);
         let can_trash = trash.as_ref().is_some_and(|trash| trash.can_trash(&target));
         let permanent_requested = permanent;
@@ -185,34 +178,6 @@ fn delete_cleanup(request: &DeleteRequest, staged: &Path) -> JournalCleanup {
     } else {
         JournalCleanup::trash(staged.to_path_buf(), request.target.clone())
     }
-}
-
-fn delete_allowed(app: &App, target: &Path, force: bool) -> bool {
-    if force {
-        return true;
-    }
-    let target = canonical_or_absolute(target);
-    let workspace = canonical_or_absolute(&app.picker_root());
-    let home = kawi_editor::paths::home_dir().map(|path| canonical_or_absolute(&path));
-    let cwd = std::env::current_dir()
-        .ok()
-        .map(|path| canonical_or_absolute(&path));
-    !is_protected(&target, &workspace)
-        && !home.is_some_and(|home| is_protected(&target, &home))
-        && !cwd.is_some_and(|cwd| is_protected(&target, &cwd))
-}
-
-fn is_protected(target: &Path, protected: &Path) -> bool {
-    protected.starts_with(target)
-}
-
-fn canonical_or_absolute(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| {
-        paths::absolute(
-            &path.to_string_lossy(),
-            &std::env::current_dir().unwrap_or_default(),
-        )
-    })
 }
 
 #[cfg(test)]
