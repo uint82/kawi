@@ -134,7 +134,7 @@ impl DirectoryFs for RealFs {
 
 fn trash_staged(staged: &Path, original: &Path) -> io::Result<()> {
     let trash =
-        TrashDir::for_target(original).ok_or_else(|| io::Error::other("trash is unavailable"))?;
+        TrashDir::for_target(staged).ok_or_else(|| io::Error::other("trash is unavailable"))?;
     trash
         .trash_as(staged, original)
         .map(|_| ())
