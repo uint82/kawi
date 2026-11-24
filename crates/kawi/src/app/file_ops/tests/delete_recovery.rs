@@ -57,8 +57,9 @@ fn prepared_file_delete_is_trashed_when_keeping_changes() {
     let dir = temp_dir("file_delete_journal_keep");
     let recovery = temp_dir("file_delete_journal_keep_recovery");
     let data = temp_dir("file_delete_journal_keep_data");
-    let target = dir.join("a.txt");
-    let staged = dir.join(".a.txt.kawi-delete-0-0");
+    let name = dir.file_name().unwrap().to_os_string();
+    let target = dir.join(&name);
+    let staged = dir.join(format!(".{}.kawi-delete-0-0", name.to_string_lossy()));
     fs::write(&staged, "alpha\n").unwrap();
     let journal = ApplyJournal::prepared(vec![JournalOperation::Delete {
         path: journal_path(target.clone()),
@@ -67,19 +68,20 @@ fn prepared_file_delete_is_trashed_when_keeping_changes() {
     let store = WorkspaceStore::create(&recovery, &dir).unwrap();
     store.save_apply_journal(&journal).unwrap();
     let _data = EnvGuard::set("XDG_DATA_HOME", data.as_os_str());
-    let _home = EnvGuard::set("HOME", data.as_os_str());
     let mut app = start_app(&dir, &recovery);
     app.handle_key(key(KeyCode::Char('k'))).expect("keep");
     assert!(!target.exists());
     assert!(!staged.exists());
     #[cfg(target_os = "macos")]
-    let trashed = data.join(".Trash/a.txt");
+    let trash = std::path::PathBuf::from(std::env::var_os("HOME").expect("home")).join(".Trash");
     #[cfg(not(target_os = "macos"))]
-    let trashed = data.join("Trash/files/a.txt");
+    let trash = data.join("Trash/files");
+    let trashed = trash.join(&name);
     assert!(trashed.exists());
     assert!(store.load_apply_journal().unwrap().is_none());
     assert!(message_text(&app).contains("removed 1"));
     drop(app);
+    let _ = fs::remove_file(&trashed);
     let _ = fs::remove_dir_all(dir);
     let _ = fs::remove_dir_all(recovery);
     let _ = fs::remove_dir_all(data);
