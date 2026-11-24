@@ -66,12 +66,17 @@ fn prepared_file_delete_is_trashed_when_keeping_changes() {
     }]);
     let store = WorkspaceStore::create(&recovery, &dir).unwrap();
     store.save_apply_journal(&journal).unwrap();
-    let _guard = EnvGuard::set("XDG_DATA_HOME", data.as_os_str());
+    let _data = EnvGuard::set("XDG_DATA_HOME", data.as_os_str());
+    let _home = EnvGuard::set("HOME", data.as_os_str());
     let mut app = start_app(&dir, &recovery);
     app.handle_key(key(KeyCode::Char('k'))).expect("keep");
     assert!(!target.exists());
     assert!(!staged.exists());
-    assert!(data.join("Trash/files/a.txt").exists());
+    #[cfg(target_os = "macos")]
+    let trashed = data.join(".Trash/a.txt");
+    #[cfg(not(target_os = "macos"))]
+    let trashed = data.join("Trash/files/a.txt");
+    assert!(trashed.exists());
     assert!(store.load_apply_journal().unwrap().is_none());
     assert!(message_text(&app).contains("removed 1"));
     drop(app);
