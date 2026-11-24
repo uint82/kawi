@@ -171,6 +171,28 @@ fn identical_queued_commands_coalesce() {
 }
 
 #[test]
+fn full_queue_still_coalesces_duplicates() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let (root, mut app, target) = setup("queue_full_coalesce");
+    app.run_plugin_command(target, args(1200, false)).unwrap();
+    for index in 0..4 {
+        app.run_plugin_command(target, args(index + 1, false))
+            .unwrap();
+    }
+    app.run_plugin_command(target, args(1, false)).unwrap();
+    assert_eq!(app.plugins.queue_depth("queue"), 4);
+    assert_eq!(app.plugins.queue_counters("queue").rejected, 0);
+    app.plugins.shutdown();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn expired_queued_command_is_dropped() {
     if std::process::Command::new("python3")
         .arg("--version")

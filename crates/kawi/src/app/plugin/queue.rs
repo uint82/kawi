@@ -52,10 +52,10 @@ impl PluginRuntime {
             return Ok(QueueOutcome::Start);
         }
         let depth = self.queues.get(&plugin).map_or(0, VecDeque::len);
-        self.ensure_queue_capacity(&plugin, depth)?;
         if coalesce && self.has_duplicate(&plugin, &command, &args) {
             return Ok(QueueOutcome::Coalesced { depth });
         }
+        self.ensure_queue_capacity(&plugin, depth)?;
         self.push_queued(plugin, command, args);
         Ok(QueueOutcome::Queued {
             depth: depth.saturating_add(1),
