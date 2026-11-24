@@ -4,7 +4,6 @@ use super::entry::EntryKind;
 use super::fs::RealFs;
 use super::listing::listing_unchanged;
 use super::loader::LoadedListing;
-use super::permission_check::PermissionPhase;
 use super::planner::{plan, Plan};
 use super::session::{DirectoryEdit, PendingApply};
 use crate::app::App;
@@ -37,7 +36,11 @@ impl App {
             save_files: false,
         };
         let confirm = !force && self.directory_options.confirm && apply.plan.needs_confirmation();
-        self.start_permission_check(apply, PermissionPhase::Plan, confirm);
+        if confirm {
+            self.confirm_directory_apply(apply);
+        } else {
+            self.begin_directory_apply(apply);
+        }
         true
     }
 

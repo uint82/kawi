@@ -3,7 +3,6 @@ use super::diff::{diff, Change};
 use super::executor::{Outcome, PreparedPlan};
 use super::fs::RealFs;
 use super::load::DIRECTORY_LOADING_MESSAGE;
-use super::permission_check::PermissionPhase;
 use super::session::{DirectoryEdit, PendingApply};
 use super::verify::DELETED_SAVE_MESSAGE;
 use crate::app::apply_journal;
@@ -46,9 +45,6 @@ impl App {
 
     fn reject_directory_save(&mut self, number: usize, visible: bool) -> bool {
         if self.reject_deleted_directory_save(number, visible) {
-            return true;
-        }
-        if self.reject_running_permission_check(visible) {
             return true;
         }
         if !self.directory_loading.is_loading(number) {
@@ -120,7 +116,7 @@ impl App {
     }
 
     pub(in crate::app) fn apply_directory_changes(&mut self, apply: PendingApply) -> bool {
-        self.start_permission_check(apply, PermissionPhase::Apply, false)
+        self.execute_directory_changes(apply, !self.directory_options.trash)
     }
 
     pub(super) fn execute_directory_changes(
@@ -218,9 +214,10 @@ impl App {
         outcome: &Outcome,
         warning: Option<String>,
     ) -> bool {
-        let reload_error = self.reload_directories(&apply.edits);
         let mut message = failure_message(&apply.plan, outcome);
-        if let Some(reload_error) = reload_error {
+        if outcome.completed == 0 {
+            self.cancel_directory_apply(&apply.edits);
+        } else if let Some(reload_error) = self.reload_directories(&apply.edits) {
             message.push_str("; ");
             message.push_str(&reload_error);
         }

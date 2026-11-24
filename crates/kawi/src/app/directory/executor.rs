@@ -20,18 +20,6 @@ pub(in crate::app) struct Outcome {
     pub(in crate::app) error: Option<String>,
 }
 
-impl Outcome {
-    pub(super) fn failed(error: String) -> Self {
-        Self {
-            completed: 0,
-            remaining: Vec::new(),
-            rollback_errors: Vec::new(),
-            deferred_deletes: Vec::new(),
-            error: Some(error),
-        }
-    }
-}
-
 enum Undo {
     Rename { from: PathBuf, to: PathBuf },
     Remove { path: PathBuf, kind: Removal },
@@ -55,6 +43,19 @@ struct Execution<'a, F> {
     promotions: &'a mut dyn FnMut(usize) -> io::Result<()>,
     deferred_deletes: Vec<PathBuf>,
     completed: usize,
+}
+
+#[cfg(test)]
+impl Outcome {
+    pub(super) fn failed(error: String) -> Self {
+        Self {
+            completed: 0,
+            remaining: Vec::new(),
+            rollback_errors: Vec::new(),
+            deferred_deletes: Vec::new(),
+            error: Some(error),
+        }
+    }
 }
 
 #[cfg(test)]

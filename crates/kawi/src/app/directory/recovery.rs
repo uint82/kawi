@@ -8,8 +8,8 @@ mod complete;
 mod report;
 mod rollback;
 
-use complete::complete;
 pub(in crate::app) use complete::complete_cleanups;
+use complete::{complete, finish_prepared_deletes};
 use report::RecoveryReport;
 use rollback::recover;
 
@@ -28,7 +28,7 @@ impl PendingRecovery {
 
     fn lines(&self, width: usize) -> Vec<String> {
         let text = format!(
-            "Interrupted apply operation detected.\n\n{} filesystem operation(s) may be partially applied.\n\nr roll back reversible changes  k keep current files",
+            "Interrupted apply operation detected.\n\n{} filesystem operation(s) may be partially applied.\n\nr roll back reversible changes  k keep applied changes",
             self.recovery.journal.operations.len()
         );
         super::super::pager_lines(&text, width)
@@ -69,7 +69,7 @@ impl App {
     fn complete_apply_recovery(&mut self, recovery: &ApplyRecovery) {
         let mut fs = RealFs::new(false);
         let report = complete(&recovery.journal, &mut fs);
-        let mut message = report_message(&report);
+        let mut message = report_message(&report, "Apply recovery complete");
         if report.is_incomplete() {
             message.push_str("; recovery journal kept");
         } else if let Some(error) = self.remove_apply_recovery_files() {
@@ -110,7 +110,7 @@ impl App {
         self.pager = None;
         match selection {
             Choice::Rollback => self.rollback_apply_recovery(&prompt.recovery),
-            Choice::Keep => self.keep_apply_recovery(),
+            Choice::Keep => self.keep_apply_recovery(&prompt.recovery),
         }
         self.show_recovery_prompt_if_ready();
         false
@@ -119,7 +119,7 @@ impl App {
     fn rollback_apply_recovery(&mut self, recovery: &ApplyRecovery) {
         let mut fs = RealFs::new(false);
         let report = recover(&recovery.journal, &recovery.promotions, &mut fs);
-        let mut message = report_message(&report);
+        let mut message = report_message(&report, "Apply recovery complete");
         if report.is_incomplete() {
             message.push_str("; recovery journal kept");
         } else if let Some(error) = self.remove_apply_recovery_files() {
@@ -129,11 +129,20 @@ impl App {
         self.show_message(message);
     }
 
-    fn keep_apply_recovery(&mut self) {
-        match self.remove_apply_recovery_files() {
-            Some(error) => self.show_message(error),
-            None => self.show_message("Apply recovery journal discarded".to_string()),
+    fn keep_apply_recovery(&mut self, recovery: &ApplyRecovery) {
+        let mut fs = RealFs::new(false);
+        let report = finish_prepared_deletes(&recovery.journal, &mut fs);
+        let mut message = report_message(&report, "Apply recovery journal discarded");
+        if report.is_incomplete() {
+            message.push_str("; recovery journal kept");
+            self.show_message(message);
+            return;
         }
+        if let Some(error) = self.remove_apply_recovery_files() {
+            message.push_str("; ");
+            message.push_str(&error);
+        }
+        self.show_message(message);
     }
 
     fn remove_apply_recovery_files(&self) -> Option<String> {
@@ -146,7 +155,7 @@ impl App {
     }
 }
 
-fn report_message(report: &RecoveryReport) -> String {
+fn report_message(report: &RecoveryReport, empty: &str) -> String {
     let mut parts = Vec::new();
     if report.restored > 0 {
         parts.push(format!("restored {}", report.restored));
@@ -176,7 +185,7 @@ fn report_message(report: &RecoveryReport) -> String {
         ));
     }
     if parts.is_empty() {
-        "Apply recovery complete".to_string()
+        empty.to_string()
     } else {
         format!("Apply recovery: {}", parts.join("; "))
     }

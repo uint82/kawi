@@ -36,7 +36,7 @@ The default leader keys are Space and Backslash. You can change them in `keymaps
 - `Ctrl-w w` and `Ctrl-w W` cycle editor panes.
 - `Ctrl-g` toggles terminal focus. Set `terminal_focus_key` to another key, or `none` to disable it.
 - In terminal input mode, keys including `Ctrl-w` go to the running program.
-- `Esc` returns focus from the explorer, debug, and plugin panels, and from terminal normal mode; the panel stays open.
+- `Esc` returns focus from the explorer, debug, and plugin panels, and from terminal normal mode; the panel stays open. With the editor focused and no panel or prompt active, `Esc` dismisses the latest status or error message.
 - `q` closes the focused explorer, debug, or plugin panel; the terminal closes from normal mode.
 - `:focus.left`, `:focus.right`, `:focus.up`, `:focus.down`, and `:focus.editor` move focus from the command line.
 
