@@ -13,6 +13,7 @@ use crate::app::App;
 
 mod automation;
 mod events;
+mod redraw;
 mod windows;
 
 const PLUGIN: &str = "test";

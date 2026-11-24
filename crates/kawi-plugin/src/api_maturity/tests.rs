@@ -292,6 +292,8 @@ fn mutating_methods_are_the_ones_that_need_a_redraw() {
             "editor.set_diagnostics",
             "editor.set_mode",
             "editor.set_selection",
+            "options.reset",
+            "options.set",
             "ui.confirm",
             "ui.input",
             "ui.message",
