@@ -1595,6 +1595,16 @@ impl App {
             self.consume_macro_stop();
             return Ok(false);
         }
+        if key.code == KeyCode::Esc
+            && self.message.is_some()
+            && self.editor.mode() == kawi_editor::Mode::Normal
+            && !self.is_transient_overlay_active()
+            && self.keymap.pending_keys().is_none()
+            && self.keymaps.pending_text().is_none()
+        {
+            self.clear_message();
+            return Ok(false);
+        }
         self.handle_keymap_input(key)
     }
 

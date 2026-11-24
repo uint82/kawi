@@ -17,6 +17,21 @@ fn permanent_delete_confirms_and_closes_the_buffer() {
 }
 
 #[test]
+fn esc_dismisses_the_delete_status_message() {
+    let dir = temp_dir("delete_dismiss");
+    let path = dir.join("a.txt");
+    fs::write(&path, "alpha\n").unwrap();
+    let mut app = app_for(&path);
+    command(&mut app, "delete!");
+    app.handle_key(key(KeyCode::Char('y'))).expect("confirm");
+    assert!(app.last_message().is_some());
+    app.handle_key(key(KeyCode::Esc)).expect("dismiss");
+    assert_eq!(app.last_message(), None);
+    assert!(!path.exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn delete_removes_the_persisted_undo_entry() {
     use sha2::{Digest, Sha256};
 
