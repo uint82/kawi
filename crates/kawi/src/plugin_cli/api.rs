@@ -36,12 +36,32 @@ fn render_signature(signature: Option<&ApiSignatureMetadata>) -> String {
     format!("({}) -> {}", parameters.join(", "), signature.returns)
 }
 
+fn render_flags(entry: &ApiEntryMetadata) -> String {
+    let mut flags = String::new();
+    if entry.process {
+        flags.push('p');
+    }
+    if entry.interactive {
+        flags.push('i');
+    }
+    if entry.mutates {
+        flags.push('m');
+    }
+    if flags.is_empty() {
+        "-".to_string()
+    } else {
+        flags
+    }
+}
+
 fn render_entry(entry: &ApiEntryMetadata) -> String {
     format!(
-        "{:<26} {:<6} {:<12} {:<14} {:<20} {}",
+        "{:<26} {:<6} {:<12} {:<20} {:<5} {:<14} {:<20} {}",
         entry.name,
         entry.since,
         entry.stability,
+        entry.capability.unwrap_or("-"),
+        render_flags(entry),
         optional_number(entry.deprecated_since),
         entry.replacement.unwrap_or("-"),
         render_signature(entry.signature.as_ref())
@@ -52,9 +72,17 @@ fn render_section(title: &str, entries: &[ApiEntryMetadata]) -> String {
     let mut lines = vec![
         format!("{title} ({}):", entries.len()),
         format!(
-            "{:<26} {:<6} {:<12} {:<14} {:<20} {}",
-            "NAME", "SINCE", "STABILITY", "DEPRECATED", "REPLACEMENT", "SIGNATURE"
+            "{:<26} {:<6} {:<12} {:<20} {:<5} {:<14} {:<20} {}",
+            "NAME",
+            "SINCE",
+            "STABILITY",
+            "CAPABILITY",
+            "FLAGS",
+            "DEPRECATED",
+            "REPLACEMENT",
+            "SIGNATURE"
         ),
+        "flags: p=process, i=interactive, m=mutates".to_string(),
     ];
     lines.extend(entries.iter().map(render_entry));
     lines.join("\n")
@@ -124,13 +152,17 @@ mod tests {
     }
 
     #[test]
-    fn render_entry_aligns_all_six_columns() {
+    fn render_entry_aligns_all_columns() {
         let entry = ApiEntryMetadata {
             name: "old.method",
             since: 4,
             stability: "deprecated",
             deprecated_since: Some(6),
             replacement: Some("new.method"),
+            capability: Some("editor.read"),
+            process: true,
+            interactive: false,
+            mutates: true,
             signature: Some(ApiSignatureMetadata {
                 parameters: &[ApiParameterMetadata {
                     name: "flag",
@@ -142,7 +174,7 @@ mod tests {
         };
         assert_eq!(
             render_entry(&entry),
-            "old.method                 4      deprecated   6              new.method           (flag?: boolean) -> null"
+            "old.method                 4      deprecated   editor.read          pm    6              new.method           (flag?: boolean) -> null"
         );
     }
 

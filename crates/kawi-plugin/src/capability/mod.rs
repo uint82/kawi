@@ -1,4 +1,5 @@
 mod command;
+mod kind;
 mod method;
 mod registry;
 mod scope;
@@ -20,38 +21,7 @@ pub use registry::CapabilityRegistry;
 pub(crate) use scope::HostPort;
 pub use scope::{intersect_scope, Scope};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Capability {
-    EditorRead,
-    EditorWrite,
-    EditorBuffers,
-    EditorBuffersWrite,
-    EditorWindows,
-    EditorControl,
-    EditorExecute,
-    EditorCommands,
-    EditorKeymaps,
-    EditorAutocmds,
-    EditorSchedule,
-    EditorVariables,
-    EditorDecorations,
-    UiMessage,
-    UiPrompt,
-    UiProgress,
-    UiStatusline,
-    UiPanel,
-    UiOverlay,
-    UiPicker,
-    DiagnosticsRead,
-    DiagnosticsPublish,
-    OptionsRead,
-    OptionsWrite,
-    FsRead,
-    FsWrite,
-    ProcessSpawn,
-    NetConnect,
-    TaskRun,
-}
+pub use kind::Capability;
 
 impl Capability {
     pub const ALL: [Self; 29] = [

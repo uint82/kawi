@@ -1,9 +1,11 @@
 use serde::Serialize;
 
-use crate::api_maturity::{event_maturity, host_method_maturity, ApiMaturity, ApiStability};
-use crate::protocol::{
-    EVENT_NAMES, HOST_METHODS, PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR, PROTOCOL_VERSION,
+use crate::api_maturity::{
+    is_process_available, ApiMaturity, ApiStability, Event, HostMethod, EVENT_ENTRIES,
+    HOST_METHOD_ENTRIES,
 };
+use crate::capability::Capability;
+use crate::protocol::{PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR, PROTOCOL_VERSION};
 
 mod errors;
 
@@ -34,6 +36,10 @@ pub struct ApiEntryMetadata {
     pub stability: &'static str,
     pub deprecated_since: Option<u64>,
     pub replacement: Option<&'static str>,
+    pub capability: Option<&'static str>,
+    pub process: bool,
+    pub interactive: bool,
+    pub mutates: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<ApiSignatureMetadata>,
 }
@@ -61,44 +67,51 @@ fn stability_label(maturity: ApiMaturity) -> &'static str {
     }
 }
 
-fn entry_metadata(name: &'static str, maturity: ApiMaturity) -> ApiEntryMetadata {
+fn base_entry(
+    name: &'static str,
+    maturity: ApiMaturity,
+    capability: Option<&'static str>,
+) -> ApiEntryMetadata {
     ApiEntryMetadata {
         name,
         since: maturity.since,
         stability: stability_label(maturity),
         deprecated_since: maturity.deprecated_since,
         replacement: maturity.replacement,
+        capability,
+        process: is_process_available(maturity),
+        interactive: false,
+        mutates: false,
         signature: None,
     }
 }
 
-fn method_metadata(name: &'static str, maturity: ApiMaturity) -> ApiEntryMetadata {
+fn method_entry_metadata(entry: &HostMethod) -> ApiEntryMetadata {
     ApiEntryMetadata {
-        signature: Some(signatures::method(name)),
-        ..entry_metadata(name, maturity)
+        interactive: entry.interactive,
+        mutates: entry.mutates,
+        signature: Some(signatures::method(entry.name)),
+        ..base_entry(
+            entry.name,
+            entry.maturity,
+            entry.capability.map(Capability::name),
+        )
     }
 }
 
+fn event_entry_metadata(entry: &Event) -> ApiEntryMetadata {
+    base_entry(entry.name, entry.maturity, Some(entry.capability.name()))
+}
+
 fn method_entries() -> Vec<ApiEntryMetadata> {
-    HOST_METHODS
+    HOST_METHOD_ENTRIES
         .iter()
-        .copied()
-        .map(|name| {
-            let maturity = host_method_maturity(name).expect("registry covers every host method");
-            method_metadata(name, maturity)
-        })
+        .map(method_entry_metadata)
         .collect()
 }
 
 fn event_entries() -> Vec<ApiEntryMetadata> {
-    EVENT_NAMES
-        .iter()
-        .copied()
-        .map(|name| {
-            let maturity = event_maturity(name).expect("registry covers every event");
-            entry_metadata(name, maturity)
-        })
-        .collect()
+    EVENT_ENTRIES.iter().map(event_entry_metadata).collect()
 }
 
 pub fn api_metadata() -> ApiMetadata {

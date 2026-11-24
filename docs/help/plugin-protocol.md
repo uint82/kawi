@@ -879,7 +879,7 @@ Requires `editor.windows`. Request params:
 {"window": 2, "force": false}
 ```
 
-`force` defaults to `false`. Kawi returns the active window record after closing. An unknown window returns `-32072`. Closing the last window returns `-32073`. Unsaved changes without `force` return `-32602`.
+`force` defaults to `false`. Kawi returns the active window record after closing. An unknown window returns `-32072`. Closing the last window returns `-32073`. A window whose buffer has unsaved changes returns `-32076` unless `force` is true.
 
 ### editor.set_cursor
 

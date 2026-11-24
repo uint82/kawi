@@ -96,10 +96,6 @@ pub use constants::*;
 
 pub use types::*;
 
-pub fn is_interactive_host_method(method: &str) -> bool {
-    INTERACTIVE_HOST_METHODS.contains(&method)
-}
-
 pub fn request_value(id: Value, method: &str, params: Value) -> Value {
     serde_json::json!({
         "jsonrpc": "2.0",

@@ -7,10 +7,11 @@ use std::thread;
 use serde_json::Value;
 
 use super::channel::{fail_pending, send_log, ReaderContext};
+use crate::api_maturity::is_interactive_host_method;
 use crate::capability::is_process_host_method;
 use crate::error::PluginError;
 use crate::host::{send_event, PluginHostEvent};
-use crate::protocol::{error_response_value, is_interactive_host_method, RpcError};
+use crate::protocol::{error_response_value, RpcError};
 
 pub(super) fn spawn_reader(
     stdout: ChildStdout,
