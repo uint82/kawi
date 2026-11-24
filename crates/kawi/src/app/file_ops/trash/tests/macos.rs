@@ -11,10 +11,24 @@ fn macos_trashes_a_file_without_info() {
     fs::write(&target, "alpha\n").unwrap();
     let root = dir.join("Trash");
     let trash = MacOsTrash::new(root.clone());
-    let moved = trash.trash_as(&target).unwrap();
+    let moved = trash.trash_as(&target, &target).unwrap();
     assert!(!target.exists());
     assert_eq!(fs::read_to_string(moved).unwrap(), "alpha\n");
     assert!(!root.join("info").exists());
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn macos_trashes_a_staged_file_under_its_original_name() {
+    let dir = temp_dir("macos_staged");
+    let original = dir.join("a b.txt");
+    let staged = dir.join(".a b.txt.kawi-delete-0-0");
+    fs::write(&staged, "alpha\n").unwrap();
+    let trash = MacOsTrash::new(dir.join("Trash"));
+    let moved = trash.trash_as(&staged, &original).unwrap();
+    assert!(!staged.exists());
+    assert_eq!(moved.file_name().unwrap(), "a b.txt");
+    assert_eq!(fs::read_to_string(&moved).unwrap(), "alpha\n");
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -28,8 +42,8 @@ fn macos_uses_unique_names() {
     fs::write(&first, "one\n").unwrap();
     fs::write(&second, "two\n").unwrap();
     let trash = MacOsTrash::new(dir.join("Trash"));
-    let moved_first = trash.trash_as(&first).unwrap();
-    let moved_second = trash.trash_as(&second).unwrap();
+    let moved_first = trash.trash_as(&first, &first).unwrap();
+    let moved_second = trash.trash_as(&second, &second).unwrap();
     assert_eq!(moved_first.file_name().unwrap(), "a.txt");
     assert_eq!(moved_second.file_name().unwrap(), "a.txt.1");
     let _ = fs::remove_dir_all(dir);
@@ -44,7 +58,9 @@ fn macos_volume_trash_is_private() {
     let target = dir.join("a.txt");
     fs::write(&target, "alpha\n").unwrap();
     let root = dir.join("Trash");
-    MacOsTrash::new(root.clone()).trash_as(&target).unwrap();
+    MacOsTrash::new(root.clone())
+        .trash_as(&target, &target)
+        .unwrap();
     let mode = fs::metadata(&root).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700);
     let _ = fs::remove_dir_all(dir);

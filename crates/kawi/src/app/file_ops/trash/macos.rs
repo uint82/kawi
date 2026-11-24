@@ -61,7 +61,7 @@ impl MacOsTrash {
         same_device(target, &self.root) && is_writable_location(&self.root)
     }
 
-    pub(super) fn trash_as(&self, target: &Path) -> Result<PathBuf, TrashError> {
+    pub(super) fn trash_as(&self, target: &Path, original: &Path) -> Result<PathBuf, TrashError> {
         self.ensure()?;
         if !same_device(target, &self.root) {
             return Err(TrashError::Unavailable(
@@ -69,7 +69,7 @@ impl MacOsTrash {
             ));
         }
         let root = &self.root;
-        let name = unique_name(target, |name| !root.join(name).exists())?;
+        let name = unique_name(original, |name| !root.join(name).exists())?;
         let destination = root.join(name);
         fs::rename(target, &destination)
             .map(|()| destination)
