@@ -1,14 +1,15 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Instant;
 
 use kawi_editor::BufferInfo;
 use kawi_plugin::{
-    ActivationEvent, BufferClosedEvent, BufferOpenedEvent, FileOpenedEvent, LanguageChangedEvent,
-    ModeChangedEvent, NotifyOutcome,
+    ActivationEvent, BufferClosedEvent, BufferOpenedEvent, DiagnosticsChangedEvent,
+    FileOpenedEvent, LanguageChangedEvent, ModeChangedEvent, NotifyOutcome,
 };
 use serde_json::Value;
 
+use super::runtime::DeliveredDiagnostics;
 use super::PluginRuntime;
 
 mod state;
@@ -42,30 +43,72 @@ impl PluginRuntime {
         editor: &kawi_editor::Editor,
         problems: &crate::app::problems::Problems,
     ) {
-        if self.last_diagnostics_revision == problems.revision() {
+        let revision = problems.revision();
+        if self.last_diagnostics_revision == revision {
             return;
         }
-        self.last_diagnostics_revision = problems.revision();
+        self.last_diagnostics_revision = revision;
+        self.publish_changed_diagnostics(editor, problems, revision);
+    }
+
+    fn publish_changed_diagnostics(
+        &mut self,
+        editor: &kawi_editor::Editor,
+        problems: &crate::app::problems::Problems,
+        revision: u64,
+    ) {
+        let mut open = BTreeSet::new();
         for info in editor.buffer_infos() {
-            let Some(path) = info.path else {
+            let number = info.number as u64;
+            open.insert(number);
+            let Some(diagnostics) = self.changed_diagnostics(editor, problems, &info) else {
                 continue;
             };
-            let Some(snapshot) = editor.buffer_snapshot(info.number) else {
-                continue;
-            };
-            let entries = problems.problems_for_path(Path::new(&path));
-            let diagnostics = super::diagnostics::summaries(&entries, &snapshot);
             self.notify_event(
                 "diagnostics_changed",
-                serde_json::to_value(kawi_plugin::DiagnosticsChangedEvent {
-                    buffer: Some(info.number as u64),
-                    path,
-                    revision: problems.revision(),
-                    diagnostics,
+                serde_json::to_value(DiagnosticsChangedEvent {
+                    buffer: Some(number),
+                    path: diagnostics.path.clone(),
+                    revision,
+                    diagnostics: diagnostics.summaries.clone(),
                 })
                 .unwrap_or(Value::Null),
             );
+            self.delivered_diagnostics.insert(number, diagnostics);
         }
+        self.delivered_diagnostics
+            .retain(|number, _| open.contains(number));
+    }
+
+    fn changed_diagnostics(
+        &mut self,
+        editor: &kawi_editor::Editor,
+        problems: &crate::app::problems::Problems,
+        info: &BufferInfo,
+    ) -> Option<DeliveredDiagnostics> {
+        let number = info.number as u64;
+        let Some(path) = info.path.as_deref() else {
+            self.delivered_diagnostics.remove(&number);
+            return None;
+        };
+        let snapshot = editor.buffer_snapshot(info.number)?;
+        let entries = problems.problems_for_path(Path::new(path));
+        let summaries = super::diagnostics::summaries(&entries, &snapshot);
+        let previous = self.delivered_diagnostics.get(&number);
+        if previous.is_some_and(|previous| previous.path == path && previous.summaries == summaries)
+        {
+            return None;
+        }
+        let should_publish = !summaries.is_empty() || previous.is_some();
+        let current = DeliveredDiagnostics {
+            path: path.to_string(),
+            summaries,
+        };
+        if should_publish {
+            return Some(current);
+        }
+        self.delivered_diagnostics.insert(number, current);
+        None
     }
 
     pub(crate) fn emit_user_event(&mut self, name: String, payload: Option<String>) {

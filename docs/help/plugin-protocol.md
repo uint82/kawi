@@ -221,7 +221,7 @@ Event names:
 
 `origin` is one of `user`, `undo`, `plugin:<name>`, `external_reload`, or `mixed`. A plugin does not receive its own `plugin:<name>` edits by default. When origins or own edits mix, Kawi sends `full_resync` instead of filtering part of the change.
 
-`diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision.
+`diagnostics_changed` carries `buffer`, `path`, `revision`, and a `diagnostics` array. Each diagnostic has `start`, `end`, `severity`, `message`, `source`, and `code`. `revision` is the diagnostics revision, not the buffer revision. Kawi emits the event only for buffers whose diagnostics changed since the previous event, including when they are cleared.
 
 `buffer_enter` carries `buffer`, `path`, `language`, and `revision` when a buffer becomes active. `buffer_leave` carries the previous `buffer` and `path`. `window_enter` and `window_leave` carry `window` and `buffer` when the active window changes. `focus_gained` and `focus_lost` carry `window` and `buffer` when the editor focus enters or leaves a plugin window. `window_created` and `window_closed` carry `window` and `buffer` when a split is created or closed. `cursor_moved` carries `buffer`, `cursor`, and the current `selection`. `selection_changed` carries `buffer` and the current `selection`; both use `null` when no selection exists. `language_changed` carries `buffer`, `path`, `previous`, and `language` when the detected language changes. `user` carries `name` and an optional `payload` from `editor.emit_user_event`.
 

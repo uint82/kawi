@@ -34,6 +34,12 @@ pub(super) struct DiagnosticWindow {
     pub(super) count: u32,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct DeliveredDiagnostics {
+    pub(super) path: String,
+    pub(super) summaries: Vec<kawi_plugin::DiagnosticSummary>,
+}
+
 #[derive(Default)]
 pub(crate) struct PluginRuntime {
     pub(super) host: Option<PluginHost>,
@@ -73,6 +79,7 @@ pub(crate) struct PluginRuntime {
     #[cfg(test)]
     pub(super) test_events: Vec<(String, Value)>,
     pub(super) last_diagnostics_revision: u64,
+    pub(super) delivered_diagnostics: BTreeMap<u64, DeliveredDiagnostics>,
     pub(super) resync_buffers: BTreeSet<(String, u64)>,
     pub(super) pending_activation_events: BTreeMap<String, VecDeque<(String, Value)>>,
     pub(super) installed_dir: Option<PathBuf>,
