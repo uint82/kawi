@@ -174,6 +174,13 @@ impl PluginRuntime {
         self.resolve_buffer_path(plugin, raw).is_some()
     }
 
+    pub(crate) fn allows_buffer_edit(&self, plugin: &str, buffer: u64, path: Option<&str>) -> bool {
+        match path {
+            Some(path) => self.allows_buffer_path(plugin, path),
+            None => self.owns_buffer(plugin, buffer),
+        }
+    }
+
     pub(crate) fn resolve_buffer_path(
         &self,
         plugin: &str,

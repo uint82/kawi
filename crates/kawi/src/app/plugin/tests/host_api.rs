@@ -245,6 +245,64 @@ fn creates_and_closes_owned_scratch_buffers() {
 }
 
 #[test]
+fn edits_an_owned_scratch_buffer_without_a_path_scope() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    let value = request(
+        &mut app,
+        "buffer.create",
+        json!({ "text": "scratch text\n" }),
+    )
+    .expect("create");
+    let state: BufferState = serde_json::from_value(value).expect("buffer state");
+    app.editor.buffer_select(state.buffer as usize);
+
+    let value = request(
+        &mut app,
+        "buffer.apply_edit",
+        json!({
+            "buffer": state.buffer,
+            "revision": state.revision,
+            "edits": [{
+                "start": { "line": 0, "byte_column": 0 },
+                "end": { "line": 0, "byte_column": 0 },
+                "text": "edited "
+            }]
+        }),
+    )
+    .expect("edit scratch");
+    let result: kawi_plugin::ApplyEditResult = serde_json::from_value(value).expect("result");
+    assert!(result.revision > state.revision);
+    assert_eq!(
+        app.editor.document_snapshot().to_string(),
+        "edited scratch text\n"
+    );
+}
+
+#[test]
+fn rejects_edits_to_pathless_buffers_the_plugin_does_not_own() {
+    let mut app = app();
+    grant(&mut app, Capability::EditorBuffersWrite, Scope::Unscoped);
+    let revision = app.editor.buffer_revision();
+
+    let error = request(
+        &mut app,
+        "buffer.apply_edit",
+        json!({
+            "buffer": 1,
+            "revision": revision,
+            "edits": [{
+                "start": { "line": 0, "byte_column": 0 },
+                "end": { "line": 0, "byte_column": 0 },
+                "text": "x"
+            }]
+        }),
+    )
+    .expect_err("user pathless buffer");
+    assert_eq!(error.code, CAPABILITY_DENIED);
+}
+
+#[test]
 fn closing_an_owned_buffer_replaces_it_in_every_window() {
     let mut app = app();
     grant_all(

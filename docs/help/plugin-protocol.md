@@ -814,7 +814,7 @@ Requires `editor.buffers.write`. Request params use the same `revision` and `edi
 {"buffer": 1, "revision": 14, "edits": [{"start": {"line": 0, "byte_column": 0}, "end": {"line": 0, "byte_column": 0}, "text": "use std::fmt;\n"}]}
 ```
 
-The target must be the active buffer and its path must be inside the declared scope. Result is `{"revision": 15}`. An unknown buffer returns `-32070`, a parked or inactive buffer returns `-32071`, a stale revision returns `-32010`, and a path outside scope returns `-32012`.
+The target must be the active buffer and either its path must be inside the declared scope or it must be a scratch buffer owned by the calling plugin. Result is `{"revision": 15}`. An unknown buffer returns `-32070`, a parked or inactive buffer returns `-32071`, a stale revision returns `-32010`, and a denied path or a pathless buffer the plugin does not own returns `-32012`.
 
 ### buffer.create
 

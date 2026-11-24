@@ -127,7 +127,7 @@ Development plugins are not managed by `:plugin install`, `:plugin update`, `:pl
 ## Host API declarations
 
 - `[capabilities]` in `plugin.toml` declares the host APIs the component uses. A component must declare every interface it imports, except `config-read`, which needs no declaration.
-- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files, editing the active buffer, and managing plugin-owned scratch buffers use the path-scoped `editor.buffers.write`. Window operations use `editor.windows`, cursor and selection control use `editor.control`, option reads use `options.read`, and option changes use `options.write`.
+- Kawi enables every declared API for a managed plugin. Declarations are a compatibility and audit surface, not a per-capability grant. Buffer listing and reading use `editor.buffers`; opening files and editing a path buffer use the path-scoped `editor.buffers.write`. Owned scratch buffers use the same capability and stay editable without a path. Window operations use `editor.windows`, cursor and selection control use `editor.control`, option reads use `options.read`, and option changes use `options.write`.
 - `capabilities` on a command is an optional invocation gate. It must be a subset of `[capabilities]`.
 - `editor.execute` is scoped by an explicit `commands` allowlist. Declare it with `"editor.execute" = { commands = ["edit.format", "file.save"] }`.
 - `task.run` is scoped by an explicit `tasks` allowlist. Declare it with `"task.run" = { tasks = ["check", "test"] }`.

@@ -107,12 +107,9 @@ impl App {
         params: Value,
     ) -> Result<Value, RpcError> {
         let params: ApplyEditParams = serde_json::from_value(params).map_err(invalid_params)?;
-        ensure_active_buffer(self, params.buffer)?;
-        let path = self
-            .editor
-            .buffer_path(self.editor.buffer_number())
-            .ok_or_else(|| RpcError::buffer_not_active(params.buffer))?;
-        if !self.plugins.allows_buffer_path(plugin, path) {
+        let number = ensure_active_buffer(self, params.buffer)?;
+        let path = self.editor.buffer_path(number);
+        if !self.plugins.allows_buffer_edit(plugin, params.buffer, path) {
             return Err(self
                 .plugins
                 .capability_error(plugin, Capability::EditorBuffersWrite));
