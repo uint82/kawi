@@ -1,7 +1,6 @@
 use anyhow::Result;
 use kawi_editor::command::{
-    classify_parse_failure, suggest_commands, DiagnosticCode as EditorDiagnosticCode, ParseFailure,
-    COMMAND_NAMES,
+    suggest_commands, DiagnosticCode as EditorDiagnosticCode, ParseFailure, COMMAND_NAMES,
 };
 use kawi_editor::{parse, Action};
 
@@ -23,51 +22,59 @@ impl App {
         if let Some(id) = self.plugin_command_id(name) {
             return self.execute_plugin_command(id, rest);
         }
-        let command = parse(text);
-        if command == kawi_editor::Command::Unknown {
-            if let Some(failure) = classify_parse_failure(name, rest) {
+        match parse(text) {
+            Ok(command) => self.run_command(command),
+            Err(ParseFailure::EmptyInput) => Ok(false),
+            Err(failure) => {
                 self.report_parse_failure(failure);
-                return Ok(false);
+                Ok(false)
             }
         }
-        self.run_command(command)
     }
 
     fn report_parse_failure(&mut self, failure: ParseFailure) {
-        let diagnostic = self.describe_parse_failure(&failure);
-        self.show_diagnostic(diagnostic);
+        if let Some(diagnostic) = self.describe_parse_failure(&failure) {
+            self.show_diagnostic(diagnostic);
+        }
     }
 
-    fn describe_parse_failure(&self, failure: &ParseFailure) -> Diagnostic {
-        let code = failure.code();
-        match failure {
+    fn describe_parse_failure(&self, failure: &ParseFailure) -> Option<Diagnostic> {
+        let code = failure.code()?;
+        let diagnostic = match failure {
+            ParseFailure::EmptyInput => return None,
             ParseFailure::UnknownCommand { name } => {
                 let suggestions = self.command_suggestions(name);
                 if suggestions.is_empty() {
                     Diagnostic::error(format!("Not an editor command: {name}"))
-                        .with_code(code)
-                        .with_source(DiagnosticSource::Builtin)
                 } else {
-                    Diagnostic::error(format!("Not an editor command: {name}."))
-                        .with_code(code)
-                        .with_source(DiagnosticSource::Builtin)
-                        .with_help(format!(
-                            "Did you mean {}?",
-                            format_suggestions(&suggestions)
-                        ))
+                    Diagnostic::error(format!("Not an editor command: {name}.")).with_help(format!(
+                        "Did you mean {}?",
+                        format_suggestions(&suggestions)
+                    ))
                 }
             }
             ParseFailure::MissingArgument { command } => {
                 Diagnostic::error(format!("Argument required: {command}"))
-                    .with_code(code)
-                    .with_source(DiagnosticSource::Builtin)
             }
             ParseFailure::InvalidArgument { argument } => {
                 Diagnostic::error(format!("Invalid argument: {argument}"))
-                    .with_code(code)
-                    .with_source(DiagnosticSource::Builtin)
             }
-        }
+            ParseFailure::TrailingCharacters { characters } => {
+                Diagnostic::error(format!("Trailing characters: {characters}"))
+            }
+            ParseFailure::RegexDelimitedByLetter => {
+                Diagnostic::error("Regular expressions can't be delimited by letters")
+            }
+            ParseFailure::PositiveCountRequired => Diagnostic::error("Positive count required"),
+            ParseFailure::ValueTooLarge { value } => {
+                Diagnostic::error(format!("Value too large: {value}"))
+            }
+        };
+        Some(
+            diagnostic
+                .with_code(code)
+                .with_source(DiagnosticSource::Builtin),
+        )
     }
 
     fn command_suggestions(&self, name: &str) -> Vec<String> {
@@ -163,6 +170,30 @@ mod tests {
         assert_eq!(
             app.last_message(),
             Some("E474: Invalid argument: clear now")
+        );
+    }
+
+    #[test]
+    fn reports_trailing_characters() {
+        let mut app = app();
+        execute(&mut app, "undolist extra");
+        assert_eq!(app.last_message(), Some("E488: Trailing characters: extra"));
+    }
+
+    #[test]
+    fn reports_substitute_syntax_errors() {
+        let mut app = app();
+        execute(&mut app, "sfoo bar");
+        assert_eq!(
+            app.last_message(),
+            Some("E146: Regular expressions can't be delimited by letters")
+        );
+        execute(&mut app, "s/foo/X/ 0");
+        assert_eq!(app.last_message(), Some("E939: Positive count required"));
+        execute(&mut app, "s/foo/X/ 2147483648");
+        assert_eq!(
+            app.last_message(),
+            Some("E1510: Value too large: 2147483648")
         );
     }
 

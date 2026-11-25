@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn repeat_command_previews_stored_pattern() {
         let mut editor = editor_with("apple pie apple\n");
-        let command = match crate::command::parse("s/apple/X/") {
+        let command = match crate::command::parse("s/apple/X/").expect("parse") {
             crate::command::Command::Substitute(command) => command,
             _ => panic!("expected substitute"),
         };

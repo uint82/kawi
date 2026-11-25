@@ -534,7 +534,8 @@ mod tests {
     }
 
     fn execute(app: &mut App, text: &str) {
-        app.run_command(kawi_editor::parse(text)).unwrap();
+        app.run_command(kawi_editor::parse(text).expect("parse"))
+            .unwrap();
     }
 
     #[test]

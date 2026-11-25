@@ -2366,10 +2366,6 @@ impl App {
                     Ok(false)
                 }
             },
-            Command::SetError(message) => {
-                self.show_message(message);
-                Ok(false)
-            }
             Command::Map { text } => {
                 let _ = self.handle_map_command(&text)?;
                 Ok(false)
@@ -2378,7 +2374,6 @@ impl App {
                 self.handle_plugin_command(&text);
                 Ok(false)
             }
-            Command::Unknown => Ok(false),
         }
     }
 

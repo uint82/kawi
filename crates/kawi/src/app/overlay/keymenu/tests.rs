@@ -52,7 +52,7 @@ fn find_items() -> [&'static str; 5] {
 
 fn bind_leader_mapping(app: &mut App, keys: &str) {
     let command = format!("nmap {keys} mode.visual");
-    app.run_command(kawi_editor::parse(&command))
+    app.run_command(kawi_editor::parse(&command).expect("parse"))
         .expect("mapping");
 }
 

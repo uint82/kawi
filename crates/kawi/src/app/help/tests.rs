@@ -8,7 +8,7 @@ fn app() -> App {
 }
 
 fn execute(app: &mut App, command: &str) {
-    app.run_command(kawi_editor::parse(command))
+    app.run_command(kawi_editor::parse(command).expect("parse"))
         .expect("command");
 }
 
@@ -120,7 +120,8 @@ fn generated_option_help_shows_default_and_current_value() {
 fn help_buffers_reject_writes() {
     let mut app = app();
     execute(&mut app, "help");
-    app.run_command(kawi_editor::parse("w!")).expect("write");
+    app.run_command(kawi_editor::parse("w!").expect("parse"))
+        .expect("write");
     assert_eq!(
         app.last_message(),
         Some("E382: Cannot write, internal buffer")

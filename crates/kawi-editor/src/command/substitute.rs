@@ -1,3 +1,5 @@
+use super::ParseFailure;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubstituteCommand {
     pub range: Option<SubstituteRange>,
@@ -63,7 +65,7 @@ pub enum SubstituteFlag {
 
 const SUBSTITUTE_FLAG_STARTERS: &str = "cegriIp|\"";
 
-pub(super) fn parse(text: &str) -> Option<Result<SubstituteCommand, String>> {
+pub(super) fn parse(text: &str) -> Option<Result<SubstituteCommand, ParseFailure>> {
     let chars: Vec<char> = text.chars().collect();
     let mut index = 0;
     let range = parse_substitute_range(&chars, &mut index)?;
@@ -74,7 +76,7 @@ pub(super) fn parse(text: &str) -> Option<Result<SubstituteCommand, String>> {
     let result = if index >= chars.len() || is_substitute_repeat_start(chars[index]) {
         parse_substitute_repeat(&chars, index)
     } else if chars[index].is_ascii_alphabetic() {
-        Err("E146: Regular expressions can't be delimited by letters".to_string())
+        Err(ParseFailure::RegexDelimitedByLetter)
     } else {
         parse_substitute_new(&chars, index)
     };
@@ -268,6 +270,10 @@ fn parse_substitute_offsets(chars: &[char], index: &mut usize) -> isize {
     total
 }
 
+pub(super) fn is_substitute_name(name: &str) -> bool {
+    name == "s" || (name.starts_with("su") && "substitute".starts_with(name))
+}
+
 fn parse_substitute_name(chars: &[char], start: usize) -> Option<usize> {
     if !chars.get(start).is_some_and(|c| c.is_ascii_lowercase()) {
         return None;
@@ -278,7 +284,7 @@ fn parse_substitute_name(chars: &[char], start: usize) -> Option<usize> {
     }
     for candidate in (start + 1..=end).rev() {
         let name: String = chars[start..candidate].iter().collect();
-        if name == "s" || (name.starts_with("su") && "substitute".starts_with(&name)) {
+        if is_substitute_name(&name) {
             return Some(candidate);
         }
     }
@@ -291,14 +297,14 @@ fn is_substitute_repeat_start(ch: char) -> bool {
 
 type ParsedSubstitute = (SubstituteForm, SubstituteFlags, Option<usize>);
 
-fn parse_substitute_repeat(chars: &[char], index: usize) -> Result<ParsedSubstitute, String> {
+fn parse_substitute_repeat(chars: &[char], index: usize) -> Result<ParsedSubstitute, ParseFailure> {
     let (flags, index) = parse_substitute_flags(chars, index);
     let (count, index) = parse_substitute_count(chars, index)?;
     check_substitute_trailing(chars, index)?;
     Ok((SubstituteForm::Repeat, flags, count))
 }
 
-fn parse_substitute_new(chars: &[char], index: usize) -> Result<ParsedSubstitute, String> {
+fn parse_substitute_new(chars: &[char], index: usize) -> Result<ParsedSubstitute, ParseFailure> {
     let delimiter = chars[index];
     let pattern_start = index + 1;
     let pattern_end = scan_substitute_delimiter(chars, pattern_start, delimiter);
@@ -391,7 +397,10 @@ fn parse_substitute_flags(chars: &[char], index: usize) -> (SubstituteFlags, usi
     (flags, index)
 }
 
-fn parse_substitute_count(chars: &[char], index: usize) -> Result<(Option<usize>, usize), String> {
+fn parse_substitute_count(
+    chars: &[char],
+    index: usize,
+) -> Result<(Option<usize>, usize), ParseFailure> {
     let mut index = index;
     skip_spaces(chars, &mut index);
     let Some(ch) = chars.get(index).copied() else {
@@ -407,17 +416,19 @@ fn parse_substitute_count(chars: &[char], index: usize) -> Result<(Option<usize>
     let digits: String = chars[start..index].iter().collect();
     let value = digits
         .parse::<u64>()
-        .map_err(|_| format!("E1510: Value too large: {digits}"))?;
+        .map_err(|_| ParseFailure::ValueTooLarge {
+            value: digits.clone(),
+        })?;
     if value == 0 {
-        return Err("E939: Positive count required".to_string());
+        return Err(ParseFailure::PositiveCountRequired);
     }
     if value > i32::MAX as u64 {
-        return Err(format!("E1510: Value too large: {digits}"));
+        return Err(ParseFailure::ValueTooLarge { value: digits });
     }
     Ok((Some(value as usize), index))
 }
 
-fn check_substitute_trailing(chars: &[char], index: usize) -> Result<(), String> {
+fn check_substitute_trailing(chars: &[char], index: usize) -> Result<(), ParseFailure> {
     let mut index = index;
     skip_spaces(chars, &mut index);
     let Some(ch) = chars.get(index).copied() else {
@@ -427,7 +438,7 @@ fn check_substitute_trailing(chars: &[char], index: usize) -> Result<(), String>
         return Ok(());
     }
     let rest: String = chars[index..].iter().collect();
-    Err(format!("E488: Trailing characters: {rest}"))
+    Err(ParseFailure::trailing_characters(rest))
 }
 
 fn skip_spaces(chars: &[char], index: &mut usize) {
@@ -443,7 +454,7 @@ mod substitute_tests {
 
     fn substitute(text: &str) -> SubstituteCommand {
         match parse(text) {
-            Command::Substitute(command) => command,
+            Ok(Command::Substitute(command)) => command,
             other => panic!("expected substitute for {text}: {other:?}"),
         }
     }
@@ -622,11 +633,13 @@ mod substitute_tests {
         assert_eq!(substitute("s/foo/X/ ").count, None);
         assert_eq!(
             parse("s/foo/X/ 0"),
-            Command::SetError("E939: Positive count required".to_string())
+            Err(ParseFailure::PositiveCountRequired)
         );
         assert_eq!(
             parse("s/foo/X/ 2147483648"),
-            Command::SetError("E1510: Value too large: 2147483648".to_string())
+            Err(ParseFailure::ValueTooLarge {
+                value: "2147483648".to_string()
+            })
         );
     }
 
@@ -660,22 +673,17 @@ mod substitute_tests {
     fn rejects_trailing_characters() {
         assert_eq!(
             parse("s/foo/X/z"),
-            Command::SetError("E488: Trailing characters: z".to_string())
+            Err(ParseFailure::trailing_characters("z"))
         );
         assert_eq!(
             parse("s/foo/X/g 2 x"),
-            Command::SetError("E488: Trailing characters: x".to_string())
+            Err(ParseFailure::trailing_characters("x"))
         );
     }
 
     #[test]
     fn rejects_letter_delimiters() {
-        assert_eq!(
-            parse("sfoo bar"),
-            Command::SetError(
-                "E146: Regular expressions can't be delimited by letters".to_string()
-            )
-        );
+        assert_eq!(parse("sfoo bar"), Err(ParseFailure::RegexDelimitedByLetter));
     }
 
     #[test]
@@ -694,12 +702,12 @@ mod substitute_tests {
     fn leaves_other_commands_alone() {
         assert_eq!(
             parse("set number"),
-            Command::Set {
+            Ok(Command::Set {
                 name: "number".to_string(),
                 value: crate::command::SetValue::Assign(None),
-            }
+            })
         );
-        assert_eq!(parse("w"), Command::Write { force: false });
-        assert_eq!(parse("zzz"), Command::Unknown);
+        assert_eq!(parse("w"), Ok(Command::Write { force: false }));
+        assert_eq!(parse("zzz"), Err(ParseFailure::unknown_command("zzz")));
     }
 }

@@ -12,6 +12,9 @@ pub enum DiagnosticCode {
     InvalidArgument,
     NotAnEditorCommand,
     TrailingCharacters,
+    RegexDelimitedByLetter,
+    PositiveCountRequired,
+    ValueTooLarge,
 }
 
 impl DiagnosticCode {
@@ -21,6 +24,9 @@ impl DiagnosticCode {
             Self::InvalidArgument => "E474",
             Self::NotAnEditorCommand => "E492",
             Self::TrailingCharacters => "E488",
+            Self::RegexDelimitedByLetter => "E146",
+            Self::PositiveCountRequired => "E939",
+            Self::ValueTooLarge => "E1510",
         }
     }
 }
@@ -33,46 +39,58 @@ impl fmt::Display for DiagnosticCode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseFailure {
+    EmptyInput,
     UnknownCommand { name: String },
     MissingArgument { command: String },
     InvalidArgument { argument: String },
+    TrailingCharacters { characters: String },
+    RegexDelimitedByLetter,
+    PositiveCountRequired,
+    ValueTooLarge { value: String },
 }
 
 impl ParseFailure {
-    pub const fn code(&self) -> DiagnosticCode {
+    pub fn unknown_command(name: impl Into<String>) -> Self {
+        Self::UnknownCommand { name: name.into() }
+    }
+
+    pub fn missing_argument(command: impl Into<String>) -> Self {
+        Self::MissingArgument {
+            command: command.into(),
+        }
+    }
+
+    pub fn invalid_argument(argument: impl Into<String>) -> Self {
+        Self::InvalidArgument {
+            argument: argument.into(),
+        }
+    }
+
+    pub fn trailing_characters(characters: impl Into<String>) -> Self {
+        Self::TrailingCharacters {
+            characters: characters.into(),
+        }
+    }
+
+    pub const fn code(&self) -> Option<DiagnosticCode> {
         match self {
-            Self::UnknownCommand { .. } => DiagnosticCode::NotAnEditorCommand,
-            Self::MissingArgument { .. } => DiagnosticCode::ArgumentRequired,
-            Self::InvalidArgument { .. } => DiagnosticCode::InvalidArgument,
+            Self::EmptyInput => None,
+            Self::UnknownCommand { .. } => Some(DiagnosticCode::NotAnEditorCommand),
+            Self::MissingArgument { .. } => Some(DiagnosticCode::ArgumentRequired),
+            Self::InvalidArgument { .. } => Some(DiagnosticCode::InvalidArgument),
+            Self::TrailingCharacters { .. } => Some(DiagnosticCode::TrailingCharacters),
+            Self::RegexDelimitedByLetter => Some(DiagnosticCode::RegexDelimitedByLetter),
+            Self::PositiveCountRequired => Some(DiagnosticCode::PositiveCountRequired),
+            Self::ValueTooLarge { .. } => Some(DiagnosticCode::ValueTooLarge),
         }
     }
 }
 
-fn is_known_command(name: &str) -> bool {
+pub(super) fn is_known_command(name: &str) -> bool {
     COMMAND_NAMES.contains(&name)
         || name
             .strip_suffix('!')
             .is_some_and(|base| COMMAND_NAMES.contains(&base))
-}
-
-pub fn classify_parse_failure(name: &str, rest: &str) -> Option<ParseFailure> {
-    if name.is_empty() {
-        return None;
-    }
-    if !is_known_command(name) {
-        return Some(ParseFailure::UnknownCommand {
-            name: name.to_string(),
-        });
-    }
-    if rest.is_empty() {
-        Some(ParseFailure::MissingArgument {
-            command: name.to_string(),
-        })
-    } else {
-        Some(ParseFailure::InvalidArgument {
-            argument: rest.to_string(),
-        })
-    }
 }
 
 pub fn suggest_commands(input: &str, candidates: &[&str]) -> Vec<String> {
@@ -140,79 +158,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn classifies_unknown_command() {
+    fn maps_failures_to_codes() {
         assert_eq!(
-            classify_parse_failure("hlep", ""),
-            Some(ParseFailure::UnknownCommand {
-                name: "hlep".to_string()
-            })
+            ParseFailure::unknown_command("nope").code(),
+            Some(DiagnosticCode::NotAnEditorCommand)
+        );
+        assert_eq!(
+            ParseFailure::missing_argument("b").code(),
+            Some(DiagnosticCode::ArgumentRequired)
+        );
+        assert_eq!(
+            ParseFailure::invalid_argument("x").code(),
+            Some(DiagnosticCode::InvalidArgument)
+        );
+        assert_eq!(
+            ParseFailure::trailing_characters("x").code(),
+            Some(DiagnosticCode::TrailingCharacters)
+        );
+        assert_eq!(
+            ParseFailure::RegexDelimitedByLetter.code(),
+            Some(DiagnosticCode::RegexDelimitedByLetter)
+        );
+        assert_eq!(
+            ParseFailure::PositiveCountRequired.code(),
+            Some(DiagnosticCode::PositiveCountRequired)
+        );
+        assert_eq!(
+            ParseFailure::ValueTooLarge {
+                value: "2147483648".to_string()
+            }
+            .code(),
+            Some(DiagnosticCode::ValueTooLarge)
         );
     }
 
     #[test]
-    fn classifies_missing_argument() {
-        assert_eq!(
-            classify_parse_failure("b", ""),
-            Some(ParseFailure::MissingArgument {
-                command: "b".to_string()
-            })
-        );
-    }
-
-    #[test]
-    fn classifies_invalid_argument() {
-        assert_eq!(
-            classify_parse_failure("bd", "a b"),
-            Some(ParseFailure::InvalidArgument {
-                argument: "a b".to_string()
-            })
-        );
+    fn empty_input_has_no_code() {
+        assert_eq!(ParseFailure::EmptyInput.code(), None);
     }
 
     #[test]
     fn force_suffixes_of_known_commands_are_known() {
-        assert_eq!(
-            classify_parse_failure("e!", "a b"),
-            Some(ParseFailure::InvalidArgument {
-                argument: "a b".to_string()
-            })
-        );
-        assert_eq!(
-            classify_parse_failure("bd!", "x"),
-            Some(ParseFailure::InvalidArgument {
-                argument: "x".to_string()
-            })
-        );
-    }
-
-    #[test]
-    fn ignores_empty_input() {
-        assert_eq!(classify_parse_failure("", ""), None);
-    }
-
-    #[test]
-    fn maps_failures_to_codes() {
-        assert_eq!(
-            ParseFailure::UnknownCommand {
-                name: "nope".to_string()
-            }
-            .code(),
-            DiagnosticCode::NotAnEditorCommand
-        );
-        assert_eq!(
-            ParseFailure::MissingArgument {
-                command: "b".to_string()
-            }
-            .code(),
-            DiagnosticCode::ArgumentRequired
-        );
-        assert_eq!(
-            ParseFailure::InvalidArgument {
-                argument: "x".to_string()
-            }
-            .code(),
-            DiagnosticCode::InvalidArgument
-        );
+        assert!(is_known_command("e!"));
+        assert!(is_known_command("bd!"));
+        assert!(!is_known_command("nope!"));
     }
 
     #[test]

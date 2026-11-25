@@ -502,7 +502,7 @@ mod tests {
     }
 
     fn run(editor: &mut Editor, text: &str) -> Result<Option<String>, String> {
-        let command = match parse(text) {
+        let command = match parse(text).expect("parse") {
             Command::Substitute(command) => command,
             other => panic!("expected substitute for {text}: {other:?}"),
         };
