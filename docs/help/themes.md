@@ -9,10 +9,13 @@ Kawi includes these themes:
 
 - `default`
 - `classic`
+- `borland`
 - `cobalt`
 - `one-dark`
 - `gruvbox-dark`
 - `gruvbox-light`
+
+`borland` follows the Turbo Pascal IDE palette: yellow text and white keywords on blue. It also colors completion kinds, decorations, and every status line segment instead of relying on derived defaults.
 
 Set a theme with `:set theme <name>` or `:set theme=<name>`. Press Tab after `theme` to complete built-in and custom theme names. Use `:help option theme` to list the current values.
 

@@ -1,47 +1,83 @@
 use super::Theme;
 
+const BORLAND: &str = include_str!("../../themes/borland.toml");
 const CLASSIC: &str = include_str!("../../themes/classic.toml");
 const COBALT: &str = include_str!("../../themes/cobalt.toml");
 const DEFAULT_THEME: &str = include_str!("../../themes/default.toml");
+const DEFAULT_THEME_NAME: &str = "default";
 const GRUVBOX_DARK: &str = include_str!("../../themes/gruvbox-dark.toml");
 const GRUVBOX_LIGHT: &str = include_str!("../../themes/gruvbox-light.toml");
 const ONE_DARK: &str = include_str!("../../themes/one-dark.toml");
 
+struct BuiltinTheme {
+    name: &'static str,
+    source: &'static str,
+}
+
+const BUILTIN_THEMES: &[BuiltinTheme] = &[
+    BuiltinTheme {
+        name: DEFAULT_THEME_NAME,
+        source: DEFAULT_THEME,
+    },
+    BuiltinTheme {
+        name: "classic",
+        source: CLASSIC,
+    },
+    BuiltinTheme {
+        name: "borland",
+        source: BORLAND,
+    },
+    BuiltinTheme {
+        name: "cobalt",
+        source: COBALT,
+    },
+    BuiltinTheme {
+        name: "one-dark",
+        source: ONE_DARK,
+    },
+    BuiltinTheme {
+        name: "gruvbox-dark",
+        source: GRUVBOX_DARK,
+    },
+    BuiltinTheme {
+        name: "gruvbox-light",
+        source: GRUVBOX_LIGHT,
+    },
+];
+
+#[cfg(test)]
+mod borland_tests;
 #[cfg(test)]
 mod contrast_tests;
+#[cfg(test)]
+mod palette_tests;
 #[cfg(test)]
 mod snapshots;
 #[cfg(test)]
 mod syntax_tests;
 #[cfg(test)]
+mod test_support;
+#[cfg(test)]
 mod tests;
 
 impl Theme {
     pub fn named(name: &str) -> Option<Self> {
-        match name {
-            "default" => Some(Self::default_theme()),
-            "classic" => Some(Self::embedded(name, CLASSIC)),
-            "cobalt" => Some(Self::embedded(name, COBALT)),
-            "gruvbox-dark" => Some(Self::embedded(name, GRUVBOX_DARK)),
-            "one-dark" => Some(Self::embedded(name, ONE_DARK)),
-            "gruvbox-light" => Some(Self::embedded(name, GRUVBOX_LIGHT)),
-            _ => None,
-        }
+        BUILTIN_THEMES
+            .iter()
+            .find(|theme| theme.name == name)
+            .map(|theme| Self::embedded(theme.name, theme.source))
     }
 
-    pub fn names() -> [&'static str; 6] {
-        [
-            "default",
-            "classic",
-            "cobalt",
-            "one-dark",
-            "gruvbox-dark",
-            "gruvbox-light",
-        ]
+    pub fn names() -> [&'static str; BUILTIN_THEMES.len()] {
+        let mut names = [""; BUILTIN_THEMES.len()];
+        for (index, theme) in BUILTIN_THEMES.iter().enumerate() {
+            names[index] = theme.name;
+        }
+        names
     }
 
     pub fn default_theme() -> Self {
-        Self::embedded("default", DEFAULT_THEME)
+        Self::named(DEFAULT_THEME_NAME).expect("embedded default theme")
     }
 
     fn embedded(name: &str, source: &str) -> Self {
