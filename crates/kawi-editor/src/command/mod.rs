@@ -101,10 +101,12 @@ pub enum SetValue {
 }
 
 mod completion;
+mod diagnostic;
 mod file_ops;
 mod undo;
 
 pub use completion::CommandCompletion;
+pub use diagnostic::{classify_parse_failure, suggest_commands, DiagnosticCode, ParseFailure};
 
 pub use undo::UndoCommand;
 
