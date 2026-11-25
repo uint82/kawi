@@ -1,13 +1,14 @@
 use kawi_syntax::LanguageId;
 
 use crate::editing::LanguageEditing;
-use crate::editor::lexical::{LexicalContext, LexicalScanner};
 
 use super::language::IndentRules;
 use super::line_width;
-use super::tags::TagScan;
+use super::scan::{matching_closer, matching_opener, scan, Bracket, Scan};
 
 pub(crate) const INDENT_WINDOW_LINES: usize = 200;
+
+pub(crate) use super::scan::is_closing_bracket;
 
 pub(crate) struct IndentRequest<'a> {
     pub lines: &'a [String],
@@ -26,7 +27,9 @@ pub(crate) fn next_width(request: &IndentRequest<'_>) -> usize {
     if !scan.allows_indent() {
         return request.current_width;
     }
-    if scan.stack.is_empty() && matches_block(scan.token(), request.rules) {
+    if matches_block(scan.token(), request.rules)
+        && (scan.stack.is_empty() || request.rules.indent_keywords_in_brackets)
+    {
         return request.current_width + request.shiftwidth;
     }
     let bracket = request
@@ -57,8 +60,14 @@ fn bracket_width(scan: &Scan, request: &IndentRequest<'_>) -> Option<usize> {
     } else {
         base_opener(scan)
     };
-    opener
-        .map(|opener| line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth)
+    let width = opener.map(|opener| {
+        line_width(&request.lines[opener.line], request.tabstop) + request.shiftwidth
+    });
+    if request.rules.indent_keywords_in_brackets {
+        width.map(|width| width.max(request.current_width))
+    } else {
+        width
+    }
 }
 
 fn base_opener(scan: &Scan) -> Option<&Bracket> {
@@ -102,39 +111,6 @@ pub(crate) fn tag_closer_width(request: &IndentRequest<'_>) -> Option<usize> {
         .closer_width(request.lines, request.row, request.col, request.tabstop)
 }
 
-fn scan(request: &IndentRequest<'_>) -> Scan {
-    let mut scanner = LexicalScanner::new(LexicalContext::with_language(
-        request.editing,
-        request.language,
-    ));
-    let mut scan = Scan::default();
-    for line_index in 0..=request.row {
-        let chars: Vec<char> = request.lines[line_index].chars().collect();
-        let end = if line_index == request.row {
-            request.col.min(chars.len())
-        } else {
-            chars.len()
-        };
-        scan.begin_line();
-        let mut previous_code = None;
-        for index in 0..end {
-            if !scanner.advance(&chars, index) {
-                previous_code = None;
-                continue;
-            }
-            let ch = chars[index];
-            scan.push(ch, line_index, previous_code);
-            previous_code = Some(ch);
-        }
-        if line_index < request.row {
-            scanner.finish_line();
-        }
-    }
-    scan.code = scanner.in_code();
-    scan.line_comment = scanner.in_line_comment();
-    scan
-}
-
 fn matches_block(token: &str, rules: &IndentRules) -> bool {
     !token.is_empty()
         && (rules
@@ -144,97 +120,5 @@ fn matches_block(token: &str, rules: &IndentRules) -> bool {
             || rules
                 .indent_after_keywords
                 .iter()
-                .any(|keyword| token == keyword))
-}
-
-fn matching_opener(closer: char) -> Option<char> {
-    match closer {
-        ')' => Some('('),
-        ']' => Some('['),
-        '}' => Some('{'),
-        _ => None,
-    }
-}
-
-pub(crate) fn is_closing_bracket(ch: char) -> bool {
-    matching_opener(ch).is_some()
-}
-
-fn matching_closer(open: char) -> Option<char> {
-    match open {
-        '(' => Some(')'),
-        '[' => Some(']'),
-        '{' => Some('}'),
-        _ => None,
-    }
-}
-
-fn update_brackets(scan: &mut Scan, ch: char, line: usize, previous_code: Option<char>) {
-    if ch == '{' && previous_code == Some('$') {
-        return;
-    }
-    if matching_closer(ch).is_some() {
-        scan.stack.push(Bracket { open: ch, line });
-        scan.last_bracket = Some(ch);
-        return;
-    }
-    let Some(opener) = matching_opener(ch) else {
-        return;
-    };
-    if scan
-        .stack
-        .last()
-        .is_some_and(|bracket| bracket.open == opener)
-    {
-        scan.stack.pop();
-    }
-    scan.last_bracket = Some(ch);
-}
-
-#[derive(Default)]
-struct Scan {
-    stack: Vec<Bracket>,
-    tags: TagScan,
-    token: String,
-    last_token: String,
-    last_bracket: Option<char>,
-    code: bool,
-    line_comment: bool,
-}
-
-impl Scan {
-    fn begin_line(&mut self) {
-        self.token.clear();
-        self.last_token.clear();
-        self.last_bracket = None;
-    }
-
-    fn push(&mut self, ch: char, line: usize, previous_code: Option<char>) {
-        if ch.is_whitespace() {
-            if !self.token.is_empty() {
-                self.last_token = std::mem::take(&mut self.token);
-            }
-        } else {
-            self.token.push(ch);
-        }
-        update_brackets(self, ch, line, previous_code);
-        self.tags.update(ch, line);
-    }
-
-    fn token(&self) -> &str {
-        if self.token.is_empty() {
-            &self.last_token
-        } else {
-            &self.token
-        }
-    }
-
-    fn allows_indent(&self) -> bool {
-        self.code || self.line_comment
-    }
-}
-
-struct Bracket {
-    open: char,
-    line: usize,
+                .any(|keyword| rules.token_matches_keyword(token, keyword)))
 }

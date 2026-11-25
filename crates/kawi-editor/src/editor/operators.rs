@@ -600,6 +600,7 @@ impl Editor {
             return;
         }
         self.insert_literal_char(c);
+        self.dedent_before_keyword(c);
     }
 
     pub(super) fn insert_literal_char(&mut self, c: char) {

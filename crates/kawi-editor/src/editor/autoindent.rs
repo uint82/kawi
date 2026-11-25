@@ -2,6 +2,8 @@ use super::indent::engine::{
     closer_width, is_closing_bracket, next_width, tag_closer_width, IndentRequest,
     INDENT_WINDOW_LINES,
 };
+use super::indent::is_word_char;
+use super::indent::keyword_width;
 use super::indent::reindent_line;
 use super::Editor;
 
@@ -81,6 +83,38 @@ impl Editor {
         let (start, lines) = self.indent_window(row);
         let request = self.indent_request(&lines, row - start, col, current_width);
         next_width(&request)
+    }
+
+    pub(super) fn dedent_before_keyword(&mut self, typed: char) {
+        if !self.autoindent || self.mode != crate::mode::Mode::Insert || !is_word_char(typed) {
+            return;
+        }
+        let (row, col) = (self.cursor.row(), self.cursor.col());
+        let Some(line) = self.buffer.line(row) else {
+            return;
+        };
+        let mut chars = line.chars();
+        let prefix: String = chars.by_ref().take(col).collect();
+        if chars.any(|ch| !ch.is_whitespace()) {
+            return;
+        }
+        let keyword = prefix.trim();
+        if keyword.is_empty() || keyword.chars().any(char::is_whitespace) {
+            return;
+        }
+        if !self.language_indent.rules.triggers_dedent(keyword) {
+            return;
+        }
+        let Some(width) = self.keyword_dedent_width(row, col, keyword) else {
+            return;
+        };
+        self.set_line_indent(row, width);
+    }
+
+    fn keyword_dedent_width(&self, row: usize, col: usize, keyword: &str) -> Option<usize> {
+        let (start, lines) = self.indent_window(row);
+        let request = self.indent_request(&lines, row - start, col, 0);
+        keyword_width(&request, keyword)
     }
 
     pub(super) fn dedent_before_closer(&mut self, closer: char) {
