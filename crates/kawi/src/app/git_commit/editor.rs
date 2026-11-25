@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::{EditorReply, FallbackCommit, GitEditorSession, TaskKind};
-use crate::app::App;
+use crate::app::{codes, App};
 use crate::ipc::{Connection, Event, WaitOutcome};
 
 impl App {
@@ -153,7 +153,7 @@ impl App {
 
     pub(crate) fn handle_cquit(&mut self) -> anyhow::Result<bool> {
         let Some(buffer) = self.git_commit.editor_buffer() else {
-            self.show_message("E: No git editor session".to_string());
+            self.show_error(format!("{}: No git editor session", codes::NO_GIT_EDITOR));
             return Ok(false);
         };
         self.finish_git_editor_for_buffer(buffer);

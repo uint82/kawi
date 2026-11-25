@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::keymap::{Binding, BindingSource, KeyContext};
 
 use super::command_text::split_command;
-use super::App;
+use super::{codes, App};
 
 impl App {
     pub(super) fn handle_map_command(&mut self, text: &str) -> Result<Option<bool>> {
@@ -41,14 +41,14 @@ impl App {
             return Ok(Some(false));
         }
         let Some(command) = self.commands.find(command) else {
-            self.show_message(format!("E492: Unknown command: {command}"));
+            self.show_error(format!("E492: Not an editor command: {command}"));
             return Ok(Some(false));
         };
         for keys in sequences {
             let binding = Binding::new(command, mode, keys.clone(), BindingSource::User)
                 .with_args(args.clone());
             self.keymaps.bind(binding);
-            self.show_message(format!("mapped {} {}", mode.name(), keys));
+            self.show_success(format!("mapped {} {}", mode.name(), keys));
         }
         Ok(Some(false))
     }
@@ -72,7 +72,7 @@ impl App {
                 continue;
             }
             self.keymaps.unbind(mode, &keys);
-            self.show_message(format!("unmapped {} {}", mode.name(), keys));
+            self.show_success(format!("unmapped {} {}", mode.name(), keys));
         }
         Ok(Some(false))
     }
@@ -103,7 +103,7 @@ impl App {
 
     fn reload_keymaps(&mut self) -> Result<Option<bool>> {
         let Some(path) = self.keymaps_path.clone() else {
-            self.show_message("E484: No keymap file loaded".to_string());
+            self.show_error(format!("{}: No keymap file loaded", codes::NO_KEYMAP_FILE));
             return Ok(Some(false));
         };
         let loaded = crate::keymap::config::load(&path, &self.commands);

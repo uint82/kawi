@@ -189,7 +189,7 @@ fn unknown_mapping_command_reports_error() {
     execute(&mut app, "nmap gx missing.command");
     assert!(app
         .last_message()
-        .is_some_and(|message| message.contains("Unknown command")));
+        .is_some_and(|message| message.contains("Not an editor command")));
 }
 
 #[test]

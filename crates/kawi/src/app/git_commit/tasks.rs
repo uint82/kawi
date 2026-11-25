@@ -1,7 +1,7 @@
 use kawi_task::{TaskOptions, TaskSpec, TaskStatus};
 
 use super::{ActiveTask, GitTask, TaskKind};
-use crate::app::App;
+use crate::app::{codes, App};
 
 impl App {
     pub(crate) fn start_task_spec(
@@ -11,7 +11,10 @@ impl App {
         options: TaskOptions,
     ) -> bool {
         if self.task.is_running() {
-            self.show_message("E: A task is already running".to_string());
+            self.show_error(format!(
+                "{}: A task is already running",
+                codes::TASK_ALREADY_RUNNING
+            ));
             return false;
         }
         self.problems

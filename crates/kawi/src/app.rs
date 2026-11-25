@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 mod apply_journal;
 mod autosave;
 mod code_action;
+mod codes;
 mod color_preview;
 mod command_completion;
 mod command_execute;
@@ -3560,7 +3561,7 @@ mod tests {
         let mut app = App::new(Buffer::from_string("hi"), Flavor::Vim);
         app.run_command(set_command("keymap", "personal"))
             .expect("unknown");
-        assert_eq!(app.last_message(), Some("Unknown keymap: personal"));
+        assert_eq!(app.last_message(), Some("K103: Unknown keymap: personal"));
     }
 
     #[test]
@@ -4161,7 +4162,7 @@ mod tests {
         app.run_command(set_command("theme", "nope"))
             .expect("unknown");
         assert_eq!(app.theme_name(), "default");
-        assert_eq!(app.last_message(), Some("Unknown theme: nope"));
+        assert_eq!(app.last_message(), Some("K102: Unknown theme: nope"));
     }
 
     #[test]
