@@ -110,7 +110,11 @@ mod tests {
         let mut app = app();
         type_command(&mut app, "set theme ");
         complete(&mut app);
-        assert_eq!(app.editor.command_text(), "set theme classic");
+        let first = kawi_tui::theme::Theme::names()
+            .into_iter()
+            .min()
+            .expect("builtin themes");
+        assert_eq!(app.editor.command_text(), format!("set theme {first}"));
     }
 
     #[test]
