@@ -1,10 +1,12 @@
 use anyhow::Result;
 use kawi_editor::command::{
-    classify_parse_failure, suggest_commands, DiagnosticCode, ParseFailure, COMMAND_NAMES,
+    classify_parse_failure, suggest_commands, DiagnosticCode as EditorDiagnosticCode, ParseFailure,
+    COMMAND_NAMES,
 };
 use kawi_editor::{parse, Action};
 
 use super::command_text::split_command;
+use super::diagnostic::{Diagnostic, DiagnosticSource};
 use super::App;
 use crate::command::{CommandHandler, CommandId};
 
@@ -32,29 +34,38 @@ impl App {
     }
 
     fn report_parse_failure(&mut self, failure: ParseFailure) {
-        let message = self.describe_parse_failure(&failure);
-        self.show_error(message);
+        let diagnostic = self.describe_parse_failure(&failure);
+        self.show_diagnostic(diagnostic);
     }
 
-    fn describe_parse_failure(&self, failure: &ParseFailure) -> String {
+    fn describe_parse_failure(&self, failure: &ParseFailure) -> Diagnostic {
+        let code = failure.code();
         match failure {
             ParseFailure::UnknownCommand { name } => {
                 let suggestions = self.command_suggestions(name);
                 if suggestions.is_empty() {
-                    format!("{}: Not an editor command: {name}", failure.code())
+                    Diagnostic::error(format!("Not an editor command: {name}"))
+                        .with_code(code)
+                        .with_source(DiagnosticSource::Builtin)
                 } else {
-                    format!(
-                        "{}: Not an editor command: {name}. Did you mean {}?",
-                        failure.code(),
-                        format_suggestions(&suggestions)
-                    )
+                    Diagnostic::error(format!("Not an editor command: {name}."))
+                        .with_code(code)
+                        .with_source(DiagnosticSource::Builtin)
+                        .with_help(format!(
+                            "Did you mean {}?",
+                            format_suggestions(&suggestions)
+                        ))
                 }
             }
             ParseFailure::MissingArgument { command } => {
-                format!("{}: Argument required: {command}", failure.code())
+                Diagnostic::error(format!("Argument required: {command}"))
+                    .with_code(code)
+                    .with_source(DiagnosticSource::Builtin)
             }
             ParseFailure::InvalidArgument { argument } => {
-                format!("{}: Invalid argument: {argument}", failure.code())
+                Diagnostic::error(format!("Invalid argument: {argument}"))
+                    .with_code(code)
+                    .with_source(DiagnosticSource::Builtin)
             }
         }
     }
@@ -84,10 +95,11 @@ impl App {
         } else if self.plugins.target_accepts_args(target) {
             Some(toml::Value::String(rest.to_string()))
         } else {
-            self.show_message(format!(
-                "{}: Trailing characters: {rest}",
-                DiagnosticCode::TrailingCharacters
-            ));
+            self.show_diagnostic(
+                Diagnostic::error(format!("Trailing characters: {rest}"))
+                    .with_code(EditorDiagnosticCode::TrailingCharacters)
+                    .with_source(DiagnosticSource::Builtin),
+            );
             return Ok(false);
         };
         self.dispatch_command_id(id, args)

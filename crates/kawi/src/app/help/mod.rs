@@ -29,7 +29,7 @@ impl App {
     pub(super) fn handle_help(&mut self, topic: Option<&str>) -> Result<bool> {
         let requested = topic.unwrap_or("index");
         let Some(view) = self.help_view(requested) else {
-            self.show_message(format!("E149: Sorry, no help for {requested}"));
+            self.show_error_code("E149", format!("Sorry, no help for {requested}"));
             return Ok(false);
         };
         self.show_help_view(view, true)?;
@@ -82,7 +82,7 @@ impl App {
         };
         let topic = target.strip_prefix(HELP_PREFIX).unwrap_or(&target);
         let Some(view) = self.help_view(topic) else {
-            self.show_message(format!("E149: Sorry, no help for {topic}"));
+            self.show_error_code("E149", format!("Sorry, no help for {topic}"));
             return Ok(true);
         };
         self.show_help_view(view, true)?;
@@ -94,7 +94,7 @@ impl App {
             return Ok(true);
         };
         let Some(view) = self.help_view(&topic) else {
-            self.show_message(format!("E149: Sorry, no help for {topic}"));
+            self.show_error_code("E149", format!("Sorry, no help for {topic}"));
             return Ok(true);
         };
         self.show_help_view(view, false)?;

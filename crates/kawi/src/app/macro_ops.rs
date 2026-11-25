@@ -124,7 +124,7 @@ impl App {
 
     pub(super) fn repeat_last_macro(&mut self) -> Result<bool> {
         let Some(register) = self.macros.last_executed() else {
-            self.show_message("E748: No previously used register".to_string());
+            self.show_error_code("E748", "No previously used register".to_string());
             return Ok(false);
         };
         if register == ':' {
@@ -143,7 +143,7 @@ impl App {
     pub(super) fn execute_last_command(&mut self) -> Result<bool> {
         self.macros.set_last_executed(':');
         let Some(text) = self.last_command.clone() else {
-            self.show_message("E30: No previous command line".to_string());
+            self.show_error_code("E30", "No previous command line".to_string());
             return Ok(false);
         };
         let count = self.editor.take_count();
@@ -156,7 +156,7 @@ impl App {
     }
 
     pub(super) fn report_macro_register_error(&mut self, register: char) {
-        self.show_message(format!("E354: Invalid register name: '{register}'"));
+        self.show_error_code("E354", format!("Invalid register name: '{register}'"));
     }
 
     fn replay_macro(&mut self, text: &str, count: usize) -> Result<bool> {

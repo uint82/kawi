@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use anyhow::Result;
 use kawi_tui::frame::MessageSeverity;
 
+use super::diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSource};
 use super::{pager_lines, App};
 
 // 200 messages is enough to reconstruct a session's mistakes without turning :messages into a novel.
@@ -10,7 +11,7 @@ const MESSAGE_HISTORY_LIMIT: usize = 200;
 
 #[derive(Default)]
 pub(crate) struct MessageHistory {
-    entries: VecDeque<String>,
+    entries: VecDeque<Diagnostic>,
 }
 
 impl MessageHistory {
@@ -18,11 +19,11 @@ impl MessageHistory {
         Self::default()
     }
 
-    fn push(&mut self, text: String) {
+    fn push(&mut self, diagnostic: Diagnostic) {
         if self.entries.len() == MESSAGE_HISTORY_LIMIT {
             self.entries.pop_front();
         }
-        self.entries.push_back(text);
+        self.entries.push_back(diagnostic);
     }
 
     fn clear(&mut self) {
@@ -35,41 +36,65 @@ impl MessageHistory {
 
     fn lines(&self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
-        for text in &self.entries {
-            lines.extend(pager_lines(text, width));
+        for diagnostic in &self.entries {
+            lines.extend(pager_lines(&diagnostic.render(), width));
         }
         lines
+    }
+
+    #[cfg(test)]
+    fn last(&self) -> Option<&Diagnostic> {
+        self.entries.back()
     }
 }
 
 impl App {
+    pub(super) fn show_diagnostic(&mut self, diagnostic: Diagnostic) {
+        let severity = diagnostic.severity();
+        let text = diagnostic.render();
+        self.message_history.push(diagnostic);
+        self.present(severity, text);
+    }
+
     pub(super) fn show_message(&mut self, text: String) {
-        let severity = infer_severity(&text);
-        self.push_message(severity, text);
+        self.show_diagnostic(Diagnostic::information(text));
     }
 
     pub(super) fn show_error(&mut self, text: String) {
-        self.push_message(MessageSeverity::Error, text);
+        self.show_source_failure(DiagnosticSource::Builtin, text);
+    }
+
+    pub(super) fn show_error_code(&mut self, code: impl Into<DiagnosticCode>, text: String) {
+        self.show_source_error(DiagnosticSource::Builtin, code, text);
+    }
+
+    pub(super) fn show_source_error(
+        &mut self,
+        source: DiagnosticSource,
+        code: impl Into<DiagnosticCode>,
+        text: String,
+    ) {
+        self.show_diagnostic(Diagnostic::error(text).with_code(code).with_source(source));
+    }
+
+    pub(super) fn show_source_failure(&mut self, source: DiagnosticSource, text: String) {
+        self.show_diagnostic(Diagnostic::error(text).with_source(source));
     }
 
     pub(super) fn show_warning(&mut self, text: String) {
-        self.push_message(MessageSeverity::Warning, text);
+        self.show_diagnostic(Diagnostic::warning(text));
     }
 
     pub(super) fn show_success(&mut self, text: String) {
-        self.push_message(MessageSeverity::Success, text);
-    }
-
-    fn push_message(&mut self, severity: MessageSeverity, text: String) {
-        self.message_history.push(text.clone());
-        self.present_message(severity, text);
+        self.show_diagnostic(Diagnostic::success(text));
     }
 
     pub(super) fn show_report(&mut self, text: String) {
-        self.present_message(MessageSeverity::Information, text);
+        let diagnostic = Diagnostic::information(text);
+        self.present(diagnostic.severity(), diagnostic.render());
     }
 
-    fn present_message(&mut self, severity: MessageSeverity, text: String) {
+    fn present(&mut self, severity: MessageSeverity, text: String) {
         self.hover = None;
         self.message_severity = severity;
         let lines = pager_lines(&text, self.screen_width);
@@ -109,71 +134,19 @@ impl App {
     }
 }
 
-fn infer_severity(text: &str) -> MessageSeverity {
-    if is_error(text) {
-        MessageSeverity::Error
-    } else if is_warning(text) {
-        MessageSeverity::Warning
-    } else {
-        MessageSeverity::Information
-    }
-}
-
-fn is_error(text: &str) -> bool {
-    has_code(text, 'E') || has_code(text, 'K') || starts_with_label(text, "error:")
-}
-
-fn is_warning(text: &str) -> bool {
-    has_code(text, 'W') || starts_with_label(text, "warning:")
-}
-
-fn has_code(text: &str, prefix: char) -> bool {
-    text.strip_prefix(prefix).is_some_and(|rest| {
-        rest.starts_with(':')
-            || rest
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_digit())
-    })
-}
-
-fn starts_with_label(text: &str, label: &str) -> bool {
-    text.get(..label.len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(label))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn infers_error_codes() {
-        assert_eq!(infer_severity("E492: nope"), MessageSeverity::Error);
-        assert_eq!(infer_severity("E: nope"), MessageSeverity::Error);
-        assert_eq!(infer_severity("K001: nope"), MessageSeverity::Error);
-        assert_eq!(infer_severity("Error: nope"), MessageSeverity::Error);
-    }
-
-    #[test]
-    fn infers_warning_codes() {
-        assert_eq!(infer_severity("W10: careful"), MessageSeverity::Warning);
-        assert_eq!(infer_severity("warning: careful"), MessageSeverity::Warning);
-    }
-
-    #[test]
-    fn leaves_other_text_information() {
-        assert_eq!(infer_severity("saved"), MessageSeverity::Information);
-        assert_eq!(
-            infer_severity("Edit complete"),
-            MessageSeverity::Information
-        );
+    fn information(text: &str) -> Diagnostic {
+        Diagnostic::information(text)
     }
 
     #[test]
     fn history_keeps_order() {
         let mut history = MessageHistory::new();
-        history.push("first".to_string());
-        history.push("second".to_string());
+        history.push(information("first"));
+        history.push(information("second"));
         assert_eq!(history.lines(80), ["first", "second"]);
     }
 
@@ -181,7 +154,7 @@ mod tests {
     fn history_stops_at_the_limit() {
         let mut history = MessageHistory::new();
         for index in 0..=MESSAGE_HISTORY_LIMIT {
-            history.push(format!("message {index}"));
+            history.push(information(&format!("message {index}")));
         }
         let lines = history.lines(80);
         assert_eq!(lines.len(), MESSAGE_HISTORY_LIMIT);
@@ -195,15 +168,30 @@ mod tests {
     #[test]
     fn wraps_long_entries() {
         let mut history = MessageHistory::new();
-        history.push("abcd".to_string());
+        history.push(information("abcd"));
         assert_eq!(history.lines(2), ["ab", "cd"]);
     }
 
     #[test]
     fn clear_empties_history() {
         let mut history = MessageHistory::new();
-        history.push("first".to_string());
+        history.push(information("first"));
         history.clear();
         assert!(history.is_empty());
+    }
+
+    #[test]
+    fn history_keeps_the_typed_diagnostic() {
+        let mut history = MessageHistory::new();
+        history.push(
+            Diagnostic::error("nope")
+                .with_code("K900")
+                .with_source(DiagnosticSource::Git),
+        );
+        let diagnostic = history.last().expect("diagnostic");
+        assert_eq!(diagnostic.severity(), MessageSeverity::Error);
+        assert_eq!(diagnostic.code().map(DiagnosticCode::as_str), Some("K900"));
+        assert_eq!(diagnostic.source(), DiagnosticSource::Git);
+        assert_eq!(diagnostic.render(), "K900: nope");
     }
 }

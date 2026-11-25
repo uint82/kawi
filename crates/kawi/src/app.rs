@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use diagnostic::{Diagnostic, DiagnosticSource};
 use kawi_buffer::Buffer;
 use ropey::Rope;
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,6 +24,7 @@ mod config;
 mod conflict;
 mod debug;
 mod delayed;
+mod diagnostic;
 mod diagnostic_deferral;
 mod diagnostic_index;
 mod diagnostic_popup;
@@ -1507,8 +1509,8 @@ impl App {
                 }
                 match self.open_picker_row(&row, session.root()) {
                     Ok(()) => Ok(false),
-                    Err(message) => {
-                        self.show_message(message);
+                    Err(diagnostic) => {
+                        self.show_diagnostic(diagnostic);
                         self.picker = Some(session);
                         Ok(false)
                     }
@@ -1553,10 +1555,16 @@ impl App {
         }
     }
 
-    fn open_picker_row(&mut self, row: &kawi_picker::PickerRow, root: &Path) -> Result<(), String> {
+    fn open_picker_row(
+        &mut self,
+        row: &kawi_picker::PickerRow,
+        root: &Path,
+    ) -> Result<(), Diagnostic> {
         if let Some(number) = row.buffer {
             if !self.editor.buffer_select(number) {
-                return Err(format!("E86: Buffer {number} does not exist"));
+                return Err(
+                    Diagnostic::error(format!("Buffer {number} does not exist")).with_code("E86")
+                );
             }
             self.reveal_cursor();
             return Ok(());
@@ -1879,12 +1887,12 @@ impl App {
                 self.show_message(report);
                 true
             }
-            Err(error) => self.report_error(file_error_message(error)),
+            Err(error) => self.report_error(file_error(error)),
         }
     }
 
-    fn report_error(&mut self, text: String) -> bool {
-        self.show_message(text);
+    fn report_error(&mut self, diagnostic: Diagnostic) -> bool {
+        self.show_diagnostic(diagnostic);
         false
     }
 
@@ -1928,7 +1936,7 @@ impl App {
     fn report_outcome(&mut self, outcome: Option<SearchOutcome>) {
         match outcome {
             None | Some(SearchOutcome::Found { .. }) => self.clear_message(),
-            Some(SearchOutcome::Missing) => self.show_message(missing_message(&self.editor)),
+            Some(SearchOutcome::Missing) => self.show_diagnostic(search_missing(&self.editor)),
         }
     }
 
@@ -1982,7 +1990,7 @@ impl App {
 
     fn open_grep_word_picker(&mut self) -> Result<bool> {
         let Some(word) = self.editor.word_under_cursor() else {
-            self.show_message("E348: No string under cursor".to_string());
+            self.show_error_code("E348", "No string under cursor".to_string());
             return Ok(false);
         };
         let root = self.picker_root();
@@ -2134,16 +2142,19 @@ impl App {
         }
     }
 
-    fn git_unavailable_message(&self) -> String {
+    fn git_unavailable_diagnostic(&self) -> Diagnostic {
         if !self.editor.has_file() {
-            return "E32: No file name".to_string();
+            return Diagnostic::error("No file name").with_code("E32");
         }
         if self.git_loading {
-            return "Loading git status".to_string();
+            return Diagnostic::information("Loading git status");
         }
-        self.git_error
-            .clone()
-            .unwrap_or_else(|| "No git repository for this file".to_string())
+        Diagnostic::error(
+            self.git_error
+                .clone()
+                .unwrap_or_else(|| "No git repository for this file".to_string()),
+        )
+        .with_source(DiagnosticSource::Git)
     }
 
     fn handle_git_navigation(&mut self, forward: bool) -> Result<bool> {
@@ -2156,12 +2167,11 @@ impl App {
             }
         });
         let Some(nav) = nav else {
-            let message = if self.git.is_some() {
-                "No hunks".to_string()
+            if self.git.is_some() {
+                self.show_message("No hunks".to_string());
             } else {
-                self.git_unavailable_message()
-            };
-            self.show_message(message);
+                self.show_diagnostic(self.git_unavailable_diagnostic());
+            }
             return Ok(false);
         };
         self.editor.apply(Action::JumpTo(nav.row, 0));
@@ -2203,14 +2213,13 @@ impl App {
         let lines = self.editor.text_lines();
         let revision = self.editor.buffer_revision();
         let Some(session) = self.git.as_mut() else {
-            let message = self.git_unavailable_message();
-            self.show_message(message);
+            self.show_diagnostic(self.git_unavailable_diagnostic());
             return Ok(false);
         };
         match session.stage_hunk(row, &lines, revision) {
-            Ok(GitStage::Staged) => self.show_message("Staged hunk".to_string()),
-            Ok(GitStage::Unstaged) => self.show_message("Unstaged hunk".to_string()),
-            Err(error) => self.show_message(error),
+            Ok(GitStage::Staged) => self.show_success("Staged hunk".to_string()),
+            Ok(GitStage::Unstaged) => self.show_success("Unstaged hunk".to_string()),
+            Err(error) => self.show_source_failure(DiagnosticSource::Git, error),
         }
         Ok(false)
     }
@@ -2220,13 +2229,12 @@ impl App {
         let lines = self.editor.text_lines();
         let revision = self.editor.buffer_revision();
         let Some(session) = self.git.as_mut() else {
-            let message = self.git_unavailable_message();
-            self.show_message(message);
+            self.show_diagnostic(self.git_unavailable_diagnostic());
             return Ok(false);
         };
         match session.undo_stage(&lines, revision) {
-            Ok(()) => self.show_message("Undid staged hunk".to_string()),
-            Err(error) => self.show_message(error),
+            Ok(()) => self.show_success("Undid staged hunk".to_string()),
+            Err(error) => self.show_source_failure(DiagnosticSource::Git, error),
         }
         Ok(false)
     }
@@ -2236,13 +2244,12 @@ impl App {
         let lines = self.editor.text_lines();
         let revision = self.editor.buffer_revision();
         let Some(session) = self.git.as_mut() else {
-            let message = self.git_unavailable_message();
-            self.show_message(message);
+            self.show_diagnostic(self.git_unavailable_diagnostic());
             return Ok(false);
         };
         match session.stage_buffer(&lines, revision) {
-            Ok(()) => self.show_message("Staged file".to_string()),
-            Err(error) => self.show_message(error),
+            Ok(()) => self.show_success("Staged file".to_string()),
+            Err(error) => self.show_source_failure(DiagnosticSource::Git, error),
         }
         Ok(false)
     }
@@ -2250,13 +2257,13 @@ impl App {
     fn handle_git_preview_hunk(&mut self) -> Result<bool> {
         self.sync_git();
         let row = self.editor.row();
-        let preview = self.git.as_ref().map_or_else(
-            || Err(self.git_unavailable_message()),
-            |session| session.preview_hunk(row),
-        );
-        match preview {
+        let Some(session) = self.git.as_ref() else {
+            self.show_diagnostic(self.git_unavailable_diagnostic());
+            return Ok(false);
+        };
+        match session.preview_hunk(row) {
             Ok(lines) => self.show_pager(lines),
-            Err(error) => self.show_message(error),
+            Err(error) => self.show_source_failure(DiagnosticSource::Git, error),
         }
         Ok(false)
     }
@@ -2274,12 +2281,11 @@ impl App {
             .map(GitSession::diff_lines)
             .unwrap_or_default();
         if lines.is_empty() {
-            let message = if self.git.is_some() {
-                "No changes".to_string()
+            if self.git.is_some() {
+                self.show_message("No changes".to_string());
             } else {
-                self.git_unavailable_message()
-            };
-            self.show_message(message);
+                self.show_diagnostic(self.git_unavailable_diagnostic());
+            }
         } else {
             self.show_pager(lines);
         }
@@ -2378,7 +2384,7 @@ impl App {
 
     fn handle_search_word(&mut self, forward: bool) -> Result<bool> {
         if let Err(error) = self.editor.search_word(forward) {
-            self.show_message(file_error_message(error));
+            self.show_diagnostic(file_error(error));
         }
         self.reveal_cursor();
         Ok(false)
@@ -2412,7 +2418,7 @@ impl App {
         if !self.editor.has_unsaved() {
             return Ok(true);
         }
-        self.show_message("E37: No write since last change".to_string());
+        self.show_error_code("E37", "No write since last change".to_string());
         Ok(false)
     }
 
@@ -2425,7 +2431,7 @@ impl App {
         if !self.editor.has_unsaved() {
             return Ok(true);
         }
-        self.show_message("E37: No write since last change".to_string());
+        self.show_error_code("E37", "No write since last change".to_string());
         Ok(false)
     }
 
@@ -2458,7 +2464,7 @@ impl App {
                 Ok(false)
             }
             Err(error) => {
-                self.show_message(file_error_message(error));
+                self.show_diagnostic(file_error(error));
                 Ok(false)
             }
         }
@@ -2477,14 +2483,14 @@ impl App {
 
     fn handle_mark_jump(&mut self, name: char, line_wise: bool) -> Result<bool> {
         if let Err(error) = self.editor.jump_to_mark(name, line_wise) {
-            self.show_message(file_error_message(error));
+            self.show_diagnostic(file_error(error));
         }
         Ok(false)
     }
 
     fn handle_previous_jump(&mut self, line_wise: bool) -> Result<bool> {
         if let Err(error) = self.editor.jump_to_previous(line_wise) {
-            self.show_message(file_error_message(error));
+            self.show_diagnostic(file_error(error));
         }
         Ok(false)
     }
@@ -2501,7 +2507,7 @@ impl App {
             MarkOperator::Yank => self.editor.yank_to_mark(name, line_wise),
         };
         if let Err(error) = outcome {
-            self.show_message(file_error_message(error));
+            self.show_diagnostic(file_error(error));
         }
         Ok(false)
     }
@@ -2534,7 +2540,7 @@ impl App {
             Err(_) => self.editor.buffer_select_pattern(arg),
         };
         if let Err(error) = outcome {
-            self.show_message(buffer_error_message(error));
+            self.show_diagnostic(buffer_error(error));
         }
         self.reveal_cursor();
         Ok(false)
@@ -2558,7 +2564,7 @@ impl App {
                 }
                 self.reveal_cursor();
             }
-            Err(error) => self.show_message(buffer_error_message(error)),
+            Err(error) => self.show_diagnostic(buffer_error(error)),
         }
         Ok(false)
     }
@@ -2594,7 +2600,7 @@ impl App {
             self.editor.jump_newer()
         };
         if let Err(error) = outcome {
-            self.show_message(file_error_message(error));
+            self.show_diagnostic(file_error(error));
         }
         self.reveal_cursor();
         Ok(false)
@@ -2653,11 +2659,11 @@ fn frame_search_span(span: &MatchSpan) -> SearchSpan {
     }
 }
 
-fn missing_message(editor: &Editor) -> String {
+fn search_missing(editor: &Editor) -> Diagnostic {
     if editor.search_pattern().is_empty() {
-        return "E35: No previous regular expression".to_string();
+        return Diagnostic::error("No previous regular expression").with_code("E35");
     }
-    format!("E486: Pattern not found: {}", editor.search_pattern())
+    Diagnostic::error(format!("Pattern not found: {}", editor.search_pattern())).with_code("E486")
 }
 
 fn written_report(name: &str, outcome: kawi_editor::WriteOutcome) -> String {
@@ -2686,20 +2692,21 @@ fn is_operator(action: Action) -> bool {
     )
 }
 
-fn buffer_error_message(error: kawi_editor::BufferError) -> String {
+fn buffer_error(error: kawi_editor::BufferError) -> Diagnostic {
     match error {
         kawi_editor::BufferError::Missing(number) => {
-            format!("E86: Buffer {number} does not exist")
+            Diagnostic::error(format!("Buffer {number} does not exist")).with_code("E86")
         }
         kawi_editor::BufferError::NotFound(spec) => {
-            format!("E94: No matching buffer for {spec}")
+            Diagnostic::error(format!("No matching buffer for {spec}")).with_code("E94")
         }
         kawi_editor::BufferError::Ambiguous(spec) => {
-            format!("E93: More than one match for {spec}")
+            Diagnostic::error(format!("More than one match for {spec}")).with_code("E93")
         }
-        kawi_editor::BufferError::NoWrite(number) => {
-            format!("E89: No write since last change for buffer {number} (add ! to override)")
-        }
+        kawi_editor::BufferError::NoWrite(number) => Diagnostic::error(format!(
+            "No write since last change for buffer {number} (add ! to override)"
+        ))
+        .with_code("E89"),
     }
 }
 
@@ -2772,22 +2779,32 @@ fn is_pager_dismiss(key: KeyEvent) -> bool {
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
-fn file_error_message(error: kawi_editor::EditError) -> String {
+fn file_error(error: kawi_editor::EditError) -> Diagnostic {
     match error {
-        kawi_editor::EditError::NoName => "E32: No file name".to_string(),
+        kawi_editor::EditError::NoName => Diagnostic::no_file_name(),
         kawi_editor::EditError::NoWrite => {
-            "E37: No write since last change (add ! to override)".to_string()
+            Diagnostic::error("No write since last change (add ! to override)").with_code("E37")
         }
-        kawi_editor::EditError::FileExists => "E13: File exists (add ! to override)".to_string(),
+        kawi_editor::EditError::FileExists => {
+            Diagnostic::error("File exists (add ! to override)").with_code("E13")
+        }
         kawi_editor::EditError::CannotOpen(name) => {
-            format!("E484: Can't open file {name}")
+            Diagnostic::error(format!("Can't open file {name}")).with_code("E484")
         }
-        kawi_editor::EditError::Io(message) => message,
-        kawi_editor::EditError::InvalidMark => "E19: Mark has invalid line number".to_string(),
-        kawi_editor::EditError::MarkNotSet => "E20: Mark not set".to_string(),
-        kawi_editor::EditError::NoString => "E348: No string under cursor".to_string(),
-        kawi_editor::EditError::InvalidEdit => "E474: Invalid text edit".to_string(),
-        kawi_editor::EditError::StaleRevision => "E474: Stale buffer revision".to_string(),
+        kawi_editor::EditError::Io(message) => Diagnostic::error(message),
+        kawi_editor::EditError::InvalidMark => {
+            Diagnostic::error("Mark has invalid line number").with_code("E19")
+        }
+        kawi_editor::EditError::MarkNotSet => Diagnostic::error("Mark not set").with_code("E20"),
+        kawi_editor::EditError::NoString => {
+            Diagnostic::error("No string under cursor").with_code("E348")
+        }
+        kawi_editor::EditError::InvalidEdit => {
+            Diagnostic::error("Invalid text edit").with_code("E474")
+        }
+        kawi_editor::EditError::StaleRevision => {
+            Diagnostic::error("Stale buffer revision").with_code("E474")
+        }
     }
 }
 

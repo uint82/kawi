@@ -1,3 +1,4 @@
+use super::diagnostic::DiagnosticSource;
 use super::{codes, App};
 use kawi_editor::TaskCommand;
 use kawi_task::{OutputStream, TaskEvent, TaskRunner, TaskSpec, TaskStatus, Tasks};
@@ -215,7 +216,11 @@ impl App {
 
     fn start_task(&mut self, name: &str) -> anyhow::Result<bool> {
         let Some(spec) = self.tasks.get(name).cloned() else {
-            self.show_error(format!("{}: Unknown task: {name}", codes::UNKNOWN_TASK));
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::UNKNOWN_TASK,
+                format!("Unknown task: {name}"),
+            );
             return Ok(false);
         };
         let root = self.project_root();
@@ -225,7 +230,11 @@ impl App {
 
     fn rerun_task(&mut self) -> anyhow::Result<bool> {
         let Some(name) = self.task.last_task().map(str::to_string) else {
-            self.show_error(format!("{}: No previous task", codes::NO_PREVIOUS_TASK));
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_PREVIOUS_TASK,
+                "No previous task".to_string(),
+            );
             return Ok(false);
         };
         self.start_task(&name)
@@ -235,7 +244,11 @@ impl App {
         if self.task.cancel() {
             self.show_message("Task cancellation requested".to_string());
         } else {
-            self.show_error(format!("{}: No task is running", codes::NO_RUNNING_TASK));
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_RUNNING_TASK,
+                "No task is running".to_string(),
+            );
         }
     }
 
@@ -243,7 +256,11 @@ impl App {
         if self.task.toggle_panel() {
             self.sync_task_panel_size();
         } else {
-            self.show_error(format!("{}: No task output", codes::NO_TASK_OUTPUT));
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_TASK_OUTPUT,
+                "No task output".to_string(),
+            );
         }
     }
 
