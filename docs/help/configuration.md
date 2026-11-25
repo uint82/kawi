@@ -37,7 +37,9 @@ Options can also be changed at runtime with `:set name=value`, toggled with `:se
 
 ## Indentation
 
-Kawi applies per-language indentation defaults. Rust, Python, C, C++, Java, C#, and PHP use 4 spaces. TypeScript, JavaScript, JSON, HTML, CSS, YAML, and Ruby use 2 spaces. Go uses tabs. The built-in defaults follow the formatter and style guide for each language.
+Kawi applies per-language indentation defaults. Rust, Python, C, C++, Java, C#, and PHP use 4 spaces. TypeScript, JavaScript, JSON, HTML, CSS, YAML, Ruby, and SQL use 2 spaces. Go uses tabs. The built-in defaults follow the formatter and style guide for each language.
+
+Some languages also carry keyword rules. Python indents after a trailing colon, Bash after `then` and `do`, and SQL after clause and block keywords such as `SELECT` and `CASE`. SQL matches keywords case-insensitively, and its block closers line up with their opener.
 
 Indentation settings resolve in this order, from highest priority to lowest:
 
@@ -58,6 +60,23 @@ tabstop = 2
 ```
 
 `shiftwidth` sets the indentation unit. `expandtab` inserts spaces instead of tabs. `tabstop` sets the display width of a tab.
+
+Indent rules are configurable as well:
+
+```toml
+[[language]]
+name = "sql"
+indent_after_keywords = ["select", "from", "where"]
+indent_block_openers = ["begin", "case"]
+indent_block_closers = ["end"]
+indent_align_keywords = ["select", "from", "values"]
+indent_branch_keywords = ["when", "else"]
+indent_branch_openers = ["case"]
+indent_ignore_case = true
+indent_keywords_in_brackets = true
+```
+
+`indent_after_suffixes` and `indent_after_keywords` add a level when a line ends with one of the listed tokens. `indent_block_openers` and `indent_block_closers` track nested blocks so a closing keyword lines up with its opener. `indent_align_keywords` aligns a keyword typed at the start of a line with the previous clause. `indent_branch_keywords` align a branch keyword with the previous branch, and `indent_branch_openers` list the openers whose branches sit one level deeper, such as `CASE`. `indent_brackets` and `indent_tags` toggle bracket and tag indentation. `indent_ignore_case` matches keywords without regard to case. `indent_keywords_in_brackets` lets keyword rules work inside parentheses, which keeps subquery clauses indented.
 
 ## Auto-pairs
 
