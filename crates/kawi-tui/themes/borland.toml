@@ -28,7 +28,7 @@ background = "#0054A8"
 
 [status]
 foreground = "#000000"
-background = "#00A800"
+background = "#AAAAAA"
 
 [gutter]
 line_number = "#57FFFF"
@@ -237,8 +237,8 @@ foreground = "#000000"
 background = "#FF6363"
 
 [statusline.mode.visual]
-foreground = "#0000A8"
-background = "#A8A8A8"
+foreground = "#FFFF57"
+background = "#0000A8"
 
 [statusline.mode.command]
 foreground = "#000000"
@@ -270,7 +270,7 @@ background = "#FFFF57"
 
 [statusline.readonly]
 foreground = "#000000"
-background = "#A8A8A8"
+background = "#57FFFF"
 
 [statusline.git]
 foreground = "#000000"
@@ -281,8 +281,8 @@ foreground = "#000000"
 background = "#57FFFF"
 
 [statusline.selection]
-foreground = "#0000A8"
-background = "#A8A8A8"
+foreground = "#000000"
+background = "#FF57FF"
 
 [statusline.macro_recording]
 foreground = "#FFFFFF"

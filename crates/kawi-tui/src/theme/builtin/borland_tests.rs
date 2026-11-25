@@ -110,6 +110,26 @@ fn borland_ui_meets_contrast() {
 }
 
 #[test]
+fn borland_statusline_overrides_stay_visible_on_the_status_bar() {
+    let theme = Theme::named("borland").expect("theme");
+    for (name, colors) in [
+        ("mode.visual", &theme.statusline.mode_visual),
+        ("readonly", &theme.statusline.readonly),
+        ("selection", &theme.statusline.selection),
+    ] {
+        let colors = colors.as_ref().expect("status line color");
+        assert_ne!(
+            colors.background, theme.status.background,
+            "{name} blends into the status bar"
+        );
+        assert!(
+            contrast_ratio(colors.foreground, colors.background) >= 4.5,
+            "{name} is below 4.5:1 contrast"
+        );
+    }
+}
+
+#[test]
 fn borland_subcaptures_keep_borland_accents() {
     let theme = Theme::named("borland").expect("theme");
     assert_eq!(

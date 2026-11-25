@@ -98,7 +98,7 @@ fn borland_uses_the_turbo_pascal_palette() {
     assert_eq!(theme.selection.foreground, rgb(0, 0, 168));
     assert_eq!(theme.selection.background, rgb(168, 168, 168));
     assert_eq!(theme.status.foreground, rgb(0, 0, 0));
-    assert_eq!(theme.status.background, rgb(0, 168, 0));
+    assert_eq!(theme.status.background, rgb(170, 170, 170));
     assert_eq!(theme.bracket_match.foreground, rgb(255, 255, 87));
     assert_eq!(theme.bracket_match.background, rgb(0, 84, 168));
     for (name, expected) in [
