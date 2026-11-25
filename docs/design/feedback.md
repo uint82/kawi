@@ -181,7 +181,7 @@ History is not a log file. Use `:health`, `:lsp status`, `:plugin logs`, or task
 
 Plugin messages currently arrive as plain text without severity or code. The host wraps them as information with the plugin source. They enter history in that typed form.
 
-The next protocol version should add optional `severity`, `code`, and `source` fields to `UiMessageParams`. Keep the current fields required for compatibility. Reject unknown severity values at the host boundary and render them as information. A plugin message must not be able to forge a built-in `E###` code without a source. Prefix plugin codes with the plugin name when they are shown to the user.
+Plugin message typing is deferred until the 1.0 plugin review. The `kawi:plugin@0.13.0` contract is frozen, so `UiMessageParams` keeps only `message`; do not add `severity`, `code`, or `source` before that review. The host supplies the source and no plugin code, so a plugin cannot forge a built-in `E###` code.
 
 Plugin message throttling belongs to the plugin host. The message sink still records what it receives so a noisy plugin is visible in `:messages`.
 
@@ -225,5 +225,6 @@ Rendering tests cover:
 1. Command boundary: return typed parser failures, report them, and suggest names. Done.
 2. Message sink: typed diagnostics, bounded history, `:messages`, and message row rendering. Done.
 3. Cleanup: replace bare `E:` messages, fix misused Vim codes, and route direct message writes through the sink. In progress.
-4. Plugins: add typed severity and source fields to the protocol. Pending.
-5. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index. Pending.
+4. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index. Pending.
+
+Plugin message typing stays deferred until the 1.0 plugin review; the frozen `kawi:plugin@0.13.0` contract does not change.
