@@ -64,6 +64,7 @@ pub struct Frame<'a> {
     pub terminal: Option<TerminalPanel<'a>>,
     pub viewport: &'a Viewport,
     pub message: Option<&'a str>,
+    pub message_severity: MessageSeverity,
     pub prompt: Option<PromptMenu<'a>>,
     pub command: Option<&'a str>,
     pub search: Option<&'a str>,
@@ -310,6 +311,15 @@ impl DiagnosticSeverity {
             Self::Hint => "H",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MessageSeverity {
+    Error,
+    Warning,
+    #[default]
+    Information,
+    Success,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

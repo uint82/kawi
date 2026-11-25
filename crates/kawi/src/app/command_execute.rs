@@ -1,4 +1,7 @@
 use anyhow::Result;
+use kawi_editor::command::{
+    classify_parse_failure, suggest_commands, DiagnosticCode, ParseFailure, COMMAND_NAMES,
+};
 use kawi_editor::{parse, Action};
 
 use super::command_text::split_command;
@@ -18,7 +21,52 @@ impl App {
         if let Some(id) = self.plugin_command_id(name) {
             return self.execute_plugin_command(id, rest);
         }
-        self.run_command(parse(text))
+        let command = parse(text);
+        if command == kawi_editor::Command::Unknown {
+            if let Some(failure) = classify_parse_failure(name, rest) {
+                self.report_parse_failure(failure);
+                return Ok(false);
+            }
+        }
+        self.run_command(command)
+    }
+
+    fn report_parse_failure(&mut self, failure: ParseFailure) {
+        let message = self.describe_parse_failure(&failure);
+        self.show_error(message);
+    }
+
+    fn describe_parse_failure(&self, failure: &ParseFailure) -> String {
+        match failure {
+            ParseFailure::UnknownCommand { name } => {
+                let suggestions = self.command_suggestions(name);
+                if suggestions.is_empty() {
+                    format!("{}: Not an editor command: {name}", failure.code())
+                } else {
+                    format!(
+                        "{}: Not an editor command: {name}. Did you mean {}?",
+                        failure.code(),
+                        format_suggestions(&suggestions)
+                    )
+                }
+            }
+            ParseFailure::MissingArgument { command } => {
+                format!("{}: Argument required: {command}", failure.code())
+            }
+            ParseFailure::InvalidArgument { argument } => {
+                format!("{}: Invalid argument: {argument}", failure.code())
+            }
+        }
+    }
+
+    fn command_suggestions(&self, name: &str) -> Vec<String> {
+        let mut candidates: Vec<&str> = COMMAND_NAMES.to_vec();
+        for spec in self.commands.specs() {
+            if matches!(spec.handler, CommandHandler::Plugin(_)) {
+                candidates.extend(spec.names());
+            }
+        }
+        suggest_commands(name, &candidates)
     }
 
     fn plugin_command_id(&self, name: &str) -> Option<CommandId> {
@@ -36,9 +84,87 @@ impl App {
         } else if self.plugins.target_accepts_args(target) {
             Some(toml::Value::String(rest.to_string()))
         } else {
-            self.show_message(format!("E488: Trailing characters: {rest}"));
+            self.show_message(format!(
+                "{}: Trailing characters: {rest}",
+                DiagnosticCode::TrailingCharacters
+            ));
             return Ok(false);
         };
         self.dispatch_command_id(id, args)
+    }
+}
+
+fn format_suggestions(suggestions: &[String]) -> String {
+    suggestions
+        .iter()
+        .map(|suggestion| format!(":{suggestion}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use kawi_buffer::Buffer;
+
+    use super::*;
+    use crate::keymap::Flavor;
+
+    fn app() -> App {
+        App::new(Buffer::from_string("alpha\nbeta\n"), Flavor::Vim)
+    }
+
+    fn execute(app: &mut App, text: &str) {
+        app.execute_command_text(text).expect("execute");
+    }
+
+    #[test]
+    fn reports_unknown_command_with_suggestion() {
+        let mut app = app();
+        execute(&mut app, "hlep");
+        assert_eq!(
+            app.last_message(),
+            Some("E492: Not an editor command: hlep. Did you mean :help?")
+        );
+    }
+
+    #[test]
+    fn reports_unknown_command_without_suggestion() {
+        let mut app = app();
+        execute(&mut app, "zzzzzz");
+        assert_eq!(
+            app.last_message(),
+            Some("E492: Not an editor command: zzzzzz")
+        );
+    }
+
+    #[test]
+    fn reports_missing_argument() {
+        let mut app = app();
+        execute(&mut app, "b");
+        assert_eq!(app.last_message(), Some("E471: Argument required: b"));
+    }
+
+    #[test]
+    fn reports_invalid_argument() {
+        let mut app = app();
+        execute(&mut app, "messages clear now");
+        assert_eq!(
+            app.last_message(),
+            Some("E474: Invalid argument: clear now")
+        );
+    }
+
+    #[test]
+    fn keeps_silent_for_empty_input() {
+        let mut app = app();
+        execute(&mut app, "");
+        assert_eq!(app.last_message(), None);
+    }
+
+    #[test]
+    fn does_not_run_a_command_with_trailing_text() {
+        let mut app = app();
+        execute(&mut app, "q now");
+        assert_eq!(app.last_message(), Some("E474: Invalid argument: now"));
     }
 }

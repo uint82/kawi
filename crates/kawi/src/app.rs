@@ -62,6 +62,9 @@ mod macro_codec;
 mod macro_ops;
 mod map_command;
 mod merge_conflict;
+mod messages;
+#[cfg(test)]
+mod messages_tests;
 mod options;
 mod overlay;
 mod overlay_scroll;
@@ -139,7 +142,11 @@ use kawi_editor::{
 use kawi_picker::PickerKind;
 use kawi_syntax::{shift_spans, SyntaxKey, SyntaxRequest, SyntaxResult, SyntaxService, SyntaxSpan};
 use kawi_task::Tasks;
-use kawi_tui::{frame::SearchSpan, terminal, theme::Theme};
+use kawi_tui::{
+    frame::{MessageSeverity, SearchSpan},
+    terminal,
+    theme::Theme,
+};
 use lsp::LspUi;
 use picker::PickerSession;
 use problems::Problems;
@@ -170,6 +177,8 @@ pub struct App {
     theme: Theme,
     theme_dir: Option<PathBuf>,
     message: Option<String>,
+    message_severity: MessageSeverity,
+    message_history: messages::MessageHistory,
     pager: Option<Vec<String>>,
     macros: macro_ops::MacroEngine,
     last_command: Option<String>,
@@ -305,6 +314,8 @@ impl App {
             theme: Theme::default(),
             theme_dir: None,
             message: None,
+            message_severity: MessageSeverity::default(),
+            message_history: messages::MessageHistory::new(),
             pager: None,
             macros: macro_ops::MacroEngine::new(),
             last_command: None,
@@ -485,7 +496,7 @@ impl App {
             Some(existing) if !existing.is_empty() => format!("{existing}\n{warning}"),
             _ => warning,
         };
-        self.show_message(warning);
+        self.show_warning(warning);
     }
 
     #[cfg(test)]
@@ -511,6 +522,11 @@ impl App {
     #[cfg(test)]
     pub fn last_message(&self) -> Option<&str> {
         self.message.as_deref()
+    }
+
+    #[cfg(test)]
+    pub fn last_message_severity(&self) -> MessageSeverity {
+        self.message_severity
     }
 
     #[cfg(test)]
@@ -868,29 +884,6 @@ impl App {
             (Some(register), None) => Some(format!("recording @{register}")),
             (None, pending) => pending.map(str::to_string),
         }
-    }
-
-    fn show_message(&mut self, text: String) {
-        self.hover = None;
-        let lines = pager_lines(&text, self.screen_width);
-        if lines.len() > 1 {
-            self.show_pager(lines);
-        } else {
-            self.pager = None;
-            self.message = Some(text);
-        }
-    }
-
-    fn show_pager(&mut self, lines: Vec<String>) {
-        self.hover = None;
-        self.plugin_panel.unfocus();
-        self.message = None;
-        self.pager = Some(lines);
-    }
-
-    fn clear_message(&mut self) {
-        self.message = None;
-        self.pager = None;
     }
 
     #[cfg(test)]
@@ -2352,6 +2345,7 @@ impl App {
             Command::Help { topic } => self.handle_help(topic.as_deref()),
             Command::Health { topic } => self.handle_health(topic.as_deref()),
             Command::Undo(command) => self.handle_undo_command(command),
+            Command::Messages { clear } => self.handle_messages_command(clear),
             Command::Substitute(command) => match self.editor.substitute_command(&command) {
                 Ok(message) => {
                     if let Some(message) = message {
@@ -2470,13 +2464,13 @@ impl App {
     }
 
     fn handle_list_buffers(&mut self) -> Result<bool> {
-        self.show_message(self.editor.buffer_list());
+        self.show_report(self.editor.buffer_list());
         Ok(false)
     }
 
     fn handle_marks(&mut self) -> Result<bool> {
         let listing = self.editor.marks_listing(self.editor.viewport().width());
-        self.show_message(listing);
+        self.show_report(listing);
         Ok(false)
     }
 
@@ -2748,7 +2742,7 @@ fn selected_branch_ref(session: &PickerSession) -> Option<String> {
     Some(row.path.clone())
 }
 
-fn pager_lines(text: &str, width: usize) -> Vec<String> {
+pub(super) fn pager_lines(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut lines = Vec::new();
     for line in text.split('\n') {

@@ -319,6 +319,7 @@ impl App {
             terminal,
             viewport: &viewport,
             message,
+            message_severity: self.message_severity,
             prompt: self
                 .plugin_settings
                 .as_ref()
