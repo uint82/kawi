@@ -36,7 +36,6 @@ anyhow.workspace = true
 crossterm.workspace = true
 
 [features]
-default = ["wasm"]
 wasm = ["kawi-plugin/wasm"]
 
 [target.'cfg(unix)'.dependencies]
