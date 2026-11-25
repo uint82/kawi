@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use super::scenario::Scenario;
 
-pub(super) const PROCESS_EXPECTATIONS: &str = include_str!("expectations/process.toml");
 pub(super) const WASM_EXPECTATIONS: &str = include_str!("expectations/wasm.toml");
 
 #[derive(Debug, Clone, Deserialize)]

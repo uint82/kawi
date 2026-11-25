@@ -43,7 +43,7 @@ pub(crate) fn run_queued_revocation(
     host.revoke_everything();
     let revoked_at = host.host_request_count();
     host.release_events();
-    let result = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let result = host.invoke(scenario.behavior.command(), json!(null));
     let observation = host.observation();
     let observed_after = &observation.host_requests[revoked_at..];
     assert!(

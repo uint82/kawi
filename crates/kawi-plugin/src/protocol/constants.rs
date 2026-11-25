@@ -1,9 +1,7 @@
 pub const PROTOCOL_VERSION: u64 = 1;
 pub const PROTOCOL_MINOR: u64 = 19;
-pub const PROCESS_PROTOCOL_MINOR: u64 = 12;
 pub const POSITION_ENCODING: &str = "utf-8-bytes";
 pub const HOST_METHODS: &[&str] = crate::api_maturity::HOST_METHOD_NAMES;
-pub const PLUGIN_METHODS: [&str; 1] = ["invoke_command"];
 pub const MAX_PLUGIN_DECORATIONS: usize = 10_000;
 pub const MAX_DECORATION_TEXT_BYTES: usize = 512;
 pub const MAX_PLUGIN_STATUSLINE_SEGMENTS: usize = 16;

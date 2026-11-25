@@ -5,12 +5,12 @@ use std::thread;
 
 use serde_json::Value;
 
+use super::backoff::Backoff;
 use crate::capability::{is_event_allowed, CapabilityRegistry};
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
 use crate::host::{send_event, set_status, PluginHostEvent, PluginStatus};
 use crate::manifest::LoadedPlugin;
-use crate::process::Backoff;
 use crate::protocol::{InvocationContext, RpcError};
 
 use self::handle::WasmCommand;

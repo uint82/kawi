@@ -24,6 +24,6 @@ related = ["getting-started", "lsp", "debug", "formatting", "pickers", "tasks"]
 - Manual and indentation folding with a fold column.
 - Key sequence guidance for leader menus and pending Vim sequences.
 - Configurable themes, overlays, and diagnostic presentation.
-- Process plugins with static command and keybinding contributions, activation events, and bounded event subscriptions, with a deny-by-default capability model.
+- Experimental WASM plugins with static and runtime commands, event subscriptions, and a deny-by-default capability model. The runtime is opt-in.
 
 Use `:help <topic>` to open the guide for a feature.

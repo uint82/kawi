@@ -254,7 +254,7 @@ fn is_transport_failure(result: &Result<Value, PluginError>) -> bool {
         result,
         Err(PluginError::Spawn(_))
             | Err(PluginError::Timeout)
-            | Err(PluginError::ProcessExited)
+            | Err(PluginError::WorkerStopped)
             | Err(PluginError::Trap(_))
             | Err(PluginError::Protocol(_))
             | Err(PluginError::Initialize(_))

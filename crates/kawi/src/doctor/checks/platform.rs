@@ -3,11 +3,11 @@ use kawi_process::{sandbox_status, SandboxStatus};
 
 #[cfg(target_os = "macos")]
 const SANDBOX_HINT: &str =
-    "Process plugins run without an OS sandbox on macOS; install only trusted development plugins.";
+    "Plugin-spawned commands run without an OS sandbox on macOS; install only trusted plugins.";
 
 #[cfg(not(target_os = "macos"))]
 const SANDBOX_HINT: &str =
-    "Process plugins run without a landlock sandbox on this system; install only trusted development plugins.";
+    "Plugin-spawned commands run without a landlock sandbox on this system; install only trusted plugins.";
 
 pub(crate) fn check() -> Check {
     let status = sandbox_status();

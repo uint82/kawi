@@ -23,10 +23,9 @@ fn plugin(name: &str) -> LoadedPlugin {
             version: "0.1.0".to_string(),
             protocol: 1,
             description: String::new(),
-            runtime: PluginRuntime::Process,
+            runtime: PluginRuntime::Wasm,
             component: None,
             sha256: None,
-            command: Vec::new(),
             timeout_ms: 1_000,
             decorations: Vec::new(),
             settings: Default::default(),
@@ -80,16 +79,6 @@ fn params(command: &str, args: &[&str]) -> ProcessOpenParams {
         env: BTreeMap::new(),
         stdin: StdinMode::Pipe,
     }
-}
-
-fn plugin_with_runtime(name: &str, runtime: PluginRuntime) -> LoadedPlugin {
-    let mut plugin = plugin(name);
-    plugin.manifest.runtime = runtime;
-    plugin
-}
-
-fn wasm_plugin(name: &str) -> LoadedPlugin {
-    plugin_with_runtime(name, PluginRuntime::Wasm)
 }
 
 fn open_with(manager: &JobManager, plugin: &LoadedPlugin, command: &str, args: &[&str]) -> u64 {

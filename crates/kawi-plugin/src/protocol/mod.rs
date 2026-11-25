@@ -96,39 +96,6 @@ pub use constants::*;
 
 pub use types::*;
 
-pub fn request_value(id: Value, method: &str, params: Value) -> Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": method,
-        "params": params,
-    })
-}
-
-pub fn response_value(id: Value, result: Value) -> Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": result,
-    })
-}
-
-pub fn error_response_value(id: Value, error: &RpcError) -> Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "error": error.to_value(),
-    })
-}
-
-pub fn notification_value(method: &str, params: Value) -> Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params,
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RpcError {
     pub code: i64,

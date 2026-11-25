@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 
 use super::common::*;
 use crate::app::App;
@@ -12,17 +13,13 @@ struct ManifestSpec<'a> {
     version: &'a str,
 }
 
-fn write_manifest(root: &std::path::Path, spec: ManifestSpec<'_>) {
-    let dir = root.join(spec.name);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        format!(
-            r#"name = "{}"
-version = "{}"
-protocol = 1
-command = ["/bin/true"]
-
+fn write_manifest(root: &Path, spec: ManifestSpec<'_>) {
+    super::common::write_manifest(
+        root,
+        spec.name,
+        spec.version,
+        &format!(
+            r#"
 [[commands]]
 id = "{}"
 title = "Ping"
@@ -31,10 +28,9 @@ description = "Return a greeting"
 [commands.keybindings]
 normal = ["{}"]
 "#,
-            spec.name, spec.version, spec.command, spec.keys
+            spec.command, spec.keys
         ),
-    )
-    .unwrap();
+    );
 }
 
 fn plugin_target(app: &App, name: &str) -> Option<(String, String)> {
@@ -249,39 +245,6 @@ fn restart_discovers_added_plugins() {
     assert_eq!(
         plugin_target(&app, "extra.ping"),
         Some(("extra".to_string(), "ping".to_string()))
-    );
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn restart_starts_plugin_with_reloaded_manifest() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let root = temp_dir("reload_worker");
-    let dir = copy_example_plugin(&root, "echo");
-    let mut app = app();
-    load_plugins(&mut app, &root);
-    assert_eq!(
-        invoke_plugin(&mut app, "echo.hello").as_deref(),
-        Some("pong world")
-    );
-
-    let python = fs::read_to_string(dir.join("plugin.py")).unwrap();
-    fs::write(
-        dir.join("plugin.py"),
-        python.replace("pong {name}", "reloaded world"),
-    )
-    .unwrap();
-    app.handle_plugin_command("restart echo");
-    assert_eq!(app.message.as_deref(), Some("Plugin reloaded: echo"));
-    assert_eq!(
-        invoke_plugin(&mut app, "echo.hello").as_deref(),
-        Some("reloaded world")
     );
     fs::remove_dir_all(root).unwrap();
 }

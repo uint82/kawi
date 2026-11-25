@@ -3,6 +3,7 @@ mod events;
 mod monitor;
 mod open;
 mod output;
+mod sandbox;
 mod stdin;
 mod validate;
 
@@ -19,11 +20,13 @@ use crate::capability::CapabilityRegistry;
 use crate::environment::HostEnvironment;
 use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
+
 use crate::protocol::{
     JobState, ProcessJobEvent, ProcessJobParams, ProcessOpenParams, ProcessOpenResult,
     ProcessSignal, ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, RpcError,
     JOB_NOT_FOUND, MAX_JOBS_PER_PLUGIN, MAX_JOB_STDIN_BYTES,
 };
+pub(crate) use sandbox::policy as sandbox_policy;
 
 use self::control::{ensure_running, send_signal, set_state, terminate};
 use self::events::JobEventQueue;
@@ -51,7 +54,6 @@ struct JobHandle {
     status: Arc<Mutex<JobStatus>>,
     output: Arc<OutputBudget>,
     events: Arc<Mutex<JobEventQueue>>,
-    queue_events: bool,
 }
 
 impl JobManager {
@@ -246,9 +248,7 @@ impl JobHandle {
         wake: &std::sync::mpsc::Sender<()>,
         event: ProcessJobEvent,
     ) {
-        if self.queue_events {
-            lock(&self.events).push(event.clone());
-        }
+        lock(&self.events).push(event.clone());
         send_event(
             events,
             wake,

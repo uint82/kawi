@@ -11,9 +11,9 @@ mod host;
 mod jobs;
 mod lockfile;
 mod manifest;
+mod notify;
 mod outcome;
 mod payload_size;
-mod process;
 mod protocol;
 mod wasm;
 
@@ -49,8 +49,8 @@ pub use manifest::{
     PluginCatalog, PluginCommand, PluginDecorationGroup, PluginManifest, PluginRuntime,
     PluginSetting, PluginSettingKind, PluginWarning,
 };
+pub use notify::NotifyOutcome;
 pub use outcome::{normalize_error, normalize_result, normalize_rpc, Outcome};
-pub use process::NotifyOutcome;
 pub use protocol::{
     decoration_ref, event_value, plugin_origin, sanitize, validate_autocmd_pattern,
     validate_autocmd_spec, validate_command_id, validate_command_spec, validate_decoration_scope,
@@ -99,8 +99,8 @@ pub use protocol::{
     MAX_VARIABLE_KEY_BYTES, MAX_VARIABLE_VALUE_BYTES, MAX_WINDOW_VARIABLES, METHOD_NOT_FOUND,
     MIN_PLUGIN_PANEL_HEIGHT, MIN_TIMER_INTERVAL_MS, MODE_NOT_SUPPORTED, OPTION_NOT_FOUND,
     ORIGIN_EXTERNAL_RELOAD, ORIGIN_MIXED, ORIGIN_UNDO, ORIGIN_USER, PANEL_NOT_FOUND, PARSE_ERROR,
-    PLUGIN_ERROR, PLUGIN_UNAVAILABLE, POSITION_ENCODING, PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR,
-    PROTOCOL_VERSION, REQUEST_CANCELED, STALE_REVISION, UI_BUSY, WINDOW_NOT_FOUND,
+    PLUGIN_ERROR, PLUGIN_UNAVAILABLE, POSITION_ENCODING, PROTOCOL_MINOR, PROTOCOL_VERSION,
+    REQUEST_CANCELED, STALE_REVISION, UI_BUSY, WINDOW_NOT_FOUND,
 };
 pub use protocol::{
     validate_overlay_open, validate_overlay_update, validate_picker, Key, KeyModifier,

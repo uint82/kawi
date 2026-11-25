@@ -347,15 +347,11 @@ fn set_keymap(
 #[test]
 fn skips_manifest_keybindings_that_shadow_a_user_prefix() {
     let root = temp_dir("manifest_user_prefix");
-    let dir = root.join("echo");
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        r#"name = "echo"
-version = "0.1.0"
-protocol = 1
-command = ["/bin/true"]
-
+    write_manifest(
+        &root,
+        "echo",
+        "0.1.0",
+        r#"
 [[commands]]
 id = "ping"
 title = "Ping"
@@ -363,8 +359,7 @@ title = "Ping"
 [commands.keybindings]
 normal = ["<leader>p"]
 "#,
-    )
-    .unwrap();
+    );
     let mut app = app();
     let user_command = app.commands.find("file.save").expect("builtin");
     let mode = crate::keymap::KeyContext::Normal;

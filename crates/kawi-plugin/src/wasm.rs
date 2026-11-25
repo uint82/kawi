@@ -1,4 +1,6 @@
 #[cfg(feature = "wasm")]
+mod backoff;
+#[cfg(feature = "wasm")]
 mod bindings;
 #[cfg(feature = "wasm")]
 mod bridge;

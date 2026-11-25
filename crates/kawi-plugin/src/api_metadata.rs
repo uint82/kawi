@@ -1,11 +1,10 @@
 use serde::Serialize;
 
 use crate::api_maturity::{
-    is_process_available, ApiMaturity, ApiStability, Event, HostMethod, EVENT_ENTRIES,
-    HOST_METHOD_ENTRIES,
+    ApiMaturity, ApiStability, Event, HostMethod, EVENT_ENTRIES, HOST_METHOD_ENTRIES,
 };
 use crate::capability::Capability;
-use crate::protocol::{PROCESS_PROTOCOL_MINOR, PROTOCOL_MINOR, PROTOCOL_VERSION};
+use crate::protocol::{PROTOCOL_MINOR, PROTOCOL_VERSION};
 
 mod errors;
 
@@ -13,7 +12,6 @@ mod errors;
 pub struct ApiVersionMetadata {
     pub protocol: u64,
     pub protocol_minor: u64,
-    pub process_protocol_minor: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -37,7 +35,6 @@ pub struct ApiEntryMetadata {
     pub deprecated_since: Option<u64>,
     pub replacement: Option<&'static str>,
     pub capability: Option<&'static str>,
-    pub process: bool,
     pub interactive: bool,
     pub mutates: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,7 +76,6 @@ fn base_entry(
         deprecated_since: maturity.deprecated_since,
         replacement: maturity.replacement,
         capability,
-        process: is_process_available(maturity),
         interactive: false,
         mutates: false,
         signature: None,
@@ -119,7 +115,6 @@ pub fn api_metadata() -> ApiMetadata {
         version: ApiVersionMetadata {
             protocol: PROTOCOL_VERSION,
             protocol_minor: PROTOCOL_MINOR,
-            process_protocol_minor: PROCESS_PROTOCOL_MINOR,
         },
         methods: method_entries(),
         events: event_entries(),

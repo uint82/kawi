@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
+#[cfg(feature = "wasm")]
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -11,11 +12,11 @@ use crate::error::PluginError;
 use crate::jobs::JobManager;
 use crate::manifest::LoadedPlugin;
 use crate::payload_size::payload_too_large;
-use crate::process::NotifyOutcome;
 use crate::protocol::{
     InvocationContext, ProcessJobEvent, ProcessJobParams, ProcessOpenParams, ProcessOpenResult,
     ProcessSignalParams, ProcessStatusResult, ProcessWriteParams, RpcError, INTERNAL_ERROR,
 };
+use crate::NotifyOutcome;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginStatus {
@@ -52,9 +53,6 @@ pub enum PluginHostEvent {
         plugin: String,
         status: PluginStatus,
     },
-    SandboxApplied {
-        plugin: String,
-    },
     JobEvent {
         plugin: String,
         event: String,
@@ -62,6 +60,7 @@ pub enum PluginHostEvent {
     },
 }
 
+mod disabled;
 mod host_worker;
 mod lifecycle;
 mod wasm;
@@ -298,6 +297,7 @@ pub(crate) fn send_event(
     }
 }
 
+#[cfg(feature = "wasm")]
 pub(crate) fn set_status(
     status: &Arc<Mutex<PluginStatus>>,
     events: &Sender<PluginHostEvent>,

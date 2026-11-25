@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 
-use kawi_plugin::{load_catalog, PluginRuntime};
+use kawi_plugin::load_catalog;
 
 pub(super) fn run(args: &[String]) -> Result<()> {
     let directory = parse_directory(args)?;
@@ -24,7 +24,7 @@ pub(super) fn run(args: &[String]) -> Result<()> {
         bail!("no plugin manifest found in {}", directory.display());
     };
     print_plugin(plugin)?;
-    if plugin.manifest.runtime == PluginRuntime::Wasm && plugin.disabled_reason.is_none() {
+    if plugin.disabled_reason.is_none() {
         inspect_component(plugin)?;
     }
     Ok(())

@@ -1,13 +1,15 @@
 ---
 title = "Plugins"
 aliases = ["plugin"]
-related = ["plugin-protocol", "plugin-capabilities", "plugin-authoring", "plugin-migration", "keymaps", "configuration", "troubleshooting"]
+related = ["plugin-capabilities", "plugin-authoring", "keymaps", "configuration", "troubleshooting"]
 ---
 # Plugins
 
-Kawi installs managed plugins from GitHub releases. A managed plugin is a WebAssembly component with a versioned manifest. Kawi verifies the release artifact, pins the resolved commit and checksum, and enables the plugin after one confirmation. There is no permission file and no per-capability prompt.
+Plugins are an experimental escape hatch, not part of the stable editor surface. The component contract is frozen at `kawi:plugin@0.13.0`, and the runtime is optional and off by default. Build with `--features wasm` to enable it. Expect the feature to be revisited at 1.0 rather than expanded in place.
 
-Local plugins in `$XDG_CONFIG_HOME/kawi/plugins` are a separate development mode. They are loaded with a warning and are never updated or removed by `:plugin`. Process plugins remain available only in this development mode and run as trusted code with your full user permissions.
+Kawi installs managed plugins from GitHub releases. A managed plugin is a WebAssembly component with a versioned manifest. Kawi verifies the release artifact, pins the resolved commit and checksum, and enables the plugin after one confirmation. There is no permission file and no per-capability prompt. Installing or updating a plugin is the trust decision.
+
+Local plugins in `$XDG_CONFIG_HOME/kawi/plugins` are a separate development mode. They are loaded with a warning and are never updated or removed by `:plugin`. They run with the same WebAssembly sandbox as managed plugins.
 
 Installed plugins live in `$XDG_DATA_HOME/kawi/plugins`, normally `~/.local/share/kawi/plugins`. The lockfile lives in `$XDG_CONFIG_HOME/kawi/plugins.lock`, normally `~/.config/kawi/plugins.lock`. Plugin settings live in `$XDG_CONFIG_HOME/kawi/plugins.toml`, normally `~/.config/kawi/plugins.toml`. Kawi never loads plugins from a project directory.
 
@@ -90,7 +92,7 @@ Declarations are a compatibility and audit surface, not a user grant. Kawi enabl
 
 Available host APIs are `editor.read`, `editor.write`, `editor.buffers`, `editor.buffers.write`, `editor.windows`, `editor.control`, `editor.execute`, `editor.commands`, `editor.keymaps`, `editor.autocmds`, `editor.schedule`, `editor.variables`, `editor.decorations`, `options.read`, `options.write`, `ui.message`, `ui.prompt`, `ui.progress`, `ui.statusline`, `ui.panel`, `ui.overlay`, `ui.picker`, `diagnostics.read`, `diagnostics.publish`, `fs.read`, `fs.write`, `process.spawn`, `task.run`, and `net.connect`. Scoped APIs use `paths`, `commands`, `hosts`, or `tasks` tables. See [Plugin host APIs](help:plugin-capabilities) for scope syntax and enforcement.
 
-`kawi plugin api` lists every host method and event with the protocol minor that introduced it, its stability, its replacement when deprecated, the capability it requires, whether the process runtime exposes it, whether it blocks for user input, whether it mutates editor state, the parameters and return type of each method, and the JSON-RPC error codes. Use `kawi plugin api --json` to get the same report as machine-readable JSON. The report comes from the same registry that gates the process runtime, so a plugin author sees the maturity the host actually enforces rather than a separate doc table.
+`kawi plugin api` lists every host method and event with the protocol minor that introduced it, its stability, its replacement when deprecated, the capability it requires, whether it blocks for user input, whether it mutates editor state, the parameters and return type of each method, and the JSON-RPC error codes. Use `kawi plugin api --json` to get the same report as machine-readable JSON. The report comes from the same registry that gates the component, so a plugin author sees the maturity the host actually enforces rather than a separate doc table.
 
 Plugins can declare settings and read their effective values without a capability declaration:
 
@@ -193,14 +195,10 @@ Kawi sends diagnostics from LSP and tasks to plugins. A plugin with `diagnostics
 
 Positions are zero-based and use line plus UTF-8 byte column. Kawi rejects byte columns inside a code point.
 
-See [Plugin protocol](help:plugin-protocol) for the process development protocol and [Writing a WASM plugin](help:plugin-authoring) for the component contract.
+See [Writing a WASM plugin](help:plugin-authoring) for the component contract and build flow.
 
 ## Development plugins
 
-Copy a plugin directory into `$XDG_CONFIG_HOME/kawi/plugins` to run it locally. Kawi prints a startup warning and marks the plugin as `development` in `:plugin list`. Development plugins can be process plugins or WASM plugins. They are trusted local code, they are not pinned in the lockfile, and `:plugin disable` and `:plugin remove` do not manage them.
+Copy a plugin directory into `$XDG_CONFIG_HOME/kawi/plugins` to run it locally. Kawi prints a startup warning and marks the plugin as `development` in `:plugin list`. Development plugins are trusted local code, they are not pinned in the lockfile, and `:plugin disable` and `:plugin remove` do not manage them.
 
-The repository includes two Python examples and a WASM example:
-
-- `examples/plugins/echo` registers `echo.ping`, `echo.hello`, and `echo.retry`.
-- `examples/plugins/trim` trims trailing whitespace after `file_saved` and through the `trim.trim` command.
-- `examples/wasm-trim` is the same trim plugin on the WASM runtime.
+`examples/wasm-trim` is the reference plugin. It trims trailing whitespace after `file_saved` and through the `trim.trim` command.

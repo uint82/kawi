@@ -1,11 +1,11 @@
 ---
 title = "Writing a WASM plugin"
 aliases = ["wasm-plugin"]
-related = ["plugins", "plugin-capabilities", "plugin-protocol", "plugin-migration"]
+related = ["plugins", "plugin-capabilities"]
 ---
 # Writing a WASM plugin
 
-WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. See [Migrating a process plugin to WASM](help:plugin-migration) to port an existing JSON-RPC plugin.
+WASM plugins run in a WebAssembly component with a versioned manifest. This guide covers creating, building, publishing, installing, running, and inspecting a Rust plugin. Plugins are experimental and the runtime is optional.
 
 The `kawi-plugin-sdk` crate re-exports the versioned WIT bindings and a small set of helpers. The release workflow publishes version 0.13.0 on crates.io. It pins `wit-bindgen` 0.63.0. Version 0.13.0 bumps the WIT package, so rebuild components built against 0.12.0. Components must implement the exported `callback-handler.on-callback` function. The trim example and conformance suite build with that version and load the component under Wasmtime 50.0.1. A component that targets a different WIT version fails to load with the versioned import name. Other languages work if they target the component model, but only Rust has an SDK and tested template today.
 
@@ -23,13 +23,13 @@ Install the component linker required by the WASM build:
 cargo install wasm-component-ld --version 0.5.31 --locked
 ```
 
-The `wasm` feature is enabled by default, so `:plugin inspect` and the runtime are available in a normal build:
+The `wasm` feature is off by default. Enable it when you want to run, inspect, or develop plugins:
 
 ```sh
-cargo install --path crates/kawi
+cargo install --path crates/kawi --features wasm
 ```
 
-Build with `--no-default-features` only when you intentionally want to omit the WebAssembly runtime.
+Without that feature, `:plugin` commands that need the runtime report that plugin support is unavailable. The component contract is frozen at `kawi:plugin@0.13.0`; do not expect new host interfaces before 1.0.
 
 The scaffold uses the crates.io SDK by default. Pass `--sdk-path` only when developing against an unreleased checkout.
 
@@ -604,7 +604,7 @@ let all = config_read::get_all()?;
 
 ## Real edit example
 
-`examples/wasm-trim` is the reference for a real edit. It reads state with `editor.get_state`, computes zero-based line and UTF-8 byte-column edits, and calls `apply_edit_with_retry`. The helper retries a stale revision twice, refuses to continue when the buffer identity changes, and returns `STALE_REVISION` after the retry budget. Report that error instead of applying the edits to a new buffer. The process trim example follows the same rules against the JSON-RPC contract.
+`examples/wasm-trim` is the reference for a real edit. It reads state with `editor.get_state`, computes zero-based line and UTF-8 byte-column edits, and calls `apply_edit_with_retry`. The helper retries a stale revision twice, refuses to continue when the buffer identity changes, and returns `STALE_REVISION` after the retry budget. Report that error instead of applying the edits to a new buffer.
 
 ## Troubleshooting
 

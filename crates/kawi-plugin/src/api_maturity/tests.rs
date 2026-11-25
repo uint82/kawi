@@ -317,21 +317,3 @@ fn mutating_methods_are_the_ones_that_need_a_redraw() {
         ]
     );
 }
-
-#[test]
-fn process_availability_stops_at_the_process_protocol_minor() {
-    for entry in HOST_METHOD_ENTRIES {
-        assert_eq!(
-            is_process_available(entry.maturity),
-            entry.maturity.since <= crate::protocol::PROCESS_PROTOCOL_MINOR,
-            "{}",
-            entry.name
-        );
-    }
-    assert!(is_process_available(ApiMaturity::stable(
-        crate::protocol::PROCESS_PROTOCOL_MINOR
-    )));
-    assert!(!is_process_available(ApiMaturity::stable(
-        crate::protocol::PROCESS_PROTOCOL_MINOR + 1
-    )));
-}

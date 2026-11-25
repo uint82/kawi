@@ -8,7 +8,7 @@ use serde_json::json;
 use super::*;
 use crate::capability::Capability;
 use crate::manifest::{PluginManifest, PluginRuntime};
-use crate::process::NotifyOutcome;
+use crate::NotifyOutcome;
 
 fn plugin() -> LoadedPlugin {
     plugin_with("echo.wasm")
@@ -37,7 +37,6 @@ fn plugin_with_subscriptions(component: &str, subscribes: Vec<String>) -> Loaded
             runtime: PluginRuntime::Wasm,
             component: Some("plugin.wasm".to_string()),
             sha256: None,
-            command: Vec::new(),
             timeout_ms: 1_000,
             decorations: Vec::new(),
             settings: Default::default(),

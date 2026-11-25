@@ -16,7 +16,6 @@ Kawi is a terminal editor built around modal editing, language servers, fast pic
 - [Plugins](help:plugins)
 - [Plugin host APIs](help:plugin-capabilities)
 - [Writing a WASM plugin](help:plugin-authoring)
-- [Migrating a process plugin to WASM](help:plugin-migration)
 - [Project explorer](help:explorer)
 - [Directory buffers](help:directory)
 - [Configuration](help:configuration)

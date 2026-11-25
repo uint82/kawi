@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use kawi_plugin::{validate_component_path, PluginManifest, PluginRuntime};
+use kawi_plugin::{validate_component_path, PluginManifest};
 use serde::Deserialize;
 
 use super::http::{encode_path_segment, HttpClient};
@@ -179,9 +179,6 @@ impl ReleaseClient for GithubClient {
         let manifest = self.manifest(spec, &release.commit)?;
         let parsed: PluginManifest = toml::from_str(&manifest)
             .map_err(|error| format!("invalid plugin manifest: {error}"))?;
-        if parsed.runtime != PluginRuntime::Wasm {
-            return Err("managed plugins must use the wasm runtime".to_string());
-        }
         let component = parsed
             .component
             .as_deref()

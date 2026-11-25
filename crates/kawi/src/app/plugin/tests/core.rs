@@ -1,6 +1,3 @@
-use std::fs;
-use std::time::{Duration, Instant};
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_buffer::Buffer;
 use kawi_editor::Action;
@@ -9,12 +6,12 @@ use kawi_plugin::{
     SetDiagnosticsParams, INVALID_PARAMS, INVALID_POSITION, STALE_REVISION,
 };
 use serde_json::json;
+use std::fs;
 
 use super::common::*;
 use crate::app::App;
 use crate::command::{CommandHandler, CommandSource};
 use crate::keymap::{BindingSource, Flavor};
-use kawi_plugin::PluginStatus;
 
 #[test]
 fn static_contributions_register_commands_and_bindings() {
@@ -69,8 +66,11 @@ fn lists_plugins_without_starting_them() {
     let lines = app.pager.as_ref().expect("pager");
     assert!(lines[0].starts_with("name"));
     assert!(lines[1].contains("echo"));
-    assert!(lines[1].contains("process (trusted compatibility runtime)"));
+    assert!(lines[1].contains(" wasm "));
+    #[cfg(feature = "wasm")]
     assert!(lines[1].contains("stopped"));
+    #[cfg(not(feature = "wasm"))]
+    assert!(lines[1].contains("disabled"));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -226,42 +226,6 @@ fn feed_command_line(app: &mut App, text: &str) {
         .unwrap();
 }
 
-fn wait_for_message(app: &mut App, expected: &str) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while app.message.as_deref() != Some(expected) && Instant::now() < deadline {
-        app.poll_plugins();
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(app.message.as_deref(), Some(expected));
-}
-
-#[test]
-fn command_line_dispatches_and_repeats_plugin_commands() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let root = temp_dir("command_line");
-    copy_example_plugin(&root, "echo");
-    let mut app = app();
-    let warnings = load_plugins(&mut app, &root);
-    assert!(warnings.is_empty(), "{warnings:?}");
-    feed_command_line(&mut app, "echo.hello");
-    wait_for_message(&mut app, "pong world");
-    std::thread::sleep(Duration::from_millis(1100));
-    app.poll_plugins();
-    app.message = None;
-    for key in [KeyCode::Char('@'), KeyCode::Char(':')] {
-        app.handle_key(KeyEvent::new(key, KeyModifiers::NONE))
-            .unwrap();
-    }
-    wait_for_message(&mut app, "pong world");
-    fs::remove_dir_all(root).unwrap();
-}
-
 #[test]
 fn command_line_rejects_plugin_command_arguments() {
     let root = temp_dir("command_line_args");
@@ -274,125 +238,6 @@ fn command_line_rejects_plugin_command_arguments() {
         app.message.as_deref(),
         Some("E488: Trailing characters: extra")
     );
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn invokes_a_plugin_and_serves_host_requests() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let root = temp_dir("invoke");
-    copy_example_plugin(&root, "echo");
-    let mut app = app();
-    let warnings = load_plugins(&mut app, &root);
-    assert!(warnings.is_empty(), "{warnings:?}");
-    let command = app.commands.find("echo.hello").expect("hello command");
-    let target = match app.commands.spec(command).expect("spec").handler {
-        CommandHandler::Plugin(target) => target,
-        other => panic!("unexpected handler: {other:?}"),
-    };
-    app.run_plugin_command(target, None).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while app.message.as_deref() != Some("pong world") && Instant::now() < deadline {
-        app.poll_plugins();
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(app.message.as_deref(), Some("pong world"));
-    assert_eq!(app.plugins.status("echo"), Some(PluginStatus::Ready));
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn trim_plugin_applies_a_real_edit() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let root = temp_dir("trim");
-    let dir = root.join("trim");
-    fs::create_dir_all(&dir).unwrap();
-    let source =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/trim");
-    fs::copy(source.join("plugin.toml"), dir.join("plugin.toml")).unwrap();
-    fs::copy(source.join("plugin.py"), dir.join("plugin.py")).unwrap();
-    let mut app = App::new(Buffer::from_string("alpha  \nbeta\t\n"), Flavor::Vim);
-    let warnings = load_plugins(&mut app, &root);
-    assert!(warnings.is_empty(), "{warnings:?}");
-    let command = app.commands.find("trim.trim").expect("trim command");
-    let target = match app.commands.spec(command).expect("spec").handler {
-        CommandHandler::Plugin(target) => target,
-        other => panic!("unexpected handler: {other:?}"),
-    };
-    app.run_plugin_command(target, None).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while app.editor.document_snapshot() != "alpha\nbeta\n" && Instant::now() < deadline {
-        app.poll_plugins();
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(app.editor.document_snapshot().to_string(), "alpha\nbeta\n");
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn echo_plugin_recovers_after_timeout() {
-    if std::process::Command::new("python3")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        return;
-    }
-    let root = temp_dir("echo_retry");
-    let dir = copy_example_plugin(&root, "echo");
-    let manifest = fs::read_to_string(dir.join("plugin.toml"))
-        .unwrap()
-        .replace("timeout_ms = 5000", "timeout_ms = 1000");
-    fs::write(dir.join("plugin.toml"), manifest).unwrap();
-    let mut app = app();
-    let warnings = load_plugins(&mut app, &root);
-    assert!(warnings.is_empty(), "{warnings:?}");
-    let command = app.commands.find("echo.retry").expect("retry command");
-    let target = match app.commands.spec(command).expect("spec").handler {
-        CommandHandler::Plugin(target) => target,
-        other => panic!("unexpected handler: {other:?}"),
-    };
-    app.run_plugin_command(target, None).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        app.poll_plugins();
-        let timed_out = app
-            .message
-            .as_deref()
-            .is_some_and(|message| message.contains("timed out"));
-        if timed_out
-            && matches!(
-                app.plugins.status("echo"),
-                Some(PluginStatus::Backoff { .. })
-            )
-        {
-            break;
-        }
-        assert!(Instant::now() < deadline, "plugin did not time out");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    std::thread::sleep(Duration::from_millis(500));
-    app.run_plugin_command(target, None).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while app.message.as_deref() != Some("recovered after timeout") && Instant::now() < deadline {
-        app.poll_plugins();
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(app.message.as_deref(), Some("recovered after timeout"));
-    assert_eq!(app.plugins.status("echo"), Some(PluginStatus::Ready));
-    assert!(!dir.join(".retry-once").exists());
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -715,7 +560,12 @@ fn stopping_a_plugin_clears_its_diagnostics() {
 #[test]
 fn declared_capabilities_are_granted_without_a_permission_file() {
     let root = temp_dir("auto_grant");
-    copy_example_plugin(&root, "trim");
+    write_manifest(
+        &root,
+        "trim",
+        "0.1.0",
+        "[capabilities]\n\"editor.read\" = true\n\"editor.write\" = true\n",
+    );
     let mut app = app();
     let warnings = load_plugins(&mut app, &root);
     assert!(warnings.is_empty(), "{warnings:?}");

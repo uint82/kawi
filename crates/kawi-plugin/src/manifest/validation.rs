@@ -116,16 +116,6 @@ pub(super) fn validate_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn validate_command(command: &[String]) -> Result<(), String> {
-    if command.is_empty() {
-        return Err("command must not be empty".to_string());
-    }
-    if command.iter().any(|argument| argument.is_empty()) {
-        return Err("command arguments must not be empty".to_string());
-    }
-    Ok(())
-}
-
 fn validate_timeout(timeout_ms: u64) -> Result<(), String> {
     if !(MIN_TIMEOUT_MS..=MAX_TIMEOUT_MS).contains(&timeout_ms) {
         return Err(format!(

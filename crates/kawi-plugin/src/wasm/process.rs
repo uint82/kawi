@@ -88,7 +88,7 @@ impl ProcessRunner {
     }
 
     pub fn sandbox(&self) -> kawi_process::SandboxPolicy {
-        crate::process::sandbox_policy(&self.plugin, &self.capabilities, &self.environment).policy
+        crate::jobs::sandbox_policy(&self.plugin, &self.capabilities, &self.environment).policy
     }
 }
 

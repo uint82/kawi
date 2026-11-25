@@ -8,8 +8,8 @@ use serde_json::Value;
 use crate::capability::Capability;
 use crate::error::PluginError;
 use crate::host::PluginStatus;
-use crate::process::NotifyOutcome;
 use crate::protocol::{InvocationContext, RpcError};
+use crate::NotifyOutcome;
 
 use super::super::state::{fail_pending, PendingCalls};
 
@@ -51,7 +51,7 @@ impl WasmWorkerHandle {
     pub(crate) fn activate(&self) -> Result<(), PluginError> {
         self.commands
             .try_send(WasmCommand::Activate)
-            .map_err(|_| PluginError::ProcessExited)
+            .map_err(|_| PluginError::WorkerStopped)
     }
 
     pub(crate) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
@@ -139,7 +139,7 @@ impl WasmWorkerHandle {
         self.cancel_pending("plugin restarting");
         self.commands
             .try_send(WasmCommand::Restart)
-            .map_err(|_| PluginError::ProcessExited)
+            .map_err(|_| PluginError::WorkerStopped)
     }
 
     pub(crate) fn shutdown(&self) {

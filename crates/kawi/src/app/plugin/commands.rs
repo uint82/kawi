@@ -196,9 +196,7 @@ impl App {
             lines.push(format!("settings: {}", settings.join(", ")));
         }
         #[cfg(feature = "wasm")]
-        if plugin.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
-            && plugin.disabled_reason.is_none()
-        {
+        if plugin.disabled_reason.is_none() {
             lines.extend(inspect_wasm_component(plugin));
         }
         self.show_pager(lines);

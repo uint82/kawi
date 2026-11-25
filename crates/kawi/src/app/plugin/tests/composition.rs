@@ -8,7 +8,7 @@ use kawi_plugin::{
 };
 use serde_json::{json, Value};
 
-use super::common::{app, load_plugins, temp_dir};
+use super::common::{app, load_plugins, temp_dir, write_manifest};
 use crate::app::App;
 use crate::command::PluginCommandRegistration;
 use crate::keymap::Flavor;
@@ -118,13 +118,12 @@ fn an_empty_scope_lists_nothing() {
 #[test]
 fn manifest_grants_the_editor_command_scope() {
     let root = temp_dir("editor-execute-manifest");
-    let dir = root.join("compose");
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        "name = \"compose\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n\n[capabilities]\n\"editor.execute\" = { commands = [\"mode.insert\"] }\n",
-    )
-    .unwrap();
+    write_manifest(
+        &root,
+        "compose",
+        "0.1.0",
+        "\n[capabilities]\n\"editor.execute\" = { commands = [\"mode.insert\"] }\n",
+    );
     let mut app = app();
     let warnings = load_plugins(&mut app, &root);
     assert!(warnings.is_empty(), "{warnings:?}");

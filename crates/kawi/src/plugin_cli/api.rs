@@ -38,9 +38,6 @@ fn render_signature(signature: Option<&ApiSignatureMetadata>) -> String {
 
 fn render_flags(entry: &ApiEntryMetadata) -> String {
     let mut flags = String::new();
-    if entry.process {
-        flags.push('p');
-    }
     if entry.interactive {
         flags.push('i');
     }
@@ -82,7 +79,7 @@ fn render_section(title: &str, entries: &[ApiEntryMetadata]) -> String {
             "REPLACEMENT",
             "SIGNATURE"
         ),
-        "flags: p=process, i=interactive, m=mutates".to_string(),
+        "flags: i=interactive, m=mutates".to_string(),
     ];
     lines.extend(entries.iter().map(render_entry));
     lines.join("\n")
@@ -103,10 +100,9 @@ fn render_errors(entries: &[ApiErrorMetadata]) -> String {
 
 fn render_text(report: &ApiMetadata) -> String {
     format!(
-        "protocol: {} (minor {}, process minor {})\n\n{}\n\n{}\n\n{}",
+        "protocol: {} (minor {})\n\n{}\n\n{}\n\n{}",
         report.version.protocol,
         report.version.protocol_minor,
-        report.version.process_protocol_minor,
         render_section("Host methods", &report.methods),
         render_section("Events", &report.events),
         render_errors(&report.error_types)
@@ -160,7 +156,6 @@ mod tests {
             deprecated_since: Some(6),
             replacement: Some("new.method"),
             capability: Some("editor.read"),
-            process: true,
             interactive: false,
             mutates: true,
             signature: Some(ApiSignatureMetadata {
@@ -174,7 +169,7 @@ mod tests {
         };
         assert_eq!(
             render_entry(&entry),
-            "old.method                 4      deprecated   editor.read          pm    6              new.method           (flag?: boolean) -> null"
+            "old.method                 4      deprecated   editor.read          m     6              new.method           (flag?: boolean) -> null"
         );
     }
 

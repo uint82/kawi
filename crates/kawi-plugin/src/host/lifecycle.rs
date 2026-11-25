@@ -4,8 +4,7 @@ use std::sync::mpsc::Sender;
 use crate::capability::CapabilityRegistry;
 use crate::environment::HostEnvironment;
 use crate::error::PluginError;
-use crate::manifest::{LoadedPlugin, PluginCatalog, PluginRuntime};
-use crate::process::start_worker;
+use crate::manifest::{LoadedPlugin, PluginCatalog};
 
 use super::host_worker::HostWorker;
 use super::wasm::wasm_worker;
@@ -150,20 +149,11 @@ fn build_workers(
 }
 
 fn build_worker(plugin: &LoadedPlugin, context: &HostContext<'_>) -> HostWorker {
-    match plugin.manifest.runtime {
-        PluginRuntime::Process => HostWorker::Process(start_worker(
-            plugin.clone(),
-            context.capabilities.clone(),
-            context.environment.clone(),
-            context.events.clone(),
-            context.wake.clone(),
-        )),
-        PluginRuntime::Wasm => wasm_worker(
-            plugin.clone(),
-            context.capabilities,
-            context.environment,
-            context.events,
-            context.wake,
-        ),
-    }
+    wasm_worker(
+        plugin.clone(),
+        context.capabilities,
+        context.environment,
+        context.events,
+        context.wake,
+    )
 }

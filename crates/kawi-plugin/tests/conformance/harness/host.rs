@@ -59,7 +59,6 @@ impl ConformanceHost {
         write_manifest(
             &plugins,
             ManifestSpec {
-                runtime,
                 scenario,
                 network: network.setup.as_ref(),
             },

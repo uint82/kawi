@@ -15,14 +15,14 @@ pub(crate) fn run_oversize_invocation(
     let oversized = json!({
         "pad": "x".repeat(kawi_jsonrpc::framing::MAX_MESSAGE_BYTES + 1),
     });
-    let first = host.invoke(runtime.command(scenario.behavior), oversized);
+    let first = host.invoke(scenario.behavior.command(), oversized);
     assert_eq!(
         normalize_result(&first),
         Outcome::Protocol,
         "{runtime:?} {}: oversize invocation did not fail: {first:?}",
         scenario.id
     );
-    host.invoke(runtime.command(scenario.behavior), json!(null))
+    host.invoke(scenario.behavior.command(), json!(null))
 }
 
 pub(crate) fn run_oversize_event(
@@ -43,7 +43,7 @@ pub(crate) fn run_oversize_event(
         "{runtime:?} {}: oversize event was not dropped",
         scenario.id
     );
-    let result = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let result = host.invoke(scenario.behavior.command(), json!(null));
     let observation = host.observation();
     assert!(
         observation
@@ -61,7 +61,7 @@ pub(crate) fn run_oversize_diagnostics(
     runtime: Runtime,
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
-    let first = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let first = host.invoke(scenario.behavior.command(), json!(null));
     assert_eq!(
         normalize_result(&first),
         Outcome::Protocol,
@@ -78,7 +78,7 @@ pub(crate) fn run_oversize_host_response(
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
     host.set_oversize_response(true);
-    let first = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let first = host.invoke(scenario.behavior.command(), json!(null));
     assert_eq!(
         normalize_result(&first),
         Outcome::Protocol,
@@ -87,5 +87,5 @@ pub(crate) fn run_oversize_host_response(
     );
     host.set_oversize_response(false);
     host.wait_backoff();
-    host.invoke(runtime.command(scenario.behavior), json!(null))
+    host.invoke(scenario.behavior.command(), json!(null))
 }

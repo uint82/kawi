@@ -32,8 +32,7 @@ Kawi is built for editing in the terminal without giving up modern editor featur
 - **Sessions and recovery.** Workspace restore, crash recovery, autosave, macros, undo history, and persistent undo.
 - **Folding.** Manual folds, indentation folds, fold navigation, a configurable fold column, and per-file persistence.
 - **Custom keymaps.** Bind named commands in `keymaps.toml`, configure the leader and ambiguity timeout, and inspect mappings with `:map`.
-- **Development plugins.** Local process and WASM plugins for development, loaded with a warning. Linux adds optional Landlock filesystem and process-execution scopes; process plugins run unsandboxed on macOS.
-- **Managed WASM plugins.** Install GitHub releases with checksum verification, a pinned lockfile, explicit updates, and a versioned component contract. Includes a published Rust SDK, build tooling, authoring guide, and conformance-backed trim example. Build with `--no-default-features` to omit the runtime.
+- **Experimental plugins.** An optional WASM escape hatch for local and GitHub-installed automation. The component contract is frozen, and the runtime is built only with `--features wasm`.
 - **Discoverable keys.** Leader menus and key sequence guidance for pending Vim commands.
 - **Discoverable configuration.** Tab completion, generated option metadata, and built-in help pages.
 - **Themes.** Built-in light and dark themes with support for custom themes.
@@ -67,6 +66,8 @@ cargo install --path crates/kawi --locked
 cargo install --git https://github.com/uint82/kawi --locked
 ```
 
+WASM plugins are optional and off by default. Add `--features wasm` to a source build or Cargo install to enable the plugin runtime.
+
 ### Download a release
 
 Download the archive for your platform and `SHA256SUMS` from [Releases](https://github.com/uint82/kawi/releases), verify the archive, and extract it:
@@ -81,7 +82,7 @@ On macOS, use `shasum -a 256 --ignore-missing -c SHA256SUMS` instead of `sha256s
 
 ## Platform support
 
-Linux and macOS are supported. Linux uses Landlock for process plugin scopes when the kernel exposes a full ABI. macOS uses the native Trash and clipboard integrations; process plugins run without an OS sandbox. Release tarballs are unsigned, so clear the quarantine attribute after downloading one:
+Linux and macOS are supported. Linux uses Landlock for plugin-spawned commands when the kernel exposes a full ABI. macOS uses the native Trash and clipboard integrations. Release tarballs are unsigned, so clear the quarantine attribute after downloading one:
 
 ```sh
 xattr -d com.apple.quarantine kawi
@@ -146,7 +147,7 @@ keyguide_delay = 250
 
 Options can be changed at runtime with `:set name=value`, toggled with `:set name!`, queried with `:set name?`, and reset with `:set name&`.
 
-Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Debug adapters are configured in `$XDG_CONFIG_HOME/kawi/debug.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Managed plugins are installed with `:plugin install owner/repo`. Development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes and theme packages belong in `$XDG_CONFIG_HOME/kawi/themes`; themes are data packages, not plugins.
+Language servers are configured in `$XDG_CONFIG_HOME/kawi/languages.toml`. Debug adapters are configured in `$XDG_CONFIG_HOME/kawi/debug.toml`. Project tasks are configured in `$XDG_CONFIG_HOME/kawi/tasks.toml`. Custom key mappings live in `$XDG_CONFIG_HOME/kawi/keymaps.toml`. Plugins are experimental and require a build with `--features wasm`. Managed plugins are installed with `:plugin install owner/repo`, and local development plugins live in `$XDG_CONFIG_HOME/kawi/plugins`. Custom themes and theme packages belong in `$XDG_CONFIG_HOME/kawi/themes`; themes are data packages, not plugins.
 
 See the [configuration guide](docs/help/configuration.md) and [theme guide](docs/help/themes.md) for details.
 
@@ -159,7 +160,6 @@ See the [configuration guide](docs/help/configuration.md) and [theme guide](docs
 - [Plugins](docs/help/plugins.md)
 - [Plugin host APIs](docs/help/plugin-capabilities.md)
 - [Writing a WASM plugin](docs/help/plugin-authoring.md)
-- [Migrating a process plugin to WASM](docs/help/plugin-migration.md)
 - [Configuration](docs/help/configuration.md)
 - [Language servers](docs/help/lsp.md)
 - [Debugging](docs/help/debug.md)
@@ -194,8 +194,9 @@ Before submitting changes, run:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+cargo test --workspace --no-default-features
+cargo test -p kawi --features wasm
 ```
 
 ## Contributing

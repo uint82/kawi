@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use sha2::{Digest, Sha256};
 
 use super::super::scenario::{network_case, Behavior, NetworkGrant, Scenario, PUBLIC_GRANT};
-use super::model::Runtime;
 use super::PLUGIN_NAME;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -53,7 +52,6 @@ impl NetworkSetup {
 }
 
 pub(crate) struct ManifestSpec<'a> {
-    pub(crate) runtime: Runtime,
     pub(crate) scenario: &'a Scenario,
     pub(crate) network: Option<&'a NetworkSetup>,
 }
@@ -72,17 +70,12 @@ pub(crate) fn write_manifest(plugins: &Path, spec: ManifestSpec<'_>) {
         capabilities.push_str(&format!("\"{}\" = true\n", capability.name()));
     }
     let subscribes = subscribes_line(behavior);
-    let mut manifest = match spec.runtime {
-        Runtime::Process => {
-            process_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities)
-        }
-        Runtime::Wasm => wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities),
-    };
+    let mut manifest = wasm_manifest(&dir, behavior, timeout_ms, &subscribes, &capabilities);
     let gate = gate_capability
         .map(|capability| format!("\ncapabilities = [\"{}\"]", capability.name()))
         .unwrap_or_default();
     let command = if gate_capability.is_some() {
-        spec.runtime.command(behavior)
+        behavior.command()
     } else {
         "probe"
     };
@@ -90,31 +83,6 @@ pub(crate) fn write_manifest(plugins: &Path, spec: ManifestSpec<'_>) {
         "\n[[commands]]\nid = \"{command}\"\ntitle = \"Probe\"{gate}\n"
     ));
     fs::write(dir.join("plugin.toml"), manifest).unwrap();
-}
-
-fn process_command(directory: &Path, behavior: Behavior) -> String {
-    if behavior == Behavior::Trim {
-        let source =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins/trim/plugin.py");
-        let script = directory.join("trim.py");
-        fs::copy(source, &script).unwrap();
-        return format!("[\"python3\", {:?}]", script.to_string_lossy());
-    }
-    let executable = env!("CARGO_BIN_EXE_fake-plugin");
-    format!("[{executable:?}, {:?}]", behavior.process_mode())
-}
-
-fn process_manifest(
-    directory: &Path,
-    behavior: Behavior,
-    timeout_ms: u64,
-    subscribes: &str,
-    capabilities: &str,
-) -> String {
-    let command = process_command(directory, behavior);
-    format!(
-        "name = \"{PLUGIN_NAME}\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = {command}\ntimeout_ms = {timeout_ms}\n{subscribes}\n{capabilities}\n"
-    )
 }
 
 fn wasm_manifest(

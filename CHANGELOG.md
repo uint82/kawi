@@ -2,6 +2,13 @@
 
 All notable changes to Kawi are documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Make the WASM plugin runtime opt-in and freeze the WIT contract at `kawi:plugin@0.13.0`.
+- Remove the process plugin runtime. Plugin-spawned commands and jobs stay available through the WASM host APIs.
+
 ## 0.1.0-alpha.1 - 2026-11-10
 
 First public alpha.
@@ -23,6 +30,6 @@ First public alpha.
 
 - macOS release binaries are unsigned and may need the quarantine attribute cleared.
 - Linux release binaries require glibc 2.39 or newer.
-- Process plugins run without an OS sandbox on macOS.
+- Plugins are experimental, and the WASM runtime is opt-in.
 - Files deleted to `~/.Trash` cannot use Finder's Put Back.
 - Windows is not supported.

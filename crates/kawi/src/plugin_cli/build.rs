@@ -41,7 +41,7 @@ fn require_wasm_runtime(document: &DocumentMut) -> Result<()> {
     let runtime = document
         .get("runtime")
         .and_then(|item| item.as_str())
-        .unwrap_or("process");
+        .unwrap_or("wasm");
     if runtime != "wasm" {
         bail!("plugin build requires runtime = \"wasm\"");
     }

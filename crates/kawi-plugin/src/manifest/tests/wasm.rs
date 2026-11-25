@@ -4,7 +4,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use super::*;
-use crate::capability::parse_capability_requests;
+use crate::manifest::test_support::temp_dir;
 
 fn wasm_manifest(name: &str, hash: &str) -> String {
     format!(
@@ -34,7 +34,7 @@ fn write_component(dir: &Path, bytes: &[u8]) -> String {
 
 #[test]
 fn loads_a_wasm_manifest_and_hashes_the_component() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     let hash = write_component(
         &dir,
@@ -50,16 +50,12 @@ fn loads_a_wasm_manifest_and_hashes_the_component() {
         Some(format!("sha256:{hash}").as_str())
     );
     assert!(plugin.component_path().is_some());
-    assert_ne!(
-        plugin.manifest.capability_requests.request_hash(),
-        process_request_hash()
-    );
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn rejects_component_hash_mismatch() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     write_component(&dir, b"component");
     fs::write(
@@ -81,7 +77,7 @@ fn rejects_component_hash_mismatch() {
 
 #[test]
 fn rejects_component_paths_outside_the_plugin_directory() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     let hash = write_component(&dir, b"component");
     let body = wasm_manifest("wasm", &hash).replace(
@@ -99,33 +95,12 @@ fn rejects_component_paths_outside_the_plugin_directory() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn process_manifests_reject_component_fields() {
-    let root = temp_dir();
-    let body =
-        valid_manifest("echo").replace("protocol = 1", "protocol = 1\ncomponent = \"plugin.wasm\"");
-    write_manifest(&root, "echo", &body);
-    let catalog = load_catalog(&root);
-    assert!(catalog.plugins.is_empty());
-    assert!(catalog.warnings[0]
-        .message
-        .contains("process plugins cannot"));
-    fs::remove_dir_all(root).unwrap();
-}
-
-fn process_request_hash() -> String {
-    let table: toml::Table = toml::from_str("\"editor.read\" = true").unwrap();
-    let (requests, warnings) = parse_capability_requests(&table);
-    assert!(warnings.is_empty());
-    requests.request_hash()
-}
-
 #[cfg(unix)]
 #[test]
 fn rejects_component_symlinks_outside_the_plugin_directory() {
     use std::os::unix::fs::symlink;
 
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     fs::create_dir_all(&dir).unwrap();
     let outside = root.join("outside.wasm");
@@ -148,7 +123,7 @@ fn rejects_component_symlinks_outside_the_plugin_directory() {
 
 #[test]
 fn disables_malformed_components() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     let hash = write_component(&dir, b"not a component");
     fs::write(dir.join(MANIFEST_FILE), wasm_manifest("wasm", &hash)).unwrap();
@@ -165,7 +140,7 @@ fn disables_malformed_components() {
 #[cfg(feature = "wasm")]
 #[test]
 fn disables_truncated_components_after_the_header() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/wasm/editor-read.wasm");
@@ -181,7 +156,7 @@ fn disables_truncated_components_after_the_header() {
 
 #[test]
 fn rejects_absolute_component_paths() {
-    let root = temp_dir();
+    let root = temp_dir("wasm");
     let dir = root.join("wasm");
     let hash = write_component(&dir, b"component");
     let body = wasm_manifest("wasm", &hash).replace(
