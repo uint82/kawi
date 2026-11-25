@@ -25,6 +25,9 @@ The initial command boundary uses these codes:
 | `E474` | Invalid argument | A known command rejects the supplied argument. |
 | `E488` | Trailing characters | A command that takes no arguments received extra text. |
 | `E492` | Not an editor command | The top-level command name is unknown. |
+| `E146` | Regular expressions can't be delimited by letters | A substitute pattern uses a letter as its delimiter. |
+| `E939` | Positive count required | A substitute count is zero. |
+| `E1510` | Value too large | A numeric argument does not fit the supported range. |
 
 Existing codes stay in place when their meaning is correct, including `E32`, `E37`, `E89`, `E94`, `E484`, `E518`, `E939`, and `E1510`.
 
@@ -121,30 +124,35 @@ Color is supplementary. The code and wording must carry the meaning without it.
 
 ## Parser contract
 
-`kawi_editor::command::parse` is pure and state-free. It returns a `Command` or `Command::Unknown`.
+`kawi_editor::command::parse` is pure and state-free. It returns `Result<Command, ParseFailure>`.
 
-`Command::Unknown` means one of two things:
+`ParseFailure` names the failure instead of collapsing it into one ambiguous value. The command boundary reports the failure as written and does not reclassify it.
 
-- The top-level name is not a command.
-- A known command rejected its arguments.
+| Failure | Meaning | Code |
+| --- | --- | --- |
+| `EmptyInput` | The command line is blank. | None |
+| `UnknownCommand` | The top-level name is not a command. | `E492` |
+| `MissingArgument` | A known command needs an argument. | `E471` |
+| `InvalidArgument` | A known command rejects the supplied argument. | `E474` |
+| `TrailingCharacters` | A command received text it does not accept. | `E488` |
+| `RegexDelimitedByLetter` | A substitute pattern uses a letter as its delimiter. | `E146` |
+| `PositiveCountRequired` | A substitute count is zero. | `E939` |
+| `ValueTooLarge` | A numeric argument is outside the supported range. | `E1510` |
 
-The parser keeps that ambiguity for compatibility with the existing dispatch shape. The command boundary has the raw text and must remove the ambiguity:
+`parse` trims the input only to detect `EmptyInput`. It then tries file operations and named commands. Substitute names such as `s`, `su`, and `substitute` fall through to substitute parsing, including repeat forms such as `s 4`. A known command name that does not match a named form becomes `MissingArgument` or `InvalidArgument`. An unknown name becomes `UnknownCommand` after substitute parsing fails.
 
-1. Trim the input. Empty input produces no diagnostic.
-2. Split the first word from the rest with the same rule as dispatch.
-3. If dispatch finds a plugin command, the plugin owns argument validation.
-4. If the name is not in `COMMAND_NAMES`, produce `E492` with suggestions.
-5. If the name is known and the rest is empty, produce `E471`.
-6. If the name is known and the rest is not empty, produce `E474`.
-7. If the parser returned a specific error such as `E488` or `E939`, keep it.
+The command boundary keeps the raw text for suggestions:
 
-No path may return silently when the user typed a non-empty command.
+- Unknown names produce `E492` with suggestions from built-in and plugin command names.
+- Missing and invalid arguments keep the parser's code and wording.
+- Empty input produces no diagnostic.
+- No path may return silently when the user typed a non-empty command.
 
 Suggestions:
 
 - Compare the unknown name against built-in command names and registered plugin commands.
 - Use case-insensitive edit distance.
-- Accept candidates within one edit for short names and within a third of the input length for longer names.
+- Accept candidates within two edits for names up to five characters and within three edits for longer names. Very short names get no suggestions.
 - Sort by distance, then by name, and show at most three.
 - Render one suggestion as `Did you mean :help?` and several as `Did you mean :help, :health?`.
 - Do not suggest when the input is empty or no candidate is close.
@@ -181,9 +189,12 @@ Plugin message throttling belongs to the plugin host. The message sink still rec
 
 Parser tests cover:
 
-- Every name in `COMMAND_NAMES` parses on its own or with a probe argument.
-- Unknown names, empty input, missing arguments, and rejected arguments classify correctly.
-- Existing `SetError` paths keep their code.
+- Every name in `COMMAND_NAMES` returns a command or a typed failure, never `UnknownCommand`.
+- Empty input returns `EmptyInput`; unknown names return `UnknownCommand`.
+- Known commands with missing or invalid arguments return the matching variant.
+- File operations report unterminated quotes and invalid arity as typed failures.
+- Substitute parsing reports `E146`, `E939`, `E1510`, and trailing characters.
+- `:set` trailing characters keep `E488` and show the unexpected text, not the option name.
 
 Suggestion tests cover:
 
@@ -211,7 +222,7 @@ Rendering tests cover:
 
 ## Rollout
 
-1. Command boundary: classify parser failures, report them, and suggest names. Done.
+1. Command boundary: return typed parser failures, report them, and suggest names. Done.
 2. Message sink: typed diagnostics, bounded history, `:messages`, and message row rendering. Done.
 3. Cleanup: replace bare `E:` messages, fix misused Vim codes, and route direct message writes through the sink. In progress.
 4. Plugins: add typed severity and source fields to the protocol. Pending.
