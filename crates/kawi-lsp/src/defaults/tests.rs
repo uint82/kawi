@@ -149,9 +149,45 @@ fn built_in_indentation_matches_language_conventions() {
     assert_eq!(indent("typescript"), crate::IndentConfig::spaces(2));
     assert_eq!(indent("javascript"), crate::IndentConfig::spaces(2));
     assert_eq!(indent("yaml"), crate::IndentConfig::spaces(2));
+    assert_eq!(indent("sql"), crate::IndentConfig::spaces(2));
     assert_eq!(indent("go"), crate::IndentConfig::tabs(8));
     assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
     assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
+}
+
+#[test]
+fn built_in_sql_uses_two_spaces_and_keyword_indentation() {
+    let sql = languages()
+        .into_iter()
+        .find(|language| language.name == "sql")
+        .expect("sql");
+    assert_eq!(sql.indent, crate::IndentConfig::spaces(2));
+    assert!(sql.indent_ignore_case);
+    assert!(sql.indent_keywords_in_brackets);
+    assert_eq!(sql.indent_block_closers, vec!["end"]);
+    for keyword in [
+        "begin",
+        "case",
+        "if",
+        "for",
+        "while",
+        "loop",
+        "repeat",
+        "exception",
+    ] {
+        assert!(sql.indent_block_openers.iter().any(|word| word == keyword));
+    }
+    for keyword in ["select", "from", "where", "values", "do", "repeat"] {
+        assert!(sql.indent_after_keywords.iter().any(|word| word == keyword));
+    }
+    for keyword in ["select", "from", "where", "values", "exception", "until"] {
+        assert!(sql.indent_align_keywords.iter().any(|word| word == keyword));
+    }
+    assert_eq!(
+        sql.indent_branch_keywords,
+        vec!["when", "else", "elseif", "elsif"]
+    );
+    assert_eq!(sql.indent_branch_openers, vec!["case", "exception"]);
 }
 
 #[test]
