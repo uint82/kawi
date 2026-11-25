@@ -42,6 +42,9 @@ pub enum Command {
     },
     ListBuffers,
     Marks,
+    Messages {
+        clear: bool,
+    },
     NextBuffer,
     PreviousBuffer,
     AlternateBuffer,
@@ -284,6 +287,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "ls",
     "lsp",
     "map",
+    "marks",
+    "messages",
     "new",
     "nmap",
     "nunmap",
@@ -426,6 +431,8 @@ fn parse_named(text: &str) -> Command {
         ("wqa" | "wqall", []) => Command::WriteQuitAll,
         ("ls" | "buffers" | "files", []) => Command::ListBuffers,
         ("marks", []) => Command::Marks,
+        ("messages", []) => Command::Messages { clear: false },
+        ("messages", ["clear"]) => Command::Messages { clear: true },
         ("bn" | "bnext", []) => Command::NextBuffer,
         ("bp" | "bprevious", []) => Command::PreviousBuffer,
         ("b#", []) => Command::AlternateBuffer,
@@ -1161,6 +1168,14 @@ mod tests {
             }
         );
         assert_eq!(parse("bd a b"), Command::Unknown);
+    }
+
+    #[test]
+    fn parses_messages_commands() {
+        assert_eq!(parse("messages"), Command::Messages { clear: false });
+        assert_eq!(parse("messages clear"), Command::Messages { clear: true });
+        assert_eq!(parse("messages clear now"), Command::Unknown);
+        assert_eq!(parse("messages now"), Command::Unknown);
     }
 
     #[test]
