@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::{EditorReply, FallbackCommit, GitEditorSession, TaskKind};
+use crate::app::diagnostic::DiagnosticSource;
 use crate::app::{codes, App};
 use crate::ipc::{Connection, Event, WaitOutcome};
 
@@ -46,7 +47,7 @@ impl App {
         let path = git_dir.join("COMMIT_EDITMSG");
         std::fs::write(&path, b"")?;
         if let Err(error) = self.open_editor_buffer(&path) {
-            self.show_message(format!("Git editor failed: {error}"));
+            self.show_source_failure(DiagnosticSource::Git, format!("Git editor failed: {error}"));
             return Ok(());
         }
         let buffer = self.editor.buffer_number();
@@ -67,7 +68,7 @@ impl App {
             "Git: :wq commits, :cq aborts"
         };
         self.git_commit.amend_warning = false;
-        self.show_message(message.to_string());
+        self.show_source_failure(DiagnosticSource::Git, message.to_string());
     }
 
     fn open_editor_buffer(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
@@ -138,7 +139,7 @@ impl App {
             parser,
             root: fallback.root,
         }) {
-            self.show_message("Cannot start git commit".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "Cannot start git commit".to_string());
         }
     }
 

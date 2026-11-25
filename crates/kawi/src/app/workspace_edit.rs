@@ -6,6 +6,7 @@ use kawi_buffer::{
 };
 use kawi_lsp::{RenameEvent, TextChange, WorkspaceEdit};
 
+use super::diagnostic::{Diagnostic, DiagnosticSource};
 use super::App;
 
 struct PreparedDocument {
@@ -26,11 +27,14 @@ impl App {
                 ));
                 self.reveal_cursor();
             }
-            Err(message) => self.show_message(message),
+            Err(diagnostic) => self.show_diagnostic(diagnostic),
         }
     }
 
-    pub(super) fn apply_workspace_edit(&mut self, edit: &WorkspaceEdit) -> Result<usize, String> {
+    pub(super) fn apply_workspace_edit(
+        &mut self,
+        edit: &WorkspaceEdit,
+    ) -> Result<usize, Diagnostic> {
         let prepared = self.prepare_documents(edit)?;
         self.write_closed_documents(&prepared)?;
         self.editor
@@ -42,7 +46,7 @@ impl App {
         Ok(prepared.len())
     }
 
-    fn prepare_documents(&self, edit: &WorkspaceEdit) -> Result<Vec<PreparedDocument>, String> {
+    fn prepare_documents(&self, edit: &WorkspaceEdit) -> Result<Vec<PreparedDocument>, Diagnostic> {
         edit.documents
             .iter()
             .map(|document| self.prepare_document(document))
@@ -52,7 +56,7 @@ impl App {
     fn prepare_document(
         &self,
         document: &kawi_lsp::DocumentEdit,
-    ) -> Result<PreparedDocument, String> {
+    ) -> Result<PreparedDocument, Diagnostic> {
         let path = document.path.clone();
         if self.editor.file_is_open(&path) {
             return self.prepare_open_document(document);
@@ -63,21 +67,24 @@ impl App {
     fn prepare_open_document(
         &self,
         document: &kawi_lsp::DocumentEdit,
-    ) -> Result<PreparedDocument, String> {
+    ) -> Result<PreparedDocument, Diagnostic> {
         let path = document.path.clone();
         if self.editor.file_is_modified(&path) && !self.editor.file_is_current(&path) {
-            return Err(format!(
+            return Err(workspace_error(format!(
                 "Save or revert modified buffer: {}",
                 path.display()
-            ));
+            )));
         }
         if self.editor.file_hash(&path) != Some(document.original_hash) {
-            return Err(format!("Buffer changed: {}", path.display()));
+            return Err(workspace_error(format!(
+                "Buffer changed: {}",
+                path.display()
+            )));
         }
         let length = self
             .editor
             .file_char_len(&path)
-            .ok_or_else(|| format!("Buffer is not open: {}", path.display()))?;
+            .ok_or_else(|| workspace_error(format!("Buffer is not open: {}", path.display())))?;
         validate_text_edits(length, &document.edits).map_err(|_| invalid_edit(&path))?;
         Ok(PreparedDocument {
             path,
@@ -91,15 +98,19 @@ impl App {
     fn prepare_closed_document(
         &self,
         document: &kawi_lsp::DocumentEdit,
-    ) -> Result<PreparedDocument, String> {
+    ) -> Result<PreparedDocument, Diagnostic> {
         let path = document.path.clone();
-        let bytes =
-            fs::read(&path).map_err(|error| format!("Cannot read {}: {error}", path.display()))?;
+        let bytes = fs::read(&path)
+            .map_err(|error| workspace_error(format!("Cannot read {}: {error}", path.display())))?;
         if content_hash(&bytes) != document.original_hash {
-            return Err(format!("File changed on disk: {}", path.display()));
+            return Err(workspace_error(format!(
+                "File changed on disk: {}",
+                path.display()
+            )));
         }
-        let text = String::from_utf8(bytes.clone())
-            .map_err(|_| format!("Cannot edit non UTF-8 file: {}", path.display()))?;
+        let text = String::from_utf8(bytes.clone()).map_err(|_| {
+            workspace_error(format!("Cannot edit non UTF-8 file: {}", path.display()))
+        })?;
         let updated = apply_text_edits(&Buffer::from_string(&text).snapshot(), &document.edits)
             .map_err(|_| invalid_edit(&path))?;
         Ok(PreparedDocument {
@@ -111,14 +122,15 @@ impl App {
         })
     }
 
-    fn write_closed_documents(&self, prepared: &[PreparedDocument]) -> Result<(), String> {
+    fn write_closed_documents(&self, prepared: &[PreparedDocument]) -> Result<(), Diagnostic> {
         let mut written: Vec<&PreparedDocument> = Vec::new();
         for document in prepared.iter().filter(|document| !document.open) {
             let Some(updated) = document.updated.as_deref() else {
                 continue;
             };
             if let Err(error) = write_file(&document.path, updated) {
-                let message = format!("Cannot write {}: {error}", document.path.display());
+                let message =
+                    workspace_error(format!("Cannot write {}: {error}", document.path.display()));
                 return Err(self.rollback(&written, message));
             }
             written.push(document);
@@ -126,7 +138,7 @@ impl App {
         Ok(())
     }
 
-    fn apply_open_documents(&mut self, prepared: &[PreparedDocument]) -> Result<(), String> {
+    fn apply_open_documents(&mut self, prepared: &[PreparedDocument]) -> Result<(), Diagnostic> {
         for document in prepared.iter().filter(|document| document.open) {
             if let Err(error) = self
                 .editor
@@ -137,14 +149,14 @@ impl App {
                         .iter()
                         .filter(|item| !item.open)
                         .collect::<Vec<_>>(),
-                    super::file_error_message(error),
+                    super::file_error(error),
                 ));
             }
         }
         Ok(())
     }
 
-    fn rollback(&self, written: &[&PreparedDocument], message: String) -> String {
+    fn rollback(&self, written: &[&PreparedDocument], message: Diagnostic) -> Diagnostic {
         let mut failures = Vec::new();
         for document in written {
             let Some(original) = document.original.as_deref() else {
@@ -157,13 +169,17 @@ impl App {
         if failures.is_empty() {
             message
         } else {
-            format!("{message}; rollback failed for {}", failures.join(", "))
+            message.with_help(format!("Rollback failed for {}", failures.join(", ")))
         }
     }
 }
 
-fn invalid_edit(path: &Path) -> String {
-    format!("Invalid text edits for {}", path.display())
+fn invalid_edit(path: &Path) -> Diagnostic {
+    workspace_error(format!("Invalid text edits for {}", path.display()))
+}
+
+fn workspace_error(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error(message).with_source(DiagnosticSource::LanguageServer)
 }
 
 fn write_file(path: &Path, text: &str) -> std::io::Result<()> {
@@ -299,7 +315,7 @@ mod tests {
         };
         fs::write(&closed, "changed\n").expect("change");
         let error = app.apply_workspace_edit(&edit).expect_err("stale");
-        assert!(error.contains("changed on disk"), "{error}");
+        assert!(error.render().contains("changed on disk"));
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -340,7 +356,7 @@ mod tests {
             ],
         };
         let error = app.apply_workspace_edit(&edit).expect_err("readonly");
-        assert!(error.contains("Cannot write"), "{error}");
+        assert!(error.render().contains("Cannot write"));
         assert_eq!(fs::read_to_string(&first).expect("first"), "old\n");
         assert_eq!(fs::read_to_string(&second).expect("second"), "old\n");
         fs::set_permissions(&second, fs::Permissions::from_mode(0o644)).expect("writable");

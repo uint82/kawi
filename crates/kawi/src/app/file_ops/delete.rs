@@ -17,10 +17,10 @@ impl App {
         let metadata = match fs::symlink_metadata(&target) {
             Ok(metadata) => metadata,
             Err(error) => {
-                self.show_message(format!(
-                    "E484: Can't open file {}: {error}",
-                    target.display()
-                ));
+                self.show_error_code(
+                    "E484",
+                    format!("Can't open file {}: {error}", target.display()),
+                );
                 return;
             }
         };

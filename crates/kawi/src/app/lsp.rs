@@ -1,4 +1,5 @@
 use super::color_preview::PreviewMode;
+use super::diagnostic::{Diagnostic as AppDiagnostic, DiagnosticSource};
 use super::lsp_diagnostics::DiagnosticState;
 use super::lsp_navigation::{
     HoverResult, LocationKind, LocationResult, LspNavigation, NavigationRequest,
@@ -260,19 +261,19 @@ impl LspUi {
         changed
     }
 
-    pub fn definition(&mut self, editor: &Editor) -> Option<String> {
+    pub fn definition(&mut self, editor: &Editor) -> Option<AppDiagnostic> {
         self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::Definition, editor, self.service.as_ref())
     }
 
-    pub fn references(&mut self, editor: &Editor) -> Option<String> {
+    pub fn references(&mut self, editor: &Editor) -> Option<AppDiagnostic> {
         self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::References, editor, self.service.as_ref())
     }
 
-    pub fn hover(&mut self, editor: &Editor) -> Option<String> {
+    pub fn hover(&mut self, editor: &Editor) -> Option<AppDiagnostic> {
         self.flush_pending_change();
         self.navigation
             .request(NavigationRequest::Hover, editor, self.service.as_ref())
@@ -310,17 +311,19 @@ impl LspUi {
         &mut self,
         editor: &Editor,
         trigger: SignatureTrigger,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, AppDiagnostic> {
         let Some(path) = editor_path(editor) else {
-            return Err("E32: No file name".to_string());
+            return Err(AppDiagnostic::no_file_name());
         };
         self.flush_pending_change();
-        self.text.signature_help(
-            self.service.as_ref(),
-            &path,
-            super::lsp_navigation::cursor_position(editor),
-            trigger,
-        )
+        self.text
+            .signature_help(
+                self.service.as_ref(),
+                &path,
+                super::lsp_navigation::cursor_position(editor),
+                trigger,
+            )
+            .map_err(lsp_failure)
     }
 
     pub fn completion_capabilities(&self) -> Capabilities {
@@ -365,23 +368,24 @@ impl LspUi {
         editor: &Editor,
         range: (CursorPosition, CursorPosition),
         diagnostics: Vec<Diagnostic>,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, AppDiagnostic> {
         let Some(path) = editor_path(editor) else {
-            return Err("E32: No file name".to_string());
+            return Err(AppDiagnostic::no_file_name());
         };
         self.flush_pending_change();
         self.text
             .code_actions(self.service.as_ref(), &path, range, diagnostics)
+            .map_err(lsp_failure)
     }
 
     pub fn formatting(
         &mut self,
         editor: &Editor,
         range: Option<(CursorPosition, CursorPosition)>,
-    ) -> Result<u64, String> {
+    ) -> Result<u64, AppDiagnostic> {
         self.formatting_failure = None;
         let Some(path) = editor_path(editor) else {
-            return Err("E32: No file name".to_string());
+            return Err(AppDiagnostic::no_file_name());
         };
         let settings = FormattingSettings {
             tab_size: u32::try_from(editor.tabstop()).unwrap_or(u32::MAX),
@@ -390,6 +394,7 @@ impl LspUi {
         self.flush_pending_change();
         self.text
             .formatting(self.service.as_ref(), &path, range, settings)
+            .map_err(lsp_failure)
     }
 
     pub fn execute_command(
@@ -514,13 +519,13 @@ impl LspUi {
         }
     }
 
-    pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, String> {
+    pub fn prepare_rename(&mut self, editor: &Editor) -> Result<u64, AppDiagnostic> {
         self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
-            return Err("lsp unavailable".to_string());
+            return Err(lsp_failure("lsp unavailable"));
         };
         let Some(path) = editor_path(editor) else {
-            return Err("E32: No file name".to_string());
+            return Err(AppDiagnostic::no_file_name());
         };
         if let Some(request) = self.rename_request.take() {
             service.cancel(request);
@@ -1071,6 +1076,10 @@ pub(super) fn editor_path(editor: &Editor) -> Option<PathBuf> {
         .has_file()
         .then(|| PathBuf::from(editor.filename()))?;
     Some(std::path::absolute(&path).unwrap_or(path))
+}
+
+pub(super) fn lsp_failure(message: impl Into<String>) -> AppDiagnostic {
+    AppDiagnostic::error(message).with_source(DiagnosticSource::LanguageServer)
 }
 
 fn format_progress(server: &str, progress: &ProgressSnapshot) -> String {

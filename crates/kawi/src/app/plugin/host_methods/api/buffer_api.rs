@@ -48,7 +48,7 @@ impl App {
                 .capability_error(plugin, Capability::EditorBuffersWrite));
         };
         self.open_file_location(Path::new(&path), None, None)
-            .map_err(RpcError::invalid_params)?;
+            .map_err(|diagnostic| RpcError::invalid_params(diagnostic.render()))?;
         let buffer = self.editor.buffer_number() as u64;
         let state = self
             .buffer_state(buffer, false)

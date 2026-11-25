@@ -1,6 +1,7 @@
 use kawi_plugin::PluginStatus;
 
 use super::super::command_text::split_command;
+use super::super::diagnostic::DiagnosticSource;
 use super::super::App;
 
 pub(crate) const SUBCOMMANDS: &[&str] = &[
@@ -144,12 +145,15 @@ impl App {
                     Some(name) => format!("Plugin removed: {name}"),
                     None => "Plugins reloaded".to_string(),
                 };
-                self.show_message(message);
+                self.show_success(message);
             }
-            Err(error) => self.show_message(format!(
-                "Cannot reload plugin: {}",
-                super::text::sanitize(&error.to_string())
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!(
+                    "Cannot reload plugin: {}",
+                    super::text::sanitize(&error.to_string())
+                ),
+            ),
         }
     }
 
@@ -161,7 +165,10 @@ impl App {
             .iter()
             .find(|plugin| plugin.manifest.name == name)
         else {
-            self.show_message(format!("Unknown plugin: {}", super::text::sanitize(name)));
+            self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!("Unknown plugin: {}", super::text::sanitize(name)),
+            );
             return;
         };
         let mut lines = vec![

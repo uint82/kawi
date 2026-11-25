@@ -7,7 +7,6 @@ use super::diff::parse_text;
 use super::load::DIRECTORY_LOADING_MESSAGE;
 use crate::app::App;
 
-const NO_NAME: &str = "E32: No file name";
 const BROKEN_SYMLINK: &str = "Broken symlink: ";
 const SPECIAL_FILE: &str = "Cannot open special file: ";
 
@@ -49,7 +48,7 @@ impl App {
             return false;
         };
         let Ok((relative, is_directory)) = parse_text(&line.text) else {
-            self.show_message("Invalid directory entry".to_string());
+            self.show_error("Invalid directory entry".to_string());
             return true;
         };
         let target = state.root.join(relative);
@@ -67,14 +66,14 @@ impl App {
         } else if !metadata.is_file() {
             self.show_message(format!("{SPECIAL_FILE}{}", line.text));
         } else if let Err(message) = self.open_file_location(&target, None, None) {
-            self.show_message(message);
+            self.show_diagnostic(message);
         }
         true
     }
 
     pub(in crate::app) fn open_directory_parent(&mut self) -> bool {
         if !self.editor.has_file() {
-            self.show_message(NO_NAME.to_string());
+            self.show_error_code("E32", "No file name".to_string());
             return true;
         }
         let current = absolute_path(self.editor.filename());

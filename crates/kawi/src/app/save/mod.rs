@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use kawi_lsp::FormattingEvent;
 
+use super::diagnostic::Diagnostic;
 use super::App;
 use external::ExternalSave;
 
@@ -58,7 +59,7 @@ impl App {
         }
         if !self.editor.has_file() {
             if visible {
-                self.show_message("E32: No file name".to_string());
+                self.show_error_code("E32", "No file name".to_string());
             }
             return false;
         }
@@ -66,9 +67,9 @@ impl App {
         if self.directory.contains(number) {
             return self.request_directory_save(number, force, after, visible);
         }
-        if let Some(message) = self.buffer_write_error(number) {
+        if let Some(diagnostic) = self.buffer_write_error(number) {
             if visible {
-                self.show_message(message.to_string());
+                self.show_diagnostic(diagnostic);
             }
             return false;
         }
@@ -159,7 +160,10 @@ impl App {
         }
         if self.disk_conflict(pending.number) && !pending.force {
             if pending.visible {
-                self.show_message("File changed on disk; save cancelled".to_string());
+                self.show_diagnostic(
+                    Diagnostic::warning("File changed on disk; save cancelled")
+                        .with_source(super::diagnostic::DiagnosticSource::External),
+                );
             }
             return;
         }
@@ -176,7 +180,7 @@ impl App {
             Err(message) => {
                 let suffix = format!(
                     "{}; saved without formatting",
-                    super::lsp::one_line(&message)
+                    super::lsp::one_line(&message.render())
                 );
                 self.save_buffer_now(
                     pending.number,
@@ -212,14 +216,14 @@ impl App {
         );
     }
 
-    fn buffer_write_error(&self, number: usize) -> Option<&'static str> {
+    fn buffer_write_error(&self, number: usize) -> Option<Diagnostic> {
         if self.editor.buffer_is_internal(number).unwrap_or(false) {
-            return Some("E382: Cannot write, internal buffer");
+            return Some(Diagnostic::error("Cannot write, internal buffer").with_code("E382"));
         }
         self.editor
             .buffer_is_readonly(number)
             .unwrap_or(false)
-            .then_some("E45: 'readonly' option is set")
+            .then_some(Diagnostic::error("'readonly' option is set").with_code("E45"))
     }
 
     fn save_buffer_now(
@@ -230,9 +234,9 @@ impl App {
         visible: bool,
         suffix: Option<&str>,
     ) -> bool {
-        if let Some(message) = self.buffer_write_error(number) {
+        if let Some(diagnostic) = self.buffer_write_error(number) {
             if visible {
-                self.show_message(message.to_string());
+                self.show_diagnostic(diagnostic);
             }
             return false;
         }
@@ -282,7 +286,7 @@ impl App {
                 true
             }
             Err(error) => {
-                self.report_error(super::file_error_message(error));
+                self.report_error(super::file_error(error));
                 false
             }
         }

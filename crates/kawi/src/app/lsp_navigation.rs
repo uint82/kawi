@@ -4,7 +4,8 @@ use kawi_editor::Editor;
 use kawi_lsp::{CursorPosition, HoverEvent, LocationEvent, LspService, TextLocation};
 use kawi_syntax::LanguageId;
 
-use super::lsp::editor_path;
+use super::diagnostic::Diagnostic;
+use super::lsp::{editor_path, lsp_failure};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LocationKind {
@@ -52,12 +53,12 @@ impl LspNavigation {
         request: NavigationRequest,
         editor: &Editor,
         service: Option<&LspService>,
-    ) -> Option<String> {
+    ) -> Option<Diagnostic> {
         let Some(service) = service else {
-            return Some("lsp unavailable".to_string());
+            return Some(lsp_failure("lsp unavailable"));
         };
         let Some(path) = editor_path(editor) else {
-            return Some("E32: No file name".to_string());
+            return Some(Diagnostic::no_file_name());
         };
         self.cancel(Some(service));
         let position = cursor_position(editor);
@@ -176,21 +177,21 @@ pub(super) fn cursor(row: usize, column: usize) -> CursorPosition {
 impl super::App {
     pub(super) fn request_definition(&mut self) -> anyhow::Result<bool> {
         if let Some(message) = self.lsp.definition(&self.editor) {
-            self.show_message(message);
+            self.show_diagnostic(message);
         }
         Ok(false)
     }
 
     pub(super) fn request_references(&mut self) -> anyhow::Result<bool> {
         if let Some(message) = self.lsp.references(&self.editor) {
-            self.show_message(message);
+            self.show_diagnostic(message);
         }
         Ok(false)
     }
 
     pub(super) fn request_hover(&mut self) -> anyhow::Result<bool> {
         if let Some(message) = self.lsp.hover(&self.editor) {
-            self.show_message(message);
+            self.show_diagnostic(message);
         }
         Ok(false)
     }
@@ -207,7 +208,7 @@ impl super::App {
                 Some(location.line as usize),
                 Some(location.column as usize),
             ) {
-                self.show_message(message);
+                self.show_diagnostic(message);
             }
             return;
         }
@@ -233,14 +234,14 @@ impl super::App {
         path: &std::path::Path,
         line: Option<usize>,
         column: Option<usize>,
-    ) -> Result<(), String> {
+    ) -> Result<(), super::diagnostic::Diagnostic> {
         let current =
             self.editor.has_file() && same_file(std::path::Path::new(self.editor.filename()), path);
         if !current {
             let name = path.to_string_lossy().to_string();
             self.editor
                 .edit_file(Some(&name), false)
-                .map_err(super::file_error_message)?;
+                .map_err(super::file_error)?;
         }
         if let (Some(line), Some(column)) = (line, column) {
             self.editor.apply(kawi_editor::Action::JumpTo(line, column));

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use kawi_editor::paths;
 use kawi_watch::{Fingerprint, WatchService};
 
+use super::diagnostic::{Diagnostic, DiagnosticSource};
 use super::App;
 use state::{Observation, ObservedFile, STATUS_CHANGED, STATUS_DELETED};
 
@@ -14,7 +15,10 @@ impl App {
     pub(super) fn start_file_watch(&mut self) {
         match WatchService::new(self.events.wake()) {
             Ok(watcher) => self.file_watch = Some(watcher),
-            Err(error) => self.show_message(format!("File watch unavailable: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::External,
+                format!("File watch unavailable: {error}"),
+            ),
         }
     }
 
@@ -97,19 +101,28 @@ impl App {
             Err(error) => {
                 self.disk.mark_changed(number);
                 let name = self.buffer_name(number);
-                self.show_message(format!("Cannot reload {name}: {error:?}"));
+                self.show_source_failure(
+                    DiagnosticSource::External,
+                    format!("Cannot reload {name}: {error:?}"),
+                );
             }
         }
     }
 
     fn report_deleted_file(&mut self, number: usize) {
         let name = self.buffer_name(number);
-        self.show_message(format!("Deleted on disk: {name}; buffer kept"));
+        self.show_diagnostic(
+            Diagnostic::warning(format!("Deleted on disk: {name}; buffer kept"))
+                .with_source(DiagnosticSource::External),
+        );
     }
 
     fn report_changed_file(&mut self, number: usize) {
         let name = self.buffer_name(number);
-        self.show_message(format!("File changed on disk: {name}"));
+        self.show_diagnostic(
+            Diagnostic::warning(format!("File changed on disk: {name}"))
+                .with_source(DiagnosticSource::External),
+        );
     }
 
     pub(super) fn record_saved_buffer(&mut self) {

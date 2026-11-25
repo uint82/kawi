@@ -75,7 +75,7 @@ impl App {
                 self.code_actions = None;
                 self.completion = None;
             }
-            Err(message) => self.show_message(message),
+            Err(message) => self.show_diagnostic(message),
         }
         Ok(false)
     }
@@ -111,7 +111,7 @@ impl App {
         };
         if let Some(edit) = action.edit.as_ref() {
             if let Err(message) = self.apply_workspace_edit(edit) {
-                self.show_message(message);
+                self.show_diagnostic(message);
                 return;
             }
             self.reveal_cursor();
@@ -121,7 +121,7 @@ impl App {
                 .lsp
                 .execute_command(&session.event.path, &action.server, command)
             {
-                self.show_message("lsp unavailable".to_string());
+                self.show_diagnostic(super::lsp::lsp_failure("lsp unavailable"));
             }
         }
         self.exit_visual_if_active();

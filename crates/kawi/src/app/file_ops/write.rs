@@ -8,7 +8,7 @@ use super::{absolute_path, fs, is_directory_text, App};
 impl App {
     pub(super) fn handle_write_target(&mut self, name: &str, force: bool, kind: WriteKind) {
         if self.directory.contains(self.editor.buffer_number()) {
-            self.show_message("Cannot write a directory buffer to a file".to_string());
+            self.show_error("Cannot write a directory buffer to a file".to_string());
             return;
         }
         self.prepare_write_target(absolute_path(name), name.to_string(), force, kind);
@@ -21,7 +21,7 @@ impl App {
             return;
         };
         if let Err(error) = fs::create_directory(&parent) {
-            self.show_message(format!("Cannot create {}: {error}", parent.display()));
+            self.show_error(format!("Cannot create {}: {error}", parent.display()));
             return;
         }
         self.perform_write(pending);
@@ -73,7 +73,7 @@ impl App {
                 self.explorer.refresh();
                 self.show_message(report);
             }
-            Err(error) => self.show_message(super::super::file_error_message(error)),
+            Err(error) => self.show_diagnostic(super::super::file_error(error)),
         }
     }
 
@@ -81,7 +81,7 @@ impl App {
         let target = paths::absolute(text, root);
         if is_directory_text(text) {
             if fs::path_exists(&target) {
-                self.show_message("E13: File exists (add ! to override)".to_string());
+                self.show_error_code("E13", "File exists (add ! to override)".to_string());
                 return;
             }
             self.prepare_write_target(
@@ -93,7 +93,7 @@ impl App {
             return;
         }
         if fs::path_exists(&target) {
-            self.show_message("E13: File exists (add ! to override)".to_string());
+            self.show_error_code("E13", "File exists (add ! to override)".to_string());
             return;
         }
         self.prepare_write_target(
@@ -107,7 +107,7 @@ impl App {
     fn create_file(&mut self, name: &str) {
         let target = PathBuf::from(name);
         if let Err(error) = fs::create_empty_file(&target) {
-            self.show_message(format!("Cannot create {}: {error}", target.display()));
+            self.show_error(format!("Cannot create {}: {error}", target.display()));
             return;
         }
         self.open_created_path(&target);
@@ -122,7 +122,7 @@ impl App {
                 self.show_message(format!("Created directory \"{}\"", target.display()));
             }
             Err(error) => {
-                self.show_message(format!("Cannot create {}: {error}", target.display()));
+                self.show_error(format!("Cannot create {}: {error}", target.display()));
             }
         }
     }
@@ -130,7 +130,7 @@ impl App {
     fn open_created_path(&mut self, target: &Path) {
         let name = target.to_string_lossy();
         if let Err(error) = self.editor.open_file_buffer(&name) {
-            self.show_message(super::super::file_error_message(error));
+            self.show_diagnostic(super::super::file_error(error));
             return;
         }
         let number = self.editor.buffer_number();

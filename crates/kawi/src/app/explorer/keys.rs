@@ -203,7 +203,7 @@ impl App {
                 Ok(false)
             }
             Err(message) => {
-                self.show_message(message);
+                self.show_diagnostic(message);
                 Ok(false)
             }
         }

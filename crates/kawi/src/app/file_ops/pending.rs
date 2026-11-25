@@ -82,13 +82,17 @@ impl App {
             return;
         }
         if let Some(error) = event.error {
-            self.show_message(format!("{} cancelled: {error}", pending.label()));
+            self.show_error(format!("{} cancelled: {error}", pending.label()));
             pending.cancel(self);
             return;
         }
         if let Some(edit) = event.edit {
             if let Err(message) = self.apply_workspace_edit(&edit) {
-                self.show_message(format!("{} cancelled: {message}", pending.label()));
+                self.show_message(format!(
+                    "{} cancelled: {}",
+                    pending.label(),
+                    message.render()
+                ));
                 pending.cancel(self);
                 return;
             }

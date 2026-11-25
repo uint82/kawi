@@ -11,6 +11,7 @@ use kawi_git::OperationState;
 use super::editor_sync::EDITOR_SYNC_DEBOUNCE;
 use super::git_commit::TaskKind;
 use super::App;
+use crate::app::diagnostic::DiagnosticSource;
 
 mod sync;
 
@@ -117,7 +118,7 @@ impl App {
 
     pub(super) fn handle_merge_conflict_choice(&mut self, choice: ConflictChoice) -> Result<bool> {
         if self.editor.current_buffer_is_readonly() {
-            self.show_message("Buffer is read-only".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "Buffer is read-only".to_string());
             return Ok(false);
         }
         self.sync_merge_conflicts();
@@ -132,7 +133,7 @@ impl App {
         let edit = replacement_edit(&lines, &block, &replacement);
         let revision = self.editor.buffer_revision();
         if let Err(error) = self.editor.apply_text_edits_at_revision(revision, &[edit]) {
-            self.show_message(super::file_error_message(error));
+            self.show_diagnostic(super::file_error(error));
             return Ok(false);
         }
         let row = block.start.min(self.editor.line_count().saturating_sub(1));
@@ -145,7 +146,7 @@ impl App {
 
     pub(super) fn handle_git_continue(&mut self) -> Result<bool> {
         let Some(status) = self.git_status.status().cloned() else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         let Some(args) = continue_args(status.operation) else {
@@ -153,11 +154,14 @@ impl App {
             return Ok(false);
         };
         if status.has_conflicts() {
-            self.show_message("Resolve conflicts before continuing".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Resolve conflicts before continuing".to_string(),
+            );
             return Ok(false);
         }
         if let Err(message) = self.reject_staged_conflict_markers(&status.root) {
-            self.show_message(message);
+            self.show_source_failure(DiagnosticSource::Git, message);
             return Ok(false);
         }
         self.start_git_operation_task(args, status.root, TaskKind::Continue, CONTINUE_NAME);
@@ -166,7 +170,7 @@ impl App {
 
     pub(super) fn handle_git_abort(&mut self) -> Result<bool> {
         let Some(operation) = self.git_status.status().map(|status| status.operation) else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         let Some(name) = operation_name(operation) else {

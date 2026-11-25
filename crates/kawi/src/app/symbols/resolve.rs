@@ -62,7 +62,7 @@ impl SymbolSession {
                 true
             }
             Err(message) => {
-                self.picker.set_status(Some(message));
+                self.picker.set_status(Some(message.render()));
                 false
             }
         }

@@ -1,6 +1,7 @@
 use kawi_task::{TaskOptions, TaskSpec, TaskStatus};
 
 use super::{ActiveTask, GitTask, TaskKind};
+use crate::app::diagnostic::DiagnosticSource;
 use crate::app::{codes, App};
 
 impl App {
@@ -31,7 +32,10 @@ impl App {
                 let message = super::super::compact_error(&error.to_string());
                 self.task.fail_start(message.clone());
                 self.sync_task_panel_size();
-                self.show_message(format!("Task {} failed to start: {message}", spec.name));
+                self.show_source_failure(
+                    DiagnosticSource::Task,
+                    format!("Task {} failed to start: {message}", spec.name),
+                );
                 false
             }
         }
@@ -77,7 +81,7 @@ impl App {
             TaskKind::Push | TaskKind::Fetch => self.refresh_git_status(),
         }
         if !status.success && !status.cancelled {
-            self.show_message(failure_message(kind));
+            self.show_source_failure(DiagnosticSource::Task, failure_message(kind));
         }
     }
 }

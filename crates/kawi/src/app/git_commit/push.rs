@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::TaskKind;
+use crate::app::diagnostic::DiagnosticSource;
 use crate::app::App;
 use kawi_task::ParserSpec;
 
@@ -14,11 +15,14 @@ pub(super) struct PendingPush {
 impl App {
     pub(crate) fn start_git_push(&mut self, force: bool) -> anyhow::Result<bool> {
         let Some(status) = self.git_status.status().cloned() else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         if status.is_detached() {
-            self.show_message("Cannot push a detached HEAD".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Cannot push a detached HEAD".to_string(),
+            );
             return Ok(false);
         }
         let branch = status.branch_label().to_string();

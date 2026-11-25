@@ -32,7 +32,7 @@ impl App {
                 true
             }
             Err(error) => {
-                self.show_message(super::file_error_message(error));
+                self.show_diagnostic(super::file_error(error));
                 false
             }
         }

@@ -137,7 +137,7 @@ impl SymbolSession {
                 self.workspace_request = Some(request);
                 self.picker.set_loading(true);
             }
-            Err(message) => self.picker.set_status(Some(message)),
+            Err(message) => self.picker.set_status(Some(message.render())),
         }
         true
     }
