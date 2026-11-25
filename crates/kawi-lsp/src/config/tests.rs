@@ -264,6 +264,24 @@ fn user_languages_set_indent_overrides() {
 }
 
 #[test]
+fn user_languages_set_block_indent_rules() {
+    let path = temp_file(
+        "block_indent_overrides",
+        "[[language]]\nname = \"sql\"\nindent_block_openers = [\"begin\"]\nindent_block_closers = [\"end\"]\nindent_align_keywords = [\"select\"]\nindent_branch_keywords = [\"when\"]\nindent_branch_openers = [\"case\"]\nindent_ignore_case = false\nindent_keywords_in_brackets = false\n",
+    );
+    let languages = Languages::load(&path);
+    let sql = languages.language("sql").expect("sql");
+    assert_eq!(sql.indent_block_openers, vec!["begin"]);
+    assert_eq!(sql.indent_block_closers, vec!["end"]);
+    assert_eq!(sql.indent_align_keywords, vec!["select"]);
+    assert_eq!(sql.indent_branch_keywords, vec!["when"]);
+    assert_eq!(sql.indent_branch_openers, vec!["case"]);
+    assert!(!sql.indent_ignore_case);
+    assert!(!sql.indent_keywords_in_brackets);
+    assert!(languages.warnings().is_empty());
+}
+
+#[test]
 fn user_languages_can_clear_indent_rules() {
     let path = temp_file(
         "clear_indent_rules",

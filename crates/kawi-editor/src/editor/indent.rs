@@ -1,11 +1,15 @@
+mod dedent;
 pub(crate) mod engine;
 #[cfg(test)]
 mod html_tests;
 mod language;
+mod scan;
 mod tags;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use dedent::keyword_width;
+pub(crate) use language::is_word_char;
 pub use language::IndentRules;
 
 pub(super) fn line_width(line: &str, tabstop: usize) -> usize {

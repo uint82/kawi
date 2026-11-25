@@ -14,9 +14,18 @@ fn editor_with(text: &str) -> Editor {
 }
 
 fn language_editor(text: &str, language: LanguageId, rules: IndentRules) -> Editor {
+    language_editor_with_width(text, language, rules, 4)
+}
+
+fn language_editor_with_width(
+    text: &str,
+    language: LanguageId,
+    rules: IndentRules,
+    shiftwidth: usize,
+) -> Editor {
     let mut editor = editor_with(text);
     editor.set_buffer_defaults(BufferOptionDefaults {
-        shiftwidth: Some(4),
+        shiftwidth: Some(shiftwidth),
         expandtab: Some(true),
         autoindent: true,
     });
@@ -77,6 +86,89 @@ fn append_last_line_end(editor: &mut Editor) {
     editor.apply(Action::AppendLineEnd);
 }
 
+fn sql_editor(text: &str) -> Editor {
+    let mut editor = language_editor_with_width(text, LanguageId::Sql, sql_rules(), 2);
+    editor.set_language_editing(sql_editing());
+    editor
+}
+
+fn sql_rules() -> IndentRules {
+    IndentRules::new(
+        Vec::new(),
+        words(&[
+            "select",
+            "from",
+            "where",
+            "by",
+            "on",
+            "set",
+            "values",
+            "case",
+            "when",
+            "then",
+            "else",
+            "begin",
+            "do",
+            "repeat",
+            "exception",
+        ]),
+        true,
+    )
+    .with_indent_block_openers([
+        "begin",
+        "case",
+        "if",
+        "for",
+        "while",
+        "loop",
+        "repeat",
+        "exception",
+    ])
+    .with_indent_block_closers(["end"])
+    .with_indent_align_keywords([
+        "select",
+        "from",
+        "where",
+        "insert",
+        "set",
+        "values",
+        "join",
+        "exception",
+        "until",
+    ])
+    .with_indent_branch_keywords(["when", "else"])
+    .with_indent_branch_openers(["case", "exception"])
+    .with_indent_ignore_case(true)
+    .with_indent_keywords_in_brackets(true)
+}
+
+fn words(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| value.to_string()).collect()
+}
+
+fn sql_editing() -> LanguageEditing {
+    LanguageEditing {
+        comments: CommentTokens {
+            line: Some("--".to_string()),
+            block: Some(BlockComment::new("/*", "*/")),
+        },
+        pairs: vec![
+            Pair::new('(', ')'),
+            Pair::new('[', ']'),
+            Pair::new('{', '}'),
+            Pair::new('"', '"'),
+        ],
+        match_pairs: Vec::new(),
+        ..LanguageEditing::default()
+    }
+}
+
+fn type_text(editor: &mut Editor, text: &str) {
+    for ch in text.chars() {
+        editor.apply(Action::InsertChar(ch));
+    }
+}
+
 fn html_editing() -> LanguageEditing {
     LanguageEditing {
         comments: CommentTokens {
@@ -119,3 +211,4 @@ mod copy;
 mod html;
 mod language;
 mod repeat;
+mod sql;

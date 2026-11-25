@@ -4,9 +4,71 @@ use crate::LanguageConfig;
 pub(super) fn languages() -> Vec<LanguageConfig> {
     vec![
         LanguageConfig::new("sql", "sql")
-            .with_spaces(4)
+            .with_spaces(2)
             .with_extensions(["sql", "dsql"])
             .with_servers(["sqls"])
+            .with_indent_after_keywords([
+                "select",
+                "from",
+                "where",
+                "by",
+                "having",
+                "limit",
+                "offset",
+                "on",
+                "using",
+                "set",
+                "values",
+                "returning",
+                "begin",
+                "case",
+                "when",
+                "then",
+                "else",
+                "loop",
+                "do",
+                "repeat",
+                "exception",
+            ])
+            .with_indent_block_openers([
+                "begin",
+                "case",
+                "if",
+                "loop",
+                "for",
+                "while",
+                "repeat",
+                "exception",
+            ])
+            .with_indent_block_closers(["end"])
+            .with_indent_align_keywords([
+                "select",
+                "from",
+                "where",
+                "group",
+                "order",
+                "having",
+                "limit",
+                "offset",
+                "union",
+                "except",
+                "intersect",
+                "set",
+                "values",
+                "returning",
+                "with",
+                "insert",
+                "update",
+                "delete",
+                "merge",
+                "join",
+                "exception",
+                "until",
+            ])
+            .with_indent_branch_keywords(["when", "else", "elseif", "elsif"])
+            .with_indent_branch_openers(["case", "exception"])
+            .with_indent_ignore_case(true)
+            .with_indent_keywords_in_brackets(true)
             .with_line_comment("--")
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),

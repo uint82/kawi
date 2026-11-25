@@ -596,7 +596,14 @@ impl LspUi {
                 language.indent_after_keywords.clone(),
                 language.indent_brackets,
             )
-            .with_indent_tags(language.indent_tags),
+            .with_indent_tags(language.indent_tags)
+            .with_indent_block_openers(language.indent_block_openers.clone())
+            .with_indent_block_closers(language.indent_block_closers.clone())
+            .with_indent_align_keywords(language.indent_align_keywords.clone())
+            .with_indent_branch_keywords(language.indent_branch_keywords.clone())
+            .with_indent_branch_openers(language.indent_branch_openers.clone())
+            .with_indent_ignore_case(language.indent_ignore_case)
+            .with_indent_keywords_in_brackets(language.indent_keywords_in_brackets),
         }
     }
 
