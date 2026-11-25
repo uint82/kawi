@@ -91,6 +91,60 @@ fn classic_uses_the_dos_vga_palette() {
 }
 
 #[test]
+fn borland_uses_the_turbo_pascal_palette() {
+    let theme = Theme::named("borland").expect("theme");
+    assert_eq!(theme.base.background, rgb(0, 0, 168));
+    assert_eq!(theme.base.foreground, rgb(255, 255, 87));
+    assert_eq!(theme.selection.foreground, rgb(0, 0, 168));
+    assert_eq!(theme.selection.background, rgb(168, 168, 168));
+    assert_eq!(theme.status.foreground, rgb(0, 0, 0));
+    assert_eq!(theme.status.background, rgb(0, 168, 0));
+    assert_eq!(theme.bracket_match.foreground, rgb(255, 255, 87));
+    assert_eq!(theme.bracket_match.background, rgb(0, 84, 168));
+    for (name, expected) in [
+        ("keyword", (255, 255, 255)),
+        ("string", (255, 255, 87)),
+        ("function", (255, 255, 255)),
+        ("comment", (168, 168, 168)),
+        ("type", (87, 255, 255)),
+        ("number", (87, 255, 255)),
+        ("constant", (87, 255, 255)),
+        ("variable", (255, 255, 87)),
+        ("operator", (168, 168, 168)),
+        ("attribute", (87, 255, 87)),
+        ("tag", (87, 255, 255)),
+    ] {
+        let foreground = theme
+            .syntax
+            .named(name)
+            .and_then(|style| style.foreground)
+            .expect("syntax color");
+        assert_eq!(
+            foreground,
+            rgb(expected.0, expected.1, expected.2),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn borland_keeps_the_classic_turbo_identity() {
+    let borland = Theme::named("borland").expect("theme");
+    let classic = Theme::named("classic").expect("theme");
+    assert_ne!(borland.base.foreground, classic.base.foreground);
+    assert_ne!(
+        borland
+            .syntax
+            .named("type")
+            .and_then(|style| style.foreground),
+        classic
+            .syntax
+            .named("type")
+            .and_then(|style| style.foreground)
+    );
+}
+
+#[test]
 fn one_dark_preserves_the_previous_default() {
     let theme = Theme::named("one-dark").expect("theme");
     assert_eq!(theme.base.background, rgb(20, 22, 27));

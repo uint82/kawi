@@ -1,0 +1,313 @@
+float_background = "#0000A8"
+code_background = "#0000A8"
+special_key = "#A8A8A8"
+
+[base]
+foreground = "#FFFF57"
+background = "#0000A8"
+
+[search_match]
+foreground = "#000000"
+background = "#FFFF57"
+
+[search_current]
+foreground = "#000000"
+background = "#FF5700"
+
+[substitute]
+foreground = "#000000"
+background = "#FFFF57"
+
+[selection]
+foreground = "#0000A8"
+background = "#A8A8A8"
+
+[bracket.match]
+foreground = "#FFFF57"
+background = "#0054A8"
+
+[status]
+foreground = "#000000"
+background = "#00A800"
+
+[gutter]
+line_number = "#57FFFF"
+non_text = "#A8A8A8"
+
+[git]
+add = "#57FF57"
+change = "#FFFF57"
+delete = "#FF6363"
+staged_add = "#00A800"
+staged_change = "#A8A800"
+staged_delete = "#A80000"
+
+[diagnostics]
+error = "#FF6363"
+warning = "#FFFF57"
+information = "#57FFFF"
+hint = "#57FF57"
+
+[palette]
+white = "#FFFFFF"
+silver = "#A8A8A8"
+yellow = "#FFFF57"
+cyan = "#57FFFF"
+green = "#57FF57"
+magenta = "#FF57FF"
+red = "#FF6363"
+dark_red = "#A80000"
+
+[syntax]
+_annotation = { fg = "green" }
+_attr = { fg = "green" }
+_command = { fg = "white" }
+_directive = { fg = "green" }
+_func = { fg = "white" }
+_function = { fg = "white" }
+_identifier = { fg = "yellow" }
+_isinstance = { fg = "green" }
+_method = { fg = "white" }
+_new = { fg = "white" }
+_printf = { fg = "green" }
+_re = { fg = "yellow" }
+_regex = { fg = "yellow" }
+_tag = { fg = "cyan" }
+_type = { fg = "cyan" }
+_v = { fg = "yellow" }
+attribute = { fg = "green" }
+"attribute.builtin" = { fg = "green" }
+boolean = { fg = "magenta" }
+character = { fg = "yellow" }
+"character.special" = { fg = "yellow" }
+comment = { fg = "silver" }
+"comment.documentation" = { fg = "silver", bold = true }
+constant = { fg = "cyan" }
+"constant.builtin" = { fg = "cyan" }
+"constant.macro" = { fg = "green" }
+"constant.numeric" = { fg = "cyan" }
+constructor = { fg = "cyan" }
+"constructor.builtin" = { fg = "cyan" }
+decorator = { fg = "green" }
+embedded = { fg = "yellow" }
+error = { fg = "red", bold = true }
+escape = { fg = "cyan" }
+function = { fg = "white" }
+"function.builtin" = { fg = "green" }
+"function.call" = { fg = "white" }
+"function.macro" = { fg = "green" }
+"function.method" = { fg = "white" }
+"function.method.call" = { fg = "white" }
+invalid = { fg = "white", bg = "dark_red", bold = true }
+keyword = { fg = "white" }
+"keyword.conditional" = { fg = "white" }
+"keyword.conditional.ternary" = { fg = "white" }
+"keyword.control" = { fg = "white" }
+"keyword.coroutine" = { fg = "white" }
+"keyword.debug" = { fg = "white" }
+"keyword.directive" = { fg = "green" }
+"keyword.directive.define" = { fg = "green" }
+"keyword.exception" = { fg = "white" }
+"keyword.function" = { fg = "white" }
+"keyword.import" = { fg = "green" }
+"keyword.modifier" = { fg = "white" }
+"keyword.operator" = { fg = "white" }
+"keyword.repeat" = { fg = "white" }
+"keyword.return" = { fg = "white" }
+"keyword.storage" = { fg = "white" }
+"keyword.type" = { fg = "cyan" }
+label = { fg = "yellow" }
+"markup.heading" = { fg = "cyan" }
+"markup.heading.1" = { fg = "cyan" }
+"markup.heading.2" = { fg = "cyan" }
+"markup.heading.3" = { fg = "cyan" }
+"markup.heading.4" = { fg = "cyan" }
+"markup.heading.5" = { fg = "cyan" }
+"markup.heading.6" = { fg = "cyan" }
+"markup.italic" = { fg = "yellow", italic = true }
+"markup.link.label" = { fg = "yellow" }
+"markup.link.url" = { fg = "cyan" }
+"markup.list" = { fg = "cyan" }
+"markup.list.checked" = { fg = "cyan" }
+"markup.list.unchecked" = { fg = "cyan" }
+"markup.quote" = { fg = "silver" }
+"markup.raw" = { fg = "yellow" }
+"markup.raw.block" = { fg = "yellow" }
+"markup.strikethrough" = { fg = "silver" }
+"markup.strong" = { fg = "white", bold = true }
+"markup.underline" = { fg = "cyan", underline = true }
+module = { fg = "yellow" }
+"module.builtin" = { fg = "yellow" }
+namespace = { fg = "yellow" }
+number = { fg = "cyan" }
+"number.float" = { fg = "cyan" }
+operator = { fg = "silver" }
+property = { fg = "cyan" }
+"property.builtin" = { fg = "cyan" }
+punctuation = { fg = "silver" }
+"punctuation.bracket" = { fg = "silver" }
+"punctuation.delimiter" = { fg = "silver" }
+"punctuation.special" = { fg = "cyan" }
+special = { fg = "cyan" }
+string = { fg = "yellow" }
+"string.documentation" = { fg = "yellow" }
+"string.escape" = { fg = "cyan" }
+"string.regexp" = { fg = "yellow" }
+"string.special" = { fg = "cyan" }
+"string.special.key" = { fg = "cyan" }
+"string.special.path" = { fg = "cyan" }
+"string.special.symbol" = { fg = "cyan" }
+"string.special.url" = { fg = "cyan" }
+tag = { fg = "cyan" }
+"tag.attribute" = { fg = "green" }
+"tag.delimiter" = { fg = "silver" }
+"tag.error" = { fg = "red" }
+type = { fg = "cyan" }
+"type.builtin" = { fg = "cyan" }
+"type.definition" = { fg = "cyan" }
+"type.parameter" = { fg = "cyan" }
+variable = { fg = "yellow" }
+"variable.builtin" = { fg = "cyan" }
+"variable.member" = { fg = "cyan" }
+"variable.parameter" = { fg = "yellow" }
+"variable.parameter.builtin" = { fg = "cyan" }
+
+[completion]
+text = "#A8A8A8"
+method = "#FFFFFF"
+function = "#FFFFFF"
+constructor = "#57FFFF"
+field = "#57FFFF"
+variable = "#57FF57"
+class = "#57FFFF"
+interface = "#57FFFF"
+module = "#57FF57"
+property = "#57FFFF"
+unit = "#57FFFF"
+value = "#FF57FF"
+enum = "#57FFFF"
+keyword = "#FFFFFF"
+snippet = "#A8A8A8"
+color = "#FF57FF"
+file = "#A8A8A8"
+reference = "#A8A8A8"
+folder = "#A8A8A8"
+enum_member = "#FF57FF"
+constant = "#FF57FF"
+struct = "#57FFFF"
+event = "#A8A8A8"
+operator = "#A8A8A8"
+type_parameter = "#57FFFF"
+match = "#FFFF57"
+
+[decorations.accent]
+foreground = "#000000"
+background = "#FFFF57"
+
+[decorations.info]
+foreground = "#000000"
+background = "#57FFFF"
+
+[decorations.success]
+foreground = "#000000"
+background = "#57FF57"
+
+[decorations.warning]
+foreground = "#000000"
+background = "#FFFF57"
+
+[decorations.error]
+foreground = "#FFFFFF"
+background = "#A80000"
+
+[decorations.muted]
+foreground = "#A8A8A8"
+background = "#0054A8"
+
+[statusline.mode.normal]
+foreground = "#000000"
+background = "#57FFFF"
+
+[statusline.mode.insert]
+foreground = "#000000"
+background = "#57FF57"
+
+[statusline.mode.replace]
+foreground = "#000000"
+background = "#FF6363"
+
+[statusline.mode.visual]
+foreground = "#0000A8"
+background = "#A8A8A8"
+
+[statusline.mode.command]
+foreground = "#000000"
+background = "#FFFF57"
+
+[statusline.mode.search]
+foreground = "#000000"
+background = "#FF57FF"
+
+[statusline.diagnostics.error]
+foreground = "#FFFFFF"
+background = "#A80000"
+
+[statusline.diagnostics.warning]
+foreground = "#000000"
+background = "#FFFF57"
+
+[statusline.diagnostics.information]
+foreground = "#000000"
+background = "#57FFFF"
+
+[statusline.diagnostics.hint]
+foreground = "#000000"
+background = "#57FF57"
+
+[statusline.modified]
+foreground = "#000000"
+background = "#FFFF57"
+
+[statusline.readonly]
+foreground = "#000000"
+background = "#A8A8A8"
+
+[statusline.git]
+foreground = "#000000"
+background = "#57FF57"
+
+[statusline.lsp]
+foreground = "#000000"
+background = "#57FFFF"
+
+[statusline.selection]
+foreground = "#0000A8"
+background = "#A8A8A8"
+
+[statusline.macro_recording]
+foreground = "#FFFFFF"
+background = "#A80000"
+
+[statusline.filetype]
+foreground = "#000000"
+background = "#00A800"
+
+[statusline.indent]
+foreground = "#000000"
+background = "#00A800"
+
+[statusline.encoding]
+foreground = "#000000"
+background = "#00A800"
+
+[statusline.eol]
+foreground = "#000000"
+background = "#00A800"
+
+[statusline.percent]
+foreground = "#000000"
+background = "#00A800"
+
+[statusline.position]
+foreground = "#000000"
+background = "#00A800"

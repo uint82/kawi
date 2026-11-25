@@ -1,5 +1,6 @@
 use super::Theme;
 
+const BORLAND: &str = include_str!("../../themes/borland.toml");
 const CLASSIC: &str = include_str!("../../themes/classic.toml");
 const COBALT: &str = include_str!("../../themes/cobalt.toml");
 const DEFAULT_THEME: &str = include_str!("../../themes/default.toml");
@@ -23,6 +24,10 @@ const BUILTIN_THEMES: &[BuiltinTheme] = &[
         source: CLASSIC,
     },
     BuiltinTheme {
+        name: "borland",
+        source: BORLAND,
+    },
+    BuiltinTheme {
         name: "cobalt",
         source: COBALT,
     },
@@ -40,6 +45,8 @@ const BUILTIN_THEMES: &[BuiltinTheme] = &[
     },
 ];
 
+#[cfg(test)]
+mod borland_tests;
 #[cfg(test)]
 mod contrast_tests;
 #[cfg(test)]
