@@ -2,26 +2,15 @@ use serde_json::Value;
 
 use kawi_plugin::{PluginError, PluginStatus, RpcError};
 
-use super::super::scenario::Behavior;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Runtime {
-    Process,
     Wasm,
 }
 
 impl Runtime {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Process => "process",
             Self::Wasm => "wasm",
-        }
-    }
-
-    pub(crate) fn command(self, behavior: Behavior) -> &'static str {
-        match self {
-            Self::Process => behavior.process_command(),
-            Self::Wasm => behavior.command(),
         }
     }
 }

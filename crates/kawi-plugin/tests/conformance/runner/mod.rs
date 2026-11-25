@@ -4,9 +4,7 @@ use std::thread;
 
 use serde_json::{json, Value};
 
-use super::expectations::{
-    parse, validate, Expectation, ExpectationFile, PROCESS_EXPECTATIONS, WASM_EXPECTATIONS,
-};
+use super::expectations::{parse, validate, Expectation, ExpectationFile, WASM_EXPECTATIONS};
 use super::harness::{ConformanceHost, Runtime};
 use super::normalize::{normalize_result, Outcome};
 use super::report::Report;
@@ -34,12 +32,10 @@ struct RowResult {
 }
 
 pub(crate) fn run() -> Report {
-    let process = parse("process", PROCESS_EXPECTATIONS);
     let wasm = parse("wasm", WASM_EXPECTATIONS);
-    assert_expectations_valid(&process);
     assert_expectations_valid(&wasm);
     let runtimes = enabled_runtimes();
-    let results = run_rows(&runtimes, &process, &wasm);
+    let results = run_rows(&runtimes, &wasm);
     let mut report = Report::default();
     for row in results {
         let runtime = report.runtime(row.runtime);
@@ -52,15 +48,10 @@ pub(crate) fn run() -> Report {
             )),
         }
     }
-    record_not_supported(&mut report, &process, &wasm, &runtimes);
+    record_not_supported(&mut report, &wasm, &runtimes);
     if !cfg!(feature = "wasm") {
         report.record_not_built(Runtime::Wasm, "wasm feature disabled");
     }
-    report.record_sandbox(&format!(
-        "{:?} (landlock abi {:?})",
-        kawi_process::sandbox_status(),
-        kawi_process::sandbox_abi()
-    ));
     report
 }
 
@@ -70,24 +61,20 @@ fn assert_expectations_valid(file: &ExpectationFile) {
 }
 
 fn enabled_runtimes() -> Vec<Runtime> {
-    let mut runtimes = vec![Runtime::Process];
     if cfg!(feature = "wasm") {
-        runtimes.push(Runtime::Wasm);
+        vec![Runtime::Wasm]
+    } else {
+        Vec::new()
     }
-    runtimes
 }
 
-fn run_rows(
-    runtimes: &[Runtime],
-    process: &ExpectationFile,
-    wasm: &ExpectationFile,
-) -> Vec<RowResult> {
+fn run_rows(runtimes: &[Runtime], wasm: &ExpectationFile) -> Vec<RowResult> {
     let rows = runtimes
         .iter()
         .flat_map(|runtime| {
             scenarios()
                 .iter()
-                .filter(move |scenario| is_pass(*runtime, process, wasm, scenario))
+                .filter(move |scenario| is_pass(*runtime, wasm, scenario))
                 .map(move |scenario| (*runtime, scenario))
         })
         .collect::<Vec<_>>();
@@ -109,33 +96,23 @@ fn run_rows(
     })
 }
 
-fn is_pass(
-    runtime: Runtime,
-    process: &ExpectationFile,
-    wasm: &ExpectationFile,
-    scenario: &Scenario,
-) -> bool {
-    expectation(runtime, process, wasm, scenario).is_pass()
+fn is_pass(runtime: Runtime, wasm: &ExpectationFile, scenario: &Scenario) -> bool {
+    expectation(runtime, wasm, scenario).is_pass()
 }
 
 fn expectation<'a>(
     runtime: Runtime,
-    process: &'a ExpectationFile,
     wasm: &'a ExpectationFile,
     scenario: &Scenario,
 ) -> &'a Expectation {
-    let file = match runtime {
-        Runtime::Process => process,
-        Runtime::Wasm => wasm,
-    };
-    file.rows
+    wasm.rows
         .get(scenario.id)
         .unwrap_or_else(|| panic!("{}: missing {} status", scenario.id, runtime.label()))
 }
 
 fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> {
     let host = ConformanceHost::start(runtime, scenario);
-    let command = runtime.command(scenario.behavior);
+    let command = scenario.behavior.command();
     let result = match scenario.action {
         Action::Invoke => host.invoke(command, json!(null)),
         Action::RevokeThenInvoke => {
@@ -176,7 +153,7 @@ fn run_row(runtime: Runtime, scenario: &'static Scenario) -> Result<(), String> 
             host.set_stale_revision(true);
             host.invoke(command, json!(null))
         }
-        Action::Trap => host.invoke(scenario.behavior.trap_command(runtime), json!(null)),
+        Action::Trap => host.invoke(scenario.behavior.trap_command(), json!(null)),
         Action::TrapThenRecover => run_trap_then_recover(&host, runtime, scenario),
         Action::FiveStrike => run_five_strike(&host, runtime, scenario),
         Action::CounterReset => run_counter_reset(&host, runtime, scenario),
@@ -378,15 +355,10 @@ fn expected_outcome(expected: Expected) -> Outcome {
     }
 }
 
-fn record_not_supported(
-    report: &mut Report,
-    process: &ExpectationFile,
-    wasm: &ExpectationFile,
-    runtimes: &[Runtime],
-) {
+fn record_not_supported(report: &mut Report, wasm: &ExpectationFile, runtimes: &[Runtime]) {
     for scenario in scenarios() {
         for runtime in runtimes {
-            let expectation = expectation(*runtime, process, wasm, scenario);
+            let expectation = expectation(*runtime, wasm, scenario);
             if let Expectation::NotSupported { kind, .. } = expectation {
                 report.runtime(*runtime).record_not_supported(kind);
             }

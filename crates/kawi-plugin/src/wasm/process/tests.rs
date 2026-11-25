@@ -14,7 +14,6 @@ fn plugin() -> LoadedPlugin {
             runtime: PluginRuntime::Wasm,
             component: None,
             sha256: None,
-            command: Vec::new(),
             timeout_ms: 1_000,
             decorations: Vec::new(),
             settings: Default::default(),

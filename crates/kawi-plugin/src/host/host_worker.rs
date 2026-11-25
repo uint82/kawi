@@ -1,55 +1,49 @@
 use serde_json::Value;
 
-use crate::capability::{is_process_event, Capability};
-
+use crate::capability::Capability;
 use crate::error::PluginError;
 use crate::host::PluginStatus;
-use crate::process::{NotifyOutcome, WorkerHandle};
 use crate::protocol::{InvocationContext, RpcError};
+use crate::NotifyOutcome;
 
 #[cfg(feature = "wasm")]
 use crate::wasm::worker::WasmWorkerHandle;
 
+use super::disabled::DisabledWorker;
+
 pub(super) enum HostWorker {
-    Process(WorkerHandle),
     #[cfg(feature = "wasm")]
     Wasm(WasmWorkerHandle),
-    Disabled(WorkerHandle),
+    Disabled(DisabledWorker),
 }
 
 impl HostWorker {
     pub(super) fn activate(&self) -> Result<(), PluginError> {
         match self {
-            Self::Process(worker) => worker.activate(),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.activate(),
-            Self::Disabled(_) => Ok(()),
+            Self::Disabled(worker) => worker.activate(),
         }
     }
 
     pub(super) fn notify(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
-            Self::Process(worker) if is_process_event(event) => worker.notify(event, payload),
-            Self::Process(worker) if !crate::protocol::EVENT_NAMES.contains(&event) => {
-                worker.notify(event, payload)
-            }
-            Self::Process(_) => NotifyOutcome::Denied,
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.notify(event, payload),
-            Self::Disabled(_) => NotifyOutcome::NotRunning,
+            Self::Disabled(worker) => worker.notify(event, payload),
         }
     }
 
     pub(super) fn callback(
         &self,
-        _registration: u64,
-        _event: &str,
-        _payload: Value,
+        registration: u64,
+        event: &str,
+        payload: Value,
     ) -> Result<NotifyOutcome, PluginError> {
         match self {
-            Self::Process(_) | Self::Disabled(_) => Ok(NotifyOutcome::Denied),
             #[cfg(feature = "wasm")]
-            Self::Wasm(worker) => worker.callback(_registration, _event, _payload),
+            Self::Wasm(worker) => worker.callback(registration, event, payload),
+            Self::Disabled(worker) => worker.callback(registration, event, payload),
         }
     }
 
@@ -59,22 +53,17 @@ impl HostWorker {
         payload: Option<String>,
     ) -> Result<NotifyOutcome, PluginError> {
         match self {
-            Self::Process(_) | Self::Disabled(_) => {
-                let _ = (timer, payload);
-                Ok(NotifyOutcome::Denied)
-            }
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.timer_callback(timer, payload),
+            Self::Disabled(worker) => worker.timer_callback(timer, payload),
         }
     }
 
     pub(super) fn notify_internal(&self, event: &str, payload: Value) -> NotifyOutcome {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => {
-                worker.notify_internal(event, payload)
-            }
             #[cfg(feature = "wasm")]
             Self::Wasm(_) => NotifyOutcome::NotRunning,
+            Self::Disabled(worker) => worker.notify_internal(event, payload),
         }
     }
 
@@ -86,26 +75,9 @@ impl HostWorker {
         context: InvocationContext,
     ) -> Result<(), PluginError> {
         match self {
-            Self::Process(worker) => worker
-                .commands
-                .send(crate::process::WorkerCommand::Invoke {
-                    request,
-                    command,
-                    args,
-                    context: Box::new(context),
-                })
-                .map_err(|_| PluginError::ProcessExited),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.invoke(request, command, args, context),
-            Self::Disabled(worker) => worker
-                .commands
-                .send(crate::process::WorkerCommand::Invoke {
-                    request,
-                    command,
-                    args,
-                    context: Box::new(context),
-                })
-                .map_err(|_| PluginError::ProcessExited),
+            Self::Disabled(worker) => worker.invoke(request, command, args, context),
         }
     }
 
@@ -115,45 +87,41 @@ impl HostWorker {
         result: Result<Value, RpcError>,
     ) -> Result<(), PluginError> {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => worker.respond(id, result),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.respond(id, result),
+            Self::Disabled(worker) => worker.respond(id, result),
         }
     }
 
     pub(super) fn restart(&self) -> Result<(), PluginError> {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => worker.restart(),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.restart(),
+            Self::Disabled(worker) => worker.restart(),
         }
     }
 
     pub(super) fn status(&self) -> PluginStatus {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => worker.status(),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.status(),
+            Self::Disabled(worker) => worker.status(),
         }
     }
 
     pub(super) fn requirements(&self, command: &str) -> Option<&[Capability]> {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => worker.requirements(command),
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.requirements(command),
+            Self::Disabled(worker) => worker.requirements(command),
         }
     }
 
     pub(super) fn shutdown(&self) {
         match self {
-            Self::Process(worker) | Self::Disabled(worker) => {
-                let _ = worker
-                    .commands
-                    .send(crate::process::WorkerCommand::Shutdown);
-            }
             #[cfg(feature = "wasm")]
             Self::Wasm(worker) => worker.shutdown(),
+            Self::Disabled(worker) => worker.shutdown(),
         }
     }
 }

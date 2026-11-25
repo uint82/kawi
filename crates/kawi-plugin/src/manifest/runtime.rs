@@ -4,29 +4,23 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::validation::validate_command;
 use super::PluginManifest;
 
 const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_LEN: usize = 64;
 const COMPONENT_HEADER: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x0d, 0x00, 0x01, 0x00];
-const PROCESS_LABEL: &str = "process (trusted compatibility runtime)";
 const WASM_LABEL: &str = "wasm";
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginRuntime {
     #[default]
-    Process,
     Wasm,
 }
 
 impl PluginRuntime {
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Process => PROCESS_LABEL,
-            Self::Wasm => WASM_LABEL,
-        }
+        WASM_LABEL
     }
 }
 
@@ -53,26 +47,10 @@ impl Artifact {
 }
 
 pub(super) fn validate(manifest: &mut PluginManifest, dir: &Path) -> Result<Artifact, String> {
-    match manifest.runtime {
-        PluginRuntime::Process => {
-            validate_process(manifest)?;
-            Ok(Artifact::ready(None))
-        }
-        PluginRuntime::Wasm => Ok(validate_wasm(manifest, dir)),
-    }
-}
-
-fn validate_process(manifest: &PluginManifest) -> Result<(), String> {
-    if manifest.component.is_some() || manifest.sha256.is_some() {
-        return Err("process plugins cannot declare component or sha256".to_string());
-    }
-    validate_command(&manifest.command)
+    Ok(validate_wasm(manifest, dir))
 }
 
 fn validate_wasm(manifest: &mut PluginManifest, dir: &Path) -> Artifact {
-    if !manifest.command.is_empty() {
-        return Artifact::disabled("wasm plugins cannot declare command".to_string(), None);
-    }
     let Some(component) = manifest.component.as_deref() else {
         return Artifact::disabled("wasm plugins require component".to_string(), None);
     };

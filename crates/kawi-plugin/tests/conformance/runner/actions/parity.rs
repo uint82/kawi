@@ -21,7 +21,7 @@ pub(crate) fn run_advertised_parity(
         "{runtime:?} {}: advertised capabilities differ from linked imports",
         scenario.id
     );
-    host.invoke(runtime.command(scenario.behavior), json!(null))
+    host.invoke(scenario.behavior.command(), json!(null))
 }
 
 #[cfg(not(feature = "wasm"))]

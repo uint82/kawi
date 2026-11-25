@@ -29,7 +29,6 @@ fn manifest(root: &Path) {
         r#"name = "echo"
 version = "0.1.0"
 protocol = 1
-command = ["/bin/true"]
 
 [settings.size]
 type = "integer"

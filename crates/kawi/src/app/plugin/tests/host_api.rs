@@ -8,7 +8,7 @@ use kawi_plugin::{
 };
 use serde_json::{json, Value};
 
-use super::common::{app, temp_dir};
+use super::common::{app, temp_dir, write_manifest};
 use crate::app::App;
 
 mod automation;
@@ -151,13 +151,7 @@ fn authorizes_buffer_writes_by_path_scope() {
     ));
     fs::write(root.join("allowed.txt"), "hello").unwrap();
     fs::write(&outside, "outside").unwrap();
-    let plugin_dir = root.join("echo");
-    fs::create_dir_all(&plugin_dir).unwrap();
-    fs::write(
-        plugin_dir.join("plugin.toml"),
-        "name = \"test\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n",
-    )
-    .unwrap();
+    write_manifest(&root, "test", "0.1.0", "");
 
     let mut app = app();
     app.plugins.catalog = kawi_plugin::load_catalog(&root);

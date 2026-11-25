@@ -11,7 +11,7 @@ pub(crate) fn run_trap_then_recover(
     runtime: Runtime,
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
-    let first = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+    let first = host.invoke(scenario.behavior.trap_command(), json!(null));
     assert_eq!(
         normalize_result(&first),
         Outcome::Crashed,
@@ -19,7 +19,7 @@ pub(crate) fn run_trap_then_recover(
         scenario.id
     );
     host.wait_backoff();
-    let recovered = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let recovered = host.invoke(scenario.behavior.command(), json!(null));
     assert_eq!(
         normalize_result(&recovered),
         Outcome::Success,
@@ -36,7 +36,7 @@ pub(crate) fn run_five_strike(
 ) -> Result<Value, PluginError> {
     let mut last = Ok(Value::Null);
     for attempt in 0..5 {
-        last = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+        last = host.invoke(scenario.behavior.trap_command(), json!(null));
         assert_eq!(
             normalize_result(&last),
             Outcome::Crashed,
@@ -59,7 +59,7 @@ pub(crate) fn run_counter_reset(
     runtime: Runtime,
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
-    let first = host.invoke(scenario.behavior.trap_command(runtime), json!(null));
+    let first = host.invoke(scenario.behavior.trap_command(), json!(null));
     assert_eq!(
         normalize_result(&first),
         Outcome::Crashed,
@@ -67,14 +67,14 @@ pub(crate) fn run_counter_reset(
         scenario.id
     );
     host.wait_backoff();
-    let second = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let second = host.invoke(scenario.behavior.command(), json!(null));
     assert_eq!(
         normalize_result(&second),
         Outcome::Success,
         "{runtime:?} {}: recovery invocation failed: {second:?}",
         scenario.id
     );
-    let third = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let third = host.invoke(scenario.behavior.command(), json!(null));
     assert_eq!(
         normalize_result(&third),
         Outcome::Success,
@@ -98,7 +98,7 @@ pub(crate) fn run_restart_with_pending_host_call(
     host.activate_ready();
     host.withhold_host_responses();
     let request = host
-        .start_invocation(runtime.command(scenario.behavior), json!(null))
+        .start_invocation(scenario.behavior.command(), json!(null))
         .expect("invoke conformance plugin");
     assert!(
         host.wait_for_host_request("editor.get_state"),
@@ -115,5 +115,5 @@ pub(crate) fn run_restart_with_pending_host_call(
         scenario.id
     );
     host.wait_backoff();
-    host.invoke(runtime.command(scenario.behavior), json!(null))
+    host.invoke(scenario.behavior.command(), json!(null))
 }

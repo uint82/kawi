@@ -32,7 +32,7 @@ pub fn normalize_error(error: &PluginError) -> Outcome {
         PluginError::Protocol(_) => Outcome::Protocol,
         PluginError::Rpc(error) => normalize_rpc(error),
         PluginError::Spawn(_)
-        | PluginError::ProcessExited
+        | PluginError::WorkerStopped
         | PluginError::Trap(_)
         | PluginError::Initialize(_)
         | PluginError::MissingCapabilities(_)
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn transport_failures_normalize_to_crashed() {
         for error in [
-            PluginError::ProcessExited,
+            PluginError::WorkerStopped,
             PluginError::Trap("bad".to_string()),
             PluginError::Spawn("missing".to_string()),
             PluginError::Initialize("bad".to_string()),

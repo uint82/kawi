@@ -1,77 +1,52 @@
+use super::test_support::{temp_dir, valid_manifest, write_manifest};
 use super::*;
 use crate::capability::Capability;
 use std::fs;
-use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-fn temp_dir() -> PathBuf {
-    let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let dir =
-        std::env::temp_dir().join(format!("kawi-plugin-manifest-{}-{id}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn write_manifest(root: &Path, name: &str, body: &str) {
-    let dir = root.join(name);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join(MANIFEST_FILE), body).unwrap();
-}
-
-fn valid_manifest(name: &str) -> String {
-    format!(
-        r#"name = "{name}"
-version = "0.1.0"
-protocol = 1
-command = ["python3", "${{plugin_dir}}/plugin.py"]
-
-[[commands]]
-id = "ping"
-title = "Ping"
-
-[commands.keybindings]
-normal = ["<leader>pp"]
-"#
-    )
-}
 
 #[test]
-fn loads_a_manifest_and_resolves_the_plugin_dir() {
-    let root = temp_dir();
+fn loads_a_manifest_and_defaults_to_wasm() {
+    let root = temp_dir("manifest");
     write_manifest(&root, "echo", &valid_manifest("echo"));
     let catalog = load_catalog(&root);
     assert!(catalog.warnings.is_empty());
     let plugin = &catalog.plugins[0];
     assert_eq!(plugin.manifest.name, "echo");
+    assert_eq!(plugin.manifest.runtime, PluginRuntime::Wasm);
+    assert_eq!(plugin.manifest.component.as_deref(), Some("plugin.wasm"));
+    assert!(plugin.component_hash().is_some());
     assert_eq!(plugin.manifest.timeout_ms, DEFAULT_TIMEOUT_MS);
     assert_eq!(
         plugin.manifest.commands[0].keybindings["normal"],
         ["<leader>pp"]
     );
-    let command = plugin.resolved_command();
-    assert_eq!(command[0], "python3");
-    assert_eq!(
-        command[1].to_string_lossy(),
-        format!("{}/plugin.py", plugin.dir.display())
-    );
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn labels_process_and_wasm_runtimes() {
-    assert_eq!(
-        PluginRuntime::Process.label(),
-        "process (trusted compatibility runtime)"
-    );
-    assert_eq!(PluginRuntime::Wasm.label(), "wasm");
+fn rejects_the_process_runtime() {
+    let root = temp_dir("manifest-process");
+    let body = valid_manifest("echo").replace("runtime = \"wasm\"", "runtime = \"process\"");
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.plugins.is_empty());
+    assert!(catalog.warnings[0].message.contains("unknown variant"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_process_commands() {
+    let root = temp_dir("manifest-command");
+    let body = format!("command = [\"/bin/true\"]\n{}", valid_manifest("echo"));
+    write_manifest(&root, "echo", &body);
+    let catalog = load_catalog(&root);
+    assert!(catalog.plugins.is_empty());
+    assert!(catalog.warnings[0].message.contains("unknown field"));
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn rejects_unknown_fields() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen("name = ", "unexpected = true\nname = ", 1);
     write_manifest(&root, "echo", &body);
     let catalog = load_catalog(&root);
@@ -87,7 +62,7 @@ fn rejects_unknown_fields() {
 
 #[test]
 fn rejects_duplicate_plugin_names() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     write_manifest(&root, "first", &valid_manifest("echo"));
     write_manifest(&root, "second", &valid_manifest("echo"));
     let catalog = load_catalog(&root);
@@ -100,7 +75,7 @@ fn rejects_duplicate_plugin_names() {
 
 #[test]
 fn rejects_invalid_timeout_and_protocol() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replace("protocol = 1", "protocol = 2");
     write_manifest(&root, "echo", &body);
     let catalog = load_catalog(&root);
@@ -110,7 +85,7 @@ fn rejects_invalid_timeout_and_protocol() {
 
 #[test]
 fn rejects_invalid_command_ids_and_modes() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replace("id = \"ping\"", "id = \"Ping\"");
     write_manifest(&root, "echo", &body);
     let catalog = load_catalog(&root);
@@ -120,7 +95,7 @@ fn rejects_invalid_command_ids_and_modes() {
 
 #[test]
 fn missing_directory_is_not_a_warning() {
-    let root = temp_dir().join("missing");
+    let root = temp_dir("manifest").join("missing");
     let catalog = load_catalog(&root);
     assert!(catalog.warnings.is_empty());
     assert!(catalog.plugins.is_empty());
@@ -128,7 +103,7 @@ fn missing_directory_is_not_a_warning() {
 
 #[test]
 fn parses_subscriptions_and_activation_events() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         r#"
@@ -160,7 +135,7 @@ event = "on_command"
 
 #[test]
 fn rejects_debounce_for_unsubscribed_events() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[debounce]\nbuffer_changed = 100\n\n[[commands]]",
@@ -174,7 +149,7 @@ fn rejects_debounce_for_unsubscribed_events() {
 
 #[test]
 fn parses_decoration_groups() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         r#"
@@ -207,7 +182,7 @@ italic = true
 
 #[test]
 fn rejects_invalid_decoration_groups() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let duplicate = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[[decorations]]\nid = \"todo\"\ncolor = \"info\"\n\n[[decorations]]\nid = \"todo\"\ncolor = \"error\"\n\n[[commands]]",
@@ -220,7 +195,7 @@ fn rejects_invalid_decoration_groups() {
         .contains("duplicate decoration group"));
     fs::remove_dir_all(root).unwrap();
 
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let reserved = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[[decorations]]\nid = \"info\"\ncolor = \"info\"\n\n[[commands]]",
@@ -234,7 +209,7 @@ fn rejects_invalid_decoration_groups() {
 
 #[test]
 fn rejects_unknown_activation_events() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[[activation_events]]\nevent = \"on_idle\"\n\n[[commands]]",
@@ -250,7 +225,7 @@ fn rejects_unknown_activation_events() {
 
 #[test]
 fn parses_capability_requests() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[capabilities]\n\"editor.read\" = true\n\"fs.read\" = { paths = [\"$WORKSPACE\"] }\n\n[[commands]]",
@@ -267,7 +242,7 @@ fn parses_capability_requests() {
 
 #[test]
 fn warns_on_invalid_capability_requests_without_skipping_the_plugin() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replacen(
         "\n[[commands]]",
         "\n[capabilities]\n\"unknown.cap\" = true\n\"fs.read\" = true\n\n[[commands]]",
@@ -288,7 +263,7 @@ mod wasm;
 
 #[test]
 fn rejects_command_gate_outside_plugin_requests() {
-    let root = temp_dir();
+    let root = temp_dir("manifest");
     let body = valid_manifest("echo").replace(
         "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"",
         "[[commands]]\nid = \"ping\"\ntitle = \"Ping\"\ncapabilities = [\"editor.write\"]",
@@ -308,9 +283,9 @@ fn rejects_command_gate_outside_plugin_requests() {
 
 #[test]
 fn includes_command_gates_in_the_request_hash() {
-    let ungated_root = temp_dir();
+    let ungated_root = temp_dir("manifest");
     write_manifest(&ungated_root, "echo", &valid_manifest("echo"));
-    let gated_root = temp_dir();
+    let gated_root = temp_dir("manifest");
     let body = valid_manifest("echo")
         .replace(
             "[[commands]]",

@@ -10,7 +10,7 @@ pub(crate) fn run_control_text(
     runtime: Runtime,
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
-    let result = host.invoke(runtime.command(scenario.behavior), json!(null))?;
+    let result = host.invoke(scenario.behavior.command(), json!(null))?;
     let message = host
         .last_host_request("ui.message")
         .and_then(|params| params.get("message").cloned())
@@ -46,7 +46,7 @@ pub(crate) fn run_mid_codepoint(
     runtime: Runtime,
     scenario: &Scenario,
 ) -> Result<Value, PluginError> {
-    let result = host.invoke(runtime.command(scenario.behavior), json!(null));
+    let result = host.invoke(scenario.behavior.command(), json!(null));
     match &result {
         Err(PluginError::Rpc(error)) if error.code == INVALID_POSITION => {
             assert!(

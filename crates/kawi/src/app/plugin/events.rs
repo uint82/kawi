@@ -106,10 +106,6 @@ impl App {
                 false
             }
             PluginHostEvent::Log { .. } => false,
-            PluginHostEvent::SandboxApplied { plugin } => {
-                self.plugins.mark_sandboxed(&plugin);
-                false
-            }
         }
     }
 

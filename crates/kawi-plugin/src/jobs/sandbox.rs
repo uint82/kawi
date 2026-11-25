@@ -31,7 +31,6 @@ const RUNTIME_READ_WRITE: &[&str] = &["/dev/null"];
 
 pub(crate) struct SandboxPlan {
     pub(crate) policy: SandboxPolicy,
-    pub(crate) warnings: Vec<String>,
 }
 
 pub(crate) fn policy(
@@ -42,7 +41,6 @@ pub(crate) fn policy(
     let mut planner = Planner::new(plugin, capabilities, environment);
     planner.add_runtime();
     planner.add_plugin_dir();
-    planner.add_manifest_executable();
     planner.add_file_scope(Capability::FsRead);
     planner.add_file_scope(Capability::FsWrite);
     planner.add_command_scope();
@@ -54,7 +52,6 @@ struct Planner<'a> {
     capabilities: &'a CapabilityRegistry,
     environment: &'a HostEnvironment,
     policy: SandboxPolicy,
-    warnings: Vec<String>,
 }
 
 impl<'a> Planner<'a> {
@@ -68,7 +65,6 @@ impl<'a> Planner<'a> {
             capabilities,
             environment,
             policy: SandboxPolicy::default(),
-            warnings: Vec::new(),
         }
     }
 
@@ -86,34 +82,8 @@ impl<'a> Planner<'a> {
     }
 
     fn add_plugin_dir(&mut self) {
-        match existing(&self.plugin.dir) {
-            Some(path) => self.policy.read_write.push(path),
-            None => self.warn(&format!(
-                "sandbox skipped plugin directory {}: path does not exist",
-                self.plugin.dir.display()
-            )),
-        }
-    }
-
-    fn add_manifest_executable(&mut self) {
-        let command = self.plugin.resolved_command();
-        let Some(executable) = command.first() else {
-            return;
-        };
-        let executable = executable.to_string_lossy();
-        let Some(path) = resolve_command(&executable, &self.plugin.dir) else {
-            self.warn(&format!(
-                "sandbox skipped plugin executable {executable}: executable not found"
-            ));
-            return;
-        };
-        self.add_executable(&path);
-        if path.file_name().is_some_and(|name| name == "env") {
-            if let Some(inner) = command.get(1) {
-                if let Some(inner) = resolve_command(&inner.to_string_lossy(), &self.plugin.dir) {
-                    self.add_executable(&inner);
-                }
-            }
+        if let Some(path) = existing(&self.plugin.dir) {
+            self.policy.read_write.push(path);
         }
     }
 
@@ -129,17 +99,9 @@ impl<'a> Planner<'a> {
 
     fn add_file_path(&mut self, capability: Capability, raw: &str) {
         let Some(expanded) = expand_path(raw, &self.plugin.dir, self.environment) else {
-            self.warn(&format!(
-                "sandbox skipped granted {} path {raw}: variable is unset",
-                capability.name()
-            ));
             return;
         };
         let Some(path) = existing(&expanded) else {
-            self.warn(&format!(
-                "sandbox skipped granted {} path {raw}: path does not exist",
-                capability.name()
-            ));
             return;
         };
         if capability == Capability::FsWrite {
@@ -158,9 +120,6 @@ impl<'a> Planner<'a> {
         };
         for command in commands {
             let Some(path) = resolve_command(&command, &self.plugin.dir) else {
-                self.warn(&format!(
-                    "sandbox skipped granted process.spawn command {command}: executable not found"
-                ));
                 continue;
             };
             self.add_executable(&path);
@@ -172,10 +131,6 @@ impl<'a> Planner<'a> {
             self.policy.read_only.push(prefix);
         }
         let Some(path) = existing(path) else {
-            self.warn(&format!(
-                "sandbox skipped executable {}: path does not exist",
-                path.display()
-            ));
             return;
         };
         if let Some(interpreter) = kawi_process::executable_interpreter(&path) {
@@ -189,14 +144,9 @@ impl<'a> Planner<'a> {
         self.policy.execute.push(path);
     }
 
-    fn warn(&mut self, line: &str) {
-        self.warnings.push(line.to_string());
-    }
-
     fn finish(self) -> SandboxPlan {
         SandboxPlan {
             policy: self.policy,
-            warnings: self.warnings,
         }
     }
 }

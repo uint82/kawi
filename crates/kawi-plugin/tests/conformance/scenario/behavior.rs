@@ -1,7 +1,5 @@
 use kawi_plugin::Capability;
 
-use super::super::harness::Runtime;
-
 pub(crate) const EDITOR_READ_UI: &[Capability] = &[Capability::EditorRead, Capability::UiMessage];
 pub(crate) const DIAGNOSTICS_READ_UI: &[Capability] =
     &[Capability::DiagnosticsRead, Capability::UiMessage];
@@ -40,35 +38,6 @@ pub(crate) enum Behavior {
 }
 
 impl Behavior {
-    pub(crate) fn process_mode(self) -> &'static str {
-        match self {
-            Self::Echo => "normal",
-            Self::HostCall => "host-call",
-            Self::MultiCall => "multi-call",
-            Self::EditorWrite => "apply-edit",
-            Self::Trap => "exit-mid",
-            Self::TrapThenRecover => "crash-once",
-            Self::Timeout => "hang-invoke",
-            Self::MemoryLimit | Self::TableLimit | Self::StackLimit => "normal",
-            Self::HashMismatch | Self::OversizeComponent => "normal",
-            Self::DiagnosticsLarge => "diagnostics",
-            Self::AllImports => "normal",
-            Self::EventWrite => "event-write",
-            Self::MidCodepoint => "mid-codepoint",
-            Self::ControlText => "control-text",
-            Self::NetworkProbe | Self::NetworkProbeHeavy => "normal",
-            Self::UngrantedImport | Self::OverImport => "host-call",
-            Self::EventBufferChanged
-            | Self::EventBufferOpened
-            | Self::EventFileOpened
-            | Self::EventBufferClosed
-            | Self::EventFileSaved
-            | Self::EventModeChanged
-            | Self::EventDiagnosticsChanged => "event-host",
-            Self::Trim => "trim",
-        }
-    }
-
     pub(crate) fn wasm_component(self) -> &'static str {
         match self {
             Self::Echo => "echo.wasm",
@@ -111,20 +80,8 @@ impl Behavior {
         }
     }
 
-    pub(crate) fn trap_command(self, runtime: Runtime) -> &'static str {
-        match runtime {
-            Runtime::Process => "probe",
-            Runtime::Wasm => "trap",
-        }
-    }
-
-    pub(crate) fn process_command(self) -> &'static str {
-        match self {
-            Self::Echo => "ping",
-            Self::Trim => "trim",
-            Self::DiagnosticsLarge => "diagnostics",
-            _ => "probe",
-        }
+    pub(crate) fn trap_command(self) -> &'static str {
+        "trap"
     }
 
     pub(crate) fn requests(self) -> &'static [Capability] {

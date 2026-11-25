@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::expectations::{
-    parse, validate, Expectation, ExpectationFile, PROCESS_EXPECTATIONS, TEST_RESOLVER_ROWS,
-    WASM_EXPECTATIONS,
+    parse, validate, Expectation, ExpectationFile, TEST_RESOLVER_ROWS, WASM_EXPECTATIONS,
 };
 use super::harness::INVOCATION_TIMEOUT;
 use super::report::Report;
@@ -54,41 +53,31 @@ fn invocation_timeout_exceeds_every_scenario_timeout() {
 }
 
 #[test]
-fn both_runtimes_have_exactly_one_status_for_every_scenario() {
-    for (name, text) in [
-        ("process", PROCESS_EXPECTATIONS),
-        ("wasm", WASM_EXPECTATIONS),
-    ] {
-        let file = parse(name, text);
-        let problems = validate(scenarios(), &file);
-        assert!(problems.is_empty(), "{name}: {problems:#?}");
-    }
+fn every_scenario_has_exactly_one_status() {
+    let file = parse("wasm", WASM_EXPECTATIONS);
+    let problems = validate(scenarios(), &file);
+    assert!(problems.is_empty(), "wasm: {problems:#?}");
 }
 
 #[test]
 fn not_supported_entries_have_a_kind_and_reason() {
-    for (name, text) in [
-        ("process", PROCESS_EXPECTATIONS),
-        ("wasm", WASM_EXPECTATIONS),
-    ] {
-        let file = parse(name, text);
-        for (id, expectation) in &file.rows {
-            if let Expectation::NotSupported {
-                kind,
-                reason,
-                issue,
-                ..
-            } = expectation
-            {
-                assert!(!kind.trim().is_empty(), "{name} {id}: empty kind");
-                assert!(!reason.trim().is_empty(), "{name} {id}: empty reason");
-                assert!(
-                    issue
-                        .as_deref()
-                        .is_none_or(|issue| !issue.trim().is_empty()),
-                    "{name} {id}: empty issue"
-                );
-            }
+    let file = parse("wasm", WASM_EXPECTATIONS);
+    for (id, expectation) in &file.rows {
+        if let Expectation::NotSupported {
+            kind,
+            reason,
+            issue,
+            ..
+        } = expectation
+        {
+            assert!(!kind.trim().is_empty(), "wasm {id}: empty kind");
+            assert!(!reason.trim().is_empty(), "wasm {id}: empty reason");
+            assert!(
+                issue
+                    .as_deref()
+                    .is_none_or(|issue| !issue.trim().is_empty()),
+                "wasm {id}: empty issue"
+            );
         }
     }
 }
@@ -121,26 +110,21 @@ fn scripted_network_rows_pass_with_the_test_resolver() {
 
 #[test]
 fn temporary_not_supported_fails_once_its_feature_lands() {
-    for (name, text) in [
-        ("process", PROCESS_EXPECTATIONS),
-        ("wasm", WASM_EXPECTATIONS),
-    ] {
-        let file = parse(name, text);
-        for (id, expectation) in &file.rows {
-            let Expectation::NotSupported {
-                temporary, feature, ..
-            } = expectation
-            else {
-                continue;
-            };
-            assert!(
-                !temporary
-                    || feature
-                        .as_deref()
-                        .is_none_or(|feature| !LANDED_FEATURES.contains(&feature)),
-                "{name} {id}: temporary not-supported outlived its feature"
-            );
-        }
+    let file = parse("wasm", WASM_EXPECTATIONS);
+    for (id, expectation) in &file.rows {
+        let Expectation::NotSupported {
+            temporary, feature, ..
+        } = expectation
+        else {
+            continue;
+        };
+        assert!(
+            !temporary
+                || feature
+                    .as_deref()
+                    .is_none_or(|feature| !LANDED_FEATURES.contains(&feature)),
+            "wasm {id}: temporary not-supported outlived its feature"
+        );
     }
 }
 
@@ -169,15 +153,13 @@ fn report_reports_missing_wasm_as_not_built() {
 #[test]
 fn report_keeps_pass_and_not_supported_separate() {
     let mut report = Report::default();
+    report.runtime(super::harness::Runtime::Wasm).record_pass();
     report
-        .runtime(super::harness::Runtime::Process)
-        .record_pass();
-    report
-        .runtime(super::harness::Runtime::Process)
-        .record_not_supported("NoProcessMemoryCap");
+        .runtime(super::harness::Runtime::Wasm)
+        .record_not_supported("NoWasmMemoryCap");
     let text = report.to_string();
-    assert!(text.contains("process: pass 1 / not-supported 1"), "{text}");
-    assert!(text.contains("NoProcessMemoryCap: 1"), "{text}");
+    assert!(text.contains("wasm: pass 1 / not-supported 1"), "{text}");
+    assert!(text.contains("NoWasmMemoryCap: 1"), "{text}");
     assert!(!report.has_failures());
 }
 
@@ -206,12 +188,7 @@ fn assert_coverage(label: &str, all: &[&str], covered: Vec<&str>, uncovered: &[U
 }
 
 #[test]
-fn expectation_files_are_not_empty() {
-    for (name, text) in [
-        ("process", PROCESS_EXPECTATIONS),
-        ("wasm", WASM_EXPECTATIONS),
-    ] {
-        let file: ExpectationFile = parse(name, text);
-        assert!(!file.rows.is_empty(), "{name}: no rows");
-    }
+fn expectation_file_is_not_empty() {
+    let file: ExpectationFile = parse("wasm", WASM_EXPECTATIONS);
+    assert!(!file.rows.is_empty(), "wasm: no rows");
 }

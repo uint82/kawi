@@ -3,7 +3,9 @@ use std::fs;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{json, Value};
 
-use super::common::{app, load_plugins, load_settings_plugin, temp_dir, CONFIGURABLE_PLUGIN};
+use super::common::{
+    app, load_plugins, load_settings_plugin, temp_dir, write_manifest, CONFIGURABLE_PLUGIN,
+};
 use crate::app::App;
 
 const PLUGIN: &str = CONFIGURABLE_PLUGIN;
@@ -17,21 +19,16 @@ fn get(app: &mut App, key: &str) -> Option<Value> {
 }
 
 fn load_toggle_plugin(root: &std::path::Path) -> App {
-    let dir = root.join("toggle");
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("plugin.toml"),
-        r#"name = "toggle"
-version = "0.1.0"
-protocol = 1
-command = ["/bin/true"]
-
+    write_manifest(
+        root,
+        "toggle",
+        "0.1.0",
+        r#"
 [settings.enabled]
 type = "boolean"
 default = true
 "#,
-    )
-    .unwrap();
+    );
     let mut app = app();
     let warnings = load_plugins(&mut app, root);
     assert!(warnings.is_empty(), "{warnings:?}");

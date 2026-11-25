@@ -60,14 +60,9 @@ fn utf8_stream_replaces_invalid_bytes() {
 }
 
 #[test]
-fn wasm_jobs_queue_events_until_polled() {
+fn jobs_queue_events_until_polled() {
     let (manager, receiver) = manager("wasm-reader", &["/bin/sh"]);
-    let job = open_with(
-        &manager,
-        &wasm_plugin("wasm-reader"),
-        "/bin/sh",
-        &["-c", "printf hello"],
-    );
+    let job = open(&manager, "wasm-reader", "/bin/sh", &["-c", "printf hello"]);
     let exited = wait_exit(&receiver, job);
     assert_eq!(exited.exit_code, Some(0));
     let events = manager
@@ -79,22 +74,6 @@ fn wasm_jobs_queue_events_until_polled() {
     assert!(matches!(events.last(), Some(ProcessJobEvent::Exited(_))));
     assert!(manager
         .poll("wasm-reader", ProcessJobParams { job })
-        .expect("poll")
-        .is_empty());
-}
-
-#[test]
-fn process_jobs_do_not_queue_events() {
-    let (manager, receiver) = manager("process-reader", &["/bin/sh"]);
-    let job = open(
-        &manager,
-        "process-reader",
-        "/bin/sh",
-        &["-c", "printf hello"],
-    );
-    wait_exit(&receiver, job);
-    assert!(manager
-        .poll("process-reader", ProcessJobParams { job })
         .expect("poll")
         .is_empty());
 }

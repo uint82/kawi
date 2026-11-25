@@ -46,7 +46,7 @@ mod tests {
     #[test]
     fn transport_failures_normalize_to_crashed() {
         for error in [
-            PluginError::ProcessExited,
+            PluginError::WorkerStopped,
             PluginError::Trap("bad".to_string()),
             PluginError::Spawn("missing".to_string()),
             PluginError::Initialize("bad".to_string()),

@@ -1,8 +1,7 @@
 use crate::capability::Capability;
-use crate::protocol::PROCESS_PROTOCOL_MINOR;
 
 // `since` is the protocol minor that introduced the API, not the minor this registry was
-// written. docs/help/plugin-protocol.md holds the history these constants encode.
+// written.
 pub(crate) const LEGACY_MINOR: u64 = 0;
 pub(crate) const EVENTS_MINOR: u64 = 1;
 pub(crate) const DIAGNOSTICS_MINOR: u64 = 2;
@@ -166,10 +165,6 @@ pub fn is_interactive_host_method(method: &str) -> bool {
 
 pub fn host_method_mutates(method: &str) -> bool {
     host_method_entry(method).is_some_and(|entry| entry.mutates)
-}
-
-pub(crate) const fn is_process_available(maturity: ApiMaturity) -> bool {
-    maturity.since <= PROCESS_PROTOCOL_MINOR
 }
 
 #[cfg(test)]

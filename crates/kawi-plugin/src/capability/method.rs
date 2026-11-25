@@ -1,4 +1,4 @@
-use crate::api_maturity::{event_entry, host_method_entry, is_process_available};
+use crate::api_maturity::{event_entry, host_method_entry};
 
 use super::{Capability, CapabilityRegistry};
 
@@ -7,14 +7,6 @@ pub enum MethodCapability {
     Unknown,
     None,
     Required(Capability),
-}
-
-pub fn is_process_host_method(method: &str) -> bool {
-    host_method_entry(method).is_some_and(|entry| is_process_available(entry.maturity))
-}
-
-pub fn is_process_event(event: &str) -> bool {
-    event_entry(event).is_some_and(|entry| is_process_available(entry.maturity))
 }
 
 pub fn host_method_capability(method: &str) -> MethodCapability {

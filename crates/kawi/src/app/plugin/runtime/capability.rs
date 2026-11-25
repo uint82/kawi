@@ -9,14 +9,6 @@ const DIAGNOSTIC_RATE_WINDOW: Duration = Duration::from_secs(1);
 const MAX_DIAGNOSTIC_PUBLISHES: u32 = 20;
 
 impl PluginRuntime {
-    pub(crate) fn mark_sandboxed(&mut self, plugin: &str) {
-        self.sandboxed.insert(plugin.to_string());
-    }
-
-    fn is_sandboxed(&self, plugin: &str) -> bool {
-        self.sandboxed.contains(plugin)
-    }
-
     pub(crate) fn has_capability(&self, plugin: &str, capability: Capability) -> bool {
         self.capabilities.has(plugin, capability)
     }
@@ -35,13 +27,6 @@ impl PluginRuntime {
             }
             _ => false,
         }
-    }
-
-    pub(crate) fn is_wasm(&self, plugin: &str) -> bool {
-        self.catalog.plugins.iter().any(|loaded| {
-            loaded.manifest.name == plugin
-                && loaded.manifest.runtime == kawi_plugin::PluginRuntime::Wasm
-        })
     }
 
     pub(crate) fn request_scope(&self, plugin: &str, capability: Capability) -> Option<Scope> {
@@ -154,9 +139,8 @@ impl PluginRuntime {
 
     pub(crate) fn capability_lines(&self, plugin: &str) -> Vec<String> {
         let effective = self.capabilities.get(plugin);
-        let wasm = cfg!(feature = "wasm") && self.is_wasm(plugin);
-        let sandboxed = self.is_sandboxed(plugin);
-        let declared = describe_capabilities(effective.granted.keys().copied(), wasm, sandboxed);
+        let wasm = cfg!(feature = "wasm");
+        let declared = describe_capabilities(effective.granted.keys().copied(), wasm);
         let mut lines = vec![format!("declared: {declared}")];
         if let Some(warnings) = self.warnings.get(plugin) {
             lines.extend(

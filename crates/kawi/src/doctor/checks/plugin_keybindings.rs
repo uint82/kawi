@@ -57,7 +57,7 @@ mod tests {
         fs::write(
             plugin.join("plugin.toml"),
             format!(
-                "name = \"sample\"\nversion = \"0.1.0\"\nprotocol = 1\ncommand = [\"/bin/true\"]\n\n[[commands]]\nid = \"ping\"\ntitle = \"Ping\"\n\n[commands.keybindings]\nnormal = {keybindings}\n"
+                "name = \"sample\"\nversion = \"0.1.0\"\nprotocol = 1\n\n[[commands]]\nid = \"ping\"\ntitle = \"Ping\"\n\n[commands.keybindings]\nnormal = {keybindings}\n"
             ),
         )
         .unwrap();

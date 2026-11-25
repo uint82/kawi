@@ -7,7 +7,7 @@ use crate::protocol::RpcError;
 pub enum PluginError {
     Spawn(String),
     Timeout,
-    ProcessExited,
+    WorkerStopped,
     Trap(String),
     QueueFull,
     Protocol(String),
@@ -25,7 +25,7 @@ impl fmt::Display for PluginError {
         match self {
             Self::Spawn(message) => write!(formatter, "cannot start plugin: {message}"),
             Self::Timeout => write!(formatter, "plugin request timed out"),
-            Self::ProcessExited => write!(formatter, "plugin process exited"),
+            Self::WorkerStopped => write!(formatter, "plugin worker stopped"),
             Self::Trap(message) => write!(formatter, "plugin trapped: {message}"),
             Self::QueueFull => write!(formatter, "plugin queue is full"),
             Self::Protocol(message) => write!(formatter, "plugin protocol error: {message}"),
@@ -60,7 +60,7 @@ impl PluginError {
             self,
             Self::Spawn(_)
                 | Self::Timeout
-                | Self::ProcessExited
+                | Self::WorkerStopped
                 | Self::Trap(_)
                 | Self::Protocol(_)
                 | Self::Initialize(_)
@@ -94,7 +94,7 @@ mod tests {
         for error in [
             PluginError::Spawn(String::new()),
             PluginError::Timeout,
-            PluginError::ProcessExited,
+            PluginError::WorkerStopped,
             PluginError::Trap(String::new()),
             PluginError::Protocol(String::new()),
             PluginError::Initialize(String::new()),

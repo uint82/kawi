@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -13,6 +12,8 @@ mod runtime;
 mod settings;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod test_support;
 mod validation;
 
 pub use load::load_catalog;
@@ -21,7 +22,6 @@ pub use settings::{PluginSetting, PluginSettingKind};
 
 const MANIFEST_FILE: &str = "plugin.toml";
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
-const PLUGIN_DIR_TOKEN: &str = "${plugin_dir}";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,8 +37,6 @@ pub struct PluginManifest {
     pub component: Option<String>,
     #[serde(default)]
     pub sha256: Option<String>,
-    #[serde(default)]
-    pub command: Vec<String>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default)]
@@ -165,16 +163,6 @@ impl LoadedPlugin {
             .iter()
             .filter_map(|name| Capability::parse(name))
             .find(|capability| !registry.has(&self.manifest.name, *capability))
-    }
-
-    pub fn resolved_command(&self) -> Vec<OsString> {
-        self.manifest
-            .command
-            .iter()
-            .map(|argument| {
-                OsString::from(argument.replace(PLUGIN_DIR_TOKEN, &self.dir.to_string_lossy()))
-            })
-            .collect()
     }
 
     pub fn component_path(&self) -> Option<PathBuf> {

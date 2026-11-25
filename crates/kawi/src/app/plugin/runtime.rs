@@ -96,7 +96,6 @@ pub(crate) struct PluginRuntime {
     pub(super) last_message: BTreeMap<String, Instant>,
     pub(super) throttled_messages: BTreeMap<String, u64>,
     pub(super) diagnostic_windows: BTreeMap<String, DiagnosticWindow>,
-    pub(super) sandboxed: BTreeSet<String>,
     pub(super) settings: PluginSettings,
 }
 
@@ -310,8 +309,6 @@ impl PluginRuntime {
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.warnings
             .retain(|plugin, _| known.contains(plugin.as_str()));
-        self.sandboxed
-            .retain(|plugin| known.contains(plugin.as_str()));
         self.queues
             .retain(|plugin, _| known.contains(plugin.as_str()));
         self.queue_stats

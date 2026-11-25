@@ -210,56 +210,6 @@ fn component_hash_changes_the_request_hash() {
 }
 
 #[test]
-fn process_runtime_is_frozen_at_the_previous_protocol_minor() {
-    for &method in crate::protocol::HOST_METHODS {
-        assert_eq!(
-            is_process_host_method(method),
-            host_method_minor(method)
-                .is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
-        );
-    }
-    for &event in crate::protocol::EVENT_NAMES {
-        assert_eq!(
-            is_process_event(event),
-            event_minor(event)
-                .is_some_and(|minor| minor <= crate::protocol::PROCESS_PROTOCOL_MINOR)
-        );
-    }
-    for method in [
-        "buffer.list",
-        "buffer.get",
-        "buffer.open",
-        "buffer.apply_edit",
-        "buffer.create",
-        "buffer.close",
-        "window.list",
-        "window.get",
-        "window.focus",
-        "window.open",
-        "window.close",
-        "editor.set_cursor",
-        "editor.set_selection",
-        "editor.set_mode",
-        "options.list",
-        "options.get",
-    ] {
-        assert!(!is_process_host_method(method), "{method}");
-    }
-    for event in [
-        "buffer_enter",
-        "buffer_leave",
-        "window_enter",
-        "window_leave",
-        "cursor_moved",
-        "selection_changed",
-        "focus_gained",
-        "focus_lost",
-    ] {
-        assert!(!is_process_event(event), "{event}");
-    }
-}
-
-#[test]
 fn automation_capabilities_gate_their_methods_at_the_introduction_minor() {
     for (method, capability) in [
         ("timer.after", Capability::EditorSchedule),
@@ -278,7 +228,6 @@ fn automation_capabilities_gate_their_methods_at_the_introduction_minor() {
             MethodCapability::Required(capability)
         );
         assert_eq!(host_method_minor(method), Some(WASM_AUTOMATION_MINOR));
-        assert!(!is_process_host_method(method));
     }
 }
 
@@ -332,7 +281,6 @@ fn task_methods_require_task_run_at_the_introduction_minor() {
             MethodCapability::Required(Capability::TaskRun)
         );
         assert_eq!(host_method_minor(method), Some(WASM_TASKS_MINOR));
-        assert!(!is_process_host_method(method));
     }
 }
 
@@ -344,6 +292,5 @@ fn buffer_lifecycle_methods_require_write_at_the_introduction_minor() {
             MethodCapability::Required(Capability::EditorBuffersWrite)
         );
         assert_eq!(host_method_minor(method), Some(WASM_SCRATCH_BUFFERS_MINOR));
-        assert!(!is_process_host_method(method));
     }
 }

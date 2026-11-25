@@ -1,12 +1,11 @@
 use std::sync::mpsc::Sender;
 
+use super::disabled::DisabledWorker;
+use super::host_worker::HostWorker;
 use crate::capability::CapabilityRegistry;
 use crate::environment::HostEnvironment;
 use crate::host::{send_event, PluginHostEvent};
 use crate::manifest::LoadedPlugin;
-use crate::process::start_disabled_worker;
-
-use super::host_worker::HostWorker;
 
 #[cfg(feature = "wasm")]
 pub(super) fn wasm_worker(
@@ -25,7 +24,7 @@ pub(super) fn wasm_worker(
                 line: reason.clone(),
             },
         );
-        return HostWorker::Disabled(start_disabled_worker(
+        return HostWorker::Disabled(DisabledWorker::new(
             plugin,
             reason,
             events.clone(),
@@ -61,7 +60,7 @@ pub(super) fn wasm_worker(
             line: message.clone(),
         },
     );
-    HostWorker::Disabled(start_disabled_worker(
+    HostWorker::Disabled(DisabledWorker::new(
         plugin,
         message,
         events.clone(),

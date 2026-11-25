@@ -5,10 +5,9 @@ use crate::plugin_labels::WASM_NETWORK_ENFORCEMENT;
 pub(super) fn describe_capabilities(
     capabilities: impl Iterator<Item = Capability>,
     wasm: bool,
-    sandboxed: bool,
 ) -> String {
     let names = capabilities
-        .map(|capability| describe_capability(capability, wasm, sandboxed))
+        .map(|capability| describe_capability(capability, wasm))
         .collect::<Vec<_>>();
     if names.is_empty() {
         "none".to_string()
@@ -17,7 +16,7 @@ pub(super) fn describe_capabilities(
     }
 }
 
-fn describe_capability(capability: Capability, wasm: bool, sandboxed: bool) -> String {
+fn describe_capability(capability: Capability, wasm: bool) -> String {
     if capability == Capability::NetConnect {
         let enforcement = if wasm {
             WASM_NETWORK_ENFORCEMENT
@@ -26,7 +25,7 @@ fn describe_capability(capability: Capability, wasm: bool, sandboxed: bool) -> S
         };
         return format!("{} ({enforcement})", capability.name());
     }
-    if capability.is_advisory() && sandboxed {
+    if capability.is_advisory() && wasm {
         return format!("{} (enforced)", capability.name());
     }
     if capability.is_advisory() {

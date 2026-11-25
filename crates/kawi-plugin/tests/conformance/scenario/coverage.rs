@@ -10,13 +10,11 @@ pub(crate) struct Uncovered {
 pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
     Uncovered {
         name: "editor.execute",
-        reason:
-            "requires the editor command registry; covered by app end-to-end process and wasm tests",
+        reason: "requires the editor command registry; covered by app WASM end-to-end tests",
     },
     Uncovered {
         name: "editor.list_commands",
-        reason:
-            "requires the editor command registry; covered by app end-to-end process and wasm tests",
+        reason: "requires the editor command registry; covered by app WASM end-to-end tests",
     },
     Uncovered {
         name: "config.get",
@@ -52,19 +50,19 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
     },
     Uncovered {
         name: "ui.panel_open",
-        reason: "requires editor panel state; covered by app process and wasm panel tests",
+        reason: "requires editor panel state; covered by app WASM panel tests",
     },
     Uncovered {
         name: "ui.panel_update",
-        reason: "requires editor panel state; covered by app process and wasm panel tests",
+        reason: "requires editor panel state; covered by app WASM panel tests",
     },
     Uncovered {
         name: "ui.panel_focus",
-        reason: "requires editor panel state; covered by app process and wasm panel tests",
+        reason: "requires editor panel state; covered by app WASM panel tests",
     },
     Uncovered {
         name: "ui.panel_close",
-        reason: "requires editor panel state; covered by app process and wasm panel tests",
+        reason: "requires editor panel state; covered by app WASM panel tests",
     },
     Uncovered {
         name: "ui.overlay_open",
@@ -96,27 +94,27 @@ pub(crate) const UNCOVERED_METHODS: &[Uncovered] = &[
     },
     Uncovered {
         name: "process.open",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.write",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.close_stdin",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.signal",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.kill",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.status",
-        reason: "requires a live child process; covered by app plugin job tests",
+        reason: "requires a live child process; covered by app WASM job tests",
     },
     Uncovered {
         name: "process.poll",
