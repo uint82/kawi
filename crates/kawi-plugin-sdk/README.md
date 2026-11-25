@@ -166,7 +166,7 @@ for event in process_jobs::poll(job)? {
 }
 ```
 
-The `process_jobs` module exposes `open`, `write`, `close_stdin`, `signal`, `kill`, `status`, and `poll`. WASM plugins are passive, so the host queues job output and exit events and `poll` drains them on the next plugin call. Process plugins receive the same events through the JSON-RPC event stream.
+The `process_jobs` module exposes `open`, `write`, `close_stdin`, `signal`, `kill`, `status`, and `poll`. Components are passive, so the host queues job output and exit events and `poll` drains them on the next plugin call.
 
 ## Project tasks
 

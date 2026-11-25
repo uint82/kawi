@@ -1,11 +1,11 @@
 ---
 title = "Plugin host APIs"
 aliases = ["permissions"]
-related = ["plugins", "plugin-protocol", "plugin-authoring", "plugin-migration", "configuration", "troubleshooting"]
+related = ["plugins", "plugin-authoring", "configuration", "troubleshooting"]
 ---
 # Plugin host APIs
 
-Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. Process plugins are frozen at protocol minor 12; the buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, variable, overlay, picker, and task APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
+Plugins declare the host APIs they use in `plugin.toml`. Kawi enables every declared API for a managed plugin. There is no `permissions.toml` and no per-capability prompt. Installing or updating a plugin is the trust decision. The buffer, window, control, option, runtime command, runtime keymap, autocmd, schedule, variable, overlay, picker, and task APIs are available only to WebAssembly components. The `window_created`, `window_closed`, `language_changed`, and `user` events are delivered to autocmds, not to `on-event` subscribers. An autocmd can register only for events allowed by the plugin's other capabilities; `editor.read` covers buffer and language events, `editor.windows` covers window events, and `editor.autocmds` covers user events.
 
 Declarations are a compatibility and audit surface. They tell the user what the plugin can do and let Kawi reject a component that imports an undeclared interface. The WebAssembly sandbox and the fixed WIT contract remain the enforcement boundary. A plugin cannot gain access by editing its installed files because the manifest and component hash are pinned in the lockfile.
 
@@ -85,9 +85,7 @@ Path scope is a component prefix. `/home/u/proj/src` is narrower than `/home/u/p
 
 `process.spawn` takes `commands`, an array of executable names or absolute paths. Relative paths are rejected. Bare names are resolved with the host `PATH` when the sandbox is built. Arguments are not scoped.
 
-`process.spawn` also enables background jobs. Process plugins use `process.open`, `process.write`, `process.close_stdin`, `process.signal`, `process.kill`, `process.status`, and `process.poll`. WASM plugins use the `process-jobs` WIT interface with the same operations. A job command must resolve to an entry in the same command scope. Jobs run in the plugin directory by default. A job `cwd` may be the plugin directory, the workspace, or the configuration directory; relative paths resolve from the plugin directory. Job environment entries add to or override the inherited environment. Each plugin may run 16 jobs, each job may emit 8 MiB of output, and each write may send 1 MiB. Kawi kills a plugin's jobs when the plugin stops, restarts, reloads, or is disabled. Process plugins receive job events as notifications; WASM plugins drain queued events with `process.poll`. See [Plugin protocol](help:plugin-protocol) for the job methods and events.
-
-The WebAssembly runtime exposes the `process-run` one-shot interface and the `process-jobs` interface. Both use the same `process.spawn` command scope. WASM job events are queued because components are passive; call `poll` on the next invocation to drain them.
+`process.spawn` also enables background jobs through the `process-jobs` WIT interface. A job command must resolve to an entry in the same command scope. Jobs run in the plugin directory by default. A job `cwd` may be the plugin directory, the workspace, or the configuration directory; relative paths resolve from the plugin directory. Job environment entries add to or override the inherited environment. Each plugin may run 16 jobs, each job may emit 8 MiB of output, and each write may send 1 MiB. Kawi kills a plugin's jobs when the plugin stops, restarts, reloads, or is disabled. Components are passive, so job output and exit events are queued; call `poll` on the next invocation to drain them.
 
 ## Project tasks
 
@@ -109,7 +107,7 @@ The editor runs the command synchronously before responding. Changes made by the
 
 ## Plugin commands and keymaps
 
-`editor.commands` and `editor.keymaps` enable runtime registration for WebAssembly plugins. Process plugins remain on protocol minor 12 and cannot use them.
+`editor.commands` and `editor.keymaps` enable runtime registration for WebAssembly plugins.
 
 `editor.commands` enables the `editor-commands` interface. A plugin registers a command ID, title, description, and aliases during `init` or any invocation. Kawi prefixes the command with the plugin name, so `greet` from plugin `hello` becomes `hello.greet`. Aliases are global, must not collide with an existing command, and obey the same lowercase ID rules. A plugin can register up to 256 commands. IDs are at most 64 bytes, titles 256 bytes, descriptions 1024 bytes, and each command may declare eight aliases.
 
@@ -150,7 +148,7 @@ editor_keymaps::set(&editor_keymaps::KeymapSpec {
 
 ## Visual customization
 
-`editor.decorations` enables `editor.set_decorations` and the WASM `editor-decorations` and `editor-signs` interfaces. Visual decorations and signs are stored independently, so updating one does not clear the other. The process API uses `scope` to select `all`, `visual`, or `signs`; it defaults to `all`. Decorations are data: the host owns layout, colors, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
+`editor.decorations` enables `editor.set_decorations` and the WASM `editor-decorations` and `editor-signs` interfaces. Visual decorations and signs are stored independently, so updating one does not clear the other. The call selects `all`, `visual`, or `signs`; it defaults to `all`. Decorations are data: the host owns layout, colors, and rendering. They remain until the plugin replaces them, the buffer closes, or the plugin stops. A revision change can leave them briefly stale until the next publish.
 
 Plugins declare named decoration groups in `plugin.toml`:
 
@@ -364,7 +362,7 @@ An ungated command runs whenever the plugin runs.
 - Host-mediated editor, UI, and diagnostics calls require the matching declaration. Interactive prompts also require an integer JSON-RPC request id. `config.get` and `config.list` need no declaration because they only expose the plugin's own settings.
 - `editor.execute` calls are limited to the declared command allowlist. Only built-in commands that take no arguments are composable.
 - Events require the matching declaration. A plugin that does not declare `editor.read` receives no editor events.
-- Process plugins are development-only trusted code. On Linux with a full Landlock ABI, Kawi applies filesystem and process-execution scopes from the declarations. macOS has no Landlock, so process plugins run unsandboxed there. Network scope is advisory for process plugins.
+- Plugin-spawned commands and tasks run under the host process sandbox. On Linux with a full Landlock ABI, Kawi applies filesystem and executable scopes from the declarations. macOS does not provide Landlock.
 
 ## Updates
 

@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Changed
+
+- Kawi no longer runs plugins as OS processes. The WIT contract remains frozen at `kawi:plugin@0.13.0`.
+- The editor plugin runtime is optional and off by default.
+
 ### Added
 
 - Add `editor_buffers_write::create` and `close` for plugin-owned scratch buffers.

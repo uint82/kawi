@@ -41,11 +41,10 @@ Ordering is irrelevant because both sets are canonical and sorted. A scope that 
 - Added and widened requests are withheld until the user approves them.
 - A grant is never carried over a widened scope, even if part of the grant would still fit.
 - Removed requests expose no access and their grants are reported as stale.
-- The default tier still applies without approval.
 
 ## Prompt
 
-Each plugin gets one prompt for its pending changes. The prompt lists every added and widened capability with its current decision. The user can toggle one item at a time and can allow all or deny all. Process plugins offer allow once, allow always, and deny per item. WebAssembly startup prompts offer allow always and deny because linking is fixed at instantiation.
+Each plugin gets one prompt for its pending changes. The prompt lists every added and widened capability with its current decision. The user can toggle one item at a time and can allow all or deny all. Startup prompts offer allow always and deny because linking is fixed at instantiation.
 
 Only real keyboard input answers the prompt. Plugin names, capability names, scope labels, and change labels are sanitized before display. Synthetic keys and plugin messages cannot answer or replace the prompt.
 
@@ -53,7 +52,7 @@ Only real keyboard input answers the prompt. Plugin names, capability names, sco
 
 The approved table is rewritten from the per-item decisions in one atomic file write. Allowed added and widened requests enter the approved set. Denied additions stay absent. Denied widenings keep their previous approved scope so the next load still reports a widening. Narrowed and unchanged requests update to the current request set, and removed requests leave the approved set.
 
-Comments and unrelated plugin grants are preserved. Kawi re-reads the file before merging. A failed write falls back to allow once for process plugins and reports an error for WebAssembly plugins.
+Comments and unrelated plugin grants are preserved. Kawi re-reads the file before merging. A failed write reports an error and leaves the previous grants in place.
 
 The plugin restarts once after the batch finishes, not after each item. A plugin with queued prompts for other capabilities still waits until its queue drains.
 
