@@ -43,6 +43,13 @@ pub struct LanguageConfig {
     pub indent_after_keywords: Vec<String>,
     pub indent_brackets: bool,
     pub indent_tags: bool,
+    pub indent_block_openers: Vec<String>,
+    pub indent_block_closers: Vec<String>,
+    pub indent_align_keywords: Vec<String>,
+    pub indent_branch_keywords: Vec<String>,
+    pub indent_branch_openers: Vec<String>,
+    pub indent_ignore_case: bool,
+    pub indent_keywords_in_brackets: bool,
     pub line_comment: Option<String>,
     pub block_comment: Option<BlockCommentConfig>,
     pub auto_pairs: Option<Vec<PairConfig>>,
@@ -69,6 +76,13 @@ impl LanguageConfig {
             indent_after_keywords: Vec::new(),
             indent_brackets: true,
             indent_tags: false,
+            indent_block_openers: Vec::new(),
+            indent_block_closers: Vec::new(),
+            indent_align_keywords: Vec::new(),
+            indent_branch_keywords: Vec::new(),
+            indent_branch_openers: Vec::new(),
+            indent_ignore_case: false,
+            indent_keywords_in_brackets: false,
             line_comment: None,
             block_comment: None,
             auto_pairs: None,
@@ -131,6 +145,41 @@ impl LanguageConfig {
 
     pub fn with_indent_tags(mut self) -> Self {
         self.indent_tags = true;
+        self
+    }
+
+    pub fn with_indent_block_openers<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_block_openers = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_block_closers<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_block_closers = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_align_keywords<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_align_keywords = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_branch_keywords<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_branch_keywords = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_branch_openers<const N: usize>(mut self, keywords: [&str; N]) -> Self {
+        self.indent_branch_openers = keywords.into_iter().map(str::to_string).collect();
+        self
+    }
+
+    pub fn with_indent_ignore_case(mut self, ignore_case: bool) -> Self {
+        self.indent_ignore_case = ignore_case;
+        self
+    }
+
+    pub fn with_indent_keywords_in_brackets(mut self, enabled: bool) -> Self {
+        self.indent_keywords_in_brackets = enabled;
         self
     }
 

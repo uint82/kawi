@@ -13,6 +13,13 @@ pub(super) struct RuleOverride {
     pub(super) after_keywords: Option<Value>,
     pub(super) brackets: Option<Value>,
     pub(super) tags: Option<Value>,
+    pub(super) block_openers: Option<Value>,
+    pub(super) block_closers: Option<Value>,
+    pub(super) align_keywords: Option<Value>,
+    pub(super) branch_keywords: Option<Value>,
+    pub(super) branch_openers: Option<Value>,
+    pub(super) ignore_case: Option<Value>,
+    pub(super) keywords_in_brackets: Option<Value>,
 }
 
 #[derive(Clone, Copy)]
@@ -58,60 +65,96 @@ pub(super) fn apply_rules(
         after_keywords,
         brackets,
         tags,
+        block_openers,
+        block_closers,
+        align_keywords,
+        branch_keywords,
+        branch_openers,
+        ignore_case,
+        keywords_in_brackets,
     } = override_config;
-    apply_string_rules(language, after_suffixes, after_keywords, warnings);
-    apply_flag_rules(language, brackets, tags, warnings);
+    apply_string_rules(
+        &language.name,
+        [
+            (
+                "indent_after_suffixes",
+                after_suffixes,
+                &mut language.indent_after_suffixes,
+            ),
+            (
+                "indent_after_keywords",
+                after_keywords,
+                &mut language.indent_after_keywords,
+            ),
+            (
+                "indent_block_openers",
+                block_openers,
+                &mut language.indent_block_openers,
+            ),
+            (
+                "indent_block_closers",
+                block_closers,
+                &mut language.indent_block_closers,
+            ),
+            (
+                "indent_align_keywords",
+                align_keywords,
+                &mut language.indent_align_keywords,
+            ),
+            (
+                "indent_branch_keywords",
+                branch_keywords,
+                &mut language.indent_branch_keywords,
+            ),
+            (
+                "indent_branch_openers",
+                branch_openers,
+                &mut language.indent_branch_openers,
+            ),
+        ],
+        warnings,
+    );
+    apply_flag_rules(
+        &language.name,
+        [
+            ("indent_brackets", brackets, &mut language.indent_brackets),
+            ("indent_tags", tags, &mut language.indent_tags),
+            (
+                "indent_ignore_case",
+                ignore_case,
+                &mut language.indent_ignore_case,
+            ),
+            (
+                "indent_keywords_in_brackets",
+                keywords_in_brackets,
+                &mut language.indent_keywords_in_brackets,
+            ),
+        ],
+        warnings,
+    );
 }
 
 fn apply_string_rules(
-    language: &mut LanguageConfig,
-    suffixes: Option<Value>,
-    keywords: Option<Value>,
+    language_name: &str,
+    rules: [(&str, Option<Value>, &mut Vec<String>); 7],
     warnings: &mut Vec<LanguageWarning>,
 ) {
-    if let Some(value) = suffixes {
-        apply_string_list(
-            &language.name,
-            value,
-            "indent_after_suffixes",
-            &mut language.indent_after_suffixes,
-            warnings,
-        );
-    }
-    if let Some(value) = keywords {
-        apply_string_list(
-            &language.name,
-            value,
-            "indent_after_keywords",
-            &mut language.indent_after_keywords,
-            warnings,
-        );
+    for (field, value, target) in rules {
+        if let Some(value) = value {
+            apply_string_list(language_name, value, field, target, warnings);
+        }
     }
 }
 
 fn apply_flag_rules(
-    language: &mut LanguageConfig,
-    brackets: Option<Value>,
-    tags: Option<Value>,
+    language_name: &str,
+    rules: [(&str, Option<Value>, &mut bool); 4],
     warnings: &mut Vec<LanguageWarning>,
 ) {
-    if let Some(value) = brackets {
-        apply_flag(
-            &language.name,
-            value,
-            "indent_brackets",
-            &mut language.indent_brackets,
-            warnings,
-        );
-    }
-    if let Some(value) = tags {
-        apply_flag(
-            &language.name,
-            value,
-            "indent_tags",
-            &mut language.indent_tags,
-            warnings,
-        );
+    for (field, value, target) in rules {
+        if let Some(value) = value {
+            apply_flag(language_name, value, field, target, warnings);
+        }
     }
 }
 
