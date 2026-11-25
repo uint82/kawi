@@ -140,6 +140,10 @@ fn remaining_languages_match_the_reference_highlighter() {
             "name: kawi\nenabled: true\nitems:\n  - one\n  - two\n",
         ),
         (LanguageId::Html, "<div class=\"box\">text</div>\n"),
+        (
+            LanguageId::Sql,
+            "WITH active AS (\n  SELECT id, email::text AS mailbox\n  FROM users\n  WHERE active = true AND score >= 1.5\n)\nSELECT q.id, COUNT(*) AS total\nFROM active q\nWHERE q.email ILIKE 'A%'\nGROUP BY q.id;\n",
+        ),
         (LanguageId::Css, ".box { color: red; display: flex; }\n"),
         (
             LanguageId::MarkdownInline,

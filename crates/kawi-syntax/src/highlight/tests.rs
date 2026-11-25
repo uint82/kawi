@@ -32,6 +32,8 @@ mod queries;
 mod ruby;
 mod ruby_tokens;
 mod rust;
+mod sql;
+mod sql_tokens;
 mod stability;
 mod support;
 mod typescript;

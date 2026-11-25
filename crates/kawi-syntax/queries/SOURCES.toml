@@ -288,6 +288,11 @@ name = "tree-sitter-ada"
 version = "0.9.2"
 license = "MIT"
 
+[[grammar]]
+name = "tree-sitter-sequel"
+version = "0.3.13"
+license = "MIT"
+
 [[adaptation]]
 file = "ada.scm"
 source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
@@ -302,6 +307,26 @@ license = "Apache-2.0"
 file = "ada-tokens.scm"
 source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
 license = "Apache-2.0"
+
+[[adaptation]]
+file = "sql.scm"
+source = "tree-sitter-sequel 0.3.13 queries/highlights.scm and nvim-treesitter 4916d659 queries/sql/highlights.scm"
+license = "MIT and Apache-2.0"
+
+[[adaptation]]
+file = "sql-keywords.scm"
+source = "tree-sitter-sequel 0.3.13 queries/highlights.scm and nvim-treesitter 4916d659 queries/sql/highlights.scm"
+license = "MIT and Apache-2.0"
+
+[[adaptation]]
+file = "sql-types.scm"
+source = "tree-sitter-sequel 0.3.13 queries/highlights.scm and nvim-treesitter 4916d659 queries/sql/highlights.scm"
+license = "MIT and Apache-2.0"
+
+[[adaptation]]
+file = "sql-tokens.scm"
+source = "tree-sitter-sequel 0.3.13 queries/highlights.scm and nvim-treesitter 4916d659 queries/sql/highlights.scm"
+license = "MIT and Apache-2.0"
 
 [[adaptation]]
 file = "markdown-inline.scm"

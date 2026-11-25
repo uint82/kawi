@@ -6,7 +6,7 @@ use std::sync::{Arc, PoisonError, RwLock};
 mod grammar;
 
 const MAX_QUERY_INHERITANCE: usize = 4;
-const LANGUAGE_COUNT: usize = 23;
+const LANGUAGE_COUNT: usize = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LanguageId {
@@ -32,6 +32,7 @@ pub enum LanguageId {
     Css,
     Markdown,
     Ada,
+    Sql,
     MarkdownInline,
 }
 
@@ -128,7 +129,7 @@ fn query_warnings(dir: &Path) -> Vec<String> {
 }
 
 impl LanguageId {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::Rust,
         Self::Toml,
         Self::TypeScript,
@@ -151,6 +152,7 @@ impl LanguageId {
         Self::Css,
         Self::Markdown,
         Self::Ada,
+        Self::Sql,
         Self::MarkdownInline,
     ];
 
@@ -189,6 +191,7 @@ impl LanguageId {
             "css" => Some(Self::Css),
             "md" | "markdown" => Some(Self::Markdown),
             "ada" | "adb" | "ads" => Some(Self::Ada),
+            "sql" | "postgres" | "postgresql" | "psql" => Some(Self::Sql),
             "markdown_inline" => Some(Self::MarkdownInline),
             _ => None,
         }
@@ -218,6 +221,7 @@ impl LanguageId {
             Self::Css => "css",
             Self::Markdown => "markdown",
             Self::Ada => "ada",
+            Self::Sql => "sql",
             Self::MarkdownInline => "markdown_inline",
         }
     }
@@ -269,7 +273,8 @@ impl LanguageId {
             Self::Css => 19,
             Self::Markdown => 20,
             Self::Ada => 21,
-            Self::MarkdownInline => 22,
+            Self::Sql => 22,
+            Self::MarkdownInline => 23,
         }
     }
 
