@@ -8,12 +8,12 @@ Set the `CARGO_REGISTRY_TOKEN` repository secret to a crates.io API token with p
 
 ## Versioning
 
-`kawi-plugin-sdk` is versioned independently from the editor. The SDK version and the WIT package version must match. The current WIT package is `kawi:plugin@0.13.0`. Interface changes bump the WIT package, and components built against an earlier package must be rebuilt.
+`kawi-plugin-sdk` is versioned independently from the editor. The SDK version and the WIT package version must match. The WIT package is frozen at `kawi:plugin@0.13.0` until the plugin feature is revisited at 1.0. Do not edit `plugin.wit` or bump the package version before that review. Components built against an earlier package must be rebuilt.
 
 ## Checklist
 
-1. Update `crates/kawi-plugin-sdk/Cargo.toml`, the root `Cargo.toml`, `examples/wasm-trim/Cargo.toml`, `crates/kawi/src/plugin_cli/scaffold.rs`, the package line in `crates/kawi-plugin-sdk/wit/plugin.wit`, the host import policy, the WAT fixtures, and documentation that pins the current version.
-2. Rebuild the WASM fixtures and trim example, refresh `Cargo.lock`, and confirm the SDK and WIT package versions match.
+1. Update `crates/kawi-plugin-sdk/Cargo.toml`, the root `Cargo.toml`, `examples/wasm-trim/Cargo.toml`, `crates/kawi/src/plugin_cli/scaffold.rs`, and documentation that pins the current version. Leave `crates/kawi-plugin-sdk/wit/plugin.wit` unchanged; `crates/kawi-plugin-sdk/tests/wit_freeze.rs` fails if it changes.
+2. Rebuild the WASM fixtures and trim example, refresh `Cargo.lock`, and confirm the freeze test passes.
 3. Run `cargo publish --dry-run -p kawi-plugin-sdk --locked`.
 4. Run `git diff --exit-code -- crates/kawi-plugin/tests/fixtures/wasm examples/wasm-trim` after a rebuild.
 5. Merge the release change.
