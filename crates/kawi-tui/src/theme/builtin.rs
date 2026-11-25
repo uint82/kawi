@@ -43,9 +43,13 @@ const BUILTIN_THEMES: &[BuiltinTheme] = &[
 #[cfg(test)]
 mod contrast_tests;
 #[cfg(test)]
+mod palette_tests;
+#[cfg(test)]
 mod snapshots;
 #[cfg(test)]
 mod syntax_tests;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 
