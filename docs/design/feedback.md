@@ -1,6 +1,6 @@
 # Feedback and diagnostics
 
-Status: first implementation. This covers parser failures, command errors, asynchronous service messages, and plugin messages that reach the message row.
+Status: typed implementation. Parser failures, command errors, asynchronous service messages, and plugin messages that reach the message row create `Diagnostic` values.
 
 ## Principles
 
@@ -79,10 +79,10 @@ A diagnostic has:
 - `code`: an optional stable identifier.
 - `severity`: error, warning, information, or success.
 - `message`: the human-readable explanation.
-- `source`: built-in editor, language server, task, Git, or plugin.
+- `source`: built-in editor, language server, task, Git, plugin, or external file change.
 - `help`: an optional help topic or command.
 
-The first implementation stores the rendered code and text on the message path and derives severity from the code prefix. Later phases add structured fields without changing the visible contract.
+The implementation stores the code, severity, source, message, and help on the diagnostic. `Diagnostic::render` turns it into text only at the message row or pager. `MessageHistory` stores the typed values, so `:messages` can render them again without reparsing prefixes. Severity is never inferred from the message text.
 
 Boundaries validate input once and produce diagnostics. Business logic returns typed results. Presentation decides color and layout. A single message should not be assembled in five places.
 
@@ -91,7 +91,7 @@ Boundaries validate input once and produce diagnostics. Business logic returns t
 Every message follows the same path:
 
 1. A boundary creates a diagnostic with a code and severity.
-2. The message sink normalizes it to `CODE: message`.
+2. The message sink renders it as `CODE: message` for display.
 3. The sink appends it to the bounded history.
 4. The sink sets it as the current message.
 5. If the text needs more than one row, the pager presents it instead of the message row.
@@ -110,12 +110,12 @@ Rules:
 
 Severity mapping:
 
-| Severity | Source | Message row |
+| Severity | Created by | Message row |
 | --- | --- | --- |
-| Error | `E###`, `K###`, `Error:` | Diagnostic error color |
-| Warning | `W###`, `Warning:` | Diagnostic warning color |
-| Information | No prefix | Base color |
-| Success | Explicit success call | Base color, bold |
+| Error | `Diagnostic::error` or a failure helper | Diagnostic error color |
+| Warning | `Diagnostic::warning` | Diagnostic warning color |
+| Information | `Diagnostic::information` | Base color |
+| Success | `Diagnostic::success` | Base color, bold |
 
 Color is supplementary. The code and wording must carry the meaning without it.
 
@@ -171,7 +171,7 @@ History is not a log file. Use `:health`, `:lsp status`, `:plugin logs`, or task
 
 ## Plugins
 
-Plugin messages currently arrive as plain text without severity or code. They enter history as information.
+Plugin messages currently arrive as plain text without severity or code. The host wraps them as information with the plugin source. They enter history in that typed form.
 
 The next protocol version should add optional `severity`, `code`, and `source` fields to `UiMessageParams`. Keep the current fields required for compatibility. Reject unknown severity values at the host boundary and render them as information. A plugin message must not be able to forge a built-in `E###` code without a source. Prefix plugin codes with the plugin name when they are shown to the user.
 
@@ -211,8 +211,8 @@ Rendering tests cover:
 
 ## Rollout
 
-1. Command boundary: classify parser failures, report them, and suggest names.
-2. Message sink: severity, bounded history, `:messages`, and message row rendering.
-3. Cleanup: replace bare `E:` messages, fix misused Vim codes, and route direct message writes through the sink.
-4. Plugins: add typed severity and source fields to the protocol.
-5. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index.
+1. Command boundary: classify parser failures, report them, and suggest names. Done.
+2. Message sink: typed diagnostics, bounded history, `:messages`, and message row rendering. Done.
+3. Cleanup: replace bare `E:` messages, fix misused Vim codes, and route direct message writes through the sink. In progress.
+4. Plugins: add typed severity and source fields to the protocol. Pending.
+5. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index. Pending.
