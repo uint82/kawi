@@ -223,13 +223,9 @@ Queries are tied to a grammar revision. A pack update must update grammar and qu
 
 A pack declares the minimum kawi version. Kawi should reject packs that require a newer host and warn when a pack targets an older, unsupported format.
 
-The Wasmtime dependency needs an explicit decision. As of tree-sitter 0.27.2, the `wasm` feature uses `wasmtime-c-api-impl` 48.0.8, while kawi pins Wasmtime 50.0.3 for plugins. Cargo can link both, but that means two engines, more binary size, and two security surfaces. Choose one of:
+The Wasmtime dependency is resolved. Kawi aligns to 48.0.10, the version tree-sitter 0.27.2 pins. Wasmtime 48 is an LTS release supported into 2028, while the previous 50.0.3 was a normal release with a short support window. One engine keeps binary size and the security surface down.
 
-- align the plugin runtime with the tree-sitter-compatible Wasmtime version
-- patch or upstream tree-sitter to use the kawi Wasmtime version
-- accept two versions temporarily behind separate features
-
-Do not ignore this. It affects binary size, build time, and vulnerability response.
+The alternatives were considered and rejected: patching tree-sitter to use a newer Wasmtime adds maintenance and upstream risk, and accepting two engines adds binary size and a second vulnerability response path for no feature gain.
 
 ## Testing
 

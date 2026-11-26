@@ -5,6 +5,9 @@ mod doctor;
 mod event;
 mod file_views;
 mod fold_view;
+#[cfg(feature = "wasm-grammars")]
+mod grammar;
+mod grammar_cli;
 mod ipc;
 mod keymap;
 mod leader;
@@ -40,6 +43,8 @@ Usage:
   kawi plugin build [directory]
   kawi plugin inspect [directory]
   kawi plugin api [--json]
+  kawi grammar install <path>
+  kawi grammar status
   kawi --version
   kawi --help
 
@@ -60,6 +65,8 @@ fn main() -> Result<()> {
     let paths = StatePaths::resolve();
     if let Some(paths) = paths.as_ref() {
         kawi_syntax::set_user_query_dir(paths.queries.clone());
+        #[cfg(feature = "wasm-grammars")]
+        grammar::register(&paths.grammars);
         #[cfg(feature = "wasm")]
         kawi_plugin::set_wasm_cache_dir(paths.cache.join("wasm"));
     }
@@ -90,6 +97,10 @@ fn main() -> Result<()> {
 }
 
 fn run_utility(args: &[String]) -> Result<bool> {
+    if args.first().is_some_and(|arg| arg == "grammar") {
+        grammar_cli::run(&args[1..])?;
+        return Ok(true);
+    }
     if args.first().is_some_and(|arg| arg == "plugin") {
         plugin_cli::run(&args[1..])?;
         return Ok(true);
@@ -266,6 +277,8 @@ mod tests {
             config_log: dir.join("config.log"),
             #[cfg(feature = "wasm")]
             cache: dir.join("cache"),
+            #[cfg(feature = "wasm-grammars")]
+            grammars: dir.join("grammars"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
             installed_plugins: dir.join("installed-plugins"),

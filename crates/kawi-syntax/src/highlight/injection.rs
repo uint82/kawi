@@ -243,9 +243,13 @@ impl Context<'_> {
                 Some(masked) => (masked, 0..masked.len_bytes()),
                 None => (self.text, prepared.source.clone()),
             };
-            let Some(tree) =
-                text::parse_embedded(self.parsers, parse_text, injection.language, &parse_range)
-            else {
+            let Some(tree) = text::parse_embedded(
+                self.parsers,
+                parse_text,
+                injection.language,
+                &parse_range,
+                || runtime.source().parser(),
+            ) else {
                 continue;
             };
             let text_source = match prepared.text.as_ref() {

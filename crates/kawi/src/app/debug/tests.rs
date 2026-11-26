@@ -28,6 +28,8 @@ fn state_paths(root: &Path) -> StatePaths {
         config_log: root.join("config.log"),
         #[cfg(feature = "wasm")]
         cache: root.join("cache"),
+        #[cfg(feature = "wasm-grammars")]
+        grammars: root.join("grammars"),
         keymaps: root.join("keymaps.toml"),
         plugins: root.join("plugins"),
         installed_plugins: root.join("installed-plugins"),
