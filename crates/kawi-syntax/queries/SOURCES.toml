@@ -289,6 +289,11 @@ version = "0.9.2"
 license = "MIT"
 
 [[grammar]]
+name = "tree-sitter-adl"
+version = "0.7.0"
+license = "MIT"
+
+[[grammar]]
 name = "tree-sitter-sequel"
 version = "0.3.13"
 license = "MIT"
@@ -307,6 +312,21 @@ license = "Apache-2.0"
 file = "ada-tokens.scm"
 source = "nvim-treesitter 4916d659 queries/ada/highlights.scm"
 license = "Apache-2.0"
+
+[[adaptation]]
+file = "adl.scm"
+source = "tree-sitter-adl 0.7.0 queries/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "adl-types.scm"
+source = "tree-sitter-adl 0.7.0 queries/highlights.scm"
+license = "MIT"
+
+[[adaptation]]
+file = "adl-tokens.scm"
+source = "tree-sitter-adl 0.7.0 queries/highlights.scm"
+license = "MIT"
 
 [[adaptation]]
 file = "sql.scm"
