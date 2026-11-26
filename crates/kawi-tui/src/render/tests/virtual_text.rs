@@ -1,7 +1,7 @@
 use super::*;
 use crate::frame::{VirtualText, VirtualTextPlacement};
 use crate::paint;
-use crate::render::highlight::paint::paint_plugin;
+use crate::render::highlight::patch::{patch_span_at, PatchTarget};
 use crate::render::virtual_text::{finish_virtual_text, virtual_text_segments};
 
 #[test]
@@ -76,7 +76,22 @@ fn hidden_plugin_spans_apply_conceal() {
     let style = plugin_style(true);
     let theme = Theme::default();
     let mut out = surface(1, 1, &theme);
-    paint_plugin(&mut out, ":", style, &theme, theme.base.background).expect("paint plugin");
+    out.write_text(":");
+    let span = HighlightSpan {
+        screen_row: 0,
+        from: 0,
+        text: ":".to_string(),
+        tint: Tint::Plugin(style),
+    };
+    patch_span_at(
+        &mut out,
+        &span,
+        PatchTarget {
+            x: 0,
+            y: 0,
+            theme: &theme,
+        },
+    );
     let cell = out.cell(0, 0).expect("plugin cell");
     assert_eq!(cell.text(), ":");
     assert!(cell.style().is_hidden());

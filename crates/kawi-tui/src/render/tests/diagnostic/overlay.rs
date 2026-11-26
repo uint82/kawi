@@ -1,5 +1,5 @@
 use super::*;
-use crate::render::highlight::paint::paint_span_at;
+use crate::render::highlight::patch::{patch_span_at, PatchTarget};
 
 fn diagnostic(
     from: usize,
@@ -15,11 +15,14 @@ fn diagnostic(
     }
 }
 
-fn layer<'a>(spans: &'a [HighlightSpan], underline: DiagnosticUnderline) -> DiagnosticLayer<'a> {
+fn diagnostic_layer<'a>(
+    spans: &'a [HighlightSpan],
+    theme: &'a Theme,
+    underline: DiagnosticUnderline,
+) -> DiagnosticLayer<'a> {
     DiagnosticLayer {
         spans,
-        x: 0,
-        y: 0,
+        target: PatchTarget { x: 0, y: 0, theme },
         underline,
     }
 }
@@ -31,7 +34,7 @@ fn paint(out: &mut Surface, text: &str, tint: Tint, theme: &Theme) {
         text: text.to_string(),
         tint,
     };
-    paint_span_at(out, &span, 0, 0, theme, theme.base.background).expect("paint span");
+    patch_span_at(out, &span, PatchTarget { x: 0, y: 0, theme });
 }
 
 fn apply_diagnostic(
@@ -40,7 +43,7 @@ fn apply_diagnostic(
     theme: &Theme,
     underline: DiagnosticUnderline,
 ) {
-    patch_decorations(out, &layer(spans, underline), theme);
+    patch_decorations(out, &diagnostic_layer(spans, theme, underline));
 }
 
 fn style_at(out: &Surface, x: usize) -> crate::surface::Style {
@@ -172,9 +175,9 @@ fn tagged_diagnostics_keep_the_tag_foreground_without_an_underline() {
         let mut out = surface(1, 1, &theme);
         out.write_text("x");
         let spans = [diagnostic(0, "x", severity, Some(tag))];
-        let layer = layer(&spans, DiagnosticUnderline::Curly);
-        patch_tag_foreground(&mut out, &layer, &theme);
-        patch_decorations(&mut out, &layer, &theme);
+        let layer = diagnostic_layer(&spans, &theme, DiagnosticUnderline::Curly);
+        patch_tag_foreground(&mut out, &layer);
+        patch_decorations(&mut out, &layer);
         let style = style_at(&out, 0);
         assert_eq!(style.foreground(), theme.diagnostic_color(severity));
         assert_eq!(style.is_dim(), is_dim);
@@ -195,10 +198,10 @@ fn tagged_diagnostic_foreground_is_lower_priority_than_syntax() {
         DiagnosticSeverity::Warning,
         Some(DiagnosticTag::Unnecessary),
     )];
-    let layer = layer(&spans, DiagnosticUnderline::Curly);
-    patch_tag_foreground(&mut out, &layer, &theme);
+    let layer = diagnostic_layer(&spans, &theme, DiagnosticUnderline::Curly);
+    patch_tag_foreground(&mut out, &layer);
     paint(&mut out, "fn", Tint::Syntax(keyword), &theme);
-    patch_decorations(&mut out, &layer, &theme);
+    patch_decorations(&mut out, &layer);
     let style = style_at(&out, 0);
     let expected = theme
         .syntax

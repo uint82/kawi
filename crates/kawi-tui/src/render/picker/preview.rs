@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
 use std::io::Write;
 
-use super::super::highlight::{paint_span_at, syntax_highlight_spans, SpanView};
+use super::super::highlight::{patch_spans_at, syntax_highlight_spans, PatchTarget, SpanView};
 use super::super::special_key::{draw_special_keys, SpecialKeyArea, SpecialKeyDraw};
 use super::write_padding;
 use crate::display;
 use crate::frame::{Frame, PickerPreview, Rect};
 use crate::paint;
-use crate::surface::Surface;
+use crate::surface::{StylePatch, Surface};
 use crate::text::{display_width, sanitize_text, truncate_to_display_width};
 use kawi_editor::Viewport;
 
@@ -134,9 +134,15 @@ fn draw_highlights(out: &mut Surface, frame: &Frame, view: &PreviewView<'_, '_>)
         leftcol: 0,
         tabstop: view.preview.tabstop,
     };
-    for span in syntax_highlight_spans(view.preview.syntax_spans, &span_view) {
-        paint_preview_span(out, frame, view, &span)?;
-    }
+    patch_spans_at(
+        out,
+        &syntax_highlight_spans(view.preview.syntax_spans, &span_view),
+        PatchTarget {
+            x: view.rect.x.saturating_add(view.gutter_width),
+            y: view.rect.y,
+            theme: frame.theme,
+        },
+    );
     draw_special_keys(
         out,
         SpecialKeyDraw::from_area(
@@ -155,50 +161,35 @@ fn draw_highlights(out: &mut Surface, frame: &Frame, view: &PreviewView<'_, '_>)
     if let Some(focus) = view.preview.focus_line {
         if let Some(offset) = focus.checked_sub(top) {
             if let Some(line) = view.lines.get(offset) {
-                paint_focus_line(out, frame, view, line, offset, text_width)?;
+                patch_focus_line(out, frame, view, FocusLine { text: line, offset });
             }
         }
     }
     Ok(())
 }
 
-fn paint_focus_line(
-    out: &mut Surface,
-    frame: &Frame,
-    view: &PreviewView<'_, '_>,
-    line: &str,
+struct FocusLine<'a> {
+    text: &'a str,
     offset: usize,
-    width: usize,
-) -> Result<()> {
-    out.move_to(
-        view.rect.x.saturating_add(view.gutter_width),
-        view.rect.y.saturating_add(offset),
-    );
-    paint::apply_match(out, &frame.theme.selection);
-    let text = display::slice_screen(line, 0, width, view.preview.tabstop);
-    write!(out, "{text}").context("write focused preview line")?;
-    paint::apply_colors(
-        out,
-        frame.theme.base.foreground,
-        frame.theme.float_background,
-    );
-    Ok(())
 }
 
-fn paint_preview_span(
+fn patch_focus_line(
     out: &mut Surface,
     frame: &Frame,
     view: &PreviewView<'_, '_>,
-    span: &super::super::highlight::HighlightSpan,
-) -> Result<()> {
-    paint_span_at(
-        out,
-        span,
+    focus: FocusLine<'_>,
+) {
+    let width = view.rect.width.saturating_sub(view.gutter_width);
+    let text = display::slice_screen(focus.text, 0, width, view.preview.tabstop);
+    out.patch_range(
         view.rect.x.saturating_add(view.gutter_width),
-        view.rect.y,
-        frame.theme,
-        frame.theme.float_background,
-    )
+        view.rect.y.saturating_add(focus.offset),
+        display_width(&text),
+        StylePatch {
+            background: Some(frame.theme.selection.background),
+            ..StylePatch::default()
+        },
+    );
 }
 
 #[cfg(test)]

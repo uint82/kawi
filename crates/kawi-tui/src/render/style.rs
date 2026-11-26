@@ -1,13 +1,9 @@
 use anyhow::Result;
 use crossterm::style::Color;
 
-use kawi_syntax::SyntaxHighlight;
-
 use crate::paint;
 use crate::surface::Surface;
 use crate::theme::Theme;
-
-use super::highlight::write_segment;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct MarkdownRenderStyle {
@@ -61,36 +57,6 @@ fn markdown_style(
     }
 }
 
-pub(super) fn paint_syntax(
-    out: &mut Surface,
-    text: &str,
-    highlight: SyntaxHighlight,
-    theme: &Theme,
-    background: Color,
-) -> Result<()> {
-    apply_syntax_style(out, highlight, theme, background);
-    write_segment(out, text)?;
-    out.reset_attributes();
-    paint::apply_colors(out, theme.base.foreground, background);
-    Ok(())
-}
-
-pub(super) fn apply_syntax_style(
-    out: &mut Surface,
-    highlight: SyntaxHighlight,
-    theme: &Theme,
-    background: Color,
-) {
-    let style = theme.syntax.style(highlight).unwrap_or_default();
-    out.reset_attributes();
-    paint::apply_colors(
-        out,
-        style.foreground.unwrap_or(theme.base.foreground),
-        style.background.unwrap_or(background),
-    );
-    apply_attributes(out, style.bold, style.italic, style.underline);
-}
-
 pub(super) fn apply_attributes(out: &mut Surface, bold: bool, italic: bool, underline: bool) {
     out.set_bold(bold);
     out.set_italic(italic);
@@ -120,6 +86,7 @@ pub(super) fn apply_markdown_style(
 #[cfg(test)]
 mod tests {
     use crossterm::style::Color;
+    use kawi_syntax::SyntaxHighlight;
 
     use super::*;
 

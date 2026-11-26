@@ -2,22 +2,23 @@ use crate::frame::{DiagnosticSeverity, DiagnosticSpan, DiagnosticTag, Diagnostic
 use crate::surface::{StylePatch, Surface, UnderlinePatch};
 use crate::theme::Theme;
 
-use super::highlight::{patch_span_at, span_segment_at, HighlightSpan, SpanView, Tint};
+use super::highlight::{
+    apply_patch_at, span_segment_at, HighlightSpan, PatchTarget, SpanView, Tint,
+};
 
 pub(super) struct DiagnosticLayer<'a> {
     pub(super) spans: &'a [HighlightSpan],
-    pub(super) x: usize,
-    pub(super) y: usize,
+    pub(super) target: PatchTarget<'a>,
     pub(super) underline: DiagnosticUnderline,
 }
 
 impl DiagnosticLayer<'_> {
     fn patch(&self, out: &mut Surface, span: &HighlightSpan, patch: StylePatch) {
-        patch_span_at(out, span, self.x, self.y, patch);
+        apply_patch_at(out, span, self.target, patch);
     }
 }
 
-pub(super) fn patch_tag_foreground(out: &mut Surface, layer: &DiagnosticLayer<'_>, theme: &Theme) {
+pub(super) fn patch_tag_foreground(out: &mut Surface, layer: &DiagnosticLayer<'_>) {
     for span in layer.spans {
         let Tint::Diagnostic { severity, tag } = span.tint else {
             continue;
@@ -29,14 +30,14 @@ pub(super) fn patch_tag_foreground(out: &mut Surface, layer: &DiagnosticLayer<'_
             out,
             span,
             StylePatch {
-                foreground: Some(theme.diagnostic_color(severity)),
+                foreground: Some(layer.target.theme.diagnostic_color(severity)),
                 ..StylePatch::default()
             },
         );
     }
 }
 
-pub(super) fn patch_decorations(out: &mut Surface, layer: &DiagnosticLayer<'_>, theme: &Theme) {
+pub(super) fn patch_decorations(out: &mut Surface, layer: &DiagnosticLayer<'_>) {
     for span in layer.spans {
         let Tint::Diagnostic { severity, tag } = span.tint else {
             continue;
@@ -44,7 +45,7 @@ pub(super) fn patch_decorations(out: &mut Surface, layer: &DiagnosticLayer<'_>, 
         layer.patch(
             out,
             span,
-            decoration_patch(severity, tag, layer.underline, theme),
+            decoration_patch(severity, tag, layer.underline, layer.target.theme),
         );
     }
 }

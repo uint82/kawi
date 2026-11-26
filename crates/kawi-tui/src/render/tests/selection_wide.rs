@@ -1,7 +1,7 @@
 use super::{spans_of, viewport};
 use crate::display;
 use crate::frame::Selection;
-use crate::render::selection::paint_plain;
+use crate::render::highlight::patch::{patch_span_at, PatchTarget};
 use crate::surface::Surface;
 use crate::theme::Theme;
 use kawi_buffer::unicode;
@@ -34,9 +34,15 @@ fn selected_cells(line: &str, cursor: usize) -> Vec<String> {
         Some((0, cursor)),
     );
     for span in spans {
-        surface.move_to(span.from, 0);
-        paint_plain(&mut surface, &span.text, &theme, theme.selection.background)
-            .expect("paint selection");
+        patch_span_at(
+            &mut surface,
+            &span,
+            PatchTarget {
+                x: 0,
+                y: 0,
+                theme: &theme,
+            },
+        );
     }
     cell_text(&surface, width)
 }
@@ -91,9 +97,15 @@ fn visual_painting_keeps_complex_emoji_aligned_for_all_ranges() {
                         Surface::new(width, 1, theme.base.foreground, theme.base.background);
                     surface.write_text(line);
                     for span in spans {
-                        surface.move_to(span.from, 0);
-                        paint_plain(&mut surface, &span.text, &theme, theme.selection.background)
-                            .expect("paint selection");
+                        patch_span_at(
+                            &mut surface,
+                            &span,
+                            PatchTarget {
+                                x: 0,
+                                y: 0,
+                                theme: &theme,
+                            },
+                        );
                     }
                     assert_eq!(
                         cell_text(&surface, width),
