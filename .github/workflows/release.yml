@@ -57,13 +57,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --release --locked -p kawi --target ${{ matrix.target }}
+        run: cargo build --release --locked -p kawi --features wasm-grammars --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
           name="kawi-v${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/kawi" "dist/$name/"
+          mkdir -p "dist/$name/share/kawi/grammars/adl"
+          cp -R "crates/kawi-grammar/packs/adl/0.7.0" "dist/$name/share/kawi/grammars/adl/"
           cp LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
