@@ -32,8 +32,8 @@ impl App {
         if let Some(name) = topic.strip_prefix(OPTION_TOPIC_PREFIX) {
             return self.option_view(name.trim());
         }
-        let page = HelpIndex.resolve(topic)?;
-        Some(page_view(page, HelpIndex.code(topic)))
+        let target = HelpIndex.lookup(topic)?;
+        Some(page_view(target.page, target.code))
     }
 
     fn options_view(&self) -> HelpView {

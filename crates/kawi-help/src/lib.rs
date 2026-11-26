@@ -2,13 +2,16 @@ mod pages {
     include!(concat!(env!("OUT_DIR"), "/pages.rs"));
 }
 
+mod code_registry {
+    include!(concat!(env!("OUT_DIR"), "/codes.rs"));
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HelpPage {
     pub slug: &'static str,
     pub title: &'static str,
     pub aliases: &'static [&'static str],
     pub related: &'static [&'static str],
-    pub codes: &'static [&'static str],
     body: &'static str,
     body_start: usize,
 }
@@ -17,6 +20,12 @@ impl HelpPage {
     pub fn body(self) -> &'static str {
         &self.body[self.body_start..]
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HelpTarget {
+    pub page: HelpPage,
+    pub code: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -29,7 +38,6 @@ impl HelpIndex {
             title: page.title,
             aliases: page.aliases,
             related: page.related,
-            codes: page.codes,
             body: page.body,
             body_start: page.body_start,
         })
@@ -39,41 +47,50 @@ impl HelpIndex {
         self.pages().find(|page| page.slug == slug)
     }
 
-    pub fn resolve(self, topic: &str) -> Option<HelpPage> {
+    pub fn lookup(self, topic: &str) -> Option<HelpTarget> {
         let query = normalize_topic(topic);
-        let slug = query.to_ascii_lowercase().replace([' ', '_'], "-");
-        self.pages()
-            .find(|page| {
-                page.slug == slug
-                    || page
-                        .aliases
-                        .iter()
-                        .any(|alias| alias.eq_ignore_ascii_case(query))
-                    || page.title.eq_ignore_ascii_case(query)
-            })
-            .or_else(|| self.code_page(query))
+        if let Some(page) = self.page_topic(query) {
+            return Some(HelpTarget { page, code: None });
+        }
+        let entry = code_entry(query)?;
+        let page = self.page(entry.page)?;
+        Some(HelpTarget {
+            page,
+            code: Some(entry.code),
+        })
     }
 
-    pub fn code(self, topic: &str) -> Option<&'static str> {
-        let query = normalize_topic(topic);
-        self.codes().find(|code| code.eq_ignore_ascii_case(query))
+    pub fn resolve(self, topic: &str) -> Option<HelpPage> {
+        self.lookup(topic).map(|target| target.page)
     }
 
     pub fn codes(self) -> impl Iterator<Item = &'static str> {
-        self.pages().flat_map(|page| page.codes.iter().copied())
+        code_registry::CODE_FILES.iter().map(|entry| entry.code)
     }
 
-    fn code_page(self, query: &str) -> Option<HelpPage> {
+    fn page_topic(self, query: &str) -> Option<HelpPage> {
+        let slug = query.to_ascii_lowercase().replace([' ', '_'], "-");
         self.pages().find(|page| {
-            page.codes
-                .iter()
-                .any(|code| code.eq_ignore_ascii_case(query))
+            page.slug == slug
+                || page
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.eq_ignore_ascii_case(query))
+                || page.title.eq_ignore_ascii_case(query)
         })
     }
 }
 
 fn normalize_topic(topic: &str) -> &str {
-    topic.trim().trim_start_matches("help:")
+    topic.trim().trim_start_matches("help:").trim()
+}
+
+fn code_entry(query: &str) -> Option<&'static code_registry::CodeFile> {
+    let query = query.to_ascii_uppercase();
+    code_registry::CODE_FILES
+        .binary_search_by(|entry| entry.code.cmp(query.as_str()))
+        .ok()
+        .map(|index| &code_registry::CODE_FILES[index])
 }
 
 #[cfg(test)]
@@ -133,22 +150,48 @@ mod tests {
     }
 
     #[test]
-    fn error_codes_resolve_to_the_code_page() {
+    fn lookup_resolves_error_codes_to_the_reference_page() {
         let index = HelpIndex;
-        assert_eq!(index.resolve("E492").expect("E492").slug, "errors");
-        assert_eq!(index.resolve("k001").expect("K001").slug, "errors");
-        assert_eq!(index.code("e492"), Some("E492"));
-        assert_eq!(index.code("K001"), Some("K001"));
-        assert_eq!(index.resolve("E9999"), None);
+        let target = index.lookup("E492").expect("E492");
+        assert_eq!(target.page.slug, "errors");
+        assert_eq!(target.code, Some("E492"));
+        let target = index.lookup("k001").expect("K001");
+        assert_eq!(target.page.slug, "errors");
+        assert_eq!(target.code, Some("K001"));
+        assert!(index.lookup("E9999").is_none());
     }
 
     #[test]
-    fn error_codes_are_unique_and_uppercase() {
+    fn lookup_normalizes_whitespace_and_the_help_prefix() {
+        let target = HelpIndex.lookup("  help:e492  ").expect("E492");
+        assert_eq!(target.code, Some("E492"));
+    }
+
+    #[test]
+    fn lookup_returns_page_topics_without_a_code() {
+        let target = HelpIndex.lookup("errors").expect("errors");
+        assert_eq!(target.page.slug, "errors");
+        assert_eq!(target.code, None);
+        assert_eq!(HelpIndex.lookup("help:errors").expect("errors").code, None);
+    }
+
+    #[test]
+    fn lookup_requires_the_whole_code() {
         let index = HelpIndex;
-        let mut seen = std::collections::BTreeSet::new();
-        for code in index.codes() {
+        assert!(index.lookup("").is_none());
+        assert!(index.lookup("help:").is_none());
+        assert!(index.lookup("E49").is_none());
+        assert!(index.lookup("E4920").is_none());
+        assert!(index.lookup("E492: Not an editor command").is_none());
+    }
+
+    #[test]
+    fn codes_are_sorted_unique_and_uppercase() {
+        let codes: Vec<_> = HelpIndex.codes().collect();
+        assert!(!codes.is_empty());
+        assert!(codes.windows(2).all(|pair| pair[0] < pair[1]));
+        for code in codes {
             assert_eq!(code, code.to_ascii_uppercase());
-            assert!(seen.insert(code), "duplicate code {code}");
         }
     }
 }
