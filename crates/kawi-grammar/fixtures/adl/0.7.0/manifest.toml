@@ -1,0 +1,16 @@
+format = 1
+id = "adl"
+version = "0.7.0"
+language = "adl"
+grammar = "grammar.wasm"
+grammar_sha256 = "3ffec313c96b3f2b78a408718403f0e8fb23570c98befb78ee849d9b37093a18"
+grammar_revision = "5ffcda9174faa0b24331513c00f35cac823c1960"
+abi_min = 15
+abi_max = 15
+minimum_kawi = "0.0.1"
+repository = "https://github.com/alexytsu/tree-sitter-adl"
+license = "MIT"
+
+[queries]
+highlights = "queries/highlights.scm"
+highlights_sha256 = "c3e9f89478bc22075a46d7d4518c0984205999348c909eceb06cec7fd4fd005b"

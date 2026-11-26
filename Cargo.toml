@@ -26,6 +26,7 @@ kawi-completion = { version = "0.0.1", path = "crates/kawi-completion" }
 kawi-dap = { version = "0.0.1", path = "crates/kawi-dap" }
 kawi-editor = { version = "0.0.1", path = "crates/kawi-editor" }
 kawi-git = { version = "0.0.1", path = "crates/kawi-git" }
+kawi-grammar = { version = "0.0.1", path = "crates/kawi-grammar" }
 kawi-help = { version = "0.0.1", path = "crates/kawi-help" }
 kawi-jsonrpc = { version = "0.0.1", path = "crates/kawi-jsonrpc" }
 kawi-lsp = { version = "0.0.1", path = "crates/kawi-lsp" }
