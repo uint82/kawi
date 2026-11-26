@@ -42,3 +42,24 @@ fn highlights_within_budget() {
     );
     assert!(elapsed < HIGHLIGHT_BUDGET, "highlight took {elapsed:?}");
 }
+
+#[test]
+fn compares_native_and_wasm_highlight_latency() {
+    let grammar = support::grammar();
+    let source = support::large_source(200);
+
+    let native_start = Instant::now();
+    let native_spans = highlight_spans(support::native_language(), &source, None);
+    let native_elapsed = native_start.elapsed();
+
+    let wasm_start = Instant::now();
+    let wasm_spans = highlight_spans(grammar.language().clone(), &source, Some(grammar));
+    let wasm_elapsed = wasm_start.elapsed();
+
+    eprintln!(
+        "native highlight ({} bytes): {native_elapsed:?}",
+        source.len()
+    );
+    eprintln!("wasm highlight ({} bytes): {wasm_elapsed:?}", source.len());
+    assert_eq!(wasm_spans, native_spans);
+}
