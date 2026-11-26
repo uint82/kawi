@@ -72,6 +72,14 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_line_comment("--")
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
+        LanguageConfig::new("adl", "adl")
+            .with_spaces(4)
+            .with_grammar("adl")
+            .with_extensions(["adl", "adl-cpp", "adl-hs", "adl-java", "adl-rs", "adl-ts"])
+            .with_root_markers(["adl-package.json", ".git"])
+            .with_servers(["adl-lsp"])
+            .with_line_comment("//")
+            .with_auto_pairs([('[', ']'), ('{', '}'), ('<', '>'), ('"', '"')]),
         LanguageConfig::new("protobuf", "proto")
             .with_spaces(2)
             .with_extensions(["proto"])

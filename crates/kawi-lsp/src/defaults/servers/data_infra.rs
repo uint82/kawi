@@ -3,6 +3,7 @@ use crate::ServerConfig;
 use std::collections::BTreeMap;
 
 const SERVERS: &[(&str, &str, &[&str])] = &[
+    ("adl-lsp", "adl-lsp", &[]),
     ("buf", "buf", &["lsp", "serve", "--timeout", "0"]),
     ("cmake-language-server", "cmake-language-server", &[]),
     ("docker-langserver", "docker-langserver", &["--stdio"]),
