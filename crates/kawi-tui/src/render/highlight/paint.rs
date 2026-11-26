@@ -4,9 +4,9 @@ use std::borrow::Cow;
 use std::io::Write;
 
 use crate::display;
-use crate::frame::{DecorationSpan, DiagnosticUnderline, PaneFrame, PluginStyle};
+use crate::frame::{DecorationSpan, PaneFrame, PluginStyle};
 use crate::paint;
-use crate::surface::Surface;
+use crate::surface::{StylePatch, Surface};
 use crate::text::display_width;
 use crate::theme::{MatchColors, Theme};
 
@@ -31,6 +31,14 @@ pub(crate) fn draw_highlight(out: &mut Surface, pane: &PaneFrame<'_>, theme: &Th
         leftcol: pane.viewport.leftcol(),
         tabstop: pane.tabstop,
     };
+    let diagnostic_spans = diagnostic::diagnostic_highlight_spans(pane.diagnostic_spans, &view);
+    let diagnostic_layer = diagnostic::DiagnosticLayer {
+        spans: &diagnostic_spans,
+        x: pane.rect.x.saturating_add(gutter_width),
+        y: pane.rect.y,
+        underline: pane.diagnostic_underline,
+    };
+    diagnostic::patch_tag_foreground(out, &diagnostic_layer, theme);
     let syntax_spans = syntax_highlight_spans(pane.syntax_spans, &view);
     for span in &syntax_spans {
         paint_span(out, pane, span, gutter_width, theme)?;
@@ -70,17 +78,7 @@ pub(crate) fn draw_highlight(out: &mut Surface, pane: &PaneFrame<'_>, theme: &Th
     for span in bracket::bracket_match_spans(pane.bracket_match, &view) {
         paint_span(out, pane, &span, gutter_width, theme)?;
     }
-    for span in diagnostic::diagnostic_highlight_spans(pane.diagnostic_spans, &view) {
-        diagnostic::paint_span(
-            out,
-            pane,
-            &span,
-            gutter_width,
-            theme,
-            &selection_spans,
-            &syntax_spans,
-        )?;
-    }
+    diagnostic::patch_decorations(out, &diagnostic_layer, theme);
     Ok(())
 }
 
@@ -172,6 +170,21 @@ fn paint_span(
     )
 }
 
+pub(crate) fn patch_span_at(
+    out: &mut Surface,
+    span: &HighlightSpan,
+    x: usize,
+    y: usize,
+    patch: StylePatch,
+) {
+    out.patch_range(
+        x.saturating_add(span.from),
+        y.saturating_add(span.screen_row),
+        display_width(&span.text),
+        patch,
+    );
+}
+
 pub(crate) fn paint_span_at(
     out: &mut Surface,
     span: &HighlightSpan,
@@ -202,18 +215,10 @@ pub(crate) fn paint_span_at(
         Tint::Substitute => paint_tinted(out, &span.text, &theme.substitute, theme, background),
         Tint::Syntax(highlight) => paint_syntax(out, &span.text, highlight, theme, background),
         Tint::Plugin(style) => paint_plugin(out, &span.text, style, theme, background),
-        Tint::Diagnostic { severity, tag } => diagnostic::paint_diagnostic(
-            out,
-            &span.text,
-            diagnostic::DiagnosticPaint {
-                severity,
-                tag,
-                selected: false,
-                syntax: None,
-                underline: DiagnosticUnderline::default(),
-            },
-            theme,
-        ),
+        Tint::Diagnostic { .. } => {
+            debug_assert!(false, "diagnostic spans are patched, not written");
+            Ok(())
+        }
     }
 }
 
