@@ -2,6 +2,8 @@
 
 Status: typed implementation. Parser failures, command errors, asynchronous service messages, and plugin messages that reach the message row create `Diagnostic` values.
 
+Known gaps and open TODOs: [feedback-gaps.md](feedback-gaps.md).
+
 ## Principles
 
 - A successful action may stay quiet. A failed action must say what failed and what the user can do next.
