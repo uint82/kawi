@@ -1,4 +1,4 @@
-use super::test_support::contrast_ratio;
+use super::test_support::{contrast_ratio, MIN_BODY_CONTRAST};
 use super::*;
 
 #[test]
@@ -14,8 +14,8 @@ fn default_syntax_meets_body_contrast() {
             continue;
         };
         assert!(
-            contrast_ratio(foreground, theme.base.background) >= 4.5,
-            "{key} is below 4.5:1 contrast"
+            contrast_ratio(foreground, theme.base.background) >= MIN_BODY_CONTRAST,
+            "{key} is below {MIN_BODY_CONTRAST}:1 contrast"
         );
     }
 }
@@ -49,8 +49,8 @@ fn bracket_match_is_subtle_and_readable_in_every_theme() {
             contrast_ratio(
                 theme.bracket_match.foreground,
                 theme.bracket_match.background
-            ) >= 4.5,
-            "{name} bracket match text is below 4.5:1 contrast"
+            ) >= MIN_BODY_CONTRAST,
+            "{name} bracket match text is below {MIN_BODY_CONTRAST}:1 contrast"
         );
         let tint = contrast_ratio(theme.bracket_match.background, theme.base.background);
         assert!(
