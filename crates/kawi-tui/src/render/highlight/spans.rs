@@ -36,7 +36,6 @@ impl SpanView<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tint {
     Selection,
-    SelectionSyntax(SyntaxHighlight),
     BracketMatch,
     SearchMatch,
     SearchCurrent,

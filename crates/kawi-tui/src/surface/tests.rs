@@ -1,6 +1,7 @@
 use crossterm::style::Color;
 
 use super::*;
+use crate::frame::DiagnosticUnderline;
 
 pub(super) fn surface(width: usize, height: usize) -> Surface {
     Surface::new(width, height, Color::White, Color::Black)
@@ -138,6 +139,136 @@ fn refuses_wide_graphemes_that_do_not_fit() {
     surface.write_text("中");
     assert_eq!(row(&surface, 0), " ");
     assert_eq!(surface.cursor(), Position { x: 1, y: 0 });
+}
+
+#[test]
+fn patch_range_changes_only_the_requested_fields() {
+    let mut surface = surface(3, 1);
+    surface.write_text("abc");
+    surface.patch_range(
+        1,
+        0,
+        1,
+        StylePatch {
+            foreground: Some(Color::Red),
+            ..StylePatch::default()
+        },
+    );
+    assert_eq!(
+        surface.cell(0, 0).expect("cell").style().foreground(),
+        Color::White
+    );
+    assert_eq!(
+        surface.cell(1, 0).expect("cell").style().foreground(),
+        Color::Red
+    );
+    assert_eq!(
+        surface.cell(2, 0).expect("cell").style().foreground(),
+        Color::White
+    );
+}
+
+#[test]
+fn patch_range_preserves_unset_attributes() {
+    let mut surface = surface(2, 1);
+    surface.set_bold(true);
+    surface.set_underline(DiagnosticUnderline::Curly, Color::Red);
+    surface.write_text("ab");
+    surface.patch_range(
+        0,
+        0,
+        2,
+        StylePatch {
+            background: Some(Color::Blue),
+            ..StylePatch::default()
+        },
+    );
+    for x in 0..2 {
+        let style = surface.cell(x, 0).expect("cell").style();
+        assert_eq!(style.foreground(), Color::White);
+        assert_eq!(style.background(), Color::Blue);
+        assert!(style.is_bold());
+        assert_eq!(style.underline(), Some(DiagnosticUnderline::Curly));
+        assert_eq!(style.underline_color(), Some(Color::Red));
+    }
+}
+
+#[test]
+fn patch_range_covers_a_wide_glyph_from_any_of_its_cells() {
+    let mut surface = surface(4, 1);
+    surface.write_text("\u{4e2d}x");
+    surface.patch_range(
+        1,
+        0,
+        1,
+        StylePatch {
+            foreground: Some(Color::Red),
+            ..StylePatch::default()
+        },
+    );
+    for x in 0..2 {
+        assert_eq!(
+            surface.cell(x, 0).expect("wide cell").style().foreground(),
+            Color::Red
+        );
+    }
+    assert_eq!(
+        surface
+            .cell(2, 0)
+            .expect("narrow cell")
+            .style()
+            .foreground(),
+        Color::White
+    );
+}
+
+#[test]
+fn patch_range_clips_at_the_surface_edges() {
+    let mut surface = surface(3, 1);
+    surface.write_text("abc");
+    let patch = StylePatch {
+        foreground: Some(Color::Red),
+        ..StylePatch::default()
+    };
+    surface.patch_range(2, 0, 10, patch);
+    surface.patch_range(0, 5, 3, patch);
+    assert_eq!(
+        surface.cell(2, 0).expect("cell").style().foreground(),
+        Color::Red
+    );
+}
+
+#[test]
+fn underline_patch_replaces_and_clears_the_underline() {
+    let mut surface = surface(1, 1);
+    surface.write_text("x");
+    surface.patch_range(
+        0,
+        0,
+        1,
+        StylePatch {
+            underline: Some(UnderlinePatch::Diagnostic(
+                DiagnosticUnderline::Curly,
+                Color::Red,
+            )),
+            ..StylePatch::default()
+        },
+    );
+    let style = surface.cell(0, 0).expect("cell").style();
+    assert_eq!(style.underline(), Some(DiagnosticUnderline::Curly));
+    assert_eq!(style.underline_color(), Some(Color::Red));
+    surface.patch_range(
+        0,
+        0,
+        1,
+        StylePatch {
+            underline: Some(UnderlinePatch::Clear),
+            ..StylePatch::default()
+        },
+    );
+    let style = surface.cell(0, 0).expect("cell").style();
+    assert_eq!(style.underline(), None);
+    assert_eq!(style.underline_color(), None);
 }
 
 #[test]

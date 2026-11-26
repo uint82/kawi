@@ -2,6 +2,25 @@ use crossterm::style::Color;
 
 use crate::frame::DiagnosticUnderline;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StylePatch {
+    pub foreground: Option<Color>,
+    pub background: Option<Color>,
+    pub bold: Option<bool>,
+    pub dim: Option<bool>,
+    pub italic: Option<bool>,
+    pub crossed_out: Option<bool>,
+    pub hidden: Option<bool>,
+    pub underline: Option<UnderlinePatch>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnderlinePatch {
+    Clear,
+    Plain,
+    Diagnostic(DiagnosticUnderline, Color),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
     foreground: Color,
@@ -117,5 +136,49 @@ impl Style {
         self.italic = false;
         self.crossed_out = false;
         self.hidden = false;
+    }
+
+    pub fn apply_patch(&mut self, patch: StylePatch) {
+        if let Some(foreground) = patch.foreground {
+            self.foreground = foreground;
+        }
+        if let Some(background) = patch.background {
+            self.background = background;
+        }
+        if let Some(bold) = patch.bold {
+            self.bold = bold;
+        }
+        if let Some(dim) = patch.dim {
+            self.dim = dim;
+        }
+        if let Some(italic) = patch.italic {
+            self.italic = italic;
+        }
+        if let Some(crossed_out) = patch.crossed_out {
+            self.crossed_out = crossed_out;
+        }
+        if let Some(hidden) = patch.hidden {
+            self.hidden = hidden;
+        }
+        if let Some(underline) = patch.underline {
+            self.apply_underline_patch(underline);
+        }
+    }
+
+    fn apply_underline_patch(&mut self, underline: UnderlinePatch) {
+        match underline {
+            UnderlinePatch::Clear => {
+                self.underline = None;
+                self.underline_color = None;
+            }
+            UnderlinePatch::Plain => {
+                self.underline = Some(DiagnosticUnderline::Straight);
+                self.underline_color = None;
+            }
+            UnderlinePatch::Diagnostic(style, color) => {
+                self.underline = Some(style);
+                self.underline_color = Some(color);
+            }
+        }
     }
 }

@@ -29,7 +29,6 @@ mod pager;
 mod picker;
 mod plugin_panel;
 mod replace;
-mod selection;
 mod special_key;
 mod style;
 mod task;
@@ -173,7 +172,7 @@ fn draw_surface(out: &mut Surface, frame: &Frame) -> Result<()> {
 fn draw_pane(out: &mut Surface, frame: &Frame, pane: &PaneFrame<'_>) -> Result<()> {
     draw_visible_lines(out, pane, frame.theme)?;
     draw_filler_rows(out, pane, frame.theme)?;
-    draw_highlight(out, pane, frame.theme)?;
+    draw_highlight(out, pane, frame.theme);
     if pane.rect.height == 0 {
         return Ok(());
     }

@@ -1,8 +1,8 @@
 use super::*;
-use crate::frame::{DiagnosticSpan, DiagnosticUnderline};
+use crate::frame::{DiagnosticSeverity, DiagnosticSpan, DiagnosticTag, DiagnosticUnderline};
 use crate::render::diagnostic::{
-    diagnostic_highlight_spans, diagnostic_segments, paint_diagnostic, DiagnosticPaint,
+    diagnostic_highlight_spans, patch_decorations, patch_tag_foreground, DiagnosticLayer,
 };
 
-mod paint;
-mod segments;
+mod overlay;
+mod spans;
