@@ -21,16 +21,22 @@ impl App {
         let metadata = match fs::symlink_metadata(&old) {
             Ok(metadata) => metadata,
             Err(error) => {
-                self.show_message(format!("E484: Can't open file {}: {error}", old.display()));
+                self.show_error_code(
+                    "E484",
+                    format!("Can't open file {}: {error}", old.display()),
+                );
                 return;
             }
         };
         if let Some(parent) = super::fs::missing_parent(&new) {
-            self.show_message(format!(
-                "E484: Can't open file {}: parent directory {} does not exist",
-                new.display(),
-                parent.display()
-            ));
+            self.show_error_code(
+                "E484",
+                format!(
+                    "Can't open file {}: parent directory {} does not exist",
+                    new.display(),
+                    parent.display()
+                ),
+            );
             return;
         }
         let directory = metadata.is_dir() && !metadata.file_type().is_symlink();
@@ -126,7 +132,7 @@ impl App {
 
     fn show_rename_error(&mut self, old: &Path, new: &Path, error: io::Error) {
         if error.kind() == io::ErrorKind::AlreadyExists {
-            self.show_message("E13: File exists (add ! to override)".to_string());
+            self.show_error_code("E13", "File exists (add ! to override)".to_string());
         } else {
             self.show_message(format!(
                 "Cannot rename {} to {}: {error}",

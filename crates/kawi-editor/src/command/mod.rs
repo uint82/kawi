@@ -1,5 +1,3 @@
-use kawi_buffer::UndoOffset;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Write {
@@ -42,6 +40,9 @@ pub enum Command {
     },
     ListBuffers,
     Marks,
+    Messages {
+        clear: bool,
+    },
     NextBuffer,
     PreviousBuffer,
     AlternateBuffer,
@@ -80,7 +81,6 @@ pub enum Command {
         topic: Option<String>,
     },
     Undo(UndoCommand),
-    SetError(String),
     Substitute(SubstituteCommand),
     Map {
         text: String,
@@ -88,7 +88,6 @@ pub enum Command {
     Plugin {
         text: String,
     },
-    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,10 +100,14 @@ pub enum SetValue {
 }
 
 mod completion;
+mod diagnostic;
 mod file_ops;
+mod parse;
 mod undo;
 
 pub use completion::CommandCompletion;
+pub use diagnostic::{suggest_commands, DiagnosticCode, ParseFailure};
+pub use parse::parse;
 
 pub use undo::UndoCommand;
 
@@ -282,6 +285,8 @@ pub const COMMAND_NAMES: &[&str] = &[
     "ls",
     "lsp",
     "map",
+    "marks",
+    "messages",
     "new",
     "nmap",
     "nunmap",
@@ -391,394 +396,6 @@ pub const SET_OPTION_NAMES: &[&str] = &[
     "undo_persist",
 ];
 
-pub fn parse(text: &str) -> Command {
-    let named = parse_named(text);
-    if named != Command::Unknown {
-        return named;
-    }
-    if text.trim_start().starts_with("se") {
-        return Command::Unknown;
-    }
-    match substitute::parse(text) {
-        Some(Ok(command)) => Command::Substitute(command),
-        Some(Err(message)) => Command::SetError(message),
-        None => Command::Unknown,
-    }
-}
-
-fn parse_named(text: &str) -> Command {
-    if let Some(command) = file_ops::parse(text) {
-        return command;
-    }
-    let words: Vec<&str> = text.split_whitespace().collect();
-    let Some((command, rest)) = words.split_first() else {
-        return Command::Unknown;
-    };
-    match (*command, rest) {
-        ("q" | "quit", []) => Command::Quit,
-        ("wq" | "writequit" | "wq!" | "writequit!", []) => write_quit_command(command),
-        ("q!" | "quit!", []) => Command::ForceQuit,
-        ("qa" | "quitall", []) => Command::QuitAll,
-        ("qa!" | "quitall!", []) => Command::ForceQuitAll,
-        ("wall", []) => Command::WriteAll,
-        ("wqa" | "wqall", []) => Command::WriteQuitAll,
-        ("ls" | "buffers" | "files", []) => Command::ListBuffers,
-        ("marks", []) => Command::Marks,
-        ("bn" | "bnext", []) => Command::NextBuffer,
-        ("bp" | "bprevious", []) => Command::PreviousBuffer,
-        ("b#", []) => Command::AlternateBuffer,
-        ("e" | "edit" | "e!" | "edit!", rest) if rest.len() <= 1 => {
-            edit_command(command, rest.first().copied())
-        }
-        ("w" | "write" | "w!" | "write!", rest) if rest.len() <= 1 => {
-            write_command(command, rest.first().copied())
-        }
-        ("bd" | "bdelete" | "bd!" | "bdelete!", rest) if rest.len() <= 1 => {
-            delete_command(command, rest.first().copied())
-        }
-        ("b" | "buffer", ["#"]) => Command::AlternateBuffer,
-        ("b" | "buffer", [arg]) => Command::SelectBuffer(arg.to_string()),
-        ("sp" | "split", rest) if rest.len() <= 1 => Command::Split {
-            vertical: false,
-            name: rest.first().map(|name| (*name).to_string()),
-        },
-        ("vs" | "vsplit", rest) if rest.len() <= 1 => Command::Split {
-            vertical: true,
-            name: rest.first().map(|name| (*name).to_string()),
-        },
-        ("new", rest) if rest.len() <= 1 => Command::NewWindow {
-            vertical: false,
-            name: rest.first().map(|name| (*name).to_string()),
-        },
-        ("vnew", rest) if rest.len() <= 1 => Command::NewWindow {
-            vertical: true,
-            name: rest.first().map(|name| (*name).to_string()),
-        },
-        ("cq" | "cquit", []) => Command::Cquit,
-        ("clo" | "close", []) => Command::CloseWindow,
-        ("on" | "only", []) => Command::OnlyWindow,
-        ("pick", []) => Command::Pick(PickerCommand::Files),
-        ("pick", ["file" | "files"]) => Command::Pick(PickerCommand::Files),
-        ("pick", ["grep" | "live_grep" | "grep_live"]) => Command::Pick(PickerCommand::Grep),
-        ("pick", ["buffer" | "buffers"]) => Command::Pick(PickerCommand::Buffers),
-        ("pick", ["replace"]) => Command::Pick(PickerCommand::Replace),
-        ("pick", ["symbol" | "symbols"]) => Command::Pick(PickerCommand::Symbols),
-        ("pick", ["workspace_symbol" | "workspace_symbols" | "workspace-symbols"]) => {
-            Command::Pick(PickerCommand::WorkspaceSymbols)
-        }
-        ("replace", []) => Command::Pick(PickerCommand::Replace),
-        ("git", rest) => parse_git_command(rest),
-        ("task", rest) => parse_task_command(rest),
-        ("quickfix" | "qf", rest) => parse_quickfix_command(rest),
-        ("lsp", rest) => parse_lsp_command(rest),
-        ("debug", rest) => parse_debug_command(rest),
-        ("explorer", []) => Command::Explorer(ExplorerCommand::Toggle),
-        ("explorer", ["focus"]) => Command::Explorer(ExplorerCommand::Focus),
-        ("explorer", ["reveal"]) => Command::Explorer(ExplorerCommand::Reveal),
-        ("term" | "terminal", rest) => Command::Terminal {
-            command: terminal_command(rest),
-            vertical: false,
-        },
-        ("vterm" | "vterminal", rest) => Command::Terminal {
-            command: terminal_command(rest),
-            vertical: true,
-        },
-        ("conflict", []) => Command::Conflict,
-        ("format", []) => Command::Format,
-        ("h" | "help", rest) => Command::Help {
-            topic: (!rest.is_empty()).then(|| rest.join(" ")),
-        },
-        ("health" | "checkhealth" | "doctor", rest) => Command::Health {
-            topic: (!rest.is_empty()).then(|| rest.join(" ")),
-        },
-        ("u" | "undo", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
-        ("u" | "undo", [arg]) => undo::jump_command(arg),
-        ("earlier", []) => Command::Undo(UndoCommand::Earlier(UndoOffset::States(1))),
-        ("earlier", [arg]) => undo::offset_command(arg, true),
-        ("later", []) => Command::Undo(UndoCommand::Later(UndoOffset::States(1))),
-        ("later", [arg]) => undo::offset_command(arg, false),
-        ("undolist", []) => Command::Undo(UndoCommand::List),
-        ("undolist", [arg]) => trailing_characters(arg),
-        ("copen", []) => Command::Quickfix(QuickfixCommand::Open),
-        ("cclose", []) => Command::Quickfix(QuickfixCommand::Close),
-        ("cnext", []) => Command::Quickfix(QuickfixCommand::Next),
-        ("cprev", []) => Command::Quickfix(QuickfixCommand::Previous),
-        ("set", rest) => set::parse(rest),
-        ("nmap" | "imap" | "vmap" | "nunmap" | "iunmap" | "vunmap" | "map" | "commands", _) => {
-            Command::Map {
-                text: text.to_string(),
-            }
-        }
-        ("plugin", rest) => Command::Plugin {
-            text: rest.join(" "),
-        },
-        _ => Command::Unknown,
-    }
-}
-
-fn write_command(command: &str, name: Option<&str>) -> Command {
-    let (force, command) = split_bang(command);
-    if !matches!(command, "w" | "write") {
-        return Command::Unknown;
-    }
-    match name {
-        Some(name) => Command::WriteAs {
-            name: name.to_string(),
-            force,
-        },
-        None => Command::Write { force },
-    }
-}
-
-fn write_quit_command(command: &str) -> Command {
-    let (force, command) = split_bang(command);
-    if !matches!(command, "wq" | "writequit") {
-        return Command::Unknown;
-    }
-    Command::WriteQuit { force }
-}
-
-fn delete_command(command: &str, spec: Option<&str>) -> Command {
-    let (force, command) = split_bang(command);
-    if !matches!(command, "bd" | "bdelete") {
-        return Command::Unknown;
-    }
-    Command::DeleteBuffer {
-        spec: spec.map(str::to_string),
-        force,
-    }
-}
-
-fn trailing_characters(word: &str) -> Command {
-    Command::SetError(format!("E488: Trailing characters: {word}"))
-}
-
-fn split_bang(command: &str) -> (bool, &str) {
-    match command.strip_suffix('!') {
-        Some(command) => (true, command),
-        None => (false, command),
-    }
-}
-
-fn edit_command(command: &str, name: Option<&str>) -> Command {
-    let (force, command) = split_bang(command);
-    if !matches!(command, "e" | "edit") {
-        return Command::Unknown;
-    }
-    Command::Edit {
-        name: name.map(str::to_string),
-        force,
-    }
-}
-
-fn parse_task_command(words: &[&str]) -> Command {
-    let command = match words {
-        [] | ["list"] => TaskCommand::List,
-        ["rerun"] => TaskCommand::Rerun,
-        ["cancel"] => TaskCommand::Cancel,
-        ["output"] => TaskCommand::Output,
-        ["close"] => TaskCommand::Close,
-        ["run"] => return Command::Unknown,
-        ["run", name] => TaskCommand::Run((*name).to_string()),
-        [name] => TaskCommand::Run((*name).to_string()),
-        _ => return Command::Unknown,
-    };
-    Command::Task(command)
-}
-
-fn terminal_command(words: &[&str]) -> Option<String> {
-    (!words.is_empty()).then(|| words.join(" "))
-}
-
-fn parse_quickfix_command(words: &[&str]) -> Command {
-    let command = match words {
-        [] | ["open"] => QuickfixCommand::Open,
-        ["next"] => QuickfixCommand::Next,
-        ["prev" | "previous"] => QuickfixCommand::Previous,
-        ["close"] => QuickfixCommand::Close,
-        _ => return Command::Unknown,
-    };
-    Command::Quickfix(command)
-}
-
-fn parse_lsp_command(words: &[&str]) -> Command {
-    match words {
-        [] | ["status" | "info"] => Command::Lsp(LspCommand::Status),
-        ["start"] => Command::Lsp(LspCommand::Start(None)),
-        ["start", server] => Command::Lsp(LspCommand::Start(Some((*server).to_string()))),
-        ["stop"] => Command::Lsp(LspCommand::Stop(None)),
-        ["stop", server] => Command::Lsp(LspCommand::Stop(Some((*server).to_string()))),
-        ["restart"] => Command::Lsp(LspCommand::Restart(None)),
-        ["restart", server] => Command::Lsp(LspCommand::Restart(Some((*server).to_string()))),
-        _ => Command::Unknown,
-    }
-}
-
-fn parse_debug_command(words: &[&str]) -> Command {
-    let command = match words {
-        [] | ["status" | "info"] => DebugCommand::Status,
-        ["start"] => DebugCommand::Start(None),
-        ["start", name] => DebugCommand::Start(Some((*name).to_string())),
-        ["restart"] => DebugCommand::Restart,
-        ["stop"] => DebugCommand::Stop,
-        ["terminate"] => DebugCommand::Terminate,
-        ["panel"] => DebugCommand::Panel,
-        ["continue" | "run"] => DebugCommand::Continue,
-        ["next" | "over"] => DebugCommand::Next,
-        ["step" | "in" | "into"] => DebugCommand::StepIn,
-        ["out"] => DebugCommand::StepOut,
-        ["breakpoint" | "toggle"] => DebugCommand::ToggleBreakpoint,
-        ["breakpoint", "condition", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::BreakpointCondition(rest.join(" "))
-        }
-        ["breakpoint", "hit" | "hit-condition", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::BreakpointHitCondition(rest.join(" "))
-        }
-        ["breakpoint", "log" | "log-message", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::BreakpointLogMessage(rest.join(" "))
-        }
-        ["breakpoint", "clear"] => DebugCommand::BreakpointClear,
-        ["breakpoints"] => DebugCommand::Breakpoints,
-        ["function", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::FunctionBreakpoint(rest.join(" "))
-        }
-        ["functions"] => DebugCommand::FunctionBreakpoints,
-        ["exceptions"] => DebugCommand::Exceptions,
-        ["exception", filter] => DebugCommand::ToggleException((*filter).to_string()),
-        ["stack"] => DebugCommand::Stack,
-        ["variables"] => DebugCommand::Variables,
-        ["expand", reference] => match reference.parse() {
-            Ok(reference) if reference > 0 => DebugCommand::ExpandVariables(reference),
-            _ => return Command::Unknown,
-        },
-        ["more", reference] => match reference.parse() {
-            Ok(reference) if reference > 0 => DebugCommand::MoreVariables(reference),
-            _ => return Command::Unknown,
-        },
-        ["set", reference, name, rest @ ..] if !rest.is_empty() => {
-            let Ok(reference) = reference.parse() else {
-                return Command::Unknown;
-            };
-            if reference <= 0 {
-                return Command::Unknown;
-            }
-            let value = rest
-                .strip_prefix(&["="])
-                .map(|value| value.join(" "))
-                .unwrap_or_else(|| rest.join(" "));
-            DebugCommand::SetVariable {
-                reference,
-                name: (*name).to_string(),
-                value,
-            }
-        }
-        ["frame", frame_id] => match frame_id.parse() {
-            Ok(frame_id) if frame_id > 0 => DebugCommand::Frame(frame_id),
-            _ => return Command::Unknown,
-        },
-        ["threads"] => DebugCommand::Threads,
-        ["thread", thread_id] => match thread_id.parse() {
-            Ok(thread_id) if thread_id > 0 => DebugCommand::Thread(thread_id),
-            _ => return Command::Unknown,
-        },
-        ["eval" | "evaluate", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::Evaluate(rest.join(" "))
-        }
-        ["console"] => DebugCommand::Console,
-        ["watch", "add", rest @ ..] if !rest.is_empty() => DebugCommand::Watch(rest.join(" ")),
-        ["watch", "edit", index, rest @ ..] if !rest.is_empty() => match index.parse() {
-            Ok(index) if index > 0 => DebugCommand::EditWatch(index, rest.join(" ")),
-            _ => return Command::Unknown,
-        },
-        ["watch", "remove" | "delete", rest @ ..] if !rest.is_empty() => {
-            DebugCommand::Unwatch(rest.join(" "))
-        }
-        ["watch"] | ["watches"] => DebugCommand::Watches,
-        ["unwatch", rest @ ..] if !rest.is_empty() => DebugCommand::Unwatch(rest.join(" ")),
-        ["output"] => DebugCommand::Output,
-        ["configurations" | "configs"] => DebugCommand::Configurations,
-        _ => return Command::Unknown,
-    };
-    Command::Debug(command)
-}
-
-fn parse_git_log(words: &[&str]) -> GitCommand {
-    let mut file = false;
-    let mut grep = None;
-    let mut author = None;
-    let mut index = 0;
-    while index < words.len() {
-        match words[index] {
-            "%" => {
-                file = true;
-                index += 1;
-            }
-            "--grep" => {
-                grep = Some(words[index + 1..].join(" "));
-                break;
-            }
-            "--author" => {
-                author = Some(words[index + 1..].join(" "));
-                break;
-            }
-            _ => index += 1,
-        }
-    }
-    GitCommand::Log { file, grep, author }
-}
-
-fn parse_git_command(words: &[&str]) -> Command {
-    let command = match words {
-        [] => GitCommand::Diff,
-        ["status"] => GitCommand::Status,
-        ["commit"] => GitCommand::Commit { all: false },
-        ["commit", "-a" | "all"] => GitCommand::Commit { all: true },
-        ["amend"] => GitCommand::Amend { staged: false },
-        ["amend", "staged"] => GitCommand::Amend { staged: true },
-        ["push"] => GitCommand::Push { force: false },
-        ["push", "--force-with-lease" | "force"] => GitCommand::Push { force: true },
-        ["fetch"] => GitCommand::Fetch,
-        ["branches"] | ["branch"] => GitCommand::Branches,
-        ["branch", "-d", name] => GitCommand::DeleteBranch {
-            name: (*name).to_string(),
-            force: false,
-        },
-        ["branch", "-D", name] => GitCommand::DeleteBranch {
-            name: (*name).to_string(),
-            force: true,
-        },
-        ["branch", name] => GitCommand::CreateBranch {
-            name: (*name).to_string(),
-            base: None,
-        },
-        ["branch", name, base] => GitCommand::CreateBranch {
-            name: (*name).to_string(),
-            base: Some((*base).to_string()),
-        },
-        ["switch" | "checkout", target] => GitCommand::Switch {
-            target: (*target).to_string(),
-        },
-        ["log", rest @ ..] => parse_git_log(rest),
-        ["next_hunk"] => GitCommand::NextHunk,
-        ["prev_hunk"] => GitCommand::PrevHunk,
-        ["stage_hunk"] => GitCommand::StageHunk,
-        ["undo_stage_hunk"] => GitCommand::UndoStage,
-        ["stage_buffer"] => GitCommand::StageBuffer,
-        ["preview_hunk"] => GitCommand::PreviewHunk,
-        ["diff"] => GitCommand::Diff,
-        ["refresh"] => GitCommand::Refresh,
-        ["next_conflict"] => GitCommand::NextConflict,
-        ["prev_conflict"] => GitCommand::PrevConflict,
-        ["ours"] => GitCommand::ConflictOurs,
-        ["theirs"] => GitCommand::ConflictTheirs,
-        ["both"] => GitCommand::ConflictBoth,
-        ["continue"] => GitCommand::Continue,
-        ["abort"] => GitCommand::Abort,
-        _ => return Command::Unknown,
-    };
-    Command::Git(command)
-}
-
 pub struct CommandLine {
     text: String,
 }
@@ -831,15 +448,27 @@ pub use substitute::{
 mod tests {
     use super::*;
 
+    fn parse(text: &str) -> Command {
+        super::parse(text).expect("command should parse")
+    }
+
+    fn parse_err(text: &str) -> ParseFailure {
+        super::parse(text).expect_err("command should fail")
+    }
+
     #[test]
     fn completion_names_parse() {
         for name in COMMAND_NAMES {
-            if *name == "set" {
-                continue;
-            }
             assert!(
-                parse(name) != Command::Unknown || parse(&format!("{name} x")) != Command::Unknown,
+                !matches!(super::parse(name), Err(ParseFailure::UnknownCommand { .. })),
                 "command {name} does not parse"
+            );
+            assert!(
+                !matches!(
+                    super::parse(&format!("{name} x")),
+                    Err(ParseFailure::UnknownCommand { .. })
+                ),
+                "command {name} with an argument does not parse"
             );
         }
     }
@@ -852,7 +481,10 @@ mod tests {
     #[test]
     fn parses_format() {
         assert_eq!(parse("format"), Command::Format);
-        assert_eq!(parse("format now"), Command::Unknown);
+        assert_eq!(
+            parse_err("format now"),
+            ParseFailure::invalid_argument("now")
+        );
     }
 
     #[test]
@@ -879,12 +511,12 @@ mod tests {
 
     #[test]
     fn unknown_falls_through() {
-        assert_eq!(parse("xyz"), Command::Unknown);
+        assert_eq!(parse_err("xyz"), ParseFailure::unknown_command("xyz"));
     }
 
     #[test]
     fn empty_is_unknown() {
-        assert_eq!(parse(""), Command::Unknown);
+        assert_eq!(parse_err(""), ParseFailure::EmptyInput);
     }
 
     #[test]
@@ -1022,7 +654,10 @@ mod tests {
                 force: false
             }
         );
-        assert_eq!(parse("rename a b c"), Command::Unknown);
+        assert_eq!(
+            parse_err("rename a b c"),
+            ParseFailure::invalid_argument("a b c")
+        );
         assert_eq!(
             parse("delete now"),
             Command::DeleteFile {
@@ -1030,7 +665,10 @@ mod tests {
                 force: false
             }
         );
-        assert_eq!(parse("delete a b"), Command::Unknown);
+        assert_eq!(
+            parse_err("delete a b"),
+            ParseFailure::invalid_argument("a b")
+        );
     }
 
     #[test]
@@ -1132,7 +770,10 @@ mod tests {
                 author: None,
             })
         );
-        assert_eq!(parse("git nope"), Command::Unknown);
+        assert_eq!(
+            parse_err("git nope"),
+            ParseFailure::invalid_argument("nope")
+        );
     }
 
     #[test]
@@ -1158,7 +799,21 @@ mod tests {
                 force: false
             }
         );
-        assert_eq!(parse("bd a b"), Command::Unknown);
+        assert_eq!(parse_err("bd a b"), ParseFailure::invalid_argument("a b"));
+    }
+
+    #[test]
+    fn parses_messages_commands() {
+        assert_eq!(parse("messages"), Command::Messages { clear: false });
+        assert_eq!(parse("messages clear"), Command::Messages { clear: true });
+        assert_eq!(
+            parse_err("messages clear now"),
+            ParseFailure::invalid_argument("clear now")
+        );
+        assert_eq!(
+            parse_err("messages now"),
+            ParseFailure::invalid_argument("now")
+        );
     }
 
     #[test]
@@ -1178,9 +833,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_buffer_commands() {
-        assert_eq!(parse("b"), Command::Unknown);
-        assert_eq!(parse("bb"), Command::Unknown);
-        assert_eq!(parse("e x y"), Command::Unknown);
+        assert_eq!(parse_err("b"), ParseFailure::missing_argument("b"));
+        assert_eq!(parse_err("bb"), ParseFailure::unknown_command("bb"));
+        assert_eq!(parse_err("e x y"), ParseFailure::invalid_argument("x y"));
     }
 
     fn set(name: &str, value: SetValue) -> Command {
@@ -1294,7 +949,10 @@ mod tests {
         assert_eq!(parse("clo"), Command::CloseWindow);
         assert_eq!(parse("only"), Command::OnlyWindow);
         assert_eq!(parse("on"), Command::OnlyWindow);
-        assert_eq!(parse("close now"), Command::Unknown);
+        assert_eq!(
+            parse_err("close now"),
+            ParseFailure::invalid_argument("now")
+        );
     }
 
     #[test]
@@ -1313,8 +971,8 @@ mod tests {
         assert_eq!(parse("task cancel"), Command::Task(TaskCommand::Cancel));
         assert_eq!(parse("task output"), Command::Task(TaskCommand::Output));
         assert_eq!(parse("task close"), Command::Task(TaskCommand::Close));
-        assert_eq!(parse("task run"), Command::Unknown);
-        assert_eq!(parse("task a b"), Command::Unknown);
+        assert_eq!(parse_err("task run"), ParseFailure::invalid_argument("run"));
+        assert_eq!(parse_err("task a b"), ParseFailure::invalid_argument("a b"));
     }
 
     #[test]
@@ -1331,7 +989,10 @@ mod tests {
             parse("explorer reveal"),
             Command::Explorer(ExplorerCommand::Reveal)
         );
-        assert_eq!(parse("explorer unknown"), Command::Unknown);
+        assert_eq!(
+            parse_err("explorer unknown"),
+            ParseFailure::invalid_argument("unknown")
+        );
     }
 
     #[test]
@@ -1410,7 +1071,10 @@ mod tests {
     #[test]
     fn parses_conflict_command() {
         assert_eq!(parse("conflict"), Command::Conflict);
-        assert_eq!(parse("conflict now"), Command::Unknown);
+        assert_eq!(
+            parse_err("conflict now"),
+            ParseFailure::invalid_argument("now")
+        );
     }
 
     #[test]
@@ -1424,7 +1088,10 @@ mod tests {
             Command::Quickfix(QuickfixCommand::Previous)
         );
         assert_eq!(parse("cclose"), Command::Quickfix(QuickfixCommand::Close));
-        assert_eq!(parse("quickfix nope"), Command::Unknown);
+        assert_eq!(
+            parse_err("quickfix nope"),
+            ParseFailure::invalid_argument("nope")
+        );
     }
 
     #[test]
@@ -1578,8 +1245,14 @@ mod tests {
             parse("debug frame 2"),
             Command::Debug(DebugCommand::Frame(2))
         );
-        assert_eq!(parse("debug thread nope"), Command::Unknown);
-        assert_eq!(parse("debug nope"), Command::Unknown);
+        assert_eq!(
+            parse_err("debug thread nope"),
+            ParseFailure::invalid_argument("thread nope")
+        );
+        assert_eq!(
+            parse_err("debug nope"),
+            ParseFailure::invalid_argument("nope")
+        );
     }
 
     #[test]
@@ -1605,7 +1278,10 @@ mod tests {
             parse("lsp restart rust-analyzer"),
             Command::Lsp(LspCommand::Restart(Some("rust-analyzer".to_string())))
         );
-        assert_eq!(parse("lsp nope"), Command::Unknown);
+        assert_eq!(
+            parse_err("lsp nope"),
+            ParseFailure::invalid_argument("nope")
+        );
     }
 
     #[test]
@@ -1623,7 +1299,10 @@ mod tests {
         );
         assert_eq!(parse("replace"), Command::Pick(PickerCommand::Replace));
         assert_eq!(parse("pick"), Command::Pick(PickerCommand::Files));
-        assert_eq!(parse("pick nope"), Command::Unknown);
+        assert_eq!(
+            parse_err("pick nope"),
+            ParseFailure::invalid_argument("nope")
+        );
     }
 
     #[test]
@@ -1652,10 +1331,10 @@ mod tests {
 
     #[test]
     fn rejects_missing_or_trailing_set_arguments() {
-        assert_eq!(parse("set"), Command::Unknown);
+        assert_eq!(parse_err("set"), ParseFailure::missing_argument("set"));
         assert_eq!(
-            parse("set shiftwidth 4 extra"),
-            Command::SetError("E488: Trailing characters: shiftwidth".to_string())
+            parse_err("set shiftwidth 4 extra"),
+            ParseFailure::trailing_characters("extra")
         );
     }
 

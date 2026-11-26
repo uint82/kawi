@@ -2,6 +2,7 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::view::{GitStatusView, Item, Section};
+use crate::app::diagnostic::DiagnosticSource;
 use crate::app::App;
 
 impl App {
@@ -84,7 +85,7 @@ impl App {
         };
         let path = root.join(&item.entry.path);
         if let Err(message) = self.reject_worktree_conflict_markers(&path) {
-            self.show_message(message);
+            self.show_source_failure(DiagnosticSource::Git, message);
             return;
         }
         match kawi_git::stage_path(&root, &item.entry.path) {
@@ -92,7 +93,8 @@ impl App {
                 self.show_message(format!("Staged {}", item.entry.path.display()));
                 self.after_git_status_change();
             }
-            Err(error) => self.show_message(format!("Git stage failed: {error}")),
+            Err(error) => self
+                .show_source_failure(DiagnosticSource::Git, format!("Git stage failed: {error}")),
         }
     }
 
@@ -117,7 +119,10 @@ impl App {
                 self.show_message(format!("Unstaged {}", item.entry.path.display()));
                 self.after_git_status_change();
             }
-            Err(error) => self.show_message(format!("Git unstage failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git unstage failed: {error}"),
+            ),
         }
     }
 
@@ -141,7 +146,9 @@ impl App {
         match kawi_git::diff_path(&root, &item.entry.path, staged) {
             Ok(lines) if lines.is_empty() => self.show_message("No diff".to_string()),
             Ok(lines) => self.show_pager(lines),
-            Err(error) => self.show_message(format!("Git diff failed: {error}")),
+            Err(error) => {
+                self.show_source_failure(DiagnosticSource::Git, format!("Git diff failed: {error}"))
+            }
         }
     }
 
@@ -162,7 +169,8 @@ impl App {
                     self.show_pager(lines);
                 }
             }
-            Err(error) => self.show_message(format!("Cannot read file: {error}")),
+            Err(error) => self
+                .show_source_failure(DiagnosticSource::Git, format!("Cannot read file: {error}")),
         }
     }
 
@@ -172,7 +180,10 @@ impl App {
             .view_mut()
             .and_then(GitStatusView::request_discard)
         else {
-            self.show_message("Unstage before discarding staged changes".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Unstage before discarding staged changes".to_string(),
+            );
             return;
         };
         let path = item.entry.path.display().to_string();
@@ -214,7 +225,10 @@ impl App {
                 self.show_message(format!("Discarded {}", item.entry.path.display()));
                 self.after_git_status_change();
             }
-            Err(error) => self.show_message(format!("Git discard failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git discard failed: {error}"),
+            ),
         }
     }
 

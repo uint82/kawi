@@ -266,6 +266,7 @@ mod tests {
             terminal: None,
             viewport: &viewport,
             message: None,
+            message_severity: Default::default(),
             prompt: None,
             command: None,
             search: None,

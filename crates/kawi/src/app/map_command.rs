@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::keymap::{Binding, BindingSource, KeyContext};
 
 use super::command_text::split_command;
-use super::App;
+use super::{codes, App};
 
 impl App {
     pub(super) fn handle_map_command(&mut self, text: &str) -> Result<Option<bool>> {
@@ -25,30 +25,33 @@ impl App {
     fn add_mapping_command(&mut self, mode: KeyContext, rest: &str) -> Result<Option<bool>> {
         let (keys, command) = split_command(rest);
         if keys.is_empty() || command.is_empty() {
-            self.show_message("E474: Expected a key sequence and command".to_string());
+            self.show_error_code("E474", "Expected a key sequence and command".to_string());
             return Ok(Some(false));
         }
         let (command, args) = split_mapping_target(command);
         let sequences = match crate::keymap::config::expand_sequences(keys, &self.leaders) {
             Ok(sequences) => sequences,
             Err(error) => {
-                self.show_message(format!("E474: {error}"));
+                self.show_error_code("E474", error.to_string());
                 return Ok(Some(false));
             }
         };
         if sequences.iter().any(crate::keymap::has_reserved_prefix) {
-            self.show_message("E474: Count and register prefixes are reserved".to_string());
+            self.show_error_code(
+                "E474",
+                "Count and register prefixes are reserved".to_string(),
+            );
             return Ok(Some(false));
         }
         let Some(command) = self.commands.find(command) else {
-            self.show_message(format!("E492: Unknown command: {command}"));
+            self.show_error_code("E492", format!("Not an editor command: {command}"));
             return Ok(Some(false));
         };
         for keys in sequences {
             let binding = Binding::new(command, mode, keys.clone(), BindingSource::User)
                 .with_args(args.clone());
             self.keymaps.bind(binding);
-            self.show_message(format!("mapped {} {}", mode.name(), keys));
+            self.show_success(format!("mapped {} {}", mode.name(), keys));
         }
         Ok(Some(false))
     }
@@ -56,23 +59,23 @@ impl App {
     fn remove_mapping_command(&mut self, mode: KeyContext, rest: &str) -> Result<Option<bool>> {
         let keys = rest.trim();
         if keys.is_empty() {
-            self.show_message("E474: Expected a key sequence".to_string());
+            self.show_error_code("E474", "Expected a key sequence".to_string());
             return Ok(Some(false));
         }
         let sequences = match crate::keymap::config::expand_sequences(keys, &self.leaders) {
             Ok(sequences) => sequences,
             Err(error) => {
-                self.show_message(format!("E474: {error}"));
+                self.show_error_code("E474", error.to_string());
                 return Ok(Some(false));
             }
         };
         for keys in sequences {
             if !self.keymaps.has_user_binding(mode, &keys) {
-                self.show_message(format!("E31: No such mapping: {} {}", mode.name(), keys));
+                self.show_error_code("E31", format!("No such mapping: {} {}", mode.name(), keys));
                 continue;
             }
             self.keymaps.unbind(mode, &keys);
-            self.show_message(format!("unmapped {} {}", mode.name(), keys));
+            self.show_success(format!("unmapped {} {}", mode.name(), keys));
         }
         Ok(Some(false))
     }
@@ -87,7 +90,7 @@ impl App {
             name => match KeyContext::parse(name) {
                 Some(context) => Some(context),
                 None => {
-                    self.show_message("E474: Expected map reload or a mode name".to_string());
+                    self.show_error_code("E474", "Expected map reload or a mode name".to_string());
                     return Ok(Some(false));
                 }
             },
@@ -103,7 +106,7 @@ impl App {
 
     fn reload_keymaps(&mut self) -> Result<Option<bool>> {
         let Some(path) = self.keymaps_path.clone() else {
-            self.show_message("E484: No keymap file loaded".to_string());
+            self.show_error_code(codes::NO_KEYMAP_FILE, "No keymap file loaded".to_string());
             return Ok(Some(false));
         };
         let loaded = crate::keymap::config::load(&path, &self.commands);

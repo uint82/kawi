@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use super::super::diagnostic::DiagnosticSource;
 use super::super::App;
 use super::path::absolute_path;
 
@@ -47,7 +48,10 @@ impl App {
         let wake = self.events.wake();
         self.git_status.open(wake);
         if let Some(error) = self.git_status.error() {
-            self.show_message(format!("Git status unavailable: {error}"));
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git status unavailable: {error}"),
+            );
         }
     }
 }

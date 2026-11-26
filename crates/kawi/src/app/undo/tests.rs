@@ -83,7 +83,7 @@ fn write_as_persists_the_adopted_history() {
     app.undo.configure(dir.join("undo"));
     app.undo.set_exclusions(Vec::new());
     edit(&mut app, "x");
-    app.run_command(kawi_editor::parse(&format!("w {}", path.display())))
+    app.run_command(kawi_editor::parse(&format!("w {}", path.display())).expect("parse"))
         .expect("write as");
     assert_eq!(fs::read_to_string(&path).expect("disk"), "xalpha\n");
     let mut restarted = configured_app(&path, &dir.join("undo"), Vec::new());

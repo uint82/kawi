@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use kawi_picker::PickerRow;
 
+use super::super::diagnostic::DiagnosticSource;
 use super::super::App;
 use super::state::GitBranchState;
 
@@ -19,7 +20,10 @@ impl App {
         if self.git_root().is_some() {
             return false;
         }
-        self.show_message("Not inside a git repository".to_string());
+        self.show_source_failure(
+            DiagnosticSource::Git,
+            "Not inside a git repository".to_string(),
+        );
         true
     }
 }

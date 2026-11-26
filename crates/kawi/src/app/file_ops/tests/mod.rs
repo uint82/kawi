@@ -34,7 +34,8 @@ fn edit(app: &mut App, text: &str) {
 }
 
 fn command(app: &mut App, text: &str) {
-    app.run_command(parse(text)).expect("command");
+    app.run_command(parse(text).expect("parse"))
+        .expect("command");
 }
 
 fn key(code: KeyCode) -> KeyEvent {

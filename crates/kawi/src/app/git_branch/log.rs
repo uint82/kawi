@@ -7,6 +7,7 @@ use kawi_picker::PickerRow;
 
 use super::super::{picker::PickerSession, App};
 use super::actions::path_relative;
+use crate::app::diagnostic::DiagnosticSource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LogKeyOutcome {
@@ -38,7 +39,7 @@ impl App {
         let root = self.git_root().unwrap_or_default();
         let path = if file {
             let Some(path) = self.editor.buffer_path(self.editor.buffer_number()) else {
-                self.show_message("E32: No file name".to_string());
+                self.show_error_code("E32", "No file name".to_string());
                 return Ok(false);
             };
             let path = PathBuf::from(path);
@@ -128,7 +129,7 @@ impl App {
         grep: bool,
     ) -> Result<bool> {
         if query.is_empty() {
-            self.show_message("Type a search pattern first".to_string());
+            self.show_error("Type a search pattern first".to_string());
             return Ok(false);
         }
         if grep {
@@ -155,7 +156,9 @@ impl App {
                 self.git_branch.log_options = Some(options);
                 self.picker = Some(session);
             }
-            Err(error) => self.show_message(format!("Git log failed: {error}")),
+            Err(error) => {
+                self.show_source_failure(DiagnosticSource::Git, format!("Git log failed: {error}"))
+            }
         }
         Ok(false)
     }
@@ -171,14 +174,20 @@ impl App {
                 self.git_branch.commit_files = files;
                 self.picker = Some(PickerSession::git_commit_files(root.to_path_buf(), rows));
             }
-            Err(error) => self.show_message(format!("Git commit files failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git commit files failed: {error}"),
+            ),
         }
         Ok(false)
     }
 
     pub(crate) fn open_commit_diff(&mut self, sha: &str) -> Result<bool> {
         let Some(root) = self.git_root() else {
-            self.show_message("Not inside a git repository".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Not inside a git repository".to_string(),
+            );
             return Ok(false);
         };
         match kawi_git::commit_patch(&root, sha) {
@@ -188,18 +197,24 @@ impl App {
                 let name = format!("git-commit-{}.diff", &sha[..sha.len().min(8)]);
                 self.open_readonly_window(&name, &lines.join("\n"))?;
             }
-            Err(error) => self.show_message(format!("Git commit diff failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git commit diff failed: {error}"),
+            ),
         }
         Ok(false)
     }
 
     pub(crate) fn open_commit_file_diff(&mut self, path: &str) -> Result<bool> {
         let Some(root) = self.git_root() else {
-            self.show_message("Not inside a git repository".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Not inside a git repository".to_string(),
+            );
             return Ok(false);
         };
         let Some(sha) = self.git_branch.commit_sha.clone() else {
-            self.show_message("No commit selected".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No commit selected".to_string());
             return Ok(false);
         };
         let Some(file) = self
@@ -209,7 +224,10 @@ impl App {
             .find(|file| file.path == Path::new(path))
             .cloned()
         else {
-            self.show_message("File is no longer available".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "File is no longer available".to_string(),
+            );
             return Ok(false);
         };
         match kawi_git::file_diff(&root, &sha, &file) {
@@ -219,7 +237,10 @@ impl App {
                 let name = format!("{}:{}", &sha[..sha.len().min(8)], file.path.display());
                 self.open_readonly_window(&name, &lines.join("\n"))?;
             }
-            Err(error) => self.show_message(format!("Git file diff failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git file diff failed: {error}"),
+            ),
         }
         Ok(false)
     }

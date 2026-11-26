@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::diagnostic::Diagnostic;
 use kawi_lsp::{
     DocumentSymbolEvent, SymbolCapabilitiesEvent, WorkspaceSymbolEvent,
     WorkspaceSymbolResolvedEvent,
@@ -91,39 +92,39 @@ impl LspSymbols {
 }
 
 impl LspUi {
-    pub fn document_symbols(&mut self, editor: &Editor, version: u64) -> Result<u64, String> {
+    pub fn document_symbols(&mut self, editor: &Editor, version: u64) -> Result<u64, Diagnostic> {
         self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
-            return Err("lsp unavailable".to_string());
+            return Err(lsp_failure("lsp unavailable"));
         };
         let Some(path) = editor_path(editor) else {
-            return Err("E32: No file name".to_string());
+            return Err(Diagnostic::no_file_name());
         };
         if !self.supports_document_symbols() {
-            return Err("No language server supports document symbols".to_string());
+            return Err(lsp_failure("No language server supports document symbols"));
         }
         let request = service.document_symbols(&path, version);
         self.symbols.start(request);
         Ok(request)
     }
 
-    pub fn workspace_symbols(&mut self, query: &str) -> Result<u64, String> {
+    pub fn workspace_symbols(&mut self, query: &str) -> Result<u64, Diagnostic> {
         self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
-            return Err("lsp unavailable".to_string());
+            return Err(lsp_failure("lsp unavailable"));
         };
         if !self.supports_workspace_symbols() {
-            return Err("No language server supports workspace symbols".to_string());
+            return Err(lsp_failure("No language server supports workspace symbols"));
         }
         let request = service.workspace_symbols(query);
         self.symbols.start(request);
         Ok(request)
     }
 
-    pub fn resolve_workspace_symbol(&mut self, symbol_id: u64) -> Result<u64, String> {
+    pub fn resolve_workspace_symbol(&mut self, symbol_id: u64) -> Result<u64, Diagnostic> {
         self.flush_pending_change();
         let Some(service) = self.service.as_ref() else {
-            return Err("lsp unavailable".to_string());
+            return Err(lsp_failure("lsp unavailable"));
         };
         let request = service.resolve_workspace_symbol(symbol_id);
         self.symbols.start(request);

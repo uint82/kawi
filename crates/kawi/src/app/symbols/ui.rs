@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::diagnostic::DiagnosticSource;
 use crate::app::App;
 use kawi_editor::Editor;
 use std::path::PathBuf;
@@ -7,12 +8,15 @@ use std::time::Instant;
 impl App {
     pub(in crate::app) fn open_document_symbols(&mut self) -> anyhow::Result<bool> {
         let Some(path) = path_absolute(&self.editor) else {
-            self.show_message("E32: No file name".to_string());
+            self.show_error_code("E32", "No file name".to_string());
             return Ok(false);
         };
         self.lsp.sync_editor(&self.editor);
         if !self.lsp.supports_document_symbols() {
-            self.show_message("No language server supports document symbols".to_string());
+            self.show_source_failure(
+                DiagnosticSource::LanguageServer,
+                "No language server supports document symbols".to_string(),
+            );
             return Ok(false);
         }
         let version = self.editor.buffer_revision();
@@ -46,7 +50,7 @@ impl App {
             match self.lsp.document_symbols(&self.editor, version) {
                 Ok(request) => session.set_document_request(request),
                 Err(message) => {
-                    self.show_message(message);
+                    self.show_diagnostic(message);
                     if session.picker().rows().is_empty() {
                         return Ok(false);
                     }
@@ -59,7 +63,10 @@ impl App {
 
     pub(in crate::app) fn open_workspace_symbols(&mut self) -> anyhow::Result<bool> {
         if !self.lsp.supports_workspace_symbols() {
-            self.show_message("No language server supports workspace symbols".to_string());
+            self.show_source_failure(
+                DiagnosticSource::LanguageServer,
+                "No language server supports workspace symbols".to_string(),
+            );
             return Ok(false);
         }
         self.symbol_picker = Some(SymbolSession::workspace(
@@ -150,7 +157,7 @@ impl App {
         if let Err(message) =
             self.open_file_location(&jump.path, Some(jump.line), Some(jump.column))
         {
-            self.show_message(message);
+            self.show_diagnostic(message);
             return;
         }
         self.reveal_cursor();

@@ -2,6 +2,7 @@ use anyhow::Result;
 use kawi_plugin::PluginError;
 use serde_json::Value;
 
+use super::super::diagnostic::DiagnosticSource;
 use super::super::App;
 use super::queue::{capability_from_error, QueueDrop, QueueOutcome};
 use super::text::sanitize;
@@ -17,14 +18,20 @@ impl App {
             .target(target)
             .map(|(plugin, command)| (plugin.to_string(), command.to_string()))
         else {
-            self.show_message("Unknown plugin command".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Plugin,
+                "Unknown plugin command".to_string(),
+            );
             return Ok(false);
         };
         let args = match args {
             Some(args) => match serde_json::to_value(args) {
                 Ok(args) => args,
                 Err(error) => {
-                    self.show_message(format!("{plugin}.{command}: {error}"));
+                    self.show_source_failure(
+                        DiagnosticSource::Plugin,
+                        format!("{plugin}.{command}: {error}"),
+                    );
                     return Ok(false);
                 }
             },
@@ -80,11 +87,14 @@ impl App {
         if let Some(capability) = capability_from_error(error) {
             let first = self.plugins.record_denial(plugin, capability);
             if first {
-                self.show_message(format!(
-                    "{}: capability denied: {}",
-                    sanitize(plugin),
-                    capability.name()
-                ));
+                self.show_source_failure(
+                    DiagnosticSource::Plugin,
+                    format!(
+                        "{}: capability denied: {}",
+                        sanitize(plugin),
+                        capability.name()
+                    ),
+                );
             }
             return;
         }
@@ -93,11 +103,10 @@ impl App {
         } else {
             format!("{plugin}.{command}")
         };
-        self.show_message(format!(
-            "{}: {}",
-            sanitize(&label),
-            sanitize(&error.to_string())
-        ));
+        self.show_source_failure(
+            DiagnosticSource::Plugin,
+            format!("{}: {}", sanitize(&label), sanitize(&error.to_string())),
+        );
     }
 
     pub(super) fn log_queue_drops(&mut self, drops: &[QueueDrop], reason: &str) {

@@ -268,7 +268,7 @@ impl App {
         if let Some(name) = name {
             if let Err(error) = self.editor.edit_file(Some(&name), false) {
                 self.window_syntax.remove(&previous);
-                self.show_message(super::super::file_error_message(error));
+                self.show_diagnostic(super::super::file_error(error));
                 return Ok(false);
             }
         } else if new_buffer {
@@ -364,11 +364,14 @@ impl App {
 
     pub(crate) fn close_active_window(&mut self, force: bool) -> Result<bool> {
         if self.windows.len() <= 1 {
-            self.show_message("E444: Cannot close last window".to_string());
+            self.show_error_code("E444", "Cannot close last window".to_string());
             return Ok(false);
         }
         if self.editor.is_dirty() && !force {
-            self.show_message("E37: No write since last change (add ! to override)".to_string());
+            self.show_error_code(
+                "E37",
+                "No write since last change (add ! to override)".to_string(),
+            );
             return Ok(false);
         }
         self.sync_active_window();

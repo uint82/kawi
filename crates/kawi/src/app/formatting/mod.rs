@@ -68,7 +68,7 @@ impl App {
     fn request_lsp_format(&mut self) {
         let range = self.formatting_range();
         if let Err(message) = self.lsp.formatting(&self.editor, range) {
-            self.show_message(message);
+            self.show_diagnostic(message);
         }
     }
 
@@ -186,7 +186,7 @@ impl App {
         };
         self.editor
             .apply_text_edits(path, &[edit])
-            .map_err(super::file_error_message)
+            .map_err(|error| super::file_error(error).render())
     }
 
     fn formatting_range(&self) -> Option<(CursorPosition, CursorPosition)> {
@@ -201,7 +201,7 @@ impl App {
                 self.show_message("Formatted".to_string());
                 self.reveal_cursor();
             }
-            Err(message) => self.show_message(message),
+            Err(message) => self.show_diagnostic(message),
         }
     }
 

@@ -1,4 +1,5 @@
-use super::App;
+use super::diagnostic::DiagnosticSource;
+use super::{codes, App};
 use kawi_editor::TaskCommand;
 use kawi_task::{OutputStream, TaskEvent, TaskRunner, TaskSpec, TaskStatus, Tasks};
 use kawi_tui::frame::{Rect, TaskLine};
@@ -215,7 +216,11 @@ impl App {
 
     fn start_task(&mut self, name: &str) -> anyhow::Result<bool> {
         let Some(spec) = self.tasks.get(name).cloned() else {
-            self.show_message(format!("E: Unknown task: {name}"));
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::UNKNOWN_TASK,
+                format!("Unknown task: {name}"),
+            );
             return Ok(false);
         };
         let root = self.project_root();
@@ -225,7 +230,11 @@ impl App {
 
     fn rerun_task(&mut self) -> anyhow::Result<bool> {
         let Some(name) = self.task.last_task().map(str::to_string) else {
-            self.show_message("E: No previous task".to_string());
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_PREVIOUS_TASK,
+                "No previous task".to_string(),
+            );
             return Ok(false);
         };
         self.start_task(&name)
@@ -235,7 +244,11 @@ impl App {
         if self.task.cancel() {
             self.show_message("Task cancellation requested".to_string());
         } else {
-            self.show_message("E: No task is running".to_string());
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_RUNNING_TASK,
+                "No task is running".to_string(),
+            );
         }
     }
 
@@ -243,7 +256,11 @@ impl App {
         if self.task.toggle_panel() {
             self.sync_task_panel_size();
         } else {
-            self.show_message("E: No task output".to_string());
+            self.show_source_error(
+                DiagnosticSource::Task,
+                codes::NO_TASK_OUTPUT,
+                "No task output".to_string(),
+            );
         }
     }
 
@@ -450,13 +467,13 @@ args = ["-c", "sleep 10"]
     fn unknown_task_and_empty_state_report_errors() {
         let mut app = App::new(Buffer::from_string("text"), Flavor::Vim);
         app.start_task("missing").unwrap();
-        assert_eq!(app.last_message(), Some("E: Unknown task: missing"));
+        assert_eq!(app.last_message(), Some("K001: Unknown task: missing"));
         app.rerun_task().unwrap();
-        assert_eq!(app.last_message(), Some("E: No previous task"));
+        assert_eq!(app.last_message(), Some("K002: No previous task"));
         app.cancel_task();
-        assert_eq!(app.last_message(), Some("E: No task is running"));
+        assert_eq!(app.last_message(), Some("K003: No task is running"));
         app.toggle_task_output();
-        assert_eq!(app.last_message(), Some("E: No task output"));
+        assert_eq!(app.last_message(), Some("K004: No task output"));
     }
 
     #[test]

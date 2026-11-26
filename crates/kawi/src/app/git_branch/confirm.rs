@@ -5,6 +5,7 @@ use kawi_git::{BranchListOptions, CreateOutcome, DeleteOutcome, SwitchMode};
 
 use super::super::App;
 use super::state::PendingDelete;
+use crate::app::diagnostic::DiagnosticSource;
 
 impl App {
     pub(crate) fn has_pending_branch_action(&self) -> bool {
@@ -38,7 +39,10 @@ impl App {
         let outcome = match kawi_git::create(&root, name, base, unborn) {
             Ok(outcome) => outcome,
             Err(error) => {
-                self.show_message(format!("Git branch failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branch failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -48,7 +52,10 @@ impl App {
                 self.refresh_git_status();
             }
             CreateOutcome::Invalid(message) | CreateOutcome::Failed(message) => {
-                self.show_message(format!("Git branch failed: {message}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branch failed: {message}"),
+                );
             }
         }
         Ok(false)
@@ -58,7 +65,10 @@ impl App {
         let Some(name) = super::actions::branch_by_ref(&self.git_branch, full_ref)
             .map(|branch| branch.name.clone())
         else {
-            self.show_message("Branch is no longer available".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Branch is no longer available".to_string(),
+            );
             return Ok(false);
         };
         self.delete_branch(&name, false)
@@ -72,7 +82,10 @@ impl App {
         let list = match kawi_git::list_branches(&root, BranchListOptions::default()) {
             Ok(list) => list,
             Err(error) => {
-                self.show_message(format!("Git branches failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branches failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -82,14 +95,17 @@ impl App {
             .find(|branch| branch.name == name)
             .cloned()
         else {
-            self.show_message(format!("Branch {name} not found"));
+            self.show_source_failure(DiagnosticSource::Git, format!("Branch {name} not found"));
             return Ok(false);
         };
         self.git_branch.branches = Some(list);
         let outcome = match kawi_git::delete(&root, &branch, force) {
             Ok(outcome) => outcome,
             Err(error) => {
-                self.show_message(format!("Git branch failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branch failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -105,7 +121,10 @@ impl App {
                 ));
             }
             DeleteOutcome::Refused(message) | DeleteOutcome::Failed(message) => {
-                self.show_message(format!("Git branch failed: {message}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branch failed: {message}"),
+                );
             }
         }
         Ok(false)

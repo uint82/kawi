@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
+use super::super::diagnostic::DiagnosticSource;
 use super::super::App;
 use crate::plugin_manager::{PluginPrompt, PluginSpec, PromptAction};
 
@@ -12,16 +13,19 @@ impl App {
         let spec = match PluginSpec::parse(rest) {
             Ok(spec) => spec,
             Err(error) => {
-                self.show_message(format!("Cannot install plugin: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Plugin,
+                    format!("Cannot install plugin: {error}"),
+                );
                 return;
             }
         };
         match self.plugin_manager.prepare_install(&spec) {
             Ok(prepared) => self.show_plugin_prompt(PluginPrompt::install(prepared)),
-            Err(error) => self.show_message(format!(
-                "Cannot install plugin: {}",
-                super::text::sanitize(&error)
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!("Cannot install plugin: {}", super::text::sanitize(&error)),
+            ),
         }
     }
 
@@ -40,10 +44,10 @@ impl App {
                 self.show_plugin_prompt(PluginPrompt::update(update));
             }
             Ok(update) => self.apply_plugin_update(update),
-            Err(error) => self.show_message(format!(
-                "Cannot update plugin: {}",
-                super::text::sanitize(&error)
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!("Cannot update plugin: {}", super::text::sanitize(&error)),
+            ),
         }
     }
 
@@ -57,10 +61,10 @@ impl App {
             return;
         }
         if !self.plugin_manager.is_managed(name) {
-            self.show_message(format!(
-                "Unknown installed plugin: {}",
-                super::text::sanitize(name)
-            ));
+            self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!("Unknown installed plugin: {}", super::text::sanitize(name)),
+            );
             return;
         }
         self.show_plugin_prompt(PluginPrompt::remove(name));
@@ -87,10 +91,13 @@ impl App {
                     super::text::sanitize(name)
                 ));
             }
-            Err(error) => self.show_message(format!(
-                "Cannot change plugin state: {}",
-                super::text::sanitize(&error)
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!(
+                    "Cannot change plugin state: {}",
+                    super::text::sanitize(&error)
+                ),
+            ),
         }
     }
 
@@ -98,11 +105,14 @@ impl App {
         if !self.plugins.is_dev(name) {
             return false;
         }
-        self.show_message(format!(
-            "{} is a development plugin; remove it from {}",
-            super::text::sanitize(name),
-            self.plugin_manager.dev_dir().display()
-        ));
+        self.show_source_failure(
+            DiagnosticSource::Plugin,
+            format!(
+                "{} is a development plugin; remove it from {}",
+                super::text::sanitize(name),
+                self.plugin_manager.dev_dir().display()
+            ),
+        );
         true
     }
 
@@ -141,23 +151,23 @@ impl App {
             PromptAction::Install(prepared) => match self.plugin_manager.apply_install(&prepared) {
                 Ok(()) => {
                     self.reload_plugins_after_change();
-                    self.show_message(format!("Installed plugin {}", prepared.name));
+                    self.show_success(format!("Installed plugin {}", prepared.name));
                 }
-                Err(error) => self.show_message(format!(
-                    "Cannot install plugin: {}",
-                    super::text::sanitize(&error)
-                )),
+                Err(error) => self.show_source_failure(
+                    DiagnosticSource::Plugin,
+                    format!("Cannot install plugin: {}", super::text::sanitize(&error)),
+                ),
             },
             PromptAction::Update(update) => self.apply_plugin_update(update),
             PromptAction::Remove(name) => match self.plugin_manager.remove(&name) {
                 Ok(()) => {
                     self.reload_plugins_after_change();
-                    self.show_message(format!("Removed plugin {}", super::text::sanitize(&name)));
+                    self.show_success(format!("Removed plugin {}", super::text::sanitize(&name)));
                 }
-                Err(error) => self.show_message(format!(
-                    "Cannot remove plugin: {}",
-                    super::text::sanitize(&error)
-                )),
+                Err(error) => self.show_source_failure(
+                    DiagnosticSource::Plugin,
+                    format!("Cannot remove plugin: {}", super::text::sanitize(&error)),
+                ),
             },
         }
     }
@@ -168,16 +178,16 @@ impl App {
         match self.plugin_manager.apply_update(&update) {
             Ok(()) => {
                 self.reload_plugins_after_change();
-                self.show_message(format!(
+                self.show_success(format!(
                     "Updated plugin {} to {}",
                     super::text::sanitize(&name),
                     crate::plugin_manager::short_commit(&commit)
                 ));
             }
-            Err(error) => self.show_message(format!(
-                "Cannot update plugin: {}",
-                super::text::sanitize(&error)
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!("Cannot update plugin: {}", super::text::sanitize(&error)),
+            ),
         }
     }
 
@@ -194,10 +204,13 @@ impl App {
                     self.show_pager(warnings);
                 }
             }
-            Err(error) => self.show_message(format!(
-                "Cannot reload plugins: {}",
-                super::text::sanitize(&error.to_string())
-            )),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Plugin,
+                format!(
+                    "Cannot reload plugins: {}",
+                    super::text::sanitize(&error.to_string())
+                ),
+            ),
         }
     }
 }

@@ -1,59 +1,66 @@
-use super::{Command, SetValue};
+use super::{Command, ParseFailure, SetValue};
 
-pub(super) fn parse(rest: &[&str]) -> Command {
-    let Some(first) = rest.first() else {
-        return Command::Unknown;
-    };
+pub(super) fn parse(rest: &[&str]) -> Result<Command, ParseFailure> {
+    if rest.is_empty() {
+        return Err(ParseFailure::missing_argument("set"));
+    }
     if rest.len() > 2 {
-        return super::trailing_characters(first);
+        return Err(ParseFailure::trailing_characters(rest[2..].join(" ")));
     }
     match rest {
         [name] => parse_single(name),
-        [name, value] => assign(name, value),
-        _ => Command::Unknown,
+        [name, value] => {
+            let argument = rest.join(" ");
+            require(assign(name, value), &argument)
+        }
+        _ => unreachable!("rest length is checked before matching"),
     }
 }
 
-fn parse_single(word: &str) -> Command {
+fn parse_single(word: &str) -> Result<Command, ParseFailure> {
     if let Some((name, value)) = word.split_once('=') {
-        return assign(name, value);
+        return require(assign(name, value), word);
     }
     if let Some(name) = word.strip_suffix('!') {
-        return modifier(name, SetValue::Toggle);
+        return require(modifier(name, SetValue::Toggle), word);
     }
     if let Some(name) = word.strip_suffix('?') {
-        return modifier(name, SetValue::Query);
+        return require(modifier(name, SetValue::Query), word);
     }
     if let Some(name) = word.strip_suffix('&') {
-        return modifier(name, SetValue::Reset);
+        return require(modifier(name, SetValue::Reset), word);
     }
     if let Some(name) = word.strip_prefix("no").filter(|name| !name.is_empty()) {
-        return modifier(name, SetValue::Negate);
+        return require(modifier(name, SetValue::Negate), word);
     }
-    assign(word, "")
+    require(assign(word, ""), word)
 }
 
-fn modifier(name: &str, value: SetValue) -> Command {
+fn require(command: Option<Command>, argument: &str) -> Result<Command, ParseFailure> {
+    command.ok_or_else(|| ParseFailure::invalid_argument(argument))
+}
+
+fn modifier(name: &str, value: SetValue) -> Option<Command> {
     if name.is_empty() {
-        return Command::Unknown;
+        return None;
     }
-    Command::Set {
+    Some(Command::Set {
         name: name.to_string(),
         value,
-    }
+    })
 }
 
-fn assign(name: &str, value: &str) -> Command {
+fn assign(name: &str, value: &str) -> Option<Command> {
     if name.is_empty() {
-        return Command::Unknown;
+        return None;
     }
     let value = if value.is_empty() {
         SetValue::Assign(None)
     } else {
         SetValue::Assign(Some(value.to_string()))
     };
-    Command::Set {
+    Some(Command::Set {
         name: name.to_string(),
         value,
-    }
+    })
 }

@@ -130,7 +130,7 @@ fn save_as_syncs_language_indent() {
     load_languages(&mut app, &dir, "");
     assert_eq!(app.editor.shiftwidth(), 8);
     let target = dir.join("copy.rs");
-    app.run_command(kawi_editor::parse(&format!("saveas {}", target.display())))
+    app.run_command(kawi_editor::parse(&format!("saveas {}", target.display())).expect("parse"))
         .unwrap();
     assert_eq!(app.editor.shiftwidth(), 4);
     assert!(app.editor.expandtab());
@@ -246,8 +246,9 @@ fn runtime_indent_survives_language_sync() {
         &dir,
         "[[language]]\nname = \"rust\"\nshiftwidth = 2\nexpandtab = true\n",
     );
-    app.run_command(kawi_editor::parse("set sw=5")).unwrap();
-    app.run_command(kawi_editor::parse("set noexpandtab"))
+    app.run_command(kawi_editor::parse("set sw=5").expect("parse"))
+        .unwrap();
+    app.run_command(kawi_editor::parse("set noexpandtab").expect("parse"))
         .unwrap();
     app.sync_language_indent();
     assert_eq!(app.editor.shiftwidth(), 5);

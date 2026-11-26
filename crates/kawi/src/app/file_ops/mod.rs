@@ -109,7 +109,7 @@ impl App {
             None => match self.current_path() {
                 Some(path) => path,
                 None => {
-                    self.show_message("E32: No file name".to_string());
+                    self.show_error_code("E32", "No file name".to_string());
                     return Ok(false);
                 }
             },
@@ -132,7 +132,7 @@ impl App {
             None => match self.current_path() {
                 Some(path) => path,
                 None => {
-                    self.show_message("E32: No file name".to_string());
+                    self.show_error_code("E32", "No file name".to_string());
                     return Ok(false);
                 }
             },

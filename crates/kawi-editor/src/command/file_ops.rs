@@ -1,64 +1,79 @@
-use super::Command;
+use super::{Command, ParseFailure};
 
-pub(super) fn parse(text: &str) -> Option<Command> {
-    let (command, rest) = split_head(text)?;
-    let action = action(command)?;
-    let words = split_words(rest)?;
-    action(words)
+#[derive(Clone, Copy)]
+enum FileOperation {
+    SaveAs,
+    Rename,
+    Delete,
 }
 
-type Action = Box<dyn Fn(Vec<String>) -> Option<Command>>;
-
-fn action(command: &str) -> Option<Action> {
-    let (force, command) = split_bang(command);
-    match command {
-        "saveas" | "sav" => Some(save_as(force)),
-        "rename" => Some(rename(force)),
-        "delete" => Some(delete(force)),
-        _ => None,
+impl FileOperation {
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "saveas" | "sav" => Some(Self::SaveAs),
+            "rename" => Some(Self::Rename),
+            "delete" => Some(Self::Delete),
+            _ => None,
+        }
     }
 }
 
-fn save_as(force: bool) -> Action {
-    Box::new(move |words| match words.as_slice() {
-        [name] => Some(Command::SaveAs {
+pub(super) fn parse(text: &str) -> Option<Result<Command, ParseFailure>> {
+    let (command, rest) = split_head(text)?;
+    let (force, base) = split_bang(command);
+    let operation = FileOperation::from_name(base)?;
+    let Some(words) = split_words(rest) else {
+        return Some(Err(ParseFailure::invalid_argument(rest)));
+    };
+    let result = match operation {
+        FileOperation::SaveAs => save_as(command, force, &words),
+        FileOperation::Rename => rename(force, &words),
+        FileOperation::Delete => delete(force, &words),
+    };
+    Some(result)
+}
+
+fn save_as(command: &str, force: bool, words: &[String]) -> Result<Command, ParseFailure> {
+    match words {
+        [name] => Ok(Command::SaveAs {
             name: name.clone(),
             force,
         }),
-        _ => Some(Command::Unknown),
-    })
+        [] => Err(ParseFailure::missing_argument(command)),
+        _ => Err(ParseFailure::invalid_argument(words.join(" "))),
+    }
 }
 
-fn rename(force: bool) -> Action {
-    Box::new(move |words| match words.as_slice() {
-        [] => Some(Command::RenameFile {
+fn rename(force: bool, words: &[String]) -> Result<Command, ParseFailure> {
+    match words {
+        [] => Ok(Command::RenameFile {
             source: None,
             name: String::new(),
             force,
         }),
-        [name] => Some(Command::RenameFile {
+        [name] => Ok(Command::RenameFile {
             source: None,
             name: name.clone(),
             force,
         }),
-        [source, name] => Some(Command::RenameFile {
+        [source, name] => Ok(Command::RenameFile {
             source: Some(source.clone()),
             name: name.clone(),
             force,
         }),
-        _ => Some(Command::Unknown),
-    })
+        _ => Err(ParseFailure::invalid_argument(words.join(" "))),
+    }
 }
 
-fn delete(force: bool) -> Action {
-    Box::new(move |words| match words.as_slice() {
-        [] => Some(Command::DeleteFile { path: None, force }),
-        [path] => Some(Command::DeleteFile {
+fn delete(force: bool, words: &[String]) -> Result<Command, ParseFailure> {
+    match words {
+        [] => Ok(Command::DeleteFile { path: None, force }),
+        [path] => Ok(Command::DeleteFile {
             path: Some(path.clone()),
             force,
         }),
-        _ => Some(Command::Unknown),
-    })
+        _ => Err(ParseFailure::invalid_argument(words.join(" "))),
+    }
 }
 
 fn split_bang(command: &str) -> (bool, &str) {
@@ -170,25 +185,49 @@ mod tests {
     fn parses_file_commands_with_spaces() {
         assert_eq!(
             parse(r#"rename "old name.txt" "new name.txt""#),
-            Some(Command::RenameFile {
+            Some(Ok(Command::RenameFile {
                 source: Some("old name.txt".to_string()),
                 name: "new name.txt".to_string(),
                 force: false,
-            })
+            }))
         );
         assert_eq!(
             parse(r#"delete! "-dash.txt""#),
-            Some(Command::DeleteFile {
+            Some(Ok(Command::DeleteFile {
                 path: Some("-dash.txt".to_string()),
                 force: true,
-            })
+            }))
         );
         assert_eq!(
             parse("saveas! 'nested file.txt'"),
-            Some(Command::SaveAs {
+            Some(Ok(Command::SaveAs {
                 name: "nested file.txt".to_string(),
                 force: true,
-            })
+            }))
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_argument_counts() {
+        assert_eq!(
+            parse("rename a b c"),
+            Some(Err(ParseFailure::invalid_argument("a b c")))
+        );
+        assert_eq!(
+            parse("delete a b"),
+            Some(Err(ParseFailure::invalid_argument("a b")))
+        );
+        assert_eq!(
+            parse("saveas"),
+            Some(Err(ParseFailure::missing_argument("saveas")))
+        );
+    }
+
+    #[test]
+    fn rejects_unterminated_quotes_as_parse_failures() {
+        assert_eq!(
+            parse(r#"rename "unterminated"#),
+            Some(Err(ParseFailure::invalid_argument(r#""unterminated"#)))
         );
     }
 

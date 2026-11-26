@@ -10,6 +10,7 @@ use kawi_plugin::{
 use ropey::Rope;
 use serde_json::Value;
 
+use super::super::diagnostic::{Diagnostic, DiagnosticSource};
 use super::super::problems::{plugin_source, Problem, ProblemSeverity};
 use super::super::App;
 
@@ -113,7 +114,9 @@ impl App {
     fn plugin_message(&mut self, _plugin: &str, params: Value) -> Result<Value, RpcError> {
         let params: UiMessageParams = serde_json::from_value(params).map_err(invalid_params)?;
         let message = super::text::sanitize(&params.message);
-        self.show_message(message);
+        self.show_diagnostic(
+            Diagnostic::information(message).with_source(DiagnosticSource::Plugin),
+        );
         Ok(Value::Null)
     }
 

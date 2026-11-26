@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use std::io::Write;
 
-use crate::frame::{Frame, PromptMenu};
+use crate::frame::{Frame, MessageSeverity, PromptMenu};
+use crate::paint;
 use crate::surface::Surface;
 use crate::text::{display_width, truncate_to_display_width};
 use kawi_editor::Viewport;
@@ -21,14 +22,38 @@ pub(super) fn draw_message_row(out: &mut Surface, frame: &Frame) -> Result<()> {
         frame.showcmd.as_deref(),
         frame.viewport.width(),
     );
+    let is_notice = is_notice(frame);
+    if is_notice {
+        apply_severity(out, frame);
+    }
     move_to_message_row(out, frame.viewport)?;
     write!(out, "{}", layout.line).context("write message row")?;
+    if is_notice {
+        paint::clear_decorations(out);
+        paint::restore_base(out, frame.theme);
+    }
     erase_row_tail(out)?;
     if let Some(column) = layout.showcmd_col {
         move_to_showcmd(out, column, frame.viewport)?;
         write!(out, "{}", layout.showcmd).context("write showcmd")?;
     }
     Ok(())
+}
+
+fn is_notice(frame: &Frame<'_>) -> bool {
+    frame.message.is_some()
+        && frame.prompt.is_none()
+        && frame.command.is_none()
+        && frame.search.is_none()
+}
+
+fn apply_severity(out: &mut Surface, frame: &Frame<'_>) {
+    match frame.message_severity {
+        MessageSeverity::Error => out.set_foreground(frame.theme.diagnostic_error),
+        MessageSeverity::Warning => out.set_foreground(frame.theme.diagnostic_warning),
+        MessageSeverity::Success => out.set_bold(true),
+        MessageSeverity::Information => {}
+    }
 }
 
 struct MessageLayout {
@@ -123,104 +148,4 @@ fn move_to_message_row(out: &mut Surface, viewport: &Viewport) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn layout_prefers_prompt_over_command() {
-        let prompt = PromptMenu {
-            label: "rename",
-            value: "value",
-            cursor: 5,
-        };
-        let layout = layout_message_row_with_prompt(
-            Some(&prompt),
-            MessageParts {
-                command: Some("w"),
-                search: None,
-                delimiter: '/',
-                message: Some("saved"),
-                search_status: None,
-            },
-            None,
-            20,
-        );
-        assert_eq!(layout.line, "rename: value");
-    }
-
-    #[test]
-    fn layout_prefers_command_over_message() {
-        let layout = layout_message_row(Some("w"), None, '/', Some("saved"), None, None, 20);
-        assert_eq!(layout.line, ":w");
-        assert_eq!(layout.showcmd_col, None);
-    }
-
-    #[test]
-    fn layout_right_aligns_showcmd() {
-        let layout = layout_message_row(None, None, '/', Some("saved"), None, Some("d"), 20);
-        assert_eq!(layout.line, "saved");
-        assert_eq!(layout.showcmd, "d");
-        assert_eq!(layout.showcmd_col, Some(19));
-    }
-
-    #[test]
-    fn layout_prefixes_backward_search_prompt() {
-        let layout = layout_message_row(None, Some("foo"), '?', None, None, None, 20);
-        assert_eq!(layout.line, "?foo");
-    }
-
-    #[test]
-    fn layout_truncates_by_display_width() {
-        let layout = layout_message_row(
-            None,
-            None,
-            '/',
-            Some("\u{4e2d}\u{4e2d}\u{4e2d}"),
-            None,
-            None,
-            4,
-        );
-        assert_eq!(layout.line, "\u{4e2d}\u{4e2d}");
-    }
-
-    #[test]
-    fn layout_truncates_left_for_showcmd() {
-        let layout = layout_message_row(
-            None,
-            None,
-            '/',
-            Some("12345678901234567890"),
-            None,
-            Some("dd"),
-            20,
-        );
-        assert_eq!(layout.line.chars().count(), 18);
-        assert_eq!(layout.showcmd_col, Some(18));
-    }
-
-    #[test]
-    fn layout_empty_row_has_no_column() {
-        let layout = layout_message_row(None, None, '/', None, None, None, 20);
-        assert_eq!(layout.line, "");
-        assert_eq!(layout.showcmd_col, None);
-    }
-
-    #[test]
-    fn layout_prefers_search_over_message() {
-        let layout = layout_message_row(None, Some("ar"), '/', Some("saved"), None, None, 20);
-        assert_eq!(layout.line, "/ar");
-    }
-
-    #[test]
-    fn layout_shows_search_status_when_idle() {
-        let layout = layout_message_row(None, None, '/', None, Some("/ar [1/3]"), None, 20);
-        assert_eq!(layout.line, "/ar [1/3]");
-    }
-
-    #[test]
-    fn layout_prefers_message_over_search_status() {
-        let layout =
-            layout_message_row(None, None, '/', Some("saved"), Some("/ar [1/3]"), None, 20);
-        assert_eq!(layout.line, "saved");
-    }
-}
+mod tests;

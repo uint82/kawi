@@ -1,5 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kawi_lsp::RenameReady;
+
+use super::lsp::lsp_failure;
 use kawi_picker::TextInput;
 use kawi_tui::frame::PromptMenu;
 
@@ -149,7 +151,7 @@ impl super::App {
     pub(super) fn request_rename(&mut self) -> anyhow::Result<bool> {
         match self.lsp.prepare_rename(&self.editor) {
             Ok(request) => self.rename = Some(RenameSession::preparing(request)),
-            Err(message) => self.show_message(message),
+            Err(message) => self.show_diagnostic(message),
         }
         Ok(false)
     }
@@ -163,7 +165,7 @@ impl super::App {
             RenameOutcome::Consumed => self.rename = Some(session),
             RenameOutcome::Submit { request, name } => {
                 if !self.lsp.rename(request, &name) {
-                    self.show_message("lsp unavailable".to_string());
+                    self.show_diagnostic(lsp_failure("lsp unavailable"));
                 }
             }
         }

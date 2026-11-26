@@ -187,7 +187,7 @@ impl App {
             if let Err(message) =
                 self.open_file_location(&jump.path, Some(jump.line), Some(jump.column))
             {
-                self.show_message(message);
+                self.show_diagnostic(message);
             }
         }
         Ok(changed)

@@ -3,7 +3,7 @@ use std::path::Path;
 use super::super::file_ops::absolute_path;
 use super::listing::Listing;
 use super::session::DirectoryBuffer;
-use crate::app::App;
+use crate::app::{codes, App};
 
 impl App {
     pub(crate) fn open_directory_path(&mut self, path: &Path, reuse_empty: bool) -> bool {
@@ -23,7 +23,11 @@ impl App {
     ) -> Result<usize, String> {
         let root = absolute_path(&path.to_string_lossy());
         if !root.is_dir() {
-            return Err(format!("E484: Not a directory: {}", root.display()));
+            return Err(format!(
+                "{}: Not a directory: {}",
+                codes::NOT_A_DIRECTORY,
+                root.display()
+            ));
         }
         if let Some(number) = self.directory.find_root(&root) {
             if !self.editor.buffer_is_dirty(number).unwrap_or(false)

@@ -129,7 +129,7 @@ impl super::App {
             Some(problem.line - 1),
             Some(problem.column - 1),
         ) {
-            self.show_message(message);
+            self.show_diagnostic(message);
             return Ok(false);
         }
         self.show_message(format!(

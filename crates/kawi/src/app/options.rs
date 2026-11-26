@@ -1,8 +1,9 @@
 use anyhow::Result;
 use kawi_editor::{FoldMethod, SetValue, WindowOptions};
 
+use super::diagnostic::Diagnostic;
 use super::key_binding::KeyBinding;
-use super::App;
+use super::{codes, App};
 use crate::keymap::{flavor_from_name, ActiveKeymap, Flavor, Keymap};
 use crate::options::{
     self, AutosaveMode, OptionContext, OptionError, OptionInput, OptionSpec, OptionValue,
@@ -13,7 +14,7 @@ use kawi_tui::theme::Theme;
 impl App {
     pub(super) fn handle_set(&mut self, name: &str, action: SetValue) -> Result<bool> {
         let Some(spec) = options::lookup(name) else {
-            self.show_message(format!("E518: Unknown option: {name}"));
+            self.show_error_code("E518", format!("Unknown option: {name}"));
             return Ok(false);
         };
         match action {
@@ -31,7 +32,7 @@ impl App {
         let input = match (spec.kind, value) {
             (options::OptionKind::Bool, None) => OptionInput::Bool(true),
             (_, None) => {
-                self.show_message(format!("E521: Argument required: {}", spec.name));
+                self.show_error_code("E471", format!("Argument required: {}", spec.name));
                 return Ok(());
             }
             (_, Some(value)) => OptionInput::Text(value),
@@ -41,7 +42,7 @@ impl App {
 
     fn toggle_option(&mut self, spec: &'static OptionSpec) -> Result<()> {
         let Some(current) = self.option_value(spec).as_bool() else {
-            self.show_message(format!("E474: Invalid argument: {}!", spec.name));
+            self.show_error_code("E474", format!("Invalid argument: {}!", spec.name));
             return Ok(());
         };
         self.apply_option(spec, OptionValue::Bool(!current))
@@ -49,7 +50,7 @@ impl App {
 
     fn negate_option(&mut self, spec: &'static OptionSpec) -> Result<()> {
         if !matches!(spec.kind, options::OptionKind::Bool) {
-            self.show_message(format!("E474: Invalid argument: no{}", spec.name));
+            self.show_error_code("E474", format!("Invalid argument: no{}", spec.name));
             return Ok(());
         }
         self.apply_option(spec, OptionValue::Bool(false))
@@ -74,7 +75,7 @@ impl App {
         match validated {
             Ok(value) => self.apply_option(spec, value),
             Err(error) => {
-                self.show_message(option_error_message(spec, &error));
+                self.show_diagnostic(option_error(spec, &error));
                 Ok(())
             }
         }
@@ -86,7 +87,7 @@ impl App {
         input: OptionInput<'_>,
     ) -> Result<(), String> {
         let value = options::validate_spec(spec, input, &self.option_context())
-            .map_err(|error| option_error_message(spec, &error))?;
+            .map_err(|error| option_error(spec, &error).render())?;
         self.apply_option(spec, value)
             .map_err(|error| error.to_string())
     }
@@ -287,7 +288,7 @@ impl App {
         match parse_key_binding(value, name) {
             Ok(binding) if up => self.completion_options.keys.up = binding,
             Ok(binding) => self.completion_options.keys.down = binding,
-            Err(message) => self.show_message(message),
+            Err(diagnostic) => self.show_diagnostic(diagnostic),
         }
     }
 
@@ -301,7 +302,7 @@ impl App {
         }
         match parse_key_binding(value, "terminal_focus_key") {
             Ok(binding) => self.terminal_focus_key = Some(binding),
-            Err(message) => self.show_message(message),
+            Err(diagnostic) => self.show_diagnostic(diagnostic),
         }
     }
 
@@ -314,7 +315,7 @@ impl App {
         match flavor_from_name(name) {
             Some(flavor) => self.apply_flavor(flavor),
             None => {
-                self.show_message(format!("Unknown keymap: {name}"));
+                self.show_error_code(codes::UNKNOWN_KEYMAP, format!("Unknown keymap: {name}"));
                 Ok(())
             }
         }
@@ -327,7 +328,7 @@ impl App {
             None => match Theme::named(name) {
                 Some(theme) => Ok(theme),
                 None => {
-                    self.show_message(format!("Unknown theme: {name}"));
+                    self.show_error_code(codes::UNKNOWN_THEME, format!("Unknown theme: {name}"));
                     return Ok(());
                 }
             },
@@ -339,11 +340,14 @@ impl App {
                 Ok(())
             }
             Err(error) if error.is_not_found() => {
-                self.show_message(format!("Unknown theme: {name}"));
+                self.show_error_code(codes::UNKNOWN_THEME, format!("Unknown theme: {name}"));
                 Ok(())
             }
             Err(error) => {
-                self.show_message(format!("Invalid theme {name}: {error}"));
+                self.show_error_code(
+                    codes::INVALID_THEME,
+                    format!("Invalid theme {name}: {error}"),
+                );
                 Ok(())
             }
         }
@@ -471,11 +475,11 @@ impl App {
     }
 }
 
-fn parse_key_binding(value: &OptionValue, name: &str) -> Result<KeyBinding, String> {
-    value
-        .as_text()
-        .and_then(KeyBinding::parse)
-        .ok_or_else(|| format!("E474: Invalid key binding: {name}={}", value.display()))
+fn parse_key_binding(value: &OptionValue, name: &str) -> Result<KeyBinding, Diagnostic> {
+    value.as_text().and_then(KeyBinding::parse).ok_or_else(|| {
+        Diagnostic::error(format!("Invalid key binding: {name}={}", value.display()))
+            .with_code("E474")
+    })
 }
 
 fn option_query(spec: &'static OptionSpec, value: &OptionValue) -> String {
@@ -487,28 +491,33 @@ fn option_query(spec: &'static OptionSpec, value: &OptionValue) -> String {
     }
 }
 
-fn option_error_message(spec: &'static OptionSpec, error: &OptionError) -> String {
+fn option_error(spec: &'static OptionSpec, error: &OptionError) -> Diagnostic {
     match error {
-        OptionError::InvalidType { expected, value } => {
-            format!(
-                "E474: Invalid argument: {}={value}, expected {expected}",
-                spec.name
-            )
-        }
+        OptionError::InvalidType { expected, value } => Diagnostic::error(format!(
+            "Invalid argument: {}={value}, expected {expected}",
+            spec.name
+        ))
+        .with_code("E474"),
         OptionError::OutOfRange { value, .. } => {
             if value < &1 && spec.name == "numberwidth" {
-                format!(
-                    "E487: Argument must be positive: {name}={value}",
+                Diagnostic::error(format!(
+                    "Argument must be positive: {name}={value}",
                     name = spec.name
-                )
+                ))
+                .with_code("E487")
             } else {
-                format!("E474: Invalid argument: {}={value}", spec.name)
+                Diagnostic::error(format!("Invalid argument: {}={value}", spec.name))
+                    .with_code("E474")
             }
         }
         OptionError::InvalidValue { value } => match spec.name {
-            "keymap" => format!("Unknown keymap: {value}"),
-            "theme" => format!("Unknown theme: {value}"),
-            _ => format!("E474: Invalid argument: {}={value}", spec.name),
+            "keymap" => Diagnostic::error(format!("Unknown keymap: {value}"))
+                .with_code(codes::UNKNOWN_KEYMAP),
+            "theme" => {
+                Diagnostic::error(format!("Unknown theme: {value}")).with_code(codes::UNKNOWN_THEME)
+            }
+            _ => Diagnostic::error(format!("Invalid argument: {}={value}", spec.name))
+                .with_code("E474"),
         },
     }
 }
@@ -525,7 +534,8 @@ mod tests {
     }
 
     fn execute(app: &mut App, text: &str) {
-        app.run_command(kawi_editor::parse(text)).unwrap();
+        app.run_command(kawi_editor::parse(text).expect("parse"))
+            .unwrap();
     }
 
     #[test]
@@ -756,7 +766,7 @@ mod tests {
             Some("E487: Argument must be positive: numberwidth=0")
         );
         execute(&mut app, "set theme=nope");
-        assert_eq!(app.last_message(), Some("Unknown theme: nope"));
+        assert_eq!(app.last_message(), Some("K102: Unknown theme: nope"));
         execute(&mut app, "set noexpandtab");
         assert!(!app.editor.expandtab());
         execute(&mut app, "set notheme");
@@ -902,7 +912,7 @@ mod tests {
         assert_eq!(app.theme_name(), "default");
         assert!(app
             .last_message()
-            .is_some_and(|message| message.starts_with("Invalid theme personal:")));
+            .is_some_and(|message| message.starts_with("K104: Invalid theme personal:")));
         let _ = fs::remove_dir_all(dir);
     }
 

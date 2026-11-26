@@ -3,7 +3,7 @@ use anyhow::Result;
 use kawi_editor::LspCommand;
 
 use super::lsp::editor_path;
-use super::App;
+use super::{codes, App};
 
 #[derive(Clone, Copy)]
 enum LspLifecycle {
@@ -53,7 +53,10 @@ impl App {
     ) -> Result<bool> {
         let path = editor_path(&self.editor);
         if path.is_none() && server.is_none() {
-            self.show_message("E: LSP command requires a file or server".to_string());
+            self.show_error(format!(
+                "{}: LSP command requires a file or server",
+                codes::LSP_TARGET_REQUIRED
+            ));
             return Ok(false);
         }
         let server = server.as_deref();
@@ -65,7 +68,10 @@ impl App {
         if sent {
             self.show_message(lifecycle_message(action, server));
         } else {
-            self.show_message("E: Language server service is not running".to_string());
+            self.show_error(format!(
+                "{}: Language server service is not running",
+                codes::LSP_SERVICE_STOPPED
+            ));
         }
         Ok(false)
     }

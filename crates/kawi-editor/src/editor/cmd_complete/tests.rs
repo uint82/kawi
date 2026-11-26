@@ -71,7 +71,7 @@ fn completes_command_names() {
     complete(&mut e, false);
     assert_eq!(e.command_text(), "edit");
     assert_eq!(
-        parse(e.command_text()),
+        parse(e.command_text()).expect("parse"),
         crate::command::Command::Edit {
             name: None,
             force: false

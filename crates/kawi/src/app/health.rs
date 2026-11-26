@@ -28,7 +28,7 @@ impl App {
             Some(topic) => match health_check_id(topic) {
                 Some(id) => Some(id),
                 None => {
-                    self.show_message(format!("E149: Sorry, no health check for {topic}"));
+                    self.show_error_code("E149", format!("Sorry, no health check for {topic}"));
                     return Ok(false);
                 }
             },

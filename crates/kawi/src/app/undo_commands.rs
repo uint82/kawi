@@ -26,7 +26,7 @@ impl App {
             }
             UndoCommand::Jump(sequence) => {
                 if !self.editor.jump_undo_sequence(sequence) {
-                    self.show_message(format!("E830: Undo number {sequence} not found"));
+                    self.show_error_code("E830", format!("Undo number {sequence} not found"));
                 }
             }
             UndoCommand::List => self.show_undo_list(),

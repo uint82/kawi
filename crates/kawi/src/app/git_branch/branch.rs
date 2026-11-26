@@ -6,6 +6,7 @@ use kawi_lsp::WatchedFileChange;
 use super::super::{picker::PickerSession, App};
 use super::actions::{branch_by_ref, branch_row};
 use super::state::PendingSwitch;
+use crate::app::diagnostic::DiagnosticSource;
 
 const BRANCH_HINT: &str = "Enter switch; Ctrl-B create; Ctrl-D delete";
 
@@ -22,14 +23,20 @@ impl App {
                 self.git_branch.branches = Some(list);
                 self.picker = Some(PickerSession::git_branches(root, rows, Some(status)));
             }
-            Err(error) => self.show_message(format!("Git branches failed: {error}")),
+            Err(error) => self.show_source_failure(
+                DiagnosticSource::Git,
+                format!("Git branches failed: {error}"),
+            ),
         }
         Ok(false)
     }
 
     pub(crate) fn switch_selected_branch(&mut self, full_ref: &str) -> Result<bool> {
         let Some(branch) = branch_by_ref(&self.git_branch, full_ref).cloned() else {
-            self.show_message("Branch is no longer available".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Branch is no longer available".to_string(),
+            );
             return Ok(false);
         };
         if branch.kind == kawi_git::BranchKind::Detached {
@@ -59,7 +66,10 @@ impl App {
         let list = match kawi_git::list_branches(&root, BranchListOptions::default()) {
             Ok(list) => list,
             Err(error) => {
-                self.show_message(format!("Git branches failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git branches failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -82,14 +92,20 @@ impl App {
         mode: SwitchMode,
     ) -> Result<bool> {
         let Some(root) = self.git_root() else {
-            self.show_message("Not inside a git repository".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Not inside a git repository".to_string(),
+            );
             return Ok(false);
         };
         self.sync_watched_files();
         let outcome = match kawi_git::switch(&root, &branch, mode) {
             Ok(outcome) => outcome,
             Err(error) => {
-                self.show_message(format!("Git switch failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git switch failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -100,7 +116,7 @@ impl App {
                 self.after_checkout();
             }
             SwitchOutcome::Refused(message) if is_worktree_refusal(&message) => {
-                self.show_message(message);
+                self.show_source_failure(DiagnosticSource::Git, message);
             }
             SwitchOutcome::Refused(message) => {
                 self.picker = None;
@@ -111,7 +127,10 @@ impl App {
                 ));
             }
             SwitchOutcome::Failed(message) => {
-                self.show_message(format!("Git switch failed: {message}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git switch failed: {message}"),
+                );
             }
         }
         Ok(false)
@@ -119,14 +138,20 @@ impl App {
 
     pub(crate) fn perform_detached(&mut self, target: &str) -> Result<bool> {
         let Some(root) = self.git_root() else {
-            self.show_message("Not inside a git repository".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Not inside a git repository".to_string(),
+            );
             return Ok(false);
         };
         self.sync_watched_files();
         let outcome = match kawi_git::switch_detached(&root, target) {
             Ok(outcome) => outcome,
             Err(error) => {
-                self.show_message(format!("Git checkout failed: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git checkout failed: {error}"),
+                );
                 return Ok(false);
             }
         };
@@ -137,7 +162,10 @@ impl App {
                 self.after_checkout();
             }
             SwitchOutcome::Refused(message) | SwitchOutcome::Failed(message) => {
-                self.show_message(format!("Git checkout failed: {message}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git checkout failed: {message}"),
+                );
             }
         }
         Ok(false)

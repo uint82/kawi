@@ -29,7 +29,7 @@ impl App {
     pub(super) fn handle_help(&mut self, topic: Option<&str>) -> Result<bool> {
         let requested = topic.unwrap_or("index");
         let Some(view) = self.help_view(requested) else {
-            self.show_message(format!("E149: Sorry, no help for {requested}"));
+            self.show_error_code("E149", format!("Sorry, no help for {requested}"));
             return Ok(false);
         };
         self.show_help_view(view, true)?;
@@ -41,6 +41,7 @@ impl App {
             topic: topic.to_string(),
             lines,
             links: BTreeMap::new(),
+            cursor_line: 0,
         };
         self.show_help_view(view, true)
     }
@@ -82,7 +83,7 @@ impl App {
         };
         let topic = target.strip_prefix(HELP_PREFIX).unwrap_or(&target);
         let Some(view) = self.help_view(topic) else {
-            self.show_message(format!("E149: Sorry, no help for {topic}"));
+            self.show_error_code("E149", format!("Sorry, no help for {topic}"));
             return Ok(true);
         };
         self.show_help_view(view, true)?;
@@ -94,7 +95,7 @@ impl App {
             return Ok(true);
         };
         let Some(view) = self.help_view(&topic) else {
-            self.show_message(format!("E149: Sorry, no help for {topic}"));
+            self.show_error_code("E149", format!("Sorry, no help for {topic}"));
             return Ok(true);
         };
         self.show_help_view(view, false)?;
@@ -102,6 +103,7 @@ impl App {
     }
 
     fn show_help_view(&mut self, view: HelpView, push_history: bool) -> Result<()> {
+        let cursor_line = view.cursor_line;
         let text = format!("{}\n", view.lines.join("\n"));
         let name = format!("help:{}", view.topic);
         let previous = self.help.as_ref().map(|help| HelpSlot {
@@ -128,7 +130,7 @@ impl App {
                 .replace_internal_buffer(slot.buffer, &name, &text)
             {
                 self.update_help_session(view, push_history, slot.topic.clone());
-                self.finish_help_navigation();
+                self.finish_help_navigation(cursor_line);
                 return Ok(());
             }
         }
@@ -140,7 +142,7 @@ impl App {
             links: view.links,
             back: Vec::new(),
         });
-        self.finish_help_navigation();
+        self.finish_help_navigation(cursor_line);
         Ok(())
     }
 
@@ -156,8 +158,8 @@ impl App {
         help.window = Some(self.windows.active());
     }
 
-    fn finish_help_navigation(&mut self) {
-        self.editor.apply(kawi_editor::Action::JumpTo(0, 0));
+    fn finish_help_navigation(&mut self, line: usize) {
+        self.editor.apply(kawi_editor::Action::JumpTo(line, 0));
         self.editor.reveal_cursor();
     }
 }

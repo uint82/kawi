@@ -31,7 +31,7 @@ impl App {
         self.hide_signature();
         let Some(path) = editor_path(&self.editor) else {
             if report_errors {
-                self.show_message("E32: No file name".to_string());
+                self.show_error_code("E32", "No file name".to_string());
             }
             return;
         };
@@ -177,7 +177,7 @@ impl App {
                         },
                     };
                     if !self.lsp.execute_command(session.path(), &server, &command) {
-                        self.show_message("lsp unavailable".to_string());
+                        self.show_diagnostic(super::lsp::lsp_failure("lsp unavailable"));
                     }
                 }
                 if let Some(snippet) = snippet {
@@ -188,7 +188,7 @@ impl App {
                 }
                 self.reveal_cursor();
             }
-            Err(message) => self.show_message(message),
+            Err(message) => self.show_diagnostic(message),
         }
     }
 

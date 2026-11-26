@@ -14,7 +14,7 @@ fn undo_sequence_jumps_to_an_absolute_state() {
         .into_iter()
         .find(|leaf| !leaf.current)
         .expect("old leaf");
-    app.run_command(parse(&format!("undo {}", old.sequence)))
+    app.run_command(parse(&format!("undo {}", old.sequence)).expect("parse"))
         .expect("undo command");
     assert_eq!(text(&app), old_branch);
     let _ = fs::remove_dir_all(dir);
@@ -24,7 +24,8 @@ fn undo_sequence_jumps_to_an_absolute_state() {
 fn undo_zero_returns_to_the_root_state() {
     let (dir, mut app) = app_with("tree_zero", "base\n");
     branch(&mut app);
-    app.run_command(parse("undo 0")).expect("undo zero");
+    app.run_command(parse("undo 0").expect("parse"))
+        .expect("undo zero");
     assert_eq!(text(&app), "base\n");
     assert!(!app.editor.is_dirty());
     let _ = fs::remove_dir_all(dir);
@@ -41,10 +42,12 @@ fn earlier_and_later_file_writes_update_dirty_state() {
     edit(&mut app, "c");
     save(&mut app);
     let third_save = text(&app);
-    app.run_command(parse("earlier 1f")).expect("earlier");
+    app.run_command(parse("earlier 1f").expect("parse"))
+        .expect("earlier");
     assert_eq!(text(&app), second_save);
     assert!(app.editor.is_dirty());
-    app.run_command(parse("later 1f")).expect("later");
+    app.run_command(parse("later 1f").expect("parse"))
+        .expect("later");
     assert_eq!(text(&app), third_save);
     assert!(!app.editor.is_dirty());
     let _ = fs::remove_dir_all(dir);
@@ -59,7 +62,8 @@ fn undolist_shows_leaves_and_save_markers() {
     save(&mut app);
     app.editor.apply(Action::Undo);
     edit(&mut app, "c");
-    app.run_command(parse("undolist")).expect("undolist");
+    app.run_command(parse("undolist").expect("parse"))
+        .expect("undolist");
     let pager = app.pager.as_ref().expect("pager");
     assert!(pager[0].contains("number"));
     assert!(pager[0].contains("saved"));
@@ -72,7 +76,8 @@ fn undolist_shows_leaves_and_save_markers() {
 #[test]
 fn undolist_reports_no_states_for_a_fresh_buffer() {
     let (dir, mut app) = app_with("tree_empty_list", "base\n");
-    app.run_command(parse("undolist")).expect("undolist");
+    app.run_command(parse("undolist").expect("parse"))
+        .expect("undolist");
     assert!(app.pager.is_none());
     assert_eq!(app.message.as_deref(), Some("No undo states"));
     let _ = fs::remove_dir_all(dir);

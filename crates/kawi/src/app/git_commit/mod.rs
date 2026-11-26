@@ -9,6 +9,7 @@ use kawi_git::Status;
 use kawi_task::ParserSpec;
 
 use super::App;
+use crate::app::diagnostic::DiagnosticSource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TaskKind {
@@ -87,20 +88,23 @@ impl GitCommitState {
 impl App {
     pub(super) fn start_git_commit(&mut self, all: bool) -> anyhow::Result<bool> {
         let Some(status) = self.git_status.status().cloned() else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         if status.has_conflicts() {
-            self.show_message("Resolve conflicts before committing".to_string());
+            self.show_source_failure(
+                DiagnosticSource::Git,
+                "Resolve conflicts before committing".to_string(),
+            );
             return Ok(false);
         }
         if let Err(message) = self.reject_staged_conflict_markers(&status.root) {
-            self.show_message(message);
+            self.show_source_failure(DiagnosticSource::Git, message);
             return Ok(false);
         }
         if all {
             if let Err(message) = self.reject_tracked_conflict_markers(&status.root) {
-                self.show_message(message);
+                self.show_source_failure(DiagnosticSource::Git, message);
                 return Ok(false);
             }
         }
@@ -118,15 +122,15 @@ impl App {
 
     pub(super) fn start_git_amend(&mut self, staged: bool) -> anyhow::Result<bool> {
         let Some(status) = self.git_status.status().cloned() else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         if status.is_unborn() {
-            self.show_message("No commit to amend".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No commit to amend".to_string());
             return Ok(false);
         }
         if let Err(message) = self.reject_staged_conflict_markers(&status.root) {
-            self.show_message(message);
+            self.show_source_failure(DiagnosticSource::Git, message);
             return Ok(false);
         }
         self.warn_pushed_amend(&status);
@@ -183,7 +187,7 @@ impl App {
 
     pub(super) fn start_git_fetch(&mut self) -> anyhow::Result<bool> {
         let Some(status) = self.git_status.status().cloned() else {
-            self.show_message("No git repository".to_string());
+            self.show_source_failure(DiagnosticSource::Git, "No git repository".to_string());
             return Ok(false);
         };
         let mut env = std::collections::BTreeMap::new();
@@ -259,7 +263,10 @@ impl App {
                 self.ipc_root = Some(root);
             }
             Err(error) => {
-                self.show_message(format!("Git editor socket unavailable: {error}"));
+                self.show_source_failure(
+                    DiagnosticSource::Git,
+                    format!("Git editor socket unavailable: {error}"),
+                );
             }
         }
     }
