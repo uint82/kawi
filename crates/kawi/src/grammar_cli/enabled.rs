@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Result};
-use kawi_grammar::{GrammarLoader, GrammarStore, Pack, PackRoot, PackState, PackStatus};
+use kawi_grammar::{GrammarLoader, GrammarStore, Pack, PackState, PackStatus};
 use kawi_syntax::LanguageId;
 
 use super::USAGE;
@@ -94,5 +94,5 @@ fn state_paths() -> Result<StatePaths> {
 }
 
 fn store(paths: &StatePaths) -> GrammarStore {
-    GrammarStore::new(vec![PackRoot::user(&paths.grammars)])
+    crate::grammar::store(&paths.grammars)
 }
