@@ -144,9 +144,9 @@ fn built_in_adl_editing_uses_adl_tokens() {
             kawi_editor::Pair::new('"', '"'),
         ]
     );
-    assert_eq!(app.editor.shiftwidth(), 2);
+    assert_eq!(app.editor.shiftwidth(), 4);
     assert!(app.editor.expandtab());
-    assert_eq!(app.editor.tabstop(), 2);
+    assert_eq!(app.editor.tabstop(), 4);
     let _ = fs::remove_dir_all(dir);
 }
 

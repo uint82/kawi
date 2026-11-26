@@ -155,7 +155,7 @@ fn built_in_indentation_matches_language_conventions() {
     assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
     assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
     assert_eq!(indent("ada"), crate::IndentConfig::spaces(3));
-    assert_eq!(indent("adl"), crate::IndentConfig::spaces(2));
+    assert_eq!(indent("adl"), crate::IndentConfig::spaces(4));
 }
 
 #[test]
