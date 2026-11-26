@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -67,13 +68,13 @@ pub(super) fn parse_embedded(
     text: &Rope,
     language: LanguageId,
     range: &Range<usize>,
+    make_parser: impl FnOnce() -> Option<Parser>,
 ) -> Option<Tree> {
     let source = text.get_byte_slice(range.clone())?;
-    let parser = parsers.entry(language).or_insert_with(|| {
-        let mut parser = Parser::new();
-        let _ = parser.set_language(&language.language());
-        parser
-    });
+    let parser = match parsers.entry(language) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => entry.insert(make_parser()?),
+    };
     parse_slice(parser, source, None)
 }
 
