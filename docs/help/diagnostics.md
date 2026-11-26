@@ -1,11 +1,11 @@
 ---
 title = "Diagnostics"
-aliases = ["diagnostic", "errors"]
-related = ["lsp", "configuration", "keybindings"]
+aliases = ["diagnostic"]
+related = ["lsp", "configuration", "keybindings", "errors"]
 ---
 # Diagnostics
 
-Language server and plugin diagnostics appear as underlines, status counts, virtual text, and entries in the problems list. A plugin with `diagnostics.publish` publishes through `editor.set_diagnostics`, and Kawi labels the source with the plugin name. Gutter signs appear when the sign column is visible.
+Language server and plugin diagnostics appear as underlines, status counts, virtual text, and entries in the problems list. Messages use stable codes; run `:help errors` for the code reference. A plugin with `diagnostics.publish` publishes through `editor.set_diagnostics`, and Kawi labels the source with the plugin name. Gutter signs appear when the sign column is visible.
 
 Plugin diagnostics are scoped to the publishing plugin and the current named buffer. Kawi rejects more than 1000 diagnostics per call, messages over 4096 bytes, codes over 256 bytes, stale buffers or revisions, and invalid positions. Publishing is limited to 20 calls per plugin per second. Kawi clears a plugin's diagnostics when the plugin stops, crashes, is disabled, restarts, or when the buffer closes.
 
