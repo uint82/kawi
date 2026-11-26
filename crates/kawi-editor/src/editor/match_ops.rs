@@ -28,7 +28,7 @@ impl Editor {
             &self.buffer,
             row,
             col,
-            self.language_indent.language,
+            self.language_id(),
             &self.language_editing,
             ACTION_MATCH_BOUND,
         ) {
@@ -100,7 +100,7 @@ impl Editor {
             &self.buffer,
             row,
             col,
-            self.language_indent.language,
+            self.language_id(),
             &self.language_editing,
             ACTION_MATCH_BOUND,
         ) {

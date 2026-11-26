@@ -19,18 +19,12 @@ impl Editor {
     }
 
     pub fn inside_brackets(&self, opens: &[char], bound: usize) -> bool {
-        find_open_context(
-            &MatchRequest {
-                buffer: &self.buffer,
-                position: (self.cursor.row(), self.cursor.col()),
-                language: self.language_indent.language,
-                editing: &self.language_editing,
-                pairs: &self.language_editing.match_pairs,
-                bound,
-            },
-            opens,
-        )
-        .is_some()
+        let request = self.match_request(
+            (self.cursor.row(), self.cursor.col()),
+            &self.language_editing.match_pairs,
+            bound,
+        );
+        find_open_context(&request, opens).is_some()
     }
 
     pub(crate) fn bracket_cursor_position(&self) -> Option<Position> {
@@ -68,14 +62,11 @@ impl Editor {
     ) -> Option<WordSpan> {
         let pair = Self::bracket_pair(object)?;
         let pairs = [pair];
-        let request = MatchRequest {
-            buffer: &self.buffer,
-            position: (self.cursor.row(), self.cursor.col()),
-            language: self.language_indent.language,
-            editing: &self.language_editing,
-            pairs: &pairs,
-            bound: ACTION_MATCH_BOUND,
-        };
+        let request = self.match_request(
+            (self.cursor.row(), self.cursor.col()),
+            &pairs,
+            ACTION_MATCH_BOUND,
+        );
         objects::brackets::bracket_range(&request, pair, inner, count)
     }
 
@@ -90,14 +81,24 @@ impl Editor {
     }
 
     pub(crate) fn bracket_partner_at(&self, position: Position, bound: usize) -> Option<Position> {
-        find_match(&MatchRequest {
+        let request = self.match_request(position, &self.language_editing.match_pairs, bound);
+        find_match(&request)
+    }
+
+    fn match_request<'a>(
+        &'a self,
+        position: Position,
+        pairs: &'a [Pair],
+        bound: usize,
+    ) -> MatchRequest<'a> {
+        MatchRequest {
             buffer: &self.buffer,
             position,
-            language: self.language_indent.language,
+            language: self.language_id(),
             editing: &self.language_editing,
-            pairs: &self.language_editing.match_pairs,
+            pairs,
             bound,
-        })
+        }
     }
 
     fn is_match_bracket(&self, ch: char) -> bool {
@@ -113,10 +114,18 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::editing::Pair;
+    use crate::LanguageIndent;
     use kawi_buffer::Buffer;
+    use kawi_syntax::LanguageId;
 
     fn editor(text: &str) -> Editor {
         Editor::new(Buffer::from_string(text))
+    }
+
+    fn editor_at(path: &str, text: &str) -> Editor {
+        let mut buffer = Buffer::from_string(text);
+        buffer.path = Some(path.to_string());
+        Editor::new(buffer)
     }
 
     #[test]
@@ -248,6 +257,23 @@ mod tests {
             Some(BracketMatch {
                 first: (0, 0),
                 second: (0, 2),
+            })
+        );
+    }
+
+    #[test]
+    fn bracket_language_comes_from_the_buffer_path() {
+        let mut editor = editor_at("sample.rs", "(x: &'a) (1)");
+        editor.set_language_indent(LanguageIndent {
+            language: Some(LanguageId::Ada),
+            ..LanguageIndent::default()
+        });
+        editor.apply(Action::JumpTo(0, 0));
+        assert_eq!(
+            editor.bracket_match(100),
+            Some(BracketMatch {
+                first: (0, 0),
+                second: (0, 7),
             })
         );
     }
