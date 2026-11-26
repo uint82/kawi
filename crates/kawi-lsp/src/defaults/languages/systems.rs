@@ -84,6 +84,12 @@ pub(super) fn languages() -> Vec<LanguageConfig> {
             .with_line_comment("//")
             .with_block_comment("/*", "*/")
             .with_auto_pairs(C_PAIRS),
+        LanguageConfig::new("ada", "ada")
+            .with_spaces(3)
+            .with_grammar("ada")
+            .with_extensions(["adb", "ads"])
+            .with_line_comment("--")
+            .with_auto_pairs(C_PAIRS),
         LanguageConfig::new("swift", "swift")
             .with_spaces(4)
             .with_extensions(["swift", "swiftinterface"])

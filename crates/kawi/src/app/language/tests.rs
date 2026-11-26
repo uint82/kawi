@@ -101,6 +101,29 @@ fn built_in_language_editing_is_available() {
 }
 
 #[test]
+fn built_in_ada_matches_brackets_across_attribute_ticks() {
+    let dir = temp_dir("editing_ada");
+    let mut buffer = Buffer::from_string("Put_Line (\"cool \" & Color'Image (C));\n");
+    buffer.path = Some("main.adb".to_string());
+    let mut app = App::new(buffer, Flavor::Vim);
+    load_languages(&mut app, &dir, "");
+    app.sync_language_editing();
+    let editing = app.editor.language_editing();
+    assert_eq!(editing.comments.line.as_deref(), Some("--"));
+    assert!(!editing.pairs.contains(&kawi_editor::Pair::new('\'', '\'')));
+    app.editor.apply(kawi_editor::Action::JumpTo(0, 9));
+    assert_eq!(
+        app.editor
+            .bracket_match(kawi_editor::HIGHLIGHT_MATCH_STEP_BUDGET),
+        Some(kawi_editor::BracketMatch {
+            first: (0, 9),
+            second: (0, 35),
+        })
+    );
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn built_in_language_indent_applies() {
     let dir = temp_dir("builtin_indent");
     let mut app = plain_app("main.py");

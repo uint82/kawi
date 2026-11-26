@@ -117,6 +117,57 @@ fn rust_char_literals_are_skipped_and_lifetimes_stay_code() {
 }
 
 #[test]
+fn ada_attribute_ticks_leave_the_closing_bracket_in_code() {
+    let text = "Put_Line (\"cool \" & Color'Image (C));\n";
+    let buffer = Buffer::from_string(text);
+    let editing = ada_editing();
+    let open = position_of(text, '(', 0);
+    let close = position_of(text, ')', 1);
+    assert_eq!(
+        find(
+            &buffer,
+            &editing,
+            Some(LanguageId::Ada),
+            &ALL_PAIRS,
+            open,
+            ACTION_MATCH_BOUND
+        ),
+        Some(close)
+    );
+    assert_eq!(
+        find(
+            &buffer,
+            &editing,
+            Some(LanguageId::Ada),
+            &ALL_PAIRS,
+            close,
+            ACTION_MATCH_BOUND
+        ),
+        Some(open)
+    );
+}
+
+#[test]
+fn ada_attributes_and_character_literals_stay_in_code() {
+    let text = "Put (Color'Image ('A'));\n";
+    let buffer = Buffer::from_string(text);
+    let editing = ada_editing();
+    let open = position_of(text, '(', 0);
+    let close = position_of(text, ')', 1);
+    assert_eq!(
+        find(
+            &buffer,
+            &editing,
+            Some(LanguageId::Ada),
+            &ALL_PAIRS,
+            open,
+            ACTION_MATCH_BOUND
+        ),
+        Some(close)
+    );
+}
+
+#[test]
 fn bash_parameter_expansion_matches_as_braces() {
     let buffer = Buffer::from_string("x=${var} (y)");
     let editing = bash_editing();

@@ -153,6 +153,22 @@ fn built_in_indentation_matches_language_conventions() {
     assert_eq!(indent("go"), crate::IndentConfig::tabs(8));
     assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
     assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
+    assert_eq!(indent("ada"), crate::IndentConfig::spaces(3));
+}
+
+#[test]
+fn built_in_ada_uses_gnat_conventions() {
+    let ada = languages()
+        .into_iter()
+        .find(|language| language.name == "ada")
+        .expect("ada");
+    assert_eq!(ada.language_id, "ada");
+    assert_eq!(ada.grammar.as_deref(), Some("ada"));
+    assert_eq!(ada.line_comment.as_deref(), Some("--"));
+    assert!(ada.matches(Path::new("main.adb")));
+    assert!(ada.matches(Path::new("main.ads")));
+    let pairs = ada.auto_pairs.expect("auto pairs");
+    assert!(pairs.iter().all(|pair| pair.open != '\''));
 }
 
 #[test]

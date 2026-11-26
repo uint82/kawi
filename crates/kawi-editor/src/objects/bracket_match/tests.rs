@@ -37,6 +37,23 @@ fn bash_editing() -> LanguageEditing {
     editing("#", ("", ""))
 }
 
+fn ada_editing() -> LanguageEditing {
+    LanguageEditing {
+        comments: CommentTokens {
+            line: Some("--".to_string()),
+            block: None,
+        },
+        pairs: vec![
+            Pair::new('(', ')'),
+            Pair::new('[', ']'),
+            Pair::new('{', '}'),
+            Pair::new('"', '"'),
+        ],
+        match_pairs: default_match_pairs(),
+        ..LanguageEditing::default()
+    }
+}
+
 fn find(
     buffer: &Buffer,
     editing: &LanguageEditing,
