@@ -95,8 +95,8 @@ fn borland_uses_the_turbo_pascal_palette() {
     let theme = Theme::named("borland").expect("theme");
     assert_eq!(theme.base.background, rgb(0, 0, 168));
     assert_eq!(theme.base.foreground, rgb(255, 255, 87));
-    assert_eq!(theme.selection.foreground, rgb(0, 0, 168));
-    assert_eq!(theme.selection.background, rgb(168, 168, 168));
+    assert_eq!(theme.selection.foreground, rgb(255, 255, 87));
+    assert_eq!(theme.selection.background, rgb(0, 0, 85));
     assert_eq!(theme.status.foreground, rgb(0, 0, 0));
     assert_eq!(theme.status.background, rgb(170, 170, 170));
     assert_eq!(theme.bracket_match.foreground, rgb(255, 255, 87));

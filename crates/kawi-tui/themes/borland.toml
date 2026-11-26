@@ -19,8 +19,8 @@ foreground = "#000000"
 background = "#FFFF57"
 
 [selection]
-foreground = "#0000A8"
-background = "#A8A8A8"
+foreground = "#FFFF57"
+background = "#000055"
 
 [bracket.match]
 foreground = "#FFFF57"
