@@ -22,6 +22,9 @@ fn detects_known_extensions() {
     assert_eq!(LanguageId::from_path("a.rb"), Some(LanguageId::Ruby));
     assert_eq!(LanguageId::from_path("a.adb"), Some(LanguageId::Ada));
     assert_eq!(LanguageId::from_path("a.ads"), Some(LanguageId::Ada));
+    assert_eq!(LanguageId::from_path("a.adl"), Some(LanguageId::Adl));
+    assert_eq!(LanguageId::from_path("a.adl-java"), Some(LanguageId::Adl));
+    assert_eq!(LanguageId::from_path("a.adl-ts"), Some(LanguageId::Adl));
     assert_eq!(LanguageId::from_path("a.sql"), Some(LanguageId::Sql));
     assert_eq!(LanguageId::from_path("a.psql"), Some(LanguageId::Sql));
     assert_eq!(LanguageId::from_path("a.php"), Some(LanguageId::Php));
@@ -64,6 +67,9 @@ fn normalizes_alias_names() {
     assert_eq!(LanguageId::from_alias("ada"), Some(LanguageId::Ada));
     assert_eq!(LanguageId::from_alias("adb"), Some(LanguageId::Ada));
     assert_eq!(LanguageId::from_alias("ads"), Some(LanguageId::Ada));
+    assert_eq!(LanguageId::from_alias("adl"), Some(LanguageId::Adl));
+    assert_eq!(LanguageId::from_alias("adl-rs"), Some(LanguageId::Adl));
+    assert_eq!(LanguageId::from_alias("ADL"), Some(LanguageId::Adl));
     assert_eq!(LanguageId::from_alias("sql"), Some(LanguageId::Sql));
     assert_eq!(LanguageId::from_alias("postgres"), Some(LanguageId::Sql));
     assert_eq!(LanguageId::from_alias("postgresql"), Some(LanguageId::Sql));
