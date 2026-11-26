@@ -54,7 +54,7 @@ jobs:
           path: adl
       - name: Rebuild the ADL pack
         run: |
-          cp -R crates/kawi-grammar/fixtures/adl/0.7.0 /tmp/adl-pack
+          cp -R crates/kawi-grammar/packs/adl/0.7.0 /tmp/adl-pack
           sh scripts/build-grammar-pack.sh adl /tmp/adl-pack
       - name: Format
         run: cargo fmt --all -- --check
