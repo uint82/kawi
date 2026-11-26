@@ -1,4 +1,5 @@
 /target
+/spike/wasm-grammar/target
 
 .difftest/
 testdata/

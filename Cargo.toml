@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["crates/*", "examples/wasm-trim"]
 default-members = ["crates/kawi"]
-exclude = ["fuzz"]
+exclude = ["fuzz", "spike/wasm-grammar"]
 
 
 [workspace.package]
