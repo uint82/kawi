@@ -18,6 +18,16 @@ pub enum DiagnosticCode {
 }
 
 impl DiagnosticCode {
+    pub const ALL: &[Self] = &[
+        Self::ArgumentRequired,
+        Self::InvalidArgument,
+        Self::NotAnEditorCommand,
+        Self::TrailingCharacters,
+        Self::RegexDelimitedByLetter,
+        Self::PositiveCountRequired,
+        Self::ValueTooLarge,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ArgumentRequired => "E471",
@@ -195,6 +205,16 @@ mod tests {
     #[test]
     fn empty_input_has_no_code() {
         assert_eq!(ParseFailure::EmptyInput.code(), None);
+    }
+
+    #[test]
+    fn codes_are_unique_and_uppercase() {
+        let mut seen = std::collections::BTreeSet::new();
+        for code in DiagnosticCode::ALL {
+            let text = code.as_str();
+            assert_eq!(text, text.to_ascii_uppercase());
+            assert!(seen.insert(text), "duplicate code {text}");
+        }
     }
 
     #[test]

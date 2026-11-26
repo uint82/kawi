@@ -11,3 +11,20 @@ pub(super) const NOT_A_DIRECTORY: &str = "K101";
 pub(super) const UNKNOWN_THEME: &str = "K102";
 pub(super) const UNKNOWN_KEYMAP: &str = "K103";
 pub(super) const INVALID_THEME: &str = "K104";
+
+#[cfg(test)]
+pub(super) const ALL: &[&str] = &[
+    UNKNOWN_TASK,
+    NO_PREVIOUS_TASK,
+    NO_RUNNING_TASK,
+    NO_TASK_OUTPUT,
+    TASK_ALREADY_RUNNING,
+    NO_GIT_EDITOR,
+    LSP_TARGET_REQUIRED,
+    LSP_SERVICE_STOPPED,
+    NO_KEYMAP_FILE,
+    NOT_A_DIRECTORY,
+    UNKNOWN_THEME,
+    UNKNOWN_KEYMAP,
+    INVALID_THEME,
+];

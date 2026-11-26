@@ -12,6 +12,14 @@ fn execute(app: &mut App, command: &str) {
         .expect("command");
 }
 
+fn assert_code_help(code: &str) {
+    let target = kawi_help::HelpIndex
+        .lookup(code)
+        .unwrap_or_else(|| panic!("missing help for {code}"));
+    assert_eq!(target.page.slug, "errors");
+    assert_eq!(target.code, Some(code));
+}
+
 #[test]
 fn help_opens_an_internal_readonly_buffer() {
     let mut app = app();
@@ -125,6 +133,16 @@ fn help_reports_an_unknown_error_code() {
     let mut app = app();
     execute(&mut app, "help E9999");
     assert_eq!(app.last_message(), Some("E149: Sorry, no help for E9999"));
+}
+
+#[test]
+fn every_typed_code_has_help() {
+    for code in kawi_editor::command::DiagnosticCode::ALL {
+        assert_code_help(code.as_str());
+    }
+    for code in crate::app::codes::ALL {
+        assert_code_help(code);
+    }
 }
 
 #[test]
