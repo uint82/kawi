@@ -10,14 +10,15 @@ pub struct GrammarSpec<'a> {
     pub sha256: &'a str,
 }
 
+#[derive(Debug)]
 pub struct GrammarEngine {
     engine: Engine,
 }
 
 impl GrammarEngine {
     pub fn new() -> Result<Self, LoadError> {
-        let engine = Engine::new(&engine_config())
-            .map_err(|error| LoadError::Engine(error.to_string()))?;
+        let engine =
+            Engine::new(&engine_config()).map_err(|error| LoadError::Engine(error.to_string()))?;
         Ok(Self { engine })
     }
 
@@ -33,6 +34,7 @@ impl GrammarEngine {
     }
 }
 
+#[derive(Debug)]
 pub struct Grammar {
     engine: Engine,
     language: Language,
