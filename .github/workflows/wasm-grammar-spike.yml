@@ -2,7 +2,7 @@ name: wasm-grammar-spike
 
 on:
   push:
-    branches: [main]
+    branches: [main, "spike/**"]
     paths:
       - "spike/wasm-grammar/**"
       - ".github/workflows/wasm-grammar-spike.yml"
