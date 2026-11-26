@@ -1,6 +1,8 @@
 use crossterm::style::Color;
 use std::collections::BTreeSet;
 
+pub(super) const MIN_BODY_CONTRAST: f64 = 4.5;
+
 pub(super) fn rgb(r: u8, g: u8, b: u8) -> Color {
     Color::Rgb { r, g, b }
 }
