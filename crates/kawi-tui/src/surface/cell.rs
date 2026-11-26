@@ -1,6 +1,6 @@
 use crossterm::style::Color;
 
-use super::Style;
+use super::{Style, StylePatch};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
@@ -48,6 +48,10 @@ impl Cell {
 
     pub(crate) fn set_foreground(&mut self, foreground: Color) {
         self.style.set_foreground(foreground);
+    }
+
+    pub(crate) fn apply_patch(&mut self, patch: StylePatch) {
+        self.style.apply_patch(patch);
     }
 
     pub fn reset(&mut self, style: Style) {

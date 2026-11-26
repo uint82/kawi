@@ -17,7 +17,7 @@ use crate::text::TAB_WIDTH;
 pub use ansi::present;
 pub use cell::Cell;
 pub use diff::diff;
-pub use style::Style;
+pub use style::{Style, StylePatch, UnderlinePatch};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Position {
@@ -138,6 +138,31 @@ impl Surface {
         self.style.reset_attributes();
     }
 
+    pub fn patch_range(&mut self, x: usize, y: usize, width: usize, patch: StylePatch) {
+        if y >= self.height || width == 0 {
+            return;
+        }
+        let end = x.saturating_add(width).min(self.width);
+        let mut column = self.glyph_start(x.min(self.width), y);
+        while column < end {
+            let glyph_width = self.glyph_width(column, y);
+            self.patch_glyph(column, y, glyph_width, patch);
+            column = column.saturating_add(glyph_width);
+        }
+    }
+
+    fn patch_glyph(&mut self, x: usize, y: usize, width: usize, patch: StylePatch) {
+        for column in x..x.saturating_add(width).min(self.width) {
+            if let Some(cell) = self.cell_mut(column, y) {
+                cell.apply_patch(patch);
+            }
+        }
+    }
+
+    fn glyph_width(&self, x: usize, y: usize) -> usize {
+        self.cell(x, y).map_or(1, |cell| cell.width().max(1))
+    }
+
     pub fn move_to(&mut self, x: usize, y: usize) {
         self.cursor = Position { x, y };
     }
@@ -219,7 +244,7 @@ impl Surface {
 
     fn glyph_span(&self, x: usize, y: usize) -> (usize, usize) {
         let start = self.glyph_start(x, y);
-        let width = self.cell(start, y).map_or(1, |cell| cell.width().max(1));
+        let width = self.glyph_width(start, y);
         (start, start.saturating_add(width).max(x.saturating_add(1)))
     }
 
