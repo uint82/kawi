@@ -77,6 +77,83 @@ fn help_resolves_aliases_and_reports_missing_topics() {
 }
 
 #[test]
+fn help_opens_the_error_code_reference() {
+    let mut app = app();
+    execute(&mut app, "help errors");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    assert!(text.contains("Error codes"));
+    assert_eq!(app.editor.row(), 0);
+}
+
+#[test]
+fn help_jumps_to_an_error_code_entry() {
+    let mut app = app();
+    execute(&mut app, "help E492");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    let row = text
+        .lines()
+        .position(|line| line.starts_with("E492"))
+        .expect("E492 entry");
+    assert!(text.contains("Not an editor command"));
+    assert_eq!(app.editor.row(), row);
+}
+
+#[test]
+fn help_jumps_to_a_kawi_code_entry_case_insensitively() {
+    let mut app = app();
+    execute(&mut app, "help k001");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    let row = text
+        .lines()
+        .position(|line| line.starts_with("K001"))
+        .expect("K001 entry");
+    assert!(text.contains("Unknown task"));
+    assert_eq!(app.editor.row(), row);
+}
+
+#[test]
+fn help_reports_an_unknown_error_code() {
+    let mut app = app();
+    execute(&mut app, "help E9999");
+    assert_eq!(app.last_message(), Some("E149: Sorry, no help for E9999"));
+}
+
+#[test]
+fn help_back_returns_to_an_error_code_entry() {
+    let mut app = app();
+    execute(&mut app, "help E492");
+    let row = app
+        .editor
+        .text_lines()
+        .iter()
+        .position(|line| line.contains("Diagnostics"))
+        .expect("link row");
+    app.editor.apply(kawi_editor::Action::JumpTo(row, 2));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .expect("follow");
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL))
+        .expect("back");
+    let text = app
+        .editor
+        .buffer_text(app.editor.buffer_number())
+        .expect("help");
+    let row = text
+        .lines()
+        .position(|line| line.starts_with("E492"))
+        .expect("E492 entry");
+    assert_eq!(app.editor.row(), row);
+}
+
+#[test]
 fn help_links_follow_and_return() {
     let mut app = app();
     execute(&mut app, "help index");

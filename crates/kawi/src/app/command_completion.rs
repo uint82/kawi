@@ -60,6 +60,7 @@ fn help_topics() -> Vec<String> {
         .flat_map(|page| std::iter::once(page.slug).chain(page.aliases.iter().copied()))
         .map(str::to_string)
         .collect();
+    topics.extend(HelpIndex.codes().map(str::to_string));
     topics.extend(
         [COMMANDS_TOPIC, OPTION_TOPIC, OPTIONS_TOPIC]
             .into_iter()
@@ -182,5 +183,13 @@ mod tests {
         type_command(&mut app, "help option signcol");
         complete(&mut app);
         assert_eq!(app.editor.command_text(), "help option signcolumn");
+    }
+
+    #[test]
+    fn completes_help_error_codes() {
+        let mut app = app();
+        type_command(&mut app, "help E49");
+        complete(&mut app);
+        assert_eq!(app.editor.command_text(), "help E492");
     }
 }

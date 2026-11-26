@@ -18,6 +18,7 @@ pub(super) struct HelpView {
     pub(super) topic: String,
     pub(super) lines: Vec<String>,
     pub(super) links: std::collections::BTreeMap<usize, Vec<HelpLink>>,
+    pub(super) cursor_line: usize,
 }
 
 impl App {
@@ -31,7 +32,8 @@ impl App {
         if let Some(name) = topic.strip_prefix(OPTION_TOPIC_PREFIX) {
             return self.option_view(name.trim());
         }
-        HelpIndex.resolve(topic).map(page_view)
+        let page = HelpIndex.resolve(topic)?;
+        Some(page_view(page, HelpIndex.code(topic)))
     }
 
     fn options_view(&self) -> HelpView {
@@ -93,7 +95,7 @@ fn push_option_details(
         lines.push(format!("  aliases: {}", spec.aliases.join(", ")));
     }
 }
-fn page_view(page: HelpPage) -> HelpView {
+fn page_view(page: HelpPage, focus: Option<&str>) -> HelpView {
     let document = markdown::parse(&Documentation::from_markup(page.body(), true));
     let mut lines = Vec::new();
     let mut links = BTreeMap::new();
@@ -107,11 +109,28 @@ fn page_view(page: HelpPage) -> HelpView {
         }
     }
     push_related(page, &mut lines, &mut links);
+    let (topic, cursor_line) = focus
+        .and_then(|code| find_code_line(&lines, code).map(|line| (code, line)))
+        .unwrap_or((page.slug, 0));
     HelpView {
-        topic: page.slug.to_string(),
+        topic: topic.to_string(),
         lines,
         links,
+        cursor_line,
     }
+}
+
+fn find_code_line(lines: &[String], code: &str) -> Option<usize> {
+    lines
+        .iter()
+        .position(|line| line_starts_with_code(line, code))
+}
+
+fn line_starts_with_code(line: &str, code: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix(code) else {
+        return false;
+    };
+    rest.is_empty() || rest.starts_with(':') || rest.starts_with(' ')
 }
 
 fn push_related(
@@ -168,6 +187,7 @@ fn plain_view(topic: &str, lines: Vec<String>) -> HelpView {
         topic: topic.to_string(),
         lines,
         links: BTreeMap::new(),
+        cursor_line: 0,
     }
 }
 

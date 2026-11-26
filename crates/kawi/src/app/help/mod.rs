@@ -41,6 +41,7 @@ impl App {
             topic: topic.to_string(),
             lines,
             links: BTreeMap::new(),
+            cursor_line: 0,
         };
         self.show_help_view(view, true)
     }
@@ -102,6 +103,7 @@ impl App {
     }
 
     fn show_help_view(&mut self, view: HelpView, push_history: bool) -> Result<()> {
+        let cursor_line = view.cursor_line;
         let text = format!("{}\n", view.lines.join("\n"));
         let name = format!("help:{}", view.topic);
         let previous = self.help.as_ref().map(|help| HelpSlot {
@@ -128,7 +130,7 @@ impl App {
                 .replace_internal_buffer(slot.buffer, &name, &text)
             {
                 self.update_help_session(view, push_history, slot.topic.clone());
-                self.finish_help_navigation();
+                self.finish_help_navigation(cursor_line);
                 return Ok(());
             }
         }
@@ -140,7 +142,7 @@ impl App {
             links: view.links,
             back: Vec::new(),
         });
-        self.finish_help_navigation();
+        self.finish_help_navigation(cursor_line);
         Ok(())
     }
 
@@ -156,8 +158,8 @@ impl App {
         help.window = Some(self.windows.active());
     }
 
-    fn finish_help_navigation(&mut self) {
-        self.editor.apply(kawi_editor::Action::JumpTo(0, 0));
+    fn finish_help_navigation(&mut self, line: usize) {
+        self.editor.apply(kawi_editor::Action::JumpTo(line, 0));
         self.editor.reveal_cursor();
     }
 }

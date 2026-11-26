@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,6 +8,7 @@ struct Page {
     title: String,
     aliases: Vec<String>,
     related: Vec<String>,
+    codes: Vec<String>,
     body_start: usize,
     path: PathBuf,
 }
@@ -16,6 +18,7 @@ fn main() {
     let help_dir = manifest.join("../../docs/help");
     println!("cargo:rerun-if-changed={}", help_dir.display());
     let mut pages = read_pages(&help_dir);
+    assert_unique_codes(&pages);
     pages.sort_by(|left, right| {
         let left_index = left.slug == "index";
         let right_index = right.slug == "index";
@@ -67,13 +70,53 @@ fn read_page(path: &Path) -> Page {
         .find(|(key, _)| key == "related")
         .map(|(_, value)| array(value))
         .unwrap_or_default();
+    let codes = code_headings(&text[body_start..]);
     Page {
         slug,
         title,
         aliases,
         related,
+        codes,
         body_start,
         path: path.to_path_buf(),
+    }
+}
+
+fn code_headings(body: &str) -> Vec<String> {
+    let mut codes = Vec::new();
+    for line in body.lines() {
+        let Some(heading) = heading_text(line) else {
+            continue;
+        };
+        let code = heading
+            .split_once(':')
+            .map_or(heading, |(code, _)| code)
+            .trim();
+        if is_error_code(code) && !codes.iter().any(|seen| seen == code) {
+            codes.push(code.to_string());
+        }
+    }
+    codes
+}
+
+fn heading_text(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix('#')?;
+    Some(rest.trim_start_matches('#').trim())
+}
+
+fn is_error_code(code: &str) -> bool {
+    let bytes = code.as_bytes();
+    matches!(bytes.first(), Some(b'E' | b'K' | b'W'))
+        && (2..=5).contains(&bytes.len())
+        && bytes[1..].iter().all(u8::is_ascii_digit)
+}
+
+fn assert_unique_codes(pages: &[Page]) {
+    let mut seen = BTreeSet::new();
+    for page in pages {
+        for code in &page.codes {
+            assert!(seen.insert(code), "duplicate help code {code}");
+        }
     }
 }
 
@@ -121,7 +164,7 @@ fn title_from_slug(slug: &str) -> String {
 
 fn render_pages(pages: &[Page]) -> String {
     let mut output = String::from(
-        "pub(crate) struct PageFile {\n    pub slug: &'static str,\n    pub title: &'static str,\n    pub aliases: &'static [&'static str],\n    pub related: &'static [&'static str],\n    pub body: &'static str,\n    pub body_start: usize,\n}\n\npub(crate) const PAGE_FILES: &[PageFile] = &[\n",
+        "pub(crate) struct PageFile {\n    pub slug: &'static str,\n    pub title: &'static str,\n    pub aliases: &'static [&'static str],\n    pub related: &'static [&'static str],\n    pub codes: &'static [&'static str],\n    pub body: &'static str,\n    pub body_start: usize,\n}\n\npub(crate) const PAGE_FILES: &[PageFile] = &[\n",
     );
     for page in pages {
         let name = page
@@ -134,6 +177,7 @@ fn render_pages(pages: &[Page]) -> String {
         output.push_str(&format!("        title: {:?},\n", page.title));
         output.push_str(&format!("        aliases: &{:?},\n", page.aliases));
         output.push_str(&format!("        related: &{:?},\n", page.related));
+        output.push_str(&format!("        codes: &{:?},\n", page.codes));
         output.push_str(&format!(
             "        body: include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../docs/help/{name}\")),\n"
         ));
