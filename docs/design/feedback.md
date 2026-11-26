@@ -75,6 +75,8 @@ Rules:
 
 The doc is the policy. The registry in code is the source of truth.
 
+The user-facing reference is `:help errors`. Each code is a heading, so `:help E492` and `:help K001` open the page at the matching entry. The help index also offers codes for completion.
+
 ## Diagnostic model
 
 A diagnostic has:
@@ -220,11 +222,19 @@ Rendering tests cover:
 - Success is bold and does not rely on color.
 - Existing layout and truncation behavior is unchanged.
 
+Help tests cover:
+
+- `:help errors` opens the code reference.
+- `:help E492` and `:help K001` open the matching entry.
+- Error code topics are case-insensitive.
+- Unknown codes still report `E149`.
+- Help completion includes error codes.
+
 ## Rollout
 
 1. Command boundary: return typed parser failures, report them, and suggest names. Done.
 2. Message sink: typed diagnostics, bounded history, `:messages`, and message row rendering. Done.
 3. Cleanup: replace bare `E:` messages, fix misused Vim codes, and route direct message writes through the sink. In progress.
-4. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index. Pending.
+4. Help: add `:help errors` and resolve `:help E492` and `:help K001` through the help index. Done.
 
 Plugin message typing stays deferred until the 1.0 plugin review; the frozen `kawi:plugin@0.13.0` contract does not change.
