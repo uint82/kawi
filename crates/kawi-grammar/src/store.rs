@@ -23,6 +23,14 @@ impl PackRootKind {
             Self::System => "system",
         }
     }
+
+    fn priority(self) -> u8 {
+        match self {
+            Self::User => 0,
+            Self::Bundled => 1,
+            Self::System => 2,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -127,9 +135,7 @@ impl GrammarStore {
                 continue;
             }
             match best.get(&status.id) {
-                Some(current)
-                    if compare_versions(&status.version, &current.version) != Ordering::Greater => {
-                }
+                Some(current) if !is_preferred(&status, current) => {}
                 _ => {
                     best.insert(status.id.clone(), status);
                 }
@@ -204,22 +210,20 @@ fn sort_statuses(statuses: &mut [PackStatus]) {
     statuses.sort_by(|left, right| {
         left.id
             .cmp(&right.id)
+            .then_with(|| left.root.priority().cmp(&right.root.priority()))
             .then_with(|| compare_versions(&right.version, &left.version))
-            .then_with(|| root_order(left.root).cmp(&root_order(right.root)))
     });
+}
+
+fn is_preferred(candidate: &PackStatus, current: &PackStatus) -> bool {
+    candidate.root.priority() < current.root.priority()
+        || (candidate.root.priority() == current.root.priority()
+            && compare_versions(&candidate.version, &current.version) == Ordering::Greater)
 }
 
 fn compare_versions(left: &str, right: &str) -> Ordering {
     match (Version::parse(left), Version::parse(right)) {
         (Some(left), Some(right)) => left.cmp(&right),
         _ => left.cmp(right),
-    }
-}
-
-fn root_order(kind: PackRootKind) -> u8 {
-    match kind {
-        PackRootKind::User => 0,
-        PackRootKind::Bundled => 1,
-        PackRootKind::System => 2,
     }
 }
