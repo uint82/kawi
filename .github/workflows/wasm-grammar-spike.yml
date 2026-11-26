@@ -1,0 +1,46 @@
+name: wasm-grammar-spike
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spike/wasm-grammar/**"
+      - ".github/workflows/wasm-grammar-spike.yml"
+  pull_request:
+    paths:
+      - "spike/wasm-grammar/**"
+      - ".github/workflows/wasm-grammar-spike.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-grammar-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: spike/wasm-grammar
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools@1.262.0
+      - name: Validate fixture
+        run: wasm-tools validate spike/wasm-grammar/fixtures/typescript.wasm
+      - name: Format
+        run: cargo fmt --manifest-path spike/wasm-grammar/Cargo.toml -- --check
+      - name: Lint
+        run: cargo clippy --manifest-path spike/wasm-grammar/Cargo.toml --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --manifest-path spike/wasm-grammar/Cargo.toml -- --nocapture
