@@ -847,6 +847,10 @@ criteria = "safe-to-deploy"
 version = "0.9.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.tree-sitter-adl]]
+version = "0.7.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.tree-sitter-bash]]
 version = "0.25.1"
 criteria = "safe-to-deploy"
