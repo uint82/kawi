@@ -124,6 +124,33 @@ fn built_in_ada_matches_brackets_across_attribute_ticks() {
 }
 
 #[test]
+fn built_in_adl_editing_uses_adl_tokens() {
+    let dir = temp_dir("editing_adl");
+    let mut buffer =
+        Buffer::from_string("module demo {\n  struct User<T> {\n    T value;\n  };\n};\n");
+    buffer.path = Some("model.adl-java".to_string());
+    let mut app = App::new(buffer, Flavor::Vim);
+    load_languages(&mut app, &dir, "");
+    app.sync_language_editing();
+    let editing = app.editor.language_editing();
+    assert_eq!(editing.comments.line.as_deref(), Some("//"));
+    assert_eq!(editing.comments.block, None);
+    assert_eq!(
+        editing.pairs,
+        vec![
+            kawi_editor::Pair::new('[', ']'),
+            kawi_editor::Pair::new('{', '}'),
+            kawi_editor::Pair::new('<', '>'),
+            kawi_editor::Pair::new('"', '"'),
+        ]
+    );
+    assert_eq!(app.editor.shiftwidth(), 2);
+    assert!(app.editor.expandtab());
+    assert_eq!(app.editor.tabstop(), 2);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn built_in_language_indent_applies() {
     let dir = temp_dir("builtin_indent");
     let mut app = plain_app("main.py");

@@ -89,6 +89,7 @@ fn built_in_languages_map_to_standard_servers() {
     assert_eq!(servers_for("ocaml"), vec!["ocamllsp"]);
     assert_eq!(servers_for("gleam"), vec!["gleam"]);
     assert_eq!(servers_for("sql"), vec!["sqls"]);
+    assert_eq!(servers_for("adl"), vec!["adl-lsp"]);
     assert_eq!(servers_for("protobuf"), vec!["buf"]);
     assert_eq!(servers_for("terraform"), vec!["terraform-ls"]);
     assert_eq!(servers_for("nix"), vec!["nixd"]);
@@ -154,6 +155,7 @@ fn built_in_indentation_matches_language_conventions() {
     assert_eq!(indent("markdown"), crate::IndentConfig::spaces(4));
     assert_eq!(indent("fortran"), crate::IndentConfig::spaces(3));
     assert_eq!(indent("ada"), crate::IndentConfig::spaces(3));
+    assert_eq!(indent("adl"), crate::IndentConfig::spaces(2));
 }
 
 #[test]
@@ -169,6 +171,39 @@ fn built_in_ada_uses_gnat_conventions() {
     assert!(ada.matches(Path::new("main.ads")));
     let pairs = ada.auto_pairs.expect("auto pairs");
     assert!(pairs.iter().all(|pair| pair.open != '\''));
+}
+
+#[test]
+fn built_in_adl_uses_adl_lsp_conventions() {
+    let adl = languages()
+        .into_iter()
+        .find(|language| language.name == "adl")
+        .expect("adl");
+    assert_eq!(adl.language_id, "adl");
+    assert_eq!(adl.grammar.as_deref(), Some("adl"));
+    assert_eq!(adl.line_comment.as_deref(), Some("//"));
+    assert_eq!(adl.block_comment, None);
+    assert_eq!(adl.servers, vec!["adl-lsp"]);
+    assert_eq!(adl.root_markers, vec!["adl-package.json", ".git"]);
+    for path in [
+        "model.adl",
+        "model.adl-cpp",
+        "model.adl-hs",
+        "model.adl-java",
+        "model.adl-rs",
+        "model.adl-ts",
+    ] {
+        assert!(adl.matches(Path::new(path)), "{path}");
+    }
+    assert_eq!(
+        adl.auto_pairs,
+        Some(vec![
+            crate::PairConfig::new('[', ']'),
+            crate::PairConfig::new('{', '}'),
+            crate::PairConfig::new('<', '>'),
+            crate::PairConfig::new('"', '"'),
+        ])
+    );
 }
 
 #[test]
