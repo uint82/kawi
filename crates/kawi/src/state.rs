@@ -14,6 +14,8 @@ pub struct StatePaths {
     pub cache: PathBuf,
     pub keymaps: PathBuf,
     pub plugins: PathBuf,
+    #[cfg(feature = "wasm-grammars")]
+    pub grammars: PathBuf,
     pub installed_plugins: PathBuf,
     pub plugin_lock: PathBuf,
     pub plugin_settings: PathBuf,
@@ -43,6 +45,8 @@ impl StatePaths {
             cache: cache.join("kawi"),
             keymaps: config.join("kawi/keymaps.toml"),
             plugins: config.join("kawi/plugins"),
+            #[cfg(feature = "wasm-grammars")]
+            grammars: data.join("kawi/grammars"),
             installed_plugins: data.join("kawi/plugins"),
             plugin_lock: config.join("kawi/plugins.lock"),
             plugin_settings: config.join("kawi/plugins.toml"),
@@ -133,6 +137,8 @@ mod tests {
             cache: dir.join("cache"),
             keymaps: dir.join("keymaps.toml"),
             plugins: dir.join("plugins"),
+            #[cfg(feature = "wasm-grammars")]
+            grammars: dir.join("grammars"),
             installed_plugins: dir.join("installed-plugins"),
             plugin_lock: dir.join("plugins.lock"),
             plugin_settings: dir.join("plugins.toml"),
