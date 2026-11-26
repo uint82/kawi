@@ -14,6 +14,7 @@ use crate::theme::Theme;
 
 mod diagnostic;
 mod highlight;
+mod layers;
 mod overlay;
 mod selection;
 mod selection_wide;
