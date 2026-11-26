@@ -5,7 +5,7 @@ related = ["diagnostics", "troubleshooting", "configuration"]
 ---
 # Error codes
 
-Every message starts with a stable code. Run `:help CODE` to open the matching entry. The code names the behavior; the wording can change.
+Built-in errors and warnings start with a stable code. `E` and `W` codes follow Vim's meaning where Kawi implements the same behavior. `K` codes are Kawi-specific. Run `:help CODE` to open the matching entry. The code names the behavior; the wording can change.
 
 ## Command errors
 

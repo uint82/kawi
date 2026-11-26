@@ -73,9 +73,15 @@ Rules:
 - Keep the code at the start of the first line: `CODE: message`.
 - A warning may use `W###` when it has no Vim equivalent. Prefer an explicit severity over guessing from the text.
 
-The doc is the policy. The registry in code is the source of truth.
+The design doc is the policy. Typed code definitions are the source of truth for command and Kawi-native codes. Help entries live in `docs/help/errors.md`; the build validates them and tests require every typed code to resolve.
 
-The user-facing reference is `:help errors`. Each code is a heading, so `:help E492` and `:help K001` open the page at the matching entry. The help index also offers codes for completion.
+### Help code lookup
+
+`docs/help/errors.md` is the only page that may define code entries. Each entry is a level-three heading in the form `### CODE: Title`.
+
+The build rejects malformed codes, empty titles, duplicate codes, code entries on other pages, and topics that collide with a code. It emits a sorted code registry, so completion is deterministic and lookup can use a binary search.
+
+`HelpIndex::lookup` returns the page and the canonical code in one pass. It trims whitespace and an optional `help:` prefix, compares ASCII case-insensitively, and requires the whole code. `HelpIndex::resolve` keeps page-only callers working. The help view uses the lookup result to open the page at the matching entry. Completion reads the same registry.
 
 ## Diagnostic model
 
@@ -226,8 +232,11 @@ Help tests cover:
 
 - `:help errors` opens the code reference.
 - `:help E492` and `:help K001` open the matching entry.
-- Error code topics are case-insensitive.
+- Error code topics are case-insensitive and accept whitespace or a `help:` prefix.
+- Partial codes do not match.
 - Unknown codes still report `E149`.
+- Every typed command and Kawi code has a help entry.
+- The generated code registry is sorted, unique, and uppercase.
 - Help completion includes error codes.
 
 ## Rollout
