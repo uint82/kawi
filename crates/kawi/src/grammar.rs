@@ -1,16 +1,18 @@
-use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use kawi_grammar::{GrammarError, GrammarLoader, GrammarStore, LoadedGrammar, Pack, PackRoot};
+use kawi_grammar::{GrammarError, GrammarLoader, GrammarStore, LoadedGrammar, Pack};
 use kawi_syntax::{
     register_external_grammar, ExternalGrammar, GrammarLanguage, GrammarParser, LanguageId,
 };
 
+mod roots;
+
 #[cfg(test)]
 mod tests;
 
-pub(crate) fn register(root: &Path) {
-    let store = GrammarStore::new(vec![PackRoot::user(root)]);
+pub(crate) use roots::store;
+
+pub(crate) fn register(store: &GrammarStore) {
     let packs = store.best_packs();
     if packs.is_empty() {
         return;

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use kawi_grammar::PackRoot;
 use kawi_syntax::{registry, SyntaxKey, SyntaxRequest};
 use ropey::Rope;
 use sha2::{Digest, Sha256};
@@ -33,6 +34,51 @@ fn registered_pack_replaces_the_native_queries() {
 }
 
 #[test]
+fn registered_bundled_pack_replaces_the_native_queries() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_bundled");
+    clear_grammars();
+    let bundled_root = dir.join("bundled");
+    write_pack(&bundled_root.join("adl/0.7.0"), "(comment) @keyword\n");
+    let store = GrammarStore::new(vec![PackRoot::bundled(&bundled_root)]);
+    register(&store);
+
+    let keyword = registry().index_of("keyword").expect("keyword capture");
+    let result = highlight_adl_comment();
+    assert!(
+        result.spans.iter().any(|span| span.highlight == keyword),
+        "expected the bundled pack query to mark the comment as a keyword"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn user_pack_takes_precedence_over_bundled_pack() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_precedence");
+    clear_grammars();
+    let user_root = dir.join("user");
+    let bundled_root = dir.join("bundled");
+    write_pack(&bundled_root.join("adl/0.7.0"), "(comment) @string\n");
+    let source = write_pack(&dir.join("source"), "(comment) @keyword\n");
+    let store = GrammarStore::new(vec![
+        PackRoot::user(&user_root),
+        PackRoot::bundled(&bundled_root),
+    ]);
+    store.install(&source).expect("install user pack");
+    register(&store);
+
+    let keyword = registry().index_of("keyword").expect("keyword capture");
+    let string = registry().index_of("string").expect("string capture");
+    let result = highlight_adl_comment();
+    assert!(result.spans.iter().any(|span| span.highlight == keyword));
+    assert!(!result.spans.iter().any(|span| span.highlight == string));
+
+    cleanup(dir);
+}
+
+#[test]
 fn a_broken_pack_falls_back_to_the_native_grammar() {
     let _guard = lock_grammars();
     let dir = temp_dir("grammar_broken");
@@ -52,13 +98,16 @@ fn lock_grammars() -> MutexGuard<'static, ()> {
 }
 
 fn install_and_register(dir: &Path, query: &str) {
-    kawi_syntax::clear_external_grammars();
-    let source = write_pack(dir, query);
+    clear_grammars();
+    let source = write_pack(&dir.join("source"), query);
     let user_root = dir.join("user");
-    GrammarStore::new(vec![PackRoot::user(&user_root)])
-        .install(&source)
-        .expect("install pack");
-    register(&user_root);
+    let store = GrammarStore::new(vec![PackRoot::user(&user_root)]);
+    store.install(&source).expect("install pack");
+    register(&store);
+}
+
+fn clear_grammars() {
+    kawi_syntax::clear_external_grammars();
 }
 
 fn highlight_adl_comment() -> kawi_syntax::SyntaxResult {
@@ -77,13 +126,12 @@ fn highlight_adl_comment() -> kawi_syntax::SyntaxResult {
 }
 
 fn cleanup(dir: PathBuf) {
-    kawi_syntax::clear_external_grammars();
+    clear_grammars();
     fs::remove_dir_all(dir).expect("remove temp dir");
 }
 
-fn write_pack(root: &Path, query: &str) -> PathBuf {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../kawi-grammar/fixtures/adl/0.7.0");
-    let pack = root.join("source");
+fn write_pack(pack: &Path, query: &str) -> PathBuf {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../kawi-grammar/packs/adl/0.7.0");
     fs::create_dir_all(pack.join("queries")).expect("create pack");
     fs::copy(fixture.join("grammar.wasm"), pack.join("grammar.wasm")).expect("copy wasm");
     fs::write(pack.join("queries/highlights.scm"), query).expect("write query");
@@ -108,7 +156,7 @@ highlights_sha256 = "{}"
         sha256_hex(query.as_bytes())
     );
     fs::write(pack.join("manifest.toml"), manifest).expect("write manifest");
-    pack
+    pack.to_path_buf()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
