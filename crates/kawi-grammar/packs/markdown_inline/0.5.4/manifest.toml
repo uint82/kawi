@@ -1,0 +1,18 @@
+format = 1
+id = "markdown_inline"
+version = "0.5.4"
+language = "markdown_inline"
+grammar = "grammar.wasm"
+grammar_sha256 = "4426bd0aa98c7effbf21c12f4c2cb86fb03e9ef3931d1f6d8782f55d60fe7d63"
+grammar_revision = "41ff24a6c775492c543b09228aeb98d1cd2b3a0f"
+abi_min = 15
+abi_max = 15
+minimum_kawi = "0.0.1"
+repository = "https://github.com/tree-sitter-grammars/tree-sitter-markdown"
+license = "MIT"
+
+[queries]
+highlights = "queries/highlights.scm"
+highlights_sha256 = "85218f523958889939a16b77524b0ff44bb00a1890e7eba8ce411e3a27f95bb1"
+injections = "queries/injections.scm"
+injections_sha256 = "632ea5882abac79ef70f182729e8de82f518a1be272332fb66c43cdfc12c369b"
