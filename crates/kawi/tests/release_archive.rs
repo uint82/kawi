@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const ADL_PACK: &str = "adl/0.7.0";
+const PACKS: [&str; 2] = ["adl/0.7.0", "typescript/0.23.2"];
 
 struct Archive {
     root: PathBuf,
@@ -44,7 +44,9 @@ impl Archive {
         let package = self.package();
         fs::create_dir_all(package.join("share/kawi/grammars")).expect("create share");
         copy_binary(&package.join("kawi"));
-        copy_pack(&package.join("share/kawi/grammars").join(ADL_PACK));
+        for pack in PACKS {
+            copy_pack(&package.join("share/kawi/grammars").join(pack), pack);
+        }
         copy_release_files(&package);
         create_archive(self);
         fs::create_dir_all(self.extracted()).expect("create extract dir");
@@ -72,10 +74,10 @@ fn copy_binary(target: &Path) {
     fs::copy(env!("CARGO_BIN_EXE_kawi"), target).expect("copy kawi binary");
 }
 
-fn copy_pack(target: &Path) {
+fn copy_pack(target: &Path, pack: &str) {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../kawi-grammar/packs")
-        .join(ADL_PACK);
+        .join(pack);
     copy_tree(&source, target);
 }
 
@@ -128,8 +130,8 @@ fn stdout(output: Output) -> String {
 }
 
 #[test]
-fn bundled_adl_loads_from_the_release_archive() {
-    let archive = Archive::new("adl");
+fn bundled_packs_load_from_the_release_archive() {
+    let archive = Archive::new("packs");
     archive.build();
 
     let status = archive
@@ -137,6 +139,8 @@ fn bundled_adl_loads_from_the_release_archive() {
         .args(["grammar", "status"])
         .output()
         .expect("run grammar status");
+    let status = stdout(status);
 
-    assert!(stdout(status).contains("adl 0.7.0 [bundled] valid"));
+    assert!(status.contains("adl 0.7.0 [bundled] valid"));
+    assert!(status.contains("typescript 0.23.2 [bundled] valid"));
 }
