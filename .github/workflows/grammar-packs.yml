@@ -31,6 +31,15 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: adl
+            version: 0.7.0
+            repository: alexytsu/tree-sitter-adl
+            revision: 5ffcda9174faa0b24331513c00f35cac823c1960
+            source: .
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -46,16 +55,17 @@ jobs:
           tool: wasm-tools@1.262.0
       - name: Install tree-sitter
         run: cargo install tree-sitter-cli --version 0.26.9 --locked
-      - name: Check out the ADL grammar
+      - name: Check out the ${{ matrix.id }} grammar
         uses: actions/checkout@v5
         with:
-          repository: alexytsu/tree-sitter-adl
-          ref: 5ffcda9174faa0b24331513c00f35cac823c1960
-          path: adl
-      - name: Rebuild the ADL pack
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.revision }}
+          path: grammar
+      - name: Rebuild the ${{ matrix.id }} pack
         run: |
-          cp -R crates/kawi-grammar/packs/adl/0.7.0 /tmp/adl-pack
-          sh scripts/build-grammar-pack.sh adl /tmp/adl-pack
+          pack="/tmp/${{ matrix.id }}-pack"
+          cp -R "crates/kawi-grammar/packs/${{ matrix.id }}/${{ matrix.version }}" "$pack"
+          sh scripts/build-grammar-pack.sh "grammar/${{ matrix.source }}" "$pack"
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint grammar crates
