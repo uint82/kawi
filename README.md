@@ -68,7 +68,7 @@ cargo install --git https://github.com/uint82/kawi --locked
 
 WASM plugins are optional and off by default. Add `--features wasm` to a source build or Cargo install to enable the plugin runtime.
 
-Release binaries include the WebAssembly grammar runtime and the bundled ADL pack. Source builds opt in with `--features wasm-grammars`; install or update packs with `kawi grammar install <path>` and inspect them with `kawi grammar status`. See [Grammar packs](docs/help/grammars.md).
+WebAssembly grammar packs are optional and off by default. Add `--features wasm-grammars` to enable them, install a pack with `kawi grammar install <path>`, and inspect installed packs with `kawi grammar status`. See [Grammar packs](docs/help/grammars.md).
 
 ### Download a release
 

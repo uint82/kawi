@@ -66,7 +66,7 @@ fn main() -> Result<()> {
     if let Some(paths) = paths.as_ref() {
         kawi_syntax::set_user_query_dir(paths.queries.clone());
         #[cfg(feature = "wasm-grammars")]
-        grammar::register(&grammar::store(&paths.grammars));
+        grammar::register(&paths.grammars);
         #[cfg(feature = "wasm")]
         kawi_plugin::set_wasm_cache_dir(paths.cache.join("wasm"));
     }

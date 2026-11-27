@@ -2,9 +2,7 @@ mod support;
 
 use std::fs;
 
-use kawi_grammar::{
-    GrammarError, GrammarStore, Pack, PackRoot, PackRootKind, PackState, PackStatus,
-};
+use kawi_grammar::{GrammarError, GrammarStore, Pack, PackRoot, PackState, PackStatus};
 use support::{fixture_pack, install_fixture, TempDir};
 
 fn store(user: &TempDir, bundled: &TempDir, system: &TempDir) -> GrammarStore {
@@ -65,70 +63,20 @@ fn status_verifies_pack_hashes() {
 }
 
 #[test]
-fn status_lists_user_packs_before_bundled_packs() {
-    let user = TempDir::new("status-order-user");
-    let bundled = TempDir::new("status-order-bundled");
-    let system = TempDir::new("status-order-system");
-    install_fixture(user.path(), "adl", "0.7.0");
-    install_fixture(bundled.path(), "adl", "0.8.0");
-
-    let statuses = store(&user, &bundled, &system).status();
-    let roots: Vec<_> = statuses
-        .iter()
-        .filter(|status| status.id == "adl")
-        .map(|status| status.root)
-        .collect();
-    assert_eq!(roots, [PackRootKind::User, PackRootKind::Bundled]);
-}
-
-#[test]
-fn best_packs_prefers_the_highest_version_within_a_root() {
+fn best_packs_prefers_the_highest_version() {
     let user = TempDir::new("best-user");
     let bundled = TempDir::new("best-bundled");
     let system = TempDir::new("best-system");
     install_fixture(user.path(), "adl", "0.7.0");
-    install_fixture(user.path(), "adl", "0.8.0");
-    install_fixture(user.path(), "adl", "0.9.0");
+    install_fixture(bundled.path(), "adl", "0.8.0");
+    install_fixture(system.path(), "adl", "0.9.0");
 
     let packs = store(&user, &bundled, &system).best_packs();
     assert_eq!(packs.len(), 1);
     assert_eq!(packs[0].manifest().version, "0.9.0");
     assert!(packs[0]
         .root()
-        .starts_with(user.path().canonicalize().unwrap()));
-}
-
-#[test]
-fn best_packs_prefers_the_user_root_over_newer_bundled_packs() {
-    let user = TempDir::new("priority-user");
-    let bundled = TempDir::new("priority-bundled");
-    let system = TempDir::new("priority-system");
-    install_fixture(user.path(), "adl", "0.7.0");
-    install_fixture(bundled.path(), "adl", "0.8.0");
-    install_fixture(system.path(), "adl", "0.9.0");
-
-    let packs = store(&user, &bundled, &system).best_packs();
-    assert_eq!(packs.len(), 1);
-    assert_eq!(packs[0].manifest().version, "0.7.0");
-    assert!(packs[0]
-        .root()
-        .starts_with(user.path().canonicalize().unwrap()));
-}
-
-#[test]
-fn best_packs_prefers_the_bundled_root_over_newer_system_packs() {
-    let user = TempDir::new("system-priority-user");
-    let bundled = TempDir::new("system-priority-bundled");
-    let system = TempDir::new("system-priority-system");
-    install_fixture(bundled.path(), "adl", "0.7.0");
-    install_fixture(system.path(), "adl", "0.9.0");
-
-    let packs = store(&user, &bundled, &system).best_packs();
-    assert_eq!(packs.len(), 1);
-    assert_eq!(packs[0].manifest().version, "0.7.0");
-    assert!(packs[0]
-        .root()
-        .starts_with(bundled.path().canonicalize().unwrap()));
+        .starts_with(system.path().canonicalize().unwrap()));
 }
 
 #[test]

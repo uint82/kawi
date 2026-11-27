@@ -326,8 +326,6 @@ Move non-core built-in grammars to packs one at a time. Keep the native core dur
 
 Start with ADL, then a scanner grammar, then injection-heavy grammars such as Markdown and HTML.
 
-ADL ships as a bundled pack in release archives. The native ADL grammar remains as fallback until the pack passes parity tests on every release target.
-
 ### Phase 4: External languages
 
 Add the string-based language registry. Allow third-party packs only from explicit installs. Add provenance, signatures, and update policy.
@@ -369,7 +367,7 @@ The common pattern is clear: editors do not statically link every grammar once t
 - Does the native core stay permanently, or only for bootstrap?
 - When should project-local grammar packs be allowed, if ever?
 - What signature scheme is used for official packs?
-- Are packs bundled with releases or downloaded on demand? ADL is bundled; larger grammars may need a different answer.
+- Are packs bundled with releases or downloaded on demand?
 - How are grammar pack updates rolled out and rolled back?
 - How are user query overrides handled for external languages?
 - Does a pack supply language configuration defaults, or only parsing and queries?

@@ -61,7 +61,7 @@ impl Drop for TempDir {
 
 pub fn fixture_pack() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("packs")
+        .join("fixtures")
         .join("adl")
         .join("0.7.0")
 }
