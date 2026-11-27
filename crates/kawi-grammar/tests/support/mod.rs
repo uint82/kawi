@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tree_sitter::{Language, Parser, Tree};
+use kawi_grammar::LoadedGrammar;
+use tree_sitter::{
+    InputEdit, Language, Parser, Point, Query, QueryCursor, StreamingIterator, Tree,
+};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -73,6 +76,20 @@ pub fn fixture_typescript_pack() -> PathBuf {
         .join("0.23.2")
 }
 
+pub fn fixture_markdown_pack() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("packs")
+        .join("markdown")
+        .join("0.5.4")
+}
+
+pub fn fixture_markdown_inline_pack() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("packs")
+        .join("markdown_inline")
+        .join("0.5.4")
+}
+
 pub fn fixture_manifest_text() -> String {
     fs::read_to_string(fixture_pack().join("manifest.toml")).expect("read fixture manifest")
 }
@@ -109,6 +126,78 @@ pub fn parse_with(language: Language, source: &str) -> Tree {
     let mut parser = Parser::new();
     parser.set_language(&language).expect("set native language");
     parser.parse(source, None).expect("parse source")
+}
+
+pub fn parse_loaded(grammar: &LoadedGrammar, source: &str) -> Tree {
+    let mut parser = grammar.parser().expect("create parser");
+    parser.parse(source, None).expect("parse source")
+}
+
+pub fn captures(
+    language: &Language,
+    tree: &Tree,
+    query_source: &str,
+    source: &str,
+) -> Vec<(String, usize, usize)> {
+    let query = Query::new(language, query_source).expect("compile query");
+    let names = query.capture_names();
+    let mut cursor = QueryCursor::new();
+    let mut result = Vec::new();
+    let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+    while let Some(matched) = matches.next() {
+        for capture in matched.captures() {
+            result.push((
+                names[capture.index as usize].to_string(),
+                capture.node.start_byte(),
+                capture.node.end_byte(),
+            ));
+        }
+    }
+    result
+}
+
+pub fn point_at(source: &str, offset: usize) -> Point {
+    let mut point = Point::new(0, 0);
+    for byte in source.bytes().take(offset) {
+        if byte == b'\n' {
+            point.row += 1;
+            point.column = 0;
+        } else {
+            point.column += 1;
+        }
+    }
+    point
+}
+
+pub fn assert_incremental_parity(
+    grammar: &LoadedGrammar,
+    native: Language,
+    source: &str,
+    updated: &str,
+    edit: InputEdit,
+) {
+    let mut native_parser = Parser::new();
+    native_parser
+        .set_language(&native)
+        .expect("set native language");
+    let mut wasm_parser = grammar.parser().expect("create wasm parser");
+
+    let mut native_tree = native_parser.parse(source, None).expect("native parse");
+    let mut wasm_tree = wasm_parser.parse(source, None).expect("wasm parse");
+
+    native_tree.edit(&edit);
+    wasm_tree.edit(&edit);
+    let native_after = native_parser
+        .parse(updated, Some(&native_tree))
+        .expect("native reparse");
+    let wasm_after = wasm_parser
+        .parse(updated, Some(&wasm_tree))
+        .expect("wasm reparse");
+
+    assert_eq!(
+        native_after.root_node().to_sexp(),
+        wasm_after.root_node().to_sexp()
+    );
 }
 
 pub fn large_typescript_source(functions: usize) -> String {

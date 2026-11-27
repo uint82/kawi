@@ -2,11 +2,10 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use kawi_grammar::{GrammarLoader, LoadedGrammar, Pack};
-use tree_sitter::{
-    InputEdit, Language, Parser, Point, Query, QueryCursor, StreamingIterator, Tree,
-};
+use tree_sitter::{InputEdit, Language};
 
 use super::support::fixture_typescript_pack;
+pub use super::support::{captures, parse_loaded, point_at};
 
 pub const PARSE_BUDGET: Duration = Duration::from_secs(10);
 
@@ -119,69 +118,6 @@ pub fn native_language() -> Language {
     tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
 }
 
-pub fn parse_loaded(grammar: &LoadedGrammar, source: &str) -> Tree {
-    let mut parser = grammar.parser().expect("create parser");
-    parser.parse(source, None).expect("parse")
-}
-
-pub fn captures(
-    language: &Language,
-    tree: &Tree,
-    query_source: &str,
-    source: &str,
-) -> Vec<(String, usize, usize)> {
-    let query = Query::new(language, query_source).expect("compile query");
-    let names = query.capture_names();
-    let mut cursor = QueryCursor::new();
-    let mut result = Vec::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
-    while let Some(matched) = matches.next() {
-        for capture in matched.captures() {
-            result.push((
-                names[capture.index as usize].to_string(),
-                capture.node.start_byte(),
-                capture.node.end_byte(),
-            ));
-        }
-    }
-    result
-}
-
-pub fn point_at(source: &str, offset: usize) -> Point {
-    let mut point = Point::new(0, 0);
-    for byte in source.bytes().take(offset) {
-        if byte == b'\n' {
-            point.row += 1;
-            point.column = 0;
-        } else {
-            point.column += 1;
-        }
-    }
-    point
-}
-
 pub fn assert_incremental_parity(source: &str, updated: &str, edit: InputEdit) {
-    let grammar = grammar();
-    let mut native_parser = Parser::new();
-    native_parser
-        .set_language(&native_language())
-        .expect("set native language");
-    let mut wasm_parser = grammar.parser().expect("create wasm parser");
-
-    let mut native_tree = native_parser.parse(source, None).expect("native parse");
-    let mut wasm_tree = wasm_parser.parse(source, None).expect("wasm parse");
-
-    native_tree.edit(&edit);
-    wasm_tree.edit(&edit);
-    let native_after = native_parser
-        .parse(updated, Some(&native_tree))
-        .expect("native reparse");
-    let wasm_after = wasm_parser
-        .parse(updated, Some(&wasm_tree))
-        .expect("wasm reparse");
-
-    assert_eq!(
-        native_after.root_node().to_sexp(),
-        wasm_after.root_node().to_sexp()
-    );
+    super::support::assert_incremental_parity(grammar(), native_language(), source, updated, edit);
 }
