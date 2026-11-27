@@ -1,0 +1,18 @@
+format = 1
+id = "typescript"
+version = "0.23.2"
+language = "typescript"
+grammar = "grammar.wasm"
+grammar_sha256 = "36b57857943c4f7a26d877e5588c917a5f0c6eb103a7cdebd1fe146b0c78d7f1"
+grammar_revision = "f975a621f4e7f532fe322e13c4f79495e0a7b2e7"
+abi_min = 14
+abi_max = 14
+minimum_kawi = "0.0.1"
+repository = "https://github.com/tree-sitter/tree-sitter-typescript"
+license = "MIT"
+
+[queries]
+highlights = "queries/highlights.scm"
+highlights_sha256 = "10636644ecc8fe1095ad446f477581d7dbeb3683b506081e165b1f42ea063126"
+locals = "queries/locals.scm"
+locals_sha256 = "c3680f9b56276fb2ccc9f1d5f4d03dbca5d64bdf3e6d52ce5a4ad342cec162d5"

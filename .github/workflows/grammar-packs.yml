@@ -10,6 +10,7 @@ on:
       - "crates/kawi-syntax/**"
       - "crates/kawi/**"
       - "scripts/build-grammar-pack.sh"
+      - "scripts/sync-typescript-queries.sh"
       - ".github/workflows/grammar-packs.yml"
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - "crates/kawi-syntax/**"
       - "crates/kawi/**"
       - "scripts/build-grammar-pack.sh"
+      - "scripts/sync-typescript-queries.sh"
       - ".github/workflows/grammar-packs.yml"
 
 permissions:
@@ -31,6 +33,20 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: adl
+            version: 0.7.0
+            repository: alexytsu/tree-sitter-adl
+            revision: 5ffcda9174faa0b24331513c00f35cac823c1960
+            source: .
+          - id: typescript
+            version: 0.23.2
+            repository: tree-sitter/tree-sitter-typescript
+            revision: f975a621f4e7f532fe322e13c4f79495e0a7b2e7
+            source: typescript
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -46,16 +62,17 @@ jobs:
           tool: wasm-tools@1.262.0
       - name: Install tree-sitter
         run: cargo install tree-sitter-cli --version 0.26.9 --locked
-      - name: Check out the ADL grammar
+      - name: Check out the ${{ matrix.id }} grammar
         uses: actions/checkout@v5
         with:
-          repository: alexytsu/tree-sitter-adl
-          ref: 5ffcda9174faa0b24331513c00f35cac823c1960
-          path: adl
-      - name: Rebuild the ADL pack
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.revision }}
+          path: grammar
+      - name: Rebuild the ${{ matrix.id }} pack
         run: |
-          cp -R crates/kawi-grammar/packs/adl/0.7.0 /tmp/adl-pack
-          sh scripts/build-grammar-pack.sh adl /tmp/adl-pack
+          pack="/tmp/${{ matrix.id }}-pack"
+          cp -R "crates/kawi-grammar/packs/${{ matrix.id }}/${{ matrix.version }}" "$pack"
+          sh scripts/build-grammar-pack.sh "grammar/${{ matrix.source }}" "$pack"
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lint grammar crates
@@ -74,3 +91,20 @@ jobs:
           fi
       - name: Check grammar dependencies
         run: cargo tree -p kawi --features wasm-grammars -e normal | grep -q "wasmtime v"
+
+  release-layout:
+    name: release layout (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test the release archive layout
+        run: cargo test -p kawi --features wasm-grammars --test release_archive

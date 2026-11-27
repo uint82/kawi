@@ -1,12 +1,12 @@
 # Grammar packs
 
-Kawi can load tree-sitter grammars from WebAssembly packs. Release binaries include the grammar runtime and the bundled ADL pack. Source builds opt in with `--features wasm-grammars`:
+Kawi can load tree-sitter grammars from WebAssembly packs. Release binaries include the grammar runtime and the bundled ADL and TypeScript packs. Source builds opt in with `--features wasm-grammars`:
 
 ```sh
 cargo install --path crates/kawi --features wasm-grammars --locked
 ```
 
-Cargo installs do not include the bundled pack. Install a pack explicitly when you use a source build. The grammar feature is independent of `--features wasm`; enable either, both, or neither.
+Cargo installs do not include the bundled packs. Install a pack explicitly when you use a source build. The grammar feature is independent of `--features wasm`; enable either, both, or neither.
 
 ## Install
 
@@ -24,6 +24,7 @@ User packs take precedence over bundled packs. Within one root, Kawi picks the h
 ```
 adl 0.7.0 [user] valid /home/me/.local/share/kawi/grammars/adl/0.7.0
 adl 0.7.0 [bundled] valid /opt/kawi/share/kawi/grammars/adl/0.7.0
+typescript 0.23.2 [bundled] valid /opt/kawi/share/kawi/grammars/typescript/0.23.2
 ```
 
 States are `valid`, `unverified`, `invalid`, and `unloadable`. An `invalid` pack failed verification, such as a hash mismatch or an ABI range that does not overlap this build. An `unloadable` pack passed verification but failed the editor version check, the grammar ABI check, query compilation, or targeted a language this build does not know.
@@ -48,7 +49,7 @@ Queries must use capture names kawi already understands, such as `@comment`, `@k
 
 ## Bundled packs
 
-Release archives put the bundled pack under `share/kawi/grammars` beside the `kawi` binary. Kawi also checks `share/kawi/grammars` one directory above the binary, which covers installs that keep the binary in `bin/`.
+Release archives put the bundled packs under `share/kawi/grammars` beside the `kawi` binary. Kawi also checks `share/kawi/grammars` one directory above the binary, which covers installs that keep the binary in `bin/`.
 
 Bundled packs are read-only. To override one, install a user pack for the same id. The user pack wins even when the bundled pack has a newer version.
 

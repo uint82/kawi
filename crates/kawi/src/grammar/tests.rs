@@ -14,6 +14,8 @@ const ADL_WASM_SHA256: &str = "3ffec313c96b3f2b78a408718403f0e8fb23570c98befb78e
 const ADL_GRAMMAR_REVISION: &str = "5ffcda9174faa0b24331513c00f35cac823c1960";
 const ADL_REPOSITORY: &str = "https://github.com/alexytsu/tree-sitter-adl";
 const ADL_LICENSE: &str = "MIT";
+const TYPESCRIPT_WASM_SHA256: &str =
+    "36b57857943c4f7a26d877e5588c917a5f0c6eb103a7cdebd1fe146b0c78d7f1";
 
 static GRAMMAR_LOCK: Mutex<()> = Mutex::new(());
 
@@ -93,6 +95,32 @@ fn a_broken_pack_falls_back_to_the_native_grammar() {
     cleanup(dir);
 }
 
+#[test]
+fn a_broken_typescript_pack_falls_back_to_native() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_typescript_broken");
+    clear_grammars();
+    let source = dir.join("source");
+    copy_typescript_pack(&source);
+    let broken = b"not wasm";
+    fs::write(source.join("grammar.wasm"), broken).expect("write broken wasm");
+    replace_manifest_hash(&source, &sha256_hex(broken));
+
+    let user_root = dir.join("user");
+    let store = GrammarStore::new(vec![PackRoot::user(&user_root)]);
+    store.install(&source).expect("install pack");
+    register(&store);
+
+    let keyword = registry().index_of("keyword").expect("keyword capture");
+    let result = highlight_typescript();
+    assert!(
+        result.spans.iter().any(|span| span.highlight == keyword),
+        "expected the native TypeScript grammar to highlight a keyword"
+    );
+
+    cleanup(dir);
+}
+
 fn lock_grammars() -> MutexGuard<'static, ()> {
     GRAMMAR_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -108,6 +136,21 @@ fn install_and_register(dir: &Path, query: &str) {
 
 fn clear_grammars() {
     kawi_syntax::clear_external_grammars();
+}
+
+fn highlight_typescript() -> kawi_syntax::SyntaxResult {
+    kawi_syntax::SyntaxService::new().highlight_now(SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 1,
+            top: 0,
+            end: 1,
+            language: LanguageId::TypeScript,
+        },
+        base_revision: 0,
+        edits: Vec::new(),
+        text: Rope::from_str("const value: number = 1;\n"),
+    })
 }
 
 fn highlight_adl_comment() -> kawi_syntax::SyntaxResult {
@@ -157,6 +200,31 @@ highlights_sha256 = "{}"
     );
     fs::write(pack.join("manifest.toml"), manifest).expect("write manifest");
     pack.to_path_buf()
+}
+
+fn copy_typescript_pack(target: &Path) {
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../kawi-grammar/packs/typescript/0.23.2");
+    copy_tree(&source, target);
+}
+
+fn copy_tree(source: &Path, target: &Path) {
+    fs::create_dir_all(target).expect("create pack");
+    for entry in fs::read_dir(source).expect("read pack") {
+        let entry = entry.expect("pack entry");
+        let destination = target.join(entry.file_name());
+        if entry.file_type().expect("pack entry type").is_dir() {
+            copy_tree(&entry.path(), &destination);
+        } else {
+            fs::copy(entry.path(), &destination).expect("copy pack file");
+        }
+    }
+}
+
+fn replace_manifest_hash(pack: &Path, hash: &str) {
+    let path = pack.join("manifest.toml");
+    let text = fs::read_to_string(&path).expect("read manifest");
+    fs::write(&path, text.replace(TYPESCRIPT_WASM_SHA256, hash)).expect("write manifest");
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
