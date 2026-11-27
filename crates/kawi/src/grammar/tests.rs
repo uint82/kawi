@@ -16,6 +16,10 @@ const ADL_REPOSITORY: &str = "https://github.com/alexytsu/tree-sitter-adl";
 const ADL_LICENSE: &str = "MIT";
 const TYPESCRIPT_WASM_SHA256: &str =
     "36b57857943c4f7a26d877e5588c917a5f0c6eb103a7cdebd1fe146b0c78d7f1";
+const MARKDOWN_WASM_SHA256: &str =
+    "474ad6d0f6e66b641c89d39a9f8afeb64f67be7a3a79679d82168e57a806c1c1";
+const MARKDOWN_INLINE_WASM_SHA256: &str =
+    "4426bd0aa98c7effbf21c12f4c2cb86fb03e9ef3931d1f6d8782f55d60fe7d63";
 
 static GRAMMAR_LOCK: Mutex<()> = Mutex::new(());
 
@@ -101,10 +105,10 @@ fn a_broken_typescript_pack_falls_back_to_native() {
     let dir = temp_dir("grammar_typescript_broken");
     clear_grammars();
     let source = dir.join("source");
-    copy_typescript_pack(&source);
+    copy_pack("typescript/0.23.2", &source);
     let broken = b"not wasm";
     fs::write(source.join("grammar.wasm"), broken).expect("write broken wasm");
-    replace_manifest_hash(&source, &sha256_hex(broken));
+    replace_manifest_hash(&source, TYPESCRIPT_WASM_SHA256, &sha256_hex(broken));
 
     let user_root = dir.join("user");
     let store = GrammarStore::new(vec![PackRoot::user(&user_root)]);
@@ -116,6 +120,110 @@ fn a_broken_typescript_pack_falls_back_to_native() {
     assert!(
         result.spans.iter().any(|span| span.highlight == keyword),
         "expected the native TypeScript grammar to highlight a keyword"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn bundled_markdown_packs_highlight_injections() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_markdown");
+    clear_grammars();
+    let bundled_root = dir.join("bundled");
+    copy_pack("markdown/0.5.4", &bundled_root.join("markdown/0.5.4"));
+    copy_pack(
+        "markdown_inline/0.5.4",
+        &bundled_root.join("markdown_inline/0.5.4"),
+    );
+    let store = GrammarStore::new(vec![PackRoot::bundled(&bundled_root)]);
+    register(&store);
+
+    let keyword = registry()
+        .index_of("keyword.function")
+        .expect("keyword.function capture");
+    let italic = registry()
+        .index_of("markup.italic")
+        .expect("markup.italic capture");
+    let tag = registry().index_of("tag").expect("tag capture");
+
+    let fenced = highlight_markdown("```rust\nfn main() {}\n```\n");
+    assert!(
+        fenced.spans.iter().any(|span| span.highlight == keyword),
+        "expected the Rust injection to highlight a keyword"
+    );
+
+    let inline = highlight_markdown("Some *italic* text.\n");
+    assert!(
+        inline.spans.iter().any(|span| span.highlight == italic),
+        "expected the inline injection to highlight italic text"
+    );
+
+    let html = highlight_markdown("Some <span>inside</span> tail.\n");
+    assert!(
+        html.spans.iter().any(|span| span.highlight == tag),
+        "expected the HTML injection to highlight a tag"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn a_broken_markdown_pack_falls_back_to_native() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_markdown_broken");
+    clear_grammars();
+    let source = dir.join("source");
+    copy_pack("markdown/0.5.4", &source);
+    let broken = b"not wasm";
+    fs::write(source.join("grammar.wasm"), broken).expect("write broken wasm");
+    replace_manifest_hash(&source, MARKDOWN_WASM_SHA256, &sha256_hex(broken));
+
+    let user_root = dir.join("user");
+    let store = GrammarStore::new(vec![PackRoot::user(&user_root)]);
+    store.install(&source).expect("install pack");
+    register(&store);
+
+    let heading = registry()
+        .index_of("markup.heading.1")
+        .expect("markup.heading.1 capture");
+    let result = highlight_markdown("# Heading\n");
+    assert!(
+        result.spans.iter().any(|span| span.highlight == heading),
+        "expected the native Markdown grammar to highlight a heading"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn a_broken_markdown_inline_pack_falls_back_to_native() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_markdown_inline_broken");
+    clear_grammars();
+    let bundled_root = dir.join("bundled");
+    copy_pack("markdown/0.5.4", &bundled_root.join("markdown/0.5.4"));
+    let source = dir.join("source");
+    copy_pack("markdown_inline/0.5.4", &source);
+    let broken = b"not wasm";
+    fs::write(source.join("grammar.wasm"), broken).expect("write broken wasm");
+    replace_manifest_hash(&source, MARKDOWN_INLINE_WASM_SHA256, &sha256_hex(broken));
+
+    let user_root = dir.join("user");
+    let store = GrammarStore::new(vec![
+        PackRoot::user(&user_root),
+        PackRoot::bundled(&bundled_root),
+    ]);
+    store.install(&source).expect("install pack");
+    register(&store);
+
+    let italic = registry()
+        .index_of("markup.italic")
+        .expect("markup.italic capture");
+    let result = highlight_markdown("Some *italic* text.\n");
+    assert!(
+        result.spans.iter().any(|span| span.highlight == italic),
+        "expected the native Markdown inline grammar to highlight italic text"
     );
 
     cleanup(dir);
@@ -150,6 +258,21 @@ fn highlight_typescript() -> kawi_syntax::SyntaxResult {
         base_revision: 0,
         edits: Vec::new(),
         text: Rope::from_str("const value: number = 1;\n"),
+    })
+}
+
+fn highlight_markdown(text: &str) -> kawi_syntax::SyntaxResult {
+    kawi_syntax::SyntaxService::new().highlight_now(SyntaxRequest {
+        key: SyntaxKey {
+            document: 1,
+            revision: 1,
+            top: 0,
+            end: text.lines().count().max(1),
+            language: LanguageId::Markdown,
+        },
+        base_revision: 0,
+        edits: Vec::new(),
+        text: Rope::from_str(text),
     })
 }
 
@@ -202,9 +325,10 @@ highlights_sha256 = "{}"
     pack.to_path_buf()
 }
 
-fn copy_typescript_pack(target: &Path) {
-    let source =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../kawi-grammar/packs/typescript/0.23.2");
+fn copy_pack(pack: &str, target: &Path) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../kawi-grammar/packs")
+        .join(pack);
     copy_tree(&source, target);
 }
 
@@ -221,10 +345,10 @@ fn copy_tree(source: &Path, target: &Path) {
     }
 }
 
-fn replace_manifest_hash(pack: &Path, hash: &str) {
+fn replace_manifest_hash(pack: &Path, from: &str, to: &str) {
     let path = pack.join("manifest.toml");
     let text = fs::read_to_string(&path).expect("read manifest");
-    fs::write(&path, text.replace(TYPESCRIPT_WASM_SHA256, hash)).expect("write manifest");
+    fs::write(&path, text.replace(from, to)).expect("write manifest");
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
