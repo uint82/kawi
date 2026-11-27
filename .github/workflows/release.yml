@@ -64,11 +64,8 @@ jobs:
           name="kawi-v${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/kawi" "dist/$name/"
-          for pack in adl/0.7.0 typescript/0.23.2; do
-            id=${pack%%/*}
-            mkdir -p "dist/$name/share/kawi/grammars/$id"
-            cp -R "crates/kawi-grammar/packs/$pack" "dist/$name/share/kawi/grammars/$id/"
-          done
+          mkdir -p "dist/$name/share/kawi/grammars/adl"
+          cp -R "crates/kawi-grammar/packs/adl/0.7.0" "dist/$name/share/kawi/grammars/adl/"
           cp LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4

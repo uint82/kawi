@@ -66,13 +66,6 @@ pub fn fixture_pack() -> PathBuf {
         .join("0.7.0")
 }
 
-pub fn fixture_typescript_pack() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("packs")
-        .join("typescript")
-        .join("0.23.2")
-}
-
 pub fn fixture_manifest_text() -> String {
     fs::read_to_string(fixture_pack().join("manifest.toml")).expect("read fixture manifest")
 }
@@ -109,22 +102,6 @@ pub fn parse_with(language: Language, source: &str) -> Tree {
     let mut parser = Parser::new();
     parser.set_language(&language).expect("set native language");
     parser.parse(source, None).expect("parse source")
-}
-
-pub fn large_typescript_source(functions: usize) -> String {
-    use std::fmt::Write;
-
-    let mut source = String::with_capacity(functions * 96);
-    for index in 0..functions {
-        writeln!(
-            source,
-            "export function fn{index}(value: number): number {{"
-        )
-        .expect("write source");
-        writeln!(source, "  const next = value + {index};").expect("write source");
-        source.push_str("  return next * 2;\n}\n");
-    }
-    source
 }
 
 fn copy_dir(source: &Path, target: &Path) -> io::Result<()> {
