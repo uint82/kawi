@@ -5,7 +5,7 @@ use tree_sitter::{InputEdit, Parser, Range as TreeRange, Tree};
 
 use crate::diff::diff_edit;
 use crate::language::LanguageId;
-use crate::limits::{MAX_STABLE_EDITS, WINDOW_PARSE_BYTES};
+use crate::limits::{MAX_STABLE_EDITS, WINDOW_CONTEXT_LINES, WINDOW_PARSE_BYTES};
 use crate::rows;
 use crate::span::{SyntaxEdit, SyntaxRequest, SyntaxSpan};
 use crate::text;
@@ -17,7 +17,6 @@ mod paint;
 mod parse;
 mod runtime;
 mod stability;
-mod window;
 
 pub(crate) use runtime::{Runtime, RuntimeCache};
 
@@ -44,18 +43,9 @@ impl Document {
         Self::with_runtimes(language, RuntimeCache::new())
     }
 
-    #[cfg(test)]
     pub(crate) fn with_runtimes(language: LanguageId, runtimes: RuntimeCache) -> Self {
         let mut parser = Parser::new();
         let _ = parser.set_language(&language.language());
-        Self::with_parser(language, parser, runtimes)
-    }
-
-    pub(crate) fn with_parser(
-        language: LanguageId,
-        parser: Parser,
-        runtimes: RuntimeCache,
-    ) -> Self {
         Self {
             parser,
             language,
@@ -93,7 +83,7 @@ impl Document {
         let window = if self.large {
             self.window_rows.clone()
         } else {
-            window::bounds(&self.text, request.key.top, request.key.end)
+            window_bounds(&self.text, request.key.top, request.key.end)
         };
         let (spans, has_error) = self.spans(runtime, window.clone());
         if !has_error && self.tree.is_some() {
@@ -227,7 +217,7 @@ impl Document {
     }
 
     fn parse_window(&mut self, request: &SyntaxRequest) {
-        let window = window::bounds(&self.text, request.key.top, request.key.end);
+        let window = window_bounds(&self.text, request.key.top, request.key.end);
         let range = TreeRange {
             start_byte: text::line_start(&self.text, window.start),
             end_byte: text::line_start(&self.text, window.end),
@@ -289,6 +279,14 @@ impl Document {
         let stable_spans = stable.spans(&self.text, &self.stable_edits, target);
         stability::overlay(&self.text, rows, spans, stable_spans)
     }
+}
+
+fn window_bounds(text: &Rope, top: usize, end: usize) -> Range<usize> {
+    let start = top.saturating_sub(WINDOW_CONTEXT_LINES);
+    let end = end
+        .saturating_add(WINDOW_CONTEXT_LINES)
+        .min(text::line_count(text));
+    start..end
 }
 
 #[cfg(test)]

@@ -4,14 +4,8 @@ All notable changes to Kawi are documented in this file.
 
 ## Unreleased
 
-### Added
-
-- Optional WebAssembly grammar packs behind `wasm-grammars`, with `kawi grammar install` and `kawi grammar status`.
-- Bundled ADL, TypeScript, Markdown, Markdown inline, and HTML grammar packs in release archives, with the grammar runtime enabled in release builds.
-
 ### Changed
 
-- User grammar packs take precedence over bundled packs. Within one root, the highest valid version wins.
 - Make the WASM plugin runtime opt-in and freeze the WIT contract at `kawi:plugin@0.13.0`.
 - Remove the process plugin runtime. Plugin-spawned commands and jobs stay available through the WASM host APIs.
 

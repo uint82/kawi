@@ -24,8 +24,9 @@ struct SnippetRuntime {
 
 impl SnippetRuntime {
     fn new(language: LanguageId) -> Option<Self> {
+        let mut parser = Parser::new();
+        parser.set_language(&language.language()).ok()?;
         let runtime = Runtime::new(language)?;
-        let parser = runtime.source().parser()?;
         Some(Self { parser, runtime })
     }
 
