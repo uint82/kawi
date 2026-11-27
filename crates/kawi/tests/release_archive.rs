@@ -4,12 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const PACKS: [&str; 5] = [
+const PACKS: [&str; 4] = [
     "adl/0.7.0",
     "typescript/0.23.2",
     "markdown/0.5.4",
     "markdown_inline/0.5.4",
-    "html/0.23.2",
 ];
 
 struct Archive {

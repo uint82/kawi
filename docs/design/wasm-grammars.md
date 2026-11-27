@@ -326,7 +326,7 @@ Move non-core built-in grammars to packs one at a time. Keep the native core dur
 
 Start with ADL, then a scanner grammar, then injection-heavy grammars such as Markdown and HTML.
 
-ADL, TypeScript, Markdown, and HTML ship as bundled packs in release archives. TypeScript is the first scanner grammar. Markdown is the first injection-heavy grammar and uses separate block and inline packs. HTML is the second and injects JavaScript and CSS from script and style elements. The native grammars remain as fallback until each pack passes parity tests on every release target.
+ADL, TypeScript, and Markdown ship as bundled packs in release archives. TypeScript is the first scanner grammar. Markdown is the first injection-heavy grammar and uses separate block and inline packs. The native grammars remain as fallback until each pack passes parity tests on every release target.
 
 ### Phase 4: External languages
 
@@ -369,7 +369,7 @@ The common pattern is clear: editors do not statically link every grammar once t
 - Does the native core stay permanently, or only for bootstrap?
 - When should project-local grammar packs be allowed, if ever?
 - What signature scheme is used for official packs?
-- Are packs bundled with releases or downloaded on demand? ADL, TypeScript, Markdown, and HTML are bundled; larger grammars may need a different answer.
+- Are packs bundled with releases or downloaded on demand? ADL, TypeScript, and Markdown are bundled; larger grammars may need a different answer.
 - How are grammar pack updates rolled out and rolled back?
 - How are user query overrides handled for external languages?
 - Does a pack supply language configuration defaults, or only parsing and queries?
