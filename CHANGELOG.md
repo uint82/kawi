@@ -7,7 +7,7 @@ All notable changes to Kawi are documented in this file.
 ### Added
 
 - Optional WebAssembly grammar packs behind `wasm-grammars`, with `kawi grammar install` and `kawi grammar status`.
-- Bundled ADL and TypeScript grammar packs in release archives, with the grammar runtime enabled in release builds.
+- Bundled ADL, TypeScript, Markdown, and Markdown inline grammar packs in release archives, with the grammar runtime enabled in release builds.
 
 ### Changed
 
