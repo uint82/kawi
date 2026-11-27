@@ -14,7 +14,6 @@ kawi-completion.workspace = true
 kawi-dap.workspace = true
 kawi-editor.workspace = true
 kawi-git.workspace = true
-kawi-grammar = { workspace = true, optional = true }
 kawi-help.workspace = true
 kawi-lsp.workspace = true
 kawi-picker.workspace = true
@@ -38,7 +37,6 @@ crossterm.workspace = true
 
 [features]
 wasm = ["kawi-plugin/wasm"]
-wasm-grammars = ["dep:kawi-grammar"]
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

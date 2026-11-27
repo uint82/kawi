@@ -4,10 +4,6 @@ All notable changes to Kawi are documented in this file.
 
 ## Unreleased
 
-### Added
-
-- Optional WebAssembly grammar packs behind `wasm-grammars`, with `kawi grammar install` and `kawi grammar status`.
-
 ### Changed
 
 - Make the WASM plugin runtime opt-in and freeze the WIT contract at `kawi:plugin@0.13.0`.
