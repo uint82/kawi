@@ -59,6 +59,11 @@ jobs:
             repository: tree-sitter-grammars/tree-sitter-markdown
             revision: 41ff24a6c775492c543b09228aeb98d1cd2b3a0f
             source: tree-sitter-markdown-inline
+          - id: html
+            version: 0.23.2
+            repository: tree-sitter/tree-sitter-html
+            revision: 5a5ca8551a179998360b4a4ca2c0f366a35acc03
+            source: .
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0

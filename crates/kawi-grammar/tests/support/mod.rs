@@ -76,6 +76,13 @@ pub fn fixture_typescript_pack() -> PathBuf {
         .join("0.23.2")
 }
 
+pub fn fixture_html_pack() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("packs")
+        .join("html")
+        .join("0.23.2")
+}
+
 pub fn fixture_markdown_pack() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("packs")
@@ -167,6 +174,18 @@ pub fn point_at(source: &str, offset: usize) -> Point {
         }
     }
     point
+}
+
+pub fn replacement_edit(source: &str, updated: &str, old: &str, new: &str) -> InputEdit {
+    let start = source.find(old).expect("find edit target");
+    InputEdit {
+        start_byte: start,
+        old_end_byte: start + old.len(),
+        new_end_byte: start + new.len(),
+        start_position: point_at(source, start),
+        old_end_position: point_at(source, start + old.len()),
+        new_end_position: point_at(updated, start + new.len()),
+    }
 }
 
 pub fn assert_incremental_parity(

@@ -64,7 +64,7 @@ jobs:
           name="kawi-v${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/kawi" "dist/$name/"
-          for pack in adl/0.7.0 typescript/0.23.2 markdown/0.5.4 markdown_inline/0.5.4; do
+          for pack in adl/0.7.0 typescript/0.23.2 markdown/0.5.4 markdown_inline/0.5.4 html/0.23.2; do
             id=${pack%%/*}
             mkdir -p "dist/$name/share/kawi/grammars/$id"
             cp -R "crates/kawi-grammar/packs/$pack" "dist/$name/share/kawi/grammars/$id/"

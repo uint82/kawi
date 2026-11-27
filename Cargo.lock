@@ -1091,6 +1091,7 @@ dependencies = [
  "toml",
  "tree-sitter",
  "tree-sitter-adl",
+ "tree-sitter-html",
  "tree-sitter-md",
  "tree-sitter-typescript",
 ]

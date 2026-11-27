@@ -20,6 +20,9 @@ const MARKDOWN_WASM_SHA256: &str =
     "474ad6d0f6e66b641c89d39a9f8afeb64f67be7a3a79679d82168e57a806c1c1";
 const MARKDOWN_INLINE_WASM_SHA256: &str =
     "4426bd0aa98c7effbf21c12f4c2cb86fb03e9ef3931d1f6d8782f55d60fe7d63";
+const HTML_WASM_SHA256: &str = "91941c44a17a53939c79532214531877c816fa6d7397564d88ce34612d4d25d6";
+const HTML_HIGHLIGHTS_SHA256: &str =
+    "5f1c18aea4b1302362d2738caab30f7f0f2c60ffde652b8dde52cd43518adac1";
 
 static GRAMMAR_LOCK: Mutex<()> = Mutex::new(());
 
@@ -229,6 +232,97 @@ fn a_broken_markdown_inline_pack_falls_back_to_native() {
     cleanup(dir);
 }
 
+#[test]
+fn registered_html_pack_highlights_script_and_style_injections() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_html");
+    clear_grammars();
+    let bundled_root = dir.join("bundled");
+    copy_html_pack_with_query(&bundled_root.join("html/0.23.2"), "(tag_name) @comment\n");
+    let store = GrammarStore::new(vec![PackRoot::bundled(&bundled_root)]);
+    register(&store);
+
+    let comment = registry().index_of("comment").expect("comment capture");
+    let keyword = registry().index_of("keyword").expect("keyword capture");
+    let property = registry().index_of("property").expect("property capture");
+
+    let tag = highlight_html("<div></div>\n");
+    assert!(
+        tag.spans.iter().any(|span| span.highlight == comment),
+        "expected the HTML pack query to mark a tag as a comment"
+    );
+
+    let script = highlight_html("<script>const value = 1;</script>\n");
+    assert!(
+        script.spans.iter().any(|span| span.highlight == keyword),
+        "expected the JavaScript injection to highlight a keyword"
+    );
+
+    let style = highlight_html("<style>.box { color: red; }</style>\n");
+    assert!(
+        style.spans.iter().any(|span| span.highlight == property),
+        "expected the CSS injection to highlight a property"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn markdown_injects_into_the_bundled_html_pack() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_markdown_html");
+    clear_grammars();
+    let bundled_root = dir.join("bundled");
+    copy_pack("markdown/0.5.4", &bundled_root.join("markdown/0.5.4"));
+    copy_pack(
+        "markdown_inline/0.5.4",
+        &bundled_root.join("markdown_inline/0.5.4"),
+    );
+    copy_html_pack_with_query(&bundled_root.join("html/0.23.2"), "(tag_name) @comment\n");
+    let store = GrammarStore::new(vec![PackRoot::bundled(&bundled_root)]);
+    register(&store);
+
+    let comment = registry().index_of("comment").expect("comment capture");
+    let result = highlight_markdown("Some <span>inside</span> tail.\n");
+    assert!(
+        result.spans.iter().any(|span| span.highlight == comment),
+        "expected Markdown inline HTML to use the HTML pack query"
+    );
+
+    cleanup(dir);
+}
+
+#[test]
+fn a_broken_html_pack_falls_back_to_native() {
+    let _guard = lock_grammars();
+    let dir = temp_dir("grammar_html_broken");
+    clear_grammars();
+    let source = dir.join("source");
+    copy_pack("html/0.23.2", &source);
+    let broken = b"not wasm";
+    fs::write(source.join("grammar.wasm"), broken).expect("write broken wasm");
+    replace_manifest_hash(&source, HTML_WASM_SHA256, &sha256_hex(broken));
+
+    let user_root = dir.join("user");
+    let store = GrammarStore::new(vec![PackRoot::user(&user_root)]);
+    store.install(&source).expect("install pack");
+    register(&store);
+
+    let tag = registry().index_of("tag").expect("tag capture");
+    let comment = registry().index_of("comment").expect("comment capture");
+    let result = highlight_html("<div></div>\n");
+    assert!(
+        result.spans.iter().any(|span| span.highlight == tag),
+        "expected the native HTML grammar to highlight a tag"
+    );
+    assert!(
+        !result.spans.iter().any(|span| span.highlight == comment),
+        "expected the broken HTML pack not to be used"
+    );
+
+    cleanup(dir);
+}
+
 fn lock_grammars() -> MutexGuard<'static, ()> {
     GRAMMAR_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -247,47 +341,33 @@ fn clear_grammars() {
 }
 
 fn highlight_typescript() -> kawi_syntax::SyntaxResult {
-    kawi_syntax::SyntaxService::new().highlight_now(SyntaxRequest {
-        key: SyntaxKey {
-            document: 1,
-            revision: 1,
-            top: 0,
-            end: 1,
-            language: LanguageId::TypeScript,
-        },
-        base_revision: 0,
-        edits: Vec::new(),
-        text: Rope::from_str("const value: number = 1;\n"),
-    })
+    highlight(LanguageId::TypeScript, "const value: number = 1;\n")
 }
 
 fn highlight_markdown(text: &str) -> kawi_syntax::SyntaxResult {
+    highlight(LanguageId::Markdown, text)
+}
+
+fn highlight_html(text: &str) -> kawi_syntax::SyntaxResult {
+    highlight(LanguageId::Html, text)
+}
+
+fn highlight_adl_comment() -> kawi_syntax::SyntaxResult {
+    highlight(LanguageId::Adl, "// comment\n")
+}
+
+fn highlight(language: LanguageId, text: &str) -> kawi_syntax::SyntaxResult {
     kawi_syntax::SyntaxService::new().highlight_now(SyntaxRequest {
         key: SyntaxKey {
             document: 1,
             revision: 1,
             top: 0,
             end: text.lines().count().max(1),
-            language: LanguageId::Markdown,
+            language,
         },
         base_revision: 0,
         edits: Vec::new(),
         text: Rope::from_str(text),
-    })
-}
-
-fn highlight_adl_comment() -> kawi_syntax::SyntaxResult {
-    kawi_syntax::SyntaxService::new().highlight_now(SyntaxRequest {
-        key: SyntaxKey {
-            document: 1,
-            revision: 1,
-            top: 0,
-            end: 1,
-            language: LanguageId::Adl,
-        },
-        base_revision: 0,
-        edits: Vec::new(),
-        text: Rope::from_str("// comment\n"),
     })
 }
 
@@ -330,6 +410,16 @@ fn copy_pack(pack: &str, target: &Path) {
         .join("../kawi-grammar/packs")
         .join(pack);
     copy_tree(&source, target);
+}
+
+fn copy_html_pack_with_query(target: &Path, query: &str) {
+    copy_pack("html/0.23.2", target);
+    fs::write(target.join("queries/highlights.scm"), query).expect("write query");
+    replace_manifest_hash(
+        target,
+        HTML_HIGHLIGHTS_SHA256,
+        &sha256_hex(query.as_bytes()),
+    );
 }
 
 fn copy_tree(source: &Path, target: &Path) {

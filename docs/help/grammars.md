@@ -1,6 +1,6 @@
 # Grammar packs
 
-Kawi can load tree-sitter grammars from WebAssembly packs. Release binaries include the grammar runtime and the bundled ADL, TypeScript, Markdown, and Markdown inline packs. Source builds opt in with `--features wasm-grammars`:
+Kawi can load tree-sitter grammars from WebAssembly packs. Release binaries include the grammar runtime and the bundled ADL, TypeScript, Markdown, Markdown inline, and HTML packs. Source builds opt in with `--features wasm-grammars`:
 
 ```sh
 cargo install --path crates/kawi --features wasm-grammars --locked
@@ -25,6 +25,7 @@ User packs take precedence over bundled packs. Within one root, Kawi picks the h
 adl 0.7.0 [user] valid /home/me/.local/share/kawi/grammars/adl/0.7.0
 adl 0.7.0 [bundled] valid /opt/kawi/share/kawi/grammars/adl/0.7.0
 typescript 0.23.2 [bundled] valid /opt/kawi/share/kawi/grammars/typescript/0.23.2
+html 0.23.2 [bundled] valid /opt/kawi/share/kawi/grammars/html/0.23.2
 markdown 0.5.4 [bundled] valid /opt/kawi/share/kawi/grammars/markdown/0.5.4
 markdown_inline 0.5.4 [bundled] valid /opt/kawi/share/kawi/grammars/markdown_inline/0.5.4
 ```
@@ -55,7 +56,7 @@ Release archives put the bundled packs under `share/kawi/grammars` beside the `k
 
 Bundled packs are read-only. To override one, install a user pack for the same id. The user pack wins even when the bundled pack has a newer version.
 
-Markdown uses two packs: `markdown` parses block structure and injects `markdown_inline` for inline spans.
+Markdown uses two packs: `markdown` parses block structure and injects `markdown_inline` for inline spans. HTML injects JavaScript and CSS for `script` and `style` elements.
 
 ## Runtime behavior
 
