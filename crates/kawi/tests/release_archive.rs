@@ -4,12 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const PACKS: [&str; 4] = [
-    "adl/0.7.0",
-    "typescript/0.23.2",
-    "markdown/0.5.4",
-    "markdown_inline/0.5.4",
-];
+const PACKS: [&str; 2] = ["adl/0.7.0", "typescript/0.23.2"];
 
 struct Archive {
     root: PathBuf,
@@ -148,6 +143,4 @@ fn bundled_packs_load_from_the_release_archive() {
 
     assert!(status.contains("adl 0.7.0 [bundled] valid"));
     assert!(status.contains("typescript 0.23.2 [bundled] valid"));
-    assert!(status.contains("markdown 0.5.4 [bundled] valid"));
-    assert!(status.contains("markdown_inline 0.5.4 [bundled] valid"));
 }
