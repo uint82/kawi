@@ -74,3 +74,20 @@ jobs:
           fi
       - name: Check grammar dependencies
         run: cargo tree -p kawi --features wasm-grammars -e normal | grep -q "wasmtime v"
+
+  release-layout:
+    name: release layout (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test the release archive layout
+        run: cargo test -p kawi --features wasm-grammars --test release_archive
